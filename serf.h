@@ -430,6 +430,9 @@ struct serf_bucket_type_t {
      * to apr_socket_sendfile).
      *
      * If a bucket of the given type is not found, then NULL is returned.
+     *
+     * The returned bucket becomes the responsibility of the caller. When
+     * the caller is done with the bucket, it should be destroyed.
      */
     serf_bucket_t * (*read_bucket)(serf_bucket_t *bucket,
                                    const serf_bucket_type_t *type);

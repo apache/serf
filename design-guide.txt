@@ -5,6 +5,8 @@ TOPICS
 
   1. Introduction
   2. Thread Safety
+  3. Pool Usage
+  4. Bucket Read Functions
 
 
 -----------------------------------------------------------------------------
@@ -57,6 +59,53 @@ contrasts with pools where the "free" operation occurs over a large
 set of objects, which is problematic if some are still in use.
 
 ### need more explanation of strategy/solution ...
+
+
+-----------------------------------------------------------------------------
+
+4. BUCKET READ FUNCTIONS
+
+The bucket reading and peek functions must not block. Each read
+function should return the specified amount of data. If
+SERF_READ_ALL_AVAIL is passed, then the function shold provide
+whatever is immediately available, without blocking.
+
+The peek function does not take a requested length because it is
+non-destructive. It is not possible to "read past" any barrier with a
+peek function. Thus, peek should operate like SERF_READ_ALL_AVAIL.
+
+The return values from the read functions should follow this general
+pattern:
+
+    APR_SUCCESS    Some data was returned, and the caller can
+                   immediate call the read function again to read more
+                   data.
+
+    APR_EAGAIN     Some data was returned, but no more is available.
+                   The caller should "wait for a bit" or wait for some
+                   event before attempting to read again. Reading
+                   again will, in all likelihood, return zero length
+                   data and APR_EAGAIN again.
+
+    APR_EOF        Some data was returned, and this bucket has no more
+                   data available. Reading again will return zero
+                   length data and APR_EOF again.
+
+    other          An error has occurred. No data was returned.
+
+In the above paragraphs, when it says "some data was returned", not
+that this includes data of length zero.
+
+If a length of zero is returned, then the caller should not attempt to
+dereference the data pointer. It may be invalid. Note that there is no
+reason to dereference that point, since it doesn't point to any valid
+data.
+
+Any data returned by the bucket should live as long as the bucket, or
+until the next read or peek occurs.
+
+The read_bucket function falls into a very different pattern. See its
+doc string for more information.
 
 
 -----------------------------------------------------------------------------
