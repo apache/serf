@@ -414,7 +414,10 @@ int main(int argc, const char **argv)
         if (APR_STATUS_IS_TIMEUP(status))
             continue;
         if (status) {
-            printf("Error running context: %d\n", status);
+            char buf[200];
+
+            printf("Error running context: (%d) %s\n", status,
+                   apr_strerror(status, buf, sizeof(buf)));
             exit(1);
         }
         if (!apr_atomic_read32(&handler_ctx.requests_outstanding)) {

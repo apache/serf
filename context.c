@@ -112,6 +112,7 @@ static apr_status_t update_pollset(serf_connection_t *conn)
     desc.reqevents = 0;
     if (conn->requests) {
         /* If there are any outstanding events, then we want to read. */
+        /* ### not true. we only want to read IF we have sent some data */
         desc.reqevents |= APR_POLLIN;
 
         /* If the connection has unwritten data, or there are any requests
@@ -137,6 +138,27 @@ static apr_status_t update_pollset(serf_connection_t *conn)
     return apr_pollset_add(ctx->pollset, &desc);
 }
 
+#ifdef SERF_DEBUG_BUCKET_USE
+
+/* Make sure all response buckets were drained. */
+static void check_buckets_drained(serf_connection_t *conn)
+{
+    serf_request_t *request = conn->requests;
+
+    for ( ; request ; request = request->next ) {
+        if (request->resp_bkt != NULL) {
+            /* ### crap. can't do this. this allocator may have un-drained
+             * ### REQUEST buckets.
+             */
+            /* serf_debug__entered_loop(request->resp_bkt->allocator); */
+            /* ### for now, pretend we closed the conn (resets the tracking) */
+            serf_debug__closed_conn(request->resp_bkt->allocator);
+        }
+    }
+}
+
+#endif
+
 /* Create and connect sockets for any connections which don't have them
  * yet. This is the core of our lazy-connect behavior.
  */
@@ -149,8 +171,12 @@ static apr_status_t open_connections(serf_context_t *ctx)
         apr_status_t status;
         apr_socket_t *skt;
 
-        if (conn->skt != NULL)
+        if (conn->skt != NULL) {
+#ifdef SERF_DEBUG_BUCKET_USE
+            check_buckets_drained(conn);
+#endif
             continue;
+        }
 
         if (conn->write_baton != NULL) {
             /* Add the new socket to the pollset. */

@@ -504,11 +504,42 @@ struct serf_bucket_type_t {
     */
 };
 
-#define serf_bucket_read(b,r,d,l) ((b)->type->read(b,r,d,l))
-#define serf_bucket_readline(b,a,f,d,l) ((b)->type->readline(b,a,f,d,l))
-#define serf_bucket_read_iovec(b,r,s,v,u) ((b)->type->read_iovec(b,r,s,v,u))
+/**
+ * Should the use and lifecycle of buckets be tracked?
+ *
+ * When tracking, the system will ensure several semantic requirements
+ * of bucket use:
+ *
+ *   - if a bucket returns APR_EAGAIN, one of its read functions should
+ *     not be called immediately. the context's run loop should be called.
+ *     ### and for APR_EOF, too?
+ *   - all buckets must be drained of input before returning to the
+ *     context's run loop.
+ *   - buckets should not be destroyed before they return APR_EOF unless
+ *     the connection is closed for some reason.
+ *
+ * Undefine this symbol to avoid the tracking (and a performance gain).
+ *
+ * ### we may want to examine when/how we provide this. should it always
+ * ### be compiled in? and apps select it before including this header?
+ */
+#define SERF_DEBUG_BUCKET_USE
+
+
+/* Internal macros for tracking bucket use. */
+#ifdef SERF_DEBUG_BUCKET_USE
+#define SERF__RECREAD(b,s) serf_debug__record_read(b,s)
+#else
+#define SERF__RECREAD(b,s) (s)
+#endif
+
+#define serf_bucket_read(b,r,d,l) SERF__RECREAD(b, (b)->type->read(b,r,d,l))
+#define serf_bucket_readline(b,a,f,d,l) \
+    SERF__RECREAD(b, (b)->type->readline(b,a,f,d,l))
+#define serf_bucket_read_iovec(b,r,s,v,u) \
+    SERF__RECREAD(b, (b)->type->read_iovec(b,r,s,v,u))
 #define serf_bucket_read_for_sendfile(b,r,h,f,o,l) \
-    ((b)->type->read_for_sendfile(b,r,h,f,o,l))
+    SERF__RECREAD(b, (b)->type->read_for_sendfile(b,r,h,f,o,l))
 #define serf_bucket_read_bucket(b,t) ((b)->type->read_bucket(b,t))
 #define serf_bucket_peek(b,d,l) ((b)->type->peek(b,d,l))
 #define serf_bucket_get_metadata(b,t,n,v) ((b)->type->get_metadata(b,t,n,v))
@@ -589,6 +620,15 @@ SERF_DECLARE(serf_bucket_alloc_t *) serf_bucket_allocator_create(
  */
 SERF_DECLARE(apr_pool_t *) serf_bucket_allocator_get_pool(
     const serf_bucket_alloc_t *allocator);
+
+
+/* Internal functions for bucket use and lifecycle tracking */
+SERF_DECLARE(apr_status_t) serf_debug__record_read(
+    serf_bucket_t *bucket,
+    apr_status_t status);
+SERF_DECLARE(void) serf_debug__entered_loop(serf_bucket_alloc_t *allocator);
+SERF_DECLARE(void) serf_debug__closed_conn(serf_bucket_alloc_t *allocator);
+SERF_DECLARE(void) serf_debug__bucket_destroy(serf_bucket_t *bucket);
 
 /** @} */
 

@@ -65,6 +65,21 @@ typedef struct node_header_t {
 #define DEBUG_DOUBLE_FREE
 
 
+typedef struct {
+    serf_bucket_t *bucket;
+    apr_status_t last;
+} read_status_t;
+
+#define TRACK_BUCKET_COUNT 100  /* track N buckets' status */
+
+typedef struct {
+    int cur_index;      /* the info[] is organized in a ring */
+    int num_used;
+
+    read_status_t info[TRACK_BUCKET_COUNT];
+} track_state_t;
+
+
 struct serf_bucket_alloc_t {
     apr_pool_t *pool;
     apr_allocator_t *allocator;
@@ -76,7 +91,11 @@ struct serf_bucket_alloc_t {
 
     node_header_t *freelist;    /* free STANDARD_NODE_SIZE blocks */
     apr_memnode_t *blocks;      /* blocks we allocated for subdividing */
+
+    track_state_t *track;
 };
+
+/* ==================================================================== */
 
 
 static apr_status_t allocator_cleanup(void *data)
@@ -106,13 +125,24 @@ SERF_DECLARE(serf_bucket_alloc_t *) serf_bucket_allocator_create(
     void *unfreed_baton)
 {
     serf_bucket_alloc_t *allocator = apr_pcalloc(pool, sizeof(*allocator));
+    track_state_t *track;
 
     allocator->pool = pool;
     allocator->allocator = apr_pool_allocator_get(pool);
     allocator->unfreed = unfreed;
     allocator->unfreed_baton = unfreed_baton;
 
-    /* ### this implies buckets cannot cross a fork/exec. desirable? */
+    track = allocator->track = apr_palloc(pool, sizeof(*allocator->track));
+    track->cur_index = 0;
+    track->num_used = 0;
+    track->info[0].bucket = NULL;       /* see __record_read() */
+
+    /* ### this implies buckets cannot cross a fork/exec. desirable?
+     *
+     * ### hmm. it probably also means that buckets cannot be AROUND
+     * ### during a fork/exec. the new process will try to clean them
+     * ### up and figure out there are unfreed blocks...
+     */
     apr_pool_cleanup_register(pool, allocator,
                               allocator_cleanup, allocator_cleanup);
 
@@ -212,4 +242,146 @@ SERF_DECLARE(void) serf_bucket_mem_free(
         /* now free it */
         apr_allocator_free(allocator->allocator, node->u.memnode);
     }
+}
+
+
+/* ==================================================================== */
+
+
+#ifdef SERF_DEBUG_BUCKET_USE
+
+static read_status_t *find_read_status(
+    track_state_t *track,
+    serf_bucket_t *bucket,
+    int create_rs)
+{
+    read_status_t *rs;
+
+    /* Note that if num_used == 0, we still probe into info[]. We always
+     * ensure that info[0].bucket == NULL when num_used == 0.
+     */
+    if ((rs = &track->info[track->cur_index])->bucket != bucket) {
+        int count = track->num_used;
+        int idx = track->cur_index;
+        int found = 0;
+
+        /* Search backwards. In all likelihood, the bucket which just got
+         * read was read very recently.
+         *
+         * Don't enter the while loop for num_used == 0 or 1.
+         */
+        while (--count > 0) {
+            if (!idx--)
+                idx = track->num_used - 1;
+            if ((rs = &track->info[idx])->bucket == bucket) {
+                found = 1;
+                break;
+            }
+        }
+
+        if (!found) {
+            /* Only create a new read_status_t when asked. */
+            if (!create_rs)
+                return NULL;
+
+            if (track->num_used < TRACK_BUCKET_COUNT) {
+                /* We're still filling up the ring. This is easy. */
+                ++track->num_used;
+                ++track->cur_index;
+            }
+            else {
+                if (++track->cur_index == TRACK_BUCKET_COUNT)
+                    track->cur_index = 0;
+            }
+            rs = &track->info[track->cur_index];
+            rs->bucket = bucket;
+            rs->last = APR_SUCCESS;     /* ### the right initial value? */
+        }
+    }
+    /* assert: rs->bucket == bucket */
+
+    return rs;
+}
+
+#endif /* SERF_DEBUG_BUCKET_USE */
+
+
+SERF_DECLARE(apr_status_t) serf_debug__record_read(
+    serf_bucket_t *bucket,
+    apr_status_t status)
+{
+#ifndef SERF_DEBUG_BUCKET_USE
+    return status;
+#else
+
+    track_state_t *track = bucket->allocator->track;
+    read_status_t *rs = find_read_status(track, bucket, 1);
+
+    /* Validate that the previous status value allowed for another read. */
+    if (APR_STATUS_IS_EAGAIN(rs->last) /* ### or APR_EOF? */) {
+        /* Somebody read when they weren't supposed to. Bail. */
+        abort();
+    }
+
+    /* Save the current status for later. */
+    rs->last = status;
+
+    return status;
+#endif
+}
+
+SERF_DECLARE(void) serf_debug__entered_loop(serf_bucket_alloc_t *allocator)
+{
+#ifdef SERF_DEBUG_BUCKET_USE
+
+    track_state_t *track = allocator->track;
+    read_status_t *rs = &track->info[0];
+
+    for ( ; track->num_used; --track->num_used, ++rs ) {
+        if (rs->last == APR_SUCCESS) {
+            /* Somebody should have read this bucket again. */
+            abort();
+        }
+
+        /* ### other status values? */
+    }
+
+    /* num_used was reset. But we don't want a false positive on [0] in
+     * record_read(), so clear out the bucket field.
+     */
+    track->info[0].bucket = NULL;
+
+#endif
+}
+
+SERF_DECLARE(void) serf_debug__closed_conn(serf_bucket_alloc_t *allocator)
+{
+#ifdef SERF_DEBUG_BUCKET_USE
+
+    /* Just reset the number used so that we don't examine the info[] */
+    allocator->track->num_used = 0;
+
+#endif
+}
+
+SERF_DECLARE(void) serf_debug__bucket_destroy(serf_bucket_t *bucket)
+{
+#ifdef SERF_DEBUG_BUCKET_USE
+
+    track_state_t *track = bucket->allocator->track;
+    read_status_t *rs = find_read_status(track, bucket, 0);
+
+    if (rs != NULL && rs->last != APR_EOF) {
+        /* The bucket was destroyed before it was read to completion. */
+
+        /* Special exception for socket buckets. If a connection remains
+         * open, they are not read to completion.
+         */
+        if (SERF_BUCKET_IS_SOCKET(bucket))
+            return;
+
+        abort();
+    }
+
+#endif
 }

@@ -176,6 +176,10 @@ SERF_DECLARE(serf_bucket_t *) serf_default_read_bucket(
 
 SERF_DECLARE(void) serf_default_destroy(serf_bucket_t *bucket)
 {
+#ifdef SERF_DEBUG_BUCKET_USE
+    serf_debug__bucket_destroy(bucket);
+#endif
+
     if (bucket->metadata != NULL) {
         serf_bucket_mem_free(bucket->allocator, bucket->metadata);
     }
