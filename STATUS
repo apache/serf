@@ -136,3 +136,12 @@ OPEN ISSUES
             If a connection needs to close because of an abnormal
             close condition, then (obviously) the internal serf system
             can shut it down in an orderly fashion.
+
+  * Need to examine pool relationships. If an application is opening
+    and closing a multitude of connections, can it properly manage
+    lifetimes? Would it affect other connections? If an app is
+    generating a gazillion requests, then are they managed properly?
+
+    The context can be "loose", but the rest of the items seem to be
+    operationally-unbounded (thus, subject to the pool design/use
+    constraints).
