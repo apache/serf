@@ -24,6 +24,7 @@
 
 #define SERF_VERSION_STRING "0.01"
 
+/*#define PRINT_HEADERS*/
 
 static void closed_connection(serf_connection_t *conn,
                               void *closed_baton,
@@ -89,6 +90,20 @@ static apr_status_t handle_response(serf_bucket_t *response,
 
         /* are we done yet? */
         if (APR_STATUS_IS_EOF(status)) {
+#ifdef PRINT_HEADERS
+            serf_bucket_t *hdrs;
+            hdrs = serf_bucket_response_get_headers(response);
+            while (1) {
+                status = serf_bucket_read(hdrs, 2048, &data, &len);
+                if (SERF_BUCKET_READ_ERROR(status))
+                    return status;
+
+                fwrite(data, 1, len, stdout);
+                if (APR_STATUS_IS_EOF(status)) {
+                    break;
+                }
+            }
+#endif
             apr_atomic_dec32(&ctx->requests_outstanding);
             return APR_EOF;
         }
