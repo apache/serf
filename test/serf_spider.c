@@ -84,7 +84,7 @@
 #define SERF_SPIDER_QUEUE_SIZE 1000000
 
 /* The number of concurrent threads we will have running. */
-#define SERF_SPIDER_THREADS 20
+#define SERF_SPIDER_THREADS 5
 
 /* Maximum number of hits we will run per thread. */
 /*#define SERF_SPIDER_LIMIT 1000*/
@@ -102,12 +102,168 @@ static apr_pool_t *spider_pool;
 static apr_queue_t *spider_queue;
 static apr_hash_t *spider_hash;
 static apr_thread_mutex_t *spider_mutex;
-static const apr_strmatch_pattern *link_pattern;
-static const apr_strmatch_pattern *end_pattern;
-static const char* root_uri;
+static const apr_strmatch_pattern *link_start_pattern;
+static const apr_strmatch_pattern *link_stop_pattern;
+static const apr_strmatch_pattern *link_href_start_pattern;
+static const apr_strmatch_pattern *link_href_stop_pattern;
+static const apr_strmatch_pattern *img_start_pattern;
+static const apr_strmatch_pattern *img_stop_pattern;
+static const apr_strmatch_pattern *img_src_start_pattern;
+static const apr_strmatch_pattern *img_src_stop_pattern;
+static const apr_strmatch_pattern *head_start_pattern;
+static const apr_strmatch_pattern *head_stop_pattern;
+static const apr_strmatch_pattern *base_start_pattern;
+static const apr_strmatch_pattern *base_stop_pattern;
+static const char *original_root_uri;
+static apr_uri_t *parsed_root_uri;
+
+static apr_status_t add_uri(apr_uri_t *uri, apr_pool_t *uri_pool,
+                            apr_hash_t *hash, apr_pool_t *hash_pool,
+                            apr_queue_t *queue, const char *root_uri,
+                            apr_thread_mutex_t *mutex)
+{
+    char *new_uri;
+    apr_size_t new_uri_len;
+
+    new_uri = apr_uri_unparse(uri_pool, uri, 0);
+    new_uri_len = strlen(new_uri);
+    /* Our hash routines aren't thread-safe!  Ick!  */
+    apr_thread_mutex_lock(mutex);
+    assert(*new_uri != '\0');
+    new_uri = apr_pstrmemdup(hash_pool, new_uri, new_uri_len);
+    if (!apr_hash_get(hash, new_uri, new_uri_len) &&
+        (!SERF_SPIDER_DO_NOT_LEAVE_ROOT ||
+         strstr(new_uri, root_uri) == new_uri)) {
+        apr_status_t status;
+        int tries = 0;
+
+        apr_hash_set(hash, new_uri, new_uri_len, new_uri);
+
+        do {
+
+            status = apr_queue_trypush(queue, new_uri);
+            if (status) {
+                if (tries++ > 5 || !APR_STATUS_IS_EAGAIN(status)) {
+                    apr_thread_mutex_unlock(mutex);
+                    return status;
+                }
+                fprintf(stderr, "Queue full: %s %ld (try #%d)\n", new_uri,
+                        pthread_self(), tries);
+                apr_sleep(apr_time_from_sec(SERF_SPIDER_RAMP_DELAY));
+            }
+        } while (APR_STATUS_IS_EAGAIN(status));
+    }
+    apr_thread_mutex_unlock(mutex);
+
+    return APR_SUCCESS;
+}
+
+static apr_status_t search_base(apr_bucket *bucket,
+                                apr_uri_t *base_uri,
+                                apr_pool_t *pool)
+{
+    const char *buf, *match, *new_match;
+    apr_size_t length, match_length, written;
+    apr_status_t status;
+        
+    status = apr_bucket_read(bucket, &buf, &length, APR_BLOCK_READ);
+
+    if (status) {
+        fprintf(stderr, "Error %d\n", status);
+        return status;
+    }
+
+    match = buf;
+    match_length = length;
+    /* We must look for the <head> tag */
+    new_match = apr_strmatch(head_start_pattern, match, match_length);
+
+    if (new_match) {
+        const char *end_match, *base_match;
+        match = new_match + head_start_pattern->length;
+        match_length = length - (match - buf);
+ 
+        end_match = apr_strmatch(head_stop_pattern, match, match_length);
+        /* We don't have the end of the </head> portion, try to deal. */
+        if (!end_match) {
+            end_match = buf + length;
+        }
+
+        base_match = apr_strmatch(base_start_pattern, match,
+                                  end_match - match);
+        if (base_match) {
+            const char *base_end;
+            base_match += base_start_pattern->length;
+
+            base_end = apr_strmatch(base_stop_pattern, base_match,
+                                    end_match - base_match);
+            if (base_end) {
+                const char *base_uri_full;
+
+                base_uri_full = apr_pstrmemdup(pool, base_match,
+                                               base_end - base_match);
+
+                apr_uri_parse(pool, base_uri_full, base_uri);
+            }
+
+            return APR_SUCCESS;
+        }
+
+        new_match = apr_strmatch(head_start_pattern, match, match_length);
+    }
+    return APR_SUCCESS;
+}
+
+static apr_status_t harvest_link(const char *raw_uri, apr_uri_t *base_uri,
+                                 apr_pool_t *pool)
+{
+    apr_uri_t *uri;
+
+    uri = apr_palloc(pool, sizeof(apr_uri_t));
+    apr_uri_parse(pool, raw_uri, uri);
+    /* We'll only restrict our spidering to the scheme we
+     * originally started with.
+     *
+     * Special case mailto: since our uri parser doesn't
+     * handle it correctly.
+     */
+    if ((!uri->scheme ||
+         strcasecmp(uri->scheme, base_uri->scheme) == 0) &&
+        (uri->scheme || (!uri->path ||
+         strncasecmp(uri->path, "mailto:",
+                     sizeof("mailto:") - 1) != 0))) {
+        if (!uri->path) {
+            uri->path = base_uri->path;
+        }
+        else if (*uri->path != '/') {
+            uri->path = apr_pstrcat(pool,
+                                    base_uri->path,
+                                    uri->path, NULL);
+        }
+        if (!uri->hostinfo) {
+            char *p, *q, *f;
+            p = uri->path;
+            q = uri->query;
+            f = uri->fragment;
+            uri = apr_pmemdup(pool, base_uri, sizeof(apr_uri_t));
+            uri->path = p;
+            uri->query = q;
+            uri->fragment = f;
+        }
+        /* Eliminate fragments. */
+        if (uri->fragment) {
+            uri->fragment = 0;
+        }
+        add_uri(uri, pool, spider_hash, spider_pool, spider_queue,
+                original_root_uri, spider_mutex);
+    }
+
+    return APR_SUCCESS;
+}
 
 static apr_status_t search_bucket(apr_bucket *bucket,
-                                  serf_response_t *response,
+                                  serf_request_t *request,
+                                  apr_uri_t *base_uri,
                                   apr_pool_t *pool)
 {
     const char *buf, *match, *new_match;
@@ -123,71 +279,74 @@ static apr_status_t search_bucket(apr_bucket *bucket,
 
     match = buf;
     match_length = length;
-    new_match = apr_strmatch(link_pattern, match, match_length);
+    new_match = apr_strmatch(link_start_pattern, match, match_length);
     while (new_match) {
         const char *end_match;
-        match = new_match + link_pattern->length;
+        match = new_match + link_start_pattern->length;
         match_length = length - (match - buf);
  
-        end_match = apr_strmatch(end_pattern, match, match_length);
+        end_match = apr_strmatch(link_stop_pattern, match, match_length);
         if (end_match) {
-            char *our_match;
-            apr_uri_t *uri;
-            char *new_uri;
-            apr_size_t new_uri_len;
+            const char *href_begin;
 
-            our_match = apr_pstrmemdup(pool, match, end_match - match);
+            href_begin = apr_strmatch(link_href_start_pattern, match,
+                                      end_match - match);
+            if (href_begin) {
+                const char *href_end;
 
-            uri = apr_palloc(pool, sizeof(apr_uri_t));
-            apr_uri_parse(pool, our_match, uri);
-            if (!uri->path) {
-                uri->path = response->request->uri->path;
-            }
-            else if (*uri->path != '/') {
-                uri->path = apr_pstrcat(pool,
-                                        response->request->uri->path,
-                                        uri->path, NULL);
-            }
-            if (!uri->hostinfo) {
-                char *p, *q, *f;
-                p = uri->path;
-                q = uri->query;
-                f = uri->fragment;
-                uri = apr_pmemdup(pool, response->request->uri,
-                                  sizeof(apr_uri_t));
-                uri->path = p;
-                uri->query = q;
-                uri->fragment = f;
-            }
-            new_uri = apr_uri_unparse(pool, uri, 0);
-            new_uri_len = strlen(new_uri);
-            /* Our hash routines aren't thread-safe!  Ick!  */
-            apr_thread_mutex_lock(spider_mutex);
-            assert(*new_uri != '\0');
-            new_uri = apr_pstrmemdup(spider_pool, new_uri, new_uri_len);
-            if (!apr_hash_get(spider_hash, new_uri, new_uri_len) &&
-                (!SERF_SPIDER_DO_NOT_LEAVE_ROOT ||
-                 strstr(new_uri, root_uri) == new_uri)) {
-                int tries = 0;
+                href_begin += link_href_start_pattern->length;
 
-                apr_hash_set(spider_hash, new_uri, new_uri_len, new_uri);
+                href_end = apr_strmatch(link_href_stop_pattern, href_begin,
+                                        end_match - href_begin);
 
-                do {
-                    status = apr_queue_trypush(spider_queue, new_uri);
-                    if (status) {
-                        if (tries++ > 5 || !APR_STATUS_IS_EAGAIN(status)) {
-                            apr_thread_mutex_unlock(spider_mutex);
-                            return status;
-                        }
-                        fprintf(stderr, "%s %ld (sleep)\n", new_uri,
-                                pthread_self());
-                        apr_sleep(apr_time_from_sec(SERF_SPIDER_RAMP_DELAY));
-                    }
-                } while (APR_STATUS_IS_EAGAIN(status));
+                if (href_end) {
+                    char *our_match;
+                    our_match = apr_pstrmemdup(pool, href_begin,
+                                               href_end - href_begin);
+
+                    harvest_link(our_match, base_uri, pool);
+                }
             }
-            apr_thread_mutex_unlock(spider_mutex);
+            match = end_match;
+            match_length = length - (match - buf);
         } 
-        new_match = apr_strmatch(link_pattern, match, match_length);
+        new_match = apr_strmatch(link_start_pattern, match, match_length);
+    }
+
+    match = buf;
+    match_length = length;
+    new_match = apr_strmatch(img_start_pattern, match, match_length);
+    while (new_match) {
+        const char *end_match;
+        match = new_match + img_start_pattern->length;
+        match_length = length - (match - buf);
+ 
+        end_match = apr_strmatch(img_stop_pattern, match, match_length);
+        if (end_match) {
+            const char *href_begin;
+
+            href_begin = apr_strmatch(img_src_start_pattern, match,
+                                      end_match - match);
+            if (href_begin) {
+                const char *href_end;
+
+                href_begin += img_src_start_pattern->length;
+
+                href_end = apr_strmatch(img_src_stop_pattern, href_begin,
+                                        end_match - href_begin);
+
+                if (href_end) {
+                    char *our_match;
+                    our_match = apr_pstrmemdup(pool, href_begin,
+                                               href_end - href_begin);
+
+                    harvest_link(our_match, base_uri, pool);
+                }
+            }
+            match = end_match;
+            match_length = length - (match - buf);
+        } 
+        new_match = apr_strmatch(img_start_pattern, match, match_length);
     }
     return APR_SUCCESS;
 }
@@ -371,6 +530,75 @@ static apr_status_t debug_response(apr_bucket_brigade *brigade,
     return APR_SUCCESS;
 }
 
+static apr_status_t harvest_response(apr_bucket_brigade *brigade,
+                                     serf_filter_t *filter,
+                                     apr_pool_t *pool)
+{
+    apr_status_t status;
+    apr_bucket *bucket;
+    serf_request_t *request = (serf_request_t*)filter->ctx;
+    apr_uri_t *base_uri;
+    int do_harvest = 0;
+
+    base_uri = apr_palloc(pool, sizeof(apr_uri_t));
+    base_uri->is_initialized = 0;
+
+    /* We can only harvest from text/html content-types. */
+    for (bucket = APR_BRIGADE_FIRST(brigade);
+         bucket != APR_BRIGADE_SENTINEL(brigade);
+        bucket = APR_BUCKET_NEXT(bucket)) {
+        if (SERF_BUCKET_IS_HEADER(bucket)) {
+            serf_bucket_header *hdr = bucket->data;
+
+            if (strcasecmp(hdr->key, "Content-Type") == 0) {
+                /* FIXME: Add token support! */
+                if (strncasecmp(hdr->value, "text/html",
+                                sizeof("text/html") - 1) == 0) {
+                    do_harvest = 1;
+                    break;
+                }
+            }
+        }
+    }
+
+    if (!do_harvest) {
+        return APR_SUCCESS;
+    }
+
+    /* Search for a BASE tag to establish relationship. */
+    for (bucket = APR_BRIGADE_FIRST(brigade);
+         bucket != APR_BRIGADE_SENTINEL(brigade);
+         bucket = APR_BUCKET_NEXT(bucket)) {
+        if (!APR_BUCKET_IS_METADATA(bucket)) {
+            status = search_base(bucket, base_uri, pool);
+            if (status) {
+                return status;
+            }
+            if (base_uri->is_initialized == 1) {
+                break;
+            }
+        }
+    }
+
+    if (!base_uri->is_initialized) {
+        base_uri = request->uri;
+    }
+
+    /* Now, search all the content.  */
+    for (bucket = APR_BRIGADE_FIRST(brigade);
+         bucket != APR_BRIGADE_SENTINEL(brigade);
+         bucket = APR_BUCKET_NEXT(bucket)) {
+        if (!APR_BUCKET_IS_METADATA(bucket)) {
+            status = search_bucket(bucket, request, base_uri, pool);
+            if (status) {
+                return status;
+            }
+        } 
+    }
+
+    return APR_SUCCESS;
+}
+
 /* This function prints out the output in a manner that swishe likes. */
 static apr_status_t swishe_handler(serf_response_t *response, apr_pool_t *pool)
 {
@@ -380,19 +608,6 @@ static apr_status_t swishe_handler(serf_response_t *response, apr_pool_t *pool)
     apr_off_t length;
 
     apr_brigade_length(response->entity, 1, &length);
-
-    /* First, go through the list before we obtain the mutex. */
-    for (bucket = APR_BRIGADE_FIRST(response->entity);
-         bucket != APR_BRIGADE_SENTINEL(response->entity);
-         bucket = APR_BUCKET_NEXT(bucket)) {
-        if (!APR_BUCKET_IS_METADATA(bucket)) {
-            /* Search in the response for new sites to hit. */
-            status = search_bucket(bucket, response, pool);
-            if (status) {
-                return status;
-            }
-        }
-    }
 
 #if SERF_SPIDER_PRINT
     /* When we print, we must hold the lock! */
@@ -545,6 +760,9 @@ void* spider_worker(apr_thread_t *my_thread, void *data)
         filter = serf_add_filter(request->response_filters, "DEBUG_RESPONSE",
                                  request_pool);
 #endif
+        filter = serf_add_filter(request->response_filters, "HARVEST_RESPONSE",
+                                 request_pool);
+        filter->ctx = request;
 
         status = serf_open_connection(connection);
         if (status) {
@@ -583,7 +801,7 @@ int main(int argc, const char **argv)
         puts("Gimme a URL, stupid!");
         exit(-1);
     }
-    root_uri = argv[1];
+    original_root_uri = argv[1];
 
     apr_initialize();
     atexit(apr_terminate);
@@ -613,20 +831,37 @@ int main(int argc, const char **argv)
     serf_register_filter("DEBUG_REQUEST", debug_request, pool);
     serf_register_filter("DEBUG_RESPONSE", debug_response, pool);
 
+    serf_register_filter("HARVEST_RESPONSE", harvest_response, pool);
+
     /*
     serf_register_filter("DEFLATE_READ", serf_deflate_read, pool);
     */
 
+    parsed_root_uri = apr_palloc(pool, sizeof(apr_uri_t));
+    apr_uri_parse(pool, original_root_uri, parsed_root_uri);
+
     apr_pool_create(&spider_pool, pool);
 
     apr_queue_create(&spider_queue, SERF_SPIDER_QUEUE_SIZE, spider_pool);
-    apr_queue_push(spider_queue, (void*)root_uri);
+    apr_queue_push(spider_queue, (void*)original_root_uri);
 
-    /* This table could grow much larger than this. */
+    /* This hash table could very large - one entry per doc. */
     spider_hash = apr_hash_make(spider_pool);
+    apr_hash_set(spider_hash, original_root_uri, APR_HASH_KEY_STRING,
+                 original_root_uri);
 
-    link_pattern = apr_strmatch_precompile(pool, "<a href=\"", 0);
-    end_pattern = apr_strmatch_precompile(pool, "\">", 0);
+    head_start_pattern = apr_strmatch_precompile(pool, "<head>", 0);
+    head_stop_pattern = apr_strmatch_precompile(pool, "</head>", 0);
+    link_start_pattern = apr_strmatch_precompile(pool, "<a ", 0);
+    link_stop_pattern = apr_strmatch_precompile(pool, ">", 0);
+    link_href_start_pattern = apr_strmatch_precompile(pool, "href=\"", 0);
+    link_href_stop_pattern = apr_strmatch_precompile(pool, "\"", 0);
+    img_start_pattern = apr_strmatch_precompile(pool, "<img ", 0);
+    img_stop_pattern = link_stop_pattern;
+    img_src_start_pattern = apr_strmatch_precompile(pool, "src=\"", 0);
+    img_src_stop_pattern = link_href_stop_pattern;
+    base_start_pattern = apr_strmatch_precompile(pool, "<base href=\"", 0);
+    base_stop_pattern = link_href_stop_pattern;
 
     apr_thread_mutex_create(&spider_mutex, APR_THREAD_MUTEX_DEFAULT, pool);
 
