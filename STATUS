@@ -101,5 +101,3 @@ OPEN ISSUES
 
   * review the various OUT parameters and see if any make sense to
     allow a NULL value to designate non-interest in the result.
-
-  * FIXME: the buckets need to respect SERF_READ_ALL_AVAIL

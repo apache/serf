@@ -84,7 +84,7 @@ static apr_status_t serf_mmap_read(serf_bucket_t *bucket,
 {
     mmap_context_t *ctx = bucket->data;
 
-    if (ctx->remaining < requested) {
+    if (requested == SERF_READ_ALL_AVAIL || requested > ctx->remaining) {
         *len = ctx->remaining;
     }
 

@@ -100,10 +100,9 @@ static apr_status_t serf_file_read(serf_bucket_t *bucket,
                                    apr_size_t requested,
                                    const char **data, apr_size_t *len)
 {
-    apr_status_t status;
     file_context_t *ctx = bucket->data;
 
-    if (requested > FILE_BUFSIZE) {
+    if (requested == SERF_READ_ALL_AVAIL || requested > FILE_BUFSIZE) {
         *len = FILE_BUFSIZE;
     }
     else {
@@ -118,6 +117,9 @@ static apr_status_t serf_file_read(serf_bucket_t *bucket,
             *len = ctx->len;
         }
         ctx->len -= *len;
+        /* ### do we want to return this status if there is still data
+           ### left in the buffer? e.g. don't return APR_EOF if we haven't
+           ### returned all the data. */
         return ctx->peek_status;
     }
 
@@ -136,21 +138,18 @@ static apr_status_t serf_file_peek(serf_bucket_t *bucket,
                                    const char **data,
                                    apr_size_t *len)
 {
-    apr_status_t status;
     file_context_t *ctx = bucket->data;
 
-    /* peek is implicitly SERF_READ_ALL_AVAIL. that is a buffer's worth. */
     *data = ctx->buf;
-    *len = FILE_BUFSIZE;
 
-    /* We have something from a peek, consume it first. */
+    /* If we have something from a prior peek, return it. */
     if (ctx->len != 0) {
-        if (ctx->len < *len) {
-            *len = ctx->len;
-        }
+        *len = ctx->len;
         return ctx->peek_status;
     }
 
+    /* read in a buffer's worth */
+    *len = sizeof(ctx->buf);
     ctx->peek_status = apr_file_read(ctx->file, ctx->buf, len);
     ctx->len = *len;
 

@@ -88,7 +88,7 @@ static apr_status_t serf_simple_read(serf_bucket_t *bucket,
 {
     simple_context_t *ctx = bucket->data;
 
-    if (requested > ctx->remaining)
+    if (requested == SERF_READ_ALL_AVAIL || requested > ctx->remaining)
         requested = ctx->remaining;
 
     *data = ctx->current;
@@ -116,9 +116,7 @@ static apr_status_t serf_simple_peek(serf_bucket_t *bucket,
 
     /* return whatever we have left */
     *data = ctx->current;
-    if (*len > ctx->remaining) {
-        *len = ctx->remaining;
-    }
+    *len = ctx->remaining;
 
     return APR_SUCCESS;
 }
