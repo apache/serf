@@ -72,6 +72,15 @@ typedef struct {
     const char *reason;
 } serf_status_line;
 
+/**
+ * Return the Status-Line information, if available. This function
+ * works like other bucket read functions: it may return APR_EAGAIN or
+ * APR_EOF to signal the state of the bucket for reading. A return
+ * value of APR_SUCCESS will always indicate that status line
+ * information was returned; for other return values the caller must
+ * check the version field in @a sline. A value of 0 means that the
+ * data is not (yet) present.
+ */
 SERF_DECLARE(apr_status_t) serf_bucket_response_status(
     serf_bucket_t *bkt,
     serf_status_line *sline);

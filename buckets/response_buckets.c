@@ -398,22 +398,6 @@ static apr_status_t run_machine(serf_bucket_t *bkt, response_context_t *ctx)
     return status;
 }
 
-static apr_status_t wait_for_sline(serf_bucket_t *bkt, response_context_t *ctx)
-{
-    /* Keep looping while working on the Status-Line and it's okay to read */
-    while (ctx->state == STATE_STATUS_LINE) {
-        apr_status_t status = run_machine(bkt, ctx);
-
-        /* Anything other than APR_SUCCESS means that we cannot immediately
-         * read again (for now).
-         */
-        if (status)
-            return status;
-    }
-
-    return APR_SUCCESS;
-}
-
 static apr_status_t wait_for_body(serf_bucket_t *bkt, response_context_t *ctx)
 {
     apr_status_t status;
@@ -441,10 +425,10 @@ static apr_status_t wait_for_body(serf_bucket_t *bkt, response_context_t *ctx)
         /* Did we just get our zero terminating chunk? */
         if (ctx->lstate == LINE_READY && !ctx->body_left) {
             ctx->state = STATE_TRAILERS;
-	    
-	    /* If it is okay to read more data, then process some trailers. */
-	    if (!status)
-	      goto read_trailers;
+
+            /* If it is okay to read more data, then process some trailers. */
+            if (!status)
+                goto read_trailers;
         }
 
         /* We may not be ready for reading (to finish the chunk size read,
@@ -470,15 +454,22 @@ SERF_DECLARE(apr_status_t) serf_bucket_response_status(
         return APR_SUCCESS;
     }
 
-    /* Anything but APR_SUCCESS means we haven't finished reading the
-     * Status-Line, so we should pass the read condition to the caller.
+    /* Running the state machine once will advance the machine, or state
+     * that the stream isn't ready with enough data. There isn't ever a
+     * need to run the machine more than once to try and satisfy this. We
+     * have to look at the state to tell whether it advanced, though, as
+     * it is quite possible to advance *and* to return APR_EAGAIN.
      */
-    if ((status = wait_for_sline(bkt, ctx)) != APR_SUCCESS) {
-        return status;
+    status = run_machine(bkt, ctx);
+    if (ctx->state == STATE_STATUS_LINE) {
+        *sline = ctx->sl;
+    }
+    else {
+        /* Indicate that we don't have the information yet. */
+        sline->version = 0;
     }
 
-    *sline = ctx->sl;
-    return APR_SUCCESS;
+    return status;
 }
 
 static apr_status_t serf_response_read(serf_bucket_t *bucket,
