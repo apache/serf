@@ -310,6 +310,9 @@ int main(int argc, const char **argv)
     serf_register_filter("HTTP_HEADERS_IN", serf_http_header_read, pool);
     serf_register_filter("HTTP_DECHUNK", serf_http_dechunk, pool);
 
+    serf_register_filter("DEFLATE_SEND_HEADER", serf_deflate_send_header, pool);
+    serf_register_filter("DEFLATE_READ", serf_deflate_read, pool);
+
     serf_register_filter("DEBUG_REQUEST", debug_request, pool);
     serf_register_filter("DEBUG_RESPONSE", debug_response, pool);
 
@@ -368,6 +371,8 @@ int main(int argc, const char **argv)
     filter = serf_add_filter(request->request_filters, "USER_AGENT", pool);
     filter = serf_add_filter(request->request_filters, "HOST_HEADER", pool);
     filter->ctx = request;
+    filter = serf_add_filter(request->request_filters, "DEFLATE_SEND_HEADER",
+                             pool);
     filter = serf_add_filter(request->request_filters, "HTTP_HEADERS_OUT",
                              pool);
 
@@ -377,6 +382,8 @@ int main(int argc, const char **argv)
     filter = serf_add_filter(request->response_filters, "HTTP_HEADERS_IN",
                              pool);
     filter = serf_add_filter(request->response_filters, "HTTP_DECHUNK",
+                             pool);
+    filter = serf_add_filter(request->response_filters, "DEFLATE_READ",
                              pool);
 #if SERF_GET_DEBUG
     filter = serf_add_filter(request->response_filters, "DEBUG_RESPONSE",

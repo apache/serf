@@ -56,6 +56,7 @@
 
 #include "serf_declare.h"
 #include "serf.h"
+#include "serf_config.h"
 
 /**
  * @file serf_filters.h
@@ -81,6 +82,7 @@ SERF_DECLARE(apr_status_t) serf_http_dechunk(apr_bucket_brigade *brigade,
                                              serf_filter_t *filter,
                                              apr_pool_t *pool);
 
+#if SERF_HAS_ZLIB
 /* Filter that adds the appropriate headers to request compressed content. */
 SERF_DECLARE(apr_status_t) serf_deflate_send_header(apr_bucket_brigade *brigade,
                                                     serf_filter_t *filter,
@@ -90,6 +92,7 @@ SERF_DECLARE(apr_status_t) serf_deflate_send_header(apr_bucket_brigade *brigade,
 SERF_DECLARE(apr_status_t) serf_deflate_read(apr_bucket_brigade *brigade,
                                              serf_filter_t *filter,
                                              apr_pool_t *pool);
+#endif
 
 /* Filter that reads content. */
 SERF_DECLARE(apr_status_t) serf_socket_read(apr_bucket_brigade *brigade,
@@ -101,6 +104,7 @@ SERF_DECLARE(apr_status_t) serf_socket_write(apr_bucket_brigade *brigade,
                                              serf_filter_t *filter,
                                              apr_pool_t *pool);
 
+#if SERF_HAS_OPENSSL
 /* Filter that writes SSL content. */
 SERF_DECLARE(apr_status_t) serf_ssl_write(apr_bucket_brigade *brigade,
                                           serf_filter_t *filter,
@@ -110,6 +114,7 @@ SERF_DECLARE(apr_status_t) serf_ssl_write(apr_bucket_brigade *brigade,
 SERF_DECLARE(apr_status_t) serf_ssl_read(apr_bucket_brigade *brigade,
                                          serf_filter_t *filter,
                                          apr_pool_t *pool);
+#endif
 
 #ifdef __cplusplus
 }

@@ -6,3 +6,5 @@
 #define SERF_HAS_OPENSSL   @serf_has_openssl@
 #define SERF_SSL_CAPATH "@CAPATH@"
 #define SERF_SOCKET_TIMEOUT apr_time_from_sec(120)
+
+#define SERF_HAS_ZLIB   @serf_has_zlib@
