@@ -1,0 +1,13 @@
+APR-SERF STATUS:						-*-text-*-
+Last modified at [$Date: 2001/09/29 05:20:55 $]
+
+Release:
+
+
+RELEASE SHOWSTOPPERS:
+
+	We need code.  This project's goal is to create an http
+	client library.
+
+RELEASE NON-SHOWSTOPPERS BUT WOULD BE REAL NICE TO WRAP THESE UP:
+
