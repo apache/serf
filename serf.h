@@ -119,6 +119,9 @@ SERF_DECLARE(serf_bucket_alloc_t *) serf_bucket_allocator_create(
  * return with APR_SUCCESS. Typically, the caller will just want to call it
  * again to continue processing data.
  *
+ * If no activity occurs within the specified timeout duration, then
+ * APR_TIMEUP is returned.
+ *
  * All temporary allocations will be made in @a pool.
  */
 SERF_DECLARE(apr_status_t) serf_context_run(serf_context_t *ctx,
@@ -208,11 +211,6 @@ typedef apr_status_t (*serf_response_handler_t)(serf_bucket_t *response,
  * destroying this pool will close the connection, and terminate any
  * outstanding requests or responses.
  *
- * When a response arrives, the @a acceptor will be called with the
- * incoming socket (and the baton provided in @a acceptor_baton). A bucket
- * should be created and returned, which will be used as the response
- * bucket and passed to the associated request's response handler.
- *
  * When the connection is closed (upon request or because of an error),
  * then the @a closed callback is invoked, and @a closed_baton is passed.
  *
@@ -225,8 +223,6 @@ typedef apr_status_t (*serf_response_handler_t)(serf_bucket_t *response,
 SERF_DECLARE(serf_connection_t *) serf_connection_create(
     serf_context_t *ctx,
     apr_sockaddr_t *address,
-    serf_response_acceptor_t acceptor,
-    void *acceptor_baton,
     serf_connection_closed_t closed,
     void *closed_baton,
     apr_pool_t *pool);
@@ -235,9 +231,9 @@ SERF_DECLARE(serf_connection_t *) serf_connection_create(
  * Create a new request for the specified @a connection.
  *
  * The request is specified by the @a request bucket. When a response
- * arrives, @a handler will be invoked with the response bucket (allocated
- * using the @a allocator bucket allocator). The @a handler_baton will be
- * passed to the handler.
+ * arrives, the @a acceptor callback will be invoked (along with the
+ * @a acceptor_baton) to produce a response bucket. That bucket will then
+ * be passed to @a handler, along with the @a handler_baton.
  *
  * All temporary allocations will be made in @a pool.
  */
@@ -245,9 +241,10 @@ SERF_DECLARE(serf_connection_t *) serf_connection_create(
 SERF_DECLARE(apr_status_t) serf_connection_request_create(
     serf_connection_t *conn,
     serf_bucket_t *request,
+    serf_response_acceptor_t acceptor,
+    void *acceptor_baton,
     serf_response_handler_t handler,
     void *handler_baton,
-    serf_bucket_alloc_t *allocator,
     apr_pool_t *pool);
 
 /**

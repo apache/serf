@@ -69,9 +69,38 @@ struct serf_context_t {
     apr_array_header_t *conns;
 };
 
+struct serf_connection_t {
+    serf_context_t *ctx;
 
-static apr_status_t serf_connection_process(serf_connection_t *conn,
-                                            apr_int16_t events)
+    apr_pool_t *pool;
+
+    apr_socket_t *skt;
+
+    serf_connection_closed_t closed;
+    void *closed_baton;
+};
+
+typedef struct {
+    apr_pool_t *respool;
+
+    serf_bucket_t *req_bkt;
+
+    void *unwritten_ptr;
+    apr_size_t *unwritten_len;
+
+    serf_response_acceptor_t acceptor;
+    void *acceptor_baton;
+
+    serf_response_handler_t handler;
+    void *handler_baton;
+
+    serf_bucket_t *resp_bkt;
+
+} request_t;
+
+
+static apr_status_t process_connection(serf_connection_t *conn,
+                                       apr_int16_t events)
 {
     return APR_SUCCESS;
 }
@@ -113,7 +142,7 @@ SERF_DECLARE(apr_status_t) serf_context_run(serf_context_t *ctx,
     while (num--) {
         serf_connection_t *conn = desc->client_data;
 
-        status = serf_connection_process(conn, desc++->rtnevents);
+        status = process_connection(conn, desc++->rtnevents);
         if (status) {
             /* ### what else to do? */
             return status;
@@ -124,8 +153,8 @@ SERF_DECLARE(apr_status_t) serf_context_run(serf_context_t *ctx,
 }
 
 
-static apr_status_t serf_context_add_connection(serf_context_t *ctx,
-                                                serf_connection_t *conn)
+static apr_status_t add_connection(serf_context_t *ctx,
+                                   serf_connection_t *conn)
 {
     apr_pollfd_t desc = { 0 };
 
@@ -137,8 +166,8 @@ static apr_status_t serf_context_add_connection(serf_context_t *ctx,
     return apr_pollset_add(ctx->pollset, &desc);
 }
 
-static apr_status_t serf_context_remove_connection(serf_context_t *ctx,
-                                                   serf_connection_t *conn)
+static apr_status_t remove_connection(serf_context_t *ctx,
+                                      serf_connection_t *conn)
 {
     apr_pollfd_t desc = { 0 };
 
@@ -151,8 +180,6 @@ static apr_status_t serf_context_remove_connection(serf_context_t *ctx,
 SERF_DECLARE(serf_connection_t *) serf_connection_create(
     serf_context_t *ctx,
     apr_sockaddr_t *address,
-    serf_response_acceptor_t acceptor,
-    void *acceptor_baton,
     serf_connection_closed_t closed,
     void *closed_baton,
     apr_pool_t *pool)
@@ -161,10 +188,13 @@ SERF_DECLARE(serf_connection_t *) serf_connection_create(
 
     conn->ctx = ctx;
     conn->pool = pool;
-    conn->acceptor = acceptor;
-    conn->acceptor_baton = acceptor_baton;
     conn->closed = closed;
     conn->closed_baton = closed_baton;
+
+    if (add_connection(ctx, conn)) {
+        /* ### what to do with the error? */
+        return NULL;
+    }
 
     return conn;
 }
@@ -173,9 +203,10 @@ SERF_DECLARE(serf_connection_t *) serf_connection_create(
 SERF_DECLARE(apr_status_t) serf_connection_request_create(
     serf_connection_t *conn,
     serf_bucket_t *request,
+    serf_response_acceptor_t acceptor,
+    void *acceptor_baton,
     serf_response_handler_t handler,
     void *handler_baton,
-    serf_bucket_alloc_t *allocator,
     apr_pool_t *pool)
 {
     return APR_ENOTIMPL;

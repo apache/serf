@@ -367,8 +367,8 @@ int main(int argc, const char **argv)
 
     serf_allocator = serf_bucket_allocator_create(allocator, pool);
 
-    connection = serf_connection_create(context, address, accept_response,
-                                        NULL, closed_connection, NULL, pool);
+    connection = serf_connection_create(context, address,
+                                        closed_connection, NULL, pool);
 
     request = serf_bucket_request_create("GET", url->path, NULL,
                                          serf_allocator);
@@ -377,8 +377,9 @@ int main(int argc, const char **argv)
                              "Serf" SERF_VERSION_STRING);
 
     status = serf_connection_request_create(connection, request,
+                                            accept_response, NULL,
                                             handle_response, NULL,
-                                            serf_allocator, pool);
+                                            pool);
 
     if (status) {
         printf("Error: %d\n", status);

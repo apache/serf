@@ -19,6 +19,10 @@ OPEN ISSUES
                  have a better idea how the buckets are going to operate.  I'd
                  like to get a better idea how filters are going to be written
                  before deciding upon our pool usage.
+    gstein says: I think an allocator will be used for for a whole
+                 context's worth of buckets. any pool within this
+                 system ought to be transaction-scoped (e.g. tied to a
+                 particular request/response pair).
 
   * the current definition has a "metadata" concept on a per-bucket
     basis. however, to record this metadata, we really want to be able
@@ -36,13 +40,36 @@ OPEN ISSUES
     Justin says: We want bucket to be an aggregate bucket, and for the first
                  bucket in that aggregate bucket to be the 'original' bucket.
                  I think we just swap internal data structures, but not sure.
+    gstein says: we don't necessarily want to preserve the original
+                 bucket. consider a REQUEST bucket which could
+                 "become" an aggregate containing two buckets: one for
+                 the serialized request-line and headers, and one for
+                 the body. there is no REQUEST bucket any more.
 
   * If anyone knows how to use APR_RING, we could probably use that for the
     aggregate bucket list.
+    gstein says: I think this implies a little entry structure which
+                 contains the "link", plus a pointer to the bucket. I
+                 was thinking of just using an apr array.
 
   * How does something like deflate get inserted into both the request and
     response?
-    Justin says: I'm still not crystal clear on how this should work.  I'd like
-                 the concept of a 'filter' somehow as we can shield the 'user
-                 programmer' from this, but I dunno.  A 'hook' after the request
-                 is created, but before it is sent???
+    Justin says: I'm still not crystal clear on how this should work.
+                 I'd like the concept of a 'filter' somehow as we can
+                 shield the 'user programmer' from this, but I dunno.
+                 A 'hook' after the request is created, but before it
+                 is sent???
+    gstein says: when assembling the request bucket, a "deflate"
+                 bucket can be wrapped around the body bucket. it
+                 reads raw content, compresses it, and returns
+                 that. when a response arrives, an "inflate" bucket is
+                 wrapped around the body bucket to inflate the
+                 response. (of course, the decision points are made
+                 based upon headers and server capabilities whatnot)
+
+                 filters are just buckets that wrap other buckets.
+
+  * how to signify "bucket is done"? len==0? NULL data pointer? return
+    APR_EOF? Note that we intend for the response handler to return
+    APR_EOF to denote that the response has been completely read. I'm
+    of a mind to say "return APR_EOF".
