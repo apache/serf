@@ -161,7 +161,7 @@ if test "x$serf_zlib_base" = "x"; then
   fi
 fi
 
-if test "$serf_has_zlib" == "1"; then
+if test "$serf_has_zlib" = "1"; then
   serf_save_includes=$INCLUDE
   serf_save_ldflags=$LDFLAGS
   serf_save_libtool_ldflags=$LIBTOOL_LDFLAGS
