@@ -5,13 +5,18 @@ VPATH = @srcdir@
 
 SERF_MAJOR_VERSION=@SERF_MAJOR_VERSION@
 
-PROGRAMS = serf_get
+PROGRAMS = serf_get serf_spider
 TARGETS = $(PROGRAMS)
 
 INCLUDES=-I$(top_srcdir)/include -I$(top_builddir)/include
 
+all: $(TARGETS)
+
 serf_get: serf_get.lo
 	$(LINK) serf_get.lo $(libdir)/lib@SERF_LIBNAME@.la $(LIBTOOL_LIBS)
+
+serf_spider: serf_spider.lo
+	$(LINK) serf_spider.lo $(libdir)/lib@SERF_LIBNAME@.la $(LIBTOOL_LIBS)
 
 # bring in rules.mk for standard functionality
 @INCLUDE_RULES@
