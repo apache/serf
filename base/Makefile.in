@@ -1,7 +1,7 @@
 top_builddir=@top_builddir@
 VPATH = @srcdir@
 
-TARGETS = serf_connection.lo
+TARGETS = serf_connection.lo serf_request.lo serf_bucket_status.lo
 
 INCLUDES=-I$(top_srcdir)/include -I$(top_builddir)/include
 
