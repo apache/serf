@@ -99,10 +99,11 @@ SERF_DECLARE(apr_status_t) serf_context_run(serf_context_t *ctx,
  */
 
 /**
- * Accept an incoming response for @a request, and its @a socket. A bucket
- * for the response should be constructed and returned. This is the control
- * point for assembling the appropriate wrapper buckets around the socket to
- * enable processing of the incoming response.
+ * Accept an incoming response for @a request, and its @a write_baton.
+ * (In the default case, @a write_baton will be the socket used for this
+ * connection.)  A bucket for the response should be constructed and returned.
+ * This is the control point for assembling the appropriate wrapper buckets
+ * around the @a write_baton to enable processing of the incoming response.
  *
  * The @a acceptor_baton is the baton provided when the specified request
  * was created.
@@ -118,9 +119,11 @@ SERF_DECLARE(apr_status_t) serf_context_run(serf_context_t *ctx,
  *
  * All temporary allocations should be made in @a pool.
  */
-/* ### do we need to return an error? */
+/* ### do we need to return an error?
+ * Yes. -- jre
+ */
 typedef serf_bucket_t * (*serf_response_acceptor_t)(serf_request_t *request,
-                                                    apr_socket_t *skt,
+                                                    void *write_baton,
                                                     void *acceptor_baton,
                                                     apr_pool_t *pool);
 
@@ -140,6 +143,19 @@ typedef void (*serf_connection_closed_t)(serf_connection_t *conn,
                                          void *closed_baton,
                                          apr_status_t why,
                                          apr_pool_t *pool);
+
+/**
+ * Request @a buf (of at most @a len bytes) to be written to @a write_baton.
+ *
+ * Note that @a write_baton is passed to serf_connection_create_ex with
+ * this callback.
+ *
+ * Note that @a len is initially set to the number of bytes.  Upon exit,
+ * @a len is set to the number of bytes actually written.
+ */
+typedef apr_status_t (*serf_connection_write_t)(void *write_baton,
+                                                const char *buf,
+                                                apr_size_t *len);
 
 /**
  * Response data has arrived and should be processed.
@@ -199,6 +215,19 @@ SERF_DECLARE(serf_connection_t *) serf_connection_create(
     void *closed_baton,
     apr_pool_t *pool);
 
+/**
+ * A variant of serf_connection_create that allows a specific @a write function
+ * and @a write_baton to be invoked.
+ *
+ * @see serf_connection_create
+ */
+SERF_DECLARE(serf_connection_t *) serf_connection_create_ex(
+    serf_context_t *ctx,
+    serf_connection_write_t write,
+    void *write_baton,
+    serf_connection_closed_t closed,
+    void *closed_baton,
+    apr_pool_t *pool);
 
 /**
  * Construct a request object for the @a conn connection.
