@@ -297,7 +297,7 @@ SERF_DECLARE(apr_pool_t *) serf_request_get_pool(serf_request_t *request);
 /**
  * Return the bucket allocator associated with @a request.
  */
-SERF_DECLARE(serf_bucket_alloc_t) serf_request_get_alloc(
+SERF_DECLARE(serf_bucket_alloc_t *) serf_request_get_alloc(
     serf_request_t *request);
 
 

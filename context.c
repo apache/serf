@@ -502,7 +502,6 @@ SERF_DECLARE(void) serf_request_deliver(
     serf_response_handler_t handler,
     void *handler_baton)
 {
-    return APR_ENOTIMPL;
 }
 
 
@@ -516,7 +515,7 @@ SERF_DECLARE(apr_pool_t *) serf_request_get_pool(serf_request_t *request)
     return request->respool;
 }
 
-SERF_DECLARE(serf_bucket_alloc_t) serf_request_get_alloc(
+SERF_DECLARE(serf_bucket_alloc_t *) serf_request_get_alloc(
     serf_request_t *request)
 {
     return request->allocator;
