@@ -58,6 +58,7 @@ struct serf_context_t {
 
     /* the list of active connections */
     apr_array_header_t *conns;
+#define GET_CONN(ctx, i) (((serf_connection_t **)(ctx)->conns->elts)[i])
 };
 
 struct serf_connection_t {
@@ -156,7 +157,7 @@ static apr_status_t open_connections(serf_context_t *ctx)
     int i;
 
     for (i = ctx->conns->nelts; i--; ) {
-        serf_connection_t *conn = ((serf_connection_t **)ctx->conns->elts)[i];
+        serf_connection_t *conn = GET_CONN(ctx, i);
         apr_status_t status;
         apr_socket_t *skt;
 
@@ -503,8 +504,8 @@ SERF_DECLARE(apr_status_t) serf_connection_close(
     apr_status_t status;
 
     for (i = ctx->conns->nelts; i--; ) {
-        serf_connection_t *conn_seq =
-            ((serf_connection_t **)ctx->conns->elts)[i];
+        serf_connection_t *conn_seq = GET_CONN(ctx, i);
+
         if (conn_seq == conn) {
             while (conn->requests) {
                 serf_request_cancel(conn->requests);
@@ -516,9 +517,27 @@ SERF_DECLARE(apr_status_t) serf_connection_close(
                     conn->closed(conn, conn->closed_baton, status, conn->pool);
                 }
             }
+
+            /* Remove the connection from the context. We don't want to
+             * deal with it any more.
+             */
+            if (i < ctx->conns->nelts - 1) {
+                /* move later connections over this one. */
+                memmove(
+                    &GET_CONN(ctx, i),
+                    &GET_CONN(ctx, i + 1),
+                    (ctx->conns->nelts - i - 1) * sizeof(serf_connection_t *));
+            }
+            --ctx->conns->nelts;
+
+            /* Found the connection. All done. */
+            return APR_SUCCESS;
         }
     }
-    return APR_SUCCESS;
+
+    /* We didn't find the specified connection. */
+    /* ### doc talks about this w.r.t poll structures. use something else? */
+    return APR_NOTFOUND;
 }
 
 SERF_DECLARE(serf_request_t *) serf_connection_request_create(
@@ -572,6 +591,8 @@ SERF_DECLARE(void) serf_request_deliver(
 SERF_DECLARE(apr_status_t) serf_request_cancel(serf_request_t *request)
 {
     serf_connection_t *conn = request->conn;
+
+    /* ### destroy request->req_bkt?  ->resp_bkt? */
 
     if (conn->requests == request) {
         conn->requests = request->next;
