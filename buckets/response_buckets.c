@@ -45,7 +45,7 @@ typedef struct {
         LINE_CRLF_SPLIT
     } lstate;
     apr_size_t line_used;
-    char line[LINE_LIMIT];
+    char line[LINE_LIMIT];      /* line is read into this buf, minus CR/LF */
 
     serf_status_line sl;
 
@@ -62,6 +62,9 @@ SERF_DECLARE(serf_bucket_t *) serf_bucket_response_create(
 
     ctx = serf_bucket_mem_alloc(allocator, sizeof(*ctx));
     ctx->stream = stream;
+    ctx->state = STATE_STATUS_LINE;
+    ctx->lstate = LINE_EMPTY;
+    ctx->line_used = 0;
 
     return serf_bucket_create(&serf_bucket_type_response, allocator, ctx);
 }
@@ -101,7 +104,7 @@ static void serf_response_destroy_and_data(serf_bucket_t *bucket)
 }
 
 static apr_status_t fetch_line(response_context_t *ctx,
-                               serf_bucket_t *bkt)
+                               serf_bucket_t *stream)
 {
     /* If we had a complete line, then assume the caller has used it, so
      * we can now reset the state.
@@ -127,7 +130,7 @@ static apr_status_t fetch_line(response_context_t *ctx,
              * split CRLF.
              */
 
-            status = serf_bucket_peek(bkt, &data, &len);
+            status = serf_bucket_peek(stream, &data, &len);
             if (SERF_BUCKET_READ_ERROR(status))
                 return status;
 
@@ -138,7 +141,7 @@ static apr_status_t fetch_line(response_context_t *ctx,
                      * up that character.
                      */
                     /* ### check status */
-                    (void) serf_bucket_read(bkt, 1, &data, &len);
+                    (void) serf_bucket_read(stream, 1, &data, &len);
                 }
                 /* else:
                  *   We saw the first character of the next line. Thus,
@@ -161,7 +164,7 @@ static apr_status_t fetch_line(response_context_t *ctx,
             /* RFC 2616 says that CRLF is the only line ending, but we
              * can easily accept any kind of line ending.
              */
-            status = serf_bucket_readline(bkt, SERF_NEWLINE_ANY, &found,
+            status = serf_bucket_readline(stream, SERF_NEWLINE_ANY, &found,
                                           &data, &len);
             if (SERF_BUCKET_READ_ERROR(status)) {
                 return status;
@@ -219,36 +222,72 @@ static apr_status_t fetch_line(response_context_t *ctx,
     /* NOTREACHED */
 }
 
+static apr_status_t parse_status_line(response_context_t *ctx,
+                                      serf_bucket_alloc_t *allocator)
+{
+    int res;
+    char *reason; /* ### stupid APR interface makes this non-const */
+
+    /* ctx->line should be of form: HTTP/1.1 200 OK */
+    res = apr_date_checkmask(ctx->line, "HTTP/#.# ###*");
+    if (!res) {
+        /* Not an HTTP response?  Well, at least we won't understand it. */
+        return APR_EGENERAL;
+    }
+
+    ctx->sl.version = SERF_HTTP_VERSION(ctx->line[5] - '0',
+                                        ctx->line[7] - '0');
+    ctx->sl.code = apr_strtoi64(ctx->line + 8, &reason, 10);
+
+    /* Skip leading spaces for the reason string. */
+    if (apr_isspace(*reason)) {
+        reason++;
+    }
+
+    /* Copy the reason value out of the line buffer. */
+    ctx->sl.reason = serf_bstrmemdup(allocator, reason,
+                                     ctx->line_used - (reason - ctx->line));
+
+    return APR_SUCCESS;
+}
+
 /* This code should be replaced by a chunk bucket. */
 static apr_status_t fetch_chunk_size(response_context_t *ctx)
 {
     apr_status_t status;
 
-    do {
-        status = fetch_line(ctx, ctx->stream);
-        if (SERF_BUCKET_READ_ERROR(status)) {
-            return status;
+    status = fetch_line(ctx, ctx->stream);
+    if (SERF_BUCKET_READ_ERROR(status))
+        return status;
+
+    /* if a line was read, then parse it. */
+    if (ctx->lstate == LINE_READY) {
+        /* NUL-terminate the line. if it filled the entire buffer, then
+           just assume the thing is too large. */
+        if (ctx->line_used == sizeof(ctx->line))
+            return APR_FROM_OS_ERROR(ERANGE);
+        ctx->line[ctx->line_used] = '\0';
+
+        /* convert from HEX digits. */
+        ctx->body_left = apr_strtoi64(ctx->line, NULL, 16);
+        if (errno == ERANGE) {
+            return APR_FROM_OS_ERROR(ERANGE);
         }
     }
-    while (ctx->lstate != LINE_READY || !ctx->line_used);
 
-    ctx->line[ctx->line_used] = '\0';
-    ctx->body_left = apr_strtoi64(ctx->line, NULL, 10);
-    if (errno == ERANGE) {
-        return errno;
-    }
-
-    return APR_SUCCESS;
+    return status;
 }
 
 /* This code should be replaced with header buckets. */
 static apr_status_t fetch_headers(serf_bucket_t *bkt, response_context_t *ctx)
 {
     apr_status_t status;
+
     status = fetch_line(ctx, ctx->stream);
     if (SERF_BUCKET_READ_ERROR(status)) {
         return status;
     }
+    /* Something was read. Process it. */
 
     if (ctx->lstate == LINE_READY && ctx->line_used) {
         const char *end_key, *c;
@@ -272,9 +311,17 @@ static apr_status_t fetch_headers(serf_bucket_t *bkt, response_context_t *ctx)
                                  k, v);
     }
 
-    return APR_SUCCESS;
+    return status;
 }
 
+/* Perform one iteration of the state machine.
+ *
+ * Will return when one the following conditions occurred:
+ *  1) a state change
+ *  2) an error
+ *  3) the stream is not ready or at EOF
+ *  4) APR_SUCCESS, meaning the machine can be run again immediately
+ */
 static apr_status_t run_machine(serf_bucket_t *bkt, response_context_t *ctx)
 {
     apr_status_t status = APR_SUCCESS; /* initialize to avoid gcc warnings */
@@ -282,16 +329,28 @@ static apr_status_t run_machine(serf_bucket_t *bkt, response_context_t *ctx)
     switch (ctx->state) {
     case STATE_STATUS_LINE:
         status = fetch_line(ctx, ctx->stream);
-        if (!status) {
+        if (SERF_BUCKET_READ_ERROR(status))
+            return status;
+
+        if (ctx->lstate == LINE_READY) {
+            /* The Status-Line is in the line buffer. Process it. */
+            status = parse_status_line(ctx, bkt->allocator);
+            if (status)
+                return status;
+
+            /* Okay... move on to reading the headers. */
             ctx->state = STATE_HEADERS;
         }
         break;
     case STATE_HEADERS:
-        do {
-            status = fetch_headers(bkt, ctx);
-        }
-        while (!status && ctx->line_used);
-        if (!status) {
+        status = fetch_headers(bkt, ctx);
+        if (SERF_BUCKET_READ_ERROR(status))
+            return status;
+
+        /* If an empty line was read, then we hit the end of the headers.
+         * Move on to the body.
+         */
+        if (ctx->lstate == LINE_READY && !ctx->line_used) {
             const void *v;
 
             /* Are we C-L, chunked, or conn close? */
@@ -301,7 +360,7 @@ static apr_status_t run_machine(serf_bucket_t *bkt, response_context_t *ctx)
                 ctx->chunked = 0;
                 ctx->body_left = apr_strtoi64(v, NULL, 10);
                 if (errno == ERANGE) {
-                    return errno;
+                    return APR_FROM_OS_ERROR(ERANGE);
                 }
             }
             else {
@@ -319,6 +378,19 @@ static apr_status_t run_machine(serf_bucket_t *bkt, response_context_t *ctx)
     case STATE_BODY:
         /* Don't do anything. */
         break;
+    case STATE_TRAILERS:
+        status = fetch_headers(bkt, ctx);
+        if (SERF_BUCKET_READ_ERROR(status))
+            return status;
+
+        /* If an empty line was read, then we're done. */
+        if (ctx->lstate == LINE_READY && !ctx->line_used) {
+            ctx->state = STATE_DONE;
+            return APR_EOF;
+        }
+        break;
+    case STATE_DONE:
+        return APR_EOF;
     default:
         abort();
     }
@@ -328,15 +400,15 @@ static apr_status_t run_machine(serf_bucket_t *bkt, response_context_t *ctx)
 
 static apr_status_t wait_for_sline(serf_bucket_t *bkt, response_context_t *ctx)
 {
-    /* Keep looping while we're still working on the Status-Line and we
-     * don't have any issues reading from the input stream.
-     */
+    /* Keep looping while working on the Status-Line and it's okay to read */
     while (ctx->state == STATE_STATUS_LINE) {
         apr_status_t status = run_machine(bkt, ctx);
-        if (SERF_BUCKET_READ_ERROR(status)) {
-            /* we stop at anything.  Most likely, it'll be EAGAIN. */
+
+        /* Anything other than APR_SUCCESS means that we cannot immediately
+         * read again (for now).
+         */
+        if (status)
             return status;
-        }
     }
 
     return APR_SUCCESS;
@@ -346,33 +418,19 @@ static apr_status_t wait_for_body(serf_bucket_t *bkt, response_context_t *ctx)
 {
     apr_status_t status;
 
-    if (ctx->state == STATE_DONE) {
-        return APR_EOF;
-    }
+  read_trailers:
 
-    if (ctx->state == STATE_TRAILERS) {
-        do {
-            status = fetch_headers(bkt, ctx);
-        }
-        while (!status && ctx->line_used);
-
-        /* We're done. */
-        if (status == APR_SUCCESS) {
-            ctx->state = STATE_DONE;
-        }
-
-        return status;
-    }
-
-    /* Keep looping while we're still working on the Status-Line and we
-     * don't have any issues reading from the input stream.
-     */
+    /* Keep reading and moving through states if we aren't at the BODY */
     while (ctx->state != STATE_BODY) {
         status = run_machine(bkt, ctx);
-        if (SERF_BUCKET_READ_ERROR(status)) {
+
+        /* Anything other than APR_SUCCESS means that we cannot immediately
+         * read again (for now).
+         */
+        if (status)
             return status;
-        }
     }
+    /* in STATE_BODY */
 
     if (ctx->chunked && !ctx->body_left) {
         status = fetch_chunk_size(ctx);
@@ -381,11 +439,21 @@ static apr_status_t wait_for_body(serf_bucket_t *bkt, response_context_t *ctx)
         }
 
         /* Did we just get our zero terminating chunk? */
-        if (!ctx->body_left) {
+        if (ctx->lstate == LINE_READY && !ctx->body_left) {
             ctx->state = STATE_TRAILERS;
+	    
+	    /* If it is okay to read more data, then process some trailers. */
+	    if (!status)
+	      goto read_trailers;
         }
+
+        /* We may not be ready for reading (to finish the chunk size read,
+         * or for the body itself. Return the proper indicator.
+         */
+        return status;
     }
 
+    /* We're in the body, and should try reading. */
     return APR_SUCCESS;
 }
 
@@ -395,34 +463,19 @@ SERF_DECLARE(apr_status_t) serf_bucket_response_status(
 {
     response_context_t *ctx = bkt->data;
     apr_status_t status;
-    int res;
-    char *reason;
 
-    if (ctx->state != STATE_STATUS_LINE)
-    {
+    if (ctx->state != STATE_STATUS_LINE) {
+        /* We already read it and moved on. Just return it. */
         *sline = ctx->sl;
         return APR_SUCCESS;
     }
 
+    /* Anything but APR_SUCCESS means we haven't finished reading the
+     * Status-Line, so we should pass the read condition to the caller.
+     */
     if ((status = wait_for_sline(bkt, ctx)) != APR_SUCCESS) {
         return status;
     }
-
-    /* ctx->line should be of form: HTTP/1.1 200 OK */
-    res = apr_date_checkmask(ctx->line, "HTTP/#.# ###*");
-    if (!res) {
-        /* Not an HTTP response?  Well, at least we won't understand it. */
-        return APR_EGENERAL;
-    }
-
-    ctx->sl.version = SERF_HTTP_VERSION(ctx->line[5] - '0', ctx->line[7] - '0');
-    ctx->sl.code = apr_strtoi64(ctx->line + 8, &reason, 10);
-    if (apr_isspace(*reason)) {
-        reason++;
-    }
-    /* Should we copy this value? */
-    ctx->sl.reason = serf_bstrmemdup(bkt->allocator, reason,
-                                     ctx->line_used - (reason - ctx->line));
 
     *sline = ctx->sl;
     return APR_SUCCESS;
@@ -446,11 +499,14 @@ static apr_status_t serf_response_read(serf_bucket_t *bucket,
 
     /* Delegate to the stream bucket to do the read. */
     rv = serf_bucket_read(ctx->stream, requested, data, len);
-    if (!rv) {
-        ctx->body_left -= *len;
-        if (!ctx->body_left && !ctx->chunked) {
-            rv = APR_EOF;
-        }
+    if (SERF_BUCKET_READ_ERROR(rv))
+        return rv;
+
+    /* Some data was read, so decrement the amount left. We may be done. */
+    ctx->body_left -= *len;
+    if (!ctx->body_left && !ctx->chunked) {
+        ctx->state = STATE_DONE;
+        rv = APR_EOF;
     }
     return rv;
 }
@@ -467,6 +523,7 @@ static apr_status_t serf_response_readline(serf_bucket_t *bucket,
         return rv;
     }
 
+    /* ### need to deal with body_left */
     /* Delegate to the stream bucket to do the readline. */
     return serf_bucket_readline(ctx->stream, acceptable, found, data, len);
 }
