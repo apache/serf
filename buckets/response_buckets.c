@@ -17,7 +17,6 @@
 
 #include <apr_lib.h>
 #include <apr_strings.h>
-#include <apr_hash.h>
 #include <apr_date.h>
 
 #include "serf.h"
@@ -27,6 +26,7 @@
 typedef struct {
     serf_bucket_t *stream;
     serf_bucket_t *dechunk;
+    serf_bucket_t *headers;     /* holds parsed headers */
 
     enum {
         STATE_STATUS_LINE,      /* reading status line */
@@ -55,6 +55,7 @@ SERF_DECLARE(serf_bucket_t *) serf_bucket_response_create(
     ctx = serf_bucket_mem_alloc(allocator, sizeof(*ctx));
     ctx->stream = stream;
     ctx->dechunk = NULL;
+    ctx->headers = serf_bucket_headers_create(allocator);
     ctx->state = STATE_STATUS_LINE;
 
     serf_linebuf_init(&ctx->linebuf);
@@ -67,34 +68,13 @@ static void serf_response_destroy_and_data(serf_bucket_t *bucket)
     response_context_t *ctx = bucket->data;
 
     if (ctx->state != STATE_STATUS_LINE) {
-        const void *md_v;
         serf_bucket_mem_free(bucket->allocator, (void*)ctx->sl.reason);
-
-        serf_bucket_get_metadata(bucket, SERF_RESPONSE_HEADERS, NULL, &md_v);
-        if (md_v) {
-            apr_hash_t *hash = (apr_hash_t*)md_v;
-            apr_hash_index_t *hi;
-            apr_pool_t *p;
-
-            p = serf_bucket_allocator_get_pool(bucket->allocator);
-            for (hi = apr_hash_first(p, hash); hi; hi = apr_hash_next(hi)) {
-                void *key, *val;
-                apr_ssize_t key_len;
-
-                apr_hash_this(hi, (const void**)&key, &key_len, &val);
-                /* First, remove it. */
-                apr_hash_set(hash, key, key_len, NULL);
-
-                serf_bucket_mem_free(bucket->allocator, key);
-                serf_bucket_mem_free(bucket->allocator, val);
-            }
-        }
-
     }
 
     serf_bucket_destroy(ctx->stream);
     if (ctx->dechunk != NULL)
         serf_bucket_destroy(ctx->dechunk);
+    serf_bucket_destroy(ctx->headers);
 
     serf_default_destroy_and_data(bucket);
 }
@@ -149,8 +129,8 @@ static apr_status_t fetch_headers(serf_bucket_t *bkt, response_context_t *ctx)
     /* Something was read. Process it. */
 
     if (ctx->linebuf.state == SERF_LINEBUF_READY && ctx->linebuf.used) {
-        const char *end_key, *c;
-        char *k, *v;
+        const char *end_key;
+        const char *c;
 
         end_key = c = memchr(ctx->linebuf.line, ':', ctx->linebuf.used);
         if (!c) {
@@ -159,15 +139,15 @@ static apr_status_t fetch_headers(serf_bucket_t *bkt, response_context_t *ctx)
         }
 
         /* Skip over initial : and spaces. */
-        while (apr_isspace(*++c));
+        while (apr_isspace(*++c))
+            continue;
 
-        k = serf_bstrmemdup(bkt->allocator, ctx->linebuf.line,
-                            end_key - ctx->linebuf.line);
-        v = serf_bstrmemdup(bkt->allocator, c,
-                            ctx->linebuf.line + ctx->linebuf.used - c);
-
-        serf_bucket_set_metadata(bkt, SERF_RESPONSE_HEADERS,
-                                 k, v);
+        /* Always copy the headers (from the linebuf into new mem). */
+        /* ### we should be able to optimize some mem copies */
+        serf_bucket_headers_setx(
+            ctx->headers,
+            ctx->linebuf.line, end_key - ctx->linebuf.line, 1,
+            c, ctx->linebuf.line + ctx->linebuf.used - c, 1);
     }
 
     return status;
@@ -216,8 +196,7 @@ static apr_status_t run_machine(serf_bucket_t *bkt, response_context_t *ctx)
             const void *v;
 
             /* Are we C-L, chunked, or conn close? */
-            serf_bucket_get_metadata(bkt, SERF_RESPONSE_HEADERS,
-                                     "Content-Length", &v);
+            v = serf_bucket_headers_get(ctx->headers, "Content-Length");
             if (v) {
                 ctx->chunked = 0;
                 ctx->body_left = apr_strtoi64(v, NULL, 10);
@@ -226,8 +205,8 @@ static apr_status_t run_machine(serf_bucket_t *bkt, response_context_t *ctx)
                 }
             }
             else {
-                serf_bucket_get_metadata(bkt, SERF_RESPONSE_HEADERS,
-                                         "Transfer-Encoding", &v);
+                v = serf_bucket_headers_get(ctx->headers, "Transfer-Encoding");
+
                 /* Need to handle multiple transfer-encoding. */
                 if (v && strcasecmp("chunked", v) == 0) {
                     ctx->chunked = 1;

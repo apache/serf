@@ -65,13 +65,15 @@ SERF_DECLARE(serf_bucket_t *) serf_bucket_headers_create(
     return serf_bucket_create(&serf_bucket_type_headers, allocator, ctx);
 }
 
-static void new_header(serf_bucket_t *bkt,
-                       int flags,
-                       const char *header,
-                       const char *value)
+SERF_DECLARE(void) serf_bucket_headers_setx(
+    serf_bucket_t *bkt,
+    const char *header, apr_size_t header_size, int header_copy,
+    const char *value, apr_size_t value_size, int value_copy)
 {
     headers_context_t *ctx = bkt->data;
     header_list_t *hdr = serf_bucket_mem_alloc(bkt->allocator, sizeof(*hdr));
+
+    /* ### should check if the header exists before adding. overwrite. */
 
 #if 0
     /* ### include this? */
@@ -81,18 +83,25 @@ static void new_header(serf_bucket_t *bkt,
     }
 #endif
 
-    hdr->header_size = strlen(header);
-    hdr->value_size = strlen(value);
-    hdr->alloc_flags = flags;
+    hdr->header_size = header_size;
+    hdr->value_size = value_size;
+    hdr->alloc_flags = 0;
 
-    if (flags & ALLOC_HEADER)
-        hdr->header = serf_bmemdup(bkt->allocator, header, hdr->header_size+1);
-    else
+    if (header_copy) {
+        hdr->header = serf_bstrmemdup(bkt->allocator, header, header_size);
+        hdr->alloc_flags |= ALLOC_HEADER;
+    }
+    else {
         hdr->header = header;
-    if (flags & ALLOC_VALUE)
-        hdr->value = serf_bmemdup(bkt->allocator, value, hdr->value_size+1);
-    else
+    }
+
+    if (value_copy) {
+        hdr->value = serf_bstrmemdup(bkt->allocator, value, value_size);
+        hdr->alloc_flags |= ALLOC_VALUE;
+    }
+    else {
         hdr->value = value;
+    }
 
     hdr->next = ctx->list;
     ctx->list = hdr;
@@ -103,7 +112,9 @@ SERF_DECLARE(void) serf_bucket_headers_set(
     const char *header,
     const char *value)
 {
-    new_header(headers_bucket, ALLOC_VALUE, header, value);
+    serf_bucket_headers_setx(headers_bucket,
+                             header, strlen(header), 0,
+                             value, strlen(value), 1);
 }
 
 SERF_DECLARE(void) serf_bucket_headers_setc(
@@ -111,7 +122,9 @@ SERF_DECLARE(void) serf_bucket_headers_setc(
     const char *header,
     const char *value)
 {
-    new_header(headers_bucket, ALLOC_HEADER | ALLOC_VALUE, header, value);
+    serf_bucket_headers_setx(headers_bucket,
+                             header, strlen(header), 1,
+                             value, strlen(value), 1);
 }
 
 SERF_DECLARE(void) serf_bucket_headers_setn(
@@ -119,7 +132,9 @@ SERF_DECLARE(void) serf_bucket_headers_setn(
     const char *header,
     const char *value)
 {
-    new_header(headers_bucket, 0, header, value);
+    serf_bucket_headers_setx(headers_bucket,
+                             header, strlen(header), 0,
+                             value, strlen(value), 0);
 }
 
 SERF_DECLARE(const char *) serf_bucket_headers_get(

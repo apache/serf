@@ -180,6 +180,8 @@ SERF_DECLARE(serf_bucket_t *) serf_bucket_headers_create(
     serf_bucket_alloc_t *allocator);
 
 /**
+ * Set, default: value copied.
+ *
  * Set the specified @a header within the bucket, copying the @a value
  * into space from this bucket's allocator. The header is NOT copied,
  * so it should remain in scope at least as long as the bucket.
@@ -190,6 +192,8 @@ SERF_DECLARE(void) serf_bucket_headers_set(
     const char *value);
 
 /**
+ * Set, copies: header and value copied.
+ *
  * Copy the specified @a header and @a value into the bucket, using space
  * from this bucket's allocator.
  */
@@ -199,6 +203,8 @@ SERF_DECLARE(void) serf_bucket_headers_setc(
     const char *value);
 
 /**
+ * Set, no copies.
+ *
  * Set the specified @a header and @a value into the bucket, without
  * copying either attribute. Both attributes should remain in scope at
  * least as long as the bucket.
@@ -207,6 +213,20 @@ SERF_DECLARE(void) serf_bucket_headers_setn(
     serf_bucket_t *headers_bucket,
     const char *header,
     const char *value);
+
+/**
+ * Set, extended: fine grained copy control of header and value.
+ *
+ * Set the specified @a header, with length @a header_size with the
+ * @a value, and length @a value_size, into the bucket. The header will
+ * be copied if @a header_copy is set, and the value is copied if
+ * @a value_copy is set. If the values are not copied, then they should
+ * remain in scope at least as long as the bucket.
+ */
+SERF_DECLARE(void) serf_bucket_headers_setx(
+    serf_bucket_t *headers_bucket,
+    const char *header, apr_size_t header_size, int header_copy,
+    const char *value, apr_size_t value_size, int value_copy);
 
 SERF_DECLARE(const char *) serf_bucket_headers_get(
     serf_bucket_t *headers_bucket,
