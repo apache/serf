@@ -19,6 +19,7 @@
 #include <apr_uri.h>
 #include <apr_strings.h>
 #include <apr_atomic.h>
+#include <apr_base64.h>
 
 #include "serf.h"
 
@@ -151,7 +152,9 @@ int main(int argc, const char **argv)
     handler_baton_t handler_ctx;
     apr_uri_t url;
     const char *raw_url;
-    int count, i;
+    int count;
+    int i;
+    char *authn = NULL;
 
     if (argc < 2) {
         puts("Gimme a URL, stupid!");
@@ -178,6 +181,14 @@ int main(int argc, const char **argv)
     apr_pool_create(&pool, NULL);
     apr_atomic_init(pool);
     /* serf_initialize(); */
+
+    if (argc >= 4) {
+        int srclen = strlen(argv[3]);
+        int enclen = apr_base64_encode_len(srclen);
+        authn = apr_palloc(pool, enclen + 6);
+        strcpy(authn, "Basic ");
+        (void) apr_base64_encode(&authn[6], argv[3], srclen);
+    }
 
     apr_uri_parse(pool, raw_url, &url);
     if (!url.port) {
@@ -224,6 +235,10 @@ int main(int argc, const char **argv)
                                  "Serf/" SERF_VERSION_STRING);
         /* Shouldn't serf do this for us? */
         serf_bucket_headers_setn(hdrs_bkt, "Accept-Encoding", "gzip");
+
+        if (authn != NULL) {
+            serf_bucket_headers_setn(hdrs_bkt, "Authorization", authn);
+        }
 
         apr_atomic_inc32(&handler_ctx.requests_outstanding);
 
