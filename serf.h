@@ -127,6 +127,22 @@ SERF_DECLARE(apr_status_t) serf_context_run(serf_context_t *ctx,
  */
 
 /**
+ * Accept an incoming response on @a conn, and its @a socket. A bucket for
+ * the response will be constructed and returned. This is the control point
+ * for assembling the appropriate wrapper buckets around the socket to
+ * enable processing of the incoming response.
+ *
+ * The @a acceptor_baton is the baton provided when the connection was
+ * first opened.
+ *
+ * All temporary allocations should be made in @a pool.
+ */
+typedef serf_bucket_t * (*serf_response_acceptor_t)(serf_connection_t *conn,
+                                                    apr_socket_t *socket,
+                                                    void *acceptor_baton,
+                                                    apr_pool_t *pool);
+
+/**
  * Notification callback for when a connection closes.
  *
  * This callback is used to inform an application that the @a conn
@@ -178,8 +194,16 @@ typedef apr_status_t (*serf_response_handler_t)(serf_bucket_t *response,
  * destroying this pool will close the connection, and terminate any
  * outstanding requests or responses.
  *
+ * When a response arrives, the @a acceptor will be called with the
+ * incoming socket (and the baton provided in @a acceptor_baton). A bucket
+ * should be created and returned, which will be used as the response
+ * bucket and passed to the associated request's response handler.
+ *
  * When the connection is closed (upon request or because of an error),
  * then the @a closed callback is invoked, and @a closed_baton is passed.
+ *
+ * NULL may be passed for @a acceptor and @a closed; default implementations
+ * will be used.
  *
  * Note: the connection is not made immediately. It will be opened on
  * the next call to @see serf_context_run.
@@ -187,6 +211,8 @@ typedef apr_status_t (*serf_response_handler_t)(serf_bucket_t *response,
 SERF_DECLARE(serf_connection_t *) serf_connection_create(
     serf_context_t *ctx,
     apr_sockaddr_t *address,
+    serf_response_acceptor_t acceptor,
+    void *acceptor_baton,
     serf_connection_closed_t closed,
     void *closed_baton,
     apr_pool_t *pool);
@@ -245,29 +271,78 @@ struct serf_bucket_type_t {
     /** name of this bucket type */
     const char *name;
 
-    /** read/consume some data out of the bucket */
+    /**
+     * Read and consume data out of @a bucket.
+     *
+     * A pointer to the data will be returned in @a data, and its length
+     * is specified by @a len.
+     *
+     * The data will exist until one of two conditions occur:
+     *
+     * 1) this bucket is destroyed
+     * 2) another call to read(), peek(), or read_bucket() is performed.
+     *
+     * If an application needs the data to exist for a longer duration,
+     * then it must make a copy.
+     */
     apr_status_t (*read)(serf_bucket_t *bucket,
                          const char **data, apr_size_t *len);
 
-    /** peek (don't consume) at the data in the bucket */
+    /**
+     * Peek, but don't consume, the data in @a bucket.
+     *
+     * The @a data and @a len parameters, and the data they point to, are
+     * handled the same as the @see read function above.
+     *
+     * Note: if the peek does not return enough data for your particular
+     * use, then you must read/consume some first, then peek again.
+     */
     apr_status_t (*peek)(serf_bucket_t *bucket,
                          const char **data, apr_size_t *len);
 
-    /** if the given bucket type is available, then read/consume it and
-     * return it to the caller
+    /**
+     * Look within @a bucket for another bucket of the given @a type. If
+     * the given bucket type is available, then read and consume it, and
+     * return it to the caller.
+     *
+     * This function is usually used by readers that have custom handling
+     * for specific bucket types (e.g. looking for a file bucket to pass
+     * to apr_socket_sendfile).
+     *
+     * If a bucket of the given type is not found, then NULL is returned.
      */
     serf_bucket_t * (*read_bucket)(serf_bucket_t *bucket,
                                    serf_bucket_type_t *type);
 
-    /** return a piece of metadata from the bucket */
+    /**
+     * Look up and return a piece of metadata from @a bucket.
+     *
+     * The metadata is specified by the metadata type @a md_type and the
+     * metadata name @a md_name. The value is returned in @a md_value, or
+     * NULL if the specified metadata does not exist in this bucket.
+     *
+     * Note that this function may return APR_EAGAIN if the metadata is
+     * not (yet) available. Other (networking) errors may be returned, too.
+     */
     apr_status_t (*get_metadata)(serf_bucket_t *bucket, const char *md_type,
                                  const char *md_name, const void **md_value);
 
-    /** set some metadata for the bucket */
+    /**
+     * Set some metadata for @a bucket.
+     *
+     * The metadata is specified by the metadata type @a md_type and the
+     * metadata name @a md_name. The value is given by @a md_value, or
+     * NULL if the specified metadata should be deleted.
+     *
+     * Note that this function may return errors if the metadata cannot
+     * be set for some reason.
+     */
     apr_status_t (*set_metadata)(serf_bucket_t *bucket, const char *md_type,
                                  const char *md_name, const void *md_value);
 
-    /** destroy the bucket, along with any associated resources */
+    /**
+     * Destroy @a bucket, along with any associated resources.
+     */
     void (*destroy)(serf_bucket_t *bucket);
 
     /* ### apr buckets have 'copy', 'split', and 'setaside' functions.
@@ -291,7 +366,7 @@ struct serf_bucket_t {
     /** bucket-private data */
     void *data;
 
-    /** this bucket's metadata: (CLASS, NAME) -> VALUE */
+    /** this bucket's metadata: (TYPE, NAME) -> VALUE */
     serf_metadata_t *metadata;
 
     /** the allocator used for this bucket (needed at destroy time) */
