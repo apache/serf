@@ -426,16 +426,24 @@ static void find_crlf(const char **data, apr_size_t *len, int *found)
         if (cr == NULL) {
             break;
         }
+        ++cr;
 
-        if (cr + 1 < end && cr[1] == '\n') {
-            *len -= cr + 2 - start;
-            *data = cr + 2;
+        if (cr < end && cr[1] == '\n') {
+            *len -= cr + 1 - start;
+            *data = cr + 1;
             *found = SERF_NEWLINE_CRLF;
             return;
         }
+        if (cr == end) {
+            *len = 0;
+            *data = end;
+            *found = SERF_NEWLINE_CRLF_SPLIT;
+            return;
+        }
 
-        *len -= cr + 1 - start;
-        start = cr + 1;
+        /* It was a bare CR without an LF. Just move past it. */
+        *len -= cr - start;
+        start = cr;
     }
 
     *found = SERF_NEWLINE_NONE;
@@ -504,4 +512,121 @@ SERF_DECLARE(void) serf_util_readline(const char **data, apr_size_t *len,
         *data = cr + 1 + (*found == SERF_NEWLINE_CRLF);
 
     *len -= *data - start;
+}
+
+
+/* ==================================================================== */
+
+
+SERF_DECLARE(void) serf_databuf_init(serf_databuf_t *databuf)
+{
+    /* nothing is sitting in the buffer */
+    databuf->remaining = 0;
+
+    /* avoid thinking we have hit EOF */
+    databuf->status = APR_SUCCESS;
+}
+
+static apr_status_t common_databuf_prep(serf_databuf_t *databuf,
+                                        apr_size_t *len)
+{
+    /* if we already hit EOF, then keep returning that. */
+    if (APR_STATUS_IS_EOF(databuf->status)) {
+        /* *data = NULL;   ?? */
+        *len = 0;
+        return APR_EOF;
+    }
+
+    /* we may need to refill the buffer */
+    if (databuf->remaining == 0) {
+        apr_size_t len;
+        apr_status_t status;
+
+        status = (*databuf->read)(databuf->read_baton, sizeof(databuf->buf),
+                                  databuf->buf, &len);
+        if (status
+            && !APR_STATUS_IS_EOF(status)
+            && !APR_STATUS_IS_EAGAIN(status)) {
+            return status;
+        }
+
+        databuf->current = databuf->buf;
+        databuf->remaining = len;
+        databuf->status = status;
+    }
+
+    return APR_SUCCESS;
+}
+
+SERF_DECLARE(apr_status_t) serf_databuf_read(serf_databuf_t *databuf,
+                                             apr_size_t requested,
+                                             const char **data,
+                                             apr_size_t *len)
+{
+    apr_status_t status = common_databuf_prep(databuf, len);
+    if (status)
+        return status;
+
+    /* peg the requested amount to what we have remaining */
+    if (requested == SERF_READ_ALL_AVAIL || requested > databuf->remaining)
+        requested = databuf->remaining;
+
+    /* return the values */
+    *data = databuf->current;
+    *len = requested;
+
+    /* adjust our internal state to note we've consumed some data */
+    databuf->current += requested;
+    databuf->remaining -= requested;
+
+    /* If we read everything, then we need to return whatever the data
+     * read returned to us. This is going to be APR_EOF or APR_EGAIN.
+     * If we have NOT read everything, then return APR_SUCCESS to indicate
+     * that we're ready to return some more if asked.
+     */
+    return databuf->remaining ? databuf->status : APR_SUCCESS;
+}
+
+SERF_DECLARE(apr_status_t) serf_databuf_readline(serf_databuf_t *databuf,
+                                                 int acceptable, int *found,
+                                                 const char **data,
+                                                 apr_size_t *len)
+{
+    apr_status_t status = common_databuf_prep(databuf, len);
+    if (status)
+        return status;
+
+    /* the returned line will start at the current position. */
+    *data = databuf->current;
+
+    /* read a line from the buffer, and adjust the various pointers. */
+    serf_util_readline(&databuf->current, &databuf->remaining, acceptable,
+                       found);
+
+    /* the length matches the amount consumed by the readline */
+    *len = databuf->current - *data;
+
+    /* see serf_databuf_read's return condition */
+    return databuf->remaining ? databuf->status : APR_SUCCESS;
+}
+
+SERF_DECLARE(apr_status_t) serf_databuf_peek(serf_databuf_t *databuf,
+                                             const char **data,
+                                             apr_size_t *len)
+{
+    apr_status_t status = common_databuf_prep(databuf, len);
+    if (status)
+        return status;
+
+    /* return everything we have */
+    *data = databuf->current;
+    *len = databuf->remaining;
+
+    /* If the last read returned EOF, then the peek should return the same.
+     * The other possibility in databuf->status is APR_EAGAIN, which we
+     * should never return. Thus, just return APR_SUCCESS for non-EOF cases.
+     */
+    if (APR_STATUS_IS_EOF(databuf->status))
+        return APR_EOF;
+    return APR_SUCCESS;
 }

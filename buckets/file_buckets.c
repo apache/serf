@@ -53,18 +53,22 @@
 #include "serf.h"
 #include "serf_bucket_util.h"
 
-/* Max we will read() at one time. */
-#define FILE_BUFSIZE 8000
-
 typedef struct {
     apr_file_t *file;
 
-    apr_size_t len;
-    apr_status_t peek_status;
+    serf_databuf_t databuf;
 
-    char buf[FILE_BUFSIZE];
 } file_context_t;
 
+
+static apr_status_t file_reader(void *baton, apr_size_t bufsize,
+                                char *buf, apr_size_t *len)
+{
+    file_context_t *ctx = baton;
+
+    *len = bufsize;
+    return apr_file_read(ctx->file, buf, len);
+}
 
 SERF_DECLARE(serf_bucket_t *) serf_bucket_file_create(
     apr_file_t *file,
@@ -90,8 +94,10 @@ SERF_DECLARE(serf_bucket_t *) serf_bucket_file_create(
     /* Oh, well. */
     ctx = serf_bucket_mem_alloc(allocator, sizeof(*ctx));
     ctx->file = file;
-    ctx->len = 0;
-    ctx->peek_status = 0;
+
+    serf_databuf_init(&ctx->databuf);
+    ctx->databuf.read = file_reader;
+    ctx->databuf.read_baton = ctx;
 
     return serf_bucket_create(&serf_bucket_type_file, allocator, ctx);
 }
@@ -102,36 +108,16 @@ static apr_status_t serf_file_read(serf_bucket_t *bucket,
 {
     file_context_t *ctx = bucket->data;
 
-    if (requested == SERF_READ_ALL_AVAIL || requested > FILE_BUFSIZE) {
-        *len = FILE_BUFSIZE;
-    }
-    else {
-        *len = requested;
-    }
-
-    *data = ctx->buf;
-
-    /* We have something from a peek, consume it first. */
-    if (ctx->len != 0) {
-        if (ctx->len < *len) {
-            *len = ctx->len;
-        }
-        ctx->len -= *len;
-        /* ### do we want to return this status if there is still data
-           ### left in the buffer? e.g. don't return APR_EOF if we haven't
-           ### returned all the data. */
-        return ctx->peek_status;
-    }
-
-    return apr_file_read(ctx->file, ctx->buf, len);
+    return serf_databuf_read(&ctx->databuf, requested, data, len);
 }
 
 static apr_status_t serf_file_readline(serf_bucket_t *bucket,
                                        int acceptable, int *found,
                                        const char **data, apr_size_t *len)
 {
-    /* ### need our utility function... */
-    return APR_ENOTIMPL;
+    file_context_t *ctx = bucket->data;
+
+    return serf_databuf_readline(&ctx->databuf, acceptable, found, data, len);
 }
 
 static apr_status_t serf_file_peek(serf_bucket_t *bucket,
@@ -140,27 +126,14 @@ static apr_status_t serf_file_peek(serf_bucket_t *bucket,
 {
     file_context_t *ctx = bucket->data;
 
-    *data = ctx->buf;
-
-    /* If we have something from a prior peek, return it. */
-    if (ctx->len != 0) {
-        *len = ctx->len;
-        return ctx->peek_status;
-    }
-
-    /* read in a buffer's worth */
-    *len = sizeof(ctx->buf);
-    ctx->peek_status = apr_file_read(ctx->file, ctx->buf, len);
-    ctx->len = *len;
-
-    return ctx->peek_status;
+    return serf_databuf_peek(&ctx->databuf, data, len);
 }
 
 SERF_DECLARE_DATA const serf_bucket_type_t serf_bucket_type_file = {
     "FILE",
     serf_file_read,
     serf_file_readline,
-    serf_default_read_iovec, /* ### APR should have apr_file_readv */
+    serf_default_read_iovec,
     serf_default_read_for_sendfile,
     serf_default_read_bucket,
     serf_file_peek,

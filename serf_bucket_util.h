@@ -157,17 +157,134 @@ SERF_DECLARE(void) serf_default_destroy(serf_bucket_t *bucket);
 SERF_DECLARE(void) serf_default_destroy_and_data(serf_bucket_t *bucket);
 
 
+/**
+ * Allocate @a size bytes of memory using @a allocator.
+ */
 SERF_DECLARE(void *) serf_bucket_mem_alloc(
     serf_bucket_alloc_t *allocator,
     apr_size_t size);
 
+/**
+ * Free the memory at @a block, returning it to @a allocator.
+ */
 SERF_DECLARE(void) serf_bucket_mem_free(
     serf_bucket_alloc_t *allocator,
     void *block);
 
 
+/**
+ * Read data up to a newline.
+ *
+ * @a acceptable contains the allowed forms of a newline, and @a found
+ * will return the particular newline type that was found. If a newline
+ * is not found, then SERF_NEWLINE_NONE will be placed in @a found.
+ *
+ * @a data should contain a pointer to the data to be scanned. @a len
+ * should specify the length of that data buffer. On exit, @a data will
+ * be advanced past the newline, and @a len will specify the remaining
+ * amount of data in the buffer.
+ *
+ * Given this pattern of behavior, the caller should store the initial
+ * value of @a data as the line start. The difference between the
+ * returned value of @a data and the saved start is the length of the
+ * line.
+ *
+ * Note that the newline character(s) will remain within the buffer.
+ * This function scans at a byte level for the newline characters. Thus,
+ * the data buffer may contain NUL characters. As a corollary, this
+ * function only works on 8-bit character encodings.
+ *
+ * If the data is fully consumed (@a len gets set to zero) and a CR
+ * character is found at the end and the CRLF sequence is allowed, then
+ * this function may store SERF_NEWLINE_CRLF_SPLIT into @a found. The
+ * caller should take particular consideration for the CRLF sequence
+ * that may be split across data buffer boundaries.
+ */
 SERF_DECLARE(void) serf_util_readline(const char **data, apr_size_t *len,
                                       int acceptable, int *found);
+
+/** The buffer size used within @see serf_databuf_t. */
+#define SERF_DATABUF_BUFSIZE 8000
+
+/**
+ * This structure is used as an intermediate data buffer for some "external"
+ * source of data. It works as a scratch pad area for incoming data to be
+ * stored, and then returned as a ptr/len pair by the bucket read functions.
+ *
+ * This structure should be initialized by calling @see serf_databuf_init.
+ * Users should not bother to zero the structure beforehand.
+ */
+typedef struct {
+    /** The current data position within the buffer. */
+    const char *current;
+
+    /** Amount of data remaining in the buffer. */
+    apr_size_t remaining;
+
+    /** Callback function which is used to refill the data buffer.
+     *
+     * The function takes @a baton, which is the @see read_baton value
+     * from the serf_databuf_t structure. Data should be placed into
+     * a buffer specified by @a buf, which is @a bufsize bytes long.
+     * The amount of data read should be returned in @a len.
+     *
+     * APR_EOF should be returned if no more data is available. APR_EAGAIN
+     * should be returned, rather than blocking. In both cases, @a buf
+     * should be filled in and @a len set, as appropriate.
+     */
+    apr_status_t (*read)(void *baton, apr_size_t bufsize,
+                         char *buf, apr_size_t *len);
+
+    /** A baton to hold context-specific data. */
+    void *read_baton;
+
+    /** Records the status from the last @see read operation. */
+    apr_status_t status;
+
+    /** Holds the data until it can be returned. */
+    char buf[SERF_DATABUF_BUFSIZE];
+
+} serf_databuf_t;
+
+/**
+ * Initialize the @see serf_databuf_t structure specified by @a databuf.
+ */
+SERF_DECLARE(void) serf_databuf_init(serf_databuf_t *databuf);
+
+/**
+ * Implement a bucket-style read function from the @see serf_databuf_t
+ * structure given by @a databuf.
+ *
+ * The @a requested, @a data, and @a len fields are interpreted and used
+ * as in the read function of @see serf_bucket_t.
+ */
+SERF_DECLARE(apr_status_t) serf_databuf_read(serf_databuf_t *databuf,
+                                             apr_size_t requested,
+                                             const char **data,
+                                             apr_size_t *len);
+
+/**
+ * Implement a bucket-style readline function from the @see serf_databuf_t
+ * structure given by @a databuf.
+ *
+ * The @a acceptable, @a found, @a data, and @a len fields are interpreted
+ * and used as in the read function of @see serf_bucket_t.
+ */
+SERF_DECLARE(apr_status_t) serf_databuf_readline(serf_databuf_t *databuf,
+                                                 int acceptable, int *found,
+                                                 const char **data,
+                                                 apr_size_t *len);
+
+/**
+ * Implement a bucket-style peek function from the @see serf_databuf_t
+ * structure given by @a databuf.
+ *
+ * The @a data, and @a len fields are interpreted and used as in the
+ * peek function of @see serf_bucket_t.
+ */
+SERF_DECLARE(apr_status_t) serf_databuf_peek(serf_databuf_t *databuf,
+                                             const char **data,
+                                             apr_size_t *len);
 
 
 #ifdef __cplusplus
