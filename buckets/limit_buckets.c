@@ -91,7 +91,7 @@ static void serf_limit_destroy(serf_bucket_t *bucket)
 }
 
 SERF_DECLARE_DATA const serf_bucket_type_t serf_bucket_type_limit = {
-    "SIMPLE",
+    "LIMIT",
     serf_limit_read,
     serf_limit_readline,
     serf_default_read_iovec,

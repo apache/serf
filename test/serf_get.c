@@ -185,7 +185,7 @@ int main(int argc, const char **argv)
 
     apr_getopt_init(&opt, pool, argc, argv);
 
-    while ((status = apr_getopt(opt, "a:hHm:n:v", &opt_c, &opt_arg)) ==
+    while ((status = apr_getopt(opt, "a:f:hHm:n:v", &opt_c, &opt_arg)) ==
            APR_SUCCESS) {
         int srclen, enclen;
 
@@ -197,15 +197,15 @@ int main(int argc, const char **argv)
             strcpy(authn, "Basic ");
             (void) apr_base64_encode(&authn[6], opt_arg, srclen);
             break;
+        case 'f':
+            req_body_path = opt_arg;
+            break;
         case 'h':
             print_usage(pool);
             exit(0);
             break;
         case 'H':
             print_headers = 1;
-            break;
-        case 'f':
-            req_body_path = opt_arg;
             break;
         case 'm':
             method = opt_arg;
@@ -268,9 +268,29 @@ int main(int argc, const char **argv)
     handler_ctx.requests_outstanding = 0;
     handler_ctx.print_headers = print_headers;
     for (i = 0; i < count; i++) {
+        serf_bucket_t *body_bkt;
+
         request = serf_connection_request_create(connection);
 
-        req_bkt = serf_bucket_request_create(method, url.path, NULL,
+        if (req_body_path) {
+            apr_file_t *file;
+
+            status = apr_file_open(&file, req_body_path, APR_READ,
+                                   APR_OS_DEFAULT, pool);
+
+            if (status) {
+                printf("Error opening file (%s): %d\n", req_body_path,
+                       status);
+                exit(2);
+            }
+            body_bkt = serf_bucket_file_create(file,
+                                               serf_request_get_alloc(request));
+        }
+        else {
+            body_bkt = NULL;
+        }
+
+        req_bkt = serf_bucket_request_create(method, url.path, body_bkt,
                                              serf_request_get_alloc(request));
 
         hdrs_bkt = serf_bucket_request_get_headers(req_bkt);

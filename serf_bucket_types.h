@@ -241,6 +241,17 @@ SERF_DECLARE(const char *) serf_bucket_headers_get(
 /* ==================================================================== */
 
 
+SERF_DECLARE_DATA extern const serf_bucket_type_t serf_bucket_type_chunk;
+#define SERF_BUCKET_IS_CHUNK(b) SERF_BUCKET_CHECK((b), chunk)
+
+SERF_DECLARE(serf_bucket_t *) serf_bucket_chunk_create(
+    serf_bucket_t *stream,
+    serf_bucket_alloc_t *allocator);
+
+
+/* ==================================================================== */
+
+
 SERF_DECLARE_DATA extern const serf_bucket_type_t serf_bucket_type_dechunk;
 #define SERF_BUCKET_IS_DECHUNK(b) SERF_BUCKET_CHECK((b), dechunk)
 

@@ -93,6 +93,9 @@ static void serialize_data(serf_bucket_t *bucket)
     serf_bucket_aggregate_append(bucket, new_bucket);
     serf_bucket_aggregate_append(bucket, ctx->headers);
     if (ctx->body != NULL) {
+        /* Morph the body bucket to a chunked encoding bucket for now. */
+        serf_bucket_headers_set(ctx->headers, "Transfer-Encoding", "chunked");
+        ctx->body = serf_bucket_chunk_create(ctx->body, bucket->allocator);
         serf_bucket_aggregate_append(bucket, ctx->body);
     }
 
