@@ -135,12 +135,18 @@ SERF_DECLARE(apr_status_t) serf_context_run(serf_context_t *ctx,
  * The @a acceptor_baton is the baton provided when the connection was
  * first opened.
  *
- * All temporary allocations should be made in @a pool.
+ * The @a respool pool should be used for any allocations that need to live
+ * for the duration of the response. Care should be taken to bound the amount
+ * of memory stored in this pool -- to ensure that allocations are not
+ * proportional to the amount of data in the response.
+ *
+ * All temporary allocations should be made in @a tmppool.
  */
 typedef serf_bucket_t * (*serf_response_acceptor_t)(serf_connection_t *conn,
                                                     apr_socket_t *socket,
                                                     void *acceptor_baton,
-                                                    apr_pool_t *pool);
+                                                    apr_pool_t *respool,
+                                                    apr_pool_t *tmppool);
 
 /**
  * Notification callback for when a connection closes.
@@ -278,6 +284,7 @@ SERF_DECLARE(apr_status_t) serf_connection_request_cancel(
 #define SERF_NEWLINE_ANY   0x0007
 
 /** Used to indicate that a newline is not present in the data buffer. */
+/* ### should we make this zero? */
 #define SERF_NEWLINE_NONE  0x0008
 
 
@@ -333,9 +340,10 @@ struct serf_bucket_type_t {
                          const char **data, apr_size_t *len);
 
     /**
-     * Look within @a bucket for another bucket of the given @a type. If
-     * the given bucket type is available, then read and consume it, and
-     * return it to the caller.
+     * Look within @a bucket for a bucket of the given @a type. The bucket
+     * must be the "initial" data because it will be consumed by this
+     * function. If the given bucket type is available, then read and consume
+     * it, and return it to the caller.
      *
      * This function is usually used by readers that have custom handling
      * for specific bucket types (e.g. looking for a file bucket to pass
