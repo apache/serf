@@ -20,12 +20,11 @@
 #include <apr_strings.h>
 #include <apr_atomic.h>
 #include <apr_base64.h>
+#include <apr_getopt.h>
 
 #include "serf.h"
 
 #define SERF_VERSION_STRING "0.01"
-
-/*#define PRINT_HEADERS*/
 
 typedef struct {
     int using_ssl;
@@ -77,6 +76,7 @@ static serf_bucket_t* accept_response(serf_request_t *request,
 
 typedef struct {
     apr_uint32_t requests_outstanding;
+    int print_headers;
 } handler_baton_t;
 
 static apr_status_t handle_response(serf_bucket_t *response,
@@ -107,20 +107,21 @@ static apr_status_t handle_response(serf_bucket_t *response,
 
         /* are we done yet? */
         if (APR_STATUS_IS_EOF(status)) {
-#ifdef PRINT_HEADERS
-            serf_bucket_t *hdrs;
-            hdrs = serf_bucket_response_get_headers(response);
-            while (1) {
-                status = serf_bucket_read(hdrs, 2048, &data, &len);
-                if (SERF_BUCKET_READ_ERROR(status))
-                    return status;
+            if (ctx->print_headers) {
+                serf_bucket_t *hdrs;
+                hdrs = serf_bucket_response_get_headers(response);
+                while (1) {
+                    status = serf_bucket_read(hdrs, 2048, &data, &len);
+                    if (SERF_BUCKET_READ_ERROR(status))
+                        return status;
 
-                fwrite(data, 1, len, stdout);
-                if (APR_STATUS_IS_EOF(status)) {
-                    break;
+                    fwrite(data, 1, len, stdout);
+                    if (APR_STATUS_IS_EOF(status)) {
+                        break;
+                    }
                 }
             }
-#endif
+
             apr_atomic_dec32(&ctx->requests_outstanding);
             return APR_EOF;
         }
@@ -132,6 +133,18 @@ static apr_status_t handle_response(serf_bucket_t *response,
         /* loop to read some more. */
     }
     /* NOTREACHED */
+}
+
+void print_usage(apr_pool_t *pool)
+{
+    puts("serf_get [options] URL");
+    puts("-h\tDisplay this help");
+    puts("-v\tDisplay version");
+    puts("-H\tPrint response headers");
+    puts("-n <count> Fetch URL <count> times");
+    puts("-a <user:password> Present Basic authentication credentials");
+    puts("-m <method> Use the <method> HTTP Method");
+    puts("-f <file> Use the <file> as the request body");
 }
 
 int main(int argc, const char **argv)
@@ -147,29 +160,14 @@ int main(int argc, const char **argv)
     app_baton_t app_ctx;
     handler_baton_t handler_ctx;
     apr_uri_t url;
-    const char *raw_url;
+    const char *raw_url, *method, *req_body_path;
     int count;
     int i;
+    int print_headers;
     char *authn = NULL;
-
-    if (argc < 2) {
-        puts("Gimme a URL, stupid!");
-        exit(-1);
-    }
-    raw_url = argv[1];
-
-    if (argc >= 3) {
-        errno = 0;
-        count = apr_strtoi64(argv[2], NULL, 10);
-        if (errno) {
-            printf("Problem converting number of times to fetch URL (%d)\n",
-                   errno);
-            return errno;
-        }
-    }
-    else {
-        count = 1;
-    }
+    apr_getopt_t *opt;
+    char opt_c;
+    const char *opt_arg;
 
     apr_initialize();
     atexit(apr_terminate);
@@ -178,13 +176,63 @@ int main(int argc, const char **argv)
     apr_atomic_init(pool);
     /* serf_initialize(); */
 
-    if (argc >= 4) {
-        int srclen = strlen(argv[3]);
-        int enclen = apr_base64_encode_len(srclen);
-        authn = apr_palloc(pool, enclen + 6);
-        strcpy(authn, "Basic ");
-        (void) apr_base64_encode(&authn[6], argv[3], srclen);
+    /* Default to one round of fetching. */
+    count = 1;
+    /* Default to GET. */
+    method = "GET";
+    /* Do not print headers by default. */
+    print_headers = 0;
+
+    apr_getopt_init(&opt, pool, argc, argv);
+
+    while ((status = apr_getopt(opt, "a:hHm:n:v", &opt_c, &opt_arg)) ==
+           APR_SUCCESS) {
+        int srclen, enclen;
+
+        switch (opt_c) {
+        case 'a':
+            srclen = strlen(opt_arg);
+            enclen = apr_base64_encode_len(srclen);
+            authn = apr_palloc(pool, enclen + 6);
+            strcpy(authn, "Basic ");
+            (void) apr_base64_encode(&authn[6], opt_arg, srclen);
+            break;
+        case 'h':
+            print_usage(pool);
+            exit(0);
+            break;
+        case 'H':
+            print_headers = 1;
+            break;
+        case 'f':
+            req_body_path = opt_arg;
+            break;
+        case 'm':
+            method = opt_arg;
+            break;
+        case 'n':
+            errno = 0;
+            count = apr_strtoi64(opt_arg, NULL, 10);
+            if (errno) {
+                printf("Problem converting number of times to fetch URL (%d)\n",
+                       errno);
+                return errno;
+            }
+            break;
+        case 'v':
+            puts("Serf version: " SERF_VERSION_STRING);
+            exit(0);
+        default:
+            break;
+        }
     }
+
+    if (opt->ind != opt->argc - 1) {
+        print_usage(pool);
+        exit(-1);
+    }
+
+    raw_url = argv[opt->ind];
 
     apr_uri_parse(pool, raw_url, &url);
     if (!url.port) {
@@ -218,10 +266,11 @@ int main(int argc, const char **argv)
                                         pool);
 
     handler_ctx.requests_outstanding = 0;
+    handler_ctx.print_headers = print_headers;
     for (i = 0; i < count; i++) {
         request = serf_connection_request_create(connection);
 
-        req_bkt = serf_bucket_request_create("GET", url.path, NULL,
+        req_bkt = serf_bucket_request_create(method, url.path, NULL,
                                              serf_request_get_alloc(request));
 
         hdrs_bkt = serf_bucket_request_get_headers(req_bkt);
