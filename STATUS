@@ -1,5 +1,5 @@
 APR-SERF STATUS:						-*-text-*-
-Last modified at [$Date: 2001/09/29 05:20:55 $]
+Last modified at [$Date: 2001/10/02 10:47:33 $]
 
 Release:
 
@@ -8,6 +8,28 @@ RELEASE SHOWSTOPPERS:
 
 	We need code.  This project's goal is to create an http
 	client library.
+
+  * web pages (go to apr-site)
+
+  * decide on prefix
+      serf_ : Greg +1
+      aps_ :
+      apr_serf_ :
+
+  * decide on layout of the repository (e.g. subdirs)
+    Greg thinks: prolly the following: /build, /include, /docs, /test, 
+		 /core, and some for high-level items (maybe /filters
+		 and /utils)
+
+  * set up config/build structure based on apr-util
+    (take this opportunity to simplify again; hopefully to fold these
+     simplifications back into apr(-util))
+
+  * release scripts (in /build) (and a how-to-release.txt in docs/)
+
+  * turn docs/roadmap.txt into a real API/implementation design doc
+    (at least far enough such that we can generate .h files and begin
+     coding from there)
 
 RELEASE NON-SHOWSTOPPERS BUT WOULD BE REAL NICE TO WRAP THESE UP:
 

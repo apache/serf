@@ -25,3 +25,62 @@ Here's are some of the things I would find usefull:
 * send requests to a server from a list of servers/ports (via round-robin)
 
 -------------------------------------------------------------------------
+Greg Stein <gstein@lyra.org>
+
+* brigades for I/O; possibly as the object representing a complete
+  request or response
+
+* high-level funcs/utils for assembling brigades, per above
+
+  [ possibly a multi-tier architecture: lowest level is brigade-based
+    output and brigade-assembling input, next level is the filter
+    stack, next is a higher-level assembling "objects" for a
+    request/response (one generates a request brigade, one is built
+    from a response brigade) ]
+
+* push *and* pull modes for requests and responses
+
+* thread-safe for sending requests vs receiving responses
+
+  [ urk. if multiplexing responses, that draws us into the whole MPM
+    crap; is there a clean/easy way that we can defer to the app for
+    dispatching a response to a thread? note that (at least) we don't
+    have accept() problems, just worker threads for responses (no, we
+    can't have separate processes for responses) ]
+
+* filters are written in push mode; we use Nifty Coding to operate
+  them in a pull fashion
+
+* select/poll based model *and* synchronous model
+
+* http headers flow through filter stack
+
+* no f->r or f->c
+
+* packaged filters: chunk, dechunk, zip, unzip
+
+  [ "http in/out" filters will probably not be exposed; it may even be 
+    that we don't use filters for this task ]
+
+* Expect-100 handling
+
+* auto-reconnect, SIGPIPE handling
+
+* very high level functions for simple HTTP (DAV) methods
+
+* proxy support, including proxy auth
+
+* Basic, Digest, and client-cert auth
+
+* HTTP request pipelining
+
+* XML response parsing utilities
+
+  [ this is a real tough one to make intuitive. see Neon for some
+    ideas (it isn't super intuitive, but it does provide info for
+    considerations that need to be made) ]
+
+* export functionality for httpd; suck in functions from httpd where
+  serf might need them
+
+-------------------------------------------------------------------------
