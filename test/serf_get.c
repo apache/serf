@@ -47,9 +47,16 @@
  * ====================================================================
  *
  */
+
+#include <stdlib.h>
+
 #include <apr.h>
+#include <apr_uri.h>
 
 #include "serf.h"
+
+#if 0
+
 #include "serf_filters.h"
 #include "serf_version.h"
 
@@ -270,18 +277,52 @@ static apr_status_t http_handler(serf_response_t *response, apr_pool_t *pool)
     return APR_SUCCESS;
 }
 
+#endif /* 0 */
+
+
+static void closed_connection(serf_connection_t *conn,
+                              void *closed_baton,
+                              apr_status_t why,
+                              apr_pool_t *pool)
+{
+    abort();
+}
+
+static serf_bucket_t* accept_response(serf_request_t *request,
+                                      apr_socket_t *socket,
+                                      void *acceptor_baton,
+                                      apr_pool_t *pool)
+{
+    abort();
+    return NULL;
+}
+
+static apr_status_t handle_response(serf_bucket_t *response,
+                                    void *handler_baton,
+                                    apr_pool_t *pool)
+{
+    abort();
+    return APR_SUCCESS;
+}
+
 int main(int argc, const char **argv)
 {
     apr_status_t status;
     apr_pool_t *pool;
+    apr_sockaddr_t *address;
+    serf_context_t *context;
     serf_connection_t *connection;
     serf_request_t *request;
-    serf_response_t *response;
+    serf_bucket_t *req_bkt;
+#if 0
     serf_filter_t *filter;
-    apr_uri_t *url;
+#endif /* 0 */
+    apr_uri_t url;
     const char *raw_url;
+#if 0
     int using_ssl = 0;
-   
+#endif /* 0 */
+
     if (argc != 2) {
         puts("Gimme a URL, stupid!");
         exit(-1);
@@ -294,6 +335,7 @@ int main(int argc, const char **argv)
     apr_pool_create(&pool, NULL);
     /* serf_initialize(); */
 
+#if 0
     serf_register_filter("SOCKET_WRITE", serf_socket_write, pool);
     serf_register_filter("SOCKET_READ", serf_socket_read, pool);
 
@@ -319,23 +361,60 @@ int main(int argc, const char **argv)
     /*
     serf_register_filter("DEFLATE_READ", serf_deflate_read, pool);
     */
+#endif /* 0 */
 
-    url = apr_palloc(pool, sizeof(apr_uri_t));
-    apr_uri_parse(pool, raw_url, url);
-    if (!url->port) {
-        url->port = apr_uri_default_port_for_scheme(url->scheme);
+    apr_uri_parse(pool, raw_url, &url);
+    if (!url.port) {
+        url.port = apr_uri_port_of_scheme(url.scheme);
     }
 #if SERF_HAS_OPENSSL
-    if (strcasecmp(url->scheme, "https") == 0) {
+    if (strcasecmp(url.scheme, "https") == 0) {
         using_ssl = 1;
     }
 #endif
 
+    status = apr_sockaddr_info_get(&address,
+                                   url.hostname, APR_UNSPEC, url.port, 0,
+                                   pool);
+    if (status) {
+        printf("Error creating address: %d\n", status);
+        exit(1);
+    }
+
+    context = serf_context_create(pool);
+
+    connection = serf_connection_create(context, address,
+                                        closed_connection, NULL, pool);
+    request = serf_connection_request_create(connection);
+
+    req_bkt = serf_bucket_request_create("GET", url.path, NULL,
+                                         serf_request_get_alloc(request));
+
+#if 0
+    serf_bucket_set_metadata(request, SERF_REQUEST_HEADERS, "User-Agent",
+                             "Serf" SERF_VERSION_STRING);
+#endif /* 0 */
+
+    serf_request_deliver(request, req_bkt,
+                         accept_response, NULL,
+                         handle_response, NULL);
+
+    while (1) {
+        status = serf_context_run(context, SERF_DURATION_FOREVER, pool);
+        if (APR_STATUS_IS_TIMEUP(status))
+            continue;
+        if (status) {
+            printf("Error running context: %d\n", status);
+            exit(1);
+        }
+    }
+
+#if 0
     status = serf_open_uri(url, &connection, &request, pool);
 
     if (status) {
-        printf("Error: %d\n", status);
-        exit(status);
+        printf("Error opening uri: %d\n", status);
+        exit(1);
     }
 
     request->source = http_source;
@@ -392,23 +471,24 @@ int main(int argc, const char **argv)
 
     status = serf_open_connection(connection);
     if (status) {
-        printf("Error: %d\n", status);
-        exit(status);
+        printf("Error opening connection: %d\n", status);
+        exit(1);
     }
 
     status = serf_write_request(request, connection);
 
     if (status) {
-        printf("Error: %d\n", status);
-        exit(status);
+        printf("Error writing request: %d\n", status);
+        exit(1);
     }
 
     status = serf_read_response(&response, connection, pool);
 
     if (status) {
-        printf("Error: %d\n", status);
-        exit(status);
+        printf("Error reading response: %d\n", status);
+        exit(1);
     }
- 
+#endif /* 0 */
+
     return 0;
 }

@@ -1,7 +1,7 @@
 /* ====================================================================
  * The Apache Software License, Version 1.1
  *
- * Copyright (c) 2002 The Apache Software Foundation.  All rights
+ * Copyright (c) 2003 The Apache Software Foundation.  All rights
  * reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -49,64 +49,83 @@
  */
 
 #include <apr_pools.h>
-#include <apr_strings.h>
-#include <apr_buckets.h>
+#include <apr_mmap.h>
 
-#include "serf_buckets.h"
+#include "serf.h"
+#include "serf_bucket_util.h"
 
-static apr_status_t status_bucket_read(apr_bucket *b, const char **str,
-                                       apr_size_t *len, apr_read_type_e block)
+
+typedef struct {
+    apr_mmap_t *mmap;
+    void *current;
+    apr_off_t offset;
+    apr_off_t remaining;
+} mmap_context_t;
+
+
+SERF_DECLARE(serf_bucket_t *) serf_bucket_mmap_create(
+    apr_mmap_t *file_mmap,
+    serf_bucket_alloc_t *allocator)
 {
-    serf_bucket_status *s = b->data;
+    mmap_context_t *ctx;
 
-    *str = s->status_line;
-    *len = strlen(s->status_line);
+    ctx = serf_bucket_mem_alloc(allocator, sizeof(*ctx));
+    ctx->mmap = file_mmap;
+    ctx->current = NULL;
+    ctx->offset = 0;
+    ctx->remaining = ctx->mmap->size;
+
+    return serf_bucket_create(&serf_bucket_type_simple, allocator, ctx);
+}
+
+static apr_status_t serf_mmap_read(serf_bucket_t *bucket,
+                                     apr_size_t requested,
+                                     const char **data, apr_size_t *len)
+{
+    mmap_context_t *ctx = bucket->data;
+
+    if (requested == SERF_READ_ALL_AVAIL || requested > ctx->remaining) {
+        *len = ctx->remaining;
+    }
+
+    /* ### Would it be faster to call this once and do the offset ourselves? */
+    apr_mmap_offset((void**)data, ctx->mmap, ctx->offset);
+
+    /* For the next read... */
+    ctx->offset += *len;
+    ctx->remaining -= *len;
+
+    if (ctx->remaining == 0) {
+        return APR_EOF;
+    }
     return APR_SUCCESS;
 }
 
-static void status_bucket_destroy(void *data)
+static apr_status_t serf_mmap_readline(serf_bucket_t *bucket,
+                                         int acceptable, int *found,
+                                         const char **data, apr_size_t *len)
 {
-    serf_bucket_status *bucket = data;
-
-    if (apr_bucket_shared_destroy(bucket)) {
-        apr_bucket_free(bucket);
-    }
+    /* ### need our utility function... */
+    return APR_ENOTIMPL;
 }
 
-SERF_DECLARE(apr_bucket *) serf_bucket_status_make(apr_bucket *b,
-                                                   int status,
-                                                   const char *status_line,
-                                                   apr_pool_t *pool)
+static apr_status_t serf_mmap_peek(serf_bucket_t *bucket,
+                                     const char **data,
+                                     apr_size_t *len)
 {
-    serf_bucket_status *bucket;
-
-    bucket = apr_bucket_alloc(sizeof(*bucket), b->list);
-    bucket->status = status;
-    bucket->status_line = (status_line) ? apr_pstrdup(pool, status_line) : NULL;
-
-    b = apr_bucket_shared_make(b, bucket, 0, 0);
-    b->type = &serf_bucket_status_type;
-    return b;
+    /* Oh, bah. */
+    return APR_ENOTIMPL;
 }
 
-SERF_DECLARE(apr_bucket *) serf_bucket_status_create(int status,
-                                                    const char *status_line,
-                                                    apr_pool_t *pool,
-                                                    apr_bucket_alloc_t *list)
-{
-    apr_bucket *b = apr_bucket_alloc(sizeof(*b), list);
-
-    APR_BUCKET_INIT(b);
-    b->free = apr_bucket_free;
-    b->list = list;
-    return serf_bucket_status_make(b, status, status_line, pool);
-}
-
-SERF_DECLARE_DATA const apr_bucket_type_t serf_bucket_status_type = {
-    "STATUS", 5, APR_BUCKET_METADATA,
-    status_bucket_destroy,
-    status_bucket_read,
-    apr_bucket_setaside_notimpl,
-    apr_bucket_split_notimpl,
-    apr_bucket_shared_copy
+SERF_DECLARE_DATA const serf_bucket_type_t serf_bucket_type_mmap = {
+    "MMAP",
+    serf_mmap_read,
+    serf_mmap_readline,
+    serf_default_read_iovec,
+    serf_default_read_for_sendfile,
+    serf_default_read_bucket,
+    serf_mmap_peek,
+    serf_default_get_metadata,
+    serf_default_set_metadata,
+    serf_default_destroy_and_data,
 };

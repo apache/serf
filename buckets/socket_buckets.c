@@ -1,7 +1,7 @@
 /* ====================================================================
  * The Apache Software License, Version 1.1
  *
- * Copyright (c) 2002 The Apache Software Foundation.  All rights
+ * Copyright (c) 2003 The Apache Software Foundation.  All rights
  * reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -48,36 +48,83 @@
  *
  */
 
+#include <apr_pools.h>
+#include <apr_network_io.h>
+
 #include "serf.h"
+#include "serf_bucket_util.h"
 
-SERF_DECLARE(apr_status_t) serf_open_uri(apr_uri_t *url,
-                                         serf_connection_t **conn,
-                                         serf_request_t **request,
-                                         apr_pool_t *pool)
+
+typedef struct {
+    apr_socket_t *skt;
+
+    serf_databuf_t databuf;
+
+} socket_context_t;
+
+
+static apr_status_t socket_reader(void *baton, apr_size_t bufsize,
+                                  char *buf, apr_size_t *len)
 {
-    apr_status_t status;
-    serf_connection_t *new_conn;
-    serf_request_t *new_req;
+    socket_context_t *ctx = baton;
 
-    new_conn = serf_create_connection(pool);
-    new_req = serf_create_request(pool);
-
-    status = apr_sockaddr_info_get(&new_conn->address, url->hostname,
-                                   APR_INET, url->port, 0, pool);
-
-    if (status) {
-        return status;
-    }
-
-    status = apr_socket_create(&new_conn->socket, APR_INET, SOCK_STREAM,
-                               APR_PROTO_TCP, pool);
-
-    if (status) {
-        return status;
-    }
-
-    *conn = new_conn;
-    *request = new_req;
-
-    return APR_SUCCESS;
+    *len = bufsize;
+    return apr_socket_recv(ctx->skt, buf, len);
 }
+
+SERF_DECLARE(serf_bucket_t *) serf_bucket_socket_create(
+    apr_socket_t *skt,
+    serf_bucket_alloc_t *allocator)
+{
+    socket_context_t *ctx;
+
+    /* Oh, well. */
+    ctx = serf_bucket_mem_alloc(allocator, sizeof(*ctx));
+    ctx->skt = skt;
+
+    serf_databuf_init(&ctx->databuf);
+    ctx->databuf.read = socket_reader;
+    ctx->databuf.read_baton = ctx;
+
+    return serf_bucket_create(&serf_bucket_type_socket, allocator, ctx);
+}
+
+static apr_status_t serf_socket_read(serf_bucket_t *bucket,
+                                     apr_size_t requested,
+                                     const char **data, apr_size_t *len)
+{
+    socket_context_t *ctx = bucket->data;
+
+    return serf_databuf_read(&ctx->databuf, requested, data, len);
+}
+
+static apr_status_t serf_socket_readline(serf_bucket_t *bucket,
+                                         int acceptable, int *found,
+                                         const char **data, apr_size_t *len)
+{
+    socket_context_t *ctx = bucket->data;
+
+    return serf_databuf_readline(&ctx->databuf, acceptable, found, data, len);
+}
+
+static apr_status_t serf_socket_peek(serf_bucket_t *bucket,
+                                     const char **data,
+                                     apr_size_t *len)
+{
+    socket_context_t *ctx = bucket->data;
+
+    return serf_databuf_peek(&ctx->databuf, data, len);
+}
+
+SERF_DECLARE_DATA const serf_bucket_type_t serf_bucket_type_socket = {
+    "SOCKET",
+    serf_socket_read,
+    serf_socket_readline,
+    serf_default_read_iovec,
+    serf_default_read_for_sendfile,
+    serf_default_read_bucket,
+    serf_socket_peek,
+    serf_default_get_metadata,
+    serf_default_set_metadata,
+    serf_default_destroy_and_data,
+};
