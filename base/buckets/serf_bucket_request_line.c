@@ -54,69 +54,66 @@
 
 #include "serf_buckets.h"
 
-static apr_status_t authentication_bucket_read(apr_bucket *b, const char **str,
-                                               apr_size_t *len,
-                                               apr_read_type_e block)
+static apr_status_t request_line_bucket_read(apr_bucket *b, const char **str,
+                                             apr_size_t *len,
+                                             apr_read_type_e block)
 {
-    serf_bucket_authentication *auth = b->data;
-    struct iovec vec[3];
-    
-    vec[0].iov_base = (void*)auth->user;
-    vec[0].iov_len  = strlen(auth->user);
-    vec[1].iov_base = (void*)":";
-    vec[1].iov_len  = sizeof(":") - 1;
-    vec[2].iov_base = (void*)auth->password;
-    vec[2].iov_len  = strlen(auth->password);
- 
-    *str = apr_pstrcatv(auth->pool, vec, 3, len);
+    serf_bucket_request_line *s = b->data;
+
+    *str = s->full_line;
+    *len = strlen(s->full_line);
     return APR_SUCCESS;
 }
 
-static void authentication_bucket_destroy(void *data)
+static void request_line_bucket_destroy(void *data)
 {
-    serf_bucket_status *bucket = data;
+    serf_bucket_request_line *bucket = data;
 
     if (apr_bucket_shared_destroy(bucket)) {
         apr_bucket_free(bucket);
     }
 }
 
-SERF_DECLARE(apr_bucket *) serf_bucket_authentication_make(apr_bucket *b,
-                                                           const char *user,
-                                                           const char *password,
-                                                           apr_pool_t *pool)
+SERF_DECLARE(apr_bucket *) serf_bucket_request_line_make(apr_bucket *b,
+                                                         const char *method,
+                                                         const char *path,
+                                                         const char *version,
+                                                         apr_pool_t *pool)
 {
-    serf_bucket_authentication *bucket;
+    serf_bucket_request_line *bucket;
 
     bucket = apr_bucket_alloc(sizeof(*bucket), b->list);
-    bucket->user = (user) ? apr_pstrdup(pool, user) : NULL;
-    bucket->password = (password) ? apr_pstrdup(pool, password) : NULL;
-    /* FIXME: Make this a subpool? */
-    bucket->pool = pool;
+    bucket->method = method ? apr_pstrdup(pool, method) : NULL;
+    bucket->path = path ? apr_pstrdup(pool, path) : NULL;
+    bucket->version = version ? apr_pstrdup(pool, version) : NULL;
+    bucket->full_line = apr_psprintf(pool, "%s %s %s",
+                                     bucket->method, bucket->path,
+                                     bucket->version);
 
     b = apr_bucket_shared_make(b, bucket, 0, 0);
-    b->type = &serf_bucket_authentication_type;
-
+    b->type = &serf_bucket_request_line_type;
     return b;
 }
 
-SERF_DECLARE(apr_bucket *) serf_bucket_authentication_create(const char *user,
-                                                     const char *password,
-                                                     apr_pool_t *pool,
-                                                     apr_bucket_alloc_t *list)
+SERF_DECLARE(apr_bucket *) serf_bucket_request_line_create(
+                                                    const char *method,
+                                                    const char *path,
+                                                    const char *version,
+                                                    apr_pool_t *pool,
+                                                    apr_bucket_alloc_t *list)
 {
     apr_bucket *b = apr_bucket_alloc(sizeof(*b), list);
 
     APR_BUCKET_INIT(b);
     b->free = apr_bucket_free;
     b->list = list;
-    return serf_bucket_authentication_make(b, user, password, pool);
+    return serf_bucket_request_line_make(b, method, path, version, pool);
 }
 
-SERF_DECLARE_DATA const apr_bucket_type_t serf_bucket_authentication_type = {
-    "AUTHENTICATION", 5, APR_BUCKET_METADATA,
-    authentication_bucket_destroy,
-    authentication_bucket_read,
+SERF_DECLARE_DATA const apr_bucket_type_t serf_bucket_request_line_type = {
+    "REQUEST_LINE", 5, APR_BUCKET_METADATA,
+    request_line_bucket_destroy,
+    request_line_bucket_read,
     apr_bucket_setaside_notimpl,
     apr_bucket_split_notimpl,
     apr_bucket_shared_copy

@@ -5,5 +5,14 @@ CFLAGS=@CFLAGS@
 LDFLAGS=@LDFLAGS@ @LIBTOOL_LDFLAGS@
 LIBS=@LIBS@ @LIBTOOL_LIBS@
 LIBTOOL=@LIBTOOL@
+LIBTOOL_LIBS=@LIBTOOL_LIBS@
 
 LTFLAGS=@LTFLAGS@
+
+# prefix information
+prefix=@prefix@
+exec_prefix=@exec_prefix@
+bindir=@bindir@
+sbindir=@sbindir@
+libdir=@libdir@
+includedir=@includedir@

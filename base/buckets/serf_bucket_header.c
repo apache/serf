@@ -112,7 +112,7 @@ SERF_DECLARE(apr_bucket *) serf_bucket_header_create(const char *key,
     return serf_bucket_header_make(b, key, value, pool);
 }
 
-SERF_DECLARE_DATA const apr_bucket_type_t serf_bucket_status_type = {
+SERF_DECLARE_DATA const apr_bucket_type_t serf_bucket_header_type = {
     "HEADER", 5, APR_BUCKET_METADATA,
     header_bucket_destroy,
     header_bucket_read,

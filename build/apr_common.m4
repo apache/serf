@@ -14,6 +14,9 @@ AC_DEFUN(APR_CONFIG_NICE,[
 # Created by configure
 
 EOF
+  if test -n "$CC"; then
+    echo "CC=\"$CC\"; export CC" >> $1
+  fi
   if test -n "$CFLAGS"; then
     echo "CFLAGS=\"$CFLAGS\"; export CFLAGS" >> $1
   fi
@@ -43,11 +46,32 @@ EOF
   fi
 
   for arg in [$]0 "[$]@"; do
+    APR_EXPAND_VAR(arg, $arg)
     echo "\"[$]arg\" \\" >> $1
   done
   echo '"[$]@"' >> $1
   chmod +x $1
 ])dnl
+
+dnl APR_MKDIR_P_CHECK(fallback-mkdir-p)
+dnl checks whether mkdir -p works
+AC_DEFUN(APR_MKDIR_P_CHECK,[
+  AC_CACHE_CHECK(for working mkdir -p, ac_cv_mkdir_p,[
+    test -d conftestdir && rm -rf conftestdir
+    mkdir -p conftestdir/somedir >/dev/null 2>&1
+    if test -d conftestdir/somedir; then
+      ac_cv_mkdir_p=yes
+    else
+      ac_cv_mkdir_p=no
+    fi
+    rm -rf conftestdir
+  ])
+  if test "$ac_cv_mkdir_p" = "yes"; then
+      mkdir_p="mkdir -p"
+  else
+      mkdir_p="$1"
+  fi
+])
 
 dnl
 dnl APR_SUBDIR_CONFIG(dir [, sub-package-cmdline-args])
@@ -58,9 +82,9 @@ AC_DEFUN(APR_SUBDIR_CONFIG, [
 
   echo "configuring package in $1 now"
   ac_popdir=`pwd`
-  ac_abs_srcdir=`(cd $srcdir/$1 && pwd)`
   apr_config_subdirs="$1"
-  test -d $1 || $MKDIR $1
+  test -d $1 || $mkdir_p $1
+  ac_abs_srcdir=`(cd $srcdir/$1 && pwd)`
   cd $1
 
 changequote(, )dnl
@@ -225,7 +249,7 @@ AC_DEFUN(APR_CHECK_DEFINE_FILES,[
 
 
 dnl
-dnl APR_CHECK_DEFINE( symbol, header_file )
+dnl APR_CHECK_DEFINE( symbol, header_file [, description ])
 dnl
 AC_DEFUN(APR_CHECK_DEFINE,[
   AC_CACHE_CHECK([for $1 in $2],ac_cv_define_$1,[
@@ -237,7 +261,7 @@ AC_DEFUN(APR_CHECK_DEFINE,[
     ], ac_cv_define_$1=yes, ac_cv_define_$1=no)
   ])
   if test "$ac_cv_define_$1" = "yes"; then
-    AC_DEFINE(HAVE_$1)
+    AC_DEFINE(HAVE_$1, 1, [$3])
   fi
 ])
 
@@ -399,7 +423,7 @@ AC_DEFUN(APR_TRY_COMPILE_NO_WARNING,
 else
   apr_tcnw_flags=$CFLAGS_WARN
 fi
-if test "$GCC" = "yes"; then 
+if test "$ac_cv_prog_gcc" = "yes"; then 
   apr_tcnw_flags="$apr_tcnw_flags -Werror"
 fi
 changequote(', ')
@@ -459,35 +483,57 @@ fi
 AC_MSG_RESULT([$msg])
 ] )
 dnl
-dnl APR_CHECK_ICONV_INBUF
+dnl APR_CHECK_CRYPT_R_STYLE
 dnl
-dnl  Decide whether or not the inbuf parameter to iconv() is const.
+dnl  Decide which of a couple of flavors of crypt_r() is necessary for
+dnl  this platform.
 dnl
-dnl  We try to compile something without const.  If it fails to 
-dnl  compile, we assume that the system's iconv() has const.  
-dnl  Unfortunately, we won't realize when there was a compile
-dnl  warning, so we allow a variable -- apr_iconv_inbuf_const -- to
-dnl  be set in hints.m4 to specify whether or not iconv() has const
-dnl  on this parameter.
+AC_DEFUN(APR_CHECK_CRYPT_R_STYLE,[
+AC_CACHE_CHECK(style of crypt_r, ac_cv_crypt_r_style,[
 dnl
-AC_DEFUN(APR_CHECK_ICONV_INBUF,[
-AC_MSG_CHECKING(for type of inbuf parameter to iconv)
-if test "x$apr_iconv_inbuf_const" = "x"; then
-    APR_TRY_COMPILE_NO_WARNING([
-    #include <stddef.h>
-    #include <iconv.h>
-    ],[
-    iconv(0,(char **)0,(size_t *)0,(char **)0,(size_t *)0);
-    ], apr_iconv_inbuf_const="0", apr_iconv_inbuf_const="1")
+ac_cv_crypt_r_style=none
+dnl
+AC_TRY_COMPILE([
+#include <crypt.h>
+],[
+CRYPTD buffer;
+crypt_r("passwd", "hash", &buffer);
+], ac_cv_crypt_r_style=cryptd)
+dnl
+if test "$ac_cv_crypt_r_style" = "none"; then
+AC_TRY_COMPILE([
+#include <crypt.h>
+],[
+struct crypt_data buffer;
+crypt_r("passwd", "hash", &buffer);
+], ac_cv_crypt_r_style=struct_crypt_data)
 fi
-if test "$apr_iconv_inbuf_const" = "1"; then
-    AC_DEFINE(APR_ICONV_INBUF_CONST, 1, [Define if the inbuf parm to iconv() is const char **])
-    msg="const char **"
-else
-    msg="char **"
+dnl
+if test "$ac_cv_crypt_r_style" = "none"; then
+dnl same as previous test, but see if defining _GNU_SOURCE helps
+AC_TRY_COMPILE([
+#define _GNU_SOURCE
+#include <crypt.h>
+],[
+struct crypt_data buffer;
+crypt_r("passwd", "hash", &buffer);
+], ac_cv_crypt_r_style=struct_crypt_data_gnu_source)
 fi
-AC_MSG_RESULT([$msg])
-])dnl
+dnl
+])
+if test "$ac_cv_crypt_r_style" = "cryptd"; then
+    AC_DEFINE(CRYPT_R_CRYPTD, 1, [Define if crypt_r has uses CRYPTD])
+fi
+dnl if we don't combine these conditions, CRYPT_R_STRUCT_CRYPT_DATA
+dnl will end up defined twice
+if test "$ac_cv_crypt_r_style" = "struct_crypt_data" -o \
+   "$ac_cv_crypt_r_style" = "struct_crypt_data_gnu_source"; then
+    AC_DEFINE(CRYPT_R_STRUCT_CRYPT_DATA, 1, [Define if crypt_r uses struct crypt_data])
+fi
+if test "$ac_cv_crypt_r_style" = "struct_crypt_data_gnu_source"; then
+    APR_ADDTO(CPPFLAGS, [-D_GNU_SOURCE])
+fi
+])
 
 
 dnl the following is a newline, a space, a tab, and a backslash (the
@@ -600,3 +646,203 @@ else
 fi
 ])
 
+dnl APR_HELP_STRING(LHS, RHS)
+dnl Autoconf 2.50 can not handle substr correctly.  It does have 
+dnl AC_HELP_STRING, so let's try to call it if we can.
+dnl Note: this define must be on one line so that it can be properly returned
+dnl as the help string.  When using this macro with a multi-line RHS, ensure
+dnl that you surround the macro invocation with []s
+AC_DEFUN(APR_HELP_STRING,[ifelse(regexp(AC_ACVERSION, 2\.1), -1, AC_HELP_STRING([$1],[$2]),[  ][$1] substr([                       ],len($1))[$2])])
+
+dnl
+dnl APR_LAYOUT(configlayout, layoutname)
+dnl
+AC_DEFUN(APR_LAYOUT,[
+  if test ! -f $srcdir/config.layout; then
+    echo "** Error: Layout file $srcdir/config.layout not found"
+    echo "** Error: Cannot use undefined layout '$LAYOUT'"
+    exit 1
+  fi
+  pldconf=./config.pld
+  changequote({,})
+  sed -e "1,/[ 	]*<[lL]ayout[ 	]*$2[ 	]*>[ 	]*/d" \
+      -e '/[ 	]*<\/Layout>[ 	]*/,$d' \
+      -e "s/^[ 	]*//g" \
+      -e "s/:[ 	]*/=\'/g" \
+      -e "s/[ 	]*$/'/g" \
+      $1 > $pldconf
+  layout_name=$2
+  . $pldconf
+  rm $pldconf
+  for var in prefix exec_prefix bindir sbindir libexecdir mandir \
+             sysconfdir datadir  \
+             includedir localstatedir runtimedir logfiledir libdir \
+             installbuilddir libsuffix; do
+    eval "val=\"\$$var\""
+    case $val in
+      *+)
+        val=`echo $val | sed -e 's;\+$;;'`
+        eval "$var=\"\$val\""
+        autosuffix=yes
+        ;;
+      *)
+        autosuffix=no
+        ;;
+    esac
+    val=`echo $val | sed -e 's:\(.\)/*$:\1:'`
+    val=`echo $val | sed -e 's:[\$]\([a-z_]*\):${\1}:g'`
+    if test "$autosuffix" = "yes"; then
+      if echo $val | grep apache >/dev/null; then
+        addtarget=no
+      else
+        addtarget=yes
+      fi
+      if test "$addtarget" = "yes"; then
+        val="$val/apache2"
+      fi
+    fi
+    eval "$var='$val'"
+  done
+  changequote([,])
+])dnl
+
+dnl
+dnl APR_ENABLE_LAYOUT(default layout name)
+dnl
+AC_DEFUN(APR_ENABLE_LAYOUT,[
+AC_ARG_ENABLE(layout,
+[  --enable-layout=LAYOUT],[
+  LAYOUT=$enableval
+])
+
+if test -z "$LAYOUT"; then
+  LAYOUT="$1"
+fi
+APR_LAYOUT($srcdir/config.layout, $LAYOUT)
+
+AC_MSG_CHECKING(for chosen layout)
+AC_MSG_RESULT($layout_name)
+])
+
+
+dnl
+dnl APR_PARSE_ARGUMENTS
+dnl a reimplementation of autoconf's argument parser,
+dnl used here to allow us to co-exist layouts and argument based
+dnl set ups.
+AC_DEFUN(APR_PARSE_ARGUMENTS,[
+ac_prev=
+for ac_option
+do
+  # If the previous option needs an argument, assign it.
+  if test -n "$ac_prev"; then
+    eval "$ac_prev=\$ac_option"
+    ac_prev=
+    continue
+  fi
+
+  ac_optarg=`expr "x$ac_option" : 'x[[^=]]*=\(.*\)'`
+
+  case $ac_option in
+
+  -bindir | --bindir | --bindi | --bind | --bin | --bi)
+    ac_prev=bindir ;;
+  -bindir=* | --bindir=* | --bindi=* | --bind=* | --bin=* | --bi=*)
+    bindir="$ac_optarg" ;;
+
+  -datadir | --datadir | --datadi | --datad | --data | --dat | --da)
+    ac_prev=datadir ;;
+  -datadir=* | --datadir=* | --datadi=* | --datad=* | --data=* | --dat=* \
+  | --da=*)
+    datadir="$ac_optarg" ;;
+
+  -exec-prefix | --exec_prefix | --exec-prefix | --exec-prefi \
+  | --exec-pref | --exec-pre | --exec-pr | --exec-p | --exec- \
+  | --exec | --exe | --ex)
+    ac_prev=exec_prefix ;;
+  -exec-prefix=* | --exec_prefix=* | --exec-prefix=* | --exec-prefi=* \
+  | --exec-pref=* | --exec-pre=* | --exec-pr=* | --exec-p=* | --exec-=* \
+  | --exec=* | --exe=* | --ex=*)
+    exec_prefix="$ac_optarg" ;;
+
+  -includedir | --includedir | --includedi | --included | --include \
+  | --includ | --inclu | --incl | --inc)
+    ac_prev=includedir ;;
+  -includedir=* | --includedir=* | --includedi=* | --included=* | --include=* \
+  | --includ=* | --inclu=* | --incl=* | --inc=*)
+    includedir="$ac_optarg" ;;
+
+  -infodir | --infodir | --infodi | --infod | --info | --inf)
+    ac_prev=infodir ;;
+  -infodir=* | --infodir=* | --infodi=* | --infod=* | --info=* | --inf=*)
+    infodir="$ac_optarg" ;;
+
+  -libdir | --libdir | --libdi | --libd)
+    ac_prev=libdir ;;
+  -libdir=* | --libdir=* | --libdi=* | --libd=*)
+    libdir="$ac_optarg" ;;
+
+  -libexecdir | --libexecdir | --libexecdi | --libexecd | --libexec \
+  | --libexe | --libex | --libe)
+    ac_prev=libexecdir ;;
+  -libexecdir=* | --libexecdir=* | --libexecdi=* | --libexecd=* | --libexec=* \
+  | --libexe=* | --libex=* | --libe=*)
+    libexecdir="$ac_optarg" ;;
+
+  -localstatedir | --localstatedir | --localstatedi | --localstated \
+  | --localstate | --localstat | --localsta | --localst \
+  | --locals | --local | --loca | --loc | --lo)
+    ac_prev=localstatedir ;;
+  -localstatedir=* | --localstatedir=* | --localstatedi=* | --localstated=* \
+  | --localstate=* | --localstat=* | --localsta=* | --localst=* \
+  | --locals=* | --local=* | --loca=* | --loc=* | --lo=*)
+    localstatedir="$ac_optarg" ;;
+
+  -mandir | --mandir | --mandi | --mand | --man | --ma | --m)
+    ac_prev=mandir ;;
+  -mandir=* | --mandir=* | --mandi=* | --mand=* | --man=* | --ma=* | --m=*)
+    mandir="$ac_optarg" ;;
+
+  -prefix | --prefix | --prefi | --pref | --pre | --pr | --p)
+    ac_prev=prefix ;;
+  -prefix=* | --prefix=* | --prefi=* | --pref=* | --pre=* | --pr=* | --p=*)
+    prefix="$ac_optarg" ;;
+
+  -sbindir | --sbindir | --sbindi | --sbind | --sbin | --sbi | --sb)
+    ac_prev=sbindir ;;
+  -sbindir=* | --sbindir=* | --sbindi=* | --sbind=* | --sbin=* \
+  | --sbi=* | --sb=*)
+    sbindir="$ac_optarg" ;;
+
+  -sharedstatedir | --sharedstatedir | --sharedstatedi \
+  | --sharedstated | --sharedstate | --sharedstat | --sharedsta \
+  | --sharedst | --shareds | --shared | --share | --shar \
+  | --sha | --sh)
+    ac_prev=sharedstatedir ;;
+  -sharedstatedir=* | --sharedstatedir=* | --sharedstatedi=* \
+  | --sharedstated=* | --sharedstate=* | --sharedstat=* | --sharedsta=* \
+  | --sharedst=* | --shareds=* | --shared=* | --share=* | --shar=* \
+  | --sha=* | --sh=*)
+    sharedstatedir="$ac_optarg" ;;
+
+  -sysconfdir | --sysconfdir | --sysconfdi | --sysconfd | --sysconf \
+  | --syscon | --sysco | --sysc | --sys | --sy)
+    ac_prev=sysconfdir ;;
+  -sysconfdir=* | --sysconfdir=* | --sysconfdi=* | --sysconfd=* | --sysconf=* \
+  | --syscon=* | --sysco=* | --sysc=* | --sys=* | --sy=*)
+    sysconfdir="$ac_optarg" ;;
+
+  esac
+done
+
+# Be sure to have absolute paths.
+for ac_var in exec_prefix prefix
+do
+  eval ac_val=$`echo $ac_var`
+  case $ac_val in
+    [[\\/$]]* | ?:[[\\/]]* | NONE | '' ) ;;
+    *)  AC_MSG_ERROR([expected an absolute path for --$ac_var: $ac_val]);;
+  esac
+done
+
+])dnl

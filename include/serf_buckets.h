@@ -62,6 +62,63 @@
 extern "C" {
 #endif
 
+/* Represents a request line.
+ *
+ * On apr_bucket_read, it returns: "METHOD PATH VERSION"
+ */
+struct serf_bucket_request_line {
+    /** Number of buckets using this memory */
+    apr_bucket_refcount refcount;
+    /** Method */
+    const char *method;
+    /** Path component */
+    const char *path;
+    /** Version */
+    const char *version;
+    /** FULL line (cached) */
+    const char *full_line;
+};
+typedef struct serf_bucket_request_line serf_bucket_request_line;
+SERF_DECLARE_DATA extern const apr_bucket_type_t serf_bucket_request_line_type;
+
+/**
+ * Determine if a bucket is a request_line bucket
+ * @param e The bucket to inspect
+ * @return true or false
+ */
+#define SERF_BUCKET_IS_REQUEST_LINE(e) \
+     (e->type == &serf_bucket_request_line_type)
+
+/**
+ * Make the bucket passed in a request_line bucket
+ * @param b The bucket to make into a request_line bucket
+ * @param method Method string
+ * @param path Path component
+ * @param version Version component
+ * @param pool A pool to allocate out of
+ * @return The new bucket, or NULL if allocation failed
+ */
+SERF_DECLARE(apr_bucket *) serf_bucket_request_line_make(apr_bucket *b,
+                                                         const char *method,
+                                                         const char *path,
+                                                         const char *version,
+                                                         apr_pool_t *pool);
+
+/**
+ * Create a bucket referring to request_line information
+ * @param method Method string
+ * @param path Path component
+ * @param version Version component
+ * @param pool A pool to allocate out of
+ * @param list The bucket allocator from which to allocate the bucket
+ * @return The new bucket, or NULL if allocation failed
+ */
+SERF_DECLARE(apr_bucket *) serf_bucket_request_line_create(const char *method,
+                                                           const char *path,
+                                                           const char *version,
+                                                           apr_pool_t *pool,
+                                                     apr_bucket_alloc_t *list);
+
 /* Represents a response status code.
  *
  * On apr_bucket_read, it returns: "status_line"

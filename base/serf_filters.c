@@ -48,76 +48,97 @@
  *
  */
 
-#include <apr_pools.h>
-#include <apr_strings.h>
-#include <apr_buckets.h>
+#include "serf.h"
 
-#include "serf_buckets.h"
+#include <apr_ring.h>
+#include <apr_hash.h>
 
-static apr_status_t authentication_bucket_read(apr_bucket *b, const char **str,
-                                               apr_size_t *len,
-                                               apr_read_type_e block)
+static apr_hash_t *registered_filters = NULL;
+
+static apr_status_t filter_type_cleanup(void *ctx)
 {
-    serf_bucket_authentication *auth = b->data;
-    struct iovec vec[3];
-    
-    vec[0].iov_base = (void*)auth->user;
-    vec[0].iov_len  = strlen(auth->user);
-    vec[1].iov_base = (void*)":";
-    vec[1].iov_len  = sizeof(":") - 1;
-    vec[2].iov_base = (void*)auth->password;
-    vec[2].iov_len  = strlen(auth->password);
- 
-    *str = apr_pstrcatv(auth->pool, vec, 3, len);
+    registered_filters = NULL; 
     return APR_SUCCESS;
 }
 
-static void authentication_bucket_destroy(void *data)
+SERF_DECLARE(serf_filter_list_t*) serf_create_filter_list(apr_pool_t *pool)
 {
-    serf_bucket_status *bucket = data;
+    serf_filter_list_t *filters;
 
-    if (apr_bucket_shared_destroy(bucket)) {
-        apr_bucket_free(bucket);
+    filters = apr_palloc(pool, sizeof(serf_filter_list_t));
+
+    APR_RING_INIT(&filters->list, serf_filter_t, link);
+
+    return filters;
+}
+
+SERF_DECLARE(apr_status_t) serf_execute_filters(serf_filter_list_t *filters,
+                                                apr_bucket_brigade *brigade,
+                                                apr_pool_t *pool)
+{
+    apr_status_t status;
+    serf_filter_t *filter;
+
+    APR_RING_FOREACH(filter, &filters->list, serf_filter_t, link) {
+        status = filter->type->func(brigade, filter, pool);
+        if (status) {
+            return status;
+        }
     }
+
+    return APR_SUCCESS;
 }
 
-SERF_DECLARE(apr_bucket *) serf_bucket_authentication_make(apr_bucket *b,
-                                                           const char *user,
-                                                           const char *password,
-                                                           apr_pool_t *pool)
+SERF_DECLARE(serf_filter_type_t*) serf_register_filter(const char *name,
+                                                       serf_filter_func_t func,
+                                                       apr_pool_t *pool)
 {
-    serf_bucket_authentication *bucket;
+    serf_filter_type_t *new_type;
 
-    bucket = apr_bucket_alloc(sizeof(*bucket), b->list);
-    bucket->user = (user) ? apr_pstrdup(pool, user) : NULL;
-    bucket->password = (password) ? apr_pstrdup(pool, password) : NULL;
-    /* FIXME: Make this a subpool? */
-    bucket->pool = pool;
+    if (registered_filters == NULL) {
+        registered_filters = apr_hash_make(pool);
+        apr_pool_cleanup_register(pool, NULL, filter_type_cleanup,
+                                  apr_pool_cleanup_null);
+    }
 
-    b = apr_bucket_shared_make(b, bucket, 0, 0);
-    b->type = &serf_bucket_authentication_type;
+    new_type = apr_palloc(pool, sizeof(serf_filter_type_t));
 
-    return b;
+    new_type->name = name;
+    new_type->func = func;
+
+    apr_hash_set(registered_filters, name, APR_HASH_KEY_STRING, new_type);
+
+    return new_type;
 }
 
-SERF_DECLARE(apr_bucket *) serf_bucket_authentication_create(const char *user,
-                                                     const char *password,
-                                                     apr_pool_t *pool,
-                                                     apr_bucket_alloc_t *list)
+SERF_DECLARE(serf_filter_type_t*) serf_lookup_filter(const char *name)
 {
-    apr_bucket *b = apr_bucket_alloc(sizeof(*b), list);
+    if (registered_filters == NULL) {
+        return NULL;
+    }
 
-    APR_BUCKET_INIT(b);
-    b->free = apr_bucket_free;
-    b->list = list;
-    return serf_bucket_authentication_make(b, user, password, pool);
+    return apr_hash_get(registered_filters, name, APR_HASH_KEY_STRING);
 }
 
-SERF_DECLARE_DATA const apr_bucket_type_t serf_bucket_authentication_type = {
-    "AUTHENTICATION", 5, APR_BUCKET_METADATA,
-    authentication_bucket_destroy,
-    authentication_bucket_read,
-    apr_bucket_setaside_notimpl,
-    apr_bucket_split_notimpl,
-    apr_bucket_shared_copy
-};
+SERF_DECLARE(serf_filter_t*) serf_add_filter(serf_filter_list_t *filters,
+                                             const char *name, apr_pool_t *pool)
+{
+    serf_filter_type_t *filter_type;
+    serf_filter_t *new_filter;
+
+    filter_type = serf_lookup_filter(name);
+
+    if (!filter_type) {
+        /* Not found! */
+        return NULL;
+    }
+
+    new_filter = apr_pcalloc(pool, sizeof(serf_filter_t));
+    new_filter->type = filter_type;
+
+    APR_RING_ELEM_INIT(new_filter, link);
+
+    APR_RING_INSERT_TAIL(&filters->list, new_filter, serf_filter_t, link);
+
+    return new_filter;
+}

@@ -52,27 +52,97 @@
 
 SERF_DECLARE(serf_request_t *) serf_create_request(apr_pool_t *pool)
 {
-    return apr_pcalloc(pool, sizeof(serf_request_t));
+    serf_request_t *request;
+
+    request = apr_pcalloc(pool, sizeof(serf_request_t));
+    request->bucket_allocator = apr_bucket_alloc_create(pool);
+    request->entity = apr_brigade_create(pool,
+                                         request->bucket_allocator);
+
+    request->request_filters = serf_create_filter_list(pool);
+    request->response_filters = serf_create_filter_list(pool);
+    request->pool = pool;
+
+    return request;
 }
 
 SERF_DECLARE(apr_status_t) serf_write_request(serf_request_t *request,
-                                              serf_connection_t *conn)
+                                              serf_connection_t *connection)
 {
-    return APR_ENOTIMPL;
+    apr_status_t status;
+    serf_request_t **req_ptr;
+
+    if (request->source) {
+        status = request->source(request->entity, request, request->pool);
+        if (status) {
+            return status;
+        }
+    }
+
+    status = serf_execute_filters(request->request_filters, request->entity,
+                                  request->pool);
+    if (status) {
+        return status;
+    }
+
+    status = serf_execute_filters(connection->request_filters,
+                                  request->entity, connection->pool);
+    if (status) {
+        return status;
+    }
+
+    req_ptr = apr_array_push(connection->requests);
+    *req_ptr = request;
+
+    return APR_SUCCESS;
 }
 
 SERF_DECLARE(apr_status_t) serf_read_response(serf_response_t **response,
-                                              serf_connection_t *conn,
+                                              serf_connection_t *connection,
                                               apr_pool_t *pool)
 {
-    return APR_ENOTIMPL;
-}
+    serf_response_t *new_resp;
+    serf_request_t *request, **request_ptr;
+    apr_bucket *bucket;
+    apr_status_t status;
 
-/* FIXME: Is this the proper C file for this function? */
-SERF_DECLARE(apr_status_t) serf_open_uri(apr_uri_t *url,
-                                         serf_connection_t **conn,
-                                         serf_request_t **request,
-                                         apr_pool_t *pool)
-{
-    return APR_ENOTIMPL;
+    /* FIXME: Until we have FIFO instead of LIFO, this is busted. */
+    request_ptr = apr_array_pop(connection->requests);
+
+    request = *request_ptr;
+
+    new_resp = apr_pcalloc(pool, sizeof(serf_response_t));
+    new_resp->bucket_allocator = apr_bucket_alloc_create(pool);
+    new_resp->entity = apr_brigade_create(pool,
+                                          new_resp->bucket_allocator);
+    new_resp->request = request;
+
+    /* FIXME: Should we have a special filter that produces the brigade?
+     * It'd be analogous to the source function for requests...
+     */
+    bucket = apr_bucket_socket_create(connection->socket,
+                                      new_resp->bucket_allocator);
+
+    APR_BRIGADE_INSERT_TAIL(new_resp->entity, bucket);
+ 
+    status = serf_execute_filters(connection->response_filters,
+                                  new_resp->entity, pool);
+    if (status) {
+        return status;
+    }
+
+    status = serf_execute_filters(request->response_filters,
+                                  new_resp->entity, pool);
+    if (status) {
+        return status;
+    }
+
+    if (request->handler) {
+        status = request->handler(new_resp, pool);
+        if (status) {
+            return status;
+        }
+    }
+    *response = new_resp;
+    return APR_SUCCESS;
 }

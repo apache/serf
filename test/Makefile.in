@@ -3,11 +3,15 @@ builddir = $(shell pwd)
 srcdir = @srcdir@
 VPATH = @srcdir@
 
-TARGETS = serf_connection.lo serf_request.lo serf_open_url.lo serf_filters.lo \
-				  serf_bucket_status.lo serf_bucket_header.lo \
-					serf_bucket_authentication.lo serf_bucket_request_line.lo
+SERF_MAJOR_VERSION=@SERF_MAJOR_VERSION@
+
+PROGRAMS = serf_get
+TARGETS = $(PROGRAMS)
 
 INCLUDES=-I$(top_srcdir)/include -I$(top_builddir)/include
+
+serf_get: serf_get.lo
+	$(LINK) serf_get.lo $(libdir)/lib@SERF_LIBNAME@.la $(LIBTOOL_LIBS)
 
 # bring in rules.mk for standard functionality
 @INCLUDE_RULES@

@@ -72,6 +72,7 @@ extern "C" {
 
 /* Forward declare some structures */
 typedef struct serf_filter_type_t serf_filter_type_t;
+typedef struct serf_filter_list_t serf_filter_list_t;
 typedef struct serf_filter_t serf_filter_t;
 typedef struct serf_connection_t serf_connection_t;
 typedef struct serf_request_t serf_request_t;
@@ -100,6 +101,7 @@ typedef apr_status_t (*serf_response_handler_t) (
  */
 typedef apr_status_t (*serf_source_t) (
     apr_bucket_brigade *brigade,
+    serf_request_t *request,
     apr_pool_t *pool
     );
 
@@ -152,21 +154,41 @@ struct serf_filter_type_t {
 };
 
 struct serf_filter_t {
+    /* Internal structure to allow storage in a ring.  */
+    APR_RING_ENTRY(serf_filter_t) link;
+
     /* The type of this filter. */
     const serf_filter_type_t *type;
 
     /* Filter-specific context. */
     void *ctx;
-
-    /* The next filter in this chain. */
-    serf_filter_t *next;
 };
+
+struct serf_filter_list_t {
+    /* Private filter structure. */
+    APR_RING_HEAD(lists, serf_filter_t) list;
+};
+
+SERF_DECLARE(serf_filter_list_t*) serf_create_filter_list(apr_pool_t *pool);
+SERF_DECLARE(serf_filter_type_t*) serf_register_filter(const char *name,
+                                                       serf_filter_func_t func,
+                                                       apr_pool_t *pool);
+SERF_DECLARE(serf_filter_type_t*) serf_lookup_filter(const char *name);
+SERF_DECLARE(serf_filter_t*) serf_add_filter(serf_filter_list_t *filters,
+                                             const char *name,
+                                             apr_pool_t *pool);
+SERF_DECLARE(apr_status_t) serf_execute_filters(serf_filter_list_t *filters,
+                                                apr_bucket_brigade *brigade,
+                                                apr_pool_t *pool);
 
 
 /*
  * Connection primitive.
  */
 struct serf_connection_t {
+    /* Pool associated with lifetime of this request. */
+    apr_pool_t *pool;
+
     /* The address that we will connect to. */
     apr_sockaddr_t *address;
 
@@ -174,34 +196,39 @@ struct serf_connection_t {
        be NULL if we have not (yet) connected (e.g. lazy connect). */
     apr_socket_t *socket;
 
+    /* Bucket allocator for this connection. */
+    apr_bucket_alloc_t *bucket_allocator;
+
     /* Should we reconnect automatically on an EPIPE? */
     /* ### gjs: what about retry limits? timeouts? etc. */
     int auto_reconnect;
 
     /* All of the requests which are (currently) associated with this
-       connection. */
+       connection.
+       FIXME: THIS MUST ALLOW FOR FIFO AND LIFO! */
     apr_array_header_t *requests;
 
     /* Filters that are applied to all buckets before they are delivered
        to the remote server. */
-    serf_filter_t *request_filters;
+    serf_filter_list_t *request_filters;
 
     /* Filters that are applied to all buckets as they arrive from the
        remote server. */
-    serf_filter_t *response_filters;
+    serf_filter_list_t *response_filters;
 };
 
 /*
  * Request primitive.
  */
 struct serf_request_t {
+    /* Pool associated with lifetime of this request. */
+    apr_pool_t *pool;
+
     /* Method to retrieve this request by */
     const char *method;
 
-    /* The path component for this request. 
-     * This includes the query args and fragment.
-     */
-    const char *uri_path;
+    /* Parsed URI for this request.  */
+    apr_uri_t *uri;
 
     /* Indicate whether keepalive of connection is desired. */
     /* ### gjs: axe this. we should always operate as an HTTP/1.1 client
@@ -219,6 +246,9 @@ struct serf_request_t {
      */
     apr_bucket_brigade *entity;
 
+    /* Bucket allocator for this request. */
+    apr_bucket_alloc_t *bucket_allocator;
+
     /* When operating in asynchronous (callback) mode, use this function
      * as the callback for processing the response associated with this
      * request. 
@@ -226,7 +256,7 @@ struct serf_request_t {
      * If this is NULL, we are assumed to be running in synchronous mode
      * and we will wait for serf_read_response() to be called.
      */
-    serf_response_handler_t *handler;
+    serf_response_handler_t handler;
 
     /* When operating in asynchronous (callback) mode, use this function
      * to provide source data for the request.
@@ -237,19 +267,19 @@ struct serf_request_t {
      * and we will only use the buckets in the entity brigade available
      * at the beginning of writing the request.
      */
-    serf_source_t *source;
+    serf_source_t source;
 
     /* Filters that are applied to the request buckets as they are sent
      * to the remote server.
      * These filters execute BEFORE the connection filters.
      */
-    serf_filter_t *request_filters;
+    serf_filter_list_t *request_filters;
 
     /* Filters that are applied to the response buckets as they are
      * received from the remote server.
      * These filters execute AFTER the connection filters.
      */
-    serf_filter_t *response_filters;
+    serf_filter_list_t *response_filters;
 };
 
 /*
@@ -260,6 +290,9 @@ struct serf_response_t {
      * Will be processed by filters before being received.
      */
     apr_bucket_brigade *entity;
+
+    /* Bucket allocator for this request. */
+    apr_bucket_alloc_t *bucket_allocator;
 
     /* Pointer to the associated request object. */
     serf_request_t *request;

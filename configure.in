@@ -7,8 +7,8 @@ AC_CONFIG_HEADER(include/serf_config.h)
 dnl Location for config.guess, config.sub, install.sh, etc.
 AC_CONFIG_AUX_DIR(build)
 
-dnl Override the default prefix with /pkg/flood-0.1
-AC_PREFIX_DEFAULT(/pkg/serf-0.1)
+dnl Override the default prefix with /pkg/serf
+AC_PREFIX_DEFAULT(/pkg/serf)
 
 dnl m4 Macros from APR
 sinclude(build/apr_common.m4)
@@ -19,12 +19,31 @@ sinclude(build/find_apu.m4)
 
 dnl We need to know our top directory.
 top_builddir=`pwd`
+abs_blddir=`pwd`
+abs_srcdir=`(cd $srcdir && pwd)`
 
 dnl Initially, we need no subdirs
 SERF_SUBDIRS=""   
 
 dnl Generate ./config.nice for reproducing runs of configure
 APR_CONFIG_NICE(config.nice)
+
+dnl get our version information
+get_version="$abs_srcdir/build/get-version.sh"
+version_hdr="$abs_srcdir/include/serf_version.h"
+SERF_MAJOR_VERSION="`$get_version major $version_hdr`"
+SERF_DOTTED_VERSION="`$get_version all $version_hdr`"
+
+AC_SUBST(SERF_MAJOR_VERSION)
+AC_SUBST(SERF_DOTTED_VERSION)
+
+echo "Serf version: ${SERF_DOTTED_VERSION}"
+
+APR_ENABLE_LAYOUT(serf)
+APR_PARSE_ARGUMENTS
+
+SERF_LIBNAME="serf${libsuffix}"
+AC_SUBST(SERF_LIBNAME)
 
 dnl Checks for programs.
 AC_PROG_CC
@@ -131,7 +150,7 @@ if test "$apu_found" = "reconfig"; then
 fi
 
 CPPFLAGS="$CPPFLAGS `$apu_config --includes`"
-LIBTOOL_LDFLAGS="$LIBTOOL_LDFLAGS `$apr_config --ldflags`"
+LDFLAGS="$LDFLAGS `$apu_config --ldflags`"
 dnl Since libaprutil relies on libapr, it *must* appear before -lapr.
 LIBTOOL_LIBS="`$apu_config --link-libtool --libs` $LIBTOOL_LIBS"
 
@@ -149,6 +168,8 @@ AC_SUBST(hasstrtoll)
 AC_SUBST(hasstrtoq)
 AC_SUBST(serf_has_openssl)
 AC_SUBST(top_builddir)
+AC_SUBST(abs_blddir)
+AC_SUBST(abs_srcdir)
 
 dnl APR makefile infrastructure support to build libraries
 lib_target='-rpath $(libdir) $$objects'
@@ -189,4 +210,4 @@ AC_SUBST(SHLTCFLAGS)
 
 dnl Makefile outputs
 dnl Note: There can only be one AC_OUTPUT command.
-AC_OUTPUT(Makefile base/Makefile build/rules.mk build/config_vars.mk)
+AC_OUTPUT(Makefile base/Makefile build/rules.mk build/config_vars.mk test/Makefile)

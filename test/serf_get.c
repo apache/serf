@@ -1,0 +1,325 @@
+/* ====================================================================
+ * The Apache Software License, Version 1.1
+ *
+ * Copyright (c) 2002 The Apache Software Foundation.  All rights
+ * reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ *
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ *
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in
+ *    the documentation and/or other materials provided with the
+ *    distribution.
+ *
+ * 3. The end-user documentation included with the redistribution,
+ *    if any, must include the following acknowledgment:
+ *       "This product includes software developed by the
+ *        Apache Software Foundation (http://www.apache.org/)."
+ *    Alternately, this acknowledgment may appear in the software itself,
+ *    if and wherever such third-party acknowledgments normally appear.
+ *
+ * 4. The names "Apache" and "Apache Software Foundation" must
+ *    not be used to endorse or promote products derived from this
+ *    software without prior written permission. For written
+ *    permission, please contact apache@apache.org.
+ *
+ * 5. Products derived from this software may not be called "Apache",
+ *    nor may "Apache" appear in their name, without prior written
+ *    permission of the Apache Software Foundation.
+ *
+ * THIS SOFTWARE IS PROVIDED ``AS IS'' AND ANY EXPRESSED OR IMPLIED
+ * WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
+ * OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ * DISCLAIMED.  IN NO EVENT SHALL THE APACHE SOFTWARE FOUNDATION OR
+ * ITS CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+ * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+ * LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF
+ * USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+ * ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+ * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT
+ * OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+ * SUCH DAMAGE.
+ * ====================================================================
+ *
+ */
+#include <apr.h>
+
+#include "serf.h"
+#include "serf_version.h"
+
+#define CRLF "\r\n"
+
+static apr_status_t http_source(apr_bucket_brigade *brigade,
+                                serf_request_t *request,
+                                apr_pool_t *pool)
+{
+    apr_bucket *bucket;
+
+    bucket = serf_bucket_request_line_create(request->method,
+                                             request->uri->path,
+                                             "HTTP/1.0", pool,
+                                             brigade->bucket_alloc);
+ 
+    APR_BRIGADE_INSERT_HEAD(brigade, bucket);
+
+    return APR_SUCCESS;
+}
+
+static apr_status_t host_header_filter(apr_bucket_brigade *brigade,
+                                       serf_filter_t *filter,
+                                       apr_pool_t *pool)
+{
+    apr_bucket *bucket;
+    serf_request_t *request = filter->ctx;
+
+    bucket = serf_bucket_header_create("Host",
+                                       request->uri->hostname,
+                                       pool, brigade->bucket_alloc);
+ 
+    APR_BRIGADE_INSERT_TAIL(brigade, bucket);
+
+    return APR_SUCCESS;
+}
+
+static apr_status_t user_agent_filter(apr_bucket_brigade *brigade,
+                                      serf_filter_t *filter,
+                                      apr_pool_t *pool)
+{
+    apr_bucket *bucket;
+
+    bucket = serf_bucket_header_create("User-Agent",
+                                       "Serf " SERF_VERSION_STRING,
+                                       pool, brigade->bucket_alloc);
+ 
+    APR_BRIGADE_INSERT_TAIL(brigade, bucket);
+
+    return APR_SUCCESS;
+}
+
+static apr_status_t http_headers_filter(apr_bucket_brigade *brigade,
+                                        serf_filter_t *filter,
+                                        apr_pool_t *pool)
+{
+    apr_bucket *bucket;
+
+    /* All we do here is stick CRLFs in the right places. */
+    bucket = APR_BRIGADE_FIRST(brigade);
+    while (bucket != APR_BRIGADE_SENTINEL(brigade)) {
+        if (SERF_BUCKET_IS_REQUEST_LINE(bucket) ||
+            SERF_BUCKET_IS_HEADER(bucket)) {
+            apr_bucket *eol;
+
+            eol = apr_bucket_immortal_create(CRLF, sizeof(CRLF)-1,
+                                             brigade->bucket_alloc);
+
+            APR_BUCKET_INSERT_AFTER(bucket, eol);
+       }
+
+        bucket = APR_BUCKET_NEXT(bucket);
+    }
+
+    /* FIXME: We need a way to indicate we are EOH. */
+    bucket = apr_bucket_immortal_create(CRLF, sizeof(CRLF)-1,
+                                        brigade->bucket_alloc);
+    APR_BRIGADE_INSERT_TAIL(brigade, bucket);
+
+    return APR_SUCCESS;
+}
+
+static apr_status_t debug_filter(apr_bucket_brigade *brigade,
+                                 serf_filter_t *filter,
+                                 apr_pool_t *pool)
+{
+    apr_status_t status;
+    apr_file_t *out_file;
+    apr_bucket *bucket;
+
+    status = apr_file_open_stdout(&out_file, pool);
+    if (status) {
+        return status;
+    }
+
+    for (bucket = APR_BRIGADE_FIRST(brigade);
+         bucket != APR_BRIGADE_SENTINEL(brigade);
+         bucket = APR_BUCKET_NEXT(bucket)) {
+        const char *buf;
+        apr_size_t length, written;
+        
+        status = apr_bucket_read(bucket, &buf, &length, APR_BLOCK_READ);
+    
+        if (status) {
+            return status;
+        }
+
+        status = apr_file_write_full(out_file, buf, length, &written);
+ 
+        if (status) {
+            return status;
+        }
+    }
+
+    return APR_SUCCESS;
+}
+
+static apr_status_t socket_write_full(apr_bucket_brigade *brigade,
+                                      serf_filter_t *filter,
+                                      apr_pool_t *pool)
+{
+    serf_connection_t *conn = filter->ctx;
+
+    while (!APR_BRIGADE_EMPTY(brigade)) {
+        apr_bucket *bucket;
+        const char *buf;
+        apr_size_t length;
+        apr_status_t status;
+        
+        bucket = APR_BRIGADE_FIRST(brigade);
+
+        status = apr_bucket_read(bucket, &buf, &length, APR_BLOCK_READ);
+    
+        if (status) {
+            return status;
+        }
+
+        do {
+            apr_size_t written = length;
+
+            status = apr_send(conn->socket, buf, &written);
+            if (status) {
+                return status;
+            }
+            length -= written;
+            buf += written;
+        }
+        while (length);
+        
+        apr_bucket_delete(bucket);
+    }
+
+    return APR_SUCCESS;
+}
+
+static apr_status_t http_handler(serf_response_t *response, apr_pool_t *pool)
+{
+    apr_status_t status;
+    apr_file_t *out_file;
+
+    status = apr_file_open_stdout(&out_file, pool);
+    if (status) {
+        return status;
+    }
+
+    while (!APR_BRIGADE_EMPTY(response->entity)) {
+        apr_bucket *bucket;
+        const char *buf;
+        apr_size_t length, written;
+        
+        bucket = APR_BRIGADE_FIRST(response->entity);
+
+        status = apr_bucket_read(bucket, &buf, &length, APR_BLOCK_READ);
+    
+        if (status) {
+            return status;
+        }
+
+        status = apr_file_write_full(out_file, buf, length, &written);
+ 
+        if (status) {
+            return status;
+        }
+        
+        apr_bucket_delete(bucket);
+    }
+
+    return APR_SUCCESS;
+}
+
+int main(int argc, const char **argv)
+{
+    apr_status_t status;
+    apr_pool_t *pool;
+    serf_connection_t *connection;
+    serf_request_t *request;
+    serf_response_t *response;
+    serf_filter_t *filter;
+    apr_uri_t *url;
+    const char *raw_url;
+   
+    if (argc != 2) {
+        puts("Gimme a URL, stupid!");
+        exit(-1);
+    }
+    raw_url = argv[1];
+
+    apr_initialize();
+    atexit(apr_terminate);
+
+    apr_pool_create(&pool, NULL);
+    /* serf_initialize(); */
+
+    serf_register_filter("SOCKET_WRITE_FULL", socket_write_full, pool);
+    serf_register_filter("DEBUG_WRITE", debug_filter, pool);
+    serf_register_filter("USER_AGENT", user_agent_filter, pool);
+    serf_register_filter("HOST_HEADER", host_header_filter, pool);
+    serf_register_filter("HTTP_HEADERS", http_headers_filter, pool);
+    /*serf_register_filter("SOCKET_READ_FULL", socket_read_full, pool);*/
+
+    url = apr_palloc(pool, sizeof(apr_uri_t));
+    apr_uri_parse(pool, raw_url, url);
+    if (!url->port) {
+        url->port = apr_uri_default_port_for_scheme(url->scheme);
+    }
+
+    status = serf_open_uri(url, &connection, &request, pool);
+
+    if (status) {
+        printf("Error: %d\n", status);
+        exit(status);
+    }
+
+    request->source = http_source;
+    request->handler = http_handler;
+
+    request->method = "GET";
+    request->uri = url;
+
+    filter = serf_add_filter(connection->request_filters, "DEBUG_WRITE", pool);
+    /* FIXME: Get serf to install an endpoint which has access to the conn. */
+    filter = serf_add_filter(connection->request_filters, "SOCKET_WRITE_FULL", pool);
+    filter->ctx = connection;
+
+    filter = serf_add_filter(request->request_filters, "USER_AGENT", pool);
+    filter = serf_add_filter(request->request_filters, "HOST_HEADER", pool);
+    filter->ctx = request;
+    filter = serf_add_filter(request->request_filters, "HTTP_HEADERS", pool);
+
+    /* For now, serf will setup the socket into the brigade. */
+    /* serf_add_filter(connection->response_filters, "SOCKET_READ", pool); */
+
+    status = serf_open_connection(connection);
+    if (status) {
+        printf("Error: %d\n", status);
+        exit(status);
+    }
+
+    status = serf_write_request(request, connection);
+
+    if (status) {
+        printf("Error: %d\n", status);
+        exit(status);
+    }
+
+    status = serf_read_response(&response, connection, pool);
+
+    if (status) {
+        printf("Error: %d\n", status);
+        exit(status);
+    }
+ 
+    return 0;
+}

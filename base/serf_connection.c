@@ -52,15 +52,25 @@
 
 SERF_DECLARE(serf_connection_t *) serf_create_connection(apr_pool_t *pool)
 {
-    return apr_pcalloc(pool, sizeof(serf_connection_t));
+    serf_connection_t *conn;
+
+    conn = apr_pcalloc(pool, sizeof(serf_connection_t));
+
+    conn->bucket_allocator = apr_bucket_alloc_create(pool);
+    conn->request_filters = serf_create_filter_list(pool);
+    conn->response_filters = serf_create_filter_list(pool);
+    conn->requests = apr_array_make(pool, 5, sizeof(serf_request_t*));
+    conn->pool = pool;
+
+    return conn;
 }
 
 SERF_DECLARE(apr_status_t) serf_open_connection(serf_connection_t *conn)
 {
-    return APR_ENOTIMPL;
+    return apr_connect(conn->socket, conn->address);
 }
 
 SERF_DECLARE(apr_status_t) serf_close_connection(serf_connection_t *conn)
 {
-    return APR_ENOTIMPL;
+    return apr_socket_close(conn->socket);
 }

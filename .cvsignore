@@ -8,3 +8,4 @@ config.log
 config.status
 configure
 config.nice
+autom4te.cache

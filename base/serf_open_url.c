@@ -48,76 +48,36 @@
  *
  */
 
-#include <apr_pools.h>
-#include <apr_strings.h>
-#include <apr_buckets.h>
+#include "serf.h"
 
-#include "serf_buckets.h"
-
-static apr_status_t authentication_bucket_read(apr_bucket *b, const char **str,
-                                               apr_size_t *len,
-                                               apr_read_type_e block)
+SERF_DECLARE(apr_status_t) serf_open_uri(apr_uri_t *url,
+                                         serf_connection_t **conn,
+                                         serf_request_t **request,
+                                         apr_pool_t *pool)
 {
-    serf_bucket_authentication *auth = b->data;
-    struct iovec vec[3];
-    
-    vec[0].iov_base = (void*)auth->user;
-    vec[0].iov_len  = strlen(auth->user);
-    vec[1].iov_base = (void*)":";
-    vec[1].iov_len  = sizeof(":") - 1;
-    vec[2].iov_base = (void*)auth->password;
-    vec[2].iov_len  = strlen(auth->password);
- 
-    *str = apr_pstrcatv(auth->pool, vec, 3, len);
+    apr_status_t status;
+    serf_connection_t *new_conn;
+    serf_request_t *new_req;
+
+    new_conn = serf_create_connection(pool);
+    new_req = serf_create_request(pool);
+
+    status = apr_sockaddr_info_get(&new_conn->address, url->hostname,
+                                   APR_INET, url->port, 0, pool);
+
+    if (status) {
+        return status;
+    }
+
+    status = apr_socket_create(&new_conn->socket, APR_INET, SOCK_STREAM,
+                               pool);
+
+    if (status) {
+        return status;
+    }
+
+    *conn = new_conn;
+    *request = new_req;
+
     return APR_SUCCESS;
 }
-
-static void authentication_bucket_destroy(void *data)
-{
-    serf_bucket_status *bucket = data;
-
-    if (apr_bucket_shared_destroy(bucket)) {
-        apr_bucket_free(bucket);
-    }
-}
-
-SERF_DECLARE(apr_bucket *) serf_bucket_authentication_make(apr_bucket *b,
-                                                           const char *user,
-                                                           const char *password,
-                                                           apr_pool_t *pool)
-{
-    serf_bucket_authentication *bucket;
-
-    bucket = apr_bucket_alloc(sizeof(*bucket), b->list);
-    bucket->user = (user) ? apr_pstrdup(pool, user) : NULL;
-    bucket->password = (password) ? apr_pstrdup(pool, password) : NULL;
-    /* FIXME: Make this a subpool? */
-    bucket->pool = pool;
-
-    b = apr_bucket_shared_make(b, bucket, 0, 0);
-    b->type = &serf_bucket_authentication_type;
-
-    return b;
-}
-
-SERF_DECLARE(apr_bucket *) serf_bucket_authentication_create(const char *user,
-                                                     const char *password,
-                                                     apr_pool_t *pool,
-                                                     apr_bucket_alloc_t *list)
-{
-    apr_bucket *b = apr_bucket_alloc(sizeof(*b), list);
-
-    APR_BUCKET_INIT(b);
-    b->free = apr_bucket_free;
-    b->list = list;
-    return serf_bucket_authentication_make(b, user, password, pool);
-}
-
-SERF_DECLARE_DATA const apr_bucket_type_t serf_bucket_authentication_type = {
-    "AUTHENTICATION", 5, APR_BUCKET_METADATA,
-    authentication_bucket_destroy,
-    authentication_bucket_read,
-    apr_bucket_setaside_notimpl,
-    apr_bucket_split_notimpl,
-    apr_bucket_shared_copy
-};
