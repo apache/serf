@@ -317,7 +317,7 @@ SERF_DECLARE(apr_status_t) serf_databuf_read(serf_databuf_t *databuf,
      * If we have NOT read everything, then return APR_SUCCESS to indicate
      * that we're ready to return some more if asked.
      */
-    return databuf->remaining ? databuf->status : APR_SUCCESS;
+    return databuf->remaining ? APR_SUCCESS : databuf->status;
 }
 
 SERF_DECLARE(apr_status_t) serf_databuf_readline(serf_databuf_t *databuf,
@@ -340,7 +340,7 @@ SERF_DECLARE(apr_status_t) serf_databuf_readline(serf_databuf_t *databuf,
     *len = databuf->current - *data;
 
     /* see serf_databuf_read's return condition */
-    return databuf->remaining ? databuf->status : APR_SUCCESS;
+    return databuf->remaining ? APR_SUCCESS : databuf->status;
 }
 
 SERF_DECLARE(apr_status_t) serf_databuf_peek(serf_databuf_t *databuf,

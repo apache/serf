@@ -8,7 +8,8 @@ OBJECTS = buckets/aggregate_buckets.o buckets/request_buckets.o context.o \
           buckets/mmap_buckets.o buckets/socket_buckets.o \
           buckets/response_buckets.o buckets/headers_buckets.o \
           buckets/allocator.o buckets/dechunk_buckets.o \
-          buckets/deflate_buckets.o buckets/limit_buckets.o
+          buckets/deflate_buckets.o buckets/limit_buckets.o \
+          buckets/ssl_buckets.o
 
 PROGRAMS = test/serf_get test/serf_response test/serf_request
 TESTCASES = test/testcases/simple.response \
@@ -26,7 +27,7 @@ CPPFLAGS = `$(APR_CONFIG) --cppflags`
 INCLUDES = -I`pwd` `$(APR_CONFIG) --includes`
 
 LDFLAGS = `$(APR_CONFIG) --ldflags` `$(APU_CONFIG) --ldflags`
-LIBS = `$(APR_CONFIG) --link-ld --libs` `$(APU_CONFIG) --link-ld --libs` -lz
+LIBS = `$(APR_CONFIG) --link-ld --libs` `$(APU_CONFIG) --link-ld --libs` -lz -lssl -lcrypto
 
 all: $(OBJECTS) $(PROGRAMS)
 

@@ -266,6 +266,36 @@ SERF_DECLARE(serf_bucket_t *) serf_bucket_limit_create(
 
 /* ==================================================================== */
 
+
+SERF_DECLARE_DATA extern const serf_bucket_type_t serf_bucket_type_ssl_encrypt;
+#define SERF_BUCKET_IS_SSL_ENCRYPT(b) SERF_BUCKET_CHECK((b), ssl_encrypt)
+
+typedef struct serf_ssl_context_t serf_ssl_context_t;
+
+SERF_DECLARE(serf_bucket_t *) serf_bucket_ssl_encrypt_create(
+    serf_bucket_t *stream,
+    serf_ssl_context_t *ssl_context,
+    serf_bucket_alloc_t *allocator);
+
+SERF_DECLARE(serf_ssl_context_t *) serf_bucket_ssl_encrypt_context_get(
+    serf_bucket_t *bucket);
+
+/* ==================================================================== */
+
+
+SERF_DECLARE_DATA extern const serf_bucket_type_t serf_bucket_type_ssl_decrypt;
+#define SERF_BUCKET_IS_SSL_DECRYPT(b) SERF_BUCKET_CHECK((b), ssl_decrypt)
+
+SERF_DECLARE(serf_bucket_t *) serf_bucket_ssl_decrypt_create(
+    serf_bucket_t *stream,
+    serf_ssl_context_t *ssl_context,
+    serf_bucket_alloc_t *allocator);
+
+SERF_DECLARE(serf_ssl_context_t *) serf_bucket_ssl_decrypt_context_get(
+    serf_bucket_t *bucket);
+
+/* ==================================================================== */
+
 /* ### do we need a PIPE bucket type? they are simple apr_file_t objects */
 
 

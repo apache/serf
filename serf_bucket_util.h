@@ -168,6 +168,22 @@ SERF_DECLARE(void) serf_util_readline(const char **data, apr_size_t *len,
 /** The buffer size used within @see serf_databuf_t. */
 #define SERF_DATABUF_BUFSIZE 8000
 
+/** Callback function which is used to refill the data buffer.
+ *
+ * The function takes @a baton, which is the @see read_baton value
+ * from the serf_databuf_t structure. Data should be placed into
+ * a buffer specified by @a buf, which is @a bufsize bytes long.
+ * The amount of data read should be returned in @a len.
+ *
+ * APR_EOF should be returned if no more data is available. APR_EAGAIN
+ * should be returned, rather than blocking. In both cases, @a buf
+ * should be filled in and @a len set, as appropriate.
+ */
+typedef apr_status_t (*serf_databuf_reader_t)(void *baton,
+                                              apr_size_t bufsize,
+                                              char *buf,
+                                              apr_size_t *len);
+
 /**
  * This structure is used as an intermediate data buffer for some "external"
  * source of data. It works as a scratch pad area for incoming data to be
@@ -183,19 +199,8 @@ typedef struct {
     /** Amount of data remaining in the buffer. */
     apr_size_t remaining;
 
-    /** Callback function which is used to refill the data buffer.
-     *
-     * The function takes @a baton, which is the @see read_baton value
-     * from the serf_databuf_t structure. Data should be placed into
-     * a buffer specified by @a buf, which is @a bufsize bytes long.
-     * The amount of data read should be returned in @a len.
-     *
-     * APR_EOF should be returned if no more data is available. APR_EAGAIN
-     * should be returned, rather than blocking. In both cases, @a buf
-     * should be filled in and @a len set, as appropriate.
-     */
-    apr_status_t (*read)(void *baton, apr_size_t bufsize,
-                         char *buf, apr_size_t *len);
+    /** Callback function. */
+    serf_databuf_reader_t read;
 
     /** A baton to hold context-specific data. */
     void *read_baton;

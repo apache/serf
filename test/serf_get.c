@@ -257,6 +257,11 @@ static void closed_connection(serf_connection_t *conn,
     abort();
 }
 
+typedef struct {
+    int using_ssl;
+    serf_ssl_context_t *ssl_ctx;
+} accept_baton_t;
+
 static serf_bucket_t* accept_response(serf_request_t *request,
                                       apr_socket_t *socket,
                                       void *acceptor_baton,
@@ -264,10 +269,14 @@ static serf_bucket_t* accept_response(serf_request_t *request,
 {
     serf_bucket_t *c;
     serf_bucket_alloc_t *bkt_alloc;
+    accept_baton_t *ctx = acceptor_baton;
 
     bkt_alloc = serf_request_get_alloc(request);
 
     c = serf_bucket_socket_create(socket, bkt_alloc);
+    if (ctx->using_ssl) {
+        c = serf_bucket_ssl_decrypt_create(c, ctx->ssl_ctx, bkt_alloc);
+    }
 
     return serf_bucket_response_create(c, bkt_alloc);
 }
@@ -327,6 +336,7 @@ int main(int argc, const char **argv)
     serf_request_t *request;
     serf_bucket_t *req_bkt;
     serf_bucket_t *hdrs_bkt;
+    accept_baton_t accept_ctx;
     handler_baton_t handler_ctx;
 #if 0
     serf_filter_t *filter;
@@ -382,11 +392,13 @@ int main(int argc, const char **argv)
     if (!url.port) {
         url.port = apr_uri_port_of_scheme(url.scheme);
     }
-#if SERF_HAS_OPENSSL
+
     if (strcasecmp(url.scheme, "https") == 0) {
-        using_ssl = 1;
+        accept_ctx.using_ssl = 1;
     }
-#endif
+    else {
+        accept_ctx.using_ssl = 0;
+    }
 
     status = apr_sockaddr_info_get(&address,
                                    url.hostname, APR_UNSPEC, url.port, 0,
@@ -416,8 +428,15 @@ int main(int argc, const char **argv)
 
     handler_ctx.requests_outstanding = 0;
     apr_atomic_inc32(&handler_ctx.requests_outstanding);
+
+    if (accept_ctx.using_ssl) {
+        req_bkt =
+            serf_bucket_ssl_encrypt_create(req_bkt, NULL,
+                                           serf_request_get_alloc(request));
+        accept_ctx.ssl_ctx = serf_bucket_ssl_encrypt_context_get(req_bkt);
+    }
     serf_request_deliver(request, req_bkt,
-                         accept_response, NULL,
+                         accept_response, &accept_ctx,
                          handle_response, &handler_ctx);
 
     while (1) {

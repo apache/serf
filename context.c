@@ -308,6 +308,9 @@ static apr_status_t write_to_connection(serf_connection_t *conn)
             request->req_bkt = NULL;
         }
 
+        if (stop_reading) {
+            return APR_SUCCESS;
+        }
     }
     /* NOTREACHED */
 }
