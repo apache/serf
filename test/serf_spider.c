@@ -81,10 +81,10 @@
 #define SERF_SPIDER_USE_DEFLATE 0
 
 /* The maximal size of our queue */
-#define SERF_SPIDER_QUEUE_SIZE 1000000
+#define SERF_SPIDER_QUEUE_SIZE 10000000
 
 /* The number of concurrent threads we will have running. */
-#define SERF_SPIDER_THREADS 5
+#define SERF_SPIDER_THREADS 20
 
 /* Maximum number of hits we will run per thread. */
 /*#define SERF_SPIDER_LIMIT 1000*/
@@ -129,25 +129,25 @@ static apr_status_t add_uri(apr_uri_t *uri, apr_pool_t *uri_pool,
     new_uri_len = strlen(new_uri);
     /* Our hash routines aren't thread-safe!  Ick!  */
     apr_thread_mutex_lock(mutex);
-    assert(*new_uri != '\0');
-    new_uri = apr_pstrmemdup(hash_pool, new_uri, new_uri_len);
     if (!apr_hash_get(hash, new_uri, new_uri_len) &&
         (!SERF_SPIDER_DO_NOT_LEAVE_ROOT ||
          strstr(new_uri, root_uri) == new_uri)) {
         apr_status_t status;
+        char *new_uri_copy;
         int tries = 0;
 
-        apr_hash_set(hash, new_uri, new_uri_len, new_uri);
+        new_uri_copy = apr_pstrmemdup(hash_pool, new_uri, new_uri_len);
+        apr_hash_set(hash, new_uri_copy, new_uri_len, new_uri_copy);
 
         do {
+            status = apr_queue_trypush(queue, new_uri_copy);
 
-            status = apr_queue_trypush(queue, new_uri);
             if (status) {
                 if (tries++ > 5 || !APR_STATUS_IS_EAGAIN(status)) {
                     apr_thread_mutex_unlock(mutex);
                     return status;
                 }
-                fprintf(stderr, "Queue full: %s %ld (try #%d)\n", new_uri,
+                fprintf(stderr, "Queue full: %s %ld (try #%d)\n", new_uri_copy,
                         pthread_self(), tries);
                 apr_sleep(apr_time_from_sec(SERF_SPIDER_RAMP_DELAY));
             }
