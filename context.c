@@ -299,13 +299,12 @@ static apr_status_t read_from_connection(serf_connection_t *conn)
 
     /* assert: request != NULL */
 
+    if ((status = apr_pool_create(&tmppool, conn->pool)) != APR_SUCCESS)
+        goto error;
+
     /* Invoke response handlers until we have no more work. */
     while (1) {
-
-        if ((status = apr_pool_create(&tmppool,
-                                      request->respool)) != APR_SUCCESS) {
-            return status;
-        }
+        apr_pool_clear(tmppool);
 
         /* If the request doesn't have a response bucket, then call the
          * acceptor to get one created.
@@ -313,7 +312,8 @@ static apr_status_t read_from_connection(serf_connection_t *conn)
         if (request->resp_bkt == NULL) {
             request->resp_bkt = (*request->acceptor)(request, conn->skt,
                                                      request->acceptor_baton,
-                                                     request->respool);
+                                                     tmppool);
+            apr_pool_clear(tmppool);
         }
 
         status = (*request->handler)(request->resp_bkt,
@@ -344,7 +344,7 @@ static apr_status_t read_from_connection(serf_connection_t *conn)
          */
         if (request == NULL) {
             status = update_pollset(conn);
-            return status;
+            goto error;
         }
     }
 

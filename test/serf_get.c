@@ -264,7 +264,7 @@ static serf_bucket_t* accept_response(serf_request_t *request,
     serf_bucket_t *c;
     serf_bucket_alloc_t *bkt_alloc;
 
-    bkt_alloc = serf_bucket_allocator_create(pool, NULL, NULL);
+    bkt_alloc = serf_request_get_alloc(request);
 
     c = serf_bucket_socket_create(socket, bkt_alloc);
 
