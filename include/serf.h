@@ -60,7 +60,9 @@
 #include <apr_buckets.h>
 #include <apr_network_io.h>
 #include <apr_tables.h>
+#include <apr_uri.h>
 
+#include "serf_config.h"
 #include "serf_buckets.h"
 
 #ifdef __cplusplus
@@ -99,7 +101,7 @@ typedef apr_status_t (*serf_response_handler_t) (
  * All temporary allocations should occur in POOL.
  */
 typedef apr_status_t (*serf_source_t) (
-    apr_brigade_t *brigade,
+    apr_bucket_brigade *brigade,
     apr_pool_t *pool
     );
 
@@ -109,7 +111,7 @@ typedef apr_status_t (*serf_source_t) (
  * All temporary allocations should occur in POOL.
  */
 typedef apr_status_t (*serf_filter_func_t) (
-    apr_brigade_t *brigade,
+    apr_bucket_brigade *brigade,
     serf_filter_t *filter,
     apr_pool_t *pool
     );
@@ -217,7 +219,7 @@ struct serf_request_t {
      *
      * Will be processed by filters before being sent.
      */
-    apr_bucket_brigade_t *entity;
+    apr_bucket_brigade *entity;
 
     /* When operating in asynchronous (callback) mode, use this function
      * as the callback for processing the response associated with this
@@ -259,7 +261,7 @@ struct serf_response_t {
     /* Represents any entity and/or header fields included with the response.
      * Will be processed by filters before being received.
      */
-    apr_bucket_brigade_t *entity;
+    apr_bucket_brigade *entity;
 
     /* Pointer to the associated request object. */
     serf_request_t *request;
