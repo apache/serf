@@ -24,11 +24,64 @@
 
 /*#define SSL_VERBOSE*/
 
+/*
+ * Here's an overview of the SSL bucket's relationship to OpenSSL and serf.
+ *
+ * HTTP request:  SSLENCRYPT(REQUEST)
+ *   [context.c reads from SSLENCRYPT and writes out to the socket]
+ * HTTP response: RESPONSE(SSLDECRYPT(SOCKET))
+ *   [handler function reads from RESPONSE which in turn reads from SSLDECRYPT]
+ *
+ * HTTP request read call path:
+ *
+ * write_to_connection
+ *  |- serf_bucket_read on SSLENCRYPT
+ *    |- serf_ssl_read
+ *      |- serf_databuf_read
+ *        |- common_databuf_prep
+ *          |- ssl_encrypt
+ *            |- 1. Try to read pending encrypted data; If available, return.
+ *            |- 2. Try to read from ctx->stream [REQUEST bucket]
+ *            |- 3. Call SSL_write with read data
+ *              |- ...
+ *                |- bio_bucket_write with encrypted data
+ *                  |- store in sink
+ *            |- 4. If successful, read pending encrypted data and return.
+ *            |- 5. If fails, place read data back in ctx->stream
+ *
+ * HTTP response read call path:
+ *
+ * read_from_connection
+ *  |- acceptor
+ *  |- handler
+ *    |- ...
+ *      |- serf_bucket_read(SSLDECRYPT)
+ *        |- serf_ssl_read
+ *          |- serf_databuf_read
+ *            |- ssl_decrypt
+ *              |- 1. SSL_read() for pending decrypted data; if any, return.
+ *              |- 2. Try to read from ctx->stream [SOCKET bucket]
+ *              |- 3. Append data to ssl_ctx->source
+ *              |- 4. Call SSL_read()
+ *                |- ...
+ *                  |- bio_bucket_read
+ *                    |- read data from ssl_ctx->source
+ *              |- If data read, return it.
+ *              |- If an error, set the STATUS value and return.
+ *
+ */
+
 struct serf_ssl_context_t {
+    /* How many open buckets refer to this context. */
     int refcount;
+
+    /* The pool that this context uses. */
     apr_pool_t *pool;
+
+    /* The allocator associated with the above pool. */
     serf_bucket_alloc_t *allocator;
 
+    /* Internal OpenSSL parameters */
     SSL_CTX *ctx;
     SSL *ssl;
     BIO *bio;
@@ -36,21 +89,25 @@ struct serf_ssl_context_t {
     /* Data we've read but not processed. */
     serf_bucket_t *source;
 
+    /* The status of the last thing we read. */
+    apr_status_t source_status;
+
     /* Pending data to return. */
     serf_bucket_t *sink;
 
-    /* The last thing we wrote. */
+    /* The status of the last thing we wrote. */
     apr_status_t sink_status;
 
-    /* The last thing we read. */
-    apr_status_t source_status;
 };
 
 typedef struct {
+    /* The bucket-independent ssl context that this bucket is associated with */
     serf_ssl_context_t *ssl_ctx;
 
+    /* Our source for more data. */
     serf_bucket_t *stream;
 
+    /* Helper to read data. */
     serf_databuf_t databuf;
 
 } ssl_context_t;
@@ -59,6 +116,180 @@ typedef struct {
 static void free_read_data(void *baton, const char *data)
 {
     serf_bucket_mem_free(baton, (char*)data);
+}
+
+/* Returns the amount read. */
+static int bio_bucket_read(BIO *bio, char *in, int inlen)
+{
+    serf_ssl_context_t *ctx = bio->ptr;
+    const char *data;
+    apr_status_t status;
+    apr_size_t len;
+
+#ifdef SSL_VERBOSE
+    printf("bio_bucket_read called for %d bytes\n", inlen);
+#endif
+
+    BIO_clear_retry_flags(bio);
+
+    status = serf_bucket_read(ctx->source, inlen, &data, &len);
+
+    ctx->sink_status = status;
+
+    if (!SERF_BUCKET_READ_ERROR(status)) {
+        /* Oh suck. */
+        if (len) {
+            memcpy(in, data, len);
+            return len;
+        }
+        if (APR_STATUS_IS_EOF(status)) {
+            BIO_set_retry_read(bio);
+            return -1;
+        }
+    }
+
+    return -1;
+}
+
+/* Returns the amount written. */
+static int bio_bucket_write(BIO *bio, const char *in, int inl)
+{
+    serf_ssl_context_t *ctx = bio->ptr;
+    serf_bucket_t *tmp;
+    char *data_copy;
+
+#ifdef SSL_VERBOSE
+    printf("bio_bucket_write called for %d bytes\n", inl);
+#endif
+    BIO_clear_retry_flags(bio);
+
+    data_copy = serf_bucket_mem_alloc(ctx->sink->allocator, inl);
+    memcpy(data_copy, in, inl);
+
+    tmp = serf_bucket_simple_create(data_copy, inl, free_read_data,
+                                    ctx->sink->allocator,
+                                    ctx->sink->allocator);
+
+    serf_bucket_aggregate_append(ctx->sink, tmp);
+
+    return inl;
+}
+
+static int bio_bucket_create(BIO *bio)
+{
+    bio->shutdown = 1;
+    bio->init = 1;
+    bio->num = -1;
+    bio->ptr = NULL;
+
+    return 1;
+}
+
+static int bio_bucket_destroy(BIO *bio)
+{
+    /* Did we already free this? */
+    if (bio == NULL) {
+        return 0;
+    }
+
+    return 1;
+}
+
+static long bio_bucket_ctrl(BIO *bio, int cmd, long num, void *ptr)
+{
+    long ret = 1;
+
+    switch (cmd) {
+    default:
+        abort();
+        break;
+    case BIO_CTRL_FLUSH:
+        /* At this point we can't force a flush. */
+        break;
+    case BIO_CTRL_PUSH:
+    case BIO_CTRL_POP:
+        ret = 0;
+        break;
+    }
+    return ret;
+}
+
+static BIO_METHOD bio_bucket_method = {
+    BIO_TYPE_MEM,
+    "Serf SSL encryption and decryption buckets",
+    bio_bucket_write,
+    bio_bucket_read,
+    NULL,                        /* Is this called? */
+    NULL,                        /* Is this called? */
+    bio_bucket_ctrl,
+    bio_bucket_create,
+    bio_bucket_destroy,
+#ifdef OPENSSL_VERSION_NUMBER
+    NULL /* sslc does not have the callback_ctrl field */
+#endif
+};
+
+static serf_ssl_context_t *ssl_init_context()
+{
+    serf_ssl_context_t *ssl_ctx;
+    apr_pool_t *pool;
+    serf_bucket_alloc_t *allocator;
+
+    /* XXX Only do this ONCE! */
+    SSL_library_init();
+    OpenSSL_add_ssl_algorithms();
+    SSL_load_error_strings();
+    ERR_load_crypto_strings();
+
+    apr_pool_create(&pool, NULL);
+    allocator = serf_bucket_allocator_create(pool, NULL, NULL);
+
+    ssl_ctx = serf_bucket_mem_alloc(allocator, sizeof(*ssl_ctx));
+
+    ssl_ctx->refcount = 0;
+    ssl_ctx->pool = pool;
+    ssl_ctx->allocator = allocator;
+
+    /* This is wrong-ish. */
+    ssl_ctx->ctx = SSL_CTX_new(SSLv23_client_method());
+
+    SSL_CTX_set_options(ssl_ctx->ctx, SSL_OP_ALL);
+
+    ssl_ctx->ssl = SSL_new(ssl_ctx->ctx);
+    ssl_ctx->bio = BIO_new(&bio_bucket_method);
+    ssl_ctx->bio->ptr = ssl_ctx;
+
+    SSL_set_bio(ssl_ctx->ssl, ssl_ctx->bio, ssl_ctx->bio);
+
+    SSL_set_connect_state(ssl_ctx->ssl);
+
+    ssl_ctx->source = serf_bucket_aggregate_create(ssl_ctx->allocator);
+    ssl_ctx->sink = serf_bucket_aggregate_create(ssl_ctx->allocator);
+
+    ssl_ctx->source_status = APR_SUCCESS;
+    ssl_ctx->sink_status = APR_SUCCESS;
+
+    return ssl_ctx;
+}
+
+static apr_status_t ssl_free_context(
+    serf_ssl_context_t *ssl_ctx)
+{
+    apr_pool_t *p;
+
+    serf_bucket_destroy(ssl_ctx->source);
+    serf_bucket_destroy(ssl_ctx->sink);
+
+    /* SSL_free implicitly frees the underlying BIO. */
+    SSL_free(ssl_ctx->ssl);
+    SSL_CTX_free(ssl_ctx->ctx);
+
+    p = ssl_ctx->pool;
+
+    serf_bucket_mem_free(ssl_ctx->allocator, ssl_ctx);
+    apr_pool_destroy(p);
+
+    return APR_SUCCESS;
 }
 
 /* This function reads an encrypted stream and returns the decrypted stream. */
@@ -255,10 +486,6 @@ static apr_status_t ssl_encrypt(void *baton, apr_size_t bufsize,
     return status;
 }
 
-static serf_ssl_context_t *ssl_init_context();
-
-static apr_status_t ssl_free_context(serf_ssl_context_t *);
-
 static serf_bucket_t * serf_bucket_ssl_create(
     serf_bucket_t *stream,
     serf_ssl_context_t *ssl_ctx,
@@ -358,179 +585,8 @@ static apr_status_t serf_ssl_peek(serf_bucket_t *bucket,
     return serf_databuf_peek(&ctx->databuf, data, len);
 }
 
-/* Returns the amount read. */
-static int bio_bucket_read(BIO *bio, char *in, int inlen)
-{
-    serf_ssl_context_t *ctx = bio->ptr;
-    const char *data;
-    apr_status_t status;
-    apr_size_t len;
 
-#ifdef SSL_VERBOSE
-    printf("bio_bucket_read called for %d bytes\n", inlen);
-#endif
 
-    BIO_clear_retry_flags(bio);
-
-    status = serf_bucket_read(ctx->source, inlen, &data, &len);
-
-    ctx->sink_status = status;
-
-    if (!SERF_BUCKET_READ_ERROR(status)) {
-        /* Oh suck. */
-        if (len) {
-            memcpy(in, data, len);
-            return len;
-        }
-        if (APR_STATUS_IS_EOF(status)) {
-            BIO_set_retry_read(bio);
-            return -1;
-        }
-    }
-
-    return -1;
-}
-
-/* Returns the amount written. */
-static int bio_bucket_write(BIO *bio, const char *in, int inl)
-{
-    serf_ssl_context_t *ctx = bio->ptr;
-    serf_bucket_t *tmp;
-    char *data_copy;
-
-#ifdef SSL_VERBOSE
-    printf("bio_bucket_write called for %d bytes\n", inl);
-#endif
-    BIO_clear_retry_flags(bio);
-
-    data_copy = serf_bucket_mem_alloc(ctx->sink->allocator, inl);
-    memcpy(data_copy, in, inl);
-
-    tmp = serf_bucket_simple_create(data_copy, inl, free_read_data,
-                                    ctx->sink->allocator,
-                                    ctx->sink->allocator);
-
-    serf_bucket_aggregate_append(ctx->sink, tmp);
-
-    return inl;
-}
-
-static int bio_bucket_create(BIO *bio)
-{
-    bio->shutdown = 1;
-    bio->init = 1;
-    bio->num = -1;
-    bio->ptr = NULL;
-
-    return 1;
-}
-
-static int bio_bucket_destroy(BIO *bio)
-{
-    /* Did we already free this? */
-    if (bio == NULL) {
-        return 0;
-    }
-
-    return 1;
-}
-
-static long bio_bucket_ctrl(BIO *bio, int cmd, long num, void *ptr)
-{
-    long ret = 1;
-
-    switch (cmd) {
-    default:
-        abort();
-        break;
-    case BIO_CTRL_FLUSH:
-        /* At this point we can't force a flush. */
-        break;
-    case BIO_CTRL_PUSH:
-    case BIO_CTRL_POP:
-        ret = 0;
-        break;
-    }
-    return ret;
-}
-
-static BIO_METHOD bio_bucket_method = {
-    BIO_TYPE_MEM,
-    "Serf SSL encryption and decryption buckets",
-    bio_bucket_write,
-    bio_bucket_read,
-    NULL,                        /* Is this called? */
-    NULL,                        /* Is this called? */
-    bio_bucket_ctrl,
-    bio_bucket_create,
-    bio_bucket_destroy,
-#ifdef OPENSSL_VERSION_NUMBER
-    NULL /* sslc does not have the callback_ctrl field */
-#endif
-};
-
-static serf_ssl_context_t *ssl_init_context()
-{
-    serf_ssl_context_t *ssl_ctx;
-    apr_pool_t *pool;
-    serf_bucket_alloc_t *allocator;
-
-    /* XXX Only do this ONCE! */
-    SSL_library_init();
-    OpenSSL_add_ssl_algorithms();
-    SSL_load_error_strings();
-    ERR_load_crypto_strings();
-
-    apr_pool_create(&pool, NULL);
-    allocator = serf_bucket_allocator_create(pool, NULL, NULL);
-
-    ssl_ctx = serf_bucket_mem_alloc(allocator, sizeof(*ssl_ctx));
-
-    ssl_ctx->refcount = 0;
-    ssl_ctx->pool = pool;
-    ssl_ctx->allocator = allocator;
-
-    /* This is wrong-ish. */
-    ssl_ctx->ctx = SSL_CTX_new(SSLv23_client_method());
-
-    SSL_CTX_set_options(ssl_ctx->ctx, SSL_OP_ALL);
-
-    ssl_ctx->ssl = SSL_new(ssl_ctx->ctx);
-    ssl_ctx->bio = BIO_new(&bio_bucket_method);
-    ssl_ctx->bio->ptr = ssl_ctx;
-
-    SSL_set_bio(ssl_ctx->ssl, ssl_ctx->bio, ssl_ctx->bio);
-
-    SSL_set_connect_state(ssl_ctx->ssl);
-
-    ssl_ctx->source = serf_bucket_aggregate_create(ssl_ctx->allocator);
-    ssl_ctx->sink = serf_bucket_aggregate_create(ssl_ctx->allocator);
-
-    ssl_ctx->source_status = APR_SUCCESS;
-    ssl_ctx->sink_status = APR_SUCCESS;
-
-    return ssl_ctx;
-}
-
-static apr_status_t ssl_free_context(
-    serf_ssl_context_t *ssl_ctx)
-{
-    apr_pool_t *p;
-
-    serf_bucket_destroy(ssl_ctx->source);
-    serf_bucket_destroy(ssl_ctx->sink);
-
-    /* SSL_free implicitly frees the underlying BIO. */
-    SSL_free(ssl_ctx->ssl);
-    SSL_CTX_free(ssl_ctx->ctx);
-
-    p = ssl_ctx->pool;
-
-    serf_bucket_mem_free(ssl_ctx->allocator, ssl_ctx);
-    apr_pool_destroy(p);
-
-    return APR_SUCCESS;
-}
 
 SERF_DECLARE_DATA const serf_bucket_type_t serf_bucket_type_ssl_encrypt = {
     "SSLENCRYPT",
