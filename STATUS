@@ -1,5 +1,5 @@
 APR-SERF STATUS:						-*-text-*-
-Last modified at [$Date: 2002/07/01 13:34:08 $]
+Last modified at [$Date: 2002/07/01 15:51:57 $]
 
 Release:
 
@@ -10,11 +10,6 @@ RELEASE SHOWSTOPPERS:
 	client library.
 
   * web pages (go to apr-site)
-
-  * decide on prefix
-      serf_ : +1 Greg, Aaron, Cliff
-      aps_ :
-      apr_serf_ :
 
   * decide on layout of the repository (e.g. subdirs)
     Greg thinks: prolly the following: /build, /include, /docs, /test, 
@@ -28,10 +23,6 @@ RELEASE SHOWSTOPPERS:
      simplifications back into apr(-util))
 
   * release scripts (in /build) (and a how-to-release.txt in docs/)
-
-  * turn docs/roadmap.txt into a real API/implementation design doc
-    (at least far enough such that we can generate .h files and begin
-     coding from there)
 
 RELEASE NON-SHOWSTOPPERS BUT WOULD BE REAL NICE TO WRAP THESE UP:
 
