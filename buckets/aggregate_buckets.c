@@ -41,6 +41,24 @@ SERF_DECLARE(serf_bucket_t *) serf_bucket_aggregate_create(
     return serf_bucket_create(&serf_bucket_type_aggregate, allocator, ctx);
 }
 
+static void serf_aggregate_destroy_and_data(serf_bucket_t *bucket)
+{
+    aggregate_context_t *ctx = bucket->data;
+    bucket_list_t *next_ctx;
+
+    while (ctx->list) {
+        serf_bucket_destroy(ctx->list->bucket);
+        next_ctx = ctx->list->next;
+        serf_bucket_mem_free(bucket->allocator, ctx->list);
+        ctx->list = next_ctx;
+    }
+    if (ctx->done) {
+        serf_bucket_destroy(ctx->done);
+    }
+
+    serf_default_destroy_and_data(bucket);
+}
+
 SERF_DECLARE(void) serf_bucket_aggregate_become(serf_bucket_t *bucket)
 {
     aggregate_context_t *ctx;
@@ -106,6 +124,7 @@ static apr_status_t serf_aggregate_read(serf_bucket_t *bucket,
                                         const char **data, apr_size_t *len)
 {
     aggregate_context_t *ctx = bucket->data;
+    bucket_list_t *next_list;
 
     /* If we finished reading a bucket during the previous read, then
      * we can now toss that bucket.
@@ -132,7 +151,9 @@ static apr_status_t serf_aggregate_read(serf_bucket_t *bucket,
                  * though, so that we can return its data. Destroy it the
                  * next time we perform a read operation.
                  */
-                ctx->list = ctx->list->next;
+                next_list = ctx->list->next;
+                serf_bucket_mem_free(bucket->allocator, ctx->list);
+                ctx->list = next_list;
                 ctx->done = head;
             }
             return status;
@@ -141,8 +162,10 @@ static apr_status_t serf_aggregate_read(serf_bucket_t *bucket,
         /* If we just read no data, then let's try again after destroying
          * this bucket.
          */
-        ctx->list = ctx->list->next;
         serf_bucket_destroy(head);
+        next_list = ctx->list->next;
+        serf_bucket_mem_free(bucket->allocator, ctx->list);
+        ctx->list = next_list;
     }
     /* NOTREACHED */
 }
@@ -195,5 +218,5 @@ SERF_DECLARE_DATA const serf_bucket_type_t serf_bucket_type_aggregate = {
     serf_aggregate_peek,
     serf_default_get_metadata,
     serf_default_set_metadata,
-    serf_default_destroy_and_data,
+    serf_aggregate_destroy_and_data,
 };

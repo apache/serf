@@ -262,10 +262,13 @@ static serf_bucket_t* accept_response(serf_request_t *request,
                                       apr_pool_t *pool)
 {
     serf_bucket_t *c;
+    serf_bucket_alloc_t *bkt_alloc;
 
-    c = serf_bucket_socket_create(socket, serf_request_get_alloc(request));
+    bkt_alloc = serf_bucket_allocator_create(pool, NULL, NULL);
 
-    return serf_bucket_response_create(c, serf_request_get_alloc(request));
+    c = serf_bucket_socket_create(socket, bkt_alloc);
+
+    return serf_bucket_response_create(c, bkt_alloc);
 }
 
 static apr_status_t handle_response(serf_bucket_t *response,

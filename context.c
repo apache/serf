@@ -312,7 +312,7 @@ static apr_status_t read_from_connection(serf_connection_t *conn)
         if (request->resp_bkt == NULL) {
             request->resp_bkt = (*request->acceptor)(request, conn->skt,
                                                      request->acceptor_baton,
-                                                     tmppool);
+                                                     request->respool);
             apr_pool_clear(tmppool);
         }
 

@@ -83,9 +83,10 @@ static void serialize_data(serf_bucket_t *bucket)
             hash = (apr_hash_t*)hash_ptr;
 
             /* Check to see if we have enough free IO vecs to handle this. */
-            if (apr_hash_count(hash) > 16 - nvec)
+            if ((apr_hash_count(hash) * 3) > 16 - nvec)
             {
                 /* XXX: Handle me. */
+                abort();
             }
 
             p = serf_bucket_allocator_get_pool(bucket->allocator);
@@ -174,85 +175,6 @@ static apr_status_t serf_request_peek(serf_bucket_t *bucket,
     return serf_bucket_peek(bucket, data, len);
 }
 
-static apr_status_t serf_request_set_metadata(serf_bucket_t *bucket,
-                                              const char *md_type,
-                                              const char *md_name,
-                                              const void *md_value)
-{
-    apr_hash_t *md_hash;
-    request_metadata_t **req_md;
-
-    req_md = (request_metadata_t**)&bucket->metadata;
-
-    if (*req_md == NULL) {
-        if (md_value == NULL) {
-            /* If we're trying to delete the value, then we're already done
-             * since there isn't any metadata in the bucket. */
-            return APR_SUCCESS;
-        }
-
-        /* Create the metadata container. */
-        *req_md = serf_bucket_mem_alloc(bucket->allocator, sizeof(*req_md));
-
-        /* ### pool usage! */
-        (*req_md)->hash =
-            apr_hash_make(serf_bucket_allocator_get_pool(bucket->allocator));
-    }
-
-    /* Look up the hash table for this md_type */
-    md_hash = apr_hash_get((*req_md)->hash, md_type, APR_HASH_KEY_STRING);
-
-    if (!md_hash) {
-        if (md_value == NULL) {
-            /* The hash table isn't present, so there is no work to delete
-             * a value.
-             */
-            return APR_SUCCESS;
-        }
-
-        /* Create the missing hash table. */
-        /* ### pool usage! */
-        md_hash =
-            apr_hash_make(serf_bucket_allocator_get_pool(bucket->allocator));
-
-        /* Put the new hash table back into the type hash. */
-        apr_hash_set((*req_md)->hash, md_type, APR_HASH_KEY_STRING,
-                     md_hash);
-    }
-
-    apr_hash_set(md_hash, md_name, APR_HASH_KEY_STRING, md_value);
-
-    return APR_SUCCESS;
-}
-
-
-static apr_status_t serf_request_get_metadata(serf_bucket_t *bucket,
-                                              const char *md_type,
-                                              const char *md_name,
-                                              const void **md_value)
-{
-    /* Initialize return value to not being found. */
-    *md_value = NULL;
-
-    if (bucket->metadata) {
-        apr_hash_t *md_hash;
-
-        md_hash = apr_hash_get(((request_metadata_t*)bucket->metadata)->hash,
-                               md_type, APR_HASH_KEY_STRING);
-
-        if (md_hash) {
-            if (md_name) {
-                *md_value = apr_hash_get(md_hash, md_name, APR_HASH_KEY_STRING);
-            }
-            else {
-                *md_value = md_hash;
-            }
-        }
-    }
-
-    return APR_SUCCESS;
-}
-
 SERF_DECLARE_DATA const serf_bucket_type_t serf_bucket_type_request = {
     "REQUEST",
     serf_request_read,
@@ -261,8 +183,8 @@ SERF_DECLARE_DATA const serf_bucket_type_t serf_bucket_type_request = {
     serf_default_read_for_sendfile,
     serf_default_read_bucket,
     serf_request_peek,
-    serf_request_get_metadata,
-    serf_request_set_metadata,
+    serf_default_get_metadata,
+    serf_default_set_metadata,
     serf_default_destroy_and_data,
 };
 

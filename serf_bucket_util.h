@@ -138,6 +138,13 @@ SERF_DECLARE(void) serf_bucket_mem_free(
 
 
 /**
+ * A corollary to apr_pstrmemdup that uses bucket allocators instead.
+ */
+SERF_DECLARE(char *) serf_bstrmemdup(serf_bucket_alloc_t *allocator,
+                                     const char *str,
+                                     apr_size_t size);
+
+/**
  * Read data up to a newline.
  *
  * @a acceptable contains the allowed forms of a newline, and @a found

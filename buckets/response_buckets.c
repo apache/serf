@@ -15,6 +15,7 @@
 
 #include <apr_lib.h>
 #include <apr_strings.h>
+#include <apr_hash.h>
 
 #include "serf.h"
 #include "serf_bucket_util.h"
@@ -58,6 +59,40 @@ SERF_DECLARE(serf_bucket_t *) serf_bucket_response_create(
     ctx->stream = stream;
 
     return serf_bucket_create(&serf_bucket_type_response, allocator, ctx);
+}
+
+SERF_DECLARE(void) serf_response_destroy_and_data(serf_bucket_t *bucket)
+{
+    response_context_t *ctx = bucket->data;
+
+    if (ctx->state != STATE_STATUS_LINE) {
+        const void *md_v;
+        serf_bucket_mem_free(bucket->allocator, (void*)ctx->sl.reason);
+
+        serf_bucket_get_metadata(bucket, SERF_RESPONSE_HEADERS, NULL, &md_v);
+        if (md_v) {
+            apr_hash_t *hash = (apr_hash_t*)md_v;
+            apr_hash_index_t *hi;
+            apr_pool_t *p;
+
+            p = serf_bucket_allocator_get_pool(bucket->allocator);
+            for (hi = apr_hash_first(p, hash); hi; hi = apr_hash_next(hi)) {
+                void *key, *val;
+                apr_ssize_t key_len;
+
+                apr_hash_this(hi, (const void**)&key, &key_len, &val);
+                /* First, remove it. */
+                apr_hash_set(hash, key, key_len, NULL);
+
+                serf_bucket_mem_free(bucket->allocator, key);
+                serf_bucket_mem_free(bucket->allocator, val);
+            }
+        }
+
+    }
+
+    serf_bucket_destroy(ctx->stream);
+    serf_default_destroy_and_data(bucket);
 }
 
 static apr_status_t fetch_line(response_context_t *ctx,
@@ -206,15 +241,10 @@ static apr_status_t run_machine(serf_bucket_t *bkt, response_context_t *ctx)
                 /* Skip over initial : and spaces. */
                 while (apr_isspace(*++c));
 
-                k = serf_bucket_mem_alloc(bkt->allocator,
-                                          end_key - ctx->line + 1);
-                v = serf_bucket_mem_alloc(bkt->allocator,
-                                          (ctx->line + ctx->line_used) - c);
-
-                memcpy(k, ctx->line, end_key - ctx->line);
-                k[end_key - ctx->line] = '\0';
-                memcpy(v, c, (ctx->line + ctx->line_used) - c);
-                v[(ctx->line + ctx->line_used) - c] = '\0';
+                k = serf_bstrmemdup(bkt->allocator, ctx->line,
+                                    end_key - ctx->line);
+                v = serf_bstrmemdup(bkt->allocator, c,
+                                    ctx->line + ctx->line_used - c);
 
                 serf_bucket_set_metadata(bkt, SERF_RESPONSE_HEADERS,
                                          k, v);
@@ -312,9 +342,8 @@ SERF_DECLARE(apr_status_t) serf_bucket_response_status(
         reason++;
     }
     /* Should we copy this value? */
-    ctx->sl.reason =
-        apr_pstrmemdup(serf_bucket_allocator_get_pool(bkt->allocator),
-                       reason, ctx->line_used - (reason - ctx->line));
+    ctx->sl.reason = serf_bstrmemdup(bkt->allocator, reason,
+                                     ctx->line_used - (reason - ctx->line));
 
     *sline = ctx->sl;
     return APR_SUCCESS;
@@ -378,5 +407,5 @@ SERF_DECLARE_DATA const serf_bucket_type_t serf_bucket_type_response = {
     serf_response_peek,
     serf_default_get_metadata,
     serf_default_set_metadata,
-    serf_default_destroy_and_data,
+    serf_response_destroy_and_data,
 };

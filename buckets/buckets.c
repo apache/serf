@@ -165,7 +165,13 @@ SERF_DECLARE(apr_status_t) serf_default_get_metadata(serf_bucket_t *bucket,
                                APR_HASH_KEY_STRING);
 
         if (md_hash) {
-            *md_value = apr_hash_get(md_hash, md_name, APR_HASH_KEY_STRING);
+            if (md_name) {
+                *md_value = apr_hash_get(md_hash, md_name, 
+                                         APR_HASH_KEY_STRING);
+            }
+            else {
+                *md_value = md_hash;
+            }
         }
     }
 
@@ -376,6 +382,15 @@ SERF_DECLARE(void) serf_bucket_mem_free(
     }
 }
 
+SERF_DECLARE(char *) serf_bstrmemdup(serf_bucket_alloc_t *allocator,
+                                     const char *str, apr_size_t size)
+{
+    char *n;
+    n = serf_bucket_mem_alloc(allocator, size + 1);
+    memcpy(n, str, size);
+    n[size] = '\0';
+    return n;
+}
 
 /* ==================================================================== */
 
