@@ -1,0 +1,62 @@
+APACHE COMMONS: serf                                    -*-indented-text-*-
+
+
+TOPICS
+
+  1. Introduction
+  2. Thread Safety
+
+
+-----------------------------------------------------------------------------
+
+1. INTRODUCTION
+
+This document details various design choices for the serf library. It
+is intended to be a guide for serf developers. Of course, these design
+principles, choices made, etc are a good source of information for
+users of the serf library, too.
+
+
+-----------------------------------------------------------------------------
+
+2. THREAD SAFETY
+
+The serf library should contain no mutable globals, making it is safe
+to use in a multi-threaded environment.
+
+Each "object" within the system does not need to be used from multiple
+threads at a time. Thus, they require no internal mutexes, and can
+disable mutexes within APR objects where applicable (e.g. pools that
+are created).
+
+The objects should not have any thread affinity (i.e. don't use
+thread-local storage). This enables an application to use external
+mutexes to guard entry to the serf objects, which then allows the
+objects to be used from multiple threads.
+
+
+-----------------------------------------------------------------------------
+
+3. POOL USAGE
+
+For general information on the proper use of pools, please see:
+
+  http://cvs.apache.org/viewcvs/*checkout*/apr/docs/pool-design.html
+
+Within serf itself, the buckets introduce a significant issue related
+to pools. Since it is very possible to end up creating *many* buckets
+within a transaction, and that creation could be proportional to an
+incoming or outgoing data stream, a lot of care must be take to avoid
+tying bucket allocations to pools. If a bucket allocated any internal
+memory against a pool, and if that bucket is created an unbounded
+number of times, then the pool memory could be exhausted.
+
+Thus, buckets are allocated using a custom allocator which allows the
+memory to be freed when that bucket is no longer needed. This
+contrasts with pools where the "free" operation occurs over a large
+set of objects, which is problematic if some are still in use.
+
+### need more explanation of strategy/solution ...
+
+
+-----------------------------------------------------------------------------
