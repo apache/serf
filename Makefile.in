@@ -1,0 +1,36 @@
+# Serf Makefile
+top_srcdir   = @top_srcdir@
+top_builddir = @top_builddir@
+srcdir       = @srcdir@
+builddir     = $(shell pwd)
+VPATH        = @srcdir@
+
+# prefix information
+prefix=@prefix@
+exec_prefix=@exec_prefix@
+bindir=@bindir@
+libdir=@libdir@
+includedir=@includedir@
+
+SUBDIRS = @SERF_SUBDIRS@ base
+
+TARGET_LIB = libserf.la
+
+TARGETS = $(TARGET_LIB)
+
+PROGRAMS = test/serf-test
+CLEAN_TARGETS = $(PROGRAMS)
+
+include $(top_srcdir)/build/rules.mk
+
+INCLUDES=-I$(top_srcdir)/include -I$(top_builddir)/include
+
+$(TARGET_LIB):
+	@for i in $(SUBDIRS); do objects="$$objects $$i/*.@so_ext@"; done ; \
+		tmpcmd="$(LINK) @lib_target@ @lib_target_libs@"; \
+		echo $$tmpcmd; \
+		$$tmpcmd
+
+# Feel free to add real dependencies. build/rules.mk includes $(builddir)/.deps
+$(builddir)/.deps:
+	@touch $@

@@ -1,0 +1,10 @@
+.deps
+.libs
+*.lo
+*.la
+Makefile
+config.cache
+config.log
+config.status
+configure
+config.nice

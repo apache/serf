@@ -1,0 +1,9 @@
+top_builddir=@top_builddir@
+VPATH = @srcdir@
+
+TARGETS = serf_connection.lo
+
+INCLUDES=-I$(top_srcdir)/include -I$(top_builddir)/include
+
+# bring in rules.mk for standard functionality
+@INCLUDE_RULES@
