@@ -100,6 +100,7 @@ static void serf_deflate_destroy_and_data(serf_bucket_t *bucket)
     deflate_context_t *ctx = bucket->data;
 
     serf_bucket_destroy(ctx->inflate_stream);
+    serf_bucket_destroy(ctx->stream);
 
     serf_default_destroy_and_data(bucket);
 }
@@ -111,6 +112,8 @@ static apr_status_t serf_deflate_read(serf_bucket_t *bucket,
     deflate_context_t *ctx = bucket->data;
     unsigned long compCRC, compLen;
     apr_status_t status;
+    const char *private_data;
+    apr_size_t private_len;
     int zRC;
 
     while (1) {
@@ -118,18 +121,16 @@ static apr_status_t serf_deflate_read(serf_bucket_t *bucket,
         case STATE_READING_HEADER:
         case STATE_READING_VERIFY:
             status = serf_bucket_read(ctx->stream, ctx->stream_left,
-                                      data, len);
+                                      &private_data, &private_len);
 
             if (SERF_BUCKET_READ_ERROR(status)) {
                 return status;
             }
 
             memcpy(ctx->hdr_buffer + (ctx->stream_size - ctx->stream_left),
-                   data, *len);
+                   private_data, private_len);
 
-            ctx->stream_left -= *len;
-            /* Don't let our caller think we read anything. */
-            *len = 0;
+            ctx->stream_left -= private_len;
 
             if (ctx->stream_left == 0) {
                 ctx->state++;
@@ -156,12 +157,11 @@ static apr_status_t serf_deflate_read(serf_bucket_t *bucket,
             break;
         case STATE_VERIFY:
             /* Do the checksum computation. */
-            compCRC = getLong(ctx->zstream.next_in);
+            compCRC = getLong(ctx->hdr_buffer);
             if (ctx->crc != compCRC) {
                 return APR_EGENERAL;
             }
-            ctx->zstream.next_in += 4;
-            compLen = getLong(ctx->zstream.next_in);
+            compLen = getLong(ctx->hdr_buffer + 4);
             if (ctx->zstream.total_out != compLen) {
                 return APR_EGENERAL;
             }
@@ -171,28 +171,29 @@ static apr_status_t serf_deflate_read(serf_bucket_t *bucket,
             break;
         case STATE_INFLATE:
             /* FIXME: We need to try inflate_stream first. */
-            status = serf_bucket_read(ctx->stream, ctx->bufferSize, data, len);
+            status = serf_bucket_read(ctx->stream, ctx->bufferSize,
+                                      &private_data, &private_len);
 
             if (SERF_BUCKET_READ_ERROR(status)) {
                 return status;
             }
 
-            ctx->zstream.next_in = (unsigned char*)*data;
-            ctx->zstream.avail_in = *len;
+            ctx->zstream.next_in = (unsigned char*)private_data;
+            ctx->zstream.avail_in = private_len;
             zRC = Z_OK;
             while (ctx->zstream.avail_in != 0) {
                 /* We're full, clear out our buffer, reset, and return. */
                 if (ctx->zstream.avail_out == 0) {
                     serf_bucket_t *tmp;
                     ctx->zstream.next_out = ctx->buffer;
-                    *len = ctx->bufferSize - ctx->zstream.avail_out;
+                    private_len = ctx->bufferSize - ctx->zstream.avail_out;
 
                     ctx->crc = crc32(ctx->crc, (const Bytef *)ctx->buffer,
-                                     *len);
+                                     private_len);
 
                     /* FIXME: There probably needs to be a free func. */
                     tmp = SERF_BUCKET_SIMPLE_STRING_LEN((char *)ctx->buffer,
-                                                        *len,
+                                                        private_len,
                                                         bucket->allocator);
 
                     serf_bucket_aggregate_append(ctx->inflate_stream, tmp);
@@ -204,16 +205,30 @@ static apr_status_t serf_deflate_read(serf_bucket_t *bucket,
                 if (zRC == Z_STREAM_END) {
                     serf_bucket_t *tmp;
 
-                    *len = ctx->bufferSize - ctx->zstream.avail_out;
+                    private_len = ctx->bufferSize - ctx->zstream.avail_out;
                     ctx->crc = crc32(ctx->crc, (const Bytef *)ctx->buffer,
-                                     *len);
+                                     private_len);
                     /* FIXME: There probably needs to be a free func. */
                     tmp = SERF_BUCKET_SIMPLE_STRING_LEN((char *)ctx->buffer,
-                                                        *len,
+                                                        private_len,
                                                         bucket->allocator);
                     serf_bucket_aggregate_append(ctx->inflate_stream, tmp);
 
                     ctx->zstream.avail_out = ctx->bufferSize;
+
+                    /* Push back the remaining data to be read. */
+                    tmp = serf_bucket_aggregate_create(bucket->allocator);
+                    serf_bucket_aggregate_prepend(tmp, ctx->stream);
+                    ctx->stream = tmp;
+
+                    /* We now need to take the remaining avail_in and
+                     * throw it in ctx->stream so our next read picks it up.
+                     */
+                    tmp = SERF_BUCKET_SIMPLE_STRING_LEN(ctx->zstream.next_in,
+                                                        ctx->zstream.avail_in,
+                                                        bucket->allocator);
+                    serf_bucket_aggregate_prepend(ctx->stream, tmp);
+
                     ctx->state++;
                     ctx->stream_left = ctx->stream_size = DEFLATE_VERIFY_SIZE;
                     break;

@@ -411,6 +411,8 @@ int main(int argc, const char **argv)
     serf_bucket_headers_setn(hdrs_bkt, "Host", url.hostinfo);
     serf_bucket_headers_setn(hdrs_bkt, "User-Agent",
                              "Serf/" SERF_VERSION_STRING);
+    /* Shouldn't serf do this for us? */
+    serf_bucket_headers_setn(hdrs_bkt, "Accept-Encoding", "gzip");
 
     handler_ctx.requests_outstanding = 0;
     apr_atomic_inc32(&handler_ctx.requests_outstanding);

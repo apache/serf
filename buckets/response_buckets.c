@@ -25,7 +25,7 @@
 
 typedef struct {
     serf_bucket_t *stream;
-    serf_bucket_t *dechunk;
+    serf_bucket_t *body;        /* Pointer to the stream wrapping the body. */
     serf_bucket_t *headers;     /* holds parsed headers */
 
     enum {
@@ -40,9 +40,6 @@ typedef struct {
     serf_linebuf_t linebuf;
 
     serf_status_line sl;
-
-    int chunked;
-    apr_int64_t body_left;
 } response_context_t;
 
 
@@ -54,7 +51,7 @@ SERF_DECLARE(serf_bucket_t *) serf_bucket_response_create(
 
     ctx = serf_bucket_mem_alloc(allocator, sizeof(*ctx));
     ctx->stream = stream;
-    ctx->dechunk = NULL;
+    ctx->body = NULL;
     ctx->headers = serf_bucket_headers_create(allocator);
     ctx->state = STATE_STATUS_LINE;
 
@@ -72,8 +69,8 @@ static void serf_response_destroy_and_data(serf_bucket_t *bucket)
     }
 
     serf_bucket_destroy(ctx->stream);
-    if (ctx->dechunk != NULL)
-        serf_bucket_destroy(ctx->dechunk);
+    if (ctx->body != NULL)
+        serf_bucket_destroy(ctx->body);
     serf_bucket_destroy(ctx->headers);
 
     serf_default_destroy_and_data(bucket);
@@ -198,21 +195,44 @@ static apr_status_t run_machine(serf_bucket_t *bkt, response_context_t *ctx)
             /* Are we C-L, chunked, or conn close? */
             v = serf_bucket_headers_get(ctx->headers, "Content-Length");
             if (v) {
-                ctx->chunked = 0;
-                ctx->body_left = apr_strtoi64(v, NULL, 10);
+                apr_size_t length;
+                length = apr_strtoi64(v, NULL, 10);
                 if (errno == ERANGE) {
                     return APR_FROM_OS_ERROR(ERANGE);
                 }
+                ctx->body = serf_bucket_limit_create(ctx->stream, length,
+                                                     bkt->allocator);
             }
             else {
                 v = serf_bucket_headers_get(ctx->headers, "Transfer-Encoding");
 
                 /* Need to handle multiple transfer-encoding. */
                 if (v && strcasecmp("chunked", v) == 0) {
-                    ctx->chunked = 1;
-                    ctx->body_left = 0;
-                    ctx->dechunk = serf_bucket_dechunk_create(ctx->stream,
-                                                              bkt->allocator);
+                    ctx->body = serf_bucket_dechunk_create(ctx->stream,
+                                                           bkt->allocator);
+                }
+
+                /* Connection: Close response. */
+                /* FIXME There is a problem that arises here due to bucket
+                 * ownership.  If we were to get a Conn: Close with gzip
+                 * encoding, we'll get a double free and abort().
+                 *
+                 * The reason is that the deflate bucket assumes that its
+                 * streams are of the same lifetime.  However, the dechunk
+                 * and limit buckets assume that its streams are of
+                 * different lifetimes.  This isn't quite right and needs
+                 * to be rethought.
+                 */
+                if (!ctx->body) {
+                    ctx->body = ctx->stream;
+                }
+            }
+            v = serf_bucket_headers_get(ctx->headers, "Content-Encoding");
+            if (v) {
+                /* Need to handle multiple content-encoding. */
+                if (v && strcasecmp("gzip", v) == 0) {
+                    ctx->body =
+                        serf_bucket_deflate_create(ctx->body, bkt->allocator);
                 }
             }
             ctx->state = STATE_BODY;
@@ -303,34 +323,7 @@ static apr_status_t serf_response_read(serf_bucket_t *bucket,
         return rv;
     }
 
-    if (ctx->dechunk) {
-        rv = serf_bucket_read(ctx->dechunk, requested, data, len);
-        if (SERF_BUCKET_READ_ERROR(rv))
-            return rv;
-        if (APR_STATUS_IS_EOF(rv)) {
-            ctx->state = STATE_TRAILERS;
-            /* We must mask the EOF. */
-            rv = APR_SUCCESS;
-        }
-        return rv;
-    }
-
-    if (requested > ctx->body_left) {
-        requested = ctx->body_left;
-    }
-
-    /* Delegate to the stream bucket to do the read. */
-    rv = serf_bucket_read(ctx->stream, requested, data, len);
-    if (SERF_BUCKET_READ_ERROR(rv))
-        return rv;
-
-    /* Some data was read, so decrement the amount left. We may be done. */
-    ctx->body_left -= *len;
-    if (!ctx->body_left && !ctx->chunked) {
-        ctx->state = STATE_DONE;
-        rv = APR_EOF;
-    }
-    return rv;
+    return serf_bucket_read(ctx->body, requested, data, len);
 }
 
 static apr_status_t serf_response_readline(serf_bucket_t *bucket,
@@ -345,9 +338,8 @@ static apr_status_t serf_response_readline(serf_bucket_t *bucket,
         return rv;
     }
 
-    /* ### need to deal with body_left */
     /* Delegate to the stream bucket to do the readline. */
-    return serf_bucket_readline(ctx->stream, acceptable, found, data, len);
+    return serf_bucket_readline(ctx->body, acceptable, found, data, len);
 }
 
 /* ### need to implement */

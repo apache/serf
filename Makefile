@@ -8,11 +8,12 @@ OBJECTS = buckets/aggregate_buckets.o buckets/request_buckets.o context.o \
           buckets/mmap_buckets.o buckets/socket_buckets.o \
           buckets/response_buckets.o buckets/headers_buckets.o \
           buckets/allocator.o buckets/dechunk_buckets.o \
-          buckets/deflate_buckets.o
+          buckets/deflate_buckets.o buckets/limit_buckets.o
 
 PROGRAMS = test/serf_get test/serf_response test/serf_request
 TESTCASES = test/testcases/simple.response \
-  test/testcases/chunked-empty.response test/testcases/chunked.response
+  test/testcases/chunked-empty.response test/testcases/chunked.response \
+  test/testcases/deflate.response
 
 # Place apr-config and apu-config in your PATH.
 APR_CONFIG=apr-1-config
@@ -44,7 +45,10 @@ test/serf_request: $(OBJECTS) test/serf_request.o
 	$(CC) $(LDFLAGS) -o $@ $^ $(LIBS)
 
 check: test/serf_response
-	@for i in $(TESTCASES); do ./test/serf_response $$i; done;
+	@for i in $(TESTCASES); \
+		 do echo "== Testing $$i =="; \
+		 ./test/serf_response $$i; \
+	done;
 
 clean:
 	rm -f $(OBJECTS) $(PROGRAMS)

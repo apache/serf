@@ -159,7 +159,7 @@ static apr_status_t serf_aggregate_read(serf_bucket_t *bucket,
                 ctx->done = head;
 
                 /* Return the data, and note that we can be read again. */
-                return APR_SUCCESS;
+                return ctx->list ? APR_SUCCESS : APR_EOF;
             }
 
             /* status is APR_SUCCESS or APR_EAGAIN. */
