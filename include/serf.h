@@ -56,38 +56,169 @@
  * @brief Main serf header file
  */
 
-#ifdef __cplusplus
-extern "C" {
-#endif
+#include <apr_pools.h>
+#include <apr_buckets.h>
+#include <apr_network_io.h>
+#include <apr_tables.h>
 
 #include "serf_methods.h"
 #include "serf_buckets.h"
 
-/*
- * Connection primative.
- */
-struct serf_connection_t {
-    const char *host;
-    const char *port;
-    
-    serf_socket_t *socket;
-};
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+/* ### improve this stuff some */
+#define SERF_DECLARE(type) type
+
+/* Forward declare some structures */
+typedef struct serf_filter_type_t serf_filter_type_t;
+typedef struct serf_filter_t serf_filter_t;
 typedef struct serf_connection_t serf_connection_t;
+typedef struct serf_request_t serf_request_t;
+typedef struct serf_response_t serf_response_t;
+
+
+/* A callback function for processing a response. When operating in
+ * asynchronous mode, the processing loop will invoke this function when
+ * a response arrives.
+ *
+ * The client can reach its context via response->request->ctx.
+ *
+ * All temporary allocations should occur in POOL.
+ */
+typedef apr_status_t (*serf_response_handler_t) (
+    serf_response_t *response,
+    apr_pool_t *pool
+    );
+
+/* This callback is used to fetch data for delivery to the remote server.
+ *
+ * A brigade should be provided. All data for delivery will be appended
+ * to this brigade.
+ *
+ * All temporary allocations should occur in POOL.
+ */
+typedef apr_status_t (*serf_source_t) (
+    apr_brigade_t *brigade,
+    apr_pool_t *pool
+    );
+
+/* This function is used to defined a filter function. It accepts data
+ * within the brigade, transforms it, and passes it to the next filter.
+ *
+ * All temporary allocations should occur in POOL.
+ */
+typedef apr_status_t (*serf_filter_func_t) (
+    apr_brigade_t *brigade,
+    serf_filter_t *filter,
+    apr_pool_t *pool
+    );
 
 /*
- * Request primative.
+ * Filtering primitives.
+ *
+ * All filters are designed as "push" filters. The caller "pushes"
+ * data into the filter, it will process the data, then pass the
+ * resulting data to the "next" filter.
+ *
+ * In certain types of applications and callin environments, a "pull"
+ * filter is desired. To turn the push filters into "pull" filters, it
+ * is assumed that some kind of pull-based data source is available in
+ * the environment. In a pull model, the result data would be mapped
+ * as:
+ *
+ *   DATA = F1( F2( F3( SOURCE )))
+ *
+ * However, the filter chain is organized as:
+ *
+ *   F3.write(SOURCE) -> F2 -> F1 -> DATA
+ *
+ * The mapping is performed by inserting a "gathering filter":
+ *
+ *   ORIG_DATA = get(SOURCE)
+ *   F3.write(ORIG_DATA) -> F2 -> F1 -> GATHER
+ *   DATA = GATHER.fetch()
+ *
+ * We have chosen the "push" model as the basis of the filter design,
+ * as it can easily be reversed, and the construction of a filter is
+ * much more straightforward.
+ */
+struct serf_filter_type_t {
+    /* The filter's name (for reference and for debugging). */
+    const char *name;
+
+    /* The function that processes the data for this filter. */
+    serf_filter_func_t func;
+};
+
+struct serf_filter_t {
+    /* The type of this filter. */
+    const serf_filter_type_t *type;
+
+    /* Filter-specific context. */
+    void *ctx;
+
+    /* The next filter in this chain. */
+    serf_filter_t *next;
+};
+
+
+/*
+ * Connection primitive.
+ */
+struct serf_connection_t {
+    /* The address that we will connect to. */
+    apr_sockaddr_t *address;
+
+    /* The socket that we are connected to the server with. This value may
+       be NULL if we have not (yet) connected (e.g. lazy connect). */
+    apr_socket_t *socket;
+
+    /* Should we reconnect automatically on an EPIPE? */
+    /* ### gjs: what about retry limits? timeouts? etc. */
+    int auto_reconnect;
+
+    /* All of the requests which are (currently) associated with this
+       connection. */
+    apr_array_header_t *requests;
+
+    /* Filters that are applied to all buckets before they are delivered
+       to the remote server. */
+    serf_filter_t *request_filters;
+
+    /* Filters that are applied to all buckets as they arrive from the
+       remote server. */
+    serf_filter_t *response_filters;
+};
+
+/*
+ * Request primitive.
  */
 struct serf_request_t {
     /* Method to retrieve this request by */
+    /* ### gjs: as a client library, the perf gain for tokenizing the method
+       ### is miniscule. let's just keep this as a string. if we find it is
+       ### a hot-spot, then we can optimize it. but switching to a string
+       ### eliminates the entire serf_method.h complexity, which probably
+       ### contributes more cost than savings. */
     serf_method_t method;
 
+    /* ### gjs: I see no need to separate these. let's just glom together
+       ### the path, query, and fragment. (RFC 2396 for URL ref info).
+       ### I say we just call this field "uri_path" and be done. */
     /* The path component for this request. */
-    char *path;
+    const char *path;
     /* Any potential query arguments. */
-    char *query_args;
+    const char *query_args;
 
     /* Indicate whether keepalive of connection is desired. */
+    /* ### gjs: axe this. we should always operate as an HTTP/1.1 client
+       ### with keepalive enabled */
     int keepalive;
+
+    /* Client-managed context associated with this request. */
+    void *ctx;
 
     /* Represents any entity and header information to include with the
      * request.
@@ -96,13 +227,28 @@ struct serf_request_t {
      */
     apr_bucket_brigade_t *entity;
 
+    /* When operating in asynchronous (callback) mode, use this function
+     * as the callback for processing the response associated with this
+     * request. */
+    serf_response_handler_t *handler;
+
+    /* When operating in asynchronous (callback) mode, use this function
+     * to provide source data for the request.
+     *
+     * This is the SOURCE, in reference to the filtering discussion above.
+     */
+    serf_source_t *source;
+
     /* Pointer to the connection being used. */
     serf_connection_t *conn;
+
+    /* ### do we need a per-request filter chain? I'd think so. just
+       ### make sure the invocation mechanism knows how to flip between
+       ### the end of the connection list and this list */
 };
-typedef struct serf_request_t serf_request_t;
 
 /*
- * Response primative.
+ * Response primitive.
  */
 struct serf_response_t {
     /* Represents any entity and/or header fields included with the response.
@@ -112,51 +258,95 @@ struct serf_response_t {
 
     /* Pointer to the associated request object. */
     serf_request_t *request;
+
+    /* ### do we need a per-response filter chain? I'd think so. just
+       ### make sure the invocation mechanism knows how to flip between
+       ### the end of the connection list and this list */
 };
-typedef struct serf_response_t serf_response_t;
 
 /*
  * Create a connection structure.
  */
-serf_connection_t* serf_create_connection();
+SERF_DECLARE(serf_connection_t *) serf_create_connection(apr_pool_t *pool);
 
 /*
  * Opens the specified connection.
+ *
+ * ### gjs: IMO, we should lazy-connect. toss this.
  */
-serf_status_t serf_open_connection(serf_connection_t *conn);
+SERF_DECLARE(apr_status_t) serf_open_connection(serf_connection_t *conn);
 
 /*
  * Closes the specified connection and any requests that may be underneath it.
  */
-serf_status_t serf_close_connection(serf_connection_t *conn);
+SERF_DECLARE(apr_status_t) serf_close_connection(serf_connection_t *conn);
 
 /*
  * Create a request object for a specific connection.
+ *
+ * ### gjs: if somebody wants to construct a connection pool, then we
+ * ### may want requests to be independent of connections. the request
+ * ### won't be associated with a connection until it is passed from
+ * ### the client into serf for delivery. (IMO: let's do it that way)
  */
-serf_request_t* serf_create_request(serf_connection_t *conn);
+SERF_DECLARE(serf_request_t *) serf_create_request(serf_connection_t *conn,
+                                                   apr_pool_t *pool);
 
 /*
  * Writes the specifed request to its associated connection.
+ *
+ * This is a blocking operation. The connection will be opened to the
+ * server, if it has not been connected yet.
  */
-serf_status_t serf_write_request(serf_request_t *request);
+SERF_DECLARE(apr_status_t) serf_write_request(serf_request_t *request);
 
 /*
  * Creates a response object tied in with a request object.
+ *
+ * ### gjs: this should go away. you should only be able to get one
+ * ### via serf_read_respones(), or via the async callback.
  */
-serf_response_t* serf_create_response(serf_response_t *response);
+SERF_DECLARE(serf_response_t *) serf_create_response(serf_response_t *response,
+                                                     apr_pool_t *pool);
 
 /*
- * Indicates that the application is ready to read the response.
+ * Read a response from the specified connection.
+ *
+ * This function blocks until enough of a response can be constructed
+ * and returned. The application can use (?? other APIs) to continue
+ * reading the rest of the response.
+ *
+ * The response is allocated in the specified pool.
  */
-serf_status_t serf_read_response(serf_response_t *response);
+SERF_DECLARE(apr_status_t) serf_read_response(serf_response_t **response,
+                                              serf_connection_t *conn,
+                                              apr_pool_t *pool);
 
 /*
  * Helper function that will open a connection and a request based on the
  * provided URI. 
  */
-serf_status_t serf_open_uri(apr_uri_t *url,
-                            serf_connection_t **conn, 
-                            serf_request_t **request);
+SERF_DECLARE(apr_status_t) serf_open_uri(apr_uri_t *url,
+                                         serf_connection_t **conn, 
+                                         serf_request_t **request);
+
+/*
+ * Process all of the requests that have been associated with the
+ * specified connections. This function will return when the last
+ * response has been delivered.
+ *
+ * If requests are added to the connection while in the callbacks,
+ * then they will be processed, too, before this function returns.
+ *
+ * As each response arrives, the response handler from the response's
+ * corresponding request structure will be invoked with the response
+ * object.
+ *
+ * The application should ensure that a bottom-most filter is installed
+ * in the request chain to provide data, and a bottom-most filter in
+ * the response chain to deal with the response data.
+ */
+SERF_DECLARE(apr_status_t) serf_process_connection(serf_connection_t *conn);
 
 
 #ifdef __cplusplus
