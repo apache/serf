@@ -40,7 +40,7 @@ SERF_DECLARE(serf_bucket_t *) serf_bucket_mmap_create(
     ctx->offset = 0;
     ctx->remaining = ctx->mmap->size;
 
-    return serf_bucket_create(&serf_bucket_type_simple, allocator, ctx);
+    return serf_bucket_create(&serf_bucket_type_mmap, allocator, ctx);
 }
 
 static apr_status_t serf_mmap_read(serf_bucket_t *bucket,
@@ -51,6 +51,9 @@ static apr_status_t serf_mmap_read(serf_bucket_t *bucket,
 
     if (requested == SERF_READ_ALL_AVAIL || requested > ctx->remaining) {
         *len = ctx->remaining;
+    }
+    else {
+        *len = requested;
     }
 
     /* ### Would it be faster to call this once and do the offset ourselves? */
@@ -70,8 +73,29 @@ static apr_status_t serf_mmap_readline(serf_bucket_t *bucket,
                                          int acceptable, int *found,
                                          const char **data, apr_size_t *len)
 {
-    /* ### need our utility function... */
-    return APR_ENOTIMPL;
+    mmap_context_t *ctx = bucket->data;
+    const char *end;
+
+    /* ### Would it be faster to call this once and do the offset ourselves? */
+    apr_mmap_offset((void**)data, ctx->mmap, ctx->offset);
+    end = *data;
+
+    /* XXX An overflow is generated if we pass &ctx->remaining to readline.
+     * Not real clear why.
+     */
+    *len = ctx->remaining;
+
+    serf_util_readline(&end, len, acceptable, found);
+
+    *len = end - *data;
+
+    ctx->offset += *len;
+    ctx->remaining -= *len;
+
+    if (ctx->remaining == 0) {
+        return APR_EOF;
+    }
+    return APR_SUCCESS;
 }
 
 static apr_status_t serf_mmap_peek(serf_bucket_t *bucket,
