@@ -382,15 +382,37 @@ SERF_DECLARE(void) serf_bucket_mem_free(
     }
 }
 
+
+/* ==================================================================== */
+
+
 SERF_DECLARE(char *) serf_bstrmemdup(serf_bucket_alloc_t *allocator,
                                      const char *str, apr_size_t size)
 {
-    char *n;
-    n = serf_bucket_mem_alloc(allocator, size + 1);
-    memcpy(n, str, size);
-    n[size] = '\0';
-    return n;
+    char *newstr = serf_bucket_mem_alloc(allocator, size + 1);
+    memcpy(newstr, str, size);
+    newstr[size] = '\0';
+    return newstr;
 }
+
+SERF_DECLARE(void *) serf_bmemdup(serf_bucket_alloc_t *allocator,
+                                  const void *mem,
+                                  apr_size_t size)
+{
+    void *newmem = serf_bucket_mem_alloc(allocator, size);
+    memcpy(newmem, mem, size);
+    return newmem;
+}
+
+SERF_DECLARE(char *) serf_bstrdup(serf_bucket_alloc_t *allocator,
+                                  const char *str)
+{
+    apr_size_t size = strlen(str) + 1;
+    char *newstr = serf_bucket_mem_alloc(allocator, size);
+    memcpy(newstr, str, size);
+    return newstr;
+}
+
 
 /* ==================================================================== */
 

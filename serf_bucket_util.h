@@ -138,11 +138,25 @@ SERF_DECLARE(void) serf_bucket_mem_free(
 
 
 /**
- * A corollary to apr_pstrmemdup that uses bucket allocators instead.
+ * Analogous to apr_pstrmemdup, using a bucket allocator instead.
  */
 SERF_DECLARE(char *) serf_bstrmemdup(serf_bucket_alloc_t *allocator,
                                      const char *str,
                                      apr_size_t size);
+
+/**
+ * Analogous to apr_pmemdup, using a bucket allocator instead.
+ */
+SERF_DECLARE(void *) serf_bmemdup(serf_bucket_alloc_t *allocator,
+                                  const void *mem,
+                                  apr_size_t size);
+
+/**
+ * Analogous to apr_pstrdup, using a bucket allocator instead.
+ */
+SERF_DECLARE(char *) serf_bstrdup(serf_bucket_alloc_t *allocator,
+                                  const char *str);
+
 
 /**
  * Read data up to a newline.
@@ -174,6 +188,7 @@ SERF_DECLARE(char *) serf_bstrmemdup(serf_bucket_alloc_t *allocator,
  */
 SERF_DECLARE(void) serf_util_readline(const char **data, apr_size_t *len,
                                       int acceptable, int *found);
+
 
 /** The buffer size used within @see serf_databuf_t. */
 #define SERF_DATABUF_BUFSIZE 8000

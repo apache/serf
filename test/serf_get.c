@@ -18,6 +18,7 @@
 #include <apr.h>
 #include <apr_uri.h>
 #include <apr_strings.h>
+#include <apr_atomic.h>
 
 #include "serf.h"
 
@@ -279,7 +280,6 @@ static apr_status_t handle_response(serf_bucket_t *response,
                                     void *handler_baton,
                                     apr_pool_t *pool)
 {
-    int found_line;
     const char *data, *s;
     apr_size_t len;
     serf_status_line sl;

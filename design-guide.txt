@@ -78,12 +78,12 @@ The return values from the read functions should follow this general
 pattern:
 
     APR_SUCCESS    Some data was returned, and the caller can
-                   immediate call the read function again to read more
-                   data.
+                   immediately call the read function again to read
+                   more data.
 
-    APR_EAGAIN     Some data was returned, but no more is available.
-                   The caller should "wait for a bit" or wait for some
-                   event before attempting to read again. Reading
+    APR_EAGAIN     Some data was returned, but no more is available
+                   for now. The caller should "wait for a bit" or wait
+                   for some event before attempting to read again. Reading
                    again will, in all likelihood, return zero length
                    data and APR_EAGAIN again.
 

@@ -13,9 +13,12 @@
  * limitations under the License.
  */
 
+#include <stdlib.h>
+
 #include <apr_lib.h>
 #include <apr_strings.h>
 #include <apr_hash.h>
+#include <apr_date.h>
 
 #include "serf.h"
 #include "serf_bucket_util.h"
@@ -61,7 +64,7 @@ SERF_DECLARE(serf_bucket_t *) serf_bucket_response_create(
     return serf_bucket_create(&serf_bucket_type_response, allocator, ctx);
 }
 
-SERF_DECLARE(void) serf_response_destroy_and_data(serf_bucket_t *bucket)
+static void serf_response_destroy_and_data(serf_bucket_t *bucket)
 {
     response_context_t *ctx = bucket->data;
 
@@ -216,7 +219,7 @@ static apr_status_t fetch_line(response_context_t *ctx,
 
 static apr_status_t run_machine(serf_bucket_t *bkt, response_context_t *ctx)
 {
-    apr_status_t status;
+    apr_status_t status = APR_SUCCESS; /* initialize to avoid gcc warnings */
 
     switch (ctx->state) {
     case STATE_STATUS_LINE:
@@ -261,7 +264,6 @@ static apr_status_t run_machine(serf_bucket_t *bkt, response_context_t *ctx)
             serf_bucket_get_metadata(bkt, SERF_RESPONSE_HEADERS,
                                      "Content-Length", &v);
             if (v) {
-                const char *cl = v;
                 ctx->chunked = 0;
                 ctx->body_left = apr_strtoi64(v, NULL, 10);
                 if (errno == ERANGE) {
