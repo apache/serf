@@ -1,0 +1,21 @@
+APACHE COMMONS: serf                                    -*-indented-text-*-
+Last modified at [$Date: 2003-09-18 10:59:57 -0700 (Thu, 18 Sep 2003) $]
+
+
+OPEN ISSUES
+
+  * rather than having serf_bucket_alloc_t, can we make
+    apr_allocator_t work "well" for bunches o' small allocations?
+
+  * memory usage probably needs some thought. in particular, the mix
+    between the bucket allocators and any pools associated with the
+    connection and the responses. see the point below about buckets
+    needing pools.
+
+  * the current definition has a "metadata" concept on a per-bucket
+    basis. however, to record this metadata, we really want to be able
+    to use apr_hash_t, which implies having a pool.
+    
+    we do have a respool associated with the response. how does that
+    get transferred to the individual buckets for their usage? what
+    about the request side of things?
