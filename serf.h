@@ -1,7 +1,7 @@
 /* ====================================================================
  * The Apache Software License, Version 1.1
  *
- * Copyright (c) 2002 The Apache Software Foundation.  All rights
+ * Copyright (c) 2003 The Apache Software Foundation.  All rights
  * reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -411,60 +411,6 @@ struct serf_bucket_t {
  */
 #define SERF_BUCKET_CHECK(b, btype) ((b)->type == &serf_bucket_type_ ## btype)
 
-
-/**
- * Basic bucket creation function.
- *
- * This function will create a bucket of @a type, allocating the necessary
- * memory from @a allocator. The @a data bucket-private information will
- * be stored into the bucket.
- *
- * The metadata for the bucket will be empty.
- */
-SERF_DECLARE(serf_bucket_t *) serf_bucket_create(
-    serf_bucket_type_t *type,
-    serf_bucket_alloc_t *allocator,
-    void *data);
-
-/**
- * Default implementation to set metadata within a bucket.
- *
- * Stores @a md_value into @a bucket under the metadata type @a md_type
- * and name @a md_name.
- */
-SERF_DECLARE(apr_status_t) serf_default_set_metadata(serf_bucket_t *bucket,
-                                                     const char *md_type,
-                                                     const char *md_name,
-                                                     const void *md_value);
-
-/**
- * Default implementation to get metadata from @a bucket.
- *
- * The @a md_value for the specified @a md_type and @a md_name will
- * be returned. If the metadata is not present, then NULL will be stored
- * into @a md_value.
- */
-SERF_DECLARE(apr_status_t) serf_default_get_metadata(serf_bucket_t *bucket,
-                                                     const char *md_type,
-                                                     const char *md_name,
-                                                     const void **md_value);
-
-/**
- * Default implementation of the @see read_bucket functionality.
- *
- * This function will always return NULL, indicating that the @a type
- * of bucket cannot be found within @a bucket.
- */
-SERF_DECLARE(serf_bucket_t *) serf_default_read_bucket(
-    serf_bucket_t *bucket,
-    serf_bucket_type_t *type);
-
-/**
- * Default implementation of the @see destroy functionality.
- *
- * This function will return the @a bucket to its allcoator.
- */
-SERF_DECLARE(void) serf_default_destroy(serf_bucket_t *bucket);
 
 
 /** @} */
