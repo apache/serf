@@ -1,5 +1,5 @@
 APR-SERF STATUS:						-*-text-*-
-Last modified at [$Date: 2001/10/24 20:02:29 $]
+Last modified at [$Date: 2002/05/09 05:13:39 $]
 
 Release:
 
@@ -12,7 +12,7 @@ RELEASE SHOWSTOPPERS:
   * web pages (go to apr-site)
 
   * decide on prefix
-      serf_ : +1 Greg, Aaron
+      serf_ : +1 Greg, Aaron, Cliff
       aps_ :
       apr_serf_ :
 
