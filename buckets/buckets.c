@@ -316,6 +316,12 @@ SERF_DECLARE(serf_bucket_alloc_t *) serf_bucket_allocator_create(
     return allocator;
 }
 
+SERF_DECLARE(apr_pool_t *) serf_bucket_allocator_get_pool(
+    const serf_bucket_alloc_t *allocator)
+{
+    return allocator->pool;
+}
+
 SERF_DECLARE(void *) serf_bucket_mem_alloc(
     serf_bucket_alloc_t *allocator,
     apr_size_t size)
@@ -341,7 +347,8 @@ SERF_DECLARE(void *) serf_bucket_mem_alloc(
         else {
             apr_memnode_t *active = allocator->blocks;
 
-            if (active->first_avail + STANDARD_NODE_SIZE >= active->endp) {
+            if (active == NULL
+                || active->first_avail + STANDARD_NODE_SIZE >= active->endp) {
                 apr_memnode_t *head = allocator->blocks;
 
                 /* ran out of room. grab another block. */

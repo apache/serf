@@ -97,7 +97,7 @@ static apr_status_t serf_simple_read(serf_bucket_t *bucket,
     ctx->current += requested;
     ctx->remaining -= requested;
 
-    return APR_SUCCESS;
+    return ctx->remaining ? APR_SUCCESS : APR_EOF;
 }
 
 static apr_status_t serf_simple_readline(serf_bucket_t *bucket,

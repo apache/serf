@@ -123,7 +123,7 @@ static apr_status_t update_pollset(serf_connection_t *conn)
 {
     serf_context_t *ctx = conn->ctx;
     apr_status_t status;
-    apr_pollfd_t desc;
+    apr_pollfd_t desc = { 0 };
 
     /* Remove the socket from the poll set. */
     desc.desc_type = APR_POLL_SOCKET;
@@ -172,7 +172,6 @@ static apr_status_t open_connections(serf_context_t *ctx)
         serf_connection_t *conn = ((serf_connection_t **)ctx->conns->elts)[i];
         apr_status_t status;
         apr_socket_t *skt;
-        apr_pollfd_t desc = { 0 };
 
         if (conn->skt != NULL)
             continue;
@@ -197,8 +196,11 @@ static apr_status_t open_connections(serf_context_t *ctx)
         /* Now that the socket is set up, let's connect it. This should
          * return immediately.
          */
-        if ((status = apr_socket_connect(skt, conn->address)) != APR_SUCCESS)
-            return status;
+        if ((status = apr_socket_connect(skt,
+                                         conn->address)) != APR_SUCCESS) {
+            if (!APR_STATUS_IS_EINPROGRESS(status))
+                return status;
+        }
 
         /* Add the new socket to the pollset. */
         if ((status = update_pollset(conn)) != APR_SUCCESS)
@@ -225,6 +227,7 @@ static apr_status_t write_to_connection(serf_connection_t *conn)
     while (1) {
         int stop_reading = 0;
         apr_status_t status;
+        apr_status_t read_status;
         const char *data;
         apr_size_t len;
 
@@ -261,9 +264,9 @@ static apr_status_t write_to_connection(serf_connection_t *conn)
 
         /* ### optimize at some point by using read_for_sendfile */
 
-        status = serf_bucket_read(request->req_bkt, SERF_READ_ALL_AVAIL,
-                                  &data, &len);
-        if (APR_STATUS_IS_EAGAIN(status)) {
+        read_status = serf_bucket_read(request->req_bkt, SERF_READ_ALL_AVAIL,
+                                       &data, &len);
+        if (APR_STATUS_IS_EAGAIN(read_status)) {
             /* We read some stuff, but should not try to read again. */
             stop_reading = 1;
 
@@ -274,18 +277,9 @@ static apr_status_t write_to_connection(serf_connection_t *conn)
                ### don't have anything (and keep returning EAGAIN)
             */
         }
-        else if (APR_STATUS_IS_EOF(status)) {
-            /* If we hit the end of the request bucket, then clear it out to
-             * signify that we're done sending the request. On the next
-             * iteration through this loop, we'll see if there are other
-             * requests that need to be sent ("pipelining").
-             */
-            serf_bucket_destroy(request->req_bkt);
-            request->req_bkt = NULL;
-        }
-        else if (status) {
+        else if (read_status && !APR_STATUS_IS_EOF(read_status)) {
             /* Something bad happened. Propagate any errors. */
-            return status;
+            return read_status;
         }
 
         /* If we got some data, then deliver it. */
@@ -309,6 +303,20 @@ static apr_status_t write_to_connection(serf_connection_t *conn)
             if (status)
                 return status;
         }
+
+        if (APR_STATUS_IS_EOF(read_status)) {
+            /* If we hit the end of the request bucket, then clear it out to
+             * signify that we're done sending the request. On the next
+             * iteration through this loop, we'll see if there are other
+             * requests that need to be sent ("pipelining").
+             */
+            /* ### woah. watch out for the unwritten stuff. gotta restructure
+               ### this a bit more to avoid killing a bucket where the
+               ### data is hanging out in the unwritten field. */
+            serf_bucket_destroy(request->req_bkt);
+            request->req_bkt = NULL;
+        }
+
     }
     /* NOTREACHED */
 }
@@ -337,9 +345,8 @@ static apr_status_t read_from_connection(serf_connection_t *conn)
          * acceptor to get one created.
          */
         if (request->resp_bkt == NULL) {
-            request->resp_bkt = (*request->acceptor)(conn, conn->skt,
+            request->resp_bkt = (*request->acceptor)(request, conn->skt,
                                                      request->acceptor_baton,
-                                                     request->respool,
                                                      tmppool);
             apr_pool_clear(tmppool);
         }
@@ -484,6 +491,9 @@ SERF_DECLARE(serf_connection_t *) serf_connection_create(
 
     /* ### register a cleanup */
 
+    /* Add the connection to the context. */
+    *(serf_connection_t **)apr_array_push(ctx->conns) = conn;
+
     return conn;
 }
 
@@ -491,7 +501,18 @@ SERF_DECLARE(serf_connection_t *) serf_connection_create(
 SERF_DECLARE(serf_request_t *) serf_connection_request_create(
     serf_connection_t *conn)
 {
-    return NULL;
+    apr_pool_t *pool;
+    serf_request_t *request;
+
+    /* ### return this status? */
+    (void) apr_pool_create(&pool, conn->pool);
+
+    request = apr_pcalloc(pool, sizeof(*request));
+    request->conn = conn;
+    request->respool = pool;
+    request->allocator = serf_bucket_allocator_create(pool, NULL, NULL);
+
+    return request;
 }
 
 SERF_DECLARE(void) serf_request_deliver(
@@ -502,6 +523,26 @@ SERF_DECLARE(void) serf_request_deliver(
     serf_response_handler_t handler,
     void *handler_baton)
 {
+    serf_connection_t *conn = request->conn;
+
+    /* Fill in the rest of the values for the request. */
+    request->req_bkt = req_bkt;
+    request->acceptor = acceptor;
+    request->acceptor_baton = acceptor_baton;
+    request->handler = handler;
+    request->handler_baton = handler_baton;
+
+    /* Link the request to the end of the request chain. */
+    if (conn->requests == NULL) {
+        conn->requests = request;
+    }
+    else {
+        serf_request_t *scan = conn->requests;
+
+        while (scan->next != NULL)
+            scan = scan->next;
+        scan->next = request;
+    }
 }
 
 
@@ -510,13 +551,13 @@ SERF_DECLARE(apr_status_t) serf_request_cancel(serf_request_t *request)
     return APR_ENOTIMPL;
 }
 
-SERF_DECLARE(apr_pool_t *) serf_request_get_pool(serf_request_t *request)
+SERF_DECLARE(apr_pool_t *) serf_request_get_pool(const serf_request_t *request)
 {
     return request->respool;
 }
 
 SERF_DECLARE(serf_bucket_alloc_t *) serf_request_get_alloc(
-    serf_request_t *request)
+    const serf_request_t *request)
 {
     return request->allocator;
 }

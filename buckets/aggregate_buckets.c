@@ -59,7 +59,8 @@ typedef struct bucket_list {
 } bucket_list_t;
 
 typedef struct {
-    bucket_list_t *list;
+    bucket_list_t *list; /* active buckets */
+    serf_bucket_t *done; /* we finished reading this; now pending a destroy */
 } aggregate_context_t;
 
 
@@ -70,6 +71,7 @@ SERF_DECLARE(serf_bucket_t *) serf_bucket_aggregate_create(
 
     ctx = serf_bucket_mem_alloc(allocator, sizeof(*ctx));
     ctx->list = NULL;
+    ctx->done = NULL;
 
     return serf_bucket_create(&serf_bucket_type_aggregate, allocator, ctx);
 }
@@ -80,6 +82,7 @@ SERF_DECLARE(void) serf_bucket_aggregate_become(serf_bucket_t *bucket)
 
     ctx = serf_bucket_mem_alloc(bucket->allocator, sizeof(*ctx));
     ctx->list = NULL;
+    ctx->done = NULL;
 
     bucket->type = &serf_bucket_type_aggregate;
     bucket->data = ctx;
@@ -108,28 +111,44 @@ SERF_DECLARE(void) serf_bucket_aggregate_prepend(
 
 SERF_DECLARE(void) serf_bucket_aggregate_append(
     serf_bucket_t *aggregate_bucket,
-    serf_bucket_t *prepend_bucket)
+    serf_bucket_t *append_bucket)
 {
     aggregate_context_t *ctx = aggregate_bucket->data;
     bucket_list_t *new_list;
 
     new_list = serf_bucket_mem_alloc(aggregate_bucket->allocator,
                                      sizeof(*new_list));
+    new_list->bucket = append_bucket;
 
     /* If we use APR_RING, this is trivial.  So, wait. 
-    new_list->bucket = prepend_bucket;
     new_list->next = ctx->list;
     ctx->list = new_list;
     */
+    if (ctx->list == NULL) {
+        ctx->list = new_list;
+    }
+    else {
+        bucket_list_t *scan = ctx->list;
+
+        while (scan->next != NULL)
+            scan = scan->next;
+        scan->next = new_list;
+    }
 }
 
 static apr_status_t serf_aggregate_read(serf_bucket_t *bucket,
                                         apr_size_t requested,
                                         const char **data, apr_size_t *len)
 {
-    apr_status_t status;
     aggregate_context_t *ctx = bucket->data;
-    serf_bucket_t *head;
+
+    /* If we finished reading a bucket during the previous read, then
+     * we can now toss that bucket.
+     */
+    if (ctx->done != NULL) {
+        serf_bucket_destroy(ctx->done);
+        ctx->done = NULL;
+    }
 
     if (!ctx->list) {
         *len = 0;
@@ -137,19 +156,30 @@ static apr_status_t serf_aggregate_read(serf_bucket_t *bucket,
         return APR_EOF;
     }
 
-    head = ctx->list->bucket;
-    status = serf_bucket_read(head, requested, data, len);
+    while (1) {
+        serf_bucket_t *head = ctx->list->bucket;
+        apr_status_t status;
 
-    /* Somehow, we need to know whether we're exhausted! */
-    if (APR_STATUS_IS_EOF(status)) {
+        status = serf_bucket_read(head, requested, data, len);
+        if (*len > 0) {
+            if (APR_STATUS_IS_EOF(status)) {
+                /* We finished reading this bucket. It must stay alive,
+                 * though, so that we can return its data. Destroy it the
+                 * next time we perform a read operation.
+                 */
+                ctx->list = ctx->list->next;
+                ctx->done = head;
+            }
+            return status;
+        }
+
+        /* If we just read no data, then let's try again after destroying
+         * this bucket.
+         */
         ctx->list = ctx->list->next;
         serf_bucket_destroy(head);
-
-        /* Avoid recursive call here.  Too lazy now.  */
-        return serf_aggregate_read(bucket, requested, data, len);
     }
-
-    return status;
+    /* NOTREACHED */
 }
 
 static apr_status_t serf_aggregate_readline(serf_bucket_t *bucket,

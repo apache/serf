@@ -134,31 +134,30 @@ SERF_DECLARE(apr_status_t) serf_context_run(serf_context_t *ctx,
  */
 
 /**
- * Accept an incoming response on @a conn, and its @a socket. A bucket for
- * the response will be constructed and returned. This is the control point
- * for assembling the appropriate wrapper buckets around the socket to
+ * Accept an incoming response for @a request, and its @a socket. A bucket
+ * for the response will be constructed and returned. This is the control
+ * point for assembling the appropriate wrapper buckets around the socket to
  * enable processing of the incoming response.
  *
  * The @a acceptor_baton is the baton provided when the connection was
  * first opened.
  *
- * The @a respool pool should be used for any allocations that need to live
- * for the duration of the response. Care should be taken to bound the amount
- * of memory stored in this pool -- to ensure that allocations are not
- * proportional to the amount of data in the response.
+ * The request's pool and bucket allocator should be used for any allocations
+ * that need to live for the duration of the response. Care should be taken
+ * to bound the amount of memory stored in this pool -- to ensure that
+ * allocations are not proportional to the amount of data in the response.
  *
  * Responsibility for the bucket is passed to the serf library. It will be
  * destroyed when the response has been fully read (the bucket returns an
  * APR_EOF status from its read functions).
  *
- * All temporary allocations should be made in @a tmppool.
+ * All temporary allocations should be made in @a pool.
  */
 /* ### do we need to return an error? */
-typedef serf_bucket_t * (*serf_response_acceptor_t)(serf_connection_t *conn,
+typedef serf_bucket_t * (*serf_response_acceptor_t)(serf_request_t *request,
                                                     apr_socket_t *skt,
                                                     void *acceptor_baton,
-                                                    apr_pool_t *respool,
-                                                    apr_pool_t *tmppool);
+                                                    apr_pool_t *pool);
 
 /**
  * Notification callback for when a connection closes.
@@ -292,13 +291,14 @@ SERF_DECLARE(apr_status_t) serf_request_cancel(serf_request_t *request);
  * pool. In particular, all allocation should be bounded in size, rather
  * than proportional to any data stream.
  */
-SERF_DECLARE(apr_pool_t *) serf_request_get_pool(serf_request_t *request);
+SERF_DECLARE(apr_pool_t *) serf_request_get_pool(
+    const serf_request_t *request);
 
 /**
  * Return the bucket allocator associated with @a request.
  */
 SERF_DECLARE(serf_bucket_alloc_t *) serf_request_get_alloc(
-    serf_request_t *request);
+    const serf_request_t *request);
 
 
 /* ### maybe some connection control functions for flood? */

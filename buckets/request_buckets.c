@@ -109,7 +109,9 @@ static void serialize_data(serf_bucket_t *bucket)
 
     /* Insert the two buckets. */
     serf_bucket_aggregate_append(bucket, new_bucket);
-    serf_bucket_aggregate_append(bucket, ctx->body);
+    if (ctx->body != NULL) {
+        serf_bucket_aggregate_append(bucket, ctx->body);
+    }
 
     /* Our private context is no longer needed, and is not referred to by
      * any existing bucket. Toss it.
