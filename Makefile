@@ -13,6 +13,7 @@ OBJECTS = buckets/aggregate_buckets.o buckets/request_buckets.o context.o \
 PROGRAMS = test/serf_get test/serf_response test/serf_request
 TESTCASES = test/testcases/simple.response \
   test/testcases/chunked-empty.response test/testcases/chunked.response \
+  test/testcases/chunked-trailers.response \
   test/testcases/deflate.response
 
 # Place apr-config and apu-config in your PATH.

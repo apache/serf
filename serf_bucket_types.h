@@ -85,6 +85,8 @@ SERF_DECLARE(apr_status_t) serf_bucket_response_status(
     serf_bucket_t *bkt,
     serf_status_line *sline);
 
+SERF_DECLARE(serf_bucket_t *) serf_bucket_response_get_headers(
+    serf_bucket_t *response);
 
 /* ==================================================================== */
 

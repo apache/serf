@@ -40,6 +40,8 @@ typedef struct {
     serf_linebuf_t linebuf;
 
     serf_status_line sl;
+
+    int chunked;                /* Do we need to read trailers? */
 } response_context_t;
 
 
@@ -54,11 +56,19 @@ SERF_DECLARE(serf_bucket_t *) serf_bucket_response_create(
     ctx->body = NULL;
     ctx->headers = serf_bucket_headers_create(allocator);
     ctx->state = STATE_STATUS_LINE;
+    ctx->chunked = 0;
 
     serf_linebuf_init(&ctx->linebuf);
 
     return serf_bucket_create(&serf_bucket_type_response, allocator, ctx);
 }
+
+SERF_DECLARE(serf_bucket_t *) serf_bucket_response_get_headers(
+    serf_bucket_t *bucket)
+{
+    return ((response_context_t *)bucket->data)->headers;
+}
+
 
 static void serf_response_destroy_and_data(serf_bucket_t *bucket)
 {
@@ -208,6 +218,7 @@ static apr_status_t run_machine(serf_bucket_t *bkt, response_context_t *ctx)
 
                 /* Need to handle multiple transfer-encoding. */
                 if (v && strcasecmp("chunked", v) == 0) {
+                    ctx->chunked = 1;
                     ctx->body = serf_bucket_dechunk_create(ctx->stream,
                                                            bkt->allocator);
                 }
@@ -320,10 +331,25 @@ static apr_status_t serf_response_read(serf_bucket_t *bucket,
 
     rv = wait_for_body(bucket, ctx);
     if (rv) {
+        /* It's not possible to have read anything yet! */
+        if (APR_STATUS_IS_EOF(rv)) {
+            *len = 0;
+        }
         return rv;
     }
 
-    return serf_bucket_read(ctx->body, requested, data, len);
+    rv = serf_bucket_read(ctx->body, requested, data, len);
+    if (APR_STATUS_IS_EOF(rv)) {
+        if (ctx->chunked) {
+            ctx->state = STATE_TRAILERS;
+            /* Mask the result. */
+            rv = APR_SUCCESS;
+        }
+        else {
+            ctx->state = STATE_DONE;
+        }
+    }
+    return rv;
 }
 
 static apr_status_t serf_response_readline(serf_bucket_t *bucket,

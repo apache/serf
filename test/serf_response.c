@@ -73,13 +73,24 @@ static apr_status_t handle_response(serf_bucket_t *response,
     status = serf_bucket_read(response, 2048, &data, &len);
 
     if (!status || APR_STATUS_IS_EOF(status)) {
-        s = apr_pstrmemdup(pool, data, len);
-        printf("%s", s);
+        if (len) {
+            s = apr_pstrmemdup(pool, data, len);
+            printf("%s", s);
+        }
     }
     else if (APR_STATUS_IS_EAGAIN(status)) {
         status = APR_SUCCESS;
     }
     if (APR_STATUS_IS_EOF(status)) {
+        serf_bucket_t *hdrs;
+        const char *v;
+
+        hdrs = serf_bucket_response_get_headers(response);
+        v = serf_bucket_headers_get(hdrs, "Trailer-Test");
+        if (v) {
+            printf("Trailer-Test: %s\n", v);
+        }
+
         apr_atomic_dec32(&ctx->requests_outstanding);
     }
 
