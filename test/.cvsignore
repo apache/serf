@@ -4,3 +4,4 @@
 *.la
 Makefile
 serf_get
+serf_spider
