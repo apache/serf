@@ -79,7 +79,7 @@ SERF_DECLARE(apr_status_t) serf_socket_write(apr_bucket_brigade *brigade,
         do {
             apr_size_t written = length;
 
-            status = apr_send(conn->socket, buf, &written);
+            status = apr_socket_send(conn->socket, buf, &written);
             if (status) {
                 return status;
             }

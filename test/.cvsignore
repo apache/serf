@@ -1,7 +1,0 @@
-.deps
-.libs
-*.lo
-*.la
-Makefile
-serf_get
-serf_spider

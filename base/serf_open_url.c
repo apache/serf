@@ -70,7 +70,7 @@ SERF_DECLARE(apr_status_t) serf_open_uri(apr_uri_t *url,
     }
 
     status = apr_socket_create(&new_conn->socket, APR_INET, SOCK_STREAM,
-                               pool);
+                               APR_PROTO_TCP, pool);
 
     if (status) {
         return status;

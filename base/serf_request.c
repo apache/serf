@@ -103,7 +103,6 @@ SERF_DECLARE(apr_status_t) serf_read_response(serf_response_t **response,
 {
     serf_response_t *new_resp;
     serf_request_t *request, **request_ptr;
-    apr_bucket *bucket;
     apr_status_t status;
 
     /* FIXME: Until we have FIFO instead of LIFO, this is busted. */
@@ -113,8 +112,7 @@ SERF_DECLARE(apr_status_t) serf_read_response(serf_response_t **response,
 
     new_resp = apr_pcalloc(pool, sizeof(serf_response_t));
     new_resp->bucket_allocator = apr_bucket_alloc_create(pool);
-    new_resp->entity = apr_brigade_create(pool,
-                                          new_resp->bucket_allocator);
+    new_resp->entity = apr_brigade_create(pool, new_resp->bucket_allocator);
     new_resp->request = request;
 
     status = serf_execute_filters(connection->response_filters,

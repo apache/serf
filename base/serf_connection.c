@@ -67,7 +67,7 @@ SERF_DECLARE(serf_connection_t *) serf_create_connection(apr_pool_t *pool)
 
 SERF_DECLARE(apr_status_t) serf_open_connection(serf_connection_t *conn)
 {
-    return apr_connect(conn->socket, conn->address);
+    return apr_socket_connect(conn->socket, conn->address);
 }
 
 SERF_DECLARE(apr_status_t) serf_close_connection(serf_connection_t *conn)
