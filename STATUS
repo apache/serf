@@ -98,3 +98,8 @@ OPEN ISSUES
     over to that other context could be difficult.
 
     see: http://www.greenend.org.uk/rjk/2001/06/poll.html
+
+  * review the various OUT parameters and see if any make sense to
+    allow a NULL value to designate non-interest in the result.
+
+  * FIXME: the buckets need to respect SERF_READ_ALL_AVAIL
