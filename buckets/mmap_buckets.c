@@ -55,52 +55,52 @@
 
 
 typedef struct {
-    const char *original;
-    const char *current;
-    apr_size_t remaining;
-
-    serf_simple_freefunc_t freefunc;
-    void *baton;
-
-} simple_context_t;
+    apr_mmap_t *mmap;
+    void *current;
+    apr_off_t offset;
+    apr_off_t remaining;
+} mmap_context_t;
 
 
-SERF_DECLARE(serf_bucket_t *) serf_bucket_simple_create(
-    const char *data, apr_size_t len,
-    serf_simple_freefunc_t freefunc,
-    void *freefunc_baton,
+SERF_DECLARE(serf_bucket_t *) serf_bucket_mmap_create(
+    apr_mmap_t *file_mmap,
     serf_bucket_alloc_t *allocator)
 {
-    simple_context_t *ctx;
+    mmap_context_t *ctx;
 
     ctx = serf_bucket_mem_alloc(allocator, sizeof(*ctx));
-    ctx->original = ctx->current = data;
-    ctx->remaining = len;
-    ctx->freefunc = freefunc;
-    ctx->baton = freefunc_baton;
+    ctx->mmap = file_mmap;
+    ctx->current = NULL;
+    ctx->offset = 0;
+    ctx->remaining = ctx->mmap->size;
 
     return serf_bucket_create(&serf_bucket_type_simple, allocator, ctx);
 }
 
-static apr_status_t serf_simple_read(serf_bucket_t *bucket,
+static apr_status_t serf_mmap_read(serf_bucket_t *bucket,
                                      apr_size_t requested,
                                      const char **data, apr_size_t *len)
 {
-    simple_context_t *ctx = bucket->data;
+    mmap_context_t *ctx = bucket->data;
 
-    if (requested > ctx->remaining)
-        requested = ctx->remaining;
+    if (ctx->remaining < requested) {
+        *len = ctx->remaining;
+    }
 
-    *data = ctx->current;
-    *len = requested;
+    /* ### Would it be faster to call this once and do the offset ourselves? */
+    apr_mmap_offset((void**)data, ctx->mmap, ctx->offset);
 
-    ctx->current += requested;
-    ctx->remaining -= requested;
+    /* For the next read... */
+    ctx->offset += *len;
+    ctx->remaining -= *len;
 
+    if (ctx->remaining == 0) {
+        return APR_EOF;
+    }
     return APR_SUCCESS;
 }
 
-static apr_status_t serf_simple_readline(serf_bucket_t *bucket,
+static apr_status_t serf_mmap_readline(serf_bucket_t *bucket,
                                          int acceptable, int *found,
                                          const char **data, apr_size_t *len)
 {
@@ -108,40 +108,30 @@ static apr_status_t serf_simple_readline(serf_bucket_t *bucket,
     return APR_ENOTIMPL;
 }
 
-static apr_status_t serf_simple_peek(serf_bucket_t *bucket,
+static apr_status_t serf_mmap_peek(serf_bucket_t *bucket,
                                      const char **data,
                                      apr_size_t *len)
 {
-    simple_context_t *ctx = bucket->data;
-
-    /* return whatever we have left */
-    *data = ctx->current;
-    if (*len > ctx->remaining) {
-        *len = ctx->remaining;
-    }
-
-    return APR_SUCCESS;
+    /* Oh, bah. */
+    return APR_ENOTIMPL;
 }
 
-static void serf_simple_destroy(serf_bucket_t *bucket)
+static void serf_mmap_destroy(serf_bucket_t *bucket)
 {
-    simple_context_t *ctx = bucket->data;
-
-    if (ctx->freefunc)
-        (*ctx->freefunc)(ctx->baton, ctx->original);
+    mmap_context_t *ctx = bucket->data;
 
     serf_bucket_mem_free(bucket->allocator, bucket);
 }
 
 SERF_DECLARE_DATA const serf_bucket_type_t serf_bucket_type_simple = {
-    "SIMPLE",
-    serf_simple_read,
-    serf_simple_readline,
+    "MMAP",
+    serf_mmap_read,
+    serf_mmap_readline,
     serf_default_read_iovec,
     serf_default_read_for_sendfile,
     serf_default_read_bucket,
-    serf_simple_peek,
+    serf_mmap_peek,
     serf_default_get_metadata,
     serf_default_set_metadata,
-    serf_simple_destroy,
+    serf_mmap_destroy,
 };

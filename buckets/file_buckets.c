@@ -53,95 +53,128 @@
 #include "serf.h"
 #include "serf_bucket_util.h"
 
+/* Max we will read() at one time. */
+#define FILE_BUFSIZE 8000
 
 typedef struct {
-    const char *original;
-    const char *current;
-    apr_size_t remaining;
+    apr_file_t *file;
 
-    serf_simple_freefunc_t freefunc;
-    void *baton;
+    apr_size_t len;
+    apr_status_t peek_status;
 
-} simple_context_t;
+    char buf[FILE_BUFSIZE];
+} file_context_t;
 
 
-SERF_DECLARE(serf_bucket_t *) serf_bucket_simple_create(
-    const char *data, apr_size_t len,
-    serf_simple_freefunc_t freefunc,
-    void *freefunc_baton,
+SERF_DECLARE(serf_bucket_t *) serf_bucket_file_create(
+    apr_file_t *file,
     serf_bucket_alloc_t *allocator)
 {
-    simple_context_t *ctx;
+    file_context_t *ctx;
+#if APR_HAS_MMAP
+    apr_finfo_t finfo;
+    const char *file_path;
 
+    /* See if we'd be better off mmap'ing this file instead. */
+    apr_file_name_get(&file_path, file);
+    apr_stat(&finfo, file_path, APR_FINFO_SIZE,
+             serf_bucket_allocator_get_pool(allocator));
+    if (APR_MMAP_CANDIDATE(finfo.size)) {
+        apr_mmap_t *file_mmap;
+        apr_mmap_create(&file_mmap, file, 0, finfo.size, APR_MMAP_READ,
+                        serf_bucket_allocator_get_pool(allocator));
+        return serf_bucket_mmap_create(file_mmap, allocator);
+    }
+#endif
+
+    /* Oh, well. */
     ctx = serf_bucket_mem_alloc(allocator, sizeof(*ctx));
-    ctx->original = ctx->current = data;
-    ctx->remaining = len;
-    ctx->freefunc = freefunc;
-    ctx->baton = freefunc_baton;
+    ctx->file = file;
+    ctx->len = 0;
+    ctx->peek_status = 0;
 
-    return serf_bucket_create(&serf_bucket_type_simple, allocator, ctx);
+    return serf_bucket_create(&serf_bucket_type_file, allocator, ctx);
 }
 
-static apr_status_t serf_simple_read(serf_bucket_t *bucket,
-                                     apr_size_t requested,
-                                     const char **data, apr_size_t *len)
+static apr_status_t serf_file_read(serf_bucket_t *bucket,
+                                   apr_size_t requested,
+                                   const char **data, apr_size_t *len)
 {
-    simple_context_t *ctx = bucket->data;
+    apr_status_t status;
+    file_context_t *ctx = bucket->data;
 
-    if (requested > ctx->remaining)
-        requested = ctx->remaining;
+    if (requested > FILE_BUFSIZE) {
+        *len = FILE_BUFSIZE;
+    }
+    else {
+        *len = requested;
+    }
 
-    *data = ctx->current;
-    *len = requested;
+    *data = ctx->buf;
 
-    ctx->current += requested;
-    ctx->remaining -= requested;
+    /* We have something from a peek, consume it first. */
+    if (ctx->len != 0) {
+        if (ctx->len < *len) {
+            *len = ctx->len;
+        }
+        ctx->len -= *len;
+        return ctx->peek_status;
+    }
 
-    return APR_SUCCESS;
+    return apr_file_read(ctx->file, ctx->buf, len);
 }
 
-static apr_status_t serf_simple_readline(serf_bucket_t *bucket,
-                                         int acceptable, int *found,
-                                         const char **data, apr_size_t *len)
+static apr_status_t serf_file_readline(serf_bucket_t *bucket,
+                                       int acceptable, int *found,
+                                       const char **data, apr_size_t *len)
 {
     /* ### need our utility function... */
     return APR_ENOTIMPL;
 }
 
-static apr_status_t serf_simple_peek(serf_bucket_t *bucket,
-                                     const char **data,
-                                     apr_size_t *len)
+static apr_status_t serf_file_peek(serf_bucket_t *bucket,
+                                   const char **data,
+                                   apr_size_t *len)
 {
-    simple_context_t *ctx = bucket->data;
+    apr_status_t status;
+    file_context_t *ctx = bucket->data;
 
-    /* return whatever we have left */
-    *data = ctx->current;
-    if (*len > ctx->remaining) {
-        *len = ctx->remaining;
+    if (*len > FILE_BUFSIZE) {
+        *len = FILE_BUFSIZE;
     }
 
-    return APR_SUCCESS;
+    *data = ctx->buf;
+
+    /* We have something from a peek, consume it first. */
+    if (ctx->len != 0) {
+        if (ctx->len < *len) {
+            *len = ctx->len;
+        }
+        return ctx->peek_status;
+    }
+
+    ctx->peek_status = apr_file_read(ctx->file, ctx->buf, len);
+    ctx->len = *len;
+
+    return ctx->peek_status;
 }
 
-static void serf_simple_destroy(serf_bucket_t *bucket)
+static void serf_file_destroy(serf_bucket_t *bucket)
 {
-    simple_context_t *ctx = bucket->data;
-
-    if (ctx->freefunc)
-        (*ctx->freefunc)(ctx->baton, ctx->original);
+    file_context_t *ctx = bucket->data;
 
     serf_bucket_mem_free(bucket->allocator, bucket);
 }
 
-SERF_DECLARE_DATA const serf_bucket_type_t serf_bucket_type_simple = {
-    "SIMPLE",
-    serf_simple_read,
-    serf_simple_readline,
-    serf_default_read_iovec,
+SERF_DECLARE_DATA const serf_bucket_type_t serf_bucket_type_file = {
+    "FILE",
+    serf_file_read,
+    serf_file_readline,
+    serf_default_read_iovec, /* ### APR should have apr_file_readv */
     serf_default_read_for_sendfile,
     serf_default_read_bucket,
-    serf_simple_peek,
+    serf_file_peek,
     serf_default_get_metadata,
     serf_default_set_metadata,
-    serf_simple_destroy,
+    serf_file_destroy,
 };

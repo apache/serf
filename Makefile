@@ -4,7 +4,8 @@
 #
 
 OBJECTS = buckets/aggregate_buckets.o buckets/request_buckets.o context.o \
-          buckets/buckets.o buckets/simple_buckets.o
+          buckets/buckets.o buckets/simple_buckets.o buckets/file_buckets.o \
+          buckets/mmap_buckets.o
 
 # Place apr-config and apu-config in your PATH.
 APR_CONFIG=apr-config
