@@ -143,10 +143,18 @@ SERF_DECLARE(serf_bucket_t *) serf_default_read_bucket(
 /**
  * Default implementation of the @see destroy functionality.
  *
- * This function will return the @a bucket to its allcoator.
+ * This function will return the @a bucket and its metadata to its allcoator.
  */
 SERF_DECLARE(void) serf_default_destroy(serf_bucket_t *bucket);
 
+
+/**
+ * Default implementation of the @see destroy functionality.
+ *
+ * This function will return the @a bucket, its metadata, and the data
+ * member to its allcoator.
+ */
+SERF_DECLARE(void) serf_default_destroy_and_data(serf_bucket_t *bucket);
 
 
 SERF_DECLARE(void *) serf_bucket_mem_alloc(

@@ -130,7 +130,7 @@ static void serf_simple_destroy(serf_bucket_t *bucket)
     if (ctx->freefunc)
         (*ctx->freefunc)(ctx->baton, ctx->original);
 
-    serf_bucket_mem_free(bucket->allocator, bucket);
+    serf_default_destroy_and_data(bucket);
 }
 
 SERF_DECLARE_DATA const serf_bucket_type_t serf_bucket_type_simple = {

@@ -139,11 +139,9 @@ static apr_status_t serf_file_peek(serf_bucket_t *bucket,
     apr_status_t status;
     file_context_t *ctx = bucket->data;
 
-    if (*len > FILE_BUFSIZE) {
-        *len = FILE_BUFSIZE;
-    }
-
+    /* peek is implicitly SERF_READ_ALL_AVAIL. that is a buffer's worth. */
     *data = ctx->buf;
+    *len = FILE_BUFSIZE;
 
     /* We have something from a peek, consume it first. */
     if (ctx->len != 0) {
@@ -159,13 +157,6 @@ static apr_status_t serf_file_peek(serf_bucket_t *bucket,
     return ctx->peek_status;
 }
 
-static void serf_file_destroy(serf_bucket_t *bucket)
-{
-    file_context_t *ctx = bucket->data;
-
-    serf_bucket_mem_free(bucket->allocator, bucket);
-}
-
 SERF_DECLARE_DATA const serf_bucket_type_t serf_bucket_type_file = {
     "FILE",
     serf_file_read,
@@ -176,5 +167,5 @@ SERF_DECLARE_DATA const serf_bucket_type_t serf_bucket_type_file = {
     serf_file_peek,
     serf_default_get_metadata,
     serf_default_set_metadata,
-    serf_file_destroy,
+    serf_default_destroy_and_data,
 };

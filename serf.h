@@ -79,6 +79,8 @@ typedef struct serf_metadata_t serf_metadata_t;
 
 typedef struct serf_connection_t serf_connection_t;
 
+typedef struct serf_request_t serf_request_t;
+
 
 /**
  * @defgroup serf high-level constructs
@@ -126,7 +128,7 @@ SERF_DECLARE(apr_status_t) serf_context_run(serf_context_t *ctx,
 /** @} */
 
 /**
- * @defgroup serf connections
+ * @defgroup serf connections and requests
  * @ingroup serf
  * @{
  */
@@ -233,46 +235,70 @@ SERF_DECLARE(serf_connection_t *) serf_connection_create(
     void *closed_baton,
     apr_pool_t *pool);
 
+
 /**
- * Create a new request for the specified @a connection.
+ * Construct a request object for the @a conn connection.
  *
- * The request is specified by the @a request bucket. When a response
- * arrives, the @a acceptor callback will be invoked (along with the
- * @a acceptor_baton) to produce a response bucket. That bucket will then
+ * A subpool for the request and its associated response will be built,
+ * and the request will be allocated within that subpool. An associated
+ * bucket allocator will be built. These items may be fetched from the
+ * request object through @see serf_request_get_pool or
+ * @see serf_request_get_alloc.
+ *
+ * The returned request can be finalized with @see ....
+ *
+ * If the request has not (yet) been delivered, then it may be canceled
+ * with @see serf_connection_request_cancel.
+ */
+SERF_DECLARE(serf_request_t *) serf_connection_request_create(
+    serf_connection_t *conn);
+
+/**
+ * Schedule the @a request for delivery on the connection.
+ *
+ * The content of the request is specified by the @a req_bkt bucket. When
+ * a response arrives, the @a acceptor callback will be invoked (along with
+ * the @a acceptor_baton) to produce a response bucket. That bucket will then
  * be passed to @a handler, along with the @a handler_baton.
  *
- * The responsibility for the request bucket is passed to the connection
- * object. When the connection is done with the bucket, it will be destroyed.
- *
- * All temporary allocations will be made in @a pool.
+ * The responsibility for the request bucket is passed to the request
+ * object. When the request is done with the bucket, it will be destroyed.
  */
-/* ### is the status return value needed? I don't think this can fail(?) */
-SERF_DECLARE(apr_status_t) serf_connection_request_create(
-    serf_connection_t *conn,
-    serf_bucket_t *request,
+SERF_DECLARE(void) serf_request_deliver(
+    serf_request_t *request,
+    serf_bucket_t *req_bkt,
     serf_response_acceptor_t acceptor,
     void *acceptor_baton,
     serf_response_handler_t handler,
-    void *handler_baton,
-    apr_pool_t *pool);
+    void *handler_baton);
 
 /**
- * Cancel the request specified by the @a request bucket, which should be
- * found in @a connection.
+ * Cancel the request specified by the @a request object.
  *
- * The request's response handler will be run, passing NULL for the response
- * bucket.
+ * If the request has been scheduled for delivery, then its response
+ * handler will be run, passing NULL for the response bucket.
  *
  * If the request has already been (partially or fully) delivered, then
  * APR_EBUSY is returned and the request is *NOT* canceled. To properly
  * cancel the request, the connection must be closed (by clearing or
  * destroying its associated pool).
- *
- * Note: APR_NOTFOUND will be returned if the request could not be found.
  */
-SERF_DECLARE(apr_status_t) serf_connection_request_cancel(
-    serf_connection_t *conn,
-    serf_bucket_t *request);
+SERF_DECLARE(apr_status_t) serf_request_cancel(serf_request_t *request);
+
+/**
+ * Return the pool associated with @a request.
+ *
+ * WARNING: be very careful about the kinds of things placed into this
+ * pool. In particular, all allocation should be bounded in size, rather
+ * than proportional to any data stream.
+ */
+SERF_DECLARE(apr_pool_t *) serf_request_get_pool(serf_request_t *request);
+
+/**
+ * Return the bucket allocator associated with @a request.
+ */
+SERF_DECLARE(serf_bucket_alloc_t) serf_request_get_alloc(
+    serf_request_t *request);
 
 
 /* ### maybe some connection control functions for flood? */
@@ -411,8 +437,13 @@ struct serf_bucket_type_t {
     /**
      * Peek, but don't consume, the data in @a bucket.
      *
-     * The @a data and @a len parameters, and the data they point to, are
-     * handled the same as the @see read function above.
+     * Since this function is non-destructive, the implicit read size is
+     * SERF_READ_ALL_AVAIL. The caller can then use whatever amount is
+     * appropriate.
+     *
+     * The @a data parameter will point to the data, and @a len will
+     * specify how much data is available. The lifetime of the data follows
+     * the same rules as the @see read function above.
      *
      * Note: if the peek does not return enough data for your particular
      * use, then you must read/consume some first, then peek again.

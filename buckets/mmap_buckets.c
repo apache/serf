@@ -49,6 +49,7 @@
  */
 
 #include <apr_pools.h>
+#include <apr_mmap.h>
 
 #include "serf.h"
 #include "serf_bucket_util.h"
@@ -116,14 +117,7 @@ static apr_status_t serf_mmap_peek(serf_bucket_t *bucket,
     return APR_ENOTIMPL;
 }
 
-static void serf_mmap_destroy(serf_bucket_t *bucket)
-{
-    mmap_context_t *ctx = bucket->data;
-
-    serf_bucket_mem_free(bucket->allocator, bucket);
-}
-
-SERF_DECLARE_DATA const serf_bucket_type_t serf_bucket_type_simple = {
+SERF_DECLARE_DATA const serf_bucket_type_t serf_bucket_type_mmap = {
     "MMAP",
     serf_mmap_read,
     serf_mmap_readline,
@@ -133,5 +127,5 @@ SERF_DECLARE_DATA const serf_bucket_type_t serf_bucket_type_simple = {
     serf_mmap_peek,
     serf_default_get_metadata,
     serf_default_set_metadata,
-    serf_mmap_destroy,
+    serf_default_destroy_and_data,
 };

@@ -266,6 +266,12 @@ SERF_DECLARE(void) serf_default_destroy(serf_bucket_t *bucket)
     serf_bucket_mem_free(bucket->allocator, bucket);
 }
 
+SERF_DECLARE(void) serf_default_destroy_and_data(serf_bucket_t *bucket)
+{
+    serf_bucket_mem_free(bucket->allocator, bucket->data);
+    serf_default_destroy(bucket);
+}
+
 
 /* ==================================================================== */
 

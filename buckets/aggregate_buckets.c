@@ -129,17 +129,22 @@ static apr_status_t serf_aggregate_read(serf_bucket_t *bucket,
 {
     apr_status_t status;
     aggregate_context_t *ctx = bucket->data;
+    serf_bucket_t *head;
 
     if (!ctx->list) {
         *len = 0;
-        return APR_SUCCESS;
+        /* ### can we leave *data unassigned given *len == 0? */
+        return APR_EOF;
     }
 
-    status = serf_bucket_read(ctx->list->bucket, requested, data, len);
+    head = ctx->list->bucket;
+    status = serf_bucket_read(head, requested, data, len);
 
     /* Somehow, we need to know whether we're exhausted! */
-    if (!status && *len == 0) {
+    if (APR_STATUS_IS_EOF(status)) {
         ctx->list = ctx->list->next;
+        serf_bucket_destroy(head);
+
         /* Avoid recursive call here.  Too lazy now.  */
         return serf_aggregate_read(bucket, requested, data, len);
     }
@@ -195,5 +200,5 @@ SERF_DECLARE_DATA const serf_bucket_type_t serf_bucket_type_aggregate = {
     serf_aggregate_peek,
     serf_default_get_metadata,
     serf_default_set_metadata,
-    serf_default_destroy,
+    serf_default_destroy_and_data,
 };

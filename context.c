@@ -62,8 +62,11 @@
 #define MAX_CONN 16
 
 /* Holds all the information corresponding to a request/response pair. */
-typedef struct request_t {
+struct serf_request_t {
+    serf_connection_t *conn;
+
     apr_pool_t *respool;
+    serf_bucket_alloc_t *allocator;
 
     /* The bucket corresponding to the request. Will be NULL once the
      * bucket has been emptied (for delivery into the socket).
@@ -78,9 +81,8 @@ typedef struct request_t {
 
     serf_bucket_t *resp_bkt;
 
-    struct request_t *next;
-
-} request_t;
+    struct serf_request_t *next;
+};
 
 struct serf_context_t {
     /* the pool used for self and for other allocations */
@@ -102,7 +104,7 @@ struct serf_connection_t {
     apr_socket_t *skt;
 
     /* The list of active requests. */
-    request_t *requests;
+    serf_request_t *requests;
 
     const char *unwritten_ptr;
     apr_size_t unwritten_len;
@@ -111,6 +113,53 @@ struct serf_connection_t {
     void *closed_baton;
 };
 
+
+/* Update the pollset for this connection. We tweak the pollset based on
+ * whether we want to read and/or write, given conditions within the
+ * connection. If the connection is not (yet) in the pollset, then it
+ * will be added.
+ */
+static apr_status_t update_pollset(serf_connection_t *conn)
+{
+    serf_context_t *ctx = conn->ctx;
+    apr_status_t status;
+    apr_pollfd_t desc;
+
+    /* Remove the socket from the poll set. */
+    desc.desc_type = APR_POLL_SOCKET;
+    desc.desc.s = conn->skt;
+    status = apr_pollset_remove(ctx->pollset, &desc);
+    if (status && !APR_STATUS_IS_NOTFOUND(status))
+        return status;
+
+    /* Now put it back in with the correct read/write values. */
+    desc.reqevents = 0;
+    if (conn->requests) {
+        /* If there are any outstanding events, then we want to read. */
+        desc.reqevents |= APR_POLLIN;
+
+        /* If the connection has unwritten data, or there are any requests
+         * that still have buckets to write out, then we want to write.
+         */
+        if (conn->unwritten_len)
+            desc.reqevents |= APR_POLLOUT;
+        else {
+            serf_request_t *request = conn->requests;
+
+            while (request != NULL && request->req_bkt == NULL)
+                request = request->next;
+            if (request != NULL)
+                desc.reqevents |= APR_POLLOUT;
+        }
+    }
+
+    desc.client_data = conn;
+
+    /* Note: even if we don't want to read/write this socket, we still
+     * want to poll it for hangups and errors.
+     */
+    return apr_pollset_add(ctx->pollset, &desc);
+}
 
 /* Create and connect sockets for any connections which don't have them
  * yet. This is the core of our lazy-connect behavior.
@@ -142,6 +191,9 @@ static apr_status_t open_connections(serf_context_t *ctx)
                                          APR_TCP_NODELAY, 0)) != APR_SUCCESS)
             return status;
 
+        /* Configured. Store it into the connection now. */
+        conn->skt = skt;
+
         /* Now that the socket is set up, let's connect it. This should
          * return immediately.
          */
@@ -149,12 +201,7 @@ static apr_status_t open_connections(serf_context_t *ctx)
             return status;
 
         /* Add the new socket to the pollset. */
-        desc.desc_type = APR_POLL_SOCKET;
-        desc.reqevents = APR_POLLIN | APR_POLLOUT;
-        desc.desc.s = skt;
-        desc.client_data = conn;
-
-        if ((status = apr_pollset_add(ctx->pollset, &desc)) != APR_SUCCESS)
+        if ((status = update_pollset(conn)) != APR_SUCCESS)
             return status;
     }
 
@@ -164,7 +211,7 @@ static apr_status_t open_connections(serf_context_t *ctx)
 /* write data out to the connection */
 static apr_status_t write_to_connection(serf_connection_t *conn)
 {
-    request_t *request = conn->requests;
+    serf_request_t *request = conn->requests;
 
     /* Find a request that has data which needs to be delivered. */
     while (request != NULL && request->req_bkt == NULL)
@@ -204,9 +251,13 @@ static apr_status_t write_to_connection(serf_connection_t *conn)
         while (request != NULL && request->req_bkt == NULL)
             request = request->next;
 
-        /* If we have no further requests, then we're done. */
-        if (request == NULL)
-            return APR_SUCCESS;
+        if (request == NULL) {
+            /* No more requests (with data) are registered with the
+             * connection. Let's update the pollset so that we don't
+             * try to write to this socket again.
+             */
+            return update_pollset(conn);
+        }
 
         /* ### optimize at some point by using read_for_sendfile */
 
@@ -271,7 +322,7 @@ static apr_status_t read_from_connection(serf_connection_t *conn)
     /* Whatever is coming in on the socket corresponds to the first request
      * on our chain.
      */
-    request_t *request = conn->requests;
+    serf_request_t *request = conn->requests;
 
     /* assert: request != NULL */
 
@@ -314,6 +365,15 @@ static apr_status_t read_from_connection(serf_connection_t *conn)
         apr_pool_destroy(request->respool);
 
         request = conn->requests;
+
+        /* If we just ran out of requests, then update the pollset. We
+         * don't want to read from this socket any more. We are definitely
+         * done with this loop, too.
+         */
+        if (request == NULL) {
+            status = update_pollset(conn);
+            goto error;
+        }
     }
 
   error:
@@ -428,22 +488,36 @@ SERF_DECLARE(serf_connection_t *) serf_connection_create(
 }
 
 
-SERF_DECLARE(apr_status_t) serf_connection_request_create(
-    serf_connection_t *conn,
-    serf_bucket_t *request,
+SERF_DECLARE(serf_request_t *) serf_connection_request_create(
+    serf_connection_t *conn)
+{
+    return NULL;
+}
+
+SERF_DECLARE(void) serf_request_deliver(
+    serf_request_t *request,
+    serf_bucket_t *req_bkt,
     serf_response_acceptor_t acceptor,
     void *acceptor_baton,
     serf_response_handler_t handler,
-    void *handler_baton,
-    apr_pool_t *pool)
+    void *handler_baton)
 {
     return APR_ENOTIMPL;
 }
 
 
-SERF_DECLARE(apr_status_t) serf_connection_request_cancel(
-    serf_connection_t *conn,
-    serf_bucket_t *request)
+SERF_DECLARE(apr_status_t) serf_request_cancel(serf_request_t *request)
 {
     return APR_ENOTIMPL;
+}
+
+SERF_DECLARE(apr_pool_t *) serf_request_get_pool(serf_request_t *request)
+{
+    return request->respool;
+}
+
+SERF_DECLARE(serf_bucket_alloc_t) serf_request_get_alloc(
+    serf_request_t *request)
+{
+    return request->allocator;
 }
