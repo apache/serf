@@ -95,6 +95,11 @@ typedef struct node_header_t {
  */
 #define ALLOC_AMT (8192 - APR_MEMNODE_T_SIZE)
 
+/* Define DEBUG_DOUBLE_FREE if you're interested in debugging double-free
+ * calls to serf_bucket_mem_free().
+ */
+#define DEBUG_DOUBLE_FREE
+
 
 struct serf_bucket_alloc_t {
     apr_pool_t *pool;
@@ -251,6 +256,13 @@ SERF_DECLARE(void *) serf_bucket_mem_alloc(
             /* just pull a node off our freelist */
             node = allocator->freelist;
             allocator->freelist = node->u.next;
+#ifdef DEBUG_DOUBLE_FREE
+            /* When we free an item, we set its size to zero. Thus, when
+             * we return it to the caller, we must ensure the size is set
+             * properly.
+             */
+            node->size = STANDARD_NODE_SIZE;
+#endif
         }
         else {
             apr_memnode_t *active = allocator->blocks;
@@ -298,16 +310,20 @@ SERF_DECLARE(void) serf_bucket_mem_free(
         node->u.next = allocator->freelist;
         allocator->freelist = node;
 
+#ifdef DEBUG_DOUBLE_FREE
         /* note that this thing was freed. */
         node->size = 0;
     }
     else if (node->size == 0) {
         /* damn thing was freed already. */
         abort();
+#endif
     }
     else {
+#ifdef DEBUG_DOUBLE_FREE
         /* note that this thing was freed. */
         node->size = 0;
+#endif
 
         /* now free it */
         apr_allocator_free(allocator->allocator, node->u.memnode);
