@@ -622,6 +622,58 @@ SERF_DECLARE(apr_pool_t *) serf_bucket_allocator_get_pool(
     const serf_bucket_alloc_t *allocator);
 
 
+/**
+ * Utility structure for reading a complete line of input from a bucket.
+ *
+ * Since it is entirely possible for a line to be broken by APR_EAGAIN,
+ * this structure can be used to accumulate the data until a complete line
+ * has been read from a bucket.
+ */
+
+/* This limit applies to the line buffer functions. If an application needs
+ * longer lines, then they will need to manually handle line buffering.
+ */
+#define SERF_LINEBUF_LIMIT 8000
+
+typedef struct {
+
+    /* Current state of the buffer. */
+    enum {
+        SERF_LINEBUF_EMPTY,
+        SERF_LINEBUF_READY,
+        SERF_LINEBUF_PARTIAL,
+        SERF_LINEBUF_CRLF_SPLIT
+    } state;
+
+    /* How much of the buffer have we used? */
+    apr_size_t used;
+
+    /* The line is read into this buffer, minus CR/LF */
+    char line[SERF_LINEBUF_LIMIT];
+
+} serf_linebuf_t;
+
+/**
+ * Initialize the @a linebuf structure.
+ */
+SERF_DECLARE(void) serf_linebuf_init(serf_linebuf_t *linebuf);
+
+/**
+ * Fetch a line of text from @a bucket, accumulating the line into
+ * @a linebuf. @a acceptable specifies the types of newlines which are
+ * acceptable for this fetch.
+ *
+ * ### we should return a data/len pair so that we can avoid a copy,
+ * ### rather than having callers look into our state and line buffer.
+ */
+SERF_DECLARE(apr_status_t) serf_linebuf_fetch(
+    serf_linebuf_t *linebuf,
+    serf_bucket_t *bucket,
+    int acceptable);
+
+/** @} */
+
+
 /* Internal functions for bucket use and lifecycle tracking */
 SERF_DECLARE(apr_status_t) serf_debug__record_read(
     serf_bucket_t *bucket,
@@ -629,9 +681,6 @@ SERF_DECLARE(apr_status_t) serf_debug__record_read(
 SERF_DECLARE(void) serf_debug__entered_loop(serf_bucket_alloc_t *allocator);
 SERF_DECLARE(void) serf_debug__closed_conn(serf_bucket_alloc_t *allocator);
 SERF_DECLARE(void) serf_debug__bucket_destroy(serf_bucket_t *bucket);
-
-/** @} */
-
 
 #ifdef __cplusplus
 }

@@ -454,3 +454,131 @@ SERF_DECLARE(apr_status_t) serf_databuf_peek(serf_databuf_t *databuf,
         return APR_EOF;
     return APR_SUCCESS;
 }
+
+
+/* ==================================================================== */
+
+
+SERF_DECLARE(void) serf_linebuf_init(serf_linebuf_t *linebuf)
+{
+    linebuf->state = SERF_LINEBUF_EMPTY;
+    linebuf->used = 0;
+}
+
+SERF_DECLARE(apr_status_t) serf_linebuf_fetch(
+    serf_linebuf_t *linebuf,
+    serf_bucket_t *bucket,
+    int acceptable)
+{
+    /* If we had a complete line, then assume the caller has used it, so
+     * we can now reset the state.
+     */
+    if (linebuf->state == SERF_LINEBUF_READY) {
+        linebuf->state = SERF_LINEBUF_EMPTY;
+
+        /* Reset the line_used, too, so we don't have to test the state
+         * before using this value.
+         */
+        linebuf->used = 0;
+    }
+
+    while (1) {
+        apr_status_t status;
+        const char *data;
+        apr_size_t len;
+
+        if (linebuf->state == SERF_LINEBUF_CRLF_SPLIT) {
+            /* On the previous read, we received just a CR. The LF might
+             * be present, but the bucket couldn't see it. We need to
+             * examine a single character to determine how to handle the
+             * split CRLF.
+             */
+
+            status = serf_bucket_peek(bucket, &data, &len);
+            if (SERF_BUCKET_READ_ERROR(status))
+                return status;
+
+            if (len > 0) {
+                if (*data == '\n') {
+                    /* We saw the second part of CRLF. We don't need to
+                     * save that character, so do an actual read to suck
+                     * up that character.
+                     */
+                    /* ### check status */
+                    (void) serf_bucket_read(bucket, 1, &data, &len);
+                }
+                /* else:
+                 *   We saw the first character of the next line. Thus,
+                 *   the current line is terminated by the CR. Just
+                 *   ignore whatever we peeked at. The next reader will
+                 *   see it and handle it as appropriate.
+                 */
+
+                /* Whatever was read, the line is now ready for use. */
+                linebuf->state = SERF_LINEBUF_READY;
+            }
+            /* ### we need data. gotta check this char. bail if zero?! */
+            /* else len == 0 */
+
+            /* ### status */
+        }
+        else {
+            int found;
+
+            status = serf_bucket_readline(bucket, acceptable, &found,
+                                          &data, &len);
+            if (SERF_BUCKET_READ_ERROR(status)) {
+                return status;
+            }
+            if (linebuf->used + len > sizeof(linebuf->line)) {
+                /* ### need a "line too long" error */
+                return APR_EGENERAL;
+            }
+
+            /* Note: our logic doesn't change for SERF_LINEBUF_PARTIAL. That
+             * only affects how we fill the buffer. It is a communication to
+             * our caller on whether the line is ready or not.
+             */
+
+            /* If we didn't see a newline, then we should mark the line
+             * buffer as partially complete.
+             */
+            if (found == SERF_NEWLINE_NONE) {
+                linebuf->state = SERF_LINEBUF_PARTIAL;
+            }
+            else if (found == SERF_NEWLINE_CRLF_SPLIT) {
+                linebuf->state = SERF_LINEBUF_CRLF_SPLIT;
+
+                /* Toss the partial CR. We won't ever need it. */
+                --len;
+            }
+            else {
+                /* We got a newline (of some form). We don't need it
+                 * in the line buffer, so back up the length. Then
+                 * mark the line as ready.
+                 */
+                len -= 1 + (found == SERF_NEWLINE_CRLF);
+
+                linebuf->state = SERF_LINEBUF_READY;
+            }
+
+            /* ### it would be nice to avoid this copy if at all possible,
+               ### and just return the a data/len pair to the caller. we're
+               ### keeping it simple for now. */
+            memcpy(&linebuf->line[linebuf->used], data, len);
+            linebuf->used += len;
+        }
+
+        /* If we saw anything besides "success. please read again", then
+         * we should return that status. If the line was completed, then
+         * we should also return.
+         */
+        if (status || linebuf->state == SERF_LINEBUF_READY)
+            return status;
+
+        /* We got APR_SUCCESS and the line buffer is not complete. Let's
+         * loop to read some more data.
+         */
+    }
+    /* NOTREACHED */
+}

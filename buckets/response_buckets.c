@@ -24,9 +24,6 @@
 #include "serf_bucket_util.h"
 
 
-/* the limit on the length of a line in the status-line or headers */
-#define LINE_LIMIT 8000
-
 typedef struct {
     serf_bucket_t *stream;
 
@@ -38,14 +35,8 @@ typedef struct {
         STATE_DONE              /* we've sent EOF */
     } state;
 
-    enum {
-        LINE_EMPTY,
-        LINE_READY,
-        LINE_PARTIAL,
-        LINE_CRLF_SPLIT
-    } lstate;
-    apr_size_t line_used;
-    char line[LINE_LIMIT];      /* line is read into this buf, minus CR/LF */
+    /* Buffer for accumulating a line from the response. */
+    serf_linebuf_t linebuf;
 
     serf_status_line sl;
 
@@ -63,8 +54,8 @@ SERF_DECLARE(serf_bucket_t *) serf_bucket_response_create(
     ctx = serf_bucket_mem_alloc(allocator, sizeof(*ctx));
     ctx->stream = stream;
     ctx->state = STATE_STATUS_LINE;
-    ctx->lstate = LINE_EMPTY;
-    ctx->line_used = 0;
+
+    serf_linebuf_init(&ctx->linebuf);
 
     return serf_bucket_create(&serf_bucket_type_response, allocator, ctx);
 }
@@ -105,119 +96,7 @@ static void serf_response_destroy_and_data(serf_bucket_t *bucket)
 
 static apr_status_t fetch_line(response_context_t *ctx, int acceptable)
 {
-    serf_bucket_t *stream = ctx->stream;
-
-    /* If we had a complete line, then assume the caller has used it, so
-     * we can now reset the state.
-     */
-    if (ctx->lstate == LINE_READY) {
-        ctx->lstate = LINE_EMPTY;
-
-        /* Reset the line_used, too, so we don't have to test the state
-         * before using this value.
-         */
-        ctx->line_used = 0;
-    }
-
-    while (1) {
-        apr_status_t status;
-        const char *data;
-        apr_size_t len;
-
-        if (ctx->lstate == LINE_CRLF_SPLIT) {
-            /* On the previous read, we received just a CR. The LF might
-             * be present, but the bucket couldn't see it. We need to
-             * examine a single character to determine how to handle the
-             * split CRLF.
-             */
-
-            status = serf_bucket_peek(stream, &data, &len);
-            if (SERF_BUCKET_READ_ERROR(status))
-                return status;
-
-            if (len > 0) {
-                if (*data == '\n') {
-                    /* We saw the second part of CRLF. We don't need to
-                     * save that character, so do an actual read to suck
-                     * up that character.
-                     */
-                    /* ### check status */
-                    (void) serf_bucket_read(stream, 1, &data, &len);
-                }
-                /* else:
-                 *   We saw the first character of the next line. Thus,
-                 *   the current line is terminated by the CR. Just
-                 *   ignore whatever we peeked at. The next reader will
-                 *   see it and handle it as appropriate.
-                 */
-
-                /* Whatever was read, the line is now ready for use. */
-                ctx->lstate = LINE_READY;
-            }
-            /* ### we need data. gotta check this char. bail if zero?! */
-            /* else len == 0 */
-
-            /* ### status */
-        }
-        else {
-            int found;
-
-            status = serf_bucket_readline(stream, acceptable, &found,
-                                          &data, &len);
-            if (SERF_BUCKET_READ_ERROR(status)) {
-                return status;
-            }
-            if (ctx->line_used + len > sizeof(ctx->line)) {
-                /* ### need a "line too long" error */
-                return APR_EGENERAL;
-            }
-
-            /* Note: our logic doesn't change for LINE_PARTIAL. That only
-             * affects how we fill the buffer. It is a communication to our
-             * caller on whether the line is ready or not.
-             */
-
-            /* If we didn't see a newline, then we should mark the line
-             * buffer as partially complete.
-             */
-            if (found == SERF_NEWLINE_NONE) {
-                ctx->lstate = LINE_PARTIAL;
-            }
-            else if (found == SERF_NEWLINE_CRLF_SPLIT) {
-                ctx->lstate = LINE_CRLF_SPLIT;
-
-                /* Toss the partial CR. We won't ever need it. */
-                --len;
-            }
-            else {
-                /* We got a newline (of some form). We don't need it
-                 * in the line buffer, so back up the length. Then
-                 * mark the line as ready.
-                 */
-                len -= 1 + (found == SERF_NEWLINE_CRLF);
-
-                ctx->lstate = LINE_READY;
-            }
-
-            /* ### it would be nice to avoid this copy if at all possible,
-               ### and just return the a data/len pair to the caller. we're
-               ### keeping it simple for now. */
-            memcpy(&ctx->line[ctx->line_used], data, len);
-            ctx->line_used += len;
-        }
-
-        /* If we saw anything besides "success. please read again", then
-         * we should return that status. If the line was completed, then
-         * we should also return.
-         */
-        if (status || ctx->lstate == LINE_READY)
-            return status;
-
-        /* We got APR_SUCCESS and the line buffer is not complete. Let's
-         * loop to read some more data.
-         */
-    }
-    /* NOTREACHED */
+    return serf_linebuf_fetch(&ctx->linebuf, ctx->stream, acceptable);
 }
 
 static apr_status_t parse_status_line(response_context_t *ctx,
@@ -226,16 +105,16 @@ static apr_status_t parse_status_line(response_context_t *ctx,
     int res;
     char *reason; /* ### stupid APR interface makes this non-const */
 
-    /* ctx->line should be of form: HTTP/1.1 200 OK */
-    res = apr_date_checkmask(ctx->line, "HTTP/#.# ###*");
+    /* ctx->linebuf.line should be of form: HTTP/1.1 200 OK */
+    res = apr_date_checkmask(ctx->linebuf.line, "HTTP/#.# ###*");
     if (!res) {
         /* Not an HTTP response?  Well, at least we won't understand it. */
         return APR_EGENERAL;
     }
 
-    ctx->sl.version = SERF_HTTP_VERSION(ctx->line[5] - '0',
-                                        ctx->line[7] - '0');
-    ctx->sl.code = apr_strtoi64(ctx->line + 8, &reason, 10);
+    ctx->sl.version = SERF_HTTP_VERSION(ctx->linebuf.line[5] - '0',
+                                        ctx->linebuf.line[7] - '0');
+    ctx->sl.code = apr_strtoi64(ctx->linebuf.line + 8, &reason, 10);
 
     /* Skip leading spaces for the reason string. */
     if (apr_isspace(*reason)) {
@@ -244,7 +123,8 @@ static apr_status_t parse_status_line(response_context_t *ctx,
 
     /* Copy the reason value out of the line buffer. */
     ctx->sl.reason = serf_bstrmemdup(allocator, reason,
-                                     ctx->line_used - (reason - ctx->line));
+                                     ctx->linebuf.used
+                                     - (reason - ctx->linebuf.line));
 
     return APR_SUCCESS;
 }
@@ -260,15 +140,15 @@ static apr_status_t fetch_chunk_size(response_context_t *ctx)
         return status;
 
     /* if a line was read, then parse it. */
-    if (ctx->lstate == LINE_READY) {
+    if (ctx->linebuf.state == SERF_LINEBUF_READY) {
         /* NUL-terminate the line. if it filled the entire buffer, then
            just assume the thing is too large. */
-        if (ctx->line_used == sizeof(ctx->line))
+        if (ctx->linebuf.used == sizeof(ctx->linebuf.line))
             return APR_FROM_OS_ERROR(ERANGE);
-        ctx->line[ctx->line_used] = '\0';
+        ctx->linebuf.line[ctx->linebuf.used] = '\0';
 
         /* convert from HEX digits. */
-        ctx->body_left = apr_strtoi64(ctx->line, NULL, 16);
+        ctx->body_left = apr_strtoi64(ctx->linebuf.line, NULL, 16);
         if (errno == ERANGE) {
             return APR_FROM_OS_ERROR(ERANGE);
         }
@@ -291,11 +171,11 @@ static apr_status_t fetch_headers(serf_bucket_t *bkt, response_context_t *ctx)
     }
     /* Something was read. Process it. */
 
-    if (ctx->lstate == LINE_READY && ctx->line_used) {
+    if (ctx->linebuf.state == SERF_LINEBUF_READY && ctx->linebuf.used) {
         const char *end_key, *c;
         char *k, *v;
 
-        end_key = c = memchr(ctx->line, ':', ctx->line_used);
+        end_key = c = memchr(ctx->linebuf.line, ':', ctx->linebuf.used);
         if (!c) {
             /* Bad headers? */
             return APR_EGENERAL;
@@ -304,10 +184,10 @@ static apr_status_t fetch_headers(serf_bucket_t *bkt, response_context_t *ctx)
         /* Skip over initial : and spaces. */
         while (apr_isspace(*++c));
 
-        k = serf_bstrmemdup(bkt->allocator, ctx->line,
-                            end_key - ctx->line);
+        k = serf_bstrmemdup(bkt->allocator, ctx->linebuf.line,
+                            end_key - ctx->linebuf.line);
         v = serf_bstrmemdup(bkt->allocator, c,
-                            ctx->line + ctx->line_used - c);
+                            ctx->linebuf.line + ctx->linebuf.used - c);
 
         serf_bucket_set_metadata(bkt, SERF_RESPONSE_HEADERS,
                                  k, v);
@@ -337,7 +217,7 @@ static apr_status_t run_machine(serf_bucket_t *bkt, response_context_t *ctx)
         if (SERF_BUCKET_READ_ERROR(status))
             return status;
 
-        if (ctx->lstate == LINE_READY) {
+        if (ctx->linebuf.state == SERF_LINEBUF_READY) {
             /* The Status-Line is in the line buffer. Process it. */
             status = parse_status_line(ctx, bkt->allocator);
             if (status)
@@ -355,7 +235,7 @@ static apr_status_t run_machine(serf_bucket_t *bkt, response_context_t *ctx)
         /* If an empty line was read, then we hit the end of the headers.
          * Move on to the body.
          */
-        if (ctx->lstate == LINE_READY && !ctx->line_used) {
+        if (ctx->linebuf.state == SERF_LINEBUF_READY && !ctx->linebuf.used) {
             const void *v;
 
             /* Are we C-L, chunked, or conn close? */
@@ -389,7 +269,7 @@ static apr_status_t run_machine(serf_bucket_t *bkt, response_context_t *ctx)
             return status;
 
         /* If an empty line was read, then we're done. */
-        if (ctx->lstate == LINE_READY && !ctx->line_used) {
+        if (ctx->linebuf.state == SERF_LINEBUF_READY && !ctx->linebuf.used) {
             ctx->state = STATE_DONE;
             return APR_EOF;
         }
@@ -428,7 +308,7 @@ static apr_status_t wait_for_body(serf_bucket_t *bkt, response_context_t *ctx)
         }
 
         /* Did we just get our zero terminating chunk? */
-        if (ctx->lstate == LINE_READY && !ctx->body_left) {
+        if (ctx->linebuf.state == SERF_LINEBUF_READY && !ctx->body_left) {
             ctx->state = STATE_TRAILERS;
 
             /* If it is okay to read more data, then process some trailers. */
