@@ -124,6 +124,8 @@ struct serf_bucket_header {
     const char *key;
     /** The MIME-header value */
     const char *value;
+    /** Pool used for allocation for reads */
+    apr_pool_t *pool;
 };
 typedef struct serf_bucket_header serf_bucket_header;
 SERF_DECLARE_DATA extern const apr_bucket_type_t serf_bucket_header_type;
@@ -172,6 +174,8 @@ struct serf_bucket_authentication {
     const char *user;
     /* The password */
     const char *password;
+    /** Pool used for allocation for reads */
+    apr_pool_t *pool;
 };
 typedef struct serf_bucket_authentication serf_bucket_authentication;
 SERF_DECLARE_DATA extern const apr_bucket_type_t
