@@ -1,5 +1,5 @@
 APR-SERF STATUS:						-*-text-*-
-Last modified at [$Date: 2002/05/09 05:13:39 $]
+Last modified at [$Date: 2002/07/01 13:34:08 $]
 
 Release:
 
@@ -20,6 +20,8 @@ RELEASE SHOWSTOPPERS:
     Greg thinks: prolly the following: /build, /include, /docs, /test, 
 		 /core, and some for high-level items (maybe /filters
 		 and /utils)
+    Justin says: Fine with me except /core can't be used as autoconf
+                 trounces this directory via rm -rf - how about /base?
 
   * set up config/build structure based on apr-util
     (take this opportunity to simplify again; hopefully to fold these
