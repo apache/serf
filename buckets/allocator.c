@@ -385,6 +385,10 @@ SERF_DECLARE(void) serf_debug__bucket_destroy(serf_bucket_t *bucket)
         if (SERF_BUCKET_IS_SSL_DECRYPT(bucket))
             return;
 
+        /* Ditto for SSL Encrypt buckets. */
+        if (SERF_BUCKET_IS_SSL_ENCRYPT(bucket))
+            return;
+
         abort();
     }
 

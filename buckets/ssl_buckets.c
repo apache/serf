@@ -22,7 +22,7 @@
 #include <openssl/bio.h>
 #include <openssl/ssl.h>
 
-#define SSL_VERBOSE
+/*#define SSL_VERBOSE*/
 
 struct serf_ssl_context_t {
     int refcount;
@@ -48,7 +48,6 @@ struct serf_ssl_context_t {
 
 typedef struct {
     serf_ssl_context_t *ssl_ctx;
-    int own_ssl_ctx;
 
     serf_bucket_t *stream;
 
@@ -180,7 +179,7 @@ static apr_status_t ssl_encrypt(void *baton, apr_size_t bufsize,
     }
     else {
         *len = 0;
-        status = APR_EAGAIN;
+        status = APR_EOF;
     }
 
     if (!SERF_BUCKET_READ_ERROR(status) && *len) {
@@ -273,11 +272,9 @@ static serf_bucket_t * serf_bucket_ssl_create(
     ctx->stream = stream;
     if (!ssl_ctx) {
         ctx->ssl_ctx = ssl_init_context();
-        ctx->own_ssl_ctx = 1;
     }
     else {
         ctx->ssl_ctx = ssl_ctx;
-        ctx->own_ssl_ctx = 0;
     }
     ctx->ssl_ctx->refcount++;
 
@@ -324,7 +321,7 @@ static void serf_ssl_destroy_and_data(serf_bucket_t *bucket)
 {
     ssl_context_t *ctx = bucket->data;
 
-    if (!--ctx->ssl_ctx->refcount || !ctx->own_ssl_ctx) {
+    if (!--ctx->ssl_ctx->refcount) {
         ssl_free_context(ctx->ssl_ctx);
     }
 
@@ -523,7 +520,7 @@ static apr_status_t ssl_free_context(
     serf_bucket_destroy(ssl_ctx->source);
     serf_bucket_destroy(ssl_ctx->sink);
 
-    BIO_free(ssl_ctx->bio);
+    /* SSL_free implicitly frees the underlying BIO. */
     SSL_free(ssl_ctx->ssl);
     SSL_CTX_free(ssl_ctx->ctx);
 

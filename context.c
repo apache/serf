@@ -363,6 +363,9 @@ static apr_status_t read_from_connection(serf_connection_t *conn)
 
         /* The bucket is no longer needed, nor is the request's pool. */
         serf_bucket_destroy(request->resp_bkt);
+        if (request->req_bkt) {
+            serf_bucket_destroy(request->req_bkt);
+        }
         apr_pool_destroy(request->respool);
 
         request = conn->requests;
