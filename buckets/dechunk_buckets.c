@@ -56,13 +56,9 @@ SERF_DECLARE(serf_bucket_t *) serf_bucket_dechunk_create(
 
 static void serf_dechunk_destroy_and_data(serf_bucket_t *bucket)
 {
-    /* ### we can't destroy this. the response bucket wants to read
-       ### trailers from this bucket.
-
     dechunk_context_t *ctx = bucket->data;
 
     serf_bucket_destroy(ctx->stream);
-    */
 
     serf_default_destroy_and_data(bucket);
 }

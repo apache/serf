@@ -389,6 +389,11 @@ SERF_DECLARE(void) serf_debug__bucket_destroy(serf_bucket_t *bucket)
         if (SERF_BUCKET_IS_SSL_ENCRYPT(bucket))
             return;
 
+        /* Ditto for barrier buckets. */
+        if (SERF_BUCKET_IS_BARRIER(bucket))
+            return;
+
+
         abort();
     }
 

@@ -85,9 +85,7 @@ static void serf_limit_destroy(serf_bucket_t *bucket)
 {
     limit_context_t *ctx = bucket->data;
 
-    /*
     serf_bucket_destroy(ctx->stream);
-    */
 
     serf_default_destroy_and_data(bucket);
 }

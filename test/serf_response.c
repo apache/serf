@@ -26,6 +26,7 @@
 
 typedef struct {
     const char *resp_file;
+    serf_bucket_t *bkt;
 } accept_baton_t;
 
 static serf_bucket_t* accept_response(void *acceptor_baton,
@@ -43,7 +44,9 @@ static serf_bucket_t* accept_response(void *acceptor_baton,
         return NULL;
     }
 
-    c = serf_bucket_file_create(file, bkt_alloc);
+    c = ctx->bkt = serf_bucket_file_create(file, bkt_alloc);
+
+    c = serf_bucket_barrier_create(c, bkt_alloc);
 
     return serf_bucket_response_create(c, bkt_alloc);
 }
@@ -141,6 +144,7 @@ int main(int argc, const char **argv)
         }
     }
     serf_bucket_destroy(resp_bkt);
+    serf_bucket_destroy(accept_ctx.bkt);
 
     apr_pool_destroy(pool);
 

@@ -202,6 +202,9 @@ static apr_status_t run_machine(serf_bucket_t *bkt, response_context_t *ctx)
         if (ctx->linebuf.state == SERF_LINEBUF_READY && !ctx->linebuf.used) {
             const void *v;
 
+            ctx->body =
+                serf_bucket_barrier_create(ctx->stream, bkt->allocator);
+
             /* Are we C-L, chunked, or conn close? */
             v = serf_bucket_headers_get(ctx->headers, "Content-Length");
             if (v) {
@@ -210,7 +213,7 @@ static apr_status_t run_machine(serf_bucket_t *bkt, response_context_t *ctx)
                 if (errno == ERANGE) {
                     return APR_FROM_OS_ERROR(ERANGE);
                 }
-                ctx->body = serf_bucket_limit_create(ctx->stream, length,
+                ctx->body = serf_bucket_limit_create(ctx->body, length,
                                                      bkt->allocator);
             }
             else {
@@ -219,7 +222,7 @@ static apr_status_t run_machine(serf_bucket_t *bkt, response_context_t *ctx)
                 /* Need to handle multiple transfer-encoding. */
                 if (v && strcasecmp("chunked", v) == 0) {
                     ctx->chunked = 1;
-                    ctx->body = serf_bucket_dechunk_create(ctx->stream,
+                    ctx->body = serf_bucket_dechunk_create(ctx->body,
                                                            bkt->allocator);
                 }
 
@@ -233,9 +236,11 @@ static apr_status_t run_machine(serf_bucket_t *bkt, response_context_t *ctx)
                  * and limit buckets assume that its streams are of
                  * different lifetimes.  This isn't quite right and needs
                  * to be rethought.
+                 *
+                 * XXX This MAY be fixed with BARRIER buckets.
                  */
-                if (!ctx->body) {
-                    ctx->body = ctx->stream;
+                if (!ctx->chunked) {
+                    /*abort();*/
                 }
             }
             v = serf_bucket_headers_get(ctx->headers, "Content-Encoding");
