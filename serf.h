@@ -330,6 +330,14 @@ SERF_DECLARE(serf_bucket_alloc_t *) serf_request_get_alloc(
 /** Used to indicate that a CR was found at the end of a buffer, and CRLF
  * was acceptable. It may be that the LF is present, but it needs to be
  * read first.
+ *
+ * Note: an alternative to using this symbol would be for callers to see
+ * the SERF_NEWLINE_CR return value, and know that some "end of buffer" was
+ * reached. While this works well for @see serf_util_readline, it does not
+ * necessary work as well for buckets (there is no obvious "end of buffer",
+ * although there is an "end of bucket"). The other problem with that
+ * alternative is that developers might miss the condition. This symbol
+ * calls out the possibility and ensures that callers will watch for it.
  */
 #define SERF_NEWLINE_CRLF_SPLIT 0x0010
 
