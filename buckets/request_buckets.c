@@ -54,12 +54,12 @@
 #include "serf_bucket_util.h"
 
 
-typedef struct serf_request_context_t {
+typedef struct {
     const char *method;
     const char *uri;
     serf_bucket_t *body;
     serf_request_state_t state;
-} serf_request_context_t;
+} request_context_t;
 
 
 SERF_DECLARE(serf_bucket_t *) serf_bucket_request_create(
@@ -68,39 +68,38 @@ SERF_DECLARE(serf_bucket_t *) serf_bucket_request_create(
     serf_bucket_t *body,
     serf_bucket_alloc_t *allocator)
 {
-    serf_request_context_t *req_context;
+    request_context_t *ctx;
 
-    req_context = serf_bucket_mem_alloc(allocator, sizeof(*req_context));
-    req_context->method = method;
-    req_context->uri = uri;
-    req_context->body = body;
-    req_context->state = UNREAD;
+    ctx = serf_bucket_mem_alloc(allocator, sizeof(*ctx));
+    ctx->method = method;
+    ctx->uri = uri;
+    ctx->body = body;
+    ctx->state = UNREAD;
 
-    return serf_bucket_create(&serf_bucket_type_request, allocator,
-                              req_context);
+    return serf_bucket_create(&serf_bucket_type_request, allocator, ctx);
 }
 
 static void serialize_data(serf_bucket_t *bucket)
 {
-    serf_request_context_t *req_context;
+    request_context_t *ctx = bucket->data;
     serf_bucket_t *new_bucket;
     const char *new_data;
-
-    req_context = (serf_request_context_t*)bucket->data;
 
     /* Serialize the request-line and headers into one mother string,
      * and wrap a bucket around it.
      */
-    /* ### ARGH.  Allocator's pool needs to be public? */
-    new_data = apr_pstrcat(bucket->allocator->pool,
-                           req_context->method, " ",
-                           req_context->uri, " HTTP/1.1\r\n",
-                           "User-Agent: serf\r\n",
+    /* ### pool allocation! */
+    new_data = apr_pstrcat(serf_bucket_allocator_get_pool(bucket->allocator),
+                           ctx->method, " ",
+                           ctx->uri, " HTTP/1.1\r\n",
+                           "User-Agent: serf\r\n", /* ### just an example */
                            "\r\n",
                            NULL);
 
-    /* heap, pool, whatever. */
-    new_bucket = serf_bucket_pool_create(bucket->allocator, new_data);
+    /* Create a new bucket for this string. A free function isn't needed
+     * since the string is residing in a pool.
+     */
+    new_bucket = SERF_BUCKET_SIMPLE_STRING(new_data, bucket->allocator);
 
     /* Build up the new bucket structure.
      *
@@ -111,12 +110,12 @@ static void serialize_data(serf_bucket_t *bucket)
 
     /* Insert the two buckets. */
     serf_bucket_aggregate_append(bucket, new_bucket);
-    serf_bucket_aggregate_append(bucket, req_context->body);
+    serf_bucket_aggregate_append(bucket, ctx->body);
 
-    /* Our private context is no longer needed, and is not referred to
+    /* Our private context is no longer needed, and is not referred to by
      * any existing bucket. Toss it.
      */
-    serf_bucket_mem_free(bucket->allocator, req_context);
+    serf_bucket_mem_free(bucket->allocator, ctx);
 }
 
 static apr_status_t serf_request_read(serf_bucket_t *bucket,

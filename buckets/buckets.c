@@ -114,9 +114,12 @@ struct serf_bucket_alloc_t {
     apr_memnode_t *blocks;      /* blocks we allocated for subdividing */
 };
 
+/* ### maybe allocate this along with the basic bucket? see the "combined"
+   ### structure in modules/dav/fs/repos.c for the concept */
 struct serf_metadata_t {
     apr_hash_t *hash;
 };
+
 
 SERF_DECLARE(serf_bucket_t *) serf_bucket_create(
     const serf_bucket_type_t *type,

@@ -85,6 +85,7 @@ SERF_DECLARE(serf_bucket_t *) serf_bucket_request_create(
 /* Metadata key for get/set_metadata */
 #define SERF_REQUEST_HEADERS "REQUESTHEADERS"
 
+
 /* ==================================================================== */
 
 
@@ -154,19 +155,19 @@ SERF_DECLARE(serf_bucket_t *) serf_bucket_socket_create(
 /* ==================================================================== */
 
 
-/* ### we probably don't need all three here. our memory model is a bit
-   ### special, so it may simply be that we have a bucket type that refers
-   ### to externally-managed memory
-*/
+SERF_DECLARE_DATA extern const serf_bucket_type_t serf_bucket_type_simple;
+#define SERF_BUCKET_IS_SIMPLE(b) SERF_BUCKET_CHECK((b), simple)
 
-SERF_DECLARE_DATA extern const serf_bucket_type_t serf_bucket_type_immortal;
-#define SERF_BUCKET_IS_IMMORTAL(b) SERF_BUCKET_CHECK((b), immortal)
+typedef void (*serf_simple_freefunc_t)(void *baton, const char *data);
 
-SERF_DECLARE_DATA extern const serf_bucket_type_t serf_bucket_type_heap;
-#define SERF_BUCKET_IS_HEAP(b) SERF_BUCKET_CHECK((b), heap)
+SERF_DECLARE(serf_bucket_t *) serf_bucket_simple_create(
+    const char *data, apr_size_t len,
+    serf_simple_freefunc_t freefunc,
+    void *freefunc_baton,
+    serf_bucket_alloc_t *allocator);
 
-SERF_DECLARE_DATA extern const serf_bucket_type_t serf_bucket_type_pool;
-#define SERF_BUCKET_IS_POOL(b) SERF_BUCKET_CHECK((b), pool)
+#define SERF_BUCKET_SIMPLE_STRING(s,a) \
+    serf_bucket_simple_create(s, strlen(s), NULL, NULL, a);
 
 
 /* ==================================================================== */

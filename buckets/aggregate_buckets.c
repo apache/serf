@@ -56,35 +56,33 @@
 typedef struct bucket_list {
     serf_bucket_t *bucket;
     struct bucket_list *next;
-} bucket_list;
+} bucket_list_t;
 
-typedef struct serf_aggregate_context_t {
-    bucket_list *list;
-} serf_aggregate_context_t;
+typedef struct {
+    bucket_list_t *list;
+} aggregate_context_t;
 
 
 SERF_DECLARE(serf_bucket_t *) serf_bucket_aggregate_create(
     serf_bucket_alloc_t *allocator)
 {
-    serf_aggregate_context_t *agg_context;
+    aggregate_context_t *ctx;
 
-    agg_context = serf_bucket_mem_alloc(allocator, sizeof(*agg_context));
-    agg_context->list = NULL;
+    ctx = serf_bucket_mem_alloc(allocator, sizeof(*ctx));
+    ctx->list = NULL;
 
-    return serf_bucket_create(&serf_bucket_type_aggregate, allocator,
-                              agg_context);
+    return serf_bucket_create(&serf_bucket_type_aggregate, allocator, ctx);
 }
 
 SERF_DECLARE(void) serf_bucket_aggregate_become(serf_bucket_t *bucket)
 {
-    serf_aggregate_context_t *agg_context;
+    aggregate_context_t *ctx;
 
-    agg_context = serf_bucket_mem_alloc(bucket->allocator,
-                                        sizeof(*agg_context));
-    agg_context->list = NULL;
+    ctx = serf_bucket_mem_alloc(bucket->allocator, sizeof(*ctx));
+    ctx->list = NULL;
 
     bucket->type = &serf_bucket_type_aggregate;
-    bucket->data = agg_context;
+    bucket->data = ctx;
 
     /* ### leave the metadata? */
     /* bucket->metadata = NULL; */
@@ -97,33 +95,31 @@ SERF_DECLARE(void) serf_bucket_aggregate_prepend(
     serf_bucket_t *aggregate_bucket,
     serf_bucket_t *prepend_bucket)
 {
-    serf_aggregate_context_t *agg_context;
-    bucket_list *new_bucket;
+    aggregate_context_t *ctx = aggregate_bucket->data;
+    bucket_list_t *new_list;
 
-    agg_context = (serf_aggregate_context_t*)aggregate_bucket->data;
-    new_bucket = serf_bucket_mem_alloc(aggregate_bucket->allocator,
-                                       sizeof(*new_bucket));
+    new_list = serf_bucket_mem_alloc(aggregate_bucket->allocator,
+                                     sizeof(*new_list));
+    new_list->bucket = prepend_bucket;
+    new_list->next = ctx->list;
 
-    new_bucket->bucket = prepend_bucket;
-    new_bucket->next = agg_context->list;
-    agg_context->list = new_bucket;
+    ctx->list = new_list;
 }
 
 SERF_DECLARE(void) serf_bucket_aggregate_append(
     serf_bucket_t *aggregate_bucket,
     serf_bucket_t *prepend_bucket)
 {
-    serf_aggregate_context_t *agg_context;
-    bucket_list *new_bucket;
+    aggregate_context_t *ctx = aggregate_bucket->data;
+    bucket_list_t *new_list;
 
-    agg_context = (serf_aggregate_context_t*)aggregate_bucket->data;
-    new_bucket = serf_bucket_mem_alloc(aggregate_bucket->allocator,
-                                       sizeof(*new_bucket));
+    new_list = serf_bucket_mem_alloc(aggregate_bucket->allocator,
+                                     sizeof(*new_list));
 
     /* If we use APR_RING, this is trivial.  So, wait. 
-    new_bucket->bucket = prepend_bucket;
-    new_bucket->next = agg_context->list;
-    agg_context->list = new_bucket;
+    new_list->bucket = prepend_bucket;
+    new_list->next = ctx->list;
+    ctx->list = new_list;
     */
 }
 
@@ -132,19 +128,18 @@ static apr_status_t serf_aggregate_read(serf_bucket_t *bucket,
                                         const char **data, apr_size_t *len)
 {
     apr_status_t status;
-    serf_aggregate_context_t *agg_context;
+    aggregate_context_t *ctx = bucket->data;
 
-    agg_context = (serf_aggregate_context_t*)bucket->data;
-    if (!agg_context->list) {
+    if (!ctx->list) {
         *len = 0;
         return APR_SUCCESS;
     }
 
-    status = serf_bucket_read(agg_context->list->bucket, requested, data, len);
+    status = serf_bucket_read(ctx->list->bucket, requested, data, len);
 
     /* Somehow, we need to know whether we're exhausted! */
     if (!status && *len == 0) {
-        agg_context->list = agg_context->list->next;
+        ctx->list = ctx->list->next;
         /* Avoid recursive call here.  Too lazy now.  */
         return serf_aggregate_read(bucket, requested, data, len);
     }
@@ -172,23 +167,22 @@ static serf_bucket_t * serf_aggregate_read_bucket(
     serf_bucket_t *bucket,
     const serf_bucket_type_t *type)
 {
-    serf_aggregate_context_t *agg_context;
+    aggregate_context_t *ctx = bucket->data;
     serf_bucket_t *found_bucket;
 
-    agg_context = (serf_aggregate_context_t*)bucket->data;
-    if (!agg_context->list) {
+    if (!ctx->list) {
         return NULL;
     }
 
-    if (agg_context->list->bucket->type == type) {
+    if (ctx->list->bucket->type == type) {
         /* Got the bucket. Consume it from our list. */
-        found_bucket = agg_context->list->bucket;
-        agg_context->list = agg_context->list->next;
+        found_bucket = ctx->list->bucket;
+        ctx->list = ctx->list->next;
         return found_bucket;
     }
 
     /* Call read_bucket on first one in our list. */
-    return serf_bucket_read_bucket(agg_context->list->bucket, type);
+    return serf_bucket_read_bucket(ctx->list->bucket, type);
 }
 
 SERF_DECLARE_DATA const serf_bucket_type_t serf_bucket_type_aggregate = {
