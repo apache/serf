@@ -198,6 +198,30 @@ static void select_value(
     *len = l - ctx->amt_read;
 }
 
+/* the current data chunk has been read/consumed. move our internal state. */
+static apr_status_t consume_chunk(headers_context_t *ctx)
+{
+    /* move to the next state, resetting the amount read. */
+    ++ctx->state;
+    ctx->amt_read = 0;
+
+    /* end of this header. move to the next one. */
+    if (ctx->state == READ_DONE) {
+        ctx->cur_read = ctx->cur_read->next;
+        if (ctx->cur_read == NULL) {
+            /* there is no more data. leave us at READ_DONE and signal
+               completion to the caller. */
+            return APR_EOF;
+        }
+
+        /* there _is_ another header, so reset the read state */
+        ctx->state = READ_HEADER;
+    }
+
+    /* there is more data which can be read immediately. */
+    return APR_SUCCESS;
+}
+
 static apr_status_t serf_headers_peek(serf_bucket_t *bucket,
                                       const char **data,
                                       apr_size_t *len)
@@ -234,32 +258,18 @@ static apr_status_t serf_headers_read(serf_bucket_t *bucket,
     select_value(ctx, data, &avail);
 
     if (requested >= avail) {
+        /* return everything from this chunk */
         *len = avail;
-
+        
         /* we consumed this chunk. advance the state. */
-        ++ctx->state;
-        ctx->amt_read = 0;
-
-        /* end of this header. move to the next one. */
-        if (ctx->state == READ_DONE) {
-            ctx->cur_read = ctx->cur_read->next;
-            if (ctx->cur_read != NULL) {
-                /* there _is_ a next one, so reset the read state */
-                ctx->state = READ_HEADER;
-            }
-            else {
-                /* nothing more. signal that. */
-                return APR_EOF;
-            }
-        }
-    }
-    else {
-        /* return just the amount requested, and advance our pointer */
-        *len = requested;
-        ctx->amt_read += requested;
+        return consume_chunk(ctx);
     }
 
-    /* there is more to read */
+    /* return just the amount requested, and advance our pointer */
+    *len = requested;
+    ctx->amt_read += requested;
+
+    /* there is more that can be read immediately */
     return APR_SUCCESS;
 }
 
@@ -268,27 +278,27 @@ static apr_status_t serf_headers_readline(serf_bucket_t *bucket,
                                           const char **data, apr_size_t *len)
 {
     headers_context_t *ctx = bucket->data;
+    apr_status_t status;
+
+    /* ### what behavior should we use here? abort() isn't very friendly */
+    if ((acceptable & SERF_NEWLINE_CRLF) == 0)
+        abort();
 
     if (ctx->state == READ_DONE) {
         *len = 0;
         return APR_EOF;
     }
 
-    /* note that select_value() will ensure ctx->cur_read is set for below */
+    /* get whatever is in this chunk */
     select_value(ctx, data, len);
 
-    /* ### what behavior should we use here? abort() isn't very friendly */
-    if ((acceptable & SERF_NEWLINE_CRLF) == 0)
-        abort();
+    /* we consumed this chunk. advance the state. */
+    status = consume_chunk(ctx);
 
     /* the type of newline found is easy... */
     *found = ctx->state == READ_CRLF ? SERF_NEWLINE_CRLF : SERF_NEWLINE_NONE;
 
-    /* if we're on the last header, and the last part of it, then EOF */
-    if (ctx->cur_read->next == NULL && ctx->state == READ_CRLF)
-        return APR_EOF;
-
-    return APR_SUCCESS;
+    return status;
 }
 
 SERF_DECLARE_DATA const serf_bucket_type_t serf_bucket_type_headers = {
