@@ -69,12 +69,17 @@ struct serf_connection_t {
 
     apr_socket_t *skt;
 
+    /* A bucket wrapped around our socket (for reading responses). */
+    serf_bucket_t *stream;
+
     /* The list of active requests. */
     serf_request_t *requests;
 
     const char *unwritten_ptr;
     apr_size_t unwritten_len;
 
+    serf_connection_setup_t setup;
+    void *setup_baton;
     serf_connection_closed_t closed;
     void *closed_baton;
 };
@@ -226,6 +231,7 @@ static apr_status_t write_to_connection(serf_connection_t *conn)
         /* If we have unwritten data, then write what we can. */
         if ((len = conn->unwritten_len) != 0) {
             status = apr_socket_send(conn->skt, conn->unwritten_ptr, &len);
+            /* ### bug?: need to update unwritten_ptr */
             conn->unwritten_len -= len;
 
             /* If the write would have blocked, then we're done. Don't try
@@ -336,11 +342,21 @@ static apr_status_t read_from_connection(serf_connection_t *conn)
     while (1) {
         apr_pool_clear(tmppool);
 
+        /* If the connection does not have an associated bucket, then
+         * call the setup callback to get one.
+         */
+        if (conn->stream == NULL) {
+            conn->stream = (*conn->setup)(conn->skt,
+                                          conn->setup_baton,
+                                          tmppool);
+            apr_pool_clear(tmppool);
+        }
+
         /* If the request doesn't have a response bucket, then call the
          * acceptor to get one created.
          */
         if (request->resp_bkt == NULL) {
-            request->resp_bkt = (*request->acceptor)(request, conn->skt,
+            request->resp_bkt = (*request->acceptor)(request, conn->stream,
                                                      request->acceptor_baton,
                                                      tmppool);
             apr_pool_clear(tmppool);
@@ -475,6 +491,8 @@ static apr_status_t remove_connection(serf_context_t *ctx,
 SERF_DECLARE(serf_connection_t *) serf_connection_create(
     serf_context_t *ctx,
     apr_sockaddr_t *address,
+    serf_connection_setup_t setup,
+    void *setup_baton,
     serf_connection_closed_t closed,
     void *closed_baton,
     apr_pool_t *pool)
@@ -483,6 +501,8 @@ SERF_DECLARE(serf_connection_t *) serf_connection_create(
 
     conn->ctx = ctx;
     conn->address = address;
+    conn->setup = setup;
+    conn->setup_baton = setup_baton;
     conn->closed = closed;
     conn->closed_baton = closed_baton;
     conn->pool = pool;
@@ -514,8 +534,14 @@ SERF_DECLARE(apr_status_t) serf_connection_close(
                 remove_connection(ctx, conn);
                 status = apr_socket_close(conn->skt);
                 if (conn->closed != NULL) {
-                    conn->closed(conn, conn->closed_baton, status, conn->pool);
+                    (*conn->closed)(conn, conn->closed_baton, status,
+                                    conn->pool);
                 }
+            }
+
+            /* No more need for the wrapper bucket. */
+            if (conn->stream != NULL) {
+                serf_bucket_destroy(conn->stream);
             }
 
             /* Remove the connection from the context. We don't want to
@@ -530,7 +556,7 @@ SERF_DECLARE(apr_status_t) serf_connection_close(
             }
             --ctx->conns->nelts;
 
-            /* Found the connection. All done. */
+            /* Found the connection. Closed it. All done. */
             return APR_SUCCESS;
         }
     }

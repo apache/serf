@@ -30,51 +30,47 @@
 typedef struct {
     int using_ssl;
     serf_ssl_context_t *ssl_ctx;
-    serf_bucket_t *bkt;
     serf_bucket_alloc_t *bkt_alloc;
-} accept_baton_t;
+} app_baton_t;
 
 static void closed_connection(serf_connection_t *conn,
                               void *closed_baton,
                               apr_status_t why,
                               apr_pool_t *pool)
 {
-    accept_baton_t *ctx = closed_baton;
-
     if (why) {
         abort();
     }
+}
 
-    if (ctx->bkt != NULL) {
-        serf_bucket_destroy(ctx->bkt);
+static serf_bucket_t* conn_setup(apr_socket_t *skt,
+                                void *setup_baton,
+                                apr_pool_t *pool)
+{
+    serf_bucket_t *c;
+    app_baton_t *ctx = setup_baton;
+
+    c = serf_bucket_socket_create(skt, ctx->bkt_alloc);
+    if (ctx->using_ssl) {
+        c = serf_bucket_ssl_decrypt_create(c, ctx->ssl_ctx, ctx->bkt_alloc);
     }
 
+    return c;
 }
 
 static serf_bucket_t* accept_response(serf_request_t *request,
-                                      apr_socket_t *socket,
+                                      serf_bucket_t *stream,
                                       void *acceptor_baton,
                                       apr_pool_t *pool)
 {
     serf_bucket_t *c;
     serf_bucket_alloc_t *bkt_alloc;
-    accept_baton_t *ctx = acceptor_baton;
 
+    /* get the per-request bucket allocator */
     bkt_alloc = serf_request_get_alloc(request);
 
-    if (ctx->bkt == NULL) {
-        c = serf_bucket_socket_create(socket, ctx->bkt_alloc);
-        if (ctx->using_ssl) {
-            c = serf_bucket_ssl_decrypt_create(c, ctx->ssl_ctx, ctx->bkt_alloc);
-        }
-        ctx->bkt = c;
-    }
-    else {
-        c = ctx->bkt;
-    }
-
     /* Create a barrier so the response doesn't eat us! */
-    c = serf_bucket_barrier_create(c, bkt_alloc);
+    c = serf_bucket_barrier_create(stream, bkt_alloc);
 
     return serf_bucket_response_create(c, bkt_alloc);
 }
@@ -148,7 +144,7 @@ int main(int argc, const char **argv)
     serf_request_t *request;
     serf_bucket_t *req_bkt;
     serf_bucket_t *hdrs_bkt;
-    accept_baton_t accept_ctx;
+    app_baton_t app_ctx;
     handler_baton_t handler_ctx;
     apr_uri_t url;
     const char *raw_url;
@@ -196,10 +192,10 @@ int main(int argc, const char **argv)
     }
 
     if (strcasecmp(url.scheme, "https") == 0) {
-        accept_ctx.using_ssl = 1;
+        app_ctx.using_ssl = 1;
     }
     else {
-        accept_ctx.using_ssl = 0;
+        app_ctx.using_ssl = 0;
     }
 
     status = apr_sockaddr_info_get(&address,
@@ -213,12 +209,13 @@ int main(int argc, const char **argv)
     context = serf_context_create(pool);
 
     /* ### Connection or Context should have an allocator? */
-    accept_ctx.bkt_alloc = serf_bucket_allocator_create(pool, NULL, NULL);
-    accept_ctx.bkt = NULL;
-    accept_ctx.ssl_ctx = NULL;
+    app_ctx.bkt_alloc = serf_bucket_allocator_create(pool, NULL, NULL);
+    app_ctx.ssl_ctx = NULL;
 
     connection = serf_connection_create(context, address,
-                                        closed_connection, &accept_ctx, pool);
+                                        conn_setup, &app_ctx,
+                                        closed_connection, &app_ctx,
+                                        pool);
 
     handler_ctx.requests_outstanding = 0;
     for (i = 0; i < count; i++) {
@@ -242,27 +239,27 @@ int main(int argc, const char **argv)
 
         apr_atomic_inc32(&handler_ctx.requests_outstanding);
 
-        if (accept_ctx.using_ssl) {
+        if (app_ctx.using_ssl) {
             serf_bucket_alloc_t *req_alloc;
 
             req_alloc = serf_request_get_alloc(request);
 
-            if (accept_ctx.ssl_ctx == NULL) {
+            if (app_ctx.ssl_ctx == NULL) {
                 req_bkt =
                     serf_bucket_ssl_encrypt_create(req_bkt, NULL,
-                                                   accept_ctx.bkt_alloc);
-                accept_ctx.ssl_ctx =
+                                                   app_ctx.bkt_alloc);
+                app_ctx.ssl_ctx =
                     serf_bucket_ssl_encrypt_context_get(req_bkt);
             }
             else {
                 req_bkt =
-                    serf_bucket_ssl_encrypt_create(req_bkt, accept_ctx.ssl_ctx,
-                                                   accept_ctx.bkt_alloc);
+                    serf_bucket_ssl_encrypt_create(req_bkt, app_ctx.ssl_ctx,
+                                                   app_ctx.bkt_alloc);
             }
         }
 
         serf_request_deliver(request, req_bkt,
-                             accept_response, &accept_ctx,
+                             accept_response, &app_ctx,
                              handle_response, &handler_ctx);
     }
 
@@ -281,7 +278,7 @@ int main(int argc, const char **argv)
             break;
         }
         /* Debugging purposes only! */
-        serf_debug__closed_conn(accept_ctx.bkt_alloc);
+        serf_debug__closed_conn(app_ctx.bkt_alloc);
     }
 
     serf_connection_close(connection);

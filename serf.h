@@ -98,6 +98,42 @@ SERF_DECLARE(apr_status_t) serf_context_run(serf_context_t *ctx,
  */
 
 /**
+ * When a connection is established, the application needs to wrap some
+ * buckets around @a skt to enable serf to process incoming responses. This
+ * is the control point for assembling connection-level processing logic
+ * around the given socket.
+ *
+ * The @a setup_baton is the baton established at connection creation time.
+ *
+ * This callback corresponds to reading from the server. Since this is an
+ * on-demand activity, we use a callback. The corresponding write operation
+ * is based on the @see serf_request_deliver function, where the application
+ * can assemble the appropriate bucket(s) before delivery.
+ *
+ * The returned bucket should live at least as long as the connection itself.
+ * It is assumed that an appropriate allocator is passed in @a setup_baton.
+ * ### we may want to create a connection-level allocator and pass that
+ * ### along. however, that allocator would *only* be used for this
+ * ### callback. it may be wasteful to create a per-conn allocator, so this
+ * ### baton-based, app-responsible form might be best.
+ *
+ * Responsibility for the bucket is passed to the serf library. It will be
+ * destroyed when the connection is closed.
+ *
+ * All temporary allocations should be made in @a pool.
+ */
+typedef serf_bucket_t * (*serf_connection_setup_t)(apr_socket_t *skt,
+                                                   void *setup_baton,
+                                                   apr_pool_t *pool);
+
+/**
+ * ### need to update docco w.r.t socket. became "stream" recently.
+ * ### the stream does not have a barrier, this callback should generally
+ * ### add a barrier around the stream before incorporating it into a
+ * ### response bucket stack.
+ * ### should serf add the barrier automatically to protect its data
+ * ### structure? i.e. the passed bucket becomes owned rather than
+ * ### borrowed. that might suit overall semantics better.
  * Accept an incoming response for @a request, and its @a socket. A bucket
  * for the response should be constructed and returned. This is the control
  * point for assembling the appropriate wrapper buckets around the socket to
@@ -119,7 +155,7 @@ SERF_DECLARE(apr_status_t) serf_context_run(serf_context_t *ctx,
  */
 /* ### do we need to return an error? */
 typedef serf_bucket_t * (*serf_response_acceptor_t)(serf_request_t *request,
-                                                    apr_socket_t *skt,
+                                                    serf_bucket_t *stream,
                                                     void *acceptor_baton,
                                                     apr_pool_t *pool);
 
@@ -185,6 +221,7 @@ typedef apr_status_t (*serf_response_handler_t)(serf_bucket_t *response,
  * When the connection is closed (upon request or because of an error),
  * then the @a closed callback is invoked, and @a closed_baton is passed.
  *
+ * ### doc on setup(_baton). tweak below comment re: acceptor.
  * NULL may be passed for @a acceptor and @a closed; default implementations
  * will be used.
  *
@@ -194,6 +231,8 @@ typedef apr_status_t (*serf_response_handler_t)(serf_bucket_t *response,
 SERF_DECLARE(serf_connection_t *) serf_connection_create(
     serf_context_t *ctx,
     apr_sockaddr_t *address,
+    serf_connection_setup_t setup,
+    void *setup_baton,
     serf_connection_closed_t closed,
     void *closed_baton,
     apr_pool_t *pool);
