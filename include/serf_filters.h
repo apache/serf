@@ -91,6 +91,26 @@ SERF_DECLARE(apr_status_t) serf_deflate_read(apr_bucket_brigade *brigade,
                                              serf_filter_t *filter,
                                              apr_pool_t *pool);
 
+/* Filter that reads content. */
+SERF_DECLARE(apr_status_t) serf_socket_read(apr_bucket_brigade *brigade,
+                                            serf_filter_t *filter,
+                                            apr_pool_t *pool);
+
+/* Filter that reads content. */
+SERF_DECLARE(apr_status_t) serf_socket_write(apr_bucket_brigade *brigade,
+                                             serf_filter_t *filter,
+                                             apr_pool_t *pool);
+
+/* Filter that writes SSL content. */
+SERF_DECLARE(apr_status_t) serf_ssl_write(apr_bucket_brigade *brigade,
+                                          serf_filter_t *filter,
+                                          apr_pool_t *pool);
+
+/* Filter that reads SSL content. */
+SERF_DECLARE(apr_status_t) serf_ssl_read(apr_bucket_brigade *brigade,
+                                         serf_filter_t *filter,
+                                         apr_pool_t *pool);
+
 #ifdef __cplusplus
 }
 #endif

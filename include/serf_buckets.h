@@ -51,7 +51,18 @@
 #ifndef SERF_BUCKETS_H
 #define SERF_BUCKETS_H
 
+#include <apr_poll.h>
+#include <apr_buckets.h>
+
 #include "serf_declare.h"
+#include "serf_config.h"
+
+#if SERF_HAS_OPENSSL
+#define OPENSSL_THREAD_DEFINES
+#include <openssl/ssl.h>
+#include <openssl/err.h>
+#include <openssl/rand.h>
+#endif
 
 /**
  * @file serf_buckets.h
@@ -271,6 +282,57 @@ SERF_DECLARE(apr_bucket *) serf_bucket_authentication_create(const char *user,
                                                       const char *password,
                                                       apr_pool_t *pool,
                                                       apr_bucket_alloc_t *list);
+#if SERF_HAS_OPENSSL
+
+/* Represents a SSL socket.
+ *
+ * On apr_bucket_read, it returns decrypted socket data
+ */
+
+typedef struct serf_ssl_ctx_t serf_ssl_ctx_t;
+struct serf_ssl_ctx_t {
+    SSL_CTX *ssl_context;
+    SSL *ssl_connection;
+    apr_pollset_t *read_pollset;
+};
+
+struct serf_bucket_ssl {
+    /* Number of buckets using this memory */
+    apr_bucket_refcount refcount;
+    /* Associated connection */
+    struct serf_connection_t *connection;
+};
+
+typedef struct serf_bucket_ssl serf_bucket_ssl;
+SERF_DECLARE_DATA extern const apr_bucket_type_t serf_bucket_ssl_type;
+
+/**
+ * Determine if a bucket is a SSL bucket
+ * @param e The bucket to inspect
+ * @return true or false
+ */
+#define SERF_BUCKET_IS_SSL(e) \
+    (e->type == &serf_bucket_ssl_type)
+
+/**
+ * Make the bucket passed in a SSL bucket
+ * @param b The bucket to make into a SSL bucket
+ * @param c Serf connection
+ * @return The new bucket, or NULL if allocation failed
+ */
+SERF_DECLARE(apr_bucket *) serf_bucket_ssl_make(apr_bucket *b,
+                                                struct serf_connection_t *c);
+
+/**
+ * Create a bucket referring to SSL connection
+ * @param c Serf connection
+ * @param list The bucket allocator from which to allocate the bucket
+ * @return The new bucket, or NULL if allocation failed
+ */
+SERF_DECLARE(apr_bucket *) serf_bucket_ssl_create(struct serf_connection_t *c,
+                                                  apr_bucket_alloc_t *list);
+
+#endif
 
 #ifdef __cplusplus
 }

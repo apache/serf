@@ -48,93 +48,63 @@
  *
  */
 
+#include <apr_pools.h>
+#include <apr_strings.h>
+#include <apr_buckets.h>
+
+#include "serf_filters.h"
+#include "serf_buckets.h"
 #include "serf.h"
 
-SERF_DECLARE(serf_request_t *) serf_create_request(apr_pool_t *pool)
+SERF_DECLARE(apr_status_t) serf_socket_write(apr_bucket_brigade *brigade,
+                                             serf_filter_t *filter,
+                                             apr_pool_t *pool)
 {
-    serf_request_t *request;
+    serf_connection_t *conn = filter->ctx;
 
-    request = apr_pcalloc(pool, sizeof(serf_request_t));
-    request->bucket_allocator = apr_bucket_alloc_create(pool);
-    request->entity = apr_brigade_create(pool,
-                                         request->bucket_allocator);
+    while (!APR_BRIGADE_EMPTY(brigade)) {
+        apr_bucket *bucket;
+        const char *buf;
+        apr_size_t length;
+        apr_status_t status;
 
-    request->request_filters = serf_create_filter_list(pool);
-    request->response_filters = serf_create_filter_list(pool);
-    request->pool = pool;
+        bucket = APR_BRIGADE_FIRST(brigade);
 
-    return request;
-}
+        status = apr_bucket_read(bucket, &buf, &length, APR_BLOCK_READ);
 
-SERF_DECLARE(apr_status_t) serf_write_request(serf_request_t *request,
-                                              serf_connection_t *connection)
-{
-    apr_status_t status;
-    serf_request_t **req_ptr;
-
-    if (request->source) {
-        status = request->source(request->entity, request, request->pool);
         if (status) {
             return status;
         }
-    }
 
-    status = serf_execute_filters(request->request_filters, request->entity,
-                                  request->pool);
-    if (status) {
-        return status;
-    }
+        do {
+            apr_size_t written = length;
 
-    status = serf_execute_filters(connection->request_filters,
-                                  request->entity, connection->pool);
-    if (status) {
-        return status;
-    }
+            status = apr_send(conn->socket, buf, &written);
+            if (status) {
+                return status;
+            }
+            length -= written;
+            buf += written;
+        }
+        while (length);
 
-    req_ptr = apr_array_push(connection->requests);
-    *req_ptr = request;
+        apr_bucket_delete(bucket);
+    }
 
     return APR_SUCCESS;
 }
 
-SERF_DECLARE(apr_status_t) serf_read_response(serf_response_t **response,
-                                              serf_connection_t *connection,
-                                              apr_pool_t *pool)
+SERF_DECLARE(apr_status_t) serf_socket_read(apr_bucket_brigade *brigade,
+                                            serf_filter_t *filter,
+                                            apr_pool_t *pool)
 {
-    serf_response_t *new_resp;
-    serf_request_t *request, **request_ptr;
+    serf_connection_t *conn = filter->ctx;
     apr_bucket *bucket;
-    apr_status_t status;
 
-    /* FIXME: Until we have FIFO instead of LIFO, this is busted. */
-    request_ptr = apr_array_pop(connection->requests);
+    bucket = apr_bucket_socket_create(conn->socket,
+                                      brigade->bucket_alloc);
 
-    request = *request_ptr;
+    APR_BRIGADE_INSERT_TAIL(brigade, bucket);
 
-    new_resp = apr_pcalloc(pool, sizeof(serf_response_t));
-    new_resp->bucket_allocator = apr_bucket_alloc_create(pool);
-    new_resp->entity = apr_brigade_create(pool,
-                                          new_resp->bucket_allocator);
-    new_resp->request = request;
-
-    status = serf_execute_filters(connection->response_filters,
-                                  new_resp->entity, pool);
-    if (status) {
-        return status;
-    }
-
-    status = serf_execute_filters(request->response_filters,
-                                  new_resp->entity, pool);
-    if (status) {
-        return status;
-    }
-
-    if (request->handler) {
-        status = request->handler(new_resp, pool);
-        if (status) {
-            return status;
-        }
-    }
-    *response = new_resp;
     return APR_SUCCESS;
 }

@@ -2,7 +2,7 @@ dnl Process this file with autoconf to produce a configure script.
 AC_INIT(include/serf.h)
 
 dnl Location of autoheader produced config header
-AC_CONFIG_HEADER(include/serf_config.h)
+AC_CONFIG_HEADER(include/serf_auto_config.h)
 
 dnl Location for config.guess, config.sub, install.sh, etc.
 AC_CONFIG_AUX_DIR(build)
@@ -61,7 +61,7 @@ AC_ARG_WITH(openssl,
 else
   serf_openssl_prefix=$withval
 
-  if test "x$serf_openssl_prefix" != "x" -a ! -d "$fl_openssl_prefix"; then
+  if test "x$serf_openssl_prefix" != "x" -a ! -d "$serf_openssl_prefix"; then
     AC_MSG_ERROR('open --with-openssl requires a path to a directory')
   fi
 
@@ -80,29 +80,37 @@ dnl "Export and import restrictions in some countries require that it be
 dnl  disabled by default." See: <20011116151249.B1943@waka.ebuilt.net>
 AC_ARG_ENABLE(ssl,
   [  --enable-ssl            Enable SSL support (disabled by default)],
-[enable_ssl=$enableval],
-[enable_ssl=no])
+  [enable_ssl=$enableval],
+  [enable_ssl=no])
 
 serf_has_openssl=0
 if test "$enable_ssl" = "yes"; then
   AC_CHECK_HEADERS(openssl/ssl.h openssl/opensslv.h,,
     AC_MSG_ERROR('OpenSSL Headers not found at path specified'))
   AC_TRY_COMPILE([#include <openssl/opensslv.h>],
-    [#if (OPENSSL_VERSION_NUMBER < 0x0090600fL)
-     #error You need OpenSSL version 0.9.6 or greater.
-     #endif],,
+    [
+#if (OPENSSL_VERSION_NUMBER < 0x0090600fL)
+#error You need OpenSSL version 0.9.6 or greater.
+#endif
+    ],,
     AC_MSG_ERROR('OpenSSL version 0.9.6 or greater required.'))
   
-  AC_CHECK_LIB(crypto, SHA1, LIBS="$LIBS -lcrypto")
+  AC_CHECK_LIB(crypto, SHA1,
+               [LIBS="$LIBS -lcrypto" LIBTOOL_LIBS="$LIBTOOL_LIBS -lcrypto"])
   dnl BIO_next only appears in newer versions of OpenSSL
   dnl Since libssl relies on libcrypto, it *must* appear before -lcrypto.
-  AC_CHECK_LIB(ssl, BIO_next, LIBS="-lssl $LIBS")
+  AC_CHECK_LIB(ssl, BIO_next,
+               [LIBS="-lssl $LIBS" LIBTOOL_LIBS="-lssl $LIBTOOL_LIBS"])
   serf_has_openssl=1
 
   dnl Extra OpenSSL specific options
   AC_ARG_WITH(capath,
     [  --with-capath=PATH      Path to a directory with c_rehash'd CA files used by OpenSSL (default $OPENSSL_PREFIX/certs)],
-    [if test "$withval" = "yes"; then AC_MSG_ERROR('option --with-capath requires a path'); else CAPATH="$withval"; fi],
+    [if test "$withval" = "yes"; then
+        AC_MSG_ERROR('option --with-capath requires a path');
+     else
+        CAPATH="$withval";
+     fi],
     [if test -d "$serf_openssl_prefix/certs"; then
         CAPATH="$serf_openssl_prefix/certs"
      else if test -d "$serf_openssl_prefix/ssl/certs"; then
@@ -111,13 +119,18 @@ if test "$enable_ssl" = "yes"; then
         CAPATH="/usr/lib/ssl/certs"
      else if test -d "/usr/share/ssl/certs"; then
         CAPATH="/usr/share/ssl/certs"
+     else if test -d "/System/Library/OpenSSL/certs"; then
+        CAPATH="/System/Library/OpenSSL/certs"
      else
         AC_MSG_ERROR('option --with-capath must be specified')
      fi
      fi
      fi
      fi
+     fi
     ])
+    SSL_BASE_OBJECTS="serf_filter_ssl.lo serf_bucket_ssl.lo"
+    AC_SUBST(SSL_BASE_OBJECTS)
 fi
 
 APR_FIND_APR(./apr)
@@ -210,4 +223,4 @@ AC_SUBST(SHLTCFLAGS)
 
 dnl Makefile outputs
 dnl Note: There can only be one AC_OUTPUT command.
-AC_OUTPUT(Makefile base/Makefile build/rules.mk build/config_vars.mk test/Makefile)
+AC_OUTPUT(Makefile base/Makefile build/rules.mk build/config_vars.mk test/Makefile include/serf_config.h)

@@ -215,6 +215,9 @@ struct serf_connection_t {
     /* Filters that are applied to all buckets as they arrive from the
        remote server. */
     serf_filter_list_t *response_filters;
+
+    /* Endpoint-specific context information. */
+    void *ctx;
 };
 
 /*

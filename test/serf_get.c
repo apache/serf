@@ -57,7 +57,7 @@
 
 /* Yes, it'd be nice if these were command-line options... */
 /* Define this to 1 to print out header information. */
-#define SERF_GET_DEBUG 0 
+#define SERF_GET_DEBUG 0
 /* httpd-2.0 is cute WRT chunking and will only do it on a keep-alive.
  * Define this to 1 to test serf's ability to handle chunking.
  */
@@ -242,45 +242,6 @@ static apr_status_t debug_response(apr_bucket_brigade *brigade,
     return APR_SUCCESS;
 }
 
-static apr_status_t socket_write_full(apr_bucket_brigade *brigade,
-                                      serf_filter_t *filter,
-                                      apr_pool_t *pool)
-{
-    serf_connection_t *conn = filter->ctx;
-
-    while (!APR_BRIGADE_EMPTY(brigade)) {
-        apr_bucket *bucket;
-        const char *buf;
-        apr_size_t length;
-        apr_status_t status;
-        
-        bucket = APR_BRIGADE_FIRST(brigade);
-
-        status = apr_bucket_read(bucket, &buf, &length, APR_BLOCK_READ);
-    
-        if (status) {
-            return status;
-        }
-
-        do {
-            apr_size_t written = length;
-
-            status = apr_send(conn->socket, buf, &written);
-            if (status) {
-                return status;
-            }
-            length -= written;
-            buf += written;
-        }
-        while (length);
-        
-        apr_bucket_delete(bucket);
-    }
-
-    return APR_SUCCESS;
-}
-
-
 static apr_status_t http_handler(serf_response_t *response, apr_pool_t *pool)
 {
     apr_status_t status;
@@ -319,6 +280,7 @@ int main(int argc, const char **argv)
     serf_filter_t *filter;
     apr_uri_t *url;
     const char *raw_url;
+    int using_ssl = 0;
    
     if (argc != 2) {
         puts("Gimme a URL, stupid!");
@@ -332,7 +294,13 @@ int main(int argc, const char **argv)
     apr_pool_create(&pool, NULL);
     /* serf_initialize(); */
 
-    serf_register_filter("SOCKET_WRITE_FULL", socket_write_full, pool);
+    serf_register_filter("SOCKET_WRITE", serf_socket_write, pool);
+    serf_register_filter("SOCKET_READ", serf_socket_read, pool);
+
+#if SERF_HAS_OPENSSL
+    serf_register_filter("SSL_WRITE", serf_ssl_write, pool);
+    serf_register_filter("SSL_READ", serf_ssl_read, pool);
+#endif
 
     serf_register_filter("USER_AGENT", user_agent_filter, pool);
     serf_register_filter("HOST_HEADER", host_header_filter, pool);
@@ -354,6 +322,11 @@ int main(int argc, const char **argv)
     if (!url->port) {
         url->port = apr_uri_default_port_for_scheme(url->scheme);
     }
+#if SERF_HAS_OPENSSL
+    if (strcasecmp(url->scheme, "https") == 0) {
+        using_ssl = 1;
+    }
+#endif
 
     status = serf_open_uri(url, &connection, &request, pool);
 
@@ -368,13 +341,29 @@ int main(int argc, const char **argv)
     request->method = "GET";
     request->uri = url;
 
+    /* FIXME: Get serf to install an endpoint which has access to the conn. */
+    if (using_ssl) {
+        filter = serf_add_filter(connection->request_filters, 
+                                 "SSL_WRITE", pool);
+        filter->ctx = connection;
+
+        filter = serf_add_filter(connection->response_filters, 
+                                 "SSL_READ", pool);
+        filter->ctx = connection;
+    }
+    else {
+        filter = serf_add_filter(connection->request_filters, 
+                                 "SOCKET_WRITE",
+                                 pool);
+        filter->ctx = connection;
+
+        filter = serf_add_filter(connection->response_filters, 
+                                 "SOCKET_READ", pool);
+        filter->ctx = connection;
+    }
 #if SERF_GET_DEBUG
     filter = serf_add_filter(connection->request_filters, "DEBUG_REQUEST", pool);
 #endif
-    /* FIXME: Get serf to install an endpoint which has access to the conn. */
-    filter = serf_add_filter(connection->request_filters, "SOCKET_WRITE_FULL",
-                             pool);
-    filter->ctx = connection;
 
     filter = serf_add_filter(request->request_filters, "USER_AGENT", pool);
     filter = serf_add_filter(request->request_filters, "HOST_HEADER", pool);
@@ -393,9 +382,6 @@ int main(int argc, const char **argv)
     filter = serf_add_filter(request->response_filters, "DEBUG_RESPONSE",
                              pool);
 #endif
-
-    /* For now, serf will setup the socket into the brigade. */
-    /* serf_add_filter(connection->response_filters, "SOCKET_READ", pool); */
 
     status = serf_open_connection(connection);
     if (status) {
