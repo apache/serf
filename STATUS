@@ -137,6 +137,9 @@ OPEN ISSUES
   * review the various OUT parameters and see if any make sense to
     allow a NULL value to designate non-interest in the result.
 
+    also: review functions which *don't* return an apr_status to see if
+    they _should_
+
   * The current API specifies that the app can close a connection by
     destroying or clearing the connection pool. Terminating a
     connection requires call the close-callback for each outstanding
