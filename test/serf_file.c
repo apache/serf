@@ -24,35 +24,21 @@
 
 #define SERF_VERSION_STRING "0.01"
 
-static void closed_connection(serf_connection_t *conn,
-                              void *closed_baton,
-                              apr_status_t why,
-                              apr_pool_t *pool)
-{
-    abort();
-}
-
 typedef struct {
     const char *resp_file;
 } accept_baton_t;
 
-static serf_bucket_t* accept_response(serf_request_t *request,
-                                      void *write_baton,
-                                      void *acceptor_baton,
+static serf_bucket_t* accept_response(void *acceptor_baton,
+                                      serf_bucket_alloc_t *bkt_alloc,
                                       apr_pool_t *pool)
 {
     accept_baton_t *ctx = acceptor_baton;
     serf_bucket_t *c;
-    serf_bucket_alloc_t *bkt_alloc;
     apr_file_t *file;
-    apr_pool_t *req_pool;
     apr_status_t status;
 
-    req_pool = serf_request_get_pool(request);
-    bkt_alloc = serf_request_get_alloc(request);
-
     status = apr_file_open(&file, ctx->resp_file,
-                           APR_READ, APR_OS_DEFAULT, req_pool);
+                           APR_READ, APR_OS_DEFAULT, pool);
     if (status) {
         return NULL;
     }
@@ -104,25 +90,19 @@ int main(int argc, const char **argv)
 {
     apr_status_t status;
     apr_pool_t *pool;
-    apr_file_t *file;
-    serf_context_t *context;
-    serf_connection_t *connection;
-    serf_request_t *request;
-    serf_bucket_t *req_bkt;
-    serf_bucket_t *hdrs_bkt;
+    serf_bucket_t *resp_bkt;
     accept_baton_t accept_ctx;
     handler_baton_t handler_ctx;
+    serf_bucket_alloc_t *allocator;
     apr_uri_t url;
     const char *raw_url;
     const char *req_file;
 
-    if (argc != 4) {
-        printf("%s: [URL] [Req. File] [Resp. File]\n", argv[0]);
+    if (argc != 2) {
+        printf("%s: [Resp. File]\n", argv[0]);
         exit(-1);
     }
-    raw_url = argv[1];
-    req_file = argv[2];
-    accept_ctx.resp_file = argv[3];
+    accept_ctx.resp_file = argv[1];
 
     apr_initialize();
     atexit(apr_terminate);
@@ -131,48 +111,17 @@ int main(int argc, const char **argv)
     apr_atomic_init(pool);
     /* serf_initialize(); */
 
-    apr_uri_parse(pool, raw_url, &url);
-    if (!url.port) {
-        url.port = apr_uri_port_of_scheme(url.scheme);
-    }
-
-    status = apr_file_open(&file, req_file,
-                           APR_WRITE|APR_CREATE|APR_DELONCLOSE,
-                           APR_OS_DEFAULT, pool);
-
-    if (status) {
-        printf("Error creating file: %s %d\n", req_file, status);
-        exit(1);
-    }
-
-    context = serf_context_create(pool);
-
-    connection =
-        serf_connection_create_ex(context, 
-                                  (serf_connection_write_t)apr_file_write,
-                                  file, closed_connection, NULL, pool);
-    request = serf_connection_request_create(connection);
-
-    req_bkt = serf_bucket_request_create("GET", url.path, NULL,
-                                         serf_request_get_alloc(request));
-    hdrs_bkt = serf_bucket_request_get_headers(req_bkt);
-
-    /* FIXME: Shouldn't we be able to figure out the host ourselves? */
-    serf_bucket_headers_setn(hdrs_bkt, "Host", url.hostinfo);
-    serf_bucket_headers_setn(hdrs_bkt, "User-Agent",
-                             "Serf/" SERF_VERSION_STRING);
+    allocator = serf_bucket_allocator_create(pool, NULL, NULL);
 
     handler_ctx.requests_outstanding = 0;
     apr_atomic_inc32(&handler_ctx.requests_outstanding);
-    serf_request_deliver(request, req_bkt,
-                         accept_response, &accept_ctx,
-                         handle_response, &handler_ctx);
 
+    resp_bkt = accept_response(&accept_ctx, allocator, pool);
     while (1) {
-        status = serf_context_run(context, SERF_DURATION_FOREVER, pool);
+        status = handle_response(resp_bkt, &handler_ctx, pool);
         if (APR_STATUS_IS_TIMEUP(status))
             continue;
-        if (status) {
+        if (SERF_BUCKET_READ_ERROR(status)) {
             printf("Error running context: %d\n", status);
             exit(1);
         }
@@ -180,6 +129,7 @@ int main(int argc, const char **argv)
             break;
         }
     }
+    serf_bucket_destroy(resp_bkt);
 
     apr_pool_destroy(pool);
 

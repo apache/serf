@@ -101,17 +101,23 @@ static apr_status_t serf_dechunk_read(serf_bucket_t *bucket,
                 if (ctx->body_left == 0) {
                     /* Just read the last-chunk marker. We're DONE. */
                     ctx->state = STATE_DONE;
-                    return APR_EOF;
+                    status = APR_EOF;
                 }
-
-                /* Got a size, so we'll start reading the chunk now. */
-                ctx->state = STATE_CHUNK;
+                else {
+                    /* Got a size, so we'll start reading the chunk now. */
+                    ctx->state = STATE_CHUNK;
+                }
 
                 /* If we can read more, then go do so. */
                 if (!status)
                     continue;
             }
             /* assert: status != 0 */
+
+            /* Note that we didn't actually read anything, so our callers
+             * don't get confused.
+             */
+            *len = 0;
 
             return status;
 

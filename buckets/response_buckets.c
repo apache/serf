@@ -309,6 +309,8 @@ static apr_status_t serf_response_read(serf_bucket_t *bucket,
             return rv;
         if (APR_STATUS_IS_EOF(rv)) {
             ctx->state = STATE_TRAILERS;
+            /* We must mask the EOF. */
+            rv = APR_SUCCESS;
         }
         return rv;
     }
