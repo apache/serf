@@ -486,6 +486,15 @@ struct serf_bucket_type_t {
 #define serf_bucket_set_metadata(b,t,n,v) ((b)->type->set_metadata(b,t,n,v))
 #define serf_bucket_destroy(b) ((b)->type->destroy(b))
 
+/**
+ * Check whether a real error occurred. Note that bucket read functions
+ * can return EOF and EAGAIN as part of their "normal" operation, so they
+ * should not be considered an error.
+ */
+#define SERF_BUCKET_READ_ERROR(status) ((status) \
+                                        && !APR_STATUS_IS_EOF(status) \
+                                        && !APR_STATUS_IS_EAGAIN(status))
+
 
 struct serf_bucket_t {
 
