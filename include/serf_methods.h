@@ -95,8 +95,9 @@ typedef int serf_method_t;
 #define SERF_METHOD_MKWORKSPACE       22
 #define SERF_METHOD_MKACTIVITY        23
 #define SERF_METHOD_BASELINE_CONTROL  24
-#define SERF_METHOD_MERGE             25
-#define SERF_METHOD_INVALID           26      /* RFC 3253: WebDAV Versioning */
+#define SERF_METHOD_MERGE             25      /* RFC 3253: WebDAV Versioning */
+
+#define SERF_METHOD_INVALID           26
 
 /**
  * SERF_BUILTIN_METHODS needs to be equal to the number of bits

@@ -76,7 +76,9 @@ typedef struct serf_bucket_status serf_bucket_status;
 
 /* Represents a MIME-header value.
  *
- * Duplicate header key buckets may exist in a brigade.
+ * Duplicate header key buckets may exist in a brigade. Per RFC2616, these
+ * headers are intended to be cumulative, with their values separated by
+ * ", ".
  *
  * On apr_bucket_read, it returns: "key: value"
  */
