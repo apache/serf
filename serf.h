@@ -60,6 +60,8 @@
 #include <apr_errno.h>
 #include <apr_allocator.h>
 #include <apr_pools.h>
+#include <apr_network_io.h>
+#include <apr_time.h>
 
 #include "serf_declare.h"
 
@@ -93,14 +95,6 @@ typedef struct serf_connection_t serf_connection_t;
  * The context will be allocated within @a pool.
  */
 SERF_DECLARE(serf_context_t *) serf_context_create(apr_pool_t *pool);
-
-/**
- * Create a new allocator for buckets from an APR allocator.
- *
- * All buckets are associated with a serf bucket allocator.
- */
-SERF_DECLARE(serf_bucket_alloc_t *) serf_bucket_allocator_create(
-    apr_allocator_t *allocator, apr_pool_t *pool);
 
 /** @see serf_context_run should not block at all. */
 #define SERF_DURATION_NOBLOCK 0
@@ -357,7 +351,7 @@ struct serf_bucket_type_t {
      * If a bucket of the given type is not found, then NULL is returned.
      */
     serf_bucket_t * (*read_bucket)(serf_bucket_t *bucket,
-                                   serf_bucket_type_t *type);
+                                   const serf_bucket_type_t *type);
 
     /**
      * Look up and return a piece of metadata from @a bucket.
@@ -395,7 +389,8 @@ struct serf_bucket_type_t {
     */
 };
 
-#define serf_bucket_read(b,d,l) ((b)->type->read(b,d,l))
+#define serf_bucket_read(b,r,d,l) ((b)->type->read(b,r,d,l))
+#define serf_bucket_readline(b,a,f,d,l) ((b)->type->read(b,a,f,d,l))
 #define serf_bucket_peek(b,d,l) ((b)->type->peek(b,d,l))
 #define serf_bucket_read_bucket(b,t) ((b)->type->read_bucket(b,t))
 #define serf_bucket_get_metadata(b,t,n,v) ((b)->type->get_metadata(b,t,n,v))
@@ -424,6 +419,23 @@ struct serf_bucket_t {
  */
 #define SERF_BUCKET_CHECK(b, btype) ((b)->type == &serf_bucket_type_ ## btype)
 
+
+/**
+ * Create a new allocator for buckets from an APR allocator.
+ *
+ * All buckets are associated with a serf bucket allocator.
+ */
+SERF_DECLARE(serf_bucket_alloc_t *) serf_bucket_allocator_create(
+    apr_allocator_t *allocator, apr_pool_t *pool);
+
+/**
+ * Destroy a bucket allocator.
+ *
+ * Buckets that have not been destroyed (and returned to the allocator)
+ * will be unaffected.
+ */
+SERF_DECLARE(void) serf_bucket_allocator_destroy(
+    serf_bucket_alloc_t *allocator);
 
 
 /** @} */

@@ -1,7 +1,7 @@
 /* ====================================================================
  * The Apache Software License, Version 1.1
  *
- * Copyright (c) 2002 The Apache Software Foundation.  All rights
+ * Copyright (c) 2003 The Apache Software Foundation.  All rights
  * reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -63,7 +63,7 @@ struct serf_metadata_t {
 };
 
 SERF_DECLARE(serf_bucket_t *) serf_bucket_create(
-    serf_bucket_type_t *type,
+    const serf_bucket_type_t *type,
     serf_bucket_alloc_t *allocator,
     void *data)
 {
@@ -131,7 +131,7 @@ SERF_DECLARE(apr_status_t) serf_default_get_metadata(serf_bucket_t *bucket,
 
 SERF_DECLARE(serf_bucket_t *) serf_default_read_bucket(
     serf_bucket_t *bucket,
-    serf_bucket_type_t *type)
+    const serf_bucket_type_t *type)
 {
     return NULL;
 }

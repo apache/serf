@@ -53,13 +53,6 @@
 #include "serf.h"
 #include "serf_bucket_util.h"
 
-typedef enum serf_request_state_t {
-    UNREAD,
-    READING_STATUS,
-    READING_HEADERS,
-    READING_BODY,
-    EXHAUSTED
-} serf_request_state_t;
 
 typedef struct serf_request_context_t {
     const char *method;
@@ -67,6 +60,7 @@ typedef struct serf_request_context_t {
     serf_bucket_t *body;
     serf_request_state_t state;
 } serf_request_context_t;
+
 
 SERF_DECLARE(serf_bucket_t *) serf_bucket_request_create(
     const char *method,
@@ -76,94 +70,95 @@ SERF_DECLARE(serf_bucket_t *) serf_bucket_request_create(
 {
     serf_request_context_t *req_context;
 
-    serf_bucket_mem_alloc(allocator, sizeof(*req_context));
-
-    /* Theoretically, we *could* store this in the metadata of our bucket,
-     * but that'd be ridiculously slow.
-     */
+    req_context = serf_bucket_mem_alloc(allocator, sizeof(*req_context));
     req_context->method = method;
     req_context->uri = uri;
     req_context->body = body;
     req_context->state = UNREAD;
 
-    return serf_bucket_create(serf_bucket_type_request, allocator, data);
+    return serf_bucket_create(&serf_bucket_type_request, allocator,
+                              req_context);
 }
 
-static apr_status_t serf_request_read(serf_bucket_t *bucket,
-                                      apr_size_t requested,
-                                      const char **data, apr_size_t *len)
+static void serialize_data(serf_bucket_t *bucket)
 {
     serf_request_context_t *req_context;
     serf_bucket_t *new_bucket;
     const char *new_data;
 
     req_context = (serf_request_context_t*)bucket->data;
-    new_bucket = NULL;
 
-    /* We'll store whatever we generate into a new bucket and update our
-     * state accordingly.
+    /* Serialize the request-line and headers into one mother string,
+     * and wrap a bucket around it.
      */
-    switch (req_context->state) {
-    case UNREAD:
-        /* Store method line. */
-        /* ARGH.  Allocator needs to be public? */
-        new_data = apr_pstrcat(bucket->allocator->pool,
-                               req_context->method, " ",
-                               req_context->uri, " HTTP/1.1", NULL);
-        /* heap, pool, whatever. */
-        new_bucket = serf_bucket_pool_create(bucket->allocator, new_data);
-        req_context->state = READ_STATUS;
-        break;
-    case READ_STATUS:
-        /* Store method line. */
-        req_context->state = READ_HEADERS;
-        break;
-    case READ_HEADERS:
-        /* Return all headers. */
-        req_context->state = READ_BODY;
-        break;
-    case READ_BODY:
-        /* Just read from the body at this point! */
-        req_context->state = READ_EXHAUSTED;
-        break;
-    case EXHAUSTED:
-        /* Hmm.  How did we get here? */
-        break;
-    }
+    /* ### ARGH.  Allocator's pool needs to be public? */
+    new_data = apr_pstrcat(bucket->allocator->pool,
+                           req_context->method, " ",
+                           req_context->uri, " HTTP/1.1\r\n",
+                           "User-Agent: serf\r\n",
+                           "\r\n",
+                           NULL);
 
-    if (!new_bucket) {
-        *len = 0;
-        return APR_SUCCESS;
-    }
+    /* heap, pool, whatever. */
+    new_bucket = serf_bucket_pool_create(bucket->allocator, new_data);
 
-    /* Okay, so we created a bucket.  Pass the 'hard' stuff to that bucket. */
-    /* This better have the semantics we want in that bucket is pushed down. */
+    /* Build up the new bucket structure.
+     *
+     * Note that self needs to become an aggregate bucket so that a
+     * pointer to self still represents the "right" data.
+     */
     serf_bucket_aggregate_become(bucket);
-    serf_bucket_aggregate_prepend(bucket, new_bucket);
-    return serf_bucket_read(bucket, data, len);
+
+    /* Insert the two buckets. */
+    serf_bucket_aggregate_append(bucket, new_bucket);
+    serf_bucket_aggregate_append(bucket, req_context->body);
+
+    /* Our private context is no longer needed, and is not referred to
+     * any existing bucket. Toss it.
+     */
+    serf_bucket_mem_free(bucket->allocator, req_context);
+}
+
+static apr_status_t serf_request_read(serf_bucket_t *bucket,
+                                      apr_size_t requested,
+                                      const char **data, apr_size_t *len)
+{
+    /* Seralize our private data into a new aggregate bucket. */
+    serialize_data(bucket);
+
+    /* Delegate to the "new" aggregate bucket to do the read. */
+    return serf_bucket_read(bucket, requested, data, len);
 }
 
 static apr_status_t serf_request_readline(serf_bucket_t *bucket,
                                           int acceptable, int *found,
                                           const char **data, apr_size_t *len)
 {
-    return APR_ENOTIMPL;
+    /* Seralize our private data into a new aggregate bucket. */
+    serialize_data(bucket);
+
+    /* Delegate to the "new" aggregate bucket to do the readline. */
+    return serf_bucket_readline(bucket, acceptable, found, data, len);
 }
 
 static apr_status_t serf_request_peek(serf_bucket_t *bucket,
                                       const char **data,
                                       apr_size_t *len)
 {
-    return APR_ENOTIMPL;
+    /* Seralize our private data into a new aggregate bucket. */
+    serialize_data(bucket);
+
+    /* Delegate to the "new" aggregate bucket to do the peek. */
+    return serf_bucket_peek(bucket, data, len);
 }
 
-SERF_DECLARE_DATA serf_bucket_type_t serf_bucket_type_request {
+SERF_DECLARE_DATA const serf_bucket_type_t serf_bucket_type_request = {
     "REQUEST",
     serf_request_read,
     serf_request_readline,
     serf_request_peek,
     serf_default_read_bucket,
-    serf_default_set_metadata,
     serf_default_get_metadata,
+    serf_default_set_metadata,
     serf_default_destroy,
 };

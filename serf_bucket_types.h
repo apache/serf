@@ -51,6 +51,7 @@
 #ifndef SERF_BUCKET_TYPES_H
 #define SERF_BUCKET_TYPES_H
 
+#include <apr_mmap.h>
 
 /* this header and serf.h refer to each other, so take a little extra care */
 #ifndef SERF_H
@@ -112,7 +113,7 @@ SERF_DECLARE(int) serf_bucket_response_protocol(serf_bucket_t *bkt);
 SERF_DECLARE_DATA extern const serf_bucket_type_t serf_bucket_type_aggregate;
 #define SERF_BUCKET_IS_AGGREGATE(b) SERF_BUCKET_CHECK((b), aggregate)
 
-SERF_DECALRE(serf_bucket_t *) serf_bucket_aggregate_create(
+SERF_DECLARE(serf_bucket_t *) serf_bucket_aggregate_create(
     serf_bucket_alloc_t *allocator);
 
 SERF_DECLARE(void) serf_bucket_aggregate_become(serf_bucket_t *bucket);
@@ -171,7 +172,7 @@ SERF_DECLARE_DATA extern const serf_bucket_type_t serf_bucket_type_pool;
 /* ==================================================================== */
 
 
-/* Note: this is always defined, but if APR doesn't have mmaps, then
+/* Note: apr_mmap_t is always defined, but if APR doesn't have mmaps, then
    the caller can never create an apr_mmap_t to pass to this function. */
 
 SERF_DECLARE_DATA extern const serf_bucket_type_t serf_bucket_type_mmap;

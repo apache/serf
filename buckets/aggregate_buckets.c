@@ -48,10 +48,9 @@
  *
  */
 
-#include <apr_pools.h>
-
 #include "serf.h"
 #include "serf_bucket_util.h"
+
 
 /* Should be an APR_RING? */
 typedef struct bucket_list {
@@ -63,25 +62,34 @@ typedef struct serf_aggregate_context_t {
     bucket_list *list;
 } serf_aggregate_context_t;
 
+
 SERF_DECLARE(serf_bucket_t *) serf_bucket_aggregate_create(
     serf_bucket_alloc_t *allocator)
 {
     serf_aggregate_context_t *agg_context;
 
-    serf_bucket_mem_alloc(allocator, sizeof(*agg_context));
-
-    /* Theoretically, we *could* store this in the metadata of our bucket,
-     * but that'd be ridiculously slow.
-     */
+    agg_context = serf_bucket_mem_alloc(allocator, sizeof(*agg_context));
     agg_context->list = NULL;
 
-    return serf_bucket_create(serf_bucket_type_aggregate, allocator,
+    return serf_bucket_create(&serf_bucket_type_aggregate, allocator,
                               agg_context);
 }
 
 SERF_DECLARE(void) serf_bucket_aggregate_become(serf_bucket_t *bucket)
 {
-    /* Create a new bucket and swap their internal pointers? */
+    serf_aggregate_context_t *agg_context;
+
+    agg_context = serf_bucket_mem_alloc(bucket->allocator,
+                                        sizeof(*agg_context));
+    agg_context->list = NULL;
+
+    bucket->type = &serf_bucket_type_aggregate;
+    bucket->data = agg_context;
+
+    /* ### leave the metadata? */
+    /* bucket->metadata = NULL; */
+
+    /* The allocator remains the same. */
 }
 
 
@@ -94,7 +102,7 @@ SERF_DECLARE(void) serf_bucket_aggregate_prepend(
 
     agg_context = (serf_aggregate_context_t*)aggregate_bucket->data;
     new_bucket = serf_bucket_mem_alloc(aggregate_bucket->allocator,
-                                       sizeof(*bucket_list));
+                                       sizeof(*new_bucket));
 
     new_bucket->bucket = prepend_bucket;
     new_bucket->next = agg_context->list;
@@ -110,7 +118,7 @@ SERF_DECLARE(void) serf_bucket_aggregate_append(
 
     agg_context = (serf_aggregate_context_t*)aggregate_bucket->data;
     new_bucket = serf_bucket_mem_alloc(aggregate_bucket->allocator,
-                                       sizeof(*bucket_list));
+                                       sizeof(*new_bucket));
 
     /* If we use APR_RING, this is trivial.  So, wait. 
     new_bucket->bucket = prepend_bucket;
@@ -126,7 +134,7 @@ static apr_status_t serf_aggregate_read(serf_bucket_t *bucket,
     apr_status_t status;
     serf_aggregate_context_t *agg_context;
 
-    agg_context = (serf_aggregate_context_t*)aggregate_bucket->data;
+    agg_context = (serf_aggregate_context_t*)bucket->data;
     if (!agg_context->list) {
         *len = 0;
         return APR_SUCCESS;
@@ -138,7 +146,7 @@ static apr_status_t serf_aggregate_read(serf_bucket_t *bucket,
     if (!status && *len == 0) {
         agg_context->list = agg_context->list->next;
         /* Avoid recursive call here.  Too lazy now.  */
-        return serf_aggregate_read(bucket, request, data, len);
+        return serf_aggregate_read(bucket, requested, data, len);
     }
 
     return status;
@@ -160,28 +168,36 @@ static apr_status_t serf_aggregate_peek(serf_bucket_t *bucket,
     return APR_ENOTIMPL;
 }
 
-static serf_bucket_t * serf_aggregate_read_bucket(serf_bucket_t *bucket,
-                                                  serf_bucket_type_t *type)
+static serf_bucket_t * serf_aggregate_read_bucket(
+    serf_bucket_t *bucket,
+    const serf_bucket_type_t *type)
 {
-    apr_status_t status;
     serf_aggregate_context_t *agg_context;
+    serf_bucket_t *found_bucket;
 
-    agg_context = (serf_aggregate_context_t*)aggregate_bucket->data;
+    agg_context = (serf_aggregate_context_t*)bucket->data;
     if (!agg_context->list) {
         return NULL;
+    }
+
+    if (agg_context->list->bucket->type == type) {
+        /* Got the bucket. Consume it from our list. */
+        found_bucket = agg_context->list->bucket;
+        agg_context->list = agg_context->list->next;
+        return found_bucket;
     }
 
     /* Call read_bucket on first one in our list. */
     return serf_bucket_read_bucket(agg_context->list->bucket, type);
 }
 
-SERF_DECLARE_DATA serf_bucket_type_t serf_bucket_type_aggregate {
+SERF_DECLARE_DATA const serf_bucket_type_t serf_bucket_type_aggregate = {
     "AGGREGATE",
     serf_aggregate_read,
     serf_aggregate_readline,
     serf_aggregate_peek,
     serf_aggregate_read_bucket,
-    NULL, /* set_metadata */
-    NULL, /* get_metadata */
+    serf_default_get_metadata,
+    serf_default_set_metadata,
     serf_default_destroy,
 };

@@ -76,7 +76,7 @@ extern "C" {
  * The metadata for the bucket will be empty.
  */
 SERF_DECLARE(serf_bucket_t *) serf_bucket_create(
-    serf_bucket_type_t *type,
+    const serf_bucket_type_t *type,
     serf_bucket_alloc_t *allocator,
     void *data);
 
@@ -111,7 +111,7 @@ SERF_DECLARE(apr_status_t) serf_default_get_metadata(serf_bucket_t *bucket,
  */
 SERF_DECLARE(serf_bucket_t *) serf_default_read_bucket(
     serf_bucket_t *bucket,
-    serf_bucket_type_t *type);
+    const serf_bucket_type_t *type);
 
 /**
  * Default implementation of the @see destroy functionality.
@@ -119,6 +119,16 @@ SERF_DECLARE(serf_bucket_t *) serf_default_read_bucket(
  * This function will return the @a bucket to its allcoator.
  */
 SERF_DECLARE(void) serf_default_destroy(serf_bucket_t *bucket);
+
+
+
+SERF_DECLARE(void *) serf_bucket_mem_alloc(
+    serf_bucket_alloc_t *allocator,
+    apr_size_t size);
+
+SERF_DECLARE(void) serf_bucket_mem_free(
+    serf_bucket_alloc_t *allocator,
+    void *block);
 
 
 #ifdef __cplusplus
