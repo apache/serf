@@ -326,6 +326,7 @@ int main(int argc, const char **argv)
     serf_connection_t *connection;
     serf_request_t *request;
     serf_bucket_t *req_bkt;
+    serf_bucket_t *hdrs_bkt;
     handler_baton_t handler_ctx;
 #if 0
     serf_filter_t *filter;
@@ -404,10 +405,11 @@ int main(int argc, const char **argv)
     req_bkt = serf_bucket_request_create("GET", url.path, NULL,
                                          serf_request_get_alloc(request));
 
+    hdrs_bkt = serf_bucket_request_get_headers(req_bkt);
+
     /* FIXME: Shouldn't we be able to figure out the host ourselves? */
-    serf_bucket_set_metadata(req_bkt, SERF_REQUEST_HEADERS, "Host",
-                             url.hostinfo);
-    serf_bucket_set_metadata(req_bkt, SERF_REQUEST_HEADERS, "User-Agent",
+    serf_bucket_headers_setn(hdrs_bkt, "Host", url.hostinfo);
+    serf_bucket_headers_setn(hdrs_bkt, "User-Agent",
                              "Serf/" SERF_VERSION_STRING);
 
     handler_ctx.requests_outstanding = 0;

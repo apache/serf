@@ -17,7 +17,6 @@
 
 #include <apr_pools.h>
 #include <apr_strings.h>
-#include <apr_hash.h>
 
 #include "serf.h"
 #include "serf_bucket_util.h"
@@ -26,12 +25,9 @@
 typedef struct {
     const char *method;
     const char *uri;
+    serf_bucket_t *headers;
     serf_bucket_t *body;
 } request_context_t;
-
-typedef struct {
-    apr_hash_t *hash;
-} request_metadata_t;
 
 SERF_DECLARE(serf_bucket_t *) serf_bucket_request_create(
     const char *method,
@@ -44,9 +40,16 @@ SERF_DECLARE(serf_bucket_t *) serf_bucket_request_create(
     ctx = serf_bucket_mem_alloc(allocator, sizeof(*ctx));
     ctx->method = method;
     ctx->uri = uri;
+    ctx->headers = serf_bucket_headers_create(allocator);
     ctx->body = body;
 
     return serf_bucket_create(&serf_bucket_type_request, allocator, ctx);
+}
+
+SERF_DECLARE(serf_bucket_t *) serf_bucket_request_get_headers(
+    serf_bucket_t *bucket)
+{
+    return ((request_context_t *)bucket->data)->headers;
 }
 
 static void serialize_data(serf_bucket_t *bucket)
@@ -54,8 +57,8 @@ static void serialize_data(serf_bucket_t *bucket)
     request_context_t *ctx = bucket->data;
     serf_bucket_t *new_bucket;
     const char *new_data;
-    struct iovec iov[16];
-    apr_size_t nvec, nbytes;
+    struct iovec iov[4];
+    apr_size_t nbytes;
 
     /* Serialize the request-line and headers into one mother string,
      * and wrap a bucket around it.
@@ -69,55 +72,9 @@ static void serialize_data(serf_bucket_t *bucket)
     iov[3].iov_base = " HTTP/1.1\r\n";
     iov[3].iov_len = sizeof(" HTTP/1.1\r\n") - 1;
 
-    nvec = 4;
-
-    if (bucket->metadata) {
-        apr_hash_index_t *hi;
-        apr_pool_t *p;
-        const void *hash_ptr;
-        apr_hash_t *hash;
-
-        /* Okay, we might have headers. */
-        serf_bucket_get_metadata(bucket, SERF_REQUEST_HEADERS, 0, &hash_ptr);
-
-        if (hash_ptr) {
-
-            hash = (apr_hash_t*)hash_ptr;
-
-            /* Check to see if we have enough free IO vecs to handle this. */
-            if ((apr_hash_count(hash) * 3) > 16 - nvec)
-            {
-                /* XXX: Handle me. */
-                abort();
-            }
-
-            p = serf_bucket_allocator_get_pool(bucket->allocator);
-
-            for (hi = apr_hash_first(p, hash); hi; hi = apr_hash_next(hi)) {
-                const void *key;
-                void *val;
-                apr_ssize_t key_len;
-
-                apr_hash_this(hi, &key, &key_len, &val);
-
-                iov[nvec].iov_base = (char*)key;
-                iov[nvec++].iov_len = key_len;
-                iov[nvec].iov_base = ": ";
-                iov[nvec++].iov_len = sizeof(": ") - 1;
-                iov[nvec].iov_base = val;
-                iov[nvec++].iov_len = strlen((char*)val);
-                iov[nvec].iov_base = "\r\n";
-                iov[nvec++].iov_len = sizeof("\r\n") - 1;
-            }
-        }
-    }
-
-    iov[nvec].iov_base = "\r\n";
-    iov[nvec++].iov_len = sizeof("\r\n") - 1;
-
     /* ### pool allocation! */
     new_data = apr_pstrcatv(serf_bucket_allocator_get_pool(bucket->allocator),
-                            iov, nvec, &nbytes);
+                            iov, 4, &nbytes);
 
     /* Create a new bucket for this string. A free function isn't needed
      * since the string is residing in a pool.
@@ -134,6 +91,7 @@ static void serialize_data(serf_bucket_t *bucket)
 
     /* Insert the two buckets. */
     serf_bucket_aggregate_append(bucket, new_bucket);
+    serf_bucket_aggregate_append(bucket, ctx->headers);
     if (ctx->body != NULL) {
         serf_bucket_aggregate_append(bucket, ctx->body);
     }

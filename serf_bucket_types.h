@@ -48,6 +48,9 @@ SERF_DECLARE(serf_bucket_t *) serf_bucket_request_create(
     serf_bucket_t *body,
     serf_bucket_alloc_t *allocator);
 
+SERF_DECLARE(serf_bucket_t *) serf_bucket_request_get_headers(
+    serf_bucket_t *request);
+
 /* Metadata key for get/set_metadata */
 #define SERF_REQUEST_HEADERS "REQUESTHEADERS"
 
@@ -97,6 +100,7 @@ SERF_DECLARE_DATA extern const serf_bucket_type_t serf_bucket_type_aggregate;
 SERF_DECLARE(serf_bucket_t *) serf_bucket_aggregate_create(
     serf_bucket_alloc_t *allocator);
 
+/** Transform @a bucket in-place into an aggregate bucket. */
 SERF_DECLARE(void) serf_bucket_aggregate_become(serf_bucket_t *bucket);
 
 SERF_DECLARE(void) serf_bucket_aggregate_prepend(
