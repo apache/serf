@@ -6,9 +6,6 @@ Release:
 
 RELEASE SHOWSTOPPERS:
 
-	We need code.  This project's goal is to create an http
-	client library.
-
   * web pages (go to apr-site)
 
   * decide on layout of the repository (e.g. subdirs)
@@ -24,5 +21,5 @@ RELEASE SHOWSTOPPERS:
 
   * release scripts (in /build) (and a how-to-release.txt in docs/)
 
-RELEASE NON-SHOWSTOPPERS BUT WOULD BE REAL NICE TO WRAP THESE UP:
 
+RELEASE NON-SHOWSTOPPERS BUT WOULD BE REAL NICE TO WRAP THESE UP:
