@@ -129,20 +129,28 @@ int main(int argc, const char **argv)
     serf_bucket_t *hdrs_bkt;
     accept_baton_t accept_ctx;
     handler_baton_t handler_ctx;
-#if 0
-    serf_filter_t *filter;
-#endif /* 0 */
     apr_uri_t url;
     const char *raw_url;
-#if 0
-    int using_ssl = 0;
-#endif /* 0 */
+    int count, i;
 
-    if (argc != 2) {
+    if (argc < 2) {
         puts("Gimme a URL, stupid!");
         exit(-1);
     }
     raw_url = argv[1];
+
+    if (argc >= 3) {
+        errno = 0;
+        count = apr_strtoi64(argv[2], NULL, 10);
+        if (errno) {
+            printf("Problem converting number of times to fetch URL (%d)\n",
+                   errno);
+            return errno;
+        }
+    }
+    else {
+        count = 1;
+    }
 
     apr_initialize();
     atexit(apr_terminate);
@@ -175,32 +183,35 @@ int main(int argc, const char **argv)
 
     connection = serf_connection_create(context, address,
                                         closed_connection, NULL, pool);
-    request = serf_connection_request_create(connection);
-
-    req_bkt = serf_bucket_request_create("GET", url.path, NULL,
-                                         serf_request_get_alloc(request));
-
-    hdrs_bkt = serf_bucket_request_get_headers(req_bkt);
-
-    /* FIXME: Shouldn't we be able to figure out the host ourselves? */
-    serf_bucket_headers_setn(hdrs_bkt, "Host", url.hostinfo);
-    serf_bucket_headers_setn(hdrs_bkt, "User-Agent",
-                             "Serf/" SERF_VERSION_STRING);
-    /* Shouldn't serf do this for us? */
-    serf_bucket_headers_setn(hdrs_bkt, "Accept-Encoding", "gzip");
 
     handler_ctx.requests_outstanding = 0;
-    apr_atomic_inc32(&handler_ctx.requests_outstanding);
+    for (i = 0; i < count; i++) {
+        request = serf_connection_request_create(connection);
 
-    if (accept_ctx.using_ssl) {
-        req_bkt =
-            serf_bucket_ssl_encrypt_create(req_bkt, NULL,
-                                           serf_request_get_alloc(request));
-        accept_ctx.ssl_ctx = serf_bucket_ssl_encrypt_context_get(req_bkt);
+        req_bkt = serf_bucket_request_create("GET", url.path, NULL,
+                                             serf_request_get_alloc(request));
+
+        hdrs_bkt = serf_bucket_request_get_headers(req_bkt);
+
+        /* FIXME: Shouldn't we be able to figure out the host ourselves? */
+        serf_bucket_headers_setn(hdrs_bkt, "Host", url.hostinfo);
+        serf_bucket_headers_setn(hdrs_bkt, "User-Agent",
+                                 "Serf/" SERF_VERSION_STRING);
+        /* Shouldn't serf do this for us? */
+        serf_bucket_headers_setn(hdrs_bkt, "Accept-Encoding", "gzip");
+
+        apr_atomic_inc32(&handler_ctx.requests_outstanding);
+
+        if (accept_ctx.using_ssl) {
+            req_bkt =
+                serf_bucket_ssl_encrypt_create(req_bkt, NULL,
+                                               serf_request_get_alloc(request));
+            accept_ctx.ssl_ctx = serf_bucket_ssl_encrypt_context_get(req_bkt);
+        }
+        serf_request_deliver(request, req_bkt,
+                             accept_response, &accept_ctx,
+                             handle_response, &handler_ctx);
     }
-    serf_request_deliver(request, req_bkt,
-                         accept_response, &accept_ctx,
-                         handle_response, &handler_ctx);
 
     while (1) {
         status = serf_context_run(context, SERF_DURATION_FOREVER, pool);
