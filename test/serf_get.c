@@ -17,8 +17,11 @@
 
 #include <apr.h>
 #include <apr_uri.h>
+#include <apr_strings.h>
 
 #include "serf.h"
+
+#define SERF_VERSION_STRING "0.01"
 
 #if 0
 
@@ -258,16 +261,42 @@ static serf_bucket_t* accept_response(serf_request_t *request,
                                       void *acceptor_baton,
                                       apr_pool_t *pool)
 {
-    abort();
-    return NULL;
+    serf_bucket_t *c;
+
+    c = serf_bucket_socket_create(socket, serf_request_get_alloc(request));
+
+    return serf_bucket_response_create(c, serf_request_get_alloc(request));
 }
 
 static apr_status_t handle_response(serf_bucket_t *response,
                                     void *handler_baton,
                                     apr_pool_t *pool)
 {
-    abort();
-    return APR_SUCCESS;
+    int found_line;
+    const char *data, *s;
+    apr_size_t len;
+    serf_status_line sl;
+    apr_status_t status;
+
+    status = serf_bucket_response_status(response, &sl);
+    if (status) {
+        if (APR_STATUS_IS_EAGAIN(status)) {
+            return APR_SUCCESS;
+        }
+        abort();
+    }
+
+    status = serf_bucket_read(response, 2048, &data, &len);
+
+    if (!status || APR_STATUS_IS_EOF(status)) {
+        s = apr_pstrmemdup(pool, data, len);
+        printf("%s", s);
+    }
+    else if (APR_STATUS_IS_EAGAIN(status)) {
+        status = APR_SUCCESS;
+    }
+
+    return status;
 }
 
 int main(int argc, const char **argv)
@@ -355,10 +384,11 @@ int main(int argc, const char **argv)
     req_bkt = serf_bucket_request_create("GET", url.path, NULL,
                                          serf_request_get_alloc(request));
 
-#if 0
-    serf_bucket_set_metadata(request, SERF_REQUEST_HEADERS, "User-Agent",
-                             "Serf" SERF_VERSION_STRING);
-#endif /* 0 */
+    /* FIXME: Shouldn't we be able to figure out the host ourselves? */
+    serf_bucket_set_metadata(req_bkt, SERF_REQUEST_HEADERS, "Host",
+                             url.hostinfo);
+    serf_bucket_set_metadata(req_bkt, SERF_REQUEST_HEADERS, "User-Agent",
+                             "Serf/" SERF_VERSION_STRING);
 
     serf_request_deliver(request, req_bkt,
                          accept_response, NULL,

@@ -393,7 +393,7 @@ static void find_crlf(const char **data, apr_size_t *len, int *found)
         }
         ++cr;
 
-        if (cr < end && cr[1] == '\n') {
+        if (cr < end && cr[0] == '\n') {
             *len -= cr + 1 - start;
             *data = cr + 1;
             *found = SERF_NEWLINE_CRLF;
@@ -510,8 +510,7 @@ static apr_status_t common_databuf_prep(serf_databuf_t *databuf,
         status = (*databuf->read)(databuf->read_baton, sizeof(databuf->buf),
                                   databuf->buf, &len);
         if (status
-            && !APR_STATUS_IS_EOF(status)
-            && !APR_STATUS_IS_EAGAIN(status)) {
+            && !APR_STATUS_IS_EOF(status)) {
             return status;
         }
 

@@ -75,6 +75,8 @@ SERF_DECLARE(apr_status_t) serf_bucket_response_status(
     serf_bucket_t *bkt,
     serf_status_line *sline);
 
+/* Metadata key for get/set_metadata */
+#define SERF_RESPONSE_HEADERS "RESPONSEHEADERS"
 
 /* ==================================================================== */
 
@@ -137,6 +139,8 @@ SERF_DECLARE(serf_bucket_t *) serf_bucket_simple_create(
 #define SERF_BUCKET_SIMPLE_STRING(s,a) \
     serf_bucket_simple_create(s, strlen(s), NULL, NULL, a);
 
+#define SERF_BUCKET_SIMPLE_STRING_LEN(s,l,a) \
+    serf_bucket_simple_create(s, l, NULL, NULL, a);
 
 /* ==================================================================== */
 

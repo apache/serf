@@ -13,6 +13,9 @@
  * limitations under the License.
  */
 
+#include <apr_lib.h>
+#include <apr_strings.h>
+
 #include "serf.h"
 #include "serf_bucket_util.h"
 
@@ -38,6 +41,10 @@ typedef struct {
     apr_size_t line_used;
     char line[LINE_LIMIT];
 
+    serf_status_line sl;
+
+    int chunked;
+    apr_int64_t body_left;
 } response_context_t;
 
 
@@ -112,6 +119,10 @@ static apr_status_t fetch_line(response_context_t *ctx,
             status = serf_bucket_readline(bkt, SERF_NEWLINE_ANY, &found,
                                           &data, &len);
 
+            /* Typically EAGAIN. */
+            if (status) {
+                return status;
+            }
             if (ctx->line_used + len > sizeof(ctx->line)) {
                 /* ### need a "line too long" error */
                 return APR_EGENERAL;
@@ -165,20 +176,103 @@ static apr_status_t fetch_line(response_context_t *ctx,
     /* NOTREACHED */
 }
 
-static apr_status_t run_machine(response_context_t *ctx)
+static apr_status_t run_machine(serf_bucket_t *bkt, response_context_t *ctx)
 {
-    return APR_SUCCESS;
+    apr_status_t status;
+
+    switch (ctx->state) {
+    case STATE_STATUS_LINE:
+        status = fetch_line(ctx, ctx->stream);
+        if (!status) {
+            ctx->state = STATE_HEADERS;
+        }
+        break;
+    case STATE_HEADERS:
+        do {
+            status = fetch_line(ctx, ctx->stream);
+            if (status) {
+                return status;
+            }
+            if (ctx->lstate == LINE_READY && ctx->line_used) {
+                const char *end_key, *c;
+                char *k, *v;
+
+                end_key = c = memchr(ctx->line, ':', ctx->line_used);
+                if (!c) {
+                    /* Bad headers? */
+                    return APR_EGENERAL;
+                }
+
+                /* Skip over initial : and spaces. */
+                while (apr_isspace(*++c));
+
+                k = serf_bucket_mem_alloc(bkt->allocator,
+                                          end_key - ctx->line + 1);
+                v = serf_bucket_mem_alloc(bkt->allocator,
+                                          (ctx->line + ctx->line_used) - c);
+
+                memcpy(k, ctx->line, end_key - ctx->line);
+                k[end_key - ctx->line] = '\0';
+                memcpy(v, c, (ctx->line + ctx->line_used) - c);
+                v[(ctx->line + ctx->line_used) - c] = '\0';
+
+                serf_bucket_set_metadata(bkt, SERF_RESPONSE_HEADERS,
+                                         k, v);
+            }
+        }
+        while (!status && ctx->line_used);
+        if (!status) {
+            const void *v;
+
+            /* Are we C-L, chunked, or conn close? */
+            serf_bucket_get_metadata(bkt, SERF_RESPONSE_HEADERS,
+                                     "Content-Length", &v);
+            if (v) {
+                const char *cl = v;
+                ctx->chunked = 0;
+                ctx->body_left = apr_strtoi64(v, NULL, 10);
+                if (errno == ERANGE) {
+                    return errno;
+                }
+            }
+            ctx->state = STATE_BODY;
+        }
+        break;
+    case STATE_BODY:
+        /* Don't do anything. */
+        break;
+    default:
+        abort();
+    }
+
+    return status;
 }
 
-static apr_status_t wait_for_sline(response_context_t *ctx)
+static apr_status_t wait_for_sline(serf_bucket_t *bkt, response_context_t *ctx)
 {
     /* Keep looping while we're still working on the Status-Line and we
      * don't have any issues reading from the input stream.
      */
     while (ctx->state == STATE_STATUS_LINE) {
-        apr_status_t status = run_machine(ctx);
+        apr_status_t status = run_machine(bkt, ctx);
         if (status) {
-            /* we stop any anthing. */
+            /* we stop at anything.  Most likely, it'll be EAGAIN. */
+            return status;
+        }
+    }
+
+    return APR_SUCCESS;
+}
+
+static apr_status_t wait_for_body(serf_bucket_t *bkt, response_context_t *ctx)
+{
+    /* Keep looping while we're still working on the Status-Line and we
+     * don't have any issues reading from the input stream.
+     */
+    while (ctx->state != STATE_BODY) {
+        apr_status_t status = run_machine(bkt, ctx);
+        if (status) {
+            /* we stop at anything.  Most likely, it'll be EAGAIN. */
             return status;
         }
     }
@@ -192,17 +286,84 @@ SERF_DECLARE(apr_status_t) serf_bucket_response_status(
 {
     response_context_t *ctx = bkt->data;
     apr_status_t status;
+    int res;
+    char *reason;
 
-    if ((status = wait_for_sline(ctx)) != APR_SUCCESS)
+    if (ctx->state != STATE_STATUS_LINE)
+    {
+        *sline = ctx->sl;
+        return APR_SUCCESS;
+    }
+
+    if ((status = wait_for_sline(bkt, ctx)) != APR_SUCCESS) {
         return status;
+    }
 
+    /* ctx->line should be of form: HTTP/1.1 200 OK */
+    res = apr_date_checkmask(ctx->line, "HTTP/#.# ###*");
+    if (!res) {
+        /* Not an HTTP response?  Well, at least we won't understand it. */
+        return APR_EGENERAL;
+    }
+
+    ctx->sl.version = SERF_HTTP_VERSION(ctx->line[5] - '0', ctx->line[7] - '0');
+    ctx->sl.code = apr_strtoi64(ctx->line + 8, &reason, 10);
+    if (apr_isspace(*reason)) {
+        reason++;
+    }
+    /* Should we copy this value? */
+    ctx->sl.reason =
+        apr_pstrmemdup(serf_bucket_allocator_get_pool(bkt->allocator),
+                       reason, ctx->line_used - (reason - ctx->line));
+
+    *sline = ctx->sl;
     return APR_SUCCESS;
 }
 
+static apr_status_t serf_response_read(serf_bucket_t *bucket,
+                                       apr_size_t requested,
+                                       const char **data, apr_size_t *len)
+{
+    response_context_t *ctx = bucket->data;
+    apr_status_t rv;
+
+    rv = wait_for_body(bucket, ctx);
+    if (rv) {
+        return rv;
+    }
+
+    if (requested > ctx->body_left) {
+        requested = ctx->body_left;
+    }
+
+    /* Delegate to the stream bucket to do the read. */
+    rv = serf_bucket_read(ctx->stream, requested, data, len);
+    if (!rv) {
+        ctx->body_left -= *len;
+        if (!ctx->body_left) {
+            rv = APR_EOF;
+        }
+    }
+    return rv;
+}
+
+static apr_status_t serf_response_readline(serf_bucket_t *bucket,
+                                           int acceptable, int *found,
+                                           const char **data, apr_size_t *len)
+{
+    response_context_t *ctx = bucket->data;
+    apr_status_t rv;
+
+    rv = wait_for_body(bucket, ctx);
+    if (rv) {
+        return rv;
+    }
+
+    /* Delegate to the stream bucket to do the readline. */
+    return serf_bucket_readline(ctx->stream, acceptable, found, data, len);
+}
 
 /* ### need to implement */
-#define serf_response_read NULL
-#define serf_response_readline NULL
 #define serf_response_read_iovec NULL
 #define serf_response_read_for_sendfile NULL
 #define serf_response_peek NULL

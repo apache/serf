@@ -373,7 +373,7 @@ static apr_status_t process_connection(serf_connection_t *conn,
     }
     if ((events & APR_POLLERR) != 0) {
         /* ### needs work */
-        abort();
+        puts("Hit APR_POLLERR: what to do?\n");
     }
     return APR_SUCCESS;
 }

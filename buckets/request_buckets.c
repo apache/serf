@@ -15,6 +15,7 @@
 
 #include <apr_pools.h>
 #include <apr_strings.h>
+#include <apr_hash.h>
 
 #include "serf.h"
 #include "serf_bucket_util.h"
@@ -26,6 +27,9 @@ typedef struct {
     serf_bucket_t *body;
 } request_context_t;
 
+typedef struct {
+    apr_hash_t *hash;
+} request_metadata_t;
 
 SERF_DECLARE(serf_bucket_t *) serf_bucket_request_create(
     const char *method,
@@ -48,22 +52,75 @@ static void serialize_data(serf_bucket_t *bucket)
     request_context_t *ctx = bucket->data;
     serf_bucket_t *new_bucket;
     const char *new_data;
+    struct iovec iov[16];
+    apr_size_t nvec, nbytes;
 
     /* Serialize the request-line and headers into one mother string,
      * and wrap a bucket around it.
      */
+    iov[0].iov_base = (char*)ctx->method;
+    iov[0].iov_len = strlen(ctx->method);
+    iov[1].iov_base = " ";
+    iov[1].iov_len = sizeof(" ") - 1;
+    iov[2].iov_base = (char*)ctx->uri;
+    iov[2].iov_len = strlen(ctx->uri);
+    iov[3].iov_base = " HTTP/1.1\r\n";
+    iov[3].iov_len = sizeof(" HTTP/1.1\r\n") - 1;
+
+    nvec = 4;
+
+    if (bucket->metadata) {
+        apr_hash_index_t *hi;
+        apr_pool_t *p;
+        const void *hash_ptr;
+        apr_hash_t *hash;
+
+        /* Okay, we might have headers. */
+        serf_bucket_get_metadata(bucket, SERF_REQUEST_HEADERS, 0, &hash_ptr);
+
+        if (hash_ptr) {
+
+            hash = (apr_hash_t*)hash_ptr;
+
+            /* Check to see if we have enough free IO vecs to handle this. */
+            if (apr_hash_count(hash) > 16 - nvec)
+            {
+                /* XXX: Handle me. */
+            }
+
+            p = serf_bucket_allocator_get_pool(bucket->allocator);
+
+            for (hi = apr_hash_first(p, hash); hi; hi = apr_hash_next(hi)) {
+                const void *key;
+                void *val;
+                apr_ssize_t key_len;
+
+                apr_hash_this(hi, &key, &key_len, &val);
+
+                iov[nvec].iov_base = (char*)key;
+                iov[nvec++].iov_len = key_len;
+                iov[nvec].iov_base = ": ";
+                iov[nvec++].iov_len = sizeof(": ") - 1;
+                iov[nvec].iov_base = val;
+                iov[nvec++].iov_len = strlen((char*)val);
+                iov[nvec].iov_base = "\r\n";
+                iov[nvec++].iov_len = sizeof("\r\n") - 1;
+            }
+        }
+    }
+
+    iov[nvec].iov_base = "\r\n";
+    iov[nvec++].iov_len = sizeof("\r\n") - 1;
+
     /* ### pool allocation! */
-    new_data = apr_pstrcat(serf_bucket_allocator_get_pool(bucket->allocator),
-                           ctx->method, " ",
-                           ctx->uri, " HTTP/1.1\r\n",
-                           "User-Agent: serf\r\n", /* ### just an example */
-                           "\r\n",
-                           NULL);
+    new_data = apr_pstrcatv(serf_bucket_allocator_get_pool(bucket->allocator),
+                            iov, nvec, &nbytes);
 
     /* Create a new bucket for this string. A free function isn't needed
      * since the string is residing in a pool.
      */
-    new_bucket = SERF_BUCKET_SIMPLE_STRING(new_data, bucket->allocator);
+    new_bucket = SERF_BUCKET_SIMPLE_STRING_LEN(new_data, nbytes,
+                                               bucket->allocator);
 
     /* Build up the new bucket structure.
      *
@@ -117,6 +174,85 @@ static apr_status_t serf_request_peek(serf_bucket_t *bucket,
     return serf_bucket_peek(bucket, data, len);
 }
 
+static apr_status_t serf_request_set_metadata(serf_bucket_t *bucket,
+                                              const char *md_type,
+                                              const char *md_name,
+                                              const void *md_value)
+{
+    apr_hash_t *md_hash;
+    request_metadata_t **req_md;
+
+    req_md = (request_metadata_t**)&bucket->metadata;
+
+    if (*req_md == NULL) {
+        if (md_value == NULL) {
+            /* If we're trying to delete the value, then we're already done
+             * since there isn't any metadata in the bucket. */
+            return APR_SUCCESS;
+        }
+
+        /* Create the metadata container. */
+        *req_md = serf_bucket_mem_alloc(bucket->allocator, sizeof(*req_md));
+
+        /* ### pool usage! */
+        (*req_md)->hash =
+            apr_hash_make(serf_bucket_allocator_get_pool(bucket->allocator));
+    }
+
+    /* Look up the hash table for this md_type */
+    md_hash = apr_hash_get((*req_md)->hash, md_type, APR_HASH_KEY_STRING);
+
+    if (!md_hash) {
+        if (md_value == NULL) {
+            /* The hash table isn't present, so there is no work to delete
+             * a value.
+             */
+            return APR_SUCCESS;
+        }
+
+        /* Create the missing hash table. */
+        /* ### pool usage! */
+        md_hash =
+            apr_hash_make(serf_bucket_allocator_get_pool(bucket->allocator));
+
+        /* Put the new hash table back into the type hash. */
+        apr_hash_set((*req_md)->hash, md_type, APR_HASH_KEY_STRING,
+                     md_hash);
+    }
+
+    apr_hash_set(md_hash, md_name, APR_HASH_KEY_STRING, md_value);
+
+    return APR_SUCCESS;
+}
+
+
+static apr_status_t serf_request_get_metadata(serf_bucket_t *bucket,
+                                              const char *md_type,
+                                              const char *md_name,
+                                              const void **md_value)
+{
+    /* Initialize return value to not being found. */
+    *md_value = NULL;
+
+    if (bucket->metadata) {
+        apr_hash_t *md_hash;
+
+        md_hash = apr_hash_get(((request_metadata_t*)bucket->metadata)->hash,
+                               md_type, APR_HASH_KEY_STRING);
+
+        if (md_hash) {
+            if (md_name) {
+                *md_value = apr_hash_get(md_hash, md_name, APR_HASH_KEY_STRING);
+            }
+            else {
+                *md_value = md_hash;
+            }
+        }
+    }
+
+    return APR_SUCCESS;
+}
+
 SERF_DECLARE_DATA const serf_bucket_type_t serf_bucket_type_request = {
     "REQUEST",
     serf_request_read,
@@ -125,7 +261,8 @@ SERF_DECLARE_DATA const serf_bucket_type_t serf_bucket_type_request = {
     serf_default_read_for_sendfile,
     serf_default_read_bucket,
     serf_request_peek,
-    serf_default_get_metadata,
-    serf_default_set_metadata,
+    serf_request_get_metadata,
+    serf_request_set_metadata,
     serf_default_destroy_and_data,
 };
+
