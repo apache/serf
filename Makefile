@@ -5,7 +5,7 @@
 
 OBJECTS = buckets/aggregate_buckets.o buckets/request_buckets.o context.o \
           buckets/buckets.o buckets/simple_buckets.o buckets/file_buckets.o \
-          buckets/mmap_buckets.o \
+          buckets/mmap_buckets.o buckets/socket_buckets.o \
           test/serf_get.o
 
 # Place apr-config and apu-config in your PATH.
