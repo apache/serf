@@ -1,4 +1,8 @@
-APACHE COMMONS: serf                                    -*-indented-text-*-
+STATUS: The Serf Project                                -*-indented-text-*-
+
+  Code: http://svn.webdav.org/repos/projects/serf/
+People: Justin Erenkrantz, Greg Stein
+
 
 OPEN ISSUES
 
@@ -43,6 +47,29 @@ OPEN ISSUES
                  which has an associated pool. the bucket can fetch
                  that and use it.
                  Q: is this going to be workable?
+    gstein says: I propose we toss metadata. the notion of arbitrary
+                 metadata for arbitrary buckets seems sketchy at best,
+                 and is obviously hard to implement. we already have
+                 examples of bucket types exposing custom APIs. that
+                 allows us to (say) fetch parsed headers from a
+                 response bucket.
+    gstein says: the original idea for metadata was to have a way to
+                 specify things like content type, charset, or the
+                 content encoding (for the data residing in the
+                 bucket). I would propose that in tossing the
+                 metadata, we create a "serf_content_description" type
+                 which can describe the data within a bucket. These
+                 descriptions would be at least a few pointers and
+                 might be too much overhead per bucket. Thus, a
+                 solution would be a registry of content
+                 descriptions. A bucket can simply refer to a
+                 descrption stored in the registry. (maybe some
+                 common, static descriptions plus the dynamic
+                 registry)  Unknown how a dynamic registry would be
+                 built. We could make it an app-provided piece, or we
+                 could automatically create and associate one with a
+                 serf_context. I'd go with an app thingy since the
+                 registry could be shared across multiple contexts.
 
   * How does serf_aggregate_bucket_become(bucket) work?
     Justin says: We want bucket to be an aggregate bucket, and for the first
@@ -59,6 +86,11 @@ OPEN ISSUES
     gstein says: I think this implies a little entry structure which
                  contains the "link", plus a pointer to the bucket. I
                  was thinking of just using an apr array.
+    gstein says: apr array? that is pool-based which blows. the
+                 current implementation uses a linked list. maybe the
+                 RING can help, but we aren't doing sophisticated
+                 rearrangement, splicing, or anything else. the RING
+                 stuff probably isn't all that helpful.
 
   * How does something like deflate get inserted into both the request and
     response?
@@ -86,6 +118,9 @@ OPEN ISSUES
        time. this allows a bucket to return "all available
        information" which includes data and the notation that no more
        data exists.
+    gstein: design-doc.txt describes the return values. in this case,
+            it states that APR_EOF signals the bucket is empty. any
+            further reads will continue to return APR_EOF.
 
   * if the poll() does not return POLLHUP, then how do we detect EOF?
     we'd end up seeing POLLIN, go for a read(), and probably get a
@@ -101,3 +136,24 @@ OPEN ISSUES
 
   * review the various OUT parameters and see if any make sense to
     allow a NULL value to designate non-interest in the result.
+
+  * The current API specifies that the app can close a connection by
+    destroying or clearing the connection pool. Terminating a
+    connection requires call the close-callback for each outstanding
+    request. All subpools will be destroyed. Note that requests are
+    built within subpools of the connection pool, so all the request
+    objects will suddenly disappear. The allocators will try to go
+    away, but it is very likely that request/response buckets might
+    still be alive at that time. As a result, the app will get a lot
+    of notifications of buggy bucket memory behavior.
+
+    gstein: I propose we add serf_connection_close() for the app to
+            request the closure of a connection. It can systematically
+            go through the structures and clear things out. We'll need
+            to ensure that the app is called-back at the sufficent
+            points to free buckets (before we toss a pool and the
+            allocator goes cranky).
+
+            If a connection needs to close because of an abnormal
+            close condition, then (obviously) the internal serf system
+            can shut it down in an orderly fashion.

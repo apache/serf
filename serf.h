@@ -100,12 +100,12 @@ SERF_DECLARE(apr_status_t) serf_context_run(serf_context_t *ctx,
 
 /**
  * Accept an incoming response for @a request, and its @a socket. A bucket
- * for the response will be constructed and returned. This is the control
+ * for the response should be constructed and returned. This is the control
  * point for assembling the appropriate wrapper buckets around the socket to
  * enable processing of the incoming response.
  *
- * The @a acceptor_baton is the baton provided when the connection was
- * first opened.
+ * The @a acceptor_baton is the baton provided when the specified request
+ * was created.
  *
  * The request's pool and bucket allocator should be used for any allocations
  * that need to live for the duration of the response. Care should be taken
@@ -163,8 +163,8 @@ typedef void (*serf_connection_closed_t)(serf_connection_t *conn,
  * or before a response arrives, then @a response will be NULL. This is the
  * signal that the request was not delivered properly, and no further
  * response should be expected (this callback will not be invoked again).
- * If a request is injected into the connection (during this callback, or
- * otherwise), then the connection will be reopened.
+ * If a request is injected into the connection (during this callback's
+ * execution, or otherwise), then the connection will be reopened.
  *
  * All temporary allocations should be made in @a pool.
  */
@@ -203,16 +203,17 @@ SERF_DECLARE(serf_connection_t *) serf_connection_create(
 /**
  * Construct a request object for the @a conn connection.
  *
- * A subpool for the request and its associated response will be built,
- * and the request will be allocated within that subpool. An associated
- * bucket allocator will be built. These items may be fetched from the
- * request object through @see serf_request_get_pool or
+ * A subpool will be built within the connection's pool. The request and
+ * its associated response will be allocated within that subpool. An
+ * associated bucket allocator will be built. These items may be fetched
+ * from the request object through @see serf_request_get_pool or
  * @see serf_request_get_alloc.
  *
- * The returned request can be finalized with @see ....
+ * The returned request can be finalized and queued for delivery with
+ * @see serf_request_deliver.
  *
  * If the request has not (yet) been delivered, then it may be canceled
- * with @see serf_connection_request_cancel.
+ * with @see serf_request_cancel.
  */
 SERF_DECLARE(serf_request_t *) serf_connection_request_create(
     serf_connection_t *conn);
@@ -539,7 +540,7 @@ SERF_DECLARE(serf_bucket_alloc_t *) serf_bucket_allocator_create(
     void *unfreed_baton);
 
 /**
- * Return the pool that was used for this @a allcoator.
+ * Return the pool that was used for this @a allocator.
  *
  * WARNING: the use of this pool for allocations requires a very
  *   detailed understanding of pool behaviors, the bucket system,
