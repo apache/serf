@@ -61,7 +61,6 @@
 #include <apr_network_io.h>
 #include <apr_tables.h>
 
-#include "serf_methods.h"
 #include "serf_buckets.h"
 
 #ifdef __cplusplus
@@ -197,24 +196,17 @@ struct serf_connection_t {
  */
 struct serf_request_t {
     /* Method to retrieve this request by */
-    /* ### gjs: as a client library, the perf gain for tokenizing the method
-       ### is miniscule. let's just keep this as a string. if we find it is
-       ### a hot-spot, then we can optimize it. but switching to a string
-       ### eliminates the entire serf_method.h complexity, which probably
-       ### contributes more cost than savings. */
-    serf_method_t method;
+    const char *method;
 
-    /* ### gjs: I see no need to separate these. let's just glom together
-       ### the path, query, and fragment. (RFC 2396 for URL ref info).
-       ### I say we just call this field "uri_path" and be done. */
-    /* The path component for this request. */
-    const char *path;
-    /* Any potential query arguments. */
-    const char *query_args;
+    /* The path component for this request. 
+     * This includes the query args and fragment.
+     */
+    const char *uri_path;
 
     /* Indicate whether keepalive of connection is desired. */
     /* ### gjs: axe this. we should always operate as an HTTP/1.1 client
-       ### with keepalive enabled */
+       ### with keepalive enabled
+       ### jre: flood needs control over this behavior.  */
     int keepalive;
 
     /* Client-managed context associated with this request. */
@@ -229,22 +221,35 @@ struct serf_request_t {
 
     /* When operating in asynchronous (callback) mode, use this function
      * as the callback for processing the response associated with this
-     * request. */
+     * request. 
+     *
+     * If this is NULL, we are assumed to be running in synchronous mode
+     * and we will wait for serf_read_response() to be called.
+     */
     serf_response_handler_t *handler;
 
     /* When operating in asynchronous (callback) mode, use this function
      * to provide source data for the request.
      *
      * This is the SOURCE, in reference to the filtering discussion above.
+     *
+     * If this is NULL, we are assumed to be running in synchronous mode
+     * and we will only use the buckets in the entity brigade available
+     * at the beginning of writing the request.
      */
     serf_source_t *source;
 
-    /* Pointer to the connection being used. */
-    serf_connection_t *conn;
+    /* Filters that are applied to the request buckets as they are sent
+     * to the remote server.
+     * These filters execute BEFORE the connection filters.
+     */
+    serf_filter_t *request_filters;
 
-    /* ### do we need a per-request filter chain? I'd think so. just
-       ### make sure the invocation mechanism knows how to flip between
-       ### the end of the connection list and this list */
+    /* Filters that are applied to the response buckets as they are
+     * received from the remote server.
+     * These filters execute AFTER the connection filters.
+     */
+    serf_filter_t *response_filters;
 };
 
 /*
@@ -258,10 +263,6 @@ struct serf_response_t {
 
     /* Pointer to the associated request object. */
     serf_request_t *request;
-
-    /* ### do we need a per-response filter chain? I'd think so. just
-       ### make sure the invocation mechanism knows how to flip between
-       ### the end of the connection list and this list */
 };
 
 /*
@@ -273,6 +274,7 @@ SERF_DECLARE(serf_connection_t *) serf_create_connection(apr_pool_t *pool);
  * Opens the specified connection.
  *
  * ### gjs: IMO, we should lazy-connect. toss this.
+ * ### jre: flood needs to control when the connection is opened.
  */
 SERF_DECLARE(apr_status_t) serf_open_connection(serf_connection_t *conn);
 
@@ -282,32 +284,20 @@ SERF_DECLARE(apr_status_t) serf_open_connection(serf_connection_t *conn);
 SERF_DECLARE(apr_status_t) serf_close_connection(serf_connection_t *conn);
 
 /*
- * Create a request object for a specific connection.
+ * Create a request object.
  *
- * ### gjs: if somebody wants to construct a connection pool, then we
- * ### may want requests to be independent of connections. the request
- * ### won't be associated with a connection until it is passed from
- * ### the client into serf for delivery. (IMO: let's do it that way)
+ * The request is not tied to a connection until serf_write_request is called.
  */
-SERF_DECLARE(serf_request_t *) serf_create_request(serf_connection_t *conn,
-                                                   apr_pool_t *pool);
+SERF_DECLARE(serf_request_t *) serf_create_request(apr_pool_t *pool);
 
 /*
- * Writes the specifed request to its associated connection.
+ * Writes the specifed request to a connection.
  *
  * This is a blocking operation. The connection will be opened to the
  * server, if it has not been connected yet.
  */
-SERF_DECLARE(apr_status_t) serf_write_request(serf_request_t *request);
-
-/*
- * Creates a response object tied in with a request object.
- *
- * ### gjs: this should go away. you should only be able to get one
- * ### via serf_read_respones(), or via the async callback.
- */
-SERF_DECLARE(serf_response_t *) serf_create_response(serf_response_t *response,
-                                                     apr_pool_t *pool);
+SERF_DECLARE(apr_status_t) serf_write_request(serf_request_t *request,
+                                              serf_connection_t *conn);
 
 /*
  * Read a response from the specified connection.
@@ -323,12 +313,15 @@ SERF_DECLARE(apr_status_t) serf_read_response(serf_response_t **response,
                                               apr_pool_t *pool);
 
 /*
- * Helper function that will open a connection and a request based on the
+ * Helper function that will create a connection and a request based on the
  * provided URI. 
+ *
+ * The connection and the request are allocated in the specified pool.
  */
 SERF_DECLARE(apr_status_t) serf_open_uri(apr_uri_t *url,
                                          serf_connection_t **conn, 
-                                         serf_request_t **request);
+                                         serf_request_t **request,
+                                         apr_pool_t *pool);
 
 /*
  * Process all of the requests that have been associated with the
