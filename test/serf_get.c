@@ -365,7 +365,7 @@ int main(int argc, const char **argv)
 
     apr_uri_parse(pool, raw_url, &url);
     if (!url.port) {
-        url.port = apr_uri_default_port_for_scheme(url.scheme);
+        url.port = apr_uri_port_of_scheme(url.scheme);
     }
 #if SERF_HAS_OPENSSL
     if (strcasecmp(url.scheme, "https") == 0) {
