@@ -14,7 +14,7 @@
  */
 
 #ifndef SERF_BUCKET_UTIL_H
-#define SERF_BUCKET_UTILH
+#define SERF_BUCKET_UTIL_H
 
 /**
  * @file serf_bucket_util.h
