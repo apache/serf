@@ -145,7 +145,12 @@ static apr_status_t serf_aggregate_read(serf_bucket_t *bucket,
         apr_status_t status;
 
         status = serf_bucket_read(head, requested, data, len);
+        if (SERF_BUCKET_READ_ERROR(status))
+            return status;
+
         if (*len > 0) {
+            /* We have some data. Process the status, and return the data. */
+
             if (APR_STATUS_IS_EOF(status)) {
                 /* We finished reading this bucket. It must stay alive,
                  * though, so that we can return its data. Destroy it the
@@ -155,7 +160,12 @@ static apr_status_t serf_aggregate_read(serf_bucket_t *bucket,
                 serf_bucket_mem_free(bucket->allocator, ctx->list);
                 ctx->list = next_list;
                 ctx->done = head;
+
+                /* Return the data, and note that we can be read again. */
+                return APR_SUCCESS;
             }
+
+            /* status is APR_SUCCESS or APR_EAGAIN. */
             return status;
         }
 

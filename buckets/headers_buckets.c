@@ -40,11 +40,13 @@ typedef struct {
 
     header_list_t *cur_read;
     enum {
-        READ_HEADER,  /* reading cur_read->header */
-        READ_SEP,     /* reading ": " */
-        READ_VALUE,   /* reading cur_read->value */
-        READ_CRLF,    /* reading "\r\n" */
-        READ_DONE     /* no more data to read */
+        READ_START,     /* haven't started reading yet */
+        READ_HEADER,    /* reading cur_read->header */
+        READ_SEP,       /* reading ": " */
+        READ_VALUE,     /* reading cur_read->value */
+        READ_CRLF,      /* reading "\r\n" */
+        READ_TERM,      /* reading the final "\r\n" */
+        READ_DONE       /* no more data to read */
     } state;
     apr_size_t amt_read; /* how much of the current state we've read */
 
@@ -58,7 +60,7 @@ SERF_DECLARE(serf_bucket_t *) serf_bucket_headers_create(
 
     ctx = serf_bucket_mem_alloc(allocator, sizeof(*ctx));
     ctx->list = NULL;
-    ctx->cur_read = NULL;
+    ctx->state = READ_START;
 
     return serf_bucket_create(&serf_bucket_type_headers, allocator, ctx);
 }
@@ -164,13 +166,16 @@ static void select_value(
     const char *v;
     apr_size_t l;
 
-    if (ctx->state == READ_DONE) {
-        *len = 0;
-        return;
-    }
-    if (ctx->cur_read == NULL) {
-        /* start the rad scanning */
-        ctx->cur_read = ctx->list;
+    if (ctx->state == READ_START) {
+        if (ctx->list == NULL) {
+            /* No headers. Move straight to the TERM state. */
+            ctx->state = READ_TERM;
+        }
+        else {
+            ctx->state = READ_HEADER;
+            ctx->cur_read = ctx->list;
+        }
+        ctx->amt_read = 0;
     }
 
     switch (ctx->state) {
@@ -187,9 +192,13 @@ static void select_value(
         l = ctx->cur_read->value_size;
         break;
     case READ_CRLF:
+    case READ_TERM:
         v = "\r\n";
         l = 2;
         break;
+    case READ_DONE:
+        *len = 0;
+        return;
     default:
         abort();
     }
@@ -205,17 +214,18 @@ static apr_status_t consume_chunk(headers_context_t *ctx)
     ++ctx->state;
     ctx->amt_read = 0;
 
-    /* end of this header. move to the next one. */
-    if (ctx->state == READ_DONE) {
-        ctx->cur_read = ctx->cur_read->next;
-        if (ctx->cur_read == NULL) {
-            /* there is no more data. leave us at READ_DONE and signal
-               completion to the caller. */
-            return APR_EOF;
-        }
+    /* just sent the terminator and moved to DONE. signal completion. */
+    if (ctx->state == READ_DONE)
+        return APR_EOF;
 
-        /* there _is_ another header, so reset the read state */
-        ctx->state = READ_HEADER;
+    /* end of this header. move to the next one. */
+    if (ctx->state == READ_TERM) {
+        ctx->cur_read = ctx->cur_read->next;
+        if (ctx->cur_read != NULL) {
+            /* We've got another head to send. Reset the read state. */
+            ctx->state = READ_HEADER;
+        }
+        /* else leave in READ_TERM */
     }
 
     /* there is more data which can be read immediately. */
@@ -228,16 +238,10 @@ static apr_status_t serf_headers_peek(serf_bucket_t *bucket,
 {
     headers_context_t *ctx = bucket->data;
 
-    if (ctx->state == READ_DONE) {
-        *len = 0;
-        return APR_EOF;
-    }
-
-    /* note that select_value() will ensure ctx->cur_read is set for below */
     select_value(ctx, data, len);
 
-    /* if we're on the last header, and the last part of it, then EOF */
-    if (ctx->cur_read->next == NULL && ctx->state == READ_CRLF)
+    /* already done or returning the CRLF terminator? return EOF */
+    if (ctx->state == READ_DONE || ctx->state == READ_TERM)
         return APR_EOF;
 
     return APR_SUCCESS;
@@ -250,12 +254,9 @@ static apr_status_t serf_headers_read(serf_bucket_t *bucket,
     headers_context_t *ctx = bucket->data;
     apr_size_t avail;
 
-    if (ctx->state == READ_DONE) {
-        *len = 0;
-        return APR_EOF;
-    }
-
     select_value(ctx, data, &avail);
+    if (ctx->state == READ_DONE)
+        return APR_EOF;
 
     if (requested >= avail) {
         /* return everything from this chunk */
@@ -284,23 +285,22 @@ static apr_status_t serf_headers_readline(serf_bucket_t *bucket,
     if ((acceptable & SERF_NEWLINE_CRLF) == 0)
         abort();
 
-    if (ctx->state == READ_DONE) {
-        *len = 0;
-        return APR_EOF;
-    }
-
     /* get whatever is in this chunk */
     select_value(ctx, data, len);
+    if (ctx->state == READ_DONE)
+        return APR_EOF;
 
     /* we consumed this chunk. advance the state. */
     status = consume_chunk(ctx);
 
     /* the type of newline found is easy... */
-    *found = ctx->state == READ_CRLF ? SERF_NEWLINE_CRLF : SERF_NEWLINE_NONE;
+    *found = (ctx->state == READ_CRLF || ctx->state == READ_TERM)
+        ? SERF_NEWLINE_CRLF : SERF_NEWLINE_NONE;
 
     return status;
 }
 
+/* ### need to implement iovec */
 SERF_DECLARE_DATA const serf_bucket_type_t serf_bucket_type_headers = {
     "HEADERS",
     serf_headers_read,
