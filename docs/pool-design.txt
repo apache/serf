@@ -1,0 +1,47 @@
+Last modified at [$Date: 2003/01/05 00:41:21 $]                 -*-text-*-
+
+POOL DESIGN
+
+From Subversion, we have learned a *lot* about how to use pools in a
+heavily structured/object-based environment. Apache is a completely
+different beast. "allocate a request pool. use it. destroy it."
+
+Well, in a complex app, that just doesn't cut it. Luckily, the
+"proper" use of pools can be described in just a few rules:
+
+* objects should not have their own pools. an object is allocated into
+  a pool defined by the constructor's caller. the *CALLER* knows the
+  lifetime of the object and will manage it via the pool.
+
+* functions should not create/destroy pools for their operation; they
+  should use a pool provided by the caller. again, the *CALLER* knows
+  more about how the function will be used, how often, how many times,
+  etc. thus, it should be in charge of the function's memory usage.
+  
+  as an example, the caller might know that the app will exit upon the
+  function's return. thus, the function would be created extra work if
+  it built/destroyed a pool. instead, it should use the passed-in
+  pool, which the caller is going to be tossing as part of app-exit
+  anyways.
+
+* whenever an unbounded iteration occurs, a subpool should be
+  used. the general pattern is:
+  
+  subpool = apr_create_subpool(pool);
+  for (i = 0; i < n; ++i) {
+    do_operation(..., subpool);
+    
+    apr_pool_clear(subpool);
+  }
+  apr_pool_destroy(subpool);
+  
+  This pattern prevents the 'pool' from growing unbounded and
+  consuming all of memory.
+
+* given all of the above, it is pretty well mandatory to pass a pool
+  to *every* function. since objects are not recording pools for
+  themselves, and the caller is always supposed to be managing memory,
+  then each function needs a pool, rather than relying on some hidden
+  magic pool. in limited cases, objects may record the pool used for
+  their construction so that they can construct sub-parts, but these
+  cases should be examined carefully.
