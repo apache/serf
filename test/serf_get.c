@@ -50,9 +50,33 @@
 #include <apr.h>
 
 #include "serf.h"
+#include "serf_filters.h"
 #include "serf_version.h"
 
 #define CRLF "\r\n"
+
+/* Yes, it'd be nice if these were command-line options... */
+/* Define this to 1 to print out header information. */
+#define SERF_GET_DEBUG 0 
+/* httpd-2.0 is cute WRT chunking and will only do it on a keep-alive.
+ * Define this to 1 to test serf's ability to handle chunking.
+ */
+#define SERF_GET_TEST_CHUNKING 0 
+
+static apr_status_t print_bucket(apr_bucket *bucket, apr_file_t *file)
+{
+    const char *buf;
+    apr_size_t length, written;
+    apr_status_t status;
+        
+    status = apr_bucket_read(bucket, &buf, &length, APR_BLOCK_READ);
+
+    if (status) {
+        return status;
+    }
+
+    return apr_file_write_full(file, buf, length, &written);
+}
 
 static apr_status_t http_source(apr_bucket_brigade *brigade,
                                 serf_request_t *request,
@@ -62,10 +86,17 @@ static apr_status_t http_source(apr_bucket_brigade *brigade,
 
     bucket = serf_bucket_request_line_create(request->method,
                                              request->uri->path,
-                                             "HTTP/1.0", pool,
+                                             "HTTP/1.1", pool,
                                              brigade->bucket_alloc);
  
     APR_BRIGADE_INSERT_HEAD(brigade, bucket);
+
+#if !SERF_GET_TEST_CHUNKING
+    bucket = serf_bucket_header_create("Connection",
+                                       "Close",
+                                       pool, brigade->bucket_alloc);
+    APR_BRIGADE_INSERT_TAIL(brigade, bucket);
+#endif
 
     return APR_SUCCESS;
 }
@@ -131,9 +162,9 @@ static apr_status_t http_headers_filter(apr_bucket_brigade *brigade,
     return APR_SUCCESS;
 }
 
-static apr_status_t debug_filter(apr_bucket_brigade *brigade,
-                                 serf_filter_t *filter,
-                                 apr_pool_t *pool)
+static apr_status_t debug_request(apr_bucket_brigade *brigade,
+                                  serf_filter_t *filter,
+                                  apr_pool_t *pool)
 {
     apr_status_t status;
     apr_file_t *out_file;
@@ -147,20 +178,65 @@ static apr_status_t debug_filter(apr_bucket_brigade *brigade,
     for (bucket = APR_BRIGADE_FIRST(brigade);
          bucket != APR_BRIGADE_SENTINEL(brigade);
          bucket = APR_BUCKET_NEXT(bucket)) {
-        const char *buf;
-        apr_size_t length, written;
-        
-        status = apr_bucket_read(bucket, &buf, &length, APR_BLOCK_READ);
-    
-        if (status) {
-            return status;
-        }
 
-        status = apr_file_write_full(out_file, buf, length, &written);
- 
+        status = print_bucket(bucket, out_file);
         if (status) {
             return status;
         }
+    }
+
+    return APR_SUCCESS;
+}
+
+static apr_status_t debug_response(apr_bucket_brigade *brigade,
+                                   serf_filter_t *filter,
+                                   apr_pool_t *pool)
+{
+    apr_status_t status;
+    apr_file_t *out_file;
+    apr_bucket *bucket;
+
+    status = apr_file_open_stdout(&out_file, pool);
+    if (status) {
+        return status;
+    }
+
+    /* Print the STATUS bucket first. */ 
+    for (bucket = APR_BRIGADE_FIRST(brigade);
+         bucket != APR_BRIGADE_SENTINEL(brigade);
+         bucket = APR_BUCKET_NEXT(bucket)) {
+        if (SERF_BUCKET_IS_STATUS(bucket)) {
+            status = print_bucket(bucket, out_file);
+            if (status) {
+                return status;
+            }
+            status = apr_file_putc('\n', out_file);
+            if (status) {
+                return status;
+            }
+        } 
+    }
+
+    /* Now, print all headers.  */
+    for (bucket = APR_BRIGADE_FIRST(brigade);
+         bucket != APR_BRIGADE_SENTINEL(brigade);
+         bucket = APR_BUCKET_NEXT(bucket)) {
+        if (SERF_BUCKET_IS_HEADER(bucket)) {
+            status = print_bucket(bucket, out_file);
+            if (status) {
+                return status;
+            }
+            status = apr_file_putc('\n', out_file);
+            if (status) {
+                return status;
+            }
+        } 
+    }
+
+    /* Print a separator line. */
+    status = apr_file_putc('\n', out_file);
+    if (status) {
+        return status;
     }
 
     return APR_SUCCESS;
@@ -204,37 +280,31 @@ static apr_status_t socket_write_full(apr_bucket_brigade *brigade,
     return APR_SUCCESS;
 }
 
+
 static apr_status_t http_handler(serf_response_t *response, apr_pool_t *pool)
 {
     apr_status_t status;
     apr_file_t *out_file;
+    apr_bucket *bucket;
 
     status = apr_file_open_stdout(&out_file, pool);
     if (status) {
         return status;
     }
 
-    while (!APR_BRIGADE_EMPTY(response->entity)) {
-        apr_bucket *bucket;
-        const char *buf;
-        apr_size_t length, written;
-        
-        bucket = APR_BRIGADE_FIRST(response->entity);
-
-        status = apr_bucket_read(bucket, &buf, &length, APR_BLOCK_READ);
-    
-        if (status) {
-            return status;
+    /* Print anything that isn't metadata. */
+    for (bucket = APR_BRIGADE_FIRST(response->entity);
+         bucket != APR_BRIGADE_SENTINEL(response->entity);
+         bucket = APR_BUCKET_NEXT(bucket)) {
+        if (!APR_BUCKET_IS_METADATA(bucket)) {
+            status = print_bucket(bucket, out_file);
+            if (status) {
+                return status;
+            }
         }
-
-        status = apr_file_write_full(out_file, buf, length, &written);
- 
-        if (status) {
-            return status;
-        }
-        
-        apr_bucket_delete(bucket);
     }
+
+    apr_brigade_cleanup(response->entity);
 
     return APR_SUCCESS;
 }
@@ -263,11 +333,21 @@ int main(int argc, const char **argv)
     /* serf_initialize(); */
 
     serf_register_filter("SOCKET_WRITE_FULL", socket_write_full, pool);
-    serf_register_filter("DEBUG_WRITE", debug_filter, pool);
+
     serf_register_filter("USER_AGENT", user_agent_filter, pool);
     serf_register_filter("HOST_HEADER", host_header_filter, pool);
-    serf_register_filter("HTTP_HEADERS", http_headers_filter, pool);
-    /*serf_register_filter("SOCKET_READ_FULL", socket_read_full, pool);*/
+    serf_register_filter("HTTP_HEADERS_OUT", http_headers_filter, pool);
+
+    serf_register_filter("HTTP_STATUS_IN", serf_http_status_read, pool);
+    serf_register_filter("HTTP_HEADERS_IN", serf_http_header_read, pool);
+    serf_register_filter("HTTP_DECHUNK", serf_http_dechunk, pool);
+
+    serf_register_filter("DEBUG_REQUEST", debug_request, pool);
+    serf_register_filter("DEBUG_RESPONSE", debug_response, pool);
+
+    /*
+    serf_register_filter("DEFLATE_READ", serf_deflate_read, pool);
+    */
 
     url = apr_palloc(pool, sizeof(apr_uri_t));
     apr_uri_parse(pool, raw_url, url);
@@ -288,15 +368,31 @@ int main(int argc, const char **argv)
     request->method = "GET";
     request->uri = url;
 
-    filter = serf_add_filter(connection->request_filters, "DEBUG_WRITE", pool);
+#if SERF_GET_DEBUG
+    filter = serf_add_filter(connection->request_filters, "DEBUG_REQUEST", pool);
+#endif
     /* FIXME: Get serf to install an endpoint which has access to the conn. */
-    filter = serf_add_filter(connection->request_filters, "SOCKET_WRITE_FULL", pool);
+    filter = serf_add_filter(connection->request_filters, "SOCKET_WRITE_FULL",
+                             pool);
     filter->ctx = connection;
 
     filter = serf_add_filter(request->request_filters, "USER_AGENT", pool);
     filter = serf_add_filter(request->request_filters, "HOST_HEADER", pool);
     filter->ctx = request;
-    filter = serf_add_filter(request->request_filters, "HTTP_HEADERS", pool);
+    filter = serf_add_filter(request->request_filters, "HTTP_HEADERS_OUT",
+                             pool);
+
+    /* Now add the response filters. */
+    filter = serf_add_filter(request->response_filters, "HTTP_STATUS_IN",
+                             pool);
+    filter = serf_add_filter(request->response_filters, "HTTP_HEADERS_IN",
+                             pool);
+    filter = serf_add_filter(request->response_filters, "HTTP_DECHUNK",
+                             pool);
+#if SERF_GET_DEBUG
+    filter = serf_add_filter(request->response_filters, "DEBUG_RESPONSE",
+                             pool);
+#endif
 
     /* For now, serf will setup the socket into the brigade. */
     /* serf_add_filter(connection->response_filters, "SOCKET_READ", pool); */
