@@ -6,9 +6,12 @@
 OBJECTS = buckets/aggregate_buckets.o buckets/request_buckets.o context.o \
           buckets/buckets.o buckets/simple_buckets.o buckets/file_buckets.o \
           buckets/mmap_buckets.o buckets/socket_buckets.o \
-          buckets/response_buckets.o buckets/headers_buckets.o
+          buckets/response_buckets.o buckets/headers_buckets.o \
+          buckets/allocator.o
+
 PROGRAMS = test/serf_get test/serf_file
-TESTCASES = test/testcases/simple.response test/testcases/chunked-empty.response test/testcases/chunked.response
+TESTCASES = test/testcases/simple.response \
+  test/testcases/chunked-empty.response test/testcases/chunked.response
 
 # Place apr-config and apu-config in your PATH.
 APR_CONFIG=apr-1-config
