@@ -99,7 +99,7 @@ extern "C" {
 #define SERF_MINOR_VERSION       0
 
 /** patch level */
-#define SERF_PATCH_VERSION       4
+#define SERF_PATCH_VERSION       5 
 
 /** 
  *  This symbol is defined for internal, "development" copies of Serf. This

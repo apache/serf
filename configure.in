@@ -129,8 +129,10 @@ if test "$enable_ssl" = "yes"; then
      fi
      fi
     ])
-    SSL_BASE_OBJECTS="serf_filter_ssl.lo serf_bucket_ssl.lo"
-    AC_SUBST(SSL_BASE_OBJECTS)
+    SSL_BUCKETS_OBJECTS="serf_bucket_ssl.lo"
+    SSL_FILTERS_OBJECTS="serf_filter_ssl.lo"
+    AC_SUBST(SSL_BUCKETS_OBJECTS)
+    AC_SUBST(SSL_FILTERS_OBJECTS)
 fi
 
 AC_ARG_WITH(z, [--with-z=DIR              use a specific zlib library],
@@ -178,8 +180,8 @@ if test "$serf_has_zlib" == "1"; then
   [AC_MSG_RESULT(found) 
    AC_CHECK_HEADERS(zutil.h)
    LIBTOOL_LIBS="$LIBTOOL_LIBS -lz"
-   DEFLATE_BASE_OBJECTS="serf_filter_deflate.lo"
-   AC_SUBST(DEFLATE_BASE_OBJECTS)],
+   DEFLATE_FILTERS_OBJECTS="serf_filter_deflate.lo"
+   AC_SUBST(DEFLATE_FILTERS_OBJECTS)],
   [AC_MSG_RESULT(not found)
    serf_has_zlib=0
    INCLUDES=$serf_save_includes
@@ -280,4 +282,4 @@ AC_SUBST(SHLTCFLAGS)
 
 dnl Makefile outputs
 dnl Note: There can only be one AC_OUTPUT command.
-AC_OUTPUT(Makefile base/Makefile build/rules.mk build/config_vars.mk test/Makefile include/serf_config.h)
+AC_OUTPUT(Makefile base/Makefile base/buckets/Makefile base/filters/Makefile build/rules.mk build/config_vars.mk test/Makefile include/serf_config.h)

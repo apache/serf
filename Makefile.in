@@ -7,7 +7,7 @@ VPATH        = @srcdir@
 
 SERF_MAJOR_VERSION=@SERF_MAJOR_VERSION@
 
-SUBDIRS = @SERF_SUBDIRS@ base
+SUBDIRS = @SERF_SUBDIRS@ base base/filters base/buckets
 
 TARGET_LIB = lib@SERF_LIBNAME@.la
 

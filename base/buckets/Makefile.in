@@ -3,7 +3,9 @@ builddir = $(shell pwd)
 srcdir = @srcdir@
 VPATH = @srcdir@
 
-TARGETS = serf_connection.lo serf_request.lo serf_open_url.lo serf_filters.lo
+TARGETS = serf_bucket_status.lo serf_bucket_header.lo \
+					serf_bucket_authentication.lo serf_bucket_request_line.lo \
+					@SSL_BUCKETS_OBJECTS@
 
 INCLUDES=-I$(top_srcdir)/include -I$(top_builddir)/include
 

@@ -3,7 +3,8 @@ builddir = $(shell pwd)
 srcdir = @srcdir@
 VPATH = @srcdir@
 
-TARGETS = serf_connection.lo serf_request.lo serf_open_url.lo serf_filters.lo
+TARGETS = serf_filter_http.lo serf_filter_socket.lo \
+				  @SSL_FILTERS_OBJECTS@ @DEFLATE_FILTERS_OBJECTS@
 
 INCLUDES=-I$(top_srcdir)/include -I$(top_builddir)/include
 
