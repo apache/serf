@@ -7,6 +7,8 @@ TOPICS
   2. Thread Safety
   3. Pool Usage
   4. Bucket Read Functions
+  5. Versioning
+  6. Bucket lifetimes
 
 
 -----------------------------------------------------------------------------
@@ -107,6 +109,24 @@ until the next read or peek occurs.
 
 The read_bucket function falls into a very different pattern. See its
 doc string for more information.
+
+
+-----------------------------------------------------------------------------
+
+5. VERSIONING
+
+The serf project uses the APR versioning guidelines described here:
+
+  http://apr.apache.org/versioning.html
+
+
+-----------------------------------------------------------------------------
+
+6. BUCKET LIFETIMES
+
+### flesh out. basically: if you hold a bucket pointer, then you own
+### it. passing a bucket into another transfers ownership. use barrier
+### buckets to limit destruction of a tree of buckets.
 
 
 -----------------------------------------------------------------------------
