@@ -241,6 +241,17 @@ SERF_DECLARE(serf_bucket_t *) serf_bucket_dechunk_create(
 
 /* ==================================================================== */
 
+
+SERF_DECLARE_DATA extern const serf_bucket_type_t serf_bucket_type_deflate;
+#define SERF_BUCKET_IS_DEFLATE(b) SERF_BUCKET_CHECK((b), deflate)
+
+SERF_DECLARE(serf_bucket_t *) serf_bucket_deflate_create(
+    serf_bucket_t *stream,
+    serf_bucket_alloc_t *allocator);
+
+
+/* ==================================================================== */
+
 /* ### do we need a PIPE bucket type? they are simple apr_file_t objects */
 
 
