@@ -30,6 +30,7 @@
  * @file serf_bucket_types.h
  * @brief serf-supported bucket types
  */
+/* ### this whole file needs docco ... */
 
 #ifdef __cplusplus
 extern "C" {
@@ -154,6 +155,49 @@ SERF_DECLARE_DATA extern const serf_bucket_type_t serf_bucket_type_mmap;
 SERF_DECLARE(serf_bucket_t *) serf_bucket_mmap_create(
     apr_mmap_t *mmap,
     serf_bucket_alloc_t *allocator);
+
+
+/* ==================================================================== */
+
+
+SERF_DECLARE_DATA extern const serf_bucket_type_t serf_bucket_type_headers;
+#define SERF_BUCKET_IS_HEADERS(b) SERF_BUCKET_CHECK((b), headers)
+
+SERF_DECLARE(serf_bucket_t *) serf_bucket_headers_create(
+    serf_bucket_alloc_t *allocator);
+
+/**
+ * Set the specified @a header within the bucket, copying the @a value
+ * into space from this bucket's allocator. The header is NOT copied,
+ * so it should remain in scope at least as long as the bucket.
+ */
+SERF_DECLARE(void) serf_bucket_headers_set(
+    serf_bucket_t *headers_bucket,
+    const char *header,
+    const char *value);
+
+/**
+ * Copy the specified @a header and @a value into the bucket, using space
+ * from this bucket's allocator.
+ */
+SERF_DECLARE(void) serf_bucket_headers_setc(
+    serf_bucket_t *headers_bucket,
+    const char *header,
+    const char *value);
+
+/**
+ * Set the specified @a header and @a value into the bucket, without
+ * copying either attribute. Both attributes should remain in scope at
+ * least as long as the bucket.
+ */
+SERF_DECLARE(void) serf_bucket_headers_setn(
+    serf_bucket_t *headers_bucket,
+    const char *header,
+    const char *value);
+
+SERF_DECLARE(const char *) serf_bucket_headers_get(
+    serf_bucket_t *headers_bucket,
+    const char *header);
 
 
 /* ==================================================================== */
