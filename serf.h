@@ -421,22 +421,47 @@ struct serf_bucket_t {
 
 
 /**
- * Create a new allocator for buckets from an APR allocator.
+ * Notification callback for a block that was not returned to the bucket
+ * allocator when its pool was destroyed.
  *
- * All buckets are associated with a serf bucket allocator.
+ * The block of memory is given by @a block. The baton provided when the
+ * allocator was constructed is passed as @a unfreed_baton.
  */
-SERF_DECLARE(serf_bucket_alloc_t *) serf_bucket_allocator_create(
-    apr_allocator_t *allocator, apr_pool_t *pool);
+typedef void (*serf_unfreed_func_t)(void *unfreed_baton, void *block);
 
 /**
- * Destroy a bucket allocator.
+ * Create a new allocator for buckets.
  *
- * Buckets that have not been destroyed (and returned to the allocator)
- * will be unaffected.
+ * All buckets are associated with a serf bucket allocator. This allocator
+ * will be created within @a pool and will be destroyed when that pool is
+ * cleared or destroyed.
+ *
+ * When the allocator is destroyed, if any allocations were not explicitly
+ * returned (by calling serf_bucket_mem_free), then the @a unfreed callback
+ * will be invoked for each block. @a unfreed_baton will be passed to the
+ * callback.
+ *
+ * If @a unfreed is NULL, then the library will invoke the abort() stdlib
+ * call. Any failure to return memory is a bug in the application, and an
+ * abort can assist with determining what kinds of memory were not freed.
  */
-SERF_DECLARE(void) serf_bucket_allocator_destroy(
-    serf_bucket_alloc_t *allocator);
+SERF_DECLARE(serf_bucket_alloc_t *) serf_bucket_allocator_create(
+    apr_pool_t *pool,
+    serf_unfreed_func_t unfreed,
+    void *unfreed_baton);
 
+/**
+ * Return the pool that was used for this @a allcoator.
+ *
+ * WARNING: the use of this pool for allocations requires a very
+ *   detailed understanding of pool behaviors, the bucket system,
+ *   and knowledge of the bucket's use within the overall pattern
+ *   of request/response behavior.
+ *
+ * See design-guide.txt for more information about pool usage.
+ */
+SERF_DECLARE(apr_pool_t *) serf_bucket_allocator_get_pool(
+    const serf_bucket_alloc_t *allocator);
 
 /** @} */
 
