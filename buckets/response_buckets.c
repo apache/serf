@@ -103,9 +103,10 @@ static void serf_response_destroy_and_data(serf_bucket_t *bucket)
     serf_default_destroy_and_data(bucket);
 }
 
-static apr_status_t fetch_line(response_context_t *ctx,
-                               serf_bucket_t *stream)
+static apr_status_t fetch_line(response_context_t *ctx, int acceptable)
 {
+    serf_bucket_t *stream = ctx->stream;
+
     /* If we had a complete line, then assume the caller has used it, so
      * we can now reset the state.
      */
@@ -161,10 +162,7 @@ static apr_status_t fetch_line(response_context_t *ctx,
         else {
             int found;
 
-            /* RFC 2616 says that CRLF is the only line ending, but we
-             * can easily accept any kind of line ending.
-             */
-            status = serf_bucket_readline(stream, SERF_NEWLINE_ANY, &found,
+            status = serf_bucket_readline(stream, acceptable, &found,
                                           &data, &len);
             if (SERF_BUCKET_READ_ERROR(status)) {
                 return status;
@@ -256,7 +254,8 @@ static apr_status_t fetch_chunk_size(response_context_t *ctx)
 {
     apr_status_t status;
 
-    status = fetch_line(ctx, ctx->stream);
+    /* fetch a line terminated by CRLF */
+    status = fetch_line(ctx, SERF_NEWLINE_CRLF);
     if (SERF_BUCKET_READ_ERROR(status))
         return status;
 
@@ -283,7 +282,10 @@ static apr_status_t fetch_headers(serf_bucket_t *bkt, response_context_t *ctx)
 {
     apr_status_t status;
 
-    status = fetch_line(ctx, ctx->stream);
+    /* RFC 2616 says that CRLF is the only line ending, but we can easily
+     * accept any kind of line ending.
+     */
+    status = fetch_line(ctx, SERF_NEWLINE_ANY);
     if (SERF_BUCKET_READ_ERROR(status)) {
         return status;
     }
@@ -328,7 +330,10 @@ static apr_status_t run_machine(serf_bucket_t *bkt, response_context_t *ctx)
 
     switch (ctx->state) {
     case STATE_STATUS_LINE:
-        status = fetch_line(ctx, ctx->stream);
+        /* RFC 2616 says that CRLF is the only line ending, but we can easily
+         * accept any kind of line ending.
+         */
+        status = fetch_line(ctx, SERF_NEWLINE_ANY);
         if (SERF_BUCKET_READ_ERROR(status))
             return status;
 
