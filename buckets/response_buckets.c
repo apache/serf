@@ -123,16 +123,20 @@ static apr_status_t fetch_line(response_context_t *ctx,
              */
 
             status = serf_bucket_peek(bkt, &data, &len);
+            if (SERF_BUCKET_READ_ERROR(status))
+                return status;
+
             if (len > 0) {
                 if (*data == '\n') {
                     /* We saw the second part of CRLF. We don't need to
                      * save that character, so do an actual read to suck
                      * up that character.
                      */
+                    /* ### check status */
                     (void) serf_bucket_read(bkt, 1, &data, &len);
                 }
                 /* else:
-                 *   We got the first character of the next line. Thus,
+                 *   We saw the first character of the next line. Thus,
                  *   the current line is terminated by the CR. Just
                  *   ignore whatever we peeked at. The next reader will
                  *   see it and handle it as appropriate.
@@ -141,6 +145,7 @@ static apr_status_t fetch_line(response_context_t *ctx,
                 /* Whatever was read, the line is now ready for use. */
                 ctx->lstate = LINE_READY;
             }
+            /* ### we need data. gotta check this char. bail if zero?! */
             /* else len == 0 */
 
             /* ### status */
@@ -153,9 +158,7 @@ static apr_status_t fetch_line(response_context_t *ctx,
              */
             status = serf_bucket_readline(bkt, SERF_NEWLINE_ANY, &found,
                                           &data, &len);
-
-            /* Typically EAGAIN. */
-            if (status) {
+            if (SERF_BUCKET_READ_ERROR(status)) {
                 return status;
             }
             if (ctx->line_used + len > sizeof(ctx->line)) {

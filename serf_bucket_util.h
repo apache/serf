@@ -32,6 +32,15 @@ extern "C" {
 
 
 /**
+ * Check whether a real error occurred. Note that bucket read functions
+ * can return EOF and EAGAIN as part of their "normal" operation, so they
+ * should not be considered an error.
+ */
+#define SERF_BUCKET_READ_ERROR(status) ((status) \
+                                        && !APR_STATUS_IS_EOF(status) \
+                                        && !APR_STATUS_IS_EAGAIN(status))
+
+/**
  * Basic bucket creation function.
  *
  * This function will create a bucket of @a type, allocating the necessary

@@ -507,9 +507,18 @@ SERF_DECLARE(void) serf_databuf_init(serf_databuf_t *databuf)
     databuf->status = APR_SUCCESS;
 }
 
+/* Ensure the buffer is prepared for reading. Will return APR_SUCCESS,
+ * APR_EOF, or some failure code. *len is only set for EOF. */
 static apr_status_t common_databuf_prep(serf_databuf_t *databuf,
                                         apr_size_t *len)
 {
+    apr_size_t readlen;
+    apr_status_t status;
+
+    /* if there is data in the buffer, then we're happy. */
+    if (databuf->remaining > 0)
+        return APR_SUCCESS;
+
     /* if we already hit EOF, then keep returning that. */
     if (APR_STATUS_IS_EOF(databuf->status)) {
         /* *data = NULL;   ?? */
@@ -517,22 +526,16 @@ static apr_status_t common_databuf_prep(serf_databuf_t *databuf,
         return APR_EOF;
     }
 
-    /* we may need to refill the buffer */
-    if (databuf->remaining == 0) {
-        apr_size_t len;
-        apr_status_t status;
-
-        status = (*databuf->read)(databuf->read_baton, sizeof(databuf->buf),
-                                  databuf->buf, &len);
-        if (status
-            && !APR_STATUS_IS_EOF(status)) {
-            return status;
-        }
-
-        databuf->current = databuf->buf;
-        databuf->remaining = len;
-        databuf->status = status;
+    /* refill the buffer */
+    status = (*databuf->read)(databuf->read_baton, sizeof(databuf->buf),
+                              databuf->buf, &readlen);
+    if (SERF_BUCKET_READ_ERROR(status)) {
+        return status;
     }
+
+    databuf->current = databuf->buf;
+    databuf->remaining = readlen;
+    databuf->status = status;
 
     return APR_SUCCESS;
 }
