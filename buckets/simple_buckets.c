@@ -30,6 +30,11 @@ typedef struct {
 } simple_context_t;
 
 
+static void free_copied_data(void *baton, const char *data)
+{
+    serf_bucket_mem_free(baton, (char*)data);
+}
+
 SERF_DECLARE(serf_bucket_t *) serf_bucket_simple_create(
     const char *data, apr_size_t len,
     serf_simple_freefunc_t freefunc,
@@ -43,6 +48,24 @@ SERF_DECLARE(serf_bucket_t *) serf_bucket_simple_create(
     ctx->remaining = len;
     ctx->freefunc = freefunc;
     ctx->baton = freefunc_baton;
+
+    return serf_bucket_create(&serf_bucket_type_simple, allocator, ctx);
+}
+
+SERF_DECLARE(serf_bucket_t *) serf_bucket_simple_copy_create(
+    const char *data, apr_size_t len,
+    serf_bucket_alloc_t *allocator)
+{
+    simple_context_t *ctx;
+
+    ctx = serf_bucket_mem_alloc(allocator, sizeof(*ctx));
+
+    ctx->original = ctx->current = serf_bucket_mem_alloc(allocator, len);
+    memcpy((char*)ctx->original, data, len);
+
+    ctx->remaining = len;
+    ctx->freefunc = free_copied_data;
+    ctx->baton = allocator;
 
     return serf_bucket_create(&serf_bucket_type_simple, allocator, ctx);
 }

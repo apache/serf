@@ -147,6 +147,14 @@ SERF_DECLARE(serf_bucket_t *) serf_bucket_simple_create(
     void *freefunc_baton,
     serf_bucket_alloc_t *allocator);
 
+/**
+ * Equivalent to serf_bucket_simple_create, except that the bucket takes
+ * ownership of a private copy of the data.
+ */
+SERF_DECLARE(serf_bucket_t *) serf_bucket_simple_copy_create(
+    const char *data, apr_size_t len,
+    serf_bucket_alloc_t *allocator);
+
 #define SERF_BUCKET_SIMPLE_STRING(s,a) \
     serf_bucket_simple_create(s, strlen(s), NULL, NULL, a);
 

@@ -113,11 +113,6 @@ typedef struct {
 } ssl_context_t;
 
 
-static void free_read_data(void *baton, const char *data)
-{
-    serf_bucket_mem_free(baton, (char*)data);
-}
-
 /* Returns the amount read. */
 static int bio_bucket_read(BIO *bio, char *in, int inlen)
 {
@@ -156,19 +151,13 @@ static int bio_bucket_write(BIO *bio, const char *in, int inl)
 {
     serf_ssl_context_t *ctx = bio->ptr;
     serf_bucket_t *tmp;
-    char *data_copy;
 
 #ifdef SSL_VERBOSE
     printf("bio_bucket_write called for %d bytes\n", inl);
 #endif
     BIO_clear_retry_flags(bio);
 
-    data_copy = serf_bucket_mem_alloc(ctx->sink->allocator, inl);
-    memcpy(data_copy, in, inl);
-
-    tmp = serf_bucket_simple_create(data_copy, inl, free_read_data,
-                                    ctx->sink->allocator,
-                                    ctx->sink->allocator);
+    tmp = serf_bucket_simple_copy_create(in, inl, ctx->sink->allocator);
 
     serf_bucket_aggregate_append(ctx->sink, tmp);
 
@@ -319,20 +308,14 @@ static apr_status_t ssl_decrypt(void *baton, apr_size_t bufsize,
     if (!SERF_BUCKET_READ_ERROR(status) && priv_len) {
         apr_status_t agg_status;
         serf_bucket_t *tmp;
-        char *data_copy;
 
 #ifdef SSL_VERBOSE
         printf("ssl_decrypt: read %d bytes (%d); status: %d\n", priv_len,
                bufsize, status);
 #endif
 
-        data_copy =
-            serf_bucket_mem_alloc(ctx->ssl_ctx->source->allocator, priv_len);
-        memcpy(data_copy, data, priv_len);
-
-        tmp = serf_bucket_simple_create(data_copy, priv_len, free_read_data,
-                                        ctx->ssl_ctx->source->allocator,
-                                        ctx->ssl_ctx->source->allocator);
+        tmp = serf_bucket_simple_copy_create(data, priv_len,
+                                             ctx->ssl_ctx->source->allocator);
 
         serf_bucket_aggregate_append(ctx->ssl_ctx->source, tmp);
 
@@ -428,7 +411,6 @@ static apr_status_t ssl_encrypt(void *baton, apr_size_t bufsize,
         if (ssl_len == -1) {
             int ssl_err;
             serf_bucket_t *tmp;
-            char *data_copy;
 
             /* Ah, bugger. We need to put that data back. */
             if (!SERF_BUCKET_IS_AGGREGATE(ctx->stream)) {
@@ -437,13 +419,8 @@ static apr_status_t ssl_encrypt(void *baton, apr_size_t bufsize,
                 ctx->stream = tmp;
             }
 
-            data_copy =
-                serf_bucket_mem_alloc(ctx->stream->allocator, *len);
-            memcpy(data_copy, data, *len);
-
-            tmp = serf_bucket_simple_create(data_copy, *len, free_read_data,
-                                            ctx->stream->allocator,
-                                            ctx->stream->allocator);
+            tmp = serf_bucket_simple_copy_create(data, *len,
+                                                 ctx->stream->allocator);
 
             serf_bucket_aggregate_prepend(ctx->stream, tmp);
 
