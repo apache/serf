@@ -109,12 +109,12 @@ int main(int argc, const char **argv)
     serf_connection_t *connection;
     serf_request_t *request;
     serf_bucket_t *req_bkt;
+    serf_bucket_t *hdrs_bkt;
     accept_baton_t accept_ctx;
     handler_baton_t handler_ctx;
     apr_uri_t url;
     const char *raw_url;
     const char *req_file;
-    const char *resp_file;
 
     if (argc != 4) {
         printf("%s: [URL] [Req. File] [Resp. File]\n", argv[0]);
@@ -155,11 +155,11 @@ int main(int argc, const char **argv)
 
     req_bkt = serf_bucket_request_create("GET", url.path, NULL,
                                          serf_request_get_alloc(request));
+    hdrs_bkt = serf_bucket_request_get_headers(req_bkt);
 
     /* FIXME: Shouldn't we be able to figure out the host ourselves? */
-    serf_bucket_set_metadata(req_bkt, SERF_REQUEST_HEADERS, "Host",
-                             url.hostinfo);
-    serf_bucket_set_metadata(req_bkt, SERF_REQUEST_HEADERS, "User-Agent",
+    serf_bucket_headers_setn(hdrs_bkt, "Host", url.hostinfo);
+    serf_bucket_headers_setn(hdrs_bkt, "User-Agent",
                              "Serf/" SERF_VERSION_STRING);
 
     handler_ctx.requests_outstanding = 0;
@@ -182,86 +182,6 @@ int main(int argc, const char **argv)
     }
 
     apr_pool_destroy(pool);
-#if 0
-    status = serf_open_uri(url, &connection, &request, pool);
-
-    if (status) {
-        printf("Error opening uri: %d\n", status);
-        exit(1);
-    }
-
-    request->source = http_source;
-    request->handler = http_handler;
-
-    request->method = "GET";
-    request->uri = url;
-
-    /* FIXME: Get serf to install an endpoint which has access to the conn. */
-    if (using_ssl) {
-        filter = serf_add_filter(connection->request_filters, 
-                                 "SSL_WRITE", pool);
-        filter->ctx = connection;
-
-        filter = serf_add_filter(connection->response_filters, 
-                                 "SSL_READ", pool);
-        filter->ctx = connection;
-    }
-    else {
-        filter = serf_add_filter(connection->request_filters, 
-                                 "SOCKET_WRITE",
-                                 pool);
-        filter->ctx = connection;
-
-        filter = serf_add_filter(connection->response_filters, 
-                                 "SOCKET_READ", pool);
-        filter->ctx = connection;
-    }
-#if SERF_GET_DEBUG
-    filter = serf_add_filter(connection->request_filters, "DEBUG_REQUEST", pool);
-#endif
-
-    filter = serf_add_filter(request->request_filters, "USER_AGENT", pool);
-    filter = serf_add_filter(request->request_filters, "HOST_HEADER", pool);
-    filter->ctx = request;
-    filter = serf_add_filter(request->request_filters, "DEFLATE_SEND_HEADER",
-                             pool);
-    filter = serf_add_filter(request->request_filters, "HTTP_HEADERS_OUT",
-                             pool);
-
-    /* Now add the response filters. */
-    filter = serf_add_filter(request->response_filters, "HTTP_STATUS_IN",
-                             pool);
-    filter = serf_add_filter(request->response_filters, "HTTP_HEADERS_IN",
-                             pool);
-    filter = serf_add_filter(request->response_filters, "HTTP_DECHUNK",
-                             pool);
-    filter = serf_add_filter(request->response_filters, "DEFLATE_READ",
-                             pool);
-#if SERF_GET_DEBUG
-    filter = serf_add_filter(request->response_filters, "DEBUG_RESPONSE",
-                             pool);
-#endif
-
-    status = serf_open_connection(connection);
-    if (status) {
-        printf("Error opening connection: %d\n", status);
-        exit(1);
-    }
-
-    status = serf_write_request(request, connection);
-
-    if (status) {
-        printf("Error writing request: %d\n", status);
-        exit(1);
-    }
-
-    status = serf_read_response(&response, connection, pool);
-
-    if (status) {
-        printf("Error reading response: %d\n", status);
-        exit(1);
-    }
-#endif /* 0 */
 
     return 0;
 }
