@@ -49,6 +49,7 @@
  */
 
 #include <apr_pools.h>
+#include <apr_strings.h>
 
 #include "serf.h"
 #include "serf_bucket_util.h"
@@ -58,7 +59,6 @@ typedef struct {
     const char *method;
     const char *uri;
     serf_bucket_t *body;
-    serf_request_state_t state;
 } request_context_t;
 
 
@@ -74,7 +74,6 @@ SERF_DECLARE(serf_bucket_t *) serf_bucket_request_create(
     ctx->method = method;
     ctx->uri = uri;
     ctx->body = body;
-    ctx->state = UNREAD;
 
     return serf_bucket_create(&serf_bucket_type_request, allocator, ctx);
 }
@@ -155,8 +154,10 @@ SERF_DECLARE_DATA const serf_bucket_type_t serf_bucket_type_request = {
     "REQUEST",
     serf_request_read,
     serf_request_readline,
-    serf_request_peek,
+    serf_default_read_iovec,
+    serf_default_read_for_sendfile,
     serf_default_read_bucket,
+    serf_request_peek,
     serf_default_get_metadata,
     serf_default_set_metadata,
     serf_default_destroy,

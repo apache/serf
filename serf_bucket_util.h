@@ -104,6 +104,33 @@ SERF_DECLARE(apr_status_t) serf_default_get_metadata(serf_bucket_t *bucket,
                                                      const void **md_value);
 
 /**
+ * Default implementation of the @see read_iovec functionality.
+ *
+ * This function will use the @see read function to get a block of memory,
+ * then return it in the iovec.
+ */
+SERF_DECLARE(apr_status_t) serf_default_read_iovec(
+    serf_bucket_t *bucket,
+    apr_size_t requested,
+    int vecs_size,
+    struct iovec *vecs,
+    int *vecs_used);
+
+/**
+ * Default implementation of the @see read_for_sendfile functionality.
+ *
+ * This function will use the @see read function to get a block of memory,
+ * then return it as a header. No file will be returned.
+ */
+SERF_DECLARE(apr_status_t) serf_default_read_for_sendfile(
+    serf_bucket_t *bucket,
+    apr_size_t requested,
+    apr_hdtr_t *hdtr,
+    apr_file_t **file,
+    apr_off_t *offset,
+    apr_size_t *len);
+
+/**
  * Default implementation of the @see read_bucket functionality.
  *
  * This function will always return NULL, indicating that the @a type

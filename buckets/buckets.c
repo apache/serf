@@ -151,7 +151,7 @@ SERF_DECLARE(apr_status_t) serf_default_set_metadata(serf_bucket_t *bucket,
         }
 
         /* Create the metadata container. */
-        bucket->metadata = serf_bucket_mem_alloc(allocator,
+        bucket->metadata = serf_bucket_mem_alloc(bucket->allocator,
                                                  sizeof(*bucket->metadata));
 
         /* ### pool usage! */
@@ -205,6 +205,50 @@ SERF_DECLARE(apr_status_t) serf_default_get_metadata(serf_bucket_t *bucket,
     }
 
     return APR_SUCCESS;
+}
+
+SERF_DECLARE(apr_status_t) serf_default_read_iovec(
+    serf_bucket_t *bucket,
+    apr_size_t requested,
+    int vecs_size,
+    struct iovec *vecs,
+    int *vecs_used)
+{
+    const char *data;
+    apr_size_t len;
+
+    /* Read some data from the bucket. */
+    apr_status_t status = serf_bucket_read(bucket, requested, &data, &len);
+
+    /* assert that vecs_size >= 1 ? */
+
+    /* Return that data as a single iovec. */
+    vecs[0].iov_base = (void *)data; /* loses the 'const' */
+    vecs[0].iov_len = len;
+    *vecs_used = 1;
+
+    return status;
+}
+
+SERF_DECLARE(apr_status_t) serf_default_read_for_sendfile(
+    serf_bucket_t *bucket,
+    apr_size_t requested,
+    apr_hdtr_t *hdtr,
+    apr_file_t **file,
+    apr_off_t *offset,
+    apr_size_t *len)
+{
+    /* Read a bunch of stuff into the headers. */
+    apr_status_t status = serf_bucket_read_iovec(bucket, requested,
+                                                 hdtr->numheaders,
+                                                 hdtr->headers,
+                                                 &hdtr->numheaders);
+
+    /* There isn't a file, and there are no trailers. */
+    *file = NULL;
+    hdtr->numtrailers = 0;
+
+    return status;
 }
 
 SERF_DECLARE(serf_bucket_t *) serf_default_read_bucket(

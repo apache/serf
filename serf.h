@@ -148,7 +148,7 @@ SERF_DECLARE(apr_status_t) serf_context_run(serf_context_t *ctx,
  * All temporary allocations should be made in @a tmppool.
  */
 typedef serf_bucket_t * (*serf_response_acceptor_t)(serf_connection_t *conn,
-                                                    apr_socket_t *socket,
+                                                    apr_socket_t *skt,
                                                     void *acceptor_baton,
                                                     apr_pool_t *respool,
                                                     apr_pool_t *tmppool);
@@ -271,7 +271,7 @@ SERF_DECLARE(apr_status_t) serf_connection_request_cancel(
  * @{
  */
 
-/** Pass as REQUESTED to the read() bucket function to read, consume,
+/** Pass as REQUESTED to the read function of a bucket to read, consume,
  * and return all available data.
  */
 #define SERF_READ_ALL_AVAIL ((apr_size_t)-1)
@@ -301,7 +301,7 @@ struct serf_bucket_type_t {
      * The data will exist until one of two conditions occur:
      *
      * 1) this bucket is destroyed
-     * 2) another call to read(), peek(), or read_bucket() is performed.
+     * 2) another call to any read function or to peek()
      *
      * If an application needs the data to exist for a longer duration,
      * then it must make a copy.
@@ -319,6 +319,9 @@ struct serf_bucket_type_t {
      * A pointer to the data is returned in @a data, and its length is
      * specified by @a len. The data will include the newline, if present.
      *
+     * Note that there is no way to limit the amount of data returned
+     * by this function.
+     *
      * The lifetime of the data is the same as that of the @see read
      * function above.
      */
@@ -327,16 +330,53 @@ struct serf_bucket_type_t {
                              const char **data, apr_size_t *len);
 
     /**
-     * Peek, but don't consume, the data in @a bucket.
+     * Read a set of pointer/length pairs from the bucket.
      *
-     * The @a data and @a len parameters, and the data they point to, are
-     * handled the same as the @see read function above.
+     * The size of the @a vecs array is specified by @a vecs_size. The
+     * bucket should fill in elements of the array, and return the number
+     * used in @a vecs_used.
      *
-     * Note: if the peek does not return enough data for your particular
-     * use, then you must read/consume some first, then peek again.
+     * Each element of @a vecs should specify a pointer to a block of
+     * data and a length of that data.
+     *
+     * The total length of all data elements should not exceed the
+     * amount specified in @a requested.
+     *
+     * The lifetime of the data is the same as that of the @see read
+     * function above.
      */
-    apr_status_t (*peek)(serf_bucket_t *bucket,
-                         const char **data, apr_size_t *len);
+    apr_status_t (*read_iovec)(serf_bucket_t *bucket, apr_size_t requested,
+                               int vecs_size, struct iovec *vecs,
+                               int *vecs_used);
+
+    /**
+     * Read data from the bucket in a form suitable for apr_socket_sendfile()
+     *
+     * On input, hdtr->numheaders and hdtr->numtrailers specify the size
+     * of the hdtr->headers and hdtr->trailers arrays, respectively. The
+     * bucket should fill in the headers and trailers, up to the specified
+     * limits, and set numheaders and numtrailers to the number of iovecs
+     * filled in for each item.
+     *
+     * @a file should be filled in with a file that can be read. If a file
+     * is not available or appropriate, then NULL should be stored. The
+     * file offset for the data should be stored in @a offset, and the
+     * length of that data should be stored in @a len. If a file is not
+     * returned, then @a offset and @a len should be ignored.
+     *
+     * The file position is not required to correspond to @a offset, and
+     * the caller may manipulate it at will.
+     *
+     * The total length of all data elements, and the portion of the
+     * file should not exceed the amount specified in @a requested.
+     *
+     * The lifetime of the data is the same as that of the @see read
+     * function above.
+     */
+    apr_status_t (*read_for_sendfile)(serf_bucket_t *bucket,
+                                      apr_size_t requested, apr_hdtr_t *hdtr,
+                                      apr_file_t **file, apr_off_t *offset,
+                                      apr_size_t *len);
 
     /**
      * Look within @a bucket for a bucket of the given @a type. The bucket
@@ -352,6 +392,18 @@ struct serf_bucket_type_t {
      */
     serf_bucket_t * (*read_bucket)(serf_bucket_t *bucket,
                                    const serf_bucket_type_t *type);
+
+    /**
+     * Peek, but don't consume, the data in @a bucket.
+     *
+     * The @a data and @a len parameters, and the data they point to, are
+     * handled the same as the @see read function above.
+     *
+     * Note: if the peek does not return enough data for your particular
+     * use, then you must read/consume some first, then peek again.
+     */
+    apr_status_t (*peek)(serf_bucket_t *bucket,
+                         const char **data, apr_size_t *len);
 
     /**
      * Look up and return a piece of metadata from @a bucket.
@@ -391,8 +443,11 @@ struct serf_bucket_type_t {
 
 #define serf_bucket_read(b,r,d,l) ((b)->type->read(b,r,d,l))
 #define serf_bucket_readline(b,a,f,d,l) ((b)->type->readline(b,a,f,d,l))
-#define serf_bucket_peek(b,d,l) ((b)->type->peek(b,d,l))
+#define serf_bucket_read_iovec(b,r,s,v,u) ((b)->type->read_iovec(b,r,s,v,u))
+#define serf_bucket_read_for_sendfile(b,r,h,f,o,l) \
+    ((b)->type->read_for_sendfile(b,r,h,f,o,l))
 #define serf_bucket_read_bucket(b,t) ((b)->type->read_bucket(b,t))
+#define serf_bucket_peek(b,d,l) ((b)->type->peek(b,d,l))
 #define serf_bucket_get_metadata(b,t,n,v) ((b)->type->get_metadata(b,t,n,v))
 #define serf_bucket_set_metadata(b,t,n,v) ((b)->type->set_metadata(b,t,n,v))
 #define serf_bucket_destroy(b) ((b)->type->destroy(b))
