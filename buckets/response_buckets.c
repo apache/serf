@@ -33,7 +33,9 @@ typedef struct {
     enum {
         STATE_STATUS_LINE,      /* reading status line */
         STATE_HEADERS,          /* reading headers */
-        STATE_BODY              /* reading body */
+        STATE_BODY,             /* reading body */
+        STATE_TRAILERS,         /* reading trailers */
+        STATE_DONE              /* we've sent EOF */
     } state;
 
     enum {
@@ -217,6 +219,62 @@ static apr_status_t fetch_line(response_context_t *ctx,
     /* NOTREACHED */
 }
 
+/* This code should be replaced by a chunk bucket. */
+static apr_status_t fetch_chunk_size(response_context_t *ctx)
+{
+    apr_status_t status;
+
+    do {
+        status = fetch_line(ctx, ctx->stream);
+        if (SERF_BUCKET_READ_ERROR(status)) {
+            return status;
+        }
+    }
+    while (ctx->lstate != LINE_READY || !ctx->line_used);
+
+    ctx->line[ctx->line_used] = '\0';
+    ctx->body_left = apr_strtoi64(ctx->line, NULL, 10);
+    if (errno == ERANGE) {
+        return errno;
+    }
+
+    return APR_SUCCESS;
+}
+
+/* This code should be replaced with header buckets. */
+static apr_status_t fetch_headers(serf_bucket_t *bkt, response_context_t *ctx)
+{
+    apr_status_t status;
+    status = fetch_line(ctx, ctx->stream);
+    if (SERF_BUCKET_READ_ERROR(status)) {
+        return status;
+    }
+
+    if (ctx->lstate == LINE_READY && ctx->line_used) {
+        const char *end_key, *c;
+        char *k, *v;
+
+        end_key = c = memchr(ctx->line, ':', ctx->line_used);
+        if (!c) {
+            /* Bad headers? */
+            return APR_EGENERAL;
+        }
+
+        /* Skip over initial : and spaces. */
+        while (apr_isspace(*++c));
+
+        k = serf_bstrmemdup(bkt->allocator, ctx->line,
+                            end_key - ctx->line);
+        v = serf_bstrmemdup(bkt->allocator, c,
+                            ctx->line + ctx->line_used - c);
+
+        serf_bucket_set_metadata(bkt, SERF_RESPONSE_HEADERS,
+                                 k, v);
+    }
+
+    return APR_SUCCESS;
+}
+
 static apr_status_t run_machine(serf_bucket_t *bkt, response_context_t *ctx)
 {
     apr_status_t status = APR_SUCCESS; /* initialize to avoid gcc warnings */
@@ -230,31 +288,7 @@ static apr_status_t run_machine(serf_bucket_t *bkt, response_context_t *ctx)
         break;
     case STATE_HEADERS:
         do {
-            status = fetch_line(ctx, ctx->stream);
-            if (status) {
-                return status;
-            }
-            if (ctx->lstate == LINE_READY && ctx->line_used) {
-                const char *end_key, *c;
-                char *k, *v;
-
-                end_key = c = memchr(ctx->line, ':', ctx->line_used);
-                if (!c) {
-                    /* Bad headers? */
-                    return APR_EGENERAL;
-                }
-
-                /* Skip over initial : and spaces. */
-                while (apr_isspace(*++c));
-
-                k = serf_bstrmemdup(bkt->allocator, ctx->line,
-                                    end_key - ctx->line);
-                v = serf_bstrmemdup(bkt->allocator, c,
-                                    ctx->line + ctx->line_used - c);
-
-                serf_bucket_set_metadata(bkt, SERF_RESPONSE_HEADERS,
-                                         k, v);
-            }
+            status = fetch_headers(bkt, ctx);
         }
         while (!status && ctx->line_used);
         if (!status) {
@@ -268,6 +302,15 @@ static apr_status_t run_machine(serf_bucket_t *bkt, response_context_t *ctx)
                 ctx->body_left = apr_strtoi64(v, NULL, 10);
                 if (errno == ERANGE) {
                     return errno;
+                }
+            }
+            else {
+                serf_bucket_get_metadata(bkt, SERF_RESPONSE_HEADERS,
+                                         "Transfer-Encoding", &v);
+                /* Need to handle multiple transfer-encoding. */
+                if (v && strcasecmp("chunked", v) == 0) {
+                    ctx->chunked = 1;
+                    ctx->body_left = 0;
                 }
             }
             ctx->state = STATE_BODY;
@@ -290,7 +333,7 @@ static apr_status_t wait_for_sline(serf_bucket_t *bkt, response_context_t *ctx)
      */
     while (ctx->state == STATE_STATUS_LINE) {
         apr_status_t status = run_machine(bkt, ctx);
-        if (status) {
+        if (SERF_BUCKET_READ_ERROR(status)) {
             /* we stop at anything.  Most likely, it'll be EAGAIN. */
             return status;
         }
@@ -301,14 +344,45 @@ static apr_status_t wait_for_sline(serf_bucket_t *bkt, response_context_t *ctx)
 
 static apr_status_t wait_for_body(serf_bucket_t *bkt, response_context_t *ctx)
 {
+    apr_status_t status;
+
+    if (ctx->state == STATE_DONE) {
+        return APR_EOF;
+    }
+
+    if (ctx->state == STATE_TRAILERS) {
+        do {
+            status = fetch_headers(bkt, ctx);
+        }
+        while (!status && ctx->line_used);
+
+        /* We're done. */
+        if (status == APR_SUCCESS) {
+            ctx->state = STATE_DONE;
+        }
+
+        return status;
+    }
+
     /* Keep looping while we're still working on the Status-Line and we
      * don't have any issues reading from the input stream.
      */
     while (ctx->state != STATE_BODY) {
-        apr_status_t status = run_machine(bkt, ctx);
-        if (status) {
-            /* we stop at anything.  Most likely, it'll be EAGAIN. */
+        status = run_machine(bkt, ctx);
+        if (SERF_BUCKET_READ_ERROR(status)) {
             return status;
+        }
+    }
+
+    if (ctx->chunked && !ctx->body_left) {
+        status = fetch_chunk_size(ctx);
+        if (SERF_BUCKET_READ_ERROR(status)) {
+            return status;
+        }
+
+        /* Did we just get our zero terminating chunk? */
+        if (!ctx->body_left) {
+            ctx->state = STATE_TRAILERS;
         }
     }
 
@@ -374,7 +448,7 @@ static apr_status_t serf_response_read(serf_bucket_t *bucket,
     rv = serf_bucket_read(ctx->stream, requested, data, len);
     if (!rv) {
         ctx->body_left -= *len;
-        if (!ctx->body_left) {
+        if (!ctx->body_left && !ctx->chunked) {
             rv = APR_EOF;
         }
     }
