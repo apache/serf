@@ -1,0 +1,27 @@
+[ for now, rough notes for a roadmap of features. eventually, this
+  should be a full/polished document with the design roadmap ]
+
+-------------------------------------------------------------------------
+Ian Holsman <ianh@apache.org>
+
+Here's are some of the things I would find usefull:
+
+* Simple 'GET/Post/Head' function just does it and returns
+   the contents in a bucket-brigade
+
+* Async version of above.. (like LWP::Parallel) I just push
+   GET requests and it notifies me when there is an event for
+   one of them.
+
+* filters used for 'serf' as similiar in syntax/use to HTTPD
+
+* HTTP/1.1 Support
+
+* SSL Support
+
+* Connection Pooling per server (ie we keep a max of n open connections
+   to a server and we re-use these on different requests)
+
+* send requests to a server from a list of servers/ports (via round-robin)
+
+-------------------------------------------------------------------------
