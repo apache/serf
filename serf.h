@@ -327,6 +327,12 @@ SERF_DECLARE(serf_bucket_alloc_t *) serf_request_get_alloc(
 /* ### should we make this zero? */
 #define SERF_NEWLINE_NONE  0x0008
 
+/** Used to indicate that a CR was found at the end of a buffer, and CRLF
+ * was acceptable. It may be that the LF is present, but it needs to be
+ * read first.
+ */
+#define SERF_NEWLINE_CRLF_SPLIT 0x0010
+
 
 struct serf_bucket_type_t {
 

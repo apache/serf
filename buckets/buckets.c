@@ -415,7 +415,7 @@ SERF_DECLARE(void) serf_bucket_mem_free(
 /* ==================================================================== */
 
 
-void find_crlf(const char **data, apr_size_t *len, int *found)
+static void find_crlf(const char **data, apr_size_t *len, int *found)
 {
     const char *start = *data;
     const char *end = start + *len;
@@ -434,7 +434,7 @@ void find_crlf(const char **data, apr_size_t *len, int *found)
             return;
         }
 
-        *len -= cr + 1 - start
+        *len -= cr + 1 - start;
         start = cr + 1;
     }
 
@@ -486,7 +486,7 @@ SERF_DECLARE(void) serf_util_readline(const char **data, apr_size_t *len,
              * a CRLF split across the data boundary.
              * ### FIX THIS LOGIC? does caller need to detect?
              */
-            *found = SERF_NEWLINE_CR;
+            *found = want_crlf ? SERF_NEWLINE_CRLF_SPLIT : SERF_NEWLINE_CR;
         }
         else if (want_cr)
             *found = SERF_NEWLINE_CR;

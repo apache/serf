@@ -166,6 +166,10 @@ SERF_DECLARE(void) serf_bucket_mem_free(
     void *block);
 
 
+SERF_DECLARE(void) serf_util_readline(const char **data, apr_size_t *len,
+                                      int acceptable, int *found);
+
+
 #ifdef __cplusplus
 }
 #endif
