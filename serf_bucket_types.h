@@ -96,16 +96,19 @@ SERF_DECLARE(serf_bucket_t *) serf_bucket_response_create(
     serf_bucket_t *stream,
     serf_bucket_alloc_t *allocator);
 
-/* ### hmm. these need to return APR_EAGAIN somehow. maybe 0 for the
-   ### integer functions and NULL for the reason? hmm. should probably
-   ### switch to apr_status_t so that we can return *any* network-related
-   ### error. (or parsing error or whatever)
-*/
-SERF_DECLARE(int) serf_bucket_response_status(serf_bucket_t *bkt);
+#define SERF_HTTP_VERSION(major, minor)  ((major) * 1000 + (minor))
+#define SERF_HTTP_11 SERF_HTTP_VERSION(1, 1)
+#define SERF_HTTP_10 SERF_HTTP_VERSION(1, 0)
 
-SERF_DECLARE(const char *) serf_bucket_response_reason(serf_bucket_t *bkt);
+typedef struct {
+    int version;
+    int code;
+    const char *reason;
+} serf_status_line;
 
-SERF_DECLARE(int) serf_bucket_response_protocol(serf_bucket_t *bkt);
+SERF_DECLARE(apr_status_t) serf_bucket_response_status(
+    serf_bucket_t *bkt,
+    serf_status_line *sline);
 
 
 /* ==================================================================== */
