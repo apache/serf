@@ -271,6 +271,10 @@ static serf_bucket_t* accept_response(serf_request_t *request,
     return serf_bucket_response_create(c, bkt_alloc);
 }
 
+typedef struct {
+    apr_uint32_t requests_outstanding;
+} handler_baton_t;
+
 static apr_status_t handle_response(serf_bucket_t *response,
                                     void *handler_baton,
                                     apr_pool_t *pool)
@@ -280,6 +284,7 @@ static apr_status_t handle_response(serf_bucket_t *response,
     apr_size_t len;
     serf_status_line sl;
     apr_status_t status;
+    handler_baton_t *ctx = handler_baton;
 
     status = serf_bucket_response_status(response, &sl);
     if (status) {
@@ -298,6 +303,9 @@ static apr_status_t handle_response(serf_bucket_t *response,
     else if (APR_STATUS_IS_EAGAIN(status)) {
         status = APR_SUCCESS;
     }
+    if (APR_STATUS_IS_EOF(status)) {
+        apr_atomic_dec32(&ctx->requests_outstanding);
+    }
 
     return status;
 }
@@ -311,6 +319,7 @@ int main(int argc, const char **argv)
     serf_connection_t *connection;
     serf_request_t *request;
     serf_bucket_t *req_bkt;
+    handler_baton_t handler_ctx;
 #if 0
     serf_filter_t *filter;
 #endif /* 0 */
@@ -330,6 +339,7 @@ int main(int argc, const char **argv)
     atexit(apr_terminate);
 
     apr_pool_create(&pool, NULL);
+    apr_atomic_init(pool);
     /* serf_initialize(); */
 
 #if 0
@@ -393,9 +403,11 @@ int main(int argc, const char **argv)
     serf_bucket_set_metadata(req_bkt, SERF_REQUEST_HEADERS, "User-Agent",
                              "Serf/" SERF_VERSION_STRING);
 
+    handler_ctx.requests_outstanding = 0;
+    apr_atomic_inc32(&handler_ctx.requests_outstanding);
     serf_request_deliver(request, req_bkt,
                          accept_response, NULL,
-                         handle_response, NULL);
+                         handle_response, &handler_ctx);
 
     while (1) {
         status = serf_context_run(context, SERF_DURATION_FOREVER, pool);
@@ -405,8 +417,12 @@ int main(int argc, const char **argv)
             printf("Error running context: %d\n", status);
             exit(1);
         }
+        if (!apr_atomic_read32(&handler_ctx.requests_outstanding)) {
+            break;
+        }
     }
 
+    apr_pool_destroy(pool);
 #if 0
     status = serf_open_uri(url, &connection, &request, pool);
 
