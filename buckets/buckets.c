@@ -486,10 +486,20 @@ SERF_DECLARE(void) serf_util_readline(const char **data, apr_size_t *len,
     else
         *found = SERF_NEWLINE_NONE;
 
-    if (*found == SERF_NEWLINE_LF)
+    switch (*found) {
+      case SERF_NEWLINE_LF:
         *data = lf + 1;
-    else
+        break;
+      case SERF_NEWLINE_CR:
+      case SERF_NEWLINE_CRLF:
+      case SERF_NEWLINE_CRLF_SPLIT:
         *data = cr + 1 + (*found == SERF_NEWLINE_CRLF);
+        break;
+      case SERF_NEWLINE_NONE:
+        break;
+      default:
+        abort();
+    }
 
     *len -= *data - start;
 }
