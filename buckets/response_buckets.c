@@ -311,7 +311,7 @@ SERF_DECLARE(apr_status_t) serf_bucket_response_status(
      * it is quite possible to advance *and* to return APR_EAGAIN.
      */
     status = run_machine(bkt, ctx);
-    if (ctx->state == STATE_STATUS_LINE) {
+    if (ctx->state == STATE_HEADERS) {
         *sline = ctx->sl;
     }
     else {

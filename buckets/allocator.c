@@ -360,6 +360,7 @@ SERF_DECLARE(void) serf_debug__closed_conn(serf_bucket_alloc_t *allocator)
 
     /* Just reset the number used so that we don't examine the info[] */
     allocator->track->num_used = 0;
+    allocator->track->cur_index = 0;
 
 #endif
 }
@@ -378,6 +379,10 @@ SERF_DECLARE(void) serf_debug__bucket_destroy(serf_bucket_t *bucket)
          * open, they are not read to completion.
          */
         if (SERF_BUCKET_IS_SOCKET(bucket))
+            return;
+
+        /* Ditto for SSL Decrypt buckets. */
+        if (SERF_BUCKET_IS_SSL_DECRYPT(bucket))
             return;
 
         abort();

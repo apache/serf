@@ -99,6 +99,7 @@ SERF_DECLARE(void) serf_bucket_aggregate_append(
     new_list = serf_bucket_mem_alloc(aggregate_bucket->allocator,
                                      sizeof(*new_list));
     new_list->bucket = append_bucket;
+    new_list->next = NULL;
 
     /* If we use APR_RING, this is trivial.  So, wait. 
     new_list->next = ctx->list;
