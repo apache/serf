@@ -63,14 +63,12 @@
 #include <apr_uri.h>
 
 #include "serf_config.h"
+#include "serf_declare.h"
 #include "serf_buckets.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
-
-/* ### improve this stuff some */
-#define SERF_DECLARE(type) type
 
 /* Forward declare some structures */
 typedef struct serf_filter_type_t serf_filter_type_t;
