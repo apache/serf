@@ -145,8 +145,13 @@ SERF_DECLARE(apr_status_t) serf_context_run(serf_context_t *ctx,
  * of memory stored in this pool -- to ensure that allocations are not
  * proportional to the amount of data in the response.
  *
+ * Responsibility for the bucket is passed to the serf library. It will be
+ * destroyed when the response has been fully read (the bucket returns an
+ * APR_EOF status from its read functions).
+ *
  * All temporary allocations should be made in @a tmppool.
  */
+/* ### do we need to return an error? */
 typedef serf_bucket_t * (*serf_response_acceptor_t)(serf_connection_t *conn,
                                                     apr_socket_t *skt,
                                                     void *acceptor_baton,
@@ -178,8 +183,14 @@ typedef void (*serf_connection_closed_t)(serf_connection_t *conn,
  * bucket. The @a handler_baton is passed along from the baton provided to
  * the creation of this response's associated request.
  *
- * The handler should process data from the @a response bucket until the
+ * The handler MUST process data from the @a response bucket until the
  * bucket's read function states it would block (see APR_STATUS_IS_EAGAIN).
+ * The handler is invoked only when new data arrives. If no further data
+ * arrives, and the handler does not process all available data, then the
+ * system can result in a deadlock around the unprocessed, but read, data.
+ *
+ * The handler should return APR_EOF when the response has been fully read.
+ * APR_EAGAIN should not be returned; simply return APR_SUCCESS.
  *
  * Note: if the connection closed (at the request of the application, or
  * because of an (abnormal) termination) while a request is being delivered,
@@ -199,7 +210,8 @@ typedef apr_status_t (*serf_response_handler_t)(serf_bucket_t *response,
  * Create a new connection associated with the @a ctx serf context.
  *
  * A connection will be created to (eventually) connect to the address
- * specified by @a address.
+ * specified by @a address. The address must live at least as long as
+ * @a pool (thus, as long as the connection object).
  *
  * The connection object will be allocated within @a pool. Clearing or
  * destroying this pool will close the connection, and terminate any
@@ -228,6 +240,9 @@ SERF_DECLARE(serf_connection_t *) serf_connection_create(
  * arrives, the @a acceptor callback will be invoked (along with the
  * @a acceptor_baton) to produce a response bucket. That bucket will then
  * be passed to @a handler, along with the @a handler_baton.
+ *
+ * The responsibility for the request bucket is passed to the connection
+ * object. When the connection is done with the bucket, it will be destroyed.
  *
  * All temporary allocations will be made in @a pool.
  */
