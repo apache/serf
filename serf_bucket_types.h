@@ -81,6 +81,8 @@ SERF_DECLARE(serf_bucket_t *) serf_bucket_request_create(
     serf_bucket_t *body,
     serf_bucket_alloc_t *allocator);
 
+/* Metadata key for get/set_metadata */
+#define SERF_REQUEST_HEADERS "REQUESTHEADERS"
 
 /* ==================================================================== */
 

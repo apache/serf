@@ -58,6 +58,7 @@
 
 #include <apr.h>
 #include <apr_errno.h>
+#include <apr_allocator.h>
 #include <apr_pools.h>
 
 #include "serf_declare.h"
@@ -93,6 +94,13 @@ typedef struct serf_connection_t serf_connection_t;
  */
 SERF_DECLARE(serf_context_t *) serf_context_create(apr_pool_t *pool);
 
+/**
+ * Create a new allocator for buckets from an APR allocator.
+ *
+ * All buckets are associated with a serf bucket allocator.
+ */
+SERF_DECLARE(serf_bucket_alloc_t *) serf_bucket_allocator_create(
+    apr_allocator_t *allocator, apr_pool_t *pool);
 
 /** @see serf_context_run should not block at all. */
 #define SERF_DURATION_NOBLOCK 0

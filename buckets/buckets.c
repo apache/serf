@@ -55,8 +55,12 @@
 
 struct serf_bucket_alloc_t {
     apr_allocator_t *allocator;
+    apr_pool_t *pool;
 };
 
+struct serf_metadata_t {
+    apr_hash_t *hash;
+};
 
 SERF_DECLARE(serf_bucket_t *) serf_bucket_create(
     serf_bucket_type_t *type,
@@ -67,7 +71,8 @@ SERF_DECLARE(serf_bucket_t *) serf_bucket_create(
 
     bkt->type = type;
     bkt->data = data;
-    bkt->metadata = NULL;
+    bkt->metadata = serf_bucket_mem_alloc(allocator, sizeof(*bkt->metadata));
+    bkt->metadata->hash = NULL;
     bkt->allocator = allocator;
 
     return bkt;
@@ -78,7 +83,27 @@ SERF_DECLARE(apr_status_t) serf_default_set_metadata(serf_bucket_t *bucket,
                                                      const char *md_name,
                                                      const void *md_value)
 {
-    return APR_ENOTIMPL;
+    apr_hash_t *md_hash;
+
+    md_hash = NULL;
+
+    if (!bucket->metadata->hash) {
+        bucket->metadata->hash = apr_hash_make(bucket->allocator->pool);
+    }
+    else {
+        md_hash = apr_hash_get(bucket->metadata->hash, md_type,
+                               APR_HASH_KEY_STRING);
+    }
+
+    if (!md_hash) {
+        md_hash = apr_hash_make(bucket->allocator->pool);
+        apr_hash_set(bucket->metadata->hash, md_type, APR_HASH_KEY_STRING,
+                     md_hash);
+    }
+
+    apr_hash_set(md_hash, md_name, APR_HASH_KEY_STRING, md_value);
+
+    return APR_SUCCESS;
 }
 
 
@@ -87,7 +112,21 @@ SERF_DECLARE(apr_status_t) serf_default_get_metadata(serf_bucket_t *bucket,
                                                      const char *md_name,
                                                      const void **md_value)
 {
-    return APR_ENOTIMPL;
+    /* Initialize return value to not being found. */
+    *md_value = NULL;
+
+    if (bucket->metadata->hash) {
+        apr_hash_t *md_hash;
+
+        md_hash = apr_hash_get(bucket->metadata->hash, md_type,
+                               APR_HASH_KEY_STRING);
+
+        if (md_hash) {
+            *md_value = apr_hash_get(md_hash, md_name, APR_HASH_KEY_STRING);
+        }
+    }
+
+    return APR_SUCCESS;
 }
 
 SERF_DECLARE(serf_bucket_t *) serf_default_read_bucket(
@@ -99,6 +138,7 @@ SERF_DECLARE(serf_bucket_t *) serf_default_read_bucket(
 
 SERF_DECLARE(void) serf_default_destroy(serf_bucket_t *bucket)
 {
+    serf_bucket_mem_free(bucket->allocator, bucket->metadata);
     serf_bucket_mem_free(bucket->allocator, bucket);
 }
 
@@ -107,12 +147,12 @@ SERF_DECLARE(void) serf_default_destroy(serf_bucket_t *bucket)
 
 
 SERF_DECLARE(serf_bucket_alloc_t *) serf_bucket_allocator_create(
-    apr_allocator_t *allocator)
+    apr_allocator_t *allocator, apr_pool_t *pool)
 {
     serf_bucket_alloc_t *a = apr_allocator_alloc(allocator, sizeof(*a));
 
     a->allocator = allocator;
-
+    a->pool = pool;
     /* ### more */
 
     return a;
@@ -121,6 +161,7 @@ SERF_DECLARE(serf_bucket_alloc_t *) serf_bucket_allocator_create(
 SERF_DECLARE(void) serf_bucket_allocator_destroy(
     serf_bucket_alloc_t *allocator)
 {
+    /* We don't (yet) own the pool passed in to our allocator_create. */
     apr_allocator_destroy(allocator->allocator);
 }
 
@@ -128,13 +169,12 @@ SERF_DECLARE(void *) serf_bucket_mem_alloc(
     serf_bucket_alloc_t *allocator,
     apr_size_t size)
 {
-    /* ### need real code */
-    return NULL;
+    return apr_allocator_alloc(allocator->allocator, size);
 }
 
 SERF_DECLARE(void) serf_bucket_mem_free(
     serf_bucket_alloc_t *allocator,
     void *block)
 {
-    /* ### need real code */
+    apr_allocator_free(allocator->allocator, block);
 }
