@@ -127,8 +127,7 @@ SERF_DECLARE(serf_bucket_t *) serf_bucket_create(
 
     bkt->type = type;
     bkt->data = data;
-    bkt->metadata = serf_bucket_mem_alloc(allocator, sizeof(*bkt->metadata));
-    bkt->metadata->hash = NULL;
+    bkt->metadata = NULL;
     bkt->allocator = allocator;
 
     return bkt;
@@ -141,18 +140,38 @@ SERF_DECLARE(apr_status_t) serf_default_set_metadata(serf_bucket_t *bucket,
 {
     apr_hash_t *md_hash;
 
-    md_hash = NULL;
+    if (bucket->metadata == NULL) {
+        if (md_value == NULL) {
+            /* If we're trying to delete the value, then we're already done
+             * since there isn't any metadata in the bucket. */
+            return APR_SUCCESS;
+        }
 
-    if (!bucket->metadata->hash) {
+        /* Create the metadata container. */
+        bucket->metadata = serf_bucket_mem_alloc(allocator,
+                                                 sizeof(*bucket->metadata));
+
+        /* ### pool usage! */
         bucket->metadata->hash = apr_hash_make(bucket->allocator->pool);
     }
-    else {
-        md_hash = apr_hash_get(bucket->metadata->hash, md_type,
-                               APR_HASH_KEY_STRING);
-    }
+
+    /* Look up the hash table for this md_type */
+    md_hash = apr_hash_get(bucket->metadata->hash, md_type,
+                           APR_HASH_KEY_STRING);
 
     if (!md_hash) {
+        if (md_value == NULL) {
+            /* The hash table isn't present, so there is no work to delete
+             * a value.
+             */
+            return APR_SUCCESS;
+        }
+
+        /* Create the missing hash table. */
+        /* ### pool usage! */
         md_hash = apr_hash_make(bucket->allocator->pool);
+
+        /* Put the new hash table back into the type hash. */
         apr_hash_set(bucket->metadata->hash, md_type, APR_HASH_KEY_STRING,
                      md_hash);
     }
@@ -171,7 +190,7 @@ SERF_DECLARE(apr_status_t) serf_default_get_metadata(serf_bucket_t *bucket,
     /* Initialize return value to not being found. */
     *md_value = NULL;
 
-    if (bucket->metadata->hash) {
+    if (bucket->metadata) {
         apr_hash_t *md_hash;
 
         md_hash = apr_hash_get(bucket->metadata->hash, md_type,
@@ -194,7 +213,9 @@ SERF_DECLARE(serf_bucket_t *) serf_default_read_bucket(
 
 SERF_DECLARE(void) serf_default_destroy(serf_bucket_t *bucket)
 {
-    serf_bucket_mem_free(bucket->allocator, bucket->metadata);
+    if (bucket->metadata != NULL) {
+        serf_bucket_mem_free(bucket->allocator, bucket->metadata);
+    }
     serf_bucket_mem_free(bucket->allocator, bucket);
 }
 
