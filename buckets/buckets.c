@@ -410,3 +410,98 @@ SERF_DECLARE(void) serf_bucket_mem_free(
         apr_allocator_free(allocator->allocator, node->u.memnode);
     }
 }
+
+
+/* ==================================================================== */
+
+
+void find_crlf(const char **data, apr_size_t *len, int *found)
+{
+    const char *start = *data;
+    const char *end = start + *len;
+
+    while (start < end) {
+        const char *cr = memchr(start, '\r', *len);
+
+        if (cr == NULL) {
+            break;
+        }
+
+        if (cr + 1 < end && cr[1] == '\n') {
+            *len -= cr + 2 - start;
+            *data = cr + 2;
+            *found = SERF_NEWLINE_CRLF;
+            return;
+        }
+
+        *len -= cr + 1 - start
+        start = cr + 1;
+    }
+
+    *found = SERF_NEWLINE_NONE;
+}
+
+SERF_DECLARE(void) serf_util_readline(const char **data, apr_size_t *len,
+                                      int acceptable, int *found)
+{
+    const char *start;
+    const char *cr;
+    const char *lf;
+    int want_cr;
+    int want_crlf;
+    int want_lf;
+
+    /* If _only_ CRLF is acceptable, then the scanning needs a loop to
+     * skip false hits on CR characters. Use a separate function.
+     */
+    if (acceptable == SERF_NEWLINE_CRLF) {
+        find_crlf(data, len, found);
+        return;
+    }
+
+    start = *data;
+    cr = lf = NULL;
+    want_cr = acceptable & SERF_NEWLINE_CR;
+    want_crlf = acceptable & SERF_NEWLINE_CRLF;
+    want_lf = acceptable & SERF_NEWLINE_LF;
+
+    if (want_cr || want_crlf) {
+        cr = memchr(start, '\r', *len);
+    }
+    if (want_lf) {
+        lf = memchr(start, '\n', *len);
+    }
+
+    if (cr != NULL) {
+        if (lf != NULL) {
+            if (cr + 1 == lf)
+                *found = want_crlf ? SERF_NEWLINE_CRLF : SERF_NEWLINE_CR;
+            else if (want_cr && cr < lf)
+                *found = SERF_NEWLINE_CR;
+            else
+                *found = SERF_NEWLINE_LF;
+        }
+        else if (cr == start + *len - 1) {
+            /* the CR occurred in the last byte of the buffer. this could be
+             * a CRLF split across the data boundary.
+             * ### FIX THIS LOGIC? does caller need to detect?
+             */
+            *found = SERF_NEWLINE_CR;
+        }
+        else if (want_cr)
+            *found = SERF_NEWLINE_CR;
+        else /* want_crlf */
+            *found = SERF_NEWLINE_NONE;
+    }
+    else if (lf != NULL)
+        *found = SERF_NEWLINE_LF;
+    else
+        *found = SERF_NEWLINE_NONE;
+
+    if (*found == SERF_NEWLINE_LF)
+        *data = lf + 1;
+    else
+        *data = cr + 1 + (*found == SERF_NEWLINE_CRLF);
+
+    *len -= *data - start;
+}
