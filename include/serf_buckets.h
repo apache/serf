@@ -51,6 +51,8 @@
 #ifndef SERF_BUCKETS_H
 #define SERF_BUCKETS_H
 
+#include "serf_declare.h"
+
 /**
  * @file serf_buckets.h
  * @brief Serf supported buckets in extension to APR buckets
@@ -73,7 +75,40 @@ struct serf_bucket_status {
     const char *status_line;
 };
 typedef struct serf_bucket_status serf_bucket_status;
+SERF_DECLARE_DATA extern const apr_bucket_type_t serf_bucket_status_type;
 
+/**
+ * Determine if a bucket is a status bucket
+ * @param e The bucket to inspect
+ * @return true or false
+ */
+#define SERF_BUCKET_IS_STATUS(e) (e->type == &serf_bucket_status_type)
+
+/**
+ * Make the bucket passed in a status bucket
+ * @param b The bucket to make into a status bucket
+ * @param status Numeric status code
+ * @param status_line Textual description of the status code
+ * @param pool A pool to allocate out of
+ * @return The new bucket, or NULL if allocation failed
+ */
+SERF_DECLARE(apr_bucket *) serf_bucket_status_make(apr_bucket *b,
+                                                   int status,
+                                                   const char *status_line,
+                                                   apr_pool_t *pool);
+
+/**
+ * Create a bucket referring to status information
+ * @param status Numeric status code
+ * @param status_line Textual description of the status code
+ * @param pool A pool to allocate out of
+ * @param list The bucket allocator from which to allocate the bucket
+ * @return The new bucket, or NULL if allocation failed
+ */
+SERF_DECLARE(apr_bucket *) serf_bucket_status_create(int status,
+                                                     const char *status_line,
+                                                     apr_pool_t *pool,
+                                                     apr_bucket_alloc_t *list);
 /* Represents a MIME-header value.
  *
  * Duplicate header key buckets may exist in a brigade. Per RFC2616, these
@@ -91,6 +126,40 @@ struct serf_bucket_header {
     const char *value;
 };
 typedef struct serf_bucket_header serf_bucket_header;
+SERF_DECLARE_DATA extern const apr_bucket_type_t serf_bucket_header_type;
+
+/**
+ * Determine if a bucket is a header bucket
+ * @param e The bucket to inspect
+ * @return true or false
+ */
+#define SERF_BUCKET_IS_HEADER(e) (e->type == &serf_bucket_header_type)
+
+/**
+ * Make the bucket passed in a header bucket
+ * @param b The bucket to make into a header bucket
+ * @param key The header name
+ * @param value The header value
+ * @param pool A pool to allocate out of
+ * @return The new bucket, or NULL if allocation failed
+ */
+SERF_DECLARE(apr_bucket *) serf_bucket_header_make(apr_bucket *b,
+                                                   const char *key,
+                                                   const char *value,
+                                                   apr_pool_t *pool);
+
+/**
+ * Create a bucket referring to header information.
+ * @param key The header name
+ * @param value The header value
+ * @param pool A pool to allocate out of
+ * @param list The bucket allocator from which to allocate the bucket
+ * @return The new bucket, or NULL if allocation failed
+ */
+SERF_DECLARE(apr_bucket *) serf_bucket_header_create(const char *key,
+                                                     const char *value,
+                                                     apr_pool_t *pool,
+                                                     apr_bucket_alloc_t *list);
 
 /* Represents a user-password pair.
  *
@@ -105,6 +174,42 @@ struct serf_bucket_authentication {
     const char *password;
 };
 typedef struct serf_bucket_authentication serf_bucket_authentication;
+SERF_DECLARE_DATA extern const apr_bucket_type_t
+                               serf_bucket_authentication_type;
+
+/**
+ * Determine if a bucket is an authentication bucket
+ * @param e The bucket to inspect
+ * @return true or false
+ */
+#define SERF_BUCKET_IS_AUTHENTICATION(e) \
+    (e->type == &serf_bucket_authentication_type)
+
+/**
+ * Make the bucket passed in an authentication bucket
+ * @param b The bucket to make into an authentication bucket
+ * @param username The username to store in the bucket
+ * @param password The password to store in the bucket
+ * @param pool A pool to allocate out of.
+ * @return The new bucket, or NULL if allocation failed
+ */
+SERF_DECLARE(apr_bucket *) serf_bucket_authentication_make(apr_bucket *b,
+                                                           const char *user,
+                                                           const char *password,
+                                                           apr_pool_t *pool);
+
+/**
+ * Create a bucket referring to authentication credentials.
+ * @param username The username to store in the bucket
+ * @param password The password to store in the bucket
+ * @param pool A pool to allocate out of.
+ * @param list The bucket allocator from which to allocate the bucket
+ * @return The new bucket, or NULL if allocation failed
+ */
+SERF_DECLARE(apr_bucket *) serf_bucket_authentication_create(const char *user,
+                                                      const char *password,
+                                                      apr_pool_t *pool,
+                                                      apr_bucket_alloc_t *list);
 
 #ifdef __cplusplus
 }
