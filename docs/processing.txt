@@ -1,10 +1,10 @@
-Last modified at [$Date: 2003/01/05 00:37:13 $]                 -*-text-*-
+Last modified at [$Date: 2003/01/05 00:43:59 $]                 -*-text-*-
 
 
 NOTES ON (A PROPOSED) PROCESSING MODEL
 --------------------------------------
 
-This is a quite transcription of some of the ideas generated during
+This is a pseudo-transcription of some of the ideas generated during
 the ApacheCon back in November 2002. It deals with a new bucket model
 (elimination of brigades) and a new filtering model (elimination of
 most types of filters). The hope is a simpler processing model which
@@ -17,7 +17,7 @@ BUCKET/BRIGADE SIMPLIFICATION
 
 The idea here is to eliminate the bucket brigade and move to passing
 single buckets around. A particular bucket type is an "aggregate"
-bucket, or "list" bucket. It refers to a list of sub-buckets,
+bucket, or "list" bucket. It refers to a list of child buckets,
 representing the linear flattening of those buckets.
 
 Note the aggregate could be implemented where another aggregate may be
@@ -41,7 +41,8 @@ APR_BRIGADE_LAST
 APR_BRIGADE_FOREACH
 APR_BRIGADE_NEXT
 APR_BRIGADE_PREV
-  n/a
+  non-destructive reading with an offset can extract arbitrary parts
+  of the overall bucket
 
 APR_BRIGADE_INSERT_HEAD
 APR_BRIGADE_INSERT_TAIL
