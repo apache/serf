@@ -390,7 +390,7 @@ struct serf_bucket_type_t {
 };
 
 #define serf_bucket_read(b,r,d,l) ((b)->type->read(b,r,d,l))
-#define serf_bucket_readline(b,a,f,d,l) ((b)->type->read(b,a,f,d,l))
+#define serf_bucket_readline(b,a,f,d,l) ((b)->type->readline(b,a,f,d,l))
 #define serf_bucket_peek(b,d,l) ((b)->type->peek(b,d,l))
 #define serf_bucket_read_bucket(b,t) ((b)->type->read_bucket(b,t))
 #define serf_bucket_get_metadata(b,t,n,v) ((b)->type->get_metadata(b,t,n,v))
