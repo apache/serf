@@ -118,7 +118,8 @@ static apr_status_t serf_simple_peek(serf_bucket_t *bucket,
     *data = ctx->current;
     *len = ctx->remaining;
 
-    return APR_SUCCESS;
+    /* we returned everything this bucket will ever hold */
+    return APR_EOF;
 }
 
 static void serf_simple_destroy(serf_bucket_t *bucket)

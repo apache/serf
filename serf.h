@@ -464,6 +464,11 @@ struct serf_bucket_type_t {
      *
      * Note: if the peek does not return enough data for your particular
      * use, then you must read/consume some first, then peek again.
+     *
+     * If the returned data represents all available data, then APR_EOF
+     * will be returned. Since this function does not consume data, it
+     * can return the same data repeatedly rather than blocking; thus,
+     * APR_EAGAIN will never be returned.
      */
     apr_status_t (*peek)(serf_bucket_t *bucket,
                          const char **data, apr_size_t *len);
