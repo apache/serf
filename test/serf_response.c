@@ -108,9 +108,6 @@ int main(int argc, const char **argv)
     accept_baton_t accept_ctx;
     handler_baton_t handler_ctx;
     serf_bucket_alloc_t *allocator;
-    apr_uri_t url;
-    const char *raw_url;
-    const char *req_file;
 
     if (argc != 2) {
         printf("%s: [Resp. File]\n", argv[0]);

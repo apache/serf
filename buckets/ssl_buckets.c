@@ -21,6 +21,7 @@
 
 #include <openssl/bio.h>
 #include <openssl/ssl.h>
+#include <openssl/err.h>
 
 /*#define SSL_VERBOSE*/
 
@@ -238,7 +239,6 @@ static apr_status_t ssl_decrypt(void *baton, apr_size_t bufsize,
     apr_size_t priv_len;
     apr_status_t status;
     const char *data;
-    int read_len;
     int ssl_len;
 
     /* Is there some data waiting to be read? */
@@ -255,7 +255,6 @@ static apr_status_t ssl_decrypt(void *baton, apr_size_t bufsize,
     status = serf_bucket_read(ctx->decrypt.stream, bufsize, &data, &priv_len);
 
     if (!SERF_BUCKET_READ_ERROR(status) && priv_len) {
-        apr_status_t agg_status;
         serf_bucket_t *tmp;
 
 #ifdef SSL_VERBOSE
@@ -346,7 +345,6 @@ static apr_status_t ssl_encrypt(void *baton, apr_size_t bufsize,
 
     if (!SERF_BUCKET_READ_ERROR(status) && *len) {
         int ssl_len;
-        apr_status_t agg_status;
 
 #ifdef SSL_VERBOSE
         printf("ssl_encrypt: read %d bytes; status %d\n", *len, status);
@@ -389,12 +387,15 @@ static apr_status_t ssl_encrypt(void *baton, apr_size_t bufsize,
             *len = 0;
         }
         else {
+            apr_status_t agg_status;
 
             /* We read something! */
             agg_status = serf_bucket_read(ctx->encrypt.pending, ssl_len,
                                           &data, len);
             /* Assert ssl_len == *len */
             memcpy(buf, data, *len);
+
+            /* ### do something with agg_status */
         }
     }
 
@@ -409,7 +410,7 @@ static apr_status_t ssl_encrypt(void *baton, apr_size_t bufsize,
     return status;
 }
 
-static serf_ssl_context_t *ssl_init_context()
+static serf_ssl_context_t *ssl_init_context(void)
 {
     serf_ssl_context_t *ssl_ctx;
     apr_pool_t *pool;
@@ -590,7 +591,6 @@ static void serf_ssl_destroy_and_data(serf_bucket_t *bucket)
 static void serf_ssl_decrypt_destroy_and_data(serf_bucket_t *bucket)
 {
     ssl_context_t *ctx = bucket->data;
-    serf_ssl_context_t *ssl_ctx = ctx->ssl_ctx;
 
     serf_bucket_destroy(*ctx->our_stream);
 
