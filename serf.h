@@ -266,13 +266,28 @@ SERF_DECLARE(apr_status_t) serf_connection_request_cancel(
  * @{
  */
 
+/** Pass as REQUESTED to the read() bucket function to read, consume,
+ * and return all available data.
+ */
+#define SERF_READ_ALL_AVAIL ((apr_size_t)-1)
+
+/** Acceptable newline types for bucket->readline(). */
+#define SERF_NEWLINE_CR    0x0001
+#define SERF_NEWLINE_CRLF  0x0002
+#define SERF_NEWLINE_LF    0x0004
+#define SERF_NEWLINE_ANY   0x0007
+
+/** Used to indicate that a newline is not present in the data buffer. */
+#define SERF_NEWLINE_NONE  0x0008
+
+
 struct serf_bucket_type_t {
 
     /** name of this bucket type */
     const char *name;
 
     /**
-     * Read and consume data out of @a bucket.
+     * Read (and consume) up to @a requested bytes from @a bucket.
      *
      * A pointer to the data will be returned in @a data, and its length
      * is specified by @a len.
@@ -285,8 +300,25 @@ struct serf_bucket_type_t {
      * If an application needs the data to exist for a longer duration,
      * then it must make a copy.
      */
-    apr_status_t (*read)(serf_bucket_t *bucket,
+    apr_status_t (*read)(serf_bucket_t *bucket, apr_size_t requested,
                          const char **data, apr_size_t *len);
+
+    /**
+     * Read (and consume) a line of data from @a bucket.
+     *
+     * The acceptable forms of a newline are given by @a acceptable, and
+     * the type found is returned in @a found. If a newline is not present
+     * in the returned data, then SERF_NEWLINE_NONE is stored into @a found.
+     *
+     * A pointer to the data is returned in @a data, and its length is
+     * specified by @a len. The data will include the newline, if present.
+     *
+     * The lifetime of the data is the same as that of the @see read
+     * function above.
+     */
+    apr_status_t (*readline)(serf_bucket_t *bucket, int acceptable,
+                             int *found,
+                             const char **data, apr_size_t *len);
 
     /**
      * Peek, but don't consume, the data in @a bucket.
