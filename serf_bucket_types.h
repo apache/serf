@@ -148,7 +148,7 @@ SERF_DECLARE_DATA extern const serf_bucket_type_t serf_bucket_type_socket;
 #define SERF_BUCKET_IS_SOCKET(b) SERF_BUCKET_CHECK((b), socket)
 
 SERF_DECLARE(serf_bucket_t *) serf_bucket_socket_create(
-    apr_socket_t *socket,
+    apr_socket_t *skt,
     serf_bucket_alloc_t *allocator);
 
 

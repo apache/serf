@@ -49,6 +49,7 @@
  */
 
 #include <apr_pools.h>
+#include <apr_poll.h>
 
 #include "serf.h"
 
