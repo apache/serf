@@ -1,21 +1,48 @@
 APACHE COMMONS: serf                                    -*-indented-text-*-
-Last modified at [$Date: 2003-09-18 10:59:57 -0700 (Thu, 18 Sep 2003) $]
-
 
 OPEN ISSUES
 
   * rather than having serf_bucket_alloc_t, can we make
     apr_allocator_t work "well" for bunches o' small allocations?
+    Justin says: Take the 'freelist' code from apr-util's bucket allocator
+                 and merge that (somehow) with apr_allocator_t. 
+                 (< MIN_ALLOC_SIZE allocations - i.e. <8k)
 
   * memory usage probably needs some thought. in particular, the mix
     between the bucket allocators and any pools associated with the
     connection and the responses. see the point below about buckets
     needing pools.
+    Justin says: Oh, geez, this is awful.  Really awful.  pools are just
+                 going to be abused.  For now, I've tied a pool with the
+                 serf_bucket_allocator as I can't think of a better
+                 short-term solution.  I think we can revisit this once we
+                 have a better idea how the buckets are going to operate.  I'd
+                 like to get a better idea how filters are going to be written
+                 before deciding upon our pool usage.
 
   * the current definition has a "metadata" concept on a per-bucket
     basis. however, to record this metadata, we really want to be able
     to use apr_hash_t, which implies having a pool.
-    
+
     we do have a respool associated with the response. how does that
     get transferred to the individual buckets for their usage? what
     about the request side of things?
+    Justin says: Yes, the request side will need a pool, too.  Since we're
+                 using APR, almost all of APR is closed off if we don't have
+                 a pool.  So, we do need to allow for buckets to have access to
+                 some pool.  The $64mil question is how.
+
+  * How does serf_aggregate_bucket_become(bucket) work?
+    Justin says: We want bucket to be an aggregate bucket, and for the first
+                 bucket in that aggregate bucket to be the 'original' bucket.
+                 I think we just swap internal data structures, but not sure.
+
+  * If anyone knows how to use APR_RING, we could probably use that for the
+    aggregate bucket list.
+
+  * How does something like deflate get inserted into both the request and
+    response?
+    Justin says: I'm still not crystal clear on how this should work.  I'd like
+                 the concept of a 'filter' somehow as we can shield the 'user
+                 programmer' from this, but I dunno.  A 'hook' after the request
+                 is created, but before it is sent???
