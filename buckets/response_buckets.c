@@ -26,6 +26,7 @@
 
 typedef struct {
     serf_bucket_t *stream;
+    serf_bucket_t *dechunk;
 
     enum {
         STATE_STATUS_LINE,      /* reading status line */
@@ -53,6 +54,7 @@ SERF_DECLARE(serf_bucket_t *) serf_bucket_response_create(
 
     ctx = serf_bucket_mem_alloc(allocator, sizeof(*ctx));
     ctx->stream = stream;
+    ctx->dechunk = NULL;
     ctx->state = STATE_STATUS_LINE;
 
     serf_linebuf_init(&ctx->linebuf);
@@ -91,6 +93,9 @@ static void serf_response_destroy_and_data(serf_bucket_t *bucket)
     }
 
     serf_bucket_destroy(ctx->stream);
+    if (ctx->dechunk != NULL)
+        serf_bucket_destroy(ctx->dechunk);
+
     serf_default_destroy_and_data(bucket);
 }
 
@@ -127,34 +132,6 @@ static apr_status_t parse_status_line(response_context_t *ctx,
                                      - (reason - ctx->linebuf.line));
 
     return APR_SUCCESS;
-}
-
-/* This code should be replaced by a chunk bucket. */
-static apr_status_t fetch_chunk_size(response_context_t *ctx)
-{
-    apr_status_t status;
-
-    /* fetch a line terminated by CRLF */
-    status = fetch_line(ctx, SERF_NEWLINE_CRLF);
-    if (SERF_BUCKET_READ_ERROR(status))
-        return status;
-
-    /* if a line was read, then parse it. */
-    if (ctx->linebuf.state == SERF_LINEBUF_READY) {
-        /* NUL-terminate the line. if it filled the entire buffer, then
-           just assume the thing is too large. */
-        if (ctx->linebuf.used == sizeof(ctx->linebuf.line))
-            return APR_FROM_OS_ERROR(ERANGE);
-        ctx->linebuf.line[ctx->linebuf.used] = '\0';
-
-        /* convert from HEX digits. */
-        ctx->body_left = apr_strtoi64(ctx->linebuf.line, NULL, 16);
-        if (errno == ERANGE) {
-            return APR_FROM_OS_ERROR(ERANGE);
-        }
-    }
-
-    return status;
 }
 
 /* This code should be replaced with header buckets. */
@@ -255,6 +232,8 @@ static apr_status_t run_machine(serf_bucket_t *bkt, response_context_t *ctx)
                 if (v && strcasecmp("chunked", v) == 0) {
                     ctx->chunked = 1;
                     ctx->body_left = 0;
+                    ctx->dechunk = serf_bucket_dechunk_create(ctx->stream,
+                                                              bkt->allocator);
                 }
             }
             ctx->state = STATE_BODY;
@@ -287,8 +266,6 @@ static apr_status_t wait_for_body(serf_bucket_t *bkt, response_context_t *ctx)
 {
     apr_status_t status;
 
-  read_trailers:
-
     /* Keep reading and moving through states if we aren't at the BODY */
     while (ctx->state != STATE_BODY) {
         status = run_machine(bkt, ctx);
@@ -301,28 +278,6 @@ static apr_status_t wait_for_body(serf_bucket_t *bkt, response_context_t *ctx)
     }
     /* in STATE_BODY */
 
-    if (ctx->chunked && !ctx->body_left) {
-        status = fetch_chunk_size(ctx);
-        if (SERF_BUCKET_READ_ERROR(status)) {
-            return status;
-        }
-
-        /* Did we just get our zero terminating chunk? */
-        if (ctx->linebuf.state == SERF_LINEBUF_READY && !ctx->body_left) {
-            ctx->state = STATE_TRAILERS;
-
-            /* If it is okay to read more data, then process some trailers. */
-            if (!status)
-                goto read_trailers;
-        }
-
-        /* We may not be ready for reading (to finish the chunk size read,
-         * or for the body itself. Return the proper indicator.
-         */
-        return status;
-    }
-
-    /* We're in the body, and should try reading. */
     return APR_SUCCESS;
 }
 
@@ -366,6 +321,16 @@ static apr_status_t serf_response_read(serf_bucket_t *bucket,
 
     rv = wait_for_body(bucket, ctx);
     if (rv) {
+        return rv;
+    }
+
+    if (ctx->dechunk) {
+        rv = serf_bucket_read(ctx->dechunk, requested, data, len);
+        if (SERF_BUCKET_READ_ERROR(rv))
+            return rv;
+        if (APR_STATUS_IS_EOF(rv)) {
+            ctx->state = STATE_TRAILERS;
+        }
         return rv;
     }
 

@@ -280,7 +280,7 @@ static apr_status_t handle_response(serf_bucket_t *response,
                                     void *handler_baton,
                                     apr_pool_t *pool)
 {
-    const char *data, *s;
+    const char *data;
     apr_size_t len;
     serf_status_line sl;
     apr_status_t status;
@@ -294,20 +294,27 @@ static apr_status_t handle_response(serf_bucket_t *response,
         abort();
     }
 
-    status = serf_bucket_read(response, 2048, &data, &len);
+    while (1) {
+        status = serf_bucket_read(response, 2048, &data, &len);
+        if (SERF_BUCKET_READ_ERROR(status))
+            return status;
 
-    if (!status || APR_STATUS_IS_EOF(status)) {
-        s = apr_pstrmemdup(pool, data, len);
-        printf("%s", s);
-    }
-    else if (APR_STATUS_IS_EAGAIN(status)) {
-        status = APR_SUCCESS;
-    }
-    if (APR_STATUS_IS_EOF(status)) {
-        apr_atomic_dec32(&ctx->requests_outstanding);
-    }
+        /* got some data. print it out. */
+        fwrite(data, 1, len, stdout);
 
-    return status;
+        /* are we done yet? */
+        if (APR_STATUS_IS_EOF(status)) {
+            apr_atomic_dec32(&ctx->requests_outstanding);
+            return APR_EOF;
+        }
+
+        /* have we drained the response so far? */
+        if (APR_STATUS_IS_EAGAIN(status))
+            return APR_SUCCESS;
+
+        /* loop to read some more. */
+    }
+    /* NOTREACHED */
 }
 
 int main(int argc, const char **argv)
