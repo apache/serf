@@ -113,6 +113,8 @@ SERF_DECLARE_DATA extern const serf_bucket_type_t serf_bucket_type_aggregate;
 SERF_DECALRE(serf_bucket_t *) serf_bucket_aggregate_create(
     serf_bucket_alloc_t *allocator);
 
+SERF_DECLARE(void) serf_bucket_aggregate_become(serf_bucket_t *bucket);
+
 SERF_DECLARE(void) serf_bucket_aggregate_prepend(
     serf_bucket_t *aggregate_bucket,
     serf_bucket_t *prepend_bucket);
