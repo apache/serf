@@ -68,9 +68,6 @@ struct serf_connection_t {
 
     apr_socket_t *skt;
 
-    serf_connection_write_t write;
-    void *write_baton;
-
     /* The list of active requests. */
     serf_request_t *requests;
 
@@ -93,17 +90,9 @@ static apr_status_t update_pollset(serf_connection_t *conn)
     apr_status_t status;
     apr_pollfd_t desc = { 0 };
 
-    if (conn->address) {
-        /* Remove the socket from the poll set. */
-        desc.desc_type = APR_POLL_SOCKET;
-        desc.desc.s = conn->skt;
-    }
-    else {
-        /* XXX This clearly ain't right. */
-        desc.desc_type = APR_POLL_FILE;
-        desc.desc.f = conn->write_baton;
-    }
-
+    /* Remove the socket from the poll set. */
+    desc.desc_type = APR_POLL_SOCKET;
+    desc.desc.s = conn->skt;
     status = apr_pollset_remove(ctx->pollset, &desc);
     if (status && !APR_STATUS_IS_NOTFOUND(status))
         return status;
@@ -178,12 +167,6 @@ static apr_status_t open_connections(serf_context_t *ctx)
             continue;
         }
 
-        if (conn->write_baton != NULL) {
-            /* Add the new socket to the pollset. */
-            if ((status = update_pollset(conn)) != APR_SUCCESS)
-                return status;
-            continue;
-        }
         if ((status = apr_socket_create(&skt, APR_INET, SOCK_STREAM,
                                         APR_PROTO_TCP,
                                         conn->pool)) != APR_SUCCESS)
@@ -199,7 +182,7 @@ static apr_status_t open_connections(serf_context_t *ctx)
             return status;
 
         /* Configured. Store it into the connection now. */
-        conn->skt = conn->write_baton = skt;
+        conn->skt = skt;
 
         /* Now that the socket is set up, let's connect it. This should
          * return immediately.
@@ -241,7 +224,7 @@ static apr_status_t write_to_connection(serf_connection_t *conn)
 
         /* If we have unwritten data, then write what we can. */
         if ((len = conn->unwritten_len) != 0) {
-            status = conn->write(conn->write_baton, conn->unwritten_ptr, &len);
+            status = apr_socket_send(conn->skt, conn->unwritten_ptr, &len);
             conn->unwritten_len -= len;
 
             /* If the write would have blocked, then we're done. Don't try
@@ -295,7 +278,7 @@ static apr_status_t write_to_connection(serf_connection_t *conn)
         if (len > 0) {
             apr_size_t written = len;
 
-            status = conn->write(conn->write_baton, data, &written);
+            status = apr_socket_send(conn->skt, data, &written);
 
             if (written < len) {
                 /* We didn't write it all. Save it away for writing later. */
@@ -353,7 +336,7 @@ static apr_status_t read_from_connection(serf_connection_t *conn)
          * acceptor to get one created.
          */
         if (request->resp_bkt == NULL) {
-            request->resp_bkt = (*request->acceptor)(request, conn->write_baton,
+            request->resp_bkt = (*request->acceptor)(request, conn->skt,
                                                      request->acceptor_baton,
                                                      tmppool);
             apr_pool_clear(tmppool);
@@ -476,15 +459,8 @@ static apr_status_t remove_connection(serf_context_t *ctx,
 {
     apr_pollfd_t desc = { 0 };
 
-    if (conn->address) {
-        desc.desc_type = APR_POLL_SOCKET;
-        desc.desc.s = conn->skt;
-    }
-    else {
-        /* This clearly ain't right. */
-        desc.desc_type = APR_POLL_FILE;
-        desc.desc.f = conn->write_baton;
-    }
+    desc.desc_type = APR_POLL_SOCKET;
+    desc.desc.s = conn->skt;
 
     return apr_pollset_remove(ctx->pollset, &desc);
 }
@@ -500,7 +476,6 @@ SERF_DECLARE(serf_connection_t *) serf_connection_create(
 
     conn->ctx = ctx;
     conn->address = address;
-    conn->write = (serf_connection_write_t)apr_socket_send;
     conn->closed = closed;
     conn->closed_baton = closed_baton;
     conn->pool = pool;
@@ -513,30 +488,6 @@ SERF_DECLARE(serf_connection_t *) serf_connection_create(
     return conn;
 }
 
-SERF_DECLARE(serf_connection_t *) serf_connection_create_ex(
-    serf_context_t *ctx,
-    serf_connection_write_t write,
-    void *write_baton,
-    serf_connection_closed_t closed,
-    void *closed_baton,
-    apr_pool_t *pool)
-{
-    serf_connection_t *conn = apr_pcalloc(pool, sizeof(*conn));
-
-    conn->ctx = ctx;
-    conn->write = write;
-    conn->write_baton = write_baton;
-    conn->closed = closed;
-    conn->closed_baton = closed_baton;
-    conn->pool = pool;
-
-    /* ### register a cleanup */
-
-    /* Add the connection to the context. */
-    *(serf_connection_t **)apr_array_push(ctx->conns) = conn;
-
-    return conn;
-}
 
 SERF_DECLARE(serf_request_t *) serf_connection_request_create(
     serf_connection_t *conn)
