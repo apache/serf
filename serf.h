@@ -40,7 +40,6 @@ typedef struct serf_context_t serf_context_t;
 typedef struct serf_bucket_t serf_bucket_t;
 typedef struct serf_bucket_type_t serf_bucket_type_t;
 typedef struct serf_bucket_alloc_t serf_bucket_alloc_t;
-typedef struct serf_metadata_t serf_metadata_t;
 
 typedef struct serf_connection_t serf_connection_t;
 
@@ -469,32 +468,6 @@ struct serf_bucket_type_t {
                          const char **data, apr_size_t *len);
 
     /**
-     * Look up and return a piece of metadata from @a bucket.
-     *
-     * The metadata is specified by the metadata type @a md_type and the
-     * metadata name @a md_name. The value is returned in @a md_value, or
-     * NULL if the specified metadata does not exist in this bucket.
-     *
-     * Note that this function may return APR_EAGAIN if the metadata is
-     * not (yet) available. Other (networking) errors may be returned, too.
-     */
-    apr_status_t (*get_metadata)(serf_bucket_t *bucket, const char *md_type,
-                                 const char *md_name, const void **md_value);
-
-    /**
-     * Set some metadata for @a bucket.
-     *
-     * The metadata is specified by the metadata type @a md_type and the
-     * metadata name @a md_name. The value is given by @a md_value, or
-     * NULL if the specified metadata should be deleted.
-     *
-     * Note that this function may return errors if the metadata cannot
-     * be set for some reason.
-     */
-    apr_status_t (*set_metadata)(serf_bucket_t *bucket, const char *md_type,
-                                 const char *md_name, const void *md_value);
-
-    /**
      * Destroy @a bucket, along with any associated resources.
      */
     void (*destroy)(serf_bucket_t *bucket);
@@ -542,8 +515,6 @@ struct serf_bucket_type_t {
     SERF__RECREAD(b, (b)->type->read_for_sendfile(b,r,h,f,o,l))
 #define serf_bucket_read_bucket(b,t) ((b)->type->read_bucket(b,t))
 #define serf_bucket_peek(b,d,l) ((b)->type->peek(b,d,l))
-#define serf_bucket_get_metadata(b,t,n,v) ((b)->type->get_metadata(b,t,n,v))
-#define serf_bucket_set_metadata(b,t,n,v) ((b)->type->set_metadata(b,t,n,v))
 #define serf_bucket_destroy(b) ((b)->type->destroy(b))
 
 /**
@@ -563,9 +534,6 @@ struct serf_bucket_t {
 
     /** bucket-private data */
     void *data;
-
-    /** this bucket's metadata: (TYPE, NAME) -> VALUE */
-    serf_metadata_t *metadata;
 
     /** the allocator used for this bucket (needed at destroy time) */
     serf_bucket_alloc_t *allocator;

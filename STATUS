@@ -32,44 +32,20 @@ OPEN ISSUES
                  system ought to be transaction-scoped (e.g. tied to a
                  particular request/response pair).
 
-  * the current definition has a "metadata" concept on a per-bucket
-    basis. however, to record this metadata, we really want to be able
-    to use apr_hash_t, which implies having a pool.
-
-    we do have a respool associated with the response. how does that
-    get transferred to the individual buckets for their usage? what
-    about the request side of things?
-    Justin says: Yes, the request side will need a pool, too.  Since we're
-                 using APR, almost all of APR is closed off if we don't have
-                 a pool.  So, we do need to allow for buckets to have access to
-                 some pool.  The $64mil question is how.
-    gstein says: each bucket is alloc'd from a serf_bucket_alloc_t
-                 which has an associated pool. the bucket can fetch
-                 that and use it.
-                 Q: is this going to be workable?
-    gstein says: I propose we toss metadata. the notion of arbitrary
-                 metadata for arbitrary buckets seems sketchy at best,
-                 and is obviously hard to implement. we already have
-                 examples of bucket types exposing custom APIs. that
-                 allows us to (say) fetch parsed headers from a
-                 response bucket.
-    gstein says: the original idea for metadata was to have a way to
-                 specify things like content type, charset, or the
-                 content encoding (for the data residing in the
-                 bucket). I would propose that in tossing the
-                 metadata, we create a "serf_content_description" type
-                 which can describe the data within a bucket. These
-                 descriptions would be at least a few pointers and
-                 might be too much overhead per bucket. Thus, a
-                 solution would be a registry of content
-                 descriptions. A bucket can simply refer to a
-                 descrption stored in the registry. (maybe some
-                 common, static descriptions plus the dynamic
-                 registry)  Unknown how a dynamic registry would be
-                 built. We could make it an app-provided piece, or we
-                 could automatically create and associate one with a
-                 serf_context. I'd go with an app thingy since the
-                 registry could be shared across multiple contexts.
+  * the original idea for metadata was to have a way to specify things
+    like content type, charset, or the content encoding (for the data
+    residing in the bucket). I would propose that in tossing the
+    metadata, we create a "serf_content_description" type which can
+    describe the data within a bucket. These descriptions would be at
+    least a few pointers and might be too much overhead per
+    bucket. Thus, a solution would be a registry of content
+    descriptions. A bucket can simply refer to a descrption stored in
+    the registry. (maybe some common, static descriptions plus the
+    dynamic registry) Unknown how a dynamic registry would be
+    built. We could make it an app-provided piece, or we could
+    automatically create and associate one with a serf_context. I'd go
+    with an app thingy since the registry could be shared across
+    multiple contexts.
 
   * How does serf_aggregate_bucket_become(bucket) work?
     Justin says: We want bucket to be an aggregate bucket, and for the first

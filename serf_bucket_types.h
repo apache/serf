@@ -51,9 +51,6 @@ SERF_DECLARE(serf_bucket_t *) serf_bucket_request_create(
 SERF_DECLARE(serf_bucket_t *) serf_bucket_request_get_headers(
     serf_bucket_t *request);
 
-/* Metadata key for get/set_metadata */
-#define SERF_REQUEST_HEADERS "REQUESTHEADERS"
-
 
 /* ==================================================================== */
 
@@ -88,8 +85,6 @@ SERF_DECLARE(apr_status_t) serf_bucket_response_status(
     serf_bucket_t *bkt,
     serf_status_line *sline);
 
-/* Metadata key for get/set_metadata */
-#define SERF_RESPONSE_HEADERS "RESPONSEHEADERS"
 
 /* ==================================================================== */
 

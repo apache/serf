@@ -361,7 +361,5 @@ SERF_DECLARE_DATA const serf_bucket_type_t serf_bucket_type_response = {
     serf_response_read_for_sendfile,
     serf_default_read_bucket,
     serf_response_peek,
-    serf_default_get_metadata,
-    serf_default_set_metadata,
     serf_response_destroy_and_data,
 };

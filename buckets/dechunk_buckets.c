@@ -56,10 +56,10 @@ SERF_DECLARE(serf_bucket_t *) serf_bucket_dechunk_create(
 
 static void serf_dechunk_destroy_and_data(serf_bucket_t *bucket)
 {
-    dechunk_context_t *ctx = bucket->data;
-
     /* ### we can't destroy this. the response bucket wants to read
        ### trailers from this bucket.
+
+    dechunk_context_t *ctx = bucket->data;
 
     serf_bucket_destroy(ctx->stream);
     */
@@ -182,7 +182,5 @@ SERF_DECLARE_DATA const serf_bucket_type_t serf_bucket_type_dechunk = {
     serf_dechunk_read_for_sendfile,
     serf_default_read_bucket,
     serf_dechunk_peek,
-    serf_default_get_metadata,
-    serf_default_set_metadata,
     serf_dechunk_destroy_and_data,
 };

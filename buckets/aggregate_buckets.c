@@ -70,9 +70,6 @@ SERF_DECLARE(void) serf_bucket_aggregate_become(serf_bucket_t *bucket)
     bucket->type = &serf_bucket_type_aggregate;
     bucket->data = ctx;
 
-    /* ### leave the metadata? */
-    /* bucket->metadata = NULL; */
-
     /* The allocator remains the same. */
 }
 
@@ -226,7 +223,5 @@ SERF_DECLARE_DATA const serf_bucket_type_t serf_bucket_type_aggregate = {
     serf_default_read_for_sendfile,
     serf_aggregate_read_bucket,
     serf_aggregate_peek,
-    serf_default_get_metadata,
-    serf_default_set_metadata,
     serf_aggregate_destroy_and_data,
 };

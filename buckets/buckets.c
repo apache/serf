@@ -16,17 +16,9 @@
 #include <stdlib.h>  /* for abort() */
 
 #include <apr_pools.h>
-#include <apr_hash.h>
 
 #include "serf.h"
 #include "serf_bucket_util.h"
-
-
-/* ### maybe allocate this along with the basic bucket? see the "combined"
-   ### structure in modules/dav/fs/repos.c for the concept */
-struct serf_metadata_t {
-    apr_hash_t *hash;
-};
 
 
 SERF_DECLARE(serf_bucket_t *) serf_bucket_create(
@@ -38,89 +30,9 @@ SERF_DECLARE(serf_bucket_t *) serf_bucket_create(
 
     bkt->type = type;
     bkt->data = data;
-    bkt->metadata = NULL;
     bkt->allocator = allocator;
 
     return bkt;
-}
-
-SERF_DECLARE(apr_status_t) serf_default_set_metadata(serf_bucket_t *bucket,
-                                                     const char *md_type,
-                                                     const char *md_name,
-                                                     const void *md_value)
-{
-    apr_hash_t *md_hash;
-
-    if (bucket->metadata == NULL) {
-        if (md_value == NULL) {
-            /* If we're trying to delete the value, then we're already done
-             * since there isn't any metadata in the bucket. */
-            return APR_SUCCESS;
-        }
-
-        /* Create the metadata container. */
-        bucket->metadata = serf_bucket_mem_alloc(bucket->allocator,
-                                                 sizeof(*bucket->metadata));
-
-        /* ### pool usage! */
-        bucket->metadata->hash =
-            apr_hash_make(serf_bucket_allocator_get_pool(bucket->allocator));
-    }
-
-    /* Look up the hash table for this md_type */
-    md_hash = apr_hash_get(bucket->metadata->hash, md_type,
-                           APR_HASH_KEY_STRING);
-
-    if (!md_hash) {
-        if (md_value == NULL) {
-            /* The hash table isn't present, so there is no work to delete
-             * a value.
-             */
-            return APR_SUCCESS;
-        }
-
-        /* Create the missing hash table. */
-        /* ### pool usage! */
-        md_hash =
-            apr_hash_make(serf_bucket_allocator_get_pool(bucket->allocator));
-
-        /* Put the new hash table back into the type hash. */
-        apr_hash_set(bucket->metadata->hash, md_type, APR_HASH_KEY_STRING,
-                     md_hash);
-    }
-
-    apr_hash_set(md_hash, md_name, APR_HASH_KEY_STRING, md_value);
-
-    return APR_SUCCESS;
-}
-
-
-SERF_DECLARE(apr_status_t) serf_default_get_metadata(serf_bucket_t *bucket,
-                                                     const char *md_type,
-                                                     const char *md_name,
-                                                     const void **md_value)
-{
-    /* Initialize return value to not being found. */
-    *md_value = NULL;
-
-    if (bucket->metadata) {
-        apr_hash_t *md_hash;
-
-        md_hash = apr_hash_get(bucket->metadata->hash, md_type,
-                               APR_HASH_KEY_STRING);
-
-        if (md_hash) {
-            if (md_name) {
-                *md_value = apr_hash_get(md_hash, md_name, 
-                                         APR_HASH_KEY_STRING);
-            }
-            else {
-                *md_value = md_hash;
-            }
-        }
-    }
-
-    return APR_SUCCESS;
 }
 
 SERF_DECLARE(apr_status_t) serf_default_read_iovec(
@@ -180,9 +92,6 @@ SERF_DECLARE(void) serf_default_destroy(serf_bucket_t *bucket)
     serf_debug__bucket_destroy(bucket);
 #endif
 
-    if (bucket->metadata != NULL) {
-        serf_bucket_mem_free(bucket->allocator, bucket->metadata);
-    }
     serf_bucket_mem_free(bucket->allocator, bucket);
 }
 
