@@ -131,7 +131,7 @@ typedef serf_bucket_t * (*serf_response_acceptor_t)(serf_request_t *request,
  * baton provided when the connection was first opened. The reason for
  * closure is given in @a why, and will be APR_SUCCESS if the application
  * requested closure (by clearing the pool used to allocate this
- * connection).
+ * connection or calling serf_connection_close).
  *
  * All temporary allocations should be made in @a pool.
  */
@@ -198,6 +198,15 @@ SERF_DECLARE(serf_connection_t *) serf_connection_create(
     void *closed_baton,
     apr_pool_t *pool);
 
+
+/**
+ * Close the connection associated with @a conn and cancel all pending requests.
+ *
+ * The closed callback passed to serf_connection_create() will be invoked
+ * with APR_SUCCESS.
+ */
+SERF_DECLARE(apr_status_t) serf_connection_close(
+    serf_connection_t *conn);
 
 /**
  * Construct a request object for the @a conn connection.

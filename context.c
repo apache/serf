@@ -495,6 +495,32 @@ SERF_DECLARE(serf_connection_t *) serf_connection_create(
 }
 
 
+SERF_DECLARE(apr_status_t) serf_connection_close(
+    serf_connection_t *conn)
+{
+    int i;
+    serf_context_t *ctx = conn->ctx;
+    apr_status_t status;
+
+    for (i = ctx->conns->nelts; i--; ) {
+        serf_connection_t *conn_seq =
+            ((serf_connection_t **)ctx->conns->elts)[i];
+        if (conn_seq == conn) {
+            while (conn->requests) {
+                serf_request_cancel(conn->requests);
+            }
+            if (conn->skt != NULL) {
+                remove_connection(ctx, conn);
+                status = apr_socket_close(conn->skt);
+                if (conn->closed != NULL) {
+                    conn->closed(conn, conn->closed_baton, status, conn->pool);
+                }
+            }
+        }
+    }
+    return APR_SUCCESS;
+}
+
 SERF_DECLARE(serf_request_t *) serf_connection_request_create(
     serf_connection_t *conn)
 {
@@ -545,7 +571,25 @@ SERF_DECLARE(void) serf_request_deliver(
 
 SERF_DECLARE(apr_status_t) serf_request_cancel(serf_request_t *request)
 {
-    return APR_ENOTIMPL;
+    serf_connection_t *conn = request->conn;
+
+    if (conn->requests == request) {
+        conn->requests = request->next;
+    }
+    else {
+        serf_request_t *scan = conn->requests;
+
+        while (scan->next && scan->next != request)
+            scan = scan->next;
+
+        if (scan->next) {
+            scan->next = scan->next->next;
+        }
+    }
+
+    /* ### Should we clear our request pool now? */
+
+    return APR_SUCCESS;
 }
 
 SERF_DECLARE(apr_pool_t *) serf_request_get_pool(const serf_request_t *request)
