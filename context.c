@@ -48,6 +48,8 @@
  *
  */
 
+#include <stdlib.h>  /* ### for abort() */
+
 #include <apr_pools.h>
 #include <apr_poll.h>
 
@@ -58,6 +60,27 @@
    ### the implication is that, if we bust this limit, we'd need to
    ### stop, rebuild a pollset, and repopulate it. what suckage.  */
 #define MAX_CONN 16
+
+/* Holds all the information corresponding to a request/response pair. */
+typedef struct request_t {
+    apr_pool_t *respool;
+
+    /* The bucket corresponding to the request. Will be NULL once the
+     * bucket has been emptied (for delivery into the socket).
+     */
+    serf_bucket_t *req_bkt;
+
+    serf_response_acceptor_t acceptor;
+    void *acceptor_baton;
+
+    serf_response_handler_t handler;
+    void *handler_baton;
+
+    serf_bucket_t *resp_bkt;
+
+    struct request_t *next;
+
+} request_t;
 
 struct serf_context_t {
     /* the pool used for self and for other allocations */
@@ -74,38 +97,254 @@ struct serf_connection_t {
     serf_context_t *ctx;
 
     apr_pool_t *pool;
+    apr_sockaddr_t *address;
 
     apr_socket_t *skt;
+
+    /* The list of active requests. */
+    request_t *requests;
+
+    const char *unwritten_ptr;
+    apr_size_t unwritten_len;
 
     serf_connection_closed_t closed;
     void *closed_baton;
 };
 
-typedef struct {
-    apr_pool_t *respool;
 
-    serf_bucket_t *req_bkt;
-
-    void *unwritten_ptr;
-    apr_size_t *unwritten_len;
-
-    serf_response_acceptor_t acceptor;
-    void *acceptor_baton;
-
-    serf_response_handler_t handler;
-    void *handler_baton;
-
-    serf_bucket_t *resp_bkt;
-
-} request_t;
-
-
-static apr_status_t process_connection(serf_connection_t *conn,
-                                       apr_int16_t events)
+/* Create and connect sockets for any connections which don't have them
+ * yet. This is the core of our lazy-connect behavior.
+ */
+static apr_status_t open_connections(serf_context_t *ctx)
 {
+    int i;
+
+    for (i = ctx->conns->nelts; i--; ) {
+        serf_connection_t *conn = ((serf_connection_t **)ctx->conns->elts)[i];
+        apr_status_t status;
+        apr_socket_t *skt;
+        apr_pollfd_t desc = { 0 };
+
+        if (conn->skt != NULL)
+            continue;
+
+        if ((status = apr_socket_create(&skt, APR_INET, SOCK_STREAM,
+                                        APR_PROTO_TCP,
+                                        conn->pool)) != APR_SUCCESS)
+            return status;
+
+        /* Set the socket to be non-blocking */
+        if ((status = apr_socket_timeout_set(skt, 0)) != APR_SUCCESS)
+            return status;
+
+        /* Disable Nagle's algorithm */
+        if ((status = apr_socket_opt_set(skt,
+                                         APR_TCP_NODELAY, 0)) != APR_SUCCESS)
+            return status;
+
+        /* Now that the socket is set up, let's connect it. This should
+         * return immediately.
+         */
+        if ((status = apr_socket_connect(skt, conn->address)) != APR_SUCCESS)
+            return status;
+
+        /* Add the new socket to the pollset. */
+        desc.desc_type = APR_POLL_SOCKET;
+        desc.reqevents = APR_POLLIN | APR_POLLOUT;
+        desc.desc.s = skt;
+        desc.client_data = conn;
+
+        if ((status = apr_pollset_add(ctx->pollset, &desc)) != APR_SUCCESS)
+            return status;
+    }
+
     return APR_SUCCESS;
 }
 
+/* write data out to the connection */
+static apr_status_t write_to_connection(serf_connection_t *conn)
+{
+    request_t *request = conn->requests;
+
+    /* Find a request that has data which needs to be delivered. */
+    while (request != NULL && request->req_bkt == NULL)
+        request = request->next;
+
+    /* assert: request != NULL || conn->unwritten_len */
+
+    /* Keep reading and sending until we run out of stuff to read, or
+     * writing would block.
+     */
+    while (1) {
+        int stop_reading = 0;
+        apr_status_t status;
+        const char *data;
+        apr_size_t len;
+
+        /* If we have unwritten data, then write what we can. */
+        if ((len = conn->unwritten_len) != 0) {
+            status = apr_socket_send(conn->skt, conn->unwritten_ptr, &len);
+            conn->unwritten_len -= len;
+
+            /* If the write would have blocked, then we're done. Don't try
+             * to write anything else to the socket.
+             */
+            if (APR_STATUS_IS_EAGAIN(status))
+                return APR_SUCCESS;
+            if (status)
+                return status;
+        }
+        /* ### can we have a short write, yet no EAGAIN? a short write
+           ### would imply unwritten_len > 0 ... */
+        /* assert: unwritten_len == 0. */
+
+        /* We may need to move forward to a request which has something
+         * to write.
+         */
+        while (request != NULL && request->req_bkt == NULL)
+            request = request->next;
+
+        /* If we have no further requests, then we're done. */
+        if (request == NULL)
+            return APR_SUCCESS;
+
+        /* ### optimize at some point by using read_for_sendfile */
+
+        status = serf_bucket_read(request->req_bkt, SERF_READ_ALL_AVAIL,
+                                  &data, &len);
+        if (APR_STATUS_IS_EAGAIN(status)) {
+            /* We read some stuff, but should not try to read again. */
+            stop_reading = 1;
+
+            /* ### we should avoid looking for writability for a while so
+               ### that (hopefully) something will appear in the bucket so
+               ### we can actually write something. otherwise, we could
+               ### end up in a CPU spin: socket wants something, but we
+               ### don't have anything (and keep returning EAGAIN)
+            */
+        }
+        else if (APR_STATUS_IS_EOF(status)) {
+            /* If we hit the end of the request bucket, then clear it out to
+             * signify that we're done sending the request. On the next
+             * iteration through this loop, we'll see if there are other
+             * requests that need to be sent ("pipelining").
+             */
+            serf_bucket_destroy(request->req_bkt);
+            request->req_bkt = NULL;
+        }
+        else if (status) {
+            /* Something bad happened. Propagate any errors. */
+            return status;
+        }
+
+        /* If we got some data, then deliver it. */
+        /* ### what to do if we got no data?? is that a problem? */
+        if (len > 0) {
+            apr_size_t written = len;
+
+            status = apr_socket_send(conn->skt, data, &written);
+
+            if (written < len) {
+                /* We didn't write it all. Save it away for writing later. */
+                conn->unwritten_ptr = data + written;
+                conn->unwritten_len = len - written;
+            }
+
+            /* If we can't write any more, or an error occurred, then
+             * we're done here.
+             */
+            if (APR_STATUS_IS_EAGAIN(status))
+                return APR_SUCCESS;
+            if (status)
+                return status;
+        }
+    }
+    /* NOTREACHED */
+}
+
+/* read data from the connection */
+static apr_status_t read_from_connection(serf_connection_t *conn)
+{
+    apr_status_t status;
+    apr_pool_t *tmppool;
+
+    /* Whatever is coming in on the socket corresponds to the first request
+     * on our chain.
+     */
+    request_t *request = conn->requests;
+
+    /* assert: request != NULL */
+
+    if ((status = apr_pool_create(&tmppool, request->respool)) != APR_SUCCESS)
+        goto error;
+
+    /* Invoke response handlers until we have no more work. */
+    while (1) {
+        apr_pool_clear(tmppool);
+
+        /* If the request doesn't have a response bucket, then call the
+         * acceptor to get one created.
+         */
+        if (request->resp_bkt == NULL) {
+            request->resp_bkt = (*request->acceptor)(conn, conn->skt,
+                                                     request->acceptor_baton,
+                                                     request->respool,
+                                                     tmppool);
+            apr_pool_clear(tmppool);
+        }
+
+        status = (*request->handler)(request->resp_bkt,
+                                     request->handler_baton,
+                                     tmppool);
+        if (!APR_STATUS_IS_EOF(status)) {
+            /* Whether success, or an error, there is no more to do unless
+             * this request has been completed.
+             */
+            goto error;
+        }
+
+        /* The request has been fully-delivered, and the response has
+         * been fully-read. Remove it from our queue and loop to read
+         * another response.
+         */
+        conn->requests = request->next;
+
+        /* The bucket is no longer needed, nor is the request's pool. */
+        serf_bucket_destroy(request->resp_bkt);
+        apr_pool_destroy(request->respool);
+
+        request = conn->requests;
+    }
+
+  error:
+    apr_pool_destroy(tmppool);
+    return status;
+}
+
+/* process all events on the connection */
+static apr_status_t process_connection(serf_connection_t *conn,
+                                       apr_int16_t events)
+{
+    apr_status_t status;
+
+    if ((events & APR_POLLOUT) != 0) {
+        if ((status = write_to_connection(conn)) != APR_SUCCESS)
+            return status;
+    }
+    if ((events & APR_POLLIN) != 0) {
+        if ((status = read_from_connection(conn)) != APR_SUCCESS)
+            return status;
+    }
+    if ((events & APR_POLLHUP) != 0) {
+        /* ### needs work */
+        abort();
+    }
+    if ((events & APR_POLLERR) != 0) {
+        /* ### needs work */
+        abort();
+    }
+    return APR_SUCCESS;
+}
 
 
 SERF_DECLARE(serf_context_t *) serf_context_create(apr_pool_t *pool)
@@ -131,8 +370,11 @@ SERF_DECLARE(apr_status_t) serf_context_run(serf_context_t *ctx,
     apr_int32_t num;
     const apr_pollfd_t *desc;
 
-    status = apr_pollset_poll(ctx->pollset, duration, &num, &desc);
-    if (status) {
+    if ((status = open_connections(ctx)) != APR_SUCCESS)
+        return status;
+
+    if ((status = apr_pollset_poll(ctx->pollset, duration, &num,
+                                   &desc)) != APR_SUCCESS) {
         /* ### do we still need to dispatch stuff here?
            ### look at the potential return codes. map to our defined
            ### return values? ...
@@ -143,8 +385,8 @@ SERF_DECLARE(apr_status_t) serf_context_run(serf_context_t *ctx,
     while (num--) {
         serf_connection_t *conn = desc->client_data;
 
-        status = process_connection(conn, desc++->rtnevents);
-        if (status) {
+        if ((status = process_connection(conn,
+                                         desc++->rtnevents)) != APR_SUCCESS) {
             /* ### what else to do? */
             return status;
         }
@@ -153,19 +395,6 @@ SERF_DECLARE(apr_status_t) serf_context_run(serf_context_t *ctx,
     return APR_SUCCESS;
 }
 
-
-static apr_status_t add_connection(serf_context_t *ctx,
-                                   serf_connection_t *conn)
-{
-    apr_pollfd_t desc = { 0 };
-
-    desc.desc_type = APR_POLL_SOCKET;
-    desc.reqevents = APR_POLLIN | APR_POLLOUT | APR_POLLERR | APR_POLLHUP;
-    desc.desc.s = conn->skt;
-    desc.client_data = conn;
-
-    return apr_pollset_add(ctx->pollset, &desc);
-}
 
 static apr_status_t remove_connection(serf_context_t *ctx,
                                       serf_connection_t *conn)
@@ -188,14 +417,12 @@ SERF_DECLARE(serf_connection_t *) serf_connection_create(
     serf_connection_t *conn = apr_pcalloc(pool, sizeof(*conn));
 
     conn->ctx = ctx;
-    conn->pool = pool;
+    conn->address = address;
     conn->closed = closed;
     conn->closed_baton = closed_baton;
+    conn->pool = pool;
 
-    if (add_connection(ctx, conn)) {
-        /* ### what to do with the error? */
-        return NULL;
-    }
+    /* ### register a cleanup */
 
     return conn;
 }
