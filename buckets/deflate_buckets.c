@@ -34,19 +34,23 @@ static char deflate_magic[2] = { '\037', '\213' };
 #define DEFLATE_BUFFER_SIZE 8096
 
 static const int DEFLATE_WINDOW_SIZE = -15;
-static const int DEFLATE_MEMLEVEL = 9; 
+static const int DEFLATE_MEMLEVEL = 9;
 
 typedef struct {
     serf_bucket_t *stream;
     serf_bucket_t *inflate_stream;
 
+    int format;                 /* Are we 'deflate' or 'gzip'? */
+
     enum {
-        STATE_READING_HEADER,   /* reading the deflate header */
-        STATE_HEADER,           /* read the deflate header */
+        STATE_READING_HEADER,   /* reading the gzip header */
+        STATE_HEADER,           /* read the gzip header */
+        STATE_INIT,             /* init'ing zlib functions */
         STATE_INFLATE,          /* inflating the content now */
-        STATE_READING_VERIFY,   /* reading the final CRC */
-        STATE_VERIFY,           /* verifying the final CRC */
-        STATE_DONE,             /* body is done; we've returned EOF */
+        STATE_READING_VERIFY,   /* reading the final gzip CRC */
+        STATE_VERIFY,           /* verifying the final gzip CRC */
+        STATE_FINISH,           /* clean up after reading body */
+        STATE_DONE,             /* body is done; we'll return EOF here */
     } state;
 
     z_stream zstream;
@@ -76,16 +80,29 @@ static unsigned long getLong(unsigned char *string)
 
 SERF_DECLARE(serf_bucket_t *) serf_bucket_deflate_create(
     serf_bucket_t *stream,
-    serf_bucket_alloc_t *allocator)
+    serf_bucket_alloc_t *allocator,
+    int format)
 {
     deflate_context_t *ctx;
 
     ctx = serf_bucket_mem_alloc(allocator, sizeof(*ctx));
     ctx->stream = stream;
     ctx->inflate_stream = serf_bucket_aggregate_create(allocator);
-    ctx->state = STATE_READING_HEADER;
+    ctx->format = format;
 
-    /* Initial size of ZLIB header. */
+    switch (ctx->format) {
+        case SERF_DEFLATE_GZIP:
+            ctx->state = STATE_READING_HEADER;
+            break;
+        case SERF_DEFLATE_DEFLATE:
+            /* deflate doesn't have a header. */
+            ctx->state = STATE_INIT;
+            break;
+        default:
+            abort();
+    }
+
+    /* Initial size of gzip header. */
     ctx->stream_left = ctx->stream_size = DEFLATE_MAGIC_SIZE;
 
     ctx->windowSize = DEFLATE_WINDOW_SIZE;
@@ -99,7 +116,12 @@ static void serf_deflate_destroy_and_data(serf_bucket_t *bucket)
 {
     deflate_context_t *ctx = bucket->data;
 
-    serf_bucket_destroy(ctx->inflate_stream);
+    /* We may have appended inflate_stream into the stream bucket.
+     * If so, avoid free'ing it twice.
+     */
+    if (ctx->inflate_stream) {
+        serf_bucket_destroy(ctx->inflate_stream);
+    }
     serf_bucket_destroy(ctx->stream);
 
     serf_default_destroy_and_data(bucket);
@@ -147,12 +169,6 @@ static apr_status_t serf_deflate_read(serf_bucket_t *bucket,
             if (ctx->hdr_buffer[3] != 0) {
                 return APR_EGENERAL;
             }
-            zRC = inflateInit2(&ctx->zstream, ctx->windowSize);
-            if (zRC != Z_OK) {
-                return APR_EGENERAL;
-            }
-            ctx->zstream.next_out = ctx->buffer;
-            ctx->zstream.avail_out = ctx->bufferSize;
             ctx->state++;
             break;
         case STATE_VERIFY:
@@ -165,21 +181,56 @@ static apr_status_t serf_deflate_read(serf_bucket_t *bucket,
             if (ctx->zstream.total_out != compLen) {
                 return APR_EGENERAL;
             }
-
+            ctx->state++;
+            break;
+        case STATE_INIT:
+            zRC = inflateInit2(&ctx->zstream, ctx->windowSize);
+            if (zRC != Z_OK) {
+                return APR_EGENERAL;
+            }
+            ctx->zstream.next_out = ctx->buffer;
+            ctx->zstream.avail_out = ctx->bufferSize;
+            ctx->state++;
+            break;
+        case STATE_FINISH:
             inflateEnd(&ctx->zstream);
+            serf_bucket_aggregate_prepend(ctx->stream, ctx->inflate_stream);
+            ctx->inflate_stream = 0;
             ctx->state++;
             break;
         case STATE_INFLATE:
-            /* FIXME: We need to try inflate_stream first. */
-            status = serf_bucket_read(ctx->stream, ctx->bufferSize,
-                                      &private_data, &private_len);
-
+            /* Do we have anything already uncompressed to read? */
+            status = serf_bucket_read(ctx->inflate_stream, requested, data,
+                                      len);
             if (SERF_BUCKET_READ_ERROR(status)) {
                 return status;
             }
+            /* Hide EOF. */
+            if (APR_STATUS_IS_EOF(status)) {
+                status = APR_SUCCESS;
+            }
+            if (*len != 0) {
+                return status;
+            }
 
-            ctx->zstream.next_in = (unsigned char*)private_data;
-            ctx->zstream.avail_in = private_len;
+            /* We tried; but we have nothing buffered. Fetch more. */
+
+            /* It is possible that we maxed out avail_out before
+             * exhausting avail_in; therefore, continue using the
+             * previous buffer.  Otherwise, fetch more data from
+             * our stream bucket.
+             */
+            if (ctx->zstream.avail_in == 0) {
+                status = serf_bucket_read(ctx->stream, ctx->bufferSize,
+                                          &private_data, &private_len);
+
+                if (SERF_BUCKET_READ_ERROR(status)) {
+                    return status;
+                }
+
+                ctx->zstream.next_in = (unsigned char*)private_data;
+                ctx->zstream.avail_in = private_len;
+            }
             zRC = Z_OK;
             while (ctx->zstream.avail_in != 0) {
                 /* We're full, clear out our buffer, reset, and return. */
@@ -195,7 +246,6 @@ static apr_status_t serf_deflate_read(serf_bucket_t *bucket,
                     tmp = SERF_BUCKET_SIMPLE_STRING_LEN((char *)ctx->buffer,
                                                         private_len,
                                                         bucket->allocator);
-
                     serf_bucket_aggregate_append(ctx->inflate_stream, tmp);
                     ctx->zstream.avail_out = ctx->bufferSize;
                     break;
@@ -229,8 +279,20 @@ static apr_status_t serf_deflate_read(serf_bucket_t *bucket,
                                                         bucket->allocator);
                     serf_bucket_aggregate_prepend(ctx->stream, tmp);
 
-                    ctx->state++;
-                    ctx->stream_left = ctx->stream_size = DEFLATE_VERIFY_SIZE;
+                    switch (ctx->format) {
+                    case SERF_DEFLATE_GZIP:
+                        ctx->stream_left = ctx->stream_size =
+                            DEFLATE_VERIFY_SIZE;
+                        ctx->state++;
+                        break;
+                    case SERF_DEFLATE_DEFLATE:
+                        /* Deflate does not have a verify footer. */
+                        ctx->state = STATE_FINISH;
+                        break;
+                    default:
+                        abort();
+                    }
+
                     break;
                 }
                 if (zRC != Z_OK) {
@@ -240,16 +302,14 @@ static apr_status_t serf_deflate_read(serf_bucket_t *bucket,
             /* Okay, we've inflated.  Try to read. */
             status = serf_bucket_read(ctx->inflate_stream, requested, data,
                                       len);
-            if (SERF_BUCKET_READ_ERROR(status)) {
-                return status;
-            }
-
-            if (zRC == Z_STREAM_END && !status) {
-                continue;
+            /* Hide EOF. */
+            if (APR_STATUS_IS_EOF(status)) {
+                status = APR_SUCCESS;
             }
             return status;
         case STATE_DONE:
-            return APR_EOF;
+            /* We're done inflating.  Use our finished buffer. */
+            return serf_bucket_read(ctx->stream, requested, data, len);
         default:
             abort();
         }

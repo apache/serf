@@ -174,6 +174,12 @@ static apr_status_t serf_aggregate_read(serf_bucket_t *bucket,
         next_list = ctx->list->next;
         serf_bucket_mem_free(bucket->allocator, ctx->list);
         ctx->list = next_list;
+
+        if (!ctx->list) {
+            *len = 0;
+            /* ### can we leave *data unassigned given *len == 0? */
+            return APR_EOF;
+        }
     }
     /* NOTREACHED */
 }

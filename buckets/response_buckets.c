@@ -248,7 +248,13 @@ static apr_status_t run_machine(serf_bucket_t *bkt, response_context_t *ctx)
                 /* Need to handle multiple content-encoding. */
                 if (v && strcasecmp("gzip", v) == 0) {
                     ctx->body =
-                        serf_bucket_deflate_create(ctx->body, bkt->allocator);
+                        serf_bucket_deflate_create(ctx->body, bkt->allocator,
+                                                   SERF_DEFLATE_GZIP);
+                }
+                else if (v && strcasecmp("deflate", v) == 0) {
+                    ctx->body =
+                        serf_bucket_deflate_create(ctx->body, bkt->allocator,
+                                                   SERF_DEFLATE_DEFLATE);
                 }
             }
             ctx->state = STATE_BODY;
