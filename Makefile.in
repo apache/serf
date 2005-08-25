@@ -4,6 +4,9 @@
 srcdir = @srcdir@
 VPATH = @srcdir@
 
+SERF_MAJOR_VERSION=@SERF_MAJOR_VERSION@
+SERF_DOTTED_VERSION=@SERF_DOTTED_VERSION@
+
 OBJECTS = buckets/aggregate_buckets.lo buckets/request_buckets.lo context.lo \
           buckets/buckets.lo buckets/simple_buckets.lo buckets/file_buckets.lo \
           buckets/mmap_buckets.lo buckets/socket_buckets.lo \
@@ -13,6 +16,7 @@ OBJECTS = buckets/aggregate_buckets.lo buckets/request_buckets.lo context.lo \
           buckets/ssl_buckets.lo buckets/barrier_buckets.lo \
           buckets/chunk_buckets.lo
 
+TARGET_LIB=libserf-$(SERF_MAJOR_VERSION).la
 PROGRAMS = test/serf_get test/serf_response test/serf_request
 TESTCASES = test/testcases/simple.response \
   test/testcases/chunked-empty.response test/testcases/chunked.response \
@@ -21,8 +25,9 @@ TESTCASES = test/testcases/simple.response \
 
 HEADERS = serf.h serf_bucket_types.h serf_bucket_util.h serf_declare.h
 
-SERF_MAJOR_VERSION=@SERF_MAJOR_VERSION@
-SERF_DOTTED_VERSION=@SERF_DOTTED_VERSION@
+prefix=@prefix@
+exec_prefix=@exec_prefix@
+libdir=@libdir@
 
 LIBTOOL = @APR_LIBTOOL@ --silent
 CC = @CC@
@@ -33,7 +38,7 @@ INCLUDES = -I$(srcdir) -I@APR_INCLUDEDIR@ -I@APU_INCLUDEDIR@ $(EXTRA_INCLUDES)
 LDFLAGS = @LDFLAGS@
 LIBS = @SERF_LIBS@ -lz -lssl -lcrypto
 
-all: $(OBJECTS) $(PROGRAMS)
+all: $(TARGET_LIB) $(PROGRAMS)
 
 context.lo: context.c $(HEADERS)
 buckets/aggregate_buckets.lo: buckets/aggregate_buckets.c $(HEADERS)
@@ -57,14 +62,17 @@ test/serf_get.lo: test/serf_get.c $(HEADERS)
 test/serf_response.lo: test/serf_response.c $(HEADERS)
 test/serf_request.lo: test/serf_request.c $(HEADERS)
 
-test/serf_get: $(OBJECTS) test/serf_get.lo
-	$(LIBTOOL) --mode=link $(CC) $(LDFLAGS) -o $@ $^ $(LIBS)
+$(TARGET_LIB): $(OBJECTS)
+	$(LIBTOOL) --mode=link $(CC) $(LDFLAGS) -rpath $(libdir) -o $@ $^ $(LIBS)
 
-test/serf_response: $(OBJECTS) test/serf_response.lo
-	$(LIBTOOL) --mode=link $(CC) $(LDFLAGS) -o $@ $^ $(LIBS)
+test/serf_get: $(TARGET_LIB) test/serf_get.lo
+	$(LIBTOOL) --mode=link $(CC) $(LDFLAGS) -static -o $@ $^ $(LIBS)
 
-test/serf_request: $(OBJECTS) test/serf_request.lo
-	$(LIBTOOL) --mode=link $(CC) $(LDFLAGS) -o $@ $^ $(LIBS)
+test/serf_response: $(TARGET_LIB) test/serf_response.lo
+	$(LIBTOOL) --mode=link $(CC) $(LDFLAGS) -static -o $@ $^ $(LIBS)
+
+test/serf_request: $(TARGET_LIB) test/serf_request.lo
+	$(LIBTOOL) --mode=link $(CC) $(LDFLAGS) -static -o $@ $^ $(LIBS)
 
 check: test/serf_response
 	@for i in $(TESTCASES); \
@@ -73,7 +81,7 @@ check: test/serf_response
 	done;
 
 clean:
-	rm -f $(OBJECTS) $(PROGRAMS) $(OBJECTS:.lo=.o)
+	rm -f $(TARGET_LIB) $(OBJECTS) $(PROGRAMS) $(OBJECTS:.lo=.o)
 
 .SUFFIXES:
 .SUFFIXES: .c .lo .o
