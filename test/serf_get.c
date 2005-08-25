@@ -238,6 +238,9 @@ int main(int argc, const char **argv)
     if (!url.port) {
         url.port = apr_uri_port_of_scheme(url.scheme);
     }
+    if (!url.path) {
+        url.path = "/";
+    }
 
     if (strcasecmp(url.scheme, "https") == 0) {
         app_ctx.using_ssl = 1;
