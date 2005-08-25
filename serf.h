@@ -669,6 +669,11 @@ SERF_DECLARE(void) serf_debug__entered_loop(serf_bucket_alloc_t *allocator);
 SERF_DECLARE(void) serf_debug__closed_conn(serf_bucket_alloc_t *allocator);
 SERF_DECLARE(void) serf_debug__bucket_destroy(serf_bucket_t *bucket);
 
+/* Version info */
+#define SERF_MAJOR_VERSION 0
+#define SERF_MINOR_VERSION 0
+#define SERF_PATCH_VERSION 1
+
 #ifdef __cplusplus
 }
 #endif

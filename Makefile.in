@@ -1,0 +1,82 @@
+#
+# Makefile for Serf
+#
+srcdir = @srcdir@
+VPATH = @srcdir@
+
+OBJECTS = buckets/aggregate_buckets.lo buckets/request_buckets.lo context.lo \
+          buckets/buckets.lo buckets/simple_buckets.lo buckets/file_buckets.lo \
+          buckets/mmap_buckets.lo buckets/socket_buckets.lo \
+          buckets/response_buckets.lo buckets/headers_buckets.lo \
+          buckets/allocator.lo buckets/dechunk_buckets.lo \
+          buckets/deflate_buckets.lo buckets/limit_buckets.lo \
+          buckets/ssl_buckets.lo buckets/barrier_buckets.lo \
+          buckets/chunk_buckets.lo
+
+PROGRAMS = test/serf_get test/serf_response test/serf_request
+TESTCASES = test/testcases/simple.response \
+  test/testcases/chunked-empty.response test/testcases/chunked.response \
+  test/testcases/chunked-trailers.response \
+  test/testcases/deflate.response
+
+HEADERS = serf.h serf_bucket_types.h serf_bucket_util.h serf_declare.h
+
+SERF_MAJOR_VERSION=@SERF_MAJOR_VERSION@
+SERF_DOTTED_VERSION=@SERF_DOTTED_VERSION@
+
+LIBTOOL = @APR_LIBTOOL@ --silent
+CC = @CC@
+CFLAGS = @CFLAGS@
+CPPFLAGS = @CPPFLAGS@
+INCLUDES = -I$(srcdir) -I@APR_INCLUDEDIR@ -I@APU_INCLUDEDIR@ $(EXTRA_INCLUDES)
+
+LDFLAGS = @LDFLAGS@
+LIBS = @SERF_LIBS@ -lz -lssl -lcrypto
+
+all: $(OBJECTS) $(PROGRAMS)
+
+context.lo: context.c $(HEADERS)
+buckets/aggregate_buckets.lo: buckets/aggregate_buckets.c $(HEADERS)
+buckets/request_buckets.lo: buckets/request_buckets.c $(HEADERS)
+buckets/buckets.lo: buckets/buckets.c $(HEADERS)
+buckets/simple_buckets.lo: buckets/simple_buckets.c $(HEADERS)
+buckets/file_buckets.lo: buckets/file_buckets.c $(HEADERS)
+buckets/mmap_buckets.lo: buckets/mmap_buckets.c $(HEADERS)
+buckets/socket_buckets.lo: buckets/socket_buckets.c $(HEADERS)
+buckets/response_buckets.lo: buckets/response_buckets.c $(HEADERS)
+buckets/headers_buckets.lo: buckets/headers_buckets.c $(HEADERS)
+buckets/allocator.lo: buckets/allocator.c $(HEADERS)
+buckets/dechunk_buckets.lo: buckets/dechunk_buckets.c $(HEADERS)
+buckets/deflate_buckets.lo: buckets/deflate_buckets.c $(HEADERS)
+buckets/limit_buckets.lo: buckets/limit_buckets.c $(HEADERS)
+buckets/ssl_buckets.lo: buckets/ssl_buckets.c $(HEADERS)
+buckets/barrier_buckets.lo: buckets/barrier_buckets.c $(HEADERS)
+buckets/chunk_buckets.lo: buckets/chunk_buckets.c $(HEADERS)
+
+test/serf_get.lo: test/serf_get.c $(HEADERS)
+test/serf_response.lo: test/serf_response.c $(HEADERS)
+test/serf_request.lo: test/serf_request.c $(HEADERS)
+
+test/serf_get: $(OBJECTS) test/serf_get.lo
+	$(LIBTOOL) --mode=link $(CC) $(LDFLAGS) -o $@ $^ $(LIBS)
+
+test/serf_response: $(OBJECTS) test/serf_response.lo
+	$(LIBTOOL) --mode=link $(CC) $(LDFLAGS) -o $@ $^ $(LIBS)
+
+test/serf_request: $(OBJECTS) test/serf_request.lo
+	$(LIBTOOL) --mode=link $(CC) $(LDFLAGS) -o $@ $^ $(LIBS)
+
+check: test/serf_response
+	@for i in $(TESTCASES); \
+		 do echo "== Testing $$i =="; \
+		 ./test/serf_response $$i; \
+	done;
+
+clean:
+	rm -f $(OBJECTS) $(PROGRAMS) $(OBJECTS:.lo=.o)
+
+.SUFFIXES:
+.SUFFIXES: .c .lo .o
+
+.c.lo:
+	$(LIBTOOL) --mode=compile $(CC) $(CFLAGS) $(CPPFLAGS) $(INCLUDES) -c -o $@ $< && touch $@

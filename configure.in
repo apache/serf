@@ -1,0 +1,145 @@
+dnl Autoconf file for Serf
+
+AC_PREREQ(2.50)
+AC_INIT(context.c)
+
+AC_CONFIG_AUX_DIR(build)
+
+sinclude(build/apr_common.m4)
+sinclude(build/find_apr.m4)
+sinclude(build/find_apu.m4)
+
+AC_PREFIX_DEFAULT(/usr/local/serf)
+
+dnl Get the layout here, so we can pass the required variables to apr
+APR_ENABLE_LAYOUT(Serf, [])
+
+dnl reparse the configure arguments.
+APR_PARSE_ARGUMENTS
+
+APR_CONFIG_NICE(config.nice)
+
+nl='
+'
+dnl Check that mkdir -p works
+APR_MKDIR_P_CHECK($top_srcdir/build/mkdir.sh)
+
+dnl ## Run configure for packages Apache uses
+
+dnl shared library support for these packages doesn't currently
+dnl work on some platforms
+
+AC_CANONICAL_SYSTEM
+
+orig_prefix="$prefix"
+
+echo $ac_n "${nl}Configuring Apache Portable Runtime library...${nl}"
+
+APR_FIND_APR("$srcdir/apr", "./apr", 1, 1)
+
+if test "$apr_found" = "no"; then
+  AC_MSG_ERROR([APR not found.  Please read the documentation.])
+fi
+
+if test "$apr_found" = "reconfig"; then
+  APR_SUBDIR_CONFIG(apr,
+                    [--prefix=$prefix --exec-prefix=$exec_prefix --libdir=$libdir --includedir=$includedir --bindir=$bindir --datadir=$datadir --with-installbuilddir=$installbuilddir],
+                    [--enable-layout=*|\'--enable-layout=*])
+  dnl We must be the first to build and the last to be cleaned
+  SERF_BUILD_SRCLIB_DIRS="apr $SERF_BUILD_SRCLIB_DIRS"
+  SERF_CLEAN_SRCLIB_DIRS="$SERF_CLEAN_SRCLIB_DIRS apr"
+fi
+
+APR_SETIFNULL(CC, `$apr_config --cc`)
+APR_SETIFNULL(CPP, `$apr_config --cpp`)
+APR_SETIFNULL(APR_LIBTOOL, `$apr_config --apr-libtool`)
+APR_ADDTO(CFLAGS, `$apr_config --cflags`)
+APR_ADDTO(CPPFLAGS, `$apr_config --cppflags`)
+APR_ADDTO(LDFLAGS, `$apr_config --ldflags`)
+SHLIBPATH_VAR=`$apr_config --shlib-path-var`
+APR_BINDIR=`$apr_config --bindir`
+APR_INCLUDEDIR=`$apr_config --includedir`
+APR_VERSION=`$apr_config --version`
+APR_CONFIG="$apr_config"
+
+AC_SUBST(APR_LIBTOOL)
+AC_SUBST(APR_BINDIR)
+AC_SUBST(APR_INCLUDEDIR)
+AC_SUBST(APR_VERSION)
+AC_SUBST(APR_CONFIG)
+
+echo $ac_n "${nl}Configuring Apache Portable Runtime Utility library...${nl}"
+
+APR_FIND_APU("$srcdir/apr-util", "./apr-util", 1, 1)
+
+if test "$apu_found" = "no"; then
+  AC_MSG_ERROR([APR-util not found.  Please read the documentation.])
+fi
+
+# Catch some misconfigurations:
+case ${apr_found}.${apu_found} in
+reconfig.yes)
+  AC_MSG_ERROR([Cannot use an external APR-util with the bundled APR])
+  ;;
+yes.reconfig)
+  AC_MSG_ERROR([Cannot use an external APR with the bundled APR-util])
+  ;;
+esac  
+
+if test "$apu_found" = "reconfig"; then
+  APR_SUBDIR_CONFIG(apr-util,
+                    [--with-apr=../apr --prefix=$prefix --exec-prefix=$exec_prefix --libdir=$libdir --includedir=$includedir --bindir=$bindir],
+                    [--enable-layout=*|\'--enable-layout=*])
+  dnl We must be the last to build and the first to be cleaned
+  SERF_BUILD_SRCLIB_DIRS="$SERF_BUILD_SRCLIB_DIRS apr-util"
+  SERF_CLEAN_SRCLIB_DIRS="apr-util $SERF_CLEAN_SRCLIB_DIRS"
+fi
+
+APR_ADDTO(LDFLAGS, `$apu_config --ldflags`)
+APU_BINDIR=`$apu_config --bindir`
+APU_INCLUDEDIR=`$apu_config --includedir`
+APU_VERSION=`$apu_config --version`
+APU_CONFIG="$APU_BINDIR/apu-`echo ${APU_VERSION} | sed 's,\..*,,'`-config"
+
+AC_SUBST(APU_BINDIR)
+AC_SUBST(APU_INCLUDEDIR)
+AC_SUBST(APU_VERSION)
+AC_SUBST(APU_CONFIG)
+
+dnl In case we picked up CC and CPP from APR, get that info into the
+dnl config cache so that PCRE uses it.  Otherwise, CC and CPP used for
+dnl PCRE and for our config tests will be whatever PCRE determines.
+AC_PROG_CC
+AC_PROG_CPP
+
+if test "x${cache_file}" = "x/dev/null"; then
+  # Likewise, ensure that CC and CPP are passed through to the pcre
+  # configure script iff caching is disabled (the autoconf 2.5x default).
+  export CC; export CPP
+fi
+
+echo $ac_n "Configuring Serf...${nl}"
+
+dnl Absolute source/build directory
+abs_srcdir=`(cd $srcdir && pwd)`
+abs_builddir=`pwd`
+
+dnl get our version information
+get_version="$abs_srcdir/build/get-version.sh"
+version_hdr="$abs_srcdir/serf.h"
+SERF_MAJOR_VERSION="`$get_version major $version_hdr SERF`"
+SERF_DOTTED_VERSION="`$get_version all $version_hdr SERF`"
+
+AC_SUBST(SERF_MAJOR_VERSION)
+AC_SUBST(SERF_DOTTED_VERSION)
+
+AC_SUBST(SERF_BUILD_SRCLIB_DIRS)
+AC_SUBST(SERF_CLEAN_SRCLIB_DIRS)
+
+libs="`$apu_config --link-libtool --libs` `$apr_config --link-libtool --libs`"
+APR_ADDTO(SERF_LIBS, [$libs])
+AC_SUBST(SERF_LIBS)
+
+AC_CONFIG_FILES([Makefile])
+
+AC_OUTPUT
