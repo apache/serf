@@ -160,7 +160,7 @@ int main(int argc, const char **argv)
     app_baton_t app_ctx;
     handler_baton_t handler_ctx;
     apr_uri_t url;
-    const char *raw_url, *method, *req_body_path;
+    const char *raw_url, *method, *req_body_path = NULL;
     int count;
     int i;
     int print_headers;
