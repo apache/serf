@@ -67,6 +67,8 @@ typedef struct {
     /* How much are we supposed to read? */
     apr_int64_t stream_size;
 
+    int stream_status; /* What was the last status we read? */
+
 } deflate_context_t;
 
 /* Inputs a string and returns a long.  */
@@ -207,7 +209,7 @@ static apr_status_t serf_deflate_read(serf_bucket_t *bucket,
             }
             /* Hide EOF. */
             if (APR_STATUS_IS_EOF(status)) {
-                status = APR_SUCCESS;
+                status = ctx->stream_status;
             }
             if (*len != 0) {
                 return status;
@@ -221,11 +223,16 @@ static apr_status_t serf_deflate_read(serf_bucket_t *bucket,
              * our stream bucket.
              */
             if (ctx->zstream.avail_in == 0) {
-                status = serf_bucket_read(ctx->stream, ctx->bufferSize,
-                                          &private_data, &private_len);
+                /* When we empty our inflated stream, we'll return this
+                 * status - this allow us to eventually pass up EAGAINs.
+                 */
+                ctx->stream_status = serf_bucket_read(ctx->stream,
+                                                      ctx->bufferSize,
+                                                      &private_data,
+                                                      &private_len);
 
-                if (SERF_BUCKET_READ_ERROR(status)) {
-                    return status;
+                if (SERF_BUCKET_READ_ERROR(ctx->stream_status)) {
+                    return ctx->stream_status;
                 }
 
                 ctx->zstream.next_in = (unsigned char*)private_data;
@@ -304,7 +311,7 @@ static apr_status_t serf_deflate_read(serf_bucket_t *bucket,
                                       len);
             /* Hide EOF. */
             if (APR_STATUS_IS_EOF(status)) {
-                status = APR_SUCCESS;
+                status = ctx->stream_status;
             }
             return status;
         case STATE_DONE:
