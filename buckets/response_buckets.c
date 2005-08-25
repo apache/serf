@@ -225,23 +225,6 @@ static apr_status_t run_machine(serf_bucket_t *bkt, response_context_t *ctx)
                     ctx->body = serf_bucket_dechunk_create(ctx->body,
                                                            bkt->allocator);
                 }
-
-                /* Connection: Close response. */
-                /* FIXME There is a problem that arises here due to bucket
-                 * ownership.  If we were to get a Conn: Close with gzip
-                 * encoding, we'll get a double free and abort().
-                 *
-                 * The reason is that the deflate bucket assumes that its
-                 * streams are of the same lifetime.  However, the dechunk
-                 * and limit buckets assume that its streams are of
-                 * different lifetimes.  This isn't quite right and needs
-                 * to be rethought.
-                 *
-                 * XXX This MAY be fixed with BARRIER buckets.
-                 */
-                if (!ctx->chunked) {
-                    /*abort();*/
-                }
             }
             v = serf_bucket_headers_get(ctx->headers, "Content-Encoding");
             if (v) {
