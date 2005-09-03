@@ -603,6 +603,11 @@ SERF_DECLARE(void) serf_request_deliver(
     /* Link the request to the end of the request chain. */
     if (conn->requests == NULL) {
         conn->requests = request;
+
+        /* Ensure our pollset becomes writable */
+        if (conn->skt) {
+            update_pollset(conn);
+        }
     }
     else {
         serf_request_t *scan = conn->requests;

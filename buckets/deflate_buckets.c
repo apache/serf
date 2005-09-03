@@ -91,6 +91,9 @@ SERF_DECLARE(serf_bucket_t *) serf_bucket_deflate_create(
     ctx->stream = stream;
     ctx->inflate_stream = serf_bucket_aggregate_create(allocator);
     ctx->format = format;
+    ctx->crc = 0;
+    /* zstream must be NULL'd out. */
+    memset(&ctx->zstream, 0, sizeof(ctx->zstream));
 
     switch (ctx->format) {
         case SERF_DEFLATE_GZIP:
@@ -312,6 +315,12 @@ static apr_status_t serf_deflate_read(serf_bucket_t *bucket,
             /* Hide EOF. */
             if (APR_STATUS_IS_EOF(status)) {
                 status = ctx->stream_status;
+                /* If our stream is finished too, return SUCCESS so
+                 * we'll iterate one more time.
+                 */
+                if (APR_STATUS_IS_EOF(status)) {
+                    return APR_SUCCESS;
+                }
             }
             return status;
         case STATE_DONE:

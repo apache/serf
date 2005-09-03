@@ -17,7 +17,7 @@ OBJECTS = buckets/aggregate_buckets.lo buckets/request_buckets.lo context.lo \
           buckets/chunk_buckets.lo
 
 TARGET_LIB=libserf-$(SERF_MAJOR_VERSION).la
-PROGRAMS = test/serf_get test/serf_response test/serf_request
+PROGRAMS = test/serf_get test/serf_response test/serf_request test/serf_spider
 TESTCASES = test/testcases/simple.response \
   test/testcases/chunked-empty.response test/testcases/chunked.response \
   test/testcases/chunked-trailers.response \
@@ -61,6 +61,7 @@ buckets/chunk_buckets.lo: buckets/chunk_buckets.c $(HEADERS)
 test/serf_get.lo: test/serf_get.c $(HEADERS)
 test/serf_response.lo: test/serf_response.c $(HEADERS)
 test/serf_request.lo: test/serf_request.c $(HEADERS)
+test/serf_spider.lo: test/serf_spider.c $(HEADERS)
 
 $(TARGET_LIB): $(OBJECTS)
 	$(LIBTOOL) --mode=link $(CC) $(LDFLAGS) -rpath $(libdir) -o $@ $^ $(LIBS)
@@ -73,6 +74,10 @@ test/serf_response: $(TARGET_LIB) test/serf_response.lo
 
 test/serf_request: $(TARGET_LIB) test/serf_request.lo
 	$(LIBTOOL) --mode=link $(CC) $(LDFLAGS) -static -o $@ $^ $(LIBS)
+
+test/serf_spider: $(TARGET_LIB) test/serf_spider.lo
+	$(LIBTOOL) --mode=link $(CC) $(LDFLAGS) -static -o $@ $^ $(LIBS)
+
 
 check: test/serf_response
 	@for i in $(TESTCASES); \
