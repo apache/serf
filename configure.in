@@ -136,6 +136,28 @@ AC_SUBST(SERF_DOTTED_VERSION)
 AC_SUBST(SERF_BUILD_SRCLIB_DIRS)
 AC_SUBST(SERF_CLEAN_SRCLIB_DIRS)
 
+AC_ARG_WITH(openssl,
+  APR_HELP_STRING([--with-openssl=PATH],[Path to OpenSSL (eg. /usr/local/ssl)]),
+[
+  if test "$withval" = "yes"; then
+    AC_MSG_ERROR([--with-openssl requires a path])
+  else
+    openssl_prefix=$withval
+
+    if test "x$openssl_prefix" != "x" -a ! -d "$openssl_prefix"; then
+      AC_MSG_ERROR('--with-openssl requires a path to a directory')
+    fi
+
+    APR_ADDTO(CPPFLAGS, "-I${openssl_prefix}/include")
+    APR_ADDTO(LDFLAGS, "-L${openssl_prefix}/lib")
+    APR_ADDTO(LDFLAGS, "-R${openssl_prefix}/lib")
+  fi
+])
+
+dnl Look for OpenSSL
+AC_CHECK_HEADER([openssl/opensslv.h], [],
+                [AC_MSG_ERROR([We require OpenSSL; try --with-openssl])])
+
 libs="`$apu_config --link-libtool --libs` `$apr_config --link-libtool --libs`"
 APR_ADDTO(SERF_LIBS, [$libs])
 AC_SUBST(SERF_LIBS)

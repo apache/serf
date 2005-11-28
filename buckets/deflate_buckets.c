@@ -178,11 +178,11 @@ static apr_status_t serf_deflate_read(serf_bucket_t *bucket,
             break;
         case STATE_VERIFY:
             /* Do the checksum computation. */
-            compCRC = getLong(ctx->hdr_buffer);
+            compCRC = getLong((unsigned char*)ctx->hdr_buffer);
             if (ctx->crc != compCRC) {
                 return APR_EGENERAL;
             }
-            compLen = getLong(ctx->hdr_buffer + 4);
+            compLen = getLong((unsigned char*)ctx->hdr_buffer + 4);
             if (ctx->zstream.total_out != compLen) {
                 return APR_EGENERAL;
             }
@@ -284,9 +284,10 @@ static apr_status_t serf_deflate_read(serf_bucket_t *bucket,
                     /* We now need to take the remaining avail_in and
                      * throw it in ctx->stream so our next read picks it up.
                      */
-                    tmp = SERF_BUCKET_SIMPLE_STRING_LEN(ctx->zstream.next_in,
-                                                        ctx->zstream.avail_in,
-                                                        bucket->allocator);
+                    tmp = SERF_BUCKET_SIMPLE_STRING_LEN(
+                                        (const char*)ctx->zstream.next_in,
+                                                     ctx->zstream.avail_in,
+                                                     bucket->allocator);
                     serf_bucket_aggregate_prepend(ctx->stream, tmp);
 
                     switch (ctx->format) {
@@ -331,7 +332,7 @@ static apr_status_t serf_deflate_read(serf_bucket_t *bucket,
         }
     }
 
-    return APR_SUCCESS;
+    /* NOTREACHED */
 }
 
 /* ### need to implement */

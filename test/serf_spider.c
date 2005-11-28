@@ -136,7 +136,11 @@ static apr_status_t handle_response(serf_bucket_t *response,
             const char *val;
             hdrs = serf_bucket_response_get_headers(response);
             val = serf_bucket_headers_get(hdrs, "Content-Type");
+#ifdef strcasestr
             if (val && strcasestr(val, "text/html")) {
+#else
+            if (val && strcasecmp(val, "text/html")) {
+#endif
                 ctx->is_html = 1;
             }
             else {
