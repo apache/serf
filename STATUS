@@ -6,6 +6,8 @@ People: Justin Erenkrantz, Greg Stein
 
 OPEN ISSUES
 
+  * HEAD responses with a non-zero C-L can trigger a segfault.
+
   * rather than having serf_bucket_alloc_t, can we make
     apr_allocator_t work "well" for bunches o' small allocations?
     Justin says: Take the 'freelist' code from apr-util's bucket allocator
