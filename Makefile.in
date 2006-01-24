@@ -34,6 +34,7 @@ CC = @CC@
 CFLAGS = @CFLAGS@
 CPPFLAGS = @CPPFLAGS@
 INCLUDES = -I$(srcdir) -I@APR_INCLUDEDIR@ -I@APU_INCLUDEDIR@ $(EXTRA_INCLUDES)
+MKDIR = @mkdir_p@
 
 LDFLAGS = @LDFLAGS@
 LIBS = @SERF_LIBS@ -lz -lssl -lcrypto
@@ -90,6 +91,14 @@ clean:
 
 .SUFFIXES:
 .SUFFIXES: .c .lo .o
+
+mkdir-vpath:
+	@if [ ! -d buckets ]; then \
+		$(MKDIR) buckets; \
+	fi;
+	@if [ ! -d test ]; then \
+		$(MKDIR) test; \
+	fi;
 
 .c.lo:
 	$(LIBTOOL) --mode=compile $(CC) $(CFLAGS) $(CPPFLAGS) $(INCLUDES) -c -o $@ $< && touch $@

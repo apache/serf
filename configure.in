@@ -23,6 +23,7 @@ nl='
 '
 dnl Check that mkdir -p works
 APR_MKDIR_P_CHECK($top_srcdir/build/mkdir.sh)
+AC_SUBST(mkdir_p)
 
 dnl ## Run configure for packages Apache uses
 
@@ -163,5 +164,6 @@ APR_ADDTO(SERF_LIBS, [$libs])
 AC_SUBST(SERF_LIBS)
 
 AC_CONFIG_FILES([Makefile])
+AC_CONFIG_COMMANDS([mkdir-vpath],[make mkdir-vpath])
 
 AC_OUTPUT
