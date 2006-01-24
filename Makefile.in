@@ -28,6 +28,7 @@ HEADERS = serf.h serf_bucket_types.h serf_bucket_util.h serf_declare.h
 prefix=@prefix@
 exec_prefix=@exec_prefix@
 libdir=@libdir@
+includedir=@includedir@
 
 LIBTOOL = @APR_LIBTOOL@ --silent
 CC = @CC@
@@ -35,6 +36,7 @@ CFLAGS = @CFLAGS@
 CPPFLAGS = @CPPFLAGS@
 INCLUDES = -I$(srcdir) -I@APR_INCLUDEDIR@ -I@APU_INCLUDEDIR@ $(EXTRA_INCLUDES)
 MKDIR = @mkdir_p@
+INSTALL = @INSTALL@
 
 LDFLAGS = @LDFLAGS@
 LIBS = @SERF_LIBS@ -lz -lssl -lcrypto
@@ -85,6 +87,13 @@ check: test/serf_response
 		 do echo "== Testing $$i =="; \
 		 ./test/serf_response $$i; \
 	done;
+
+install: $(TARGET_LIB)
+	$(MKDIR) $(DESTDIR)$(libdir) $(DESTDIR)$(includedir)
+	$(LIBTOOL) --mode=install $(INSTALL) -m 644 $(TARGET_LIB) $(DESTDIR)$(libdir)
+	for i in $(srcdir)/*.h; do \
+		$(INSTALL) -m 644 $$i $(DESTDIR)$(includedir); \
+	done
 
 clean:
 	rm -f $(TARGET_LIB) $(OBJECTS) $(PROGRAMS) $(OBJECTS:.lo=.o)

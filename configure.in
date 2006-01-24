@@ -112,6 +112,7 @@ dnl config cache so that PCRE uses it.  Otherwise, CC and CPP used for
 dnl PCRE and for our config tests will be whatever PCRE determines.
 AC_PROG_CC
 AC_PROG_CPP
+AC_PROG_INSTALL
 
 if test "x${cache_file}" = "x/dev/null"; then
   # Likewise, ensure that CC and CPP are passed through to the pcre
