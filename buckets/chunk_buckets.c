@@ -103,6 +103,9 @@ static apr_status_t serf_chunk_read(serf_bucket_t *bucket,
         else {
             /* Okay, we can return data.  */
             ctx->state = STATE_CHUNK;
+            if (APR_STATUS_IS_EAGAIN(status)) {
+              return status;
+            }
         }
     }
 
@@ -110,7 +113,7 @@ static apr_status_t serf_chunk_read(serf_bucket_t *bucket,
 
     /* Mask EOF from aggregate bucket. */
     if (APR_STATUS_IS_EOF(status) && ctx->state == STATE_CHUNK) {
-        status = APR_EAGAIN;
+        status = APR_SUCCESS;
         ctx->state = STATE_FETCH;
     }
 
