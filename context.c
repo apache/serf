@@ -387,12 +387,13 @@ static apr_status_t read_from_connection(serf_connection_t *conn)
 
         request = conn->requests;
 
-        /* If we just ran out of requests, then update the pollset. We
-         * don't want to read from this socket any more. We are definitely
-         * done with this loop, too.
+        /* update the pollset so that we know we have data to write */
+        status = update_pollset(conn);
+
+        /* If we just ran out of requests, we don't want to read from this
+         * socket any more.  We are definitely done with this loop, too.
          */
         if (request == NULL) {
-            status = update_pollset(conn);
             goto error;
         }
     }
