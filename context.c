@@ -56,6 +56,9 @@ struct serf_context_t {
     /* the set of connections to poll */
     apr_pollset_t *pollset;
 
+    /* one of our connections has a dirty pollset state. */
+    int dirty_pollset;
+
     /* the list of active connections */
     apr_array_header_t *conns;
 #define GET_CONN(ctx, i) (((serf_connection_t **)(ctx)->conns->elts)[i])
@@ -68,6 +71,9 @@ struct serf_connection_t {
     apr_sockaddr_t *address;
 
     apr_socket_t *skt;
+
+    /* are we a dirty connection that needs its poll status updated? */
+    int dirty_conn;
 
     /* A bucket wrapped around our socket (for reading responses). */
     serf_bucket_t *stream;
@@ -199,9 +205,9 @@ static apr_status_t open_connections(serf_context_t *ctx)
                 return status;
         }
 
-        /* Add the new socket to the pollset. */
-        if ((status = update_pollset(conn)) != APR_SUCCESS)
-            return status;
+        /* Flag our pollset as dirty now that we have a new socket. */
+        conn->dirty_conn = 1;
+        conn->ctx->dirty_pollset = 1;
     }
 
     return APR_SUCCESS;
@@ -257,7 +263,9 @@ static apr_status_t write_to_connection(serf_connection_t *conn)
              * connection. Let's update the pollset so that we don't
              * try to write to this socket again.
              */
-            return update_pollset(conn);
+            conn->dirty_conn = 1;
+            conn->ctx->dirty_pollset = 1;
+            return APR_SUCCESS;
         }
 
         /* ### optimize at some point by using read_for_sendfile */
@@ -387,13 +395,13 @@ static apr_status_t read_from_connection(serf_connection_t *conn)
 
         request = conn->requests;
 
-        /* update the pollset so that we know we have data to write */
-        status = update_pollset(conn);
-
-        /* If we just ran out of requests, we don't want to read from this
-         * socket any more.  We are definitely done with this loop, too.
+        /* If we just ran out of requests, then update the pollset. We
+         * don't want to read from this socket any more. We are definitely
+         * done with this loop, too.
          */
         if (request == NULL) {
+            conn->dirty_conn = 1;
+            conn->ctx->dirty_pollset = 1;
             goto error;
         }
     }
@@ -428,6 +436,37 @@ static apr_status_t process_connection(serf_connection_t *conn,
     return APR_SUCCESS;
 }
 
+/* Check for dirty connections and update their pollsets accordingly. */
+static apr_status_t check_dirty_pollsets(serf_context_t *ctx)
+{
+    int i;
+
+    /* if we're not dirty, return now. */
+    if (!ctx->dirty_pollset) {
+        return APR_SUCCESS;
+    }
+
+    for (i = ctx->conns->nelts; i--; ) {
+        serf_connection_t *conn = GET_CONN(ctx, i);
+        apr_status_t status;
+
+        /* if this connection isn't dirty, skip it. */
+        if (!conn->dirty_conn) {
+            continue;
+        }
+
+        /* reset this connection's flag before we update. */
+        conn->dirty_conn = 0;
+
+        if ((status = update_pollset(conn)) != APR_SUCCESS)
+            return status;
+    }
+
+    /* reset our context flag now */
+    ctx->dirty_pollset = 0;
+
+    return APR_SUCCESS;
+}
 
 SERF_DECLARE(serf_context_t *) serf_context_create(apr_pool_t *pool)
 {
@@ -453,6 +492,9 @@ SERF_DECLARE(apr_status_t) serf_context_run(serf_context_t *ctx,
     const apr_pollfd_t *desc;
 
     if ((status = open_connections(ctx)) != APR_SUCCESS)
+        return status;
+
+    if ((status = check_dirty_pollsets(ctx)) != APR_SUCCESS)
         return status;
 
     if ((status = apr_pollset_poll(ctx->pollset, duration, &num,
@@ -604,11 +646,6 @@ SERF_DECLARE(void) serf_request_deliver(
     /* Link the request to the end of the request chain. */
     if (conn->requests == NULL) {
         conn->requests = request;
-
-        /* Ensure our pollset becomes writable */
-        if (conn->skt) {
-            update_pollset(conn);
-        }
     }
     else {
         serf_request_t *scan = conn->requests;
@@ -617,6 +654,10 @@ SERF_DECLARE(void) serf_request_deliver(
             scan = scan->next;
         scan->next = request;
     }
+
+    /* Ensure our pollset becomes writable in context run */
+    conn->ctx->dirty_pollset = 1;
+    conn->dirty_conn = 1;
 }
 
 
