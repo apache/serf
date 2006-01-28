@@ -207,7 +207,7 @@ static apr_status_t open_connections(serf_context_t *ctx)
 
         /* Flag our pollset as dirty now that we have a new socket. */
         conn->dirty_conn = 1;
-        conn->ctx->dirty_pollset = 1;
+        ctx->dirty_pollset = 1;
     }
 
     return APR_SUCCESS;
