@@ -402,6 +402,7 @@ static apr_status_t read_from_connection(serf_connection_t *conn)
         if (request == NULL) {
             conn->dirty_conn = 1;
             conn->ctx->dirty_pollset = 1;
+            status = APR_SUCCESS;
             goto error;
         }
     }
