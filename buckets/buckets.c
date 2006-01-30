@@ -237,6 +237,7 @@ SERF_DECLARE(void) serf_util_readline(const char **data, apr_size_t *len,
         *data = cr + 1 + (*found == SERF_NEWLINE_CRLF);
         break;
       case SERF_NEWLINE_NONE:
+        *data += *len;
         break;
       default:
         abort();
