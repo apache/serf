@@ -27,6 +27,8 @@ typedef struct {
         STATE_EOF
     } state;
 
+    apr_status_t last_status;
+
     serf_bucket_t *chunk;
     serf_bucket_t *stream;
 
@@ -63,11 +65,12 @@ static apr_status_t serf_chunk_read(serf_bucket_t *bucket,
         serf_bucket_t *simple_bkt;
         apr_size_t chunk_len;
 
-        status = serf_bucket_read(ctx->stream, 8000, &stream_data, &stream_len);
+        ctx->last_status =
+            serf_bucket_read(ctx->stream, 8000, &stream_data, &stream_len);
 
-        if (SERF_BUCKET_READ_ERROR(status)) {
+        if (SERF_BUCKET_READ_ERROR(ctx->last_status)) {
             /* Uh-oh. */
-            return status;
+            return ctx->last_status;
         }
 
         /* assert: stream_len in hex < sizeof(ctx->chunk_hdr) */
@@ -92,7 +95,7 @@ static apr_status_t serf_chunk_read(serf_bucket_t *bucket,
         serf_bucket_aggregate_append(ctx->chunk, simple_bkt);
 
         /* We've reached the end of the line for the stream. */
-        if (APR_STATUS_IS_EOF(status)) {
+        if (APR_STATUS_IS_EOF(ctx->last_status)) {
             /* Insert the chunk footer. */
             simple_bkt = SERF_BUCKET_SIMPLE_STRING("0" CRLF CRLF,
                                                    bucket->allocator);
@@ -103,9 +106,6 @@ static apr_status_t serf_chunk_read(serf_bucket_t *bucket,
         else {
             /* Okay, we can return data.  */
             ctx->state = STATE_CHUNK;
-            if (APR_STATUS_IS_EAGAIN(status)) {
-              return status;
-            }
         }
     }
 
@@ -113,7 +113,7 @@ static apr_status_t serf_chunk_read(serf_bucket_t *bucket,
 
     /* Mask EOF from aggregate bucket. */
     if (APR_STATUS_IS_EOF(status) && ctx->state == STATE_CHUNK) {
-        status = APR_SUCCESS;
+        status = ctx->last_status;
         ctx->state = STATE_FETCH;
     }
 
