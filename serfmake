@@ -1,0 +1,256 @@
+#!/usr/bin/python
+
+import os
+import re
+import sys
+import stat
+
+FILES_HDR = [
+  ('.', 'serf'),
+  ('.', 'serf_bucket_types'),
+  ('.', 'serf_bucket_util'),
+  ('.', 'serf_declare'),
+  ]
+
+LIB_FILES = [
+  ('.', 'context'),
+
+  ('buckets', 'aggregate_buckets'),
+  ('buckets', 'request_buckets'),
+  ('buckets', 'buckets'),
+  ('buckets', 'simple_buckets'),
+  ('buckets', 'file_buckets'),
+  ('buckets', 'mmap_buckets'),
+  ('buckets', 'socket_buckets'),
+  ('buckets', 'response_buckets'),
+  ('buckets', 'headers_buckets'),
+  ('buckets', 'allocator'),
+  ('buckets', 'dechunk_buckets'),
+  ('buckets', 'deflate_buckets'),
+  ('buckets', 'limit_buckets'),
+  ('buckets', 'ssl_buckets'),
+  ('buckets', 'barrier_buckets'),
+  ('buckets', 'chunk_buckets'),
+  ]
+
+TEST_FILES = [
+  ('test', 'serf_get'),
+  ('test', 'serf_response'),
+  ('test', 'serf_request'),
+  ('test', 'serf_spider'),
+  ]
+
+TESTCASES = [
+  ('test/testcases', 'simple.response'),
+  ('test/testcases', 'chunked-empty.response'),
+  ('test/testcases', 'chunked.response'),
+  ('test/testcases', 'chunked-trailers.response'),
+  ('test/testcases', 'deflate.response'),
+  ]
+
+
+def main(argv):
+  openssl = None
+  if len(argv) > 1:
+    if argv[1].startswith('--with-openssl='):
+      idx = argv[1].index('=')
+      openssl = argv[1][idx+1:].strip()
+      argv = argv[:]
+      del argv[1]
+
+  cmd = 'build'
+  if len(argv) > 1:
+    cmd = argv[1]
+
+  func = globals().get('cmd_' + cmd)
+  if not func:
+    print 'ERROR: no such command:', cmd
+    usage()
+
+  func()
+
+
+def usage():
+  ### print something
+  sys.exit(1)
+
+
+def cmd_build():
+  builder = Builder()
+  builder.build_target(File('.', 'libserf-1', 'la'), False)
+
+
+def cmd_install():
+  pass
+
+
+def cmd_check():
+  builder = Builder()
+  builder.build_target(File('test', 'serf_response', None), False)
+
+  for dirpath, fname in TESTCASES:
+    case = os.path.join(dirpath, fname)
+    print '== Testing %s ==' % case
+    result = os.system('%s %s' % (os.path.join('test', 'serf_response'), case))
+    if result:
+      raise TestError(case, result)
+
+
+def cmd_clean():
+  pass
+
+
+class Builder:
+  def __init__(self):
+    self.apr = APRConfig()
+    self.apu = APUConfig()
+
+    self.libdir = '/usr/local/lib'
+
+    self.load_vars()
+    self.load_deps()
+
+  def load_vars(self):
+    self.CC = self.apr.get_value('CC', '--cc')
+    self.CFLAGS = self.apr.get_value('CFLAGS', '--cflags')
+    self.CPPFLAGS = self.apr.get_value('CPPFLAGS', '--cppflags')
+    self.LIBTOOL = self.apr.get_value('LIBTOOL', '--apr-libtool')
+    self.LDFLAGS = self.apr.get_value('LDFLAGS', '--ldflags') \
+                   + ' ' + self.apu.get_value('LDFLAGS', '--ldflags')
+
+    self.INCLUDES = '-I%s -I%s -I%s' % (
+      '.',
+      self.apr.get_value(None, '--includedir'),
+      self.apu.get_value(None, '--includedir'),
+      )
+    if os.getenv('EXTRA_INCLUDES'):
+      self.INCLUDES += ' -I' + os.getenv('EXTRA_INCLUDES')
+
+    self.LIBS = self.apu.get_value(None, '--link-libtool') \
+                + ' ' + self.apu.get_value(None, '--libs') \
+                + ' ' + self.apr.get_value(None, '--link-libtool') \
+                + ' ' + self.apr.get_value(None, '--libs') \
+                + ' -lz -lssl -lcrypto'
+
+  def load_deps(self):
+    self.deps = { }
+
+    hdrs = [File(dirpath, fname, 'h') for dirpath, fname in FILES_HDR]
+    libfiles = [File(dirpath, fname, 'c') for dirpath, fname in LIB_FILES]
+    libobjs = [File(dirpath, fname, 'lo') for dirpath, fname in LIB_FILES]
+    for src, obj in zip(libfiles, libobjs):
+      self._add_compile(src, obj, hdrs)
+
+    lib = File('.', 'libserf-1', 'la')
+    cmd = '%s --silent --mode=link %s %s -rpath %s -o %s %s %s' % (
+      self.LIBTOOL, self.CC, self.LDFLAGS, self.libdir,
+      lib.fname, ' '.join([l.fname for l in libobjs]), self.LIBS)
+    self._add_dep(lib, libobjs, cmd)
+
+    # load the test program dependencies now
+    for dirpath, fname in TEST_FILES:
+      src = File(dirpath, fname, 'c')
+      obj = File(dirpath, fname, 'lo')
+      prog = File(dirpath, fname, None)
+
+      self._add_compile(src, obj, hdrs)
+
+      cmd = '%s --silent --mode=link %s %s -static -o %s %s %s %s' % (
+        self.LIBTOOL, self.CC, self.LDFLAGS,
+        prog.fname, lib.fname, obj.fname, self.LIBS)
+      self._add_dep(prog, [lib, obj], cmd)
+
+  def _add_compile(self, src, obj, hdrs):
+    cmd = '%s --silent --mode=compile %s %s %s %s -c -o %s %s' % (
+      self.LIBTOOL, self.CC, self.CFLAGS, self.CPPFLAGS, self.INCLUDES,
+      obj.fname, src.fname)
+    self._add_dep(obj, [src] + hdrs, cmd)
+
+  def _add_dep(self, target, deps, cmd):
+    if target.mtime:
+      for dep in deps:
+        if self.deps.has_key(dep) \
+               or (dep.mtime and dep.mtime > target.mtime):
+          # a dep is newer. this needs to be rebuilt.
+          break
+      else:
+        # this is up to date. don't add it to the deps[] structure.
+        return
+    # else non-existent, so it must be rebuilt.
+
+    # register the dependency so this will get built
+    self.deps[target] = deps, cmd
+
+  def build_target(self, target, dry_run):
+    dep = self.deps.get(target)
+    if not dep:
+      # it's already up to date. all done.
+      return
+
+    for f in dep[0]:
+      subdep = self.deps.get(f)
+      if subdep:
+        self.build_target(f, dry_run)
+
+    # build the target now
+    print dep[1]
+    if not dry_run:
+      result = os.system(dep[1])
+      if result:
+        raise BuildError(dep[1], result)
+      # FALLTHROUGH
+
+    # it's a dry run. pretend we built the target.
+    del self.deps[target]
+    return 0
+
+
+class APRConfig:
+  def __init__(self):
+    self.bin = '/usr/local/apache2/bin/apr-config'
+
+  def get_value(self, env_name, switch):
+    if env_name and os.getenv(env_name):
+      return os.getenv(env_name)
+    return os.popen('%s %s' % (self.bin, switch), 'r').read().strip()
+
+
+class APUConfig:
+  def __init__(self):
+    self.bin = '/usr/local/apache2/bin/apu-config'
+
+  def get_value(self, env_name, switch):
+    if env_name and os.getenv(env_name):
+      return os.getenv(env_name)
+    return os.popen('%s %s' % (self.bin, switch), 'r').read().strip()
+
+
+class File:
+  def __init__(self, dirpath, fname, ext):
+    if ext:
+      self.fname = os.path.join(dirpath, fname + '.' + ext)
+    else:
+      self.fname = os.path.join(dirpath, fname)
+
+    try:
+      s = os.stat(self.fname)
+    except OSError:
+      self.mtime = None
+    else:
+      self.mtime = s[stat.ST_MTIME]
+
+  def __cmp__(self, other):
+    return cmp(self.fname, other.fname)
+
+  def __hash__(self):
+    return hash(self.fname)
+
+
+class BuildError(Exception):
+  "An error occurred while building a target."
+class TestError(Exception):
+  "An error occurred while running a unit test."
+
+
+if __name__ == '__main__':
+  main(sys.argv)
