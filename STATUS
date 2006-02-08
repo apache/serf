@@ -87,19 +87,6 @@ OPEN ISSUES
 
                  filters are just buckets that wrap other buckets.
 
-  * how to signify "bucket is done"? len==0? NULL data pointer? return
-    APR_EOF? Note that we intend for the response handler to return
-    APR_EOF to denote that the response has been completely read. I'm
-    of a mind to say "return APR_EOF".
-
-    A: return APR_EOF. data may also be returned at the same
-       time. this allows a bucket to return "all available
-       information" which includes data and the notation that no more
-       data exists.
-    gstein: design-doc.txt describes the return values. in this case,
-            it states that APR_EOF signals the bucket is empty. any
-            further reads will continue to return APR_EOF.
-
   * if the poll() does not return POLLHUP, then how do we detect EOF?
     we'd end up seeing POLLIN, go for a read(), and probably get a
     SIGHUP or SIGPIPE as a result. if it just keeps returning len==0,
@@ -147,3 +134,36 @@ OPEN ISSUES
     The context can be "loose", but the rest of the items seem to be
     operationally-unbounded (thus, subject to the pool design/use
     constraints).
+    
+    NOTE: at APR's default of 8k per pool, then 10k outstanding
+    requests is a whole lot of memory... (80 meg)  I could see a high
+    perf system trying to do this.
+
+  * serf_request_t should contain two allocators: one for request
+    buckets and one for response buckets. When the context loop is
+    (re)entered, we can call serf_debug__entered_loop on the response
+    buckets. That will ensure that all responses were fully drained.
+    
+    The allocator for the response buckets should be passed to the
+    acceptor callback. Today, acceptors use serf_request_get_alloc to
+    get an allocator. We can just pass the "right" allocator.
+    
+    serf_request_get_alloc will return the "request allocator" to be
+    used for allocating all buckets that go into the request.
+    
+    Note that the app will still retain an allocator for buckets
+    related to the connection (such as socket buckets created in the
+    connection setup callback).
+    
+  * UNDECIDED: we should probably create an allocator per connection
+    (within the pool passed to connection_create). That allocator can
+    then be used by a default connection setup callback.
+
+    We could instead create an allocator per context. It probably
+    isn't important to make this allocator too fine-grained since
+    connection-level buckets will typically be handled by serf itself
+    and it will manage them properly.
+
+    Maybe pass this allocator to the connection setup callback,
+    similar to the acceptor. "put the stream bucket in *this*
+    allocator"

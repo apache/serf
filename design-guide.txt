@@ -83,15 +83,35 @@ pattern:
                    immediately call the read function again to read
                    more data.
 
+                   NOTE: when bucket behavior tracking is enabled,
+                   then you must read more data from this bucket
+                   before returning to the serf context loop. If a
+                   bucket is not completely drained first, then it is
+                   possible to deadlock (the server might not read
+                   anything until you read everything it has already
+                   given to you).
+
     APR_EAGAIN     Some data was returned, but no more is available
-                   for now. The caller should "wait for a bit" or wait
-                   for some event before attempting to read again. Reading
+                   for now. The caller must "wait for a bit" or wait
+                   for some event before attempting to read again
+                   (basically, this simply means re-run the serf
+                   context loop). Though it shouldn't be done, reading
                    again will, in all likelihood, return zero length
                    data and APR_EAGAIN again.
 
+                   NOTE: when bucket behavior tracking is enabled,
+                   then it is illegal to immediately read a bucket
+                   again after it has returned APR_EAGAIN. You must
+                   run the serf context loop again to (potentially)
+                   fetch more data for the bucket.
+
     APR_EOF        Some data was returned, and this bucket has no more
-                   data available. Reading again will return zero
-                   length data and APR_EOF again.
+                   data available and should not be read again. If you
+                   happen to read it again, then it will return zero
+                   length data and APR_EOF.
+
+                   NOTE: when bucket behavior tracking is enabled,
+                   then it is illegal to read this bucket ever again.
 
     other          An error has occurred. No data was returned. The
                    returned length is undefined.
