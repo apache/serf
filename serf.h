@@ -663,11 +663,11 @@ SERF_DECLARE(apr_status_t) serf_linebuf_fetch(
 
 /* Internal functions for bucket use and lifecycle tracking */
 SERF_DECLARE(apr_status_t) serf_debug__record_read(
-    serf_bucket_t *bucket,
+    const serf_bucket_t *bucket,
     apr_status_t status);
 SERF_DECLARE(void) serf_debug__entered_loop(serf_bucket_alloc_t *allocator);
 SERF_DECLARE(void) serf_debug__closed_conn(serf_bucket_alloc_t *allocator);
-SERF_DECLARE(void) serf_debug__bucket_destroy(serf_bucket_t *bucket);
+SERF_DECLARE(void) serf_debug__bucket_destroy(const serf_bucket_t *bucket);
 
 /* Version info */
 #define SERF_MAJOR_VERSION 0

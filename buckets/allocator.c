@@ -66,14 +66,14 @@ typedef struct node_header_t {
 
 
 typedef struct {
-    serf_bucket_t *bucket;
+    const serf_bucket_t *bucket;
     apr_status_t last;
 } read_status_t;
 
 #define TRACK_BUCKET_COUNT 100  /* track N buckets' status */
 
 typedef struct {
-    int cur_index;      /* the info[] is organized in a ring */
+    int next_index;    /* info[] is a ring. next bucket goes at this idx. */
     int num_used;
 
     read_status_t info[TRACK_BUCKET_COUNT];
@@ -125,17 +125,21 @@ SERF_DECLARE(serf_bucket_alloc_t *) serf_bucket_allocator_create(
     void *unfreed_baton)
 {
     serf_bucket_alloc_t *allocator = apr_pcalloc(pool, sizeof(*allocator));
-    track_state_t *track;
 
     allocator->pool = pool;
     allocator->allocator = apr_pool_allocator_get(pool);
     allocator->unfreed = unfreed;
     allocator->unfreed_baton = unfreed_baton;
 
-    track = allocator->track = apr_palloc(pool, sizeof(*allocator->track));
-    track->cur_index = 0;
-    track->num_used = 0;
-    track->info[0].bucket = NULL;       /* see __record_read() */
+#ifdef SERF_DEBUG_BUCKET_USE
+    {
+        track_state_t *track;
+
+        track = allocator->track = apr_palloc(pool, sizeof(*allocator->track));
+        track->next_index = 0;
+        track->num_used = 0;
+    }
+#endif
 
     /* ### this implies buckets cannot cross a fork/exec. desirable?
      *
@@ -252,53 +256,44 @@ SERF_DECLARE(void) serf_bucket_mem_free(
 
 static read_status_t *find_read_status(
     track_state_t *track,
-    serf_bucket_t *bucket,
+    const serf_bucket_t *bucket,
     int create_rs)
 {
     read_status_t *rs;
 
-    /* Note that if num_used == 0, we still probe into info[]. We always
-     * ensure that info[0].bucket == NULL when num_used == 0.
-     */
-    if ((rs = &track->info[track->cur_index])->bucket != bucket) {
+    if (track->num_used) {
         int count = track->num_used;
-        int idx = track->cur_index;
-        int found = 0;
+        int idx = track->next_index;
 
         /* Search backwards. In all likelihood, the bucket which just got
          * read was read very recently.
-         *
-         * Don't enter the while loop for num_used == 0 or 1.
          */
-        while (--count > 0) {
-            if (!idx--)
+        while (count-- > 0) {
+            if (!idx--) {
+                /* assert: track->num_used == TRACK_BUCKET_COUNT */
                 idx = track->num_used - 1;
+            }
             if ((rs = &track->info[idx])->bucket == bucket) {
-                found = 1;
-                break;
+                return rs;
             }
-        }
-
-        if (!found) {
-            /* Only create a new read_status_t when asked. */
-            if (!create_rs)
-                return NULL;
-
-            if (track->num_used < TRACK_BUCKET_COUNT) {
-                /* We're still filling up the ring. This is easy. */
-                ++track->num_used;
-                ++track->cur_index;
-            }
-            else {
-                if (++track->cur_index == TRACK_BUCKET_COUNT)
-                    track->cur_index = 0;
-            }
-            rs = &track->info[track->cur_index];
-            rs->bucket = bucket;
-            rs->last = APR_SUCCESS;     /* ### the right initial value? */
         }
     }
-    /* assert: rs->bucket == bucket */
+
+    /* Only create a new read_status_t when asked. */
+    if (!create_rs)
+        return NULL;
+
+    if (track->num_used < TRACK_BUCKET_COUNT) {
+        /* We're still filling up the ring. */
+        ++track->num_used;
+    }
+
+    rs = &track->info[track->next_index];
+    rs->bucket = bucket;
+    rs->last = APR_SUCCESS;     /* ### the right initial value? */
+
+    if (++track->next_index == TRACK_BUCKET_COUNT)
+        track->next_index = 0;
 
     return rs;
 }
@@ -307,7 +302,7 @@ static read_status_t *find_read_status(
 
 
 SERF_DECLARE(apr_status_t) serf_debug__record_read(
-    serf_bucket_t *bucket,
+    const serf_bucket_t *bucket,
     apr_status_t status)
 {
 #ifndef SERF_DEBUG_BUCKET_USE
@@ -346,10 +341,8 @@ SERF_DECLARE(void) serf_debug__entered_loop(serf_bucket_alloc_t *allocator)
         /* ### other status values? */
     }
 
-    /* num_used was reset. But we don't want a false positive on [0] in
-     * record_read(), so clear out the bucket field.
-     */
-    track->info[0].bucket = NULL;
+    /* num_used was reset. also need to reset the next index. */
+    track->next_index = 0;
 
 #endif
 }
@@ -360,12 +353,12 @@ SERF_DECLARE(void) serf_debug__closed_conn(serf_bucket_alloc_t *allocator)
 
     /* Just reset the number used so that we don't examine the info[] */
     allocator->track->num_used = 0;
-    allocator->track->cur_index = 0;
+    allocator->track->next_index = 0;
 
 #endif
 }
 
-SERF_DECLARE(void) serf_debug__bucket_destroy(serf_bucket_t *bucket)
+SERF_DECLARE(void) serf_debug__bucket_destroy(const serf_bucket_t *bucket)
 {
 #ifdef SERF_DEBUG_BUCKET_USE
 
