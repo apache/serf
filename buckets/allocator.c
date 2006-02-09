@@ -102,21 +102,9 @@ static apr_status_t allocator_cleanup(void *data)
 {
     serf_bucket_alloc_t *allocator = data;
 
-    /* If there are no outstanding allocations, then we're already done. */
-    if (allocator->num_alloc == 0) {
-        /* apr_allocator_free() will toss the entire chain of blocks */
-        apr_allocator_free(allocator->allocator, allocator->blocks);
+    apr_allocator_free(allocator->allocator, allocator->blocks);
 
-        return APR_SUCCESS;
-    }
-
-    if (allocator->unfreed) {
-        /* ### walk the list. call the callback. etc. */
-        /* return APR_SUCCESS; */
-    }
-
-    abort();
-    /* NOTREACHED */
+    return APR_SUCCESS;
 }
 
 SERF_DECLARE(serf_bucket_alloc_t *) serf_bucket_allocator_create(
@@ -392,3 +380,14 @@ SERF_DECLARE(void) serf_debug__bucket_destroy(const serf_bucket_t *bucket)
 
 #endif
 }
+
+SERF_DECLARE(void) serf_debug__bucket_alloc_check(
+    serf_bucket_alloc_t *allocator)
+{
+#ifdef SERF_DEBUG_BUCKET_USE
+    if (allocator->num_alloc != 0) {
+        abort();
+    }
+#endif
+}
+

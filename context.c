@@ -75,11 +75,21 @@ struct serf_connection_t {
     /* are we a dirty connection that needs its poll status updated? */
     int dirty_conn;
 
+    /* someone has told us that the connection is closing
+     * so, let's start a new socket.
+     */
+    int closing;
+
     /* A bucket wrapped around our socket (for reading responses). */
     serf_bucket_t *stream;
 
     /* The list of active requests. */
     serf_request_t *requests;
+
+    /* The list of requests we're holding on to because we're going to
+     * reset the connection soon.
+     */
+    serf_request_t *hold_requests;
 
     const char *unwritten_ptr;
     apr_size_t unwritten_len;
@@ -110,7 +120,7 @@ static apr_status_t update_pollset(serf_connection_t *conn)
         return status;
 
     /* Now put it back in with the correct read/write values. */
-    desc.reqevents = 0;
+    desc.reqevents = APR_POLLHUP | APR_POLLERR;
     if (conn->requests) {
         /* If there are any outstanding events, then we want to read. */
         /* ### not true. we only want to read IF we have sent some data */
@@ -213,6 +223,26 @@ static apr_status_t open_connections(serf_context_t *ctx)
     return APR_SUCCESS;
 }
 
+static apr_status_t no_more_writes(serf_connection_t *conn,
+                                   serf_request_t *request)
+{
+  /* Note that we should hold new requests until we open our new socket. */
+  conn->closing = 1;
+
+  /* We can take the *next* request in our list and assume it hasn't
+   * been written yet and 'save' it for the new socket.
+   */
+  conn->hold_requests = request->next;
+  request->next = NULL;
+
+  /* Update the pollset to know we don't want to write on this socket any
+   * more.
+   */
+  conn->dirty_conn = 1;
+  conn->ctx->dirty_pollset = 1;
+  return APR_SUCCESS;
+}
+
 /* write data out to the connection */
 static apr_status_t write_to_connection(serf_connection_t *conn)
 {
@@ -245,6 +275,8 @@ static apr_status_t write_to_connection(serf_connection_t *conn)
              */
             if (APR_STATUS_IS_EAGAIN(status))
                 return APR_SUCCESS;
+            if (APR_STATUS_IS_EPIPE(status))
+                return no_more_writes(conn, request);
             if (status)
                 return status;
         }
@@ -306,6 +338,8 @@ static apr_status_t write_to_connection(serf_connection_t *conn)
              */
             if (APR_STATUS_IS_EAGAIN(status))
                 return APR_SUCCESS;
+            if (APR_STATUS_IS_EPIPE(status))
+                return no_more_writes(conn, request);
             if (status)
                 return status;
         }
@@ -373,7 +407,7 @@ static apr_status_t read_from_connection(serf_connection_t *conn)
         status = (*request->handler)(request->resp_bkt,
                                      request->handler_baton,
                                      tmppool);
-        if (!APR_STATUS_IS_EOF(status)) {
+        if (!APR_STATUS_IS_EOF(status) && status != SERF_ERROR_CLOSING) {
             /* Whether success, or an error, there is no more to do unless
              * this request has been completed.
              */
@@ -391,6 +425,8 @@ static apr_status_t read_from_connection(serf_connection_t *conn)
         if (request->req_bkt) {
             serf_bucket_destroy(request->req_bkt);
         }
+
+        serf_debug__bucket_alloc_check(request->allocator);
         apr_pool_destroy(request->respool);
 
         request = conn->requests;
@@ -405,6 +441,14 @@ static apr_status_t read_from_connection(serf_connection_t *conn)
             status = APR_SUCCESS;
             goto error;
         }
+
+        /* This means that we're being advised that the connection is done. */
+        if (status == SERF_ERROR_CLOSING) {
+            serf_connection_reset(conn);
+            status = APR_SUCCESS;
+            goto error;
+        }
+
     }
 
   error:
@@ -532,6 +576,36 @@ static apr_status_t remove_connection(serf_context_t *ctx,
     return apr_pollset_remove(ctx->pollset, &desc);
 }
 
+static apr_status_t cancel_request(serf_request_t *request,
+                                   serf_request_t **list)
+{
+    serf_connection_t *conn = request->conn;
+    apr_status_t status;
+
+    /* We actually don't care what the handler returns.
+     * We have bigger matters at hand.
+     */
+    (*request->handler)(NULL, request->handler_baton, request->respool);
+
+    if (*list == request) {
+        *list = request->next;
+    }
+    else {
+        serf_request_t *scan = *list;
+
+        while (scan->next && scan->next != request)
+            scan = scan->next;
+
+        if (scan->next) {
+            scan->next = scan->next->next;
+        }
+    }
+
+    apr_pool_destroy(request->respool);
+
+    return APR_SUCCESS;
+}
+
 SERF_DECLARE(serf_connection_t *) serf_connection_create(
     serf_context_t *ctx,
     apr_sockaddr_t *address,
@@ -559,6 +633,60 @@ SERF_DECLARE(serf_connection_t *) serf_connection_create(
     return conn;
 }
 
+SERF_DECLARE(apr_status_t) serf_connection_reset(
+    serf_connection_t *conn)
+{
+    int i;
+    serf_context_t *ctx = conn->ctx;
+    apr_status_t status;
+    serf_request_t *old_reqs;
+
+    for (i = ctx->conns->nelts; i--; ) {
+        serf_connection_t *conn_seq = GET_CONN(ctx, i);
+
+        if (conn_seq == conn) {
+            old_reqs = conn->requests;
+            if (conn->closing) {
+                conn->requests = conn->hold_requests;
+                conn->hold_requests = NULL;
+                conn->closing = 0;
+            }
+            else {
+                conn->requests = NULL;
+            }
+
+            while (old_reqs) {
+                cancel_request(old_reqs, &old_reqs);
+            }
+
+            if (conn->skt != NULL) {
+                remove_connection(ctx, conn);
+                status = apr_socket_close(conn->skt);
+                if (conn->closed != NULL) {
+                    (*conn->closed)(conn, conn->closed_baton, status,
+                                    conn->pool);
+                }
+                conn->skt = NULL;
+            }
+
+            /* We will let the request bucket destroy our stream. */
+            conn->stream = NULL;
+
+            /* Don't try to resume any writes */
+            conn->unwritten_ptr = NULL;
+            conn->unwritten_len = 0;
+
+            conn->dirty_conn = 1;
+            conn->ctx->dirty_pollset = 1;
+            /* Found the connection. Closed it. All done. */
+            return APR_SUCCESS;
+        }
+    }
+
+    /* We didn't find the specified connection. */
+    /* ### doc talks about this w.r.t poll structures. use something else? */
+    return APR_NOTFOUND;
+}
 
 SERF_DECLARE(apr_status_t) serf_connection_close(
     serf_connection_t *conn)
@@ -627,6 +755,22 @@ SERF_DECLARE(serf_request_t *) serf_connection_request_create(
     return request;
 }
 
+void link_requests(serf_request_t **list, serf_request_t *request)
+{
+    if (*list == NULL) {
+        *list = request;
+    }
+    else {
+        serf_request_t *scan = *list;
+
+        while (scan->next != NULL) {
+            scan = scan->next;
+        }
+
+        scan->next = request;
+    }
+}
+
 SERF_DECLARE(void) serf_request_deliver(
     serf_request_t *request,
     serf_bucket_t *req_bkt,
@@ -645,46 +789,22 @@ SERF_DECLARE(void) serf_request_deliver(
     request->handler_baton = handler_baton;
 
     /* Link the request to the end of the request chain. */
-    if (conn->requests == NULL) {
-        conn->requests = request;
+    if (conn->closing) {
+        link_requests(&conn->hold_requests, request);
     }
     else {
-        serf_request_t *scan = conn->requests;
+        link_requests(&conn->requests, request);
 
-        while (scan->next != NULL)
-            scan = scan->next;
-        scan->next = request;
+        /* Ensure our pollset becomes writable in context run */
+        conn->ctx->dirty_pollset = 1;
+        conn->dirty_conn = 1;
     }
-
-    /* Ensure our pollset becomes writable in context run */
-    conn->ctx->dirty_pollset = 1;
-    conn->dirty_conn = 1;
 }
 
 
 SERF_DECLARE(apr_status_t) serf_request_cancel(serf_request_t *request)
 {
-    serf_connection_t *conn = request->conn;
-
-    /* ### destroy request->req_bkt?  ->resp_bkt? */
-
-    if (conn->requests == request) {
-        conn->requests = request->next;
-    }
-    else {
-        serf_request_t *scan = conn->requests;
-
-        while (scan->next && scan->next != request)
-            scan = scan->next;
-
-        if (scan->next) {
-            scan->next = scan->next->next;
-        }
-    }
-
-    /* ### Should we clear our request pool now? */
-
-    return APR_SUCCESS;
+    return cancel_request(request, &request->conn->requests);
 }
 
 SERF_DECLARE(apr_pool_t *) serf_request_get_pool(const serf_request_t *request)

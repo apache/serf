@@ -53,6 +53,13 @@ typedef struct serf_request_t serf_request_t;
  */
 
 /**
+ * Serf-specific error codes
+ */
+#define SERF_ERROR_RANGE 100
+
+#define SERF_ERROR_CLOSING (APR_OS_START_USERERR + SERF_ERROR_RANGE + 1)
+
+/**
  * Create a new context for serf operations.
  *
  * A serf context defines a control loop which processes multiple
@@ -237,6 +244,11 @@ SERF_DECLARE(serf_connection_t *) serf_connection_create(
     void *closed_baton,
     apr_pool_t *pool);
 
+/**
+ * Reset the connection, but re-open the socket again.
+ */
+SERF_DECLARE(apr_status_t) serf_connection_reset(
+    serf_connection_t *conn);
 
 /**
  * Close the connection associated with @a conn and cancel all pending requests.
@@ -668,6 +680,7 @@ SERF_DECLARE(apr_status_t) serf_debug__record_read(
 SERF_DECLARE(void) serf_debug__entered_loop(serf_bucket_alloc_t *allocator);
 SERF_DECLARE(void) serf_debug__closed_conn(serf_bucket_alloc_t *allocator);
 SERF_DECLARE(void) serf_debug__bucket_destroy(const serf_bucket_t *bucket);
+SERF_DECLARE(void) serf_debug__bucket_alloc_check(serf_bucket_alloc_t *allocator);
 
 /* Version info */
 #define SERF_MAJOR_VERSION 0
