@@ -507,7 +507,10 @@ static apr_status_t process_connection(serf_connection_t *conn,
          *
          * http://issues.apache.org/bugzilla/show_bug.cgi?id=35292
          */
-        return serf_connection_reset(conn);
+        if (!conn->probable_keepalive_limit) {
+            return serf_connection_reset(conn);
+        }
+        abort();
     }
     if ((events & APR_POLLOUT) != 0) {
         if ((status = write_to_connection(conn)) != APR_SUCCESS)
