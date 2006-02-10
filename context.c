@@ -497,12 +497,17 @@ static apr_status_t process_connection(serf_connection_t *conn,
     apr_status_t status;
 
     if ((events & APR_POLLHUP) != 0) {
-        /* ### needs work */
-        abort();
+        return serf_connection_reset(conn);
     }
     if ((events & APR_POLLERR) != 0) {
-        /* ### needs work */
-        puts("Hit APR_POLLERR: what to do?\n");
+        /* We might be talking to a buggy HTTP server that doesn't
+         * do lingering-close.  (httpd < 2.1.8 does this.)
+         *
+         * See:
+         *
+         * http://issues.apache.org/bugzilla/show_bug.cgi?id=35292
+         */
+        return serf_connection_reset(conn);
     }
     if ((events & APR_POLLOUT) != 0) {
         if ((status = write_to_connection(conn)) != APR_SUCCESS)
