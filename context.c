@@ -732,55 +732,45 @@ SERF_DECLARE(apr_status_t) serf_connection_reset(
     conn->completed_requests = 0;
     conn->completed_responses = 0;
 
-    for (i = ctx->conns->nelts; i--; ) {
-        serf_connection_t *conn_seq = GET_CONN(ctx, i);
+    old_reqs = conn->requests;
+    held_reqs = conn->hold_requests;
 
-        if (conn_seq == conn) {
-            old_reqs = conn->requests;
-            held_reqs = conn->hold_requests;
-
-            if (conn->closing) {
-                conn->requests = NULL;
-                conn->hold_requests = NULL;
-                conn->closing = 0;
-            }
-            else {
-                conn->requests = NULL;
-            }
-
-            while (old_reqs) {
-                cancel_request(old_reqs, &old_reqs);
-            }
-
-            link_requests(&conn->requests, held_reqs);
-
-            if (conn->skt != NULL) {
-                remove_connection(ctx, conn);
-                status = apr_socket_close(conn->skt);
-                if (conn->closed != NULL) {
-                    (*conn->closed)(conn, conn->closed_baton, status,
-                                    conn->pool);
-                }
-                conn->skt = NULL;
-            }
-
-            /* We will let the request bucket destroy our stream. */
-            conn->stream = NULL;
-
-            /* Don't try to resume any writes */
-            conn->unwritten_ptr = NULL;
-            conn->unwritten_len = 0;
-
-            conn->dirty_conn = 1;
-            conn->ctx->dirty_pollset = 1;
-            /* Found the connection. Closed it. All done. */
-            return APR_SUCCESS;
-        }
+    if (conn->closing) {
+        conn->requests = NULL;
+        conn->hold_requests = NULL;
+        conn->closing = 0;
+    }
+    else {
+        conn->requests = NULL;
     }
 
-    /* We didn't find the specified connection. */
-    /* ### doc talks about this w.r.t poll structures. use something else? */
-    return APR_NOTFOUND;
+    while (old_reqs) {
+        cancel_request(old_reqs, &old_reqs);
+    }
+
+    link_requests(&conn->requests, held_reqs);
+
+    if (conn->skt != NULL) {
+        remove_connection(ctx, conn);
+        status = apr_socket_close(conn->skt);
+        if (conn->closed != NULL) {
+            (*conn->closed)(conn, conn->closed_baton, status,
+                            conn->pool);
+        }
+        conn->skt = NULL;
+    }
+
+    /* We will let the request bucket destroy our stream. */
+    conn->stream = NULL;
+
+    /* Don't try to resume any writes */
+    conn->unwritten_ptr = NULL;
+    conn->unwritten_len = 0;
+
+    conn->dirty_conn = 1;
+    conn->ctx->dirty_pollset = 1;
+    /* Found the connection. Closed it. All done. */
+    return APR_SUCCESS;
 }
 
 SERF_DECLARE(apr_status_t) serf_connection_close(
