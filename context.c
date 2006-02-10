@@ -75,6 +75,15 @@ struct serf_connection_t {
     /* are we a dirty connection that needs its poll status updated? */
     int dirty_conn;
 
+    /* number of completed requests we've sent */
+    apr_size_t completed_requests;
+
+    /* number of completed responses we've got */
+    apr_size_t completed_responses;
+
+    /* keepalive */
+    apr_size_t probable_keepalive_limit;
+
     /* someone has told us that the connection is closing
      * so, let's start a new socket.
      */
@@ -248,6 +257,12 @@ static apr_status_t write_to_connection(serf_connection_t *conn)
 {
     serf_request_t *request = conn->requests;
 
+    if (conn->probable_keepalive_limit &&
+        conn->completed_requests > conn->probable_keepalive_limit) {
+        /* backoff for now. */
+        return APR_SUCCESS;
+    }
+
     /* Find a request that has data which needs to be delivered. */
     while (request != NULL && request->req_bkt == NULL)
         request = request->next;
@@ -355,6 +370,14 @@ static apr_status_t write_to_connection(serf_connection_t *conn)
                ### data is hanging out in the unwritten field. */
             serf_bucket_destroy(request->req_bkt);
             request->req_bkt = NULL;
+
+            conn->completed_requests++;
+
+            if (conn->probable_keepalive_limit &&
+                conn->completed_requests > conn->probable_keepalive_limit) {
+                /* backoff for now. */
+                stop_reading = 1;
+            }
         }
 
         if (stop_reading) {
@@ -431,6 +454,25 @@ static apr_status_t read_from_connection(serf_connection_t *conn)
 
         request = conn->requests;
 
+        /* This means that we're being advised that the connection is done. */
+        if (status == SERF_ERROR_CLOSING) {
+            serf_connection_reset(conn);
+            status = APR_SUCCESS;
+            goto error;
+        }
+
+        conn->completed_responses++;
+
+        /* The server is suddenly deciding to serve more responses than we've
+         * seen before.
+         *
+         * Let our requests go.
+         */
+        if (conn->probable_keepalive_limit &&
+            conn->completed_responses > conn->probable_keepalive_limit) {
+            conn->probable_keepalive_limit = 0;
+        }
+
         /* If we just ran out of requests, then update the pollset. We
          * don't want to read from this socket any more. We are definitely
          * done with this loop, too.
@@ -441,14 +483,6 @@ static apr_status_t read_from_connection(serf_connection_t *conn)
             status = APR_SUCCESS;
             goto error;
         }
-
-        /* This means that we're being advised that the connection is done. */
-        if (status == SERF_ERROR_CLOSING) {
-            serf_connection_reset(conn);
-            status = APR_SUCCESS;
-            goto error;
-        }
-
     }
 
   error:
@@ -462,14 +496,6 @@ static apr_status_t process_connection(serf_connection_t *conn,
 {
     apr_status_t status;
 
-    if ((events & APR_POLLOUT) != 0) {
-        if ((status = write_to_connection(conn)) != APR_SUCCESS)
-            return status;
-    }
-    if ((events & APR_POLLIN) != 0) {
-        if ((status = read_from_connection(conn)) != APR_SUCCESS)
-            return status;
-    }
     if ((events & APR_POLLHUP) != 0) {
         /* ### needs work */
         abort();
@@ -477,6 +503,14 @@ static apr_status_t process_connection(serf_connection_t *conn,
     if ((events & APR_POLLERR) != 0) {
         /* ### needs work */
         puts("Hit APR_POLLERR: what to do?\n");
+    }
+    if ((events & APR_POLLOUT) != 0) {
+        if ((status = write_to_connection(conn)) != APR_SUCCESS)
+            return status;
+    }
+    if ((events & APR_POLLIN) != 0) {
+        if ((status = read_from_connection(conn)) != APR_SUCCESS)
+            return status;
     }
     return APR_SUCCESS;
 }
@@ -633,21 +667,43 @@ SERF_DECLARE(serf_connection_t *) serf_connection_create(
     return conn;
 }
 
+void link_requests(serf_request_t **list, serf_request_t *request)
+{
+    if (*list == NULL) {
+        *list = request;
+    }
+    else {
+        serf_request_t *scan = *list;
+
+        while (scan->next != NULL) {
+            scan = scan->next;
+        }
+
+        scan->next = request;
+    }
+}
+
 SERF_DECLARE(apr_status_t) serf_connection_reset(
     serf_connection_t *conn)
 {
     int i;
     serf_context_t *ctx = conn->ctx;
     apr_status_t status;
-    serf_request_t *old_reqs;
+    serf_request_t *old_reqs, *held_reqs;
+
+    conn->probable_keepalive_limit = conn->completed_responses;
+    conn->completed_requests = 0;
+    conn->completed_responses = 0;
 
     for (i = ctx->conns->nelts; i--; ) {
         serf_connection_t *conn_seq = GET_CONN(ctx, i);
 
         if (conn_seq == conn) {
             old_reqs = conn->requests;
+            held_reqs = conn->hold_requests;
+
             if (conn->closing) {
-                conn->requests = conn->hold_requests;
+                conn->requests = NULL;
                 conn->hold_requests = NULL;
                 conn->closing = 0;
             }
@@ -658,6 +714,8 @@ SERF_DECLARE(apr_status_t) serf_connection_reset(
             while (old_reqs) {
                 cancel_request(old_reqs, &old_reqs);
             }
+
+            link_requests(&conn->requests, held_reqs);
 
             if (conn->skt != NULL) {
                 remove_connection(ctx, conn);
@@ -753,22 +811,6 @@ SERF_DECLARE(serf_request_t *) serf_connection_request_create(
     request->allocator = serf_bucket_allocator_create(pool, NULL, NULL);
 
     return request;
-}
-
-void link_requests(serf_request_t **list, serf_request_t *request)
-{
-    if (*list == NULL) {
-        *list = request;
-    }
-    else {
-        serf_request_t *scan = *list;
-
-        while (scan->next != NULL) {
-            scan = scan->next;
-        }
-
-        scan->next = request;
-    }
 }
 
 SERF_DECLARE(void) serf_request_deliver(
