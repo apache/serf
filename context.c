@@ -71,6 +71,7 @@ struct serf_connection_t {
     apr_sockaddr_t *address;
 
     apr_socket_t *skt;
+    apr_pool_t *skt_pool;
 
     /* are we a dirty connection that needs its poll status updated? */
     int dirty_conn;
@@ -109,6 +110,19 @@ struct serf_connection_t {
     void *closed_baton;
 };
 
+/* cleanup for sockets */
+static apr_status_t clean_skt(void *data)
+{
+    serf_connection_t *conn = data;
+    apr_status_t status = APR_SUCCESS;
+
+    if (conn->skt) {
+        status = apr_socket_close(conn->skt);
+        conn->skt = NULL;
+    }
+
+    return status;
+}
 
 /* Update the pollset for this connection. We tweak the pollset based on
  * whether we want to read and/or write, given conditions within the
@@ -198,9 +212,12 @@ static apr_status_t open_connections(serf_context_t *ctx)
             continue;
         }
 
+        apr_pool_clear(conn->skt_pool);
+        apr_pool_cleanup_register(conn->skt_pool, conn, clean_skt, clean_skt);
+
         if ((status = apr_socket_create(&skt, APR_INET, SOCK_STREAM,
                                         APR_PROTO_TCP,
-                                        conn->pool)) != APR_SUCCESS)
+                                        conn->skt_pool)) != APR_SUCCESS)
             return status;
 
         /* Set the socket to be non-blocking */
@@ -666,6 +683,9 @@ SERF_DECLARE(serf_connection_t *) serf_connection_create(
     conn->closed = closed;
     conn->closed_baton = closed_baton;
     conn->pool = pool;
+
+    /* Create a subpool for our connection. */
+    apr_pool_create(&conn->skt_pool, conn->pool);
 
     /* ### register a cleanup */
 
