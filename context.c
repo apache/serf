@@ -761,6 +761,7 @@ SERF_DECLARE(apr_status_t) serf_connection_reset(
     }
 
     /* We will let the request bucket destroy our stream. */
+    serf_bucket_destroy(conn->stream);
     conn->stream = NULL;
 
     /* Don't try to resume any writes */
@@ -769,6 +770,7 @@ SERF_DECLARE(apr_status_t) serf_connection_reset(
 
     conn->dirty_conn = 1;
     conn->ctx->dirty_pollset = 1;
+
     /* Found the connection. Closed it. All done. */
     return APR_SUCCESS;
 }
