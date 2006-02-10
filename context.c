@@ -660,6 +660,15 @@ static apr_status_t cancel_request(serf_request_t *request,
         }
     }
 
+    if (request->resp_bkt) {
+        serf_debug__closed_conn(request->resp_bkt->allocator);
+        serf_bucket_destroy(request->resp_bkt);
+    }
+    if (request->req_bkt) {
+        serf_debug__closed_conn(request->req_bkt->allocator);
+        serf_bucket_destroy(request->req_bkt);
+    }
+
     apr_pool_destroy(request->respool);
 
     return APR_SUCCESS;
