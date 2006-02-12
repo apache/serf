@@ -73,6 +73,12 @@ struct serf_connection_t {
     apr_socket_t *skt;
     apr_pool_t *skt_pool;
 
+    /* the last reqevents we gave to pollset_add */
+    apr_int16_t reqevents;
+
+    /* the events we've seen for this connection in our returned pollset */
+    apr_int16_t seen_in_pollset;
+
     /* are we a dirty connection that needs its poll status updated? */
     int dirty_conn;
 
@@ -138,6 +144,8 @@ static apr_status_t update_pollset(serf_connection_t *conn)
     /* Remove the socket from the poll set. */
     desc.desc_type = APR_POLL_SOCKET;
     desc.desc.s = conn->skt;
+    desc.reqevents = conn->reqevents;
+
     status = apr_pollset_remove(ctx->pollset, &desc);
     if (status && !APR_STATUS_IS_NOTFOUND(status))
         return status;
@@ -165,6 +173,9 @@ static apr_status_t update_pollset(serf_connection_t *conn)
     }
 
     desc.client_data = conn;
+
+    /* save our reqevents, so we can pass it in to remove later. */
+    conn->reqevents = desc.reqevents;
 
     /* Note: even if we don't want to read/write this socket, we still
      * want to poll it for hangups and errors.
@@ -204,6 +215,8 @@ static apr_status_t open_connections(serf_context_t *ctx)
         serf_connection_t *conn = GET_CONN(ctx, i);
         apr_status_t status;
         apr_socket_t *skt;
+
+        conn->seen_in_pollset = 0;
 
         if (conn->skt != NULL) {
 #ifdef SERF_DEBUG_BUCKET_USE
@@ -613,6 +626,12 @@ SERF_DECLARE(apr_status_t) serf_context_run(serf_context_t *ctx,
     while (num--) {
         serf_connection_t *conn = desc->client_data;
 
+        /* apr_pollset_poll() can return a conn multiple times... */
+        if ((conn->seen_in_pollset & desc->rtnevents) != 0) {
+            continue;
+        }
+        conn->seen_in_pollset |= desc->rtnevents;
+
         if ((status = process_connection(conn,
                                          desc++->rtnevents)) != APR_SUCCESS) {
             /* ### what else to do? */
@@ -631,6 +650,7 @@ static apr_status_t remove_connection(serf_context_t *ctx,
 
     desc.desc_type = APR_POLL_SOCKET;
     desc.desc.s = conn->skt;
+    desc.reqevents = conn->reqevents;
 
     return apr_pollset_remove(ctx->pollset, &desc);
 }
@@ -771,6 +791,9 @@ SERF_DECLARE(apr_status_t) serf_connection_reset(
 
     conn->dirty_conn = 1;
     conn->ctx->dirty_pollset = 1;
+
+    /* Let our context know that we've 'reset' the socket already. */
+    conn->seen_in_pollset |= APR_POLLHUP;
 
     /* Found the connection. Closed it. All done. */
     return APR_SUCCESS;
