@@ -760,9 +760,10 @@ SERF_DECLARE(apr_status_t) serf_connection_reset(
         conn->skt = NULL;
     }
 
-    /* We will let the request bucket destroy our stream. */
-    serf_bucket_destroy(conn->stream);
-    conn->stream = NULL;
+    if (conn->stream != NULL) {
+        serf_bucket_destroy(conn->stream);
+        conn->stream = NULL;
+    }
 
     /* Don't try to resume any writes */
     conn->unwritten_ptr = NULL;
