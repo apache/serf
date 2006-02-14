@@ -108,6 +108,15 @@ SERF_DECLARE(void) serf_bucket_aggregate_append(
     serf_bucket_t *aggregate_bucket,
     serf_bucket_t *append_bucket);
 
+SERF_DECLARE(void) serf_bucket_aggregate_prepend_iovec(
+    serf_bucket_t *aggregate_bucket,
+    struct iovec *vecs,
+    int vecs_count);
+
+SERF_DECLARE(void) serf_bucket_aggregate_append_iovec(
+    serf_bucket_t *aggregate_bucket,
+    struct iovec *vecs,
+    int vecs_count);
 
 /* ==================================================================== */
 

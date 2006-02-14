@@ -25,9 +25,27 @@ typedef struct bucket_list {
 
 typedef struct {
     bucket_list_t *list; /* active buckets */
-    serf_bucket_t *done; /* we finished reading this; now pending a destroy */
+    bucket_list_t *done; /* we finished reading this; now pending a destroy */
 } aggregate_context_t;
 
+
+static void cleanup_aggregate(aggregate_context_t *ctx,
+                              serf_bucket_alloc_t *allocator)
+{
+    bucket_list_t *next_list;
+
+    /* If we finished reading a bucket during the previous read, then
+     * we can now toss that bucket.
+     */
+    while (ctx->done != NULL) {
+        next_list = ctx->done->next;
+
+        serf_bucket_destroy(ctx->done->bucket);
+        serf_bucket_mem_free(allocator, ctx->done);
+
+        ctx->done = next_list;
+    }
+}
 
 SERF_DECLARE(serf_bucket_t *) serf_bucket_aggregate_create(
     serf_bucket_alloc_t *allocator)
@@ -52,9 +70,7 @@ static void serf_aggregate_destroy_and_data(serf_bucket_t *bucket)
         serf_bucket_mem_free(bucket->allocator, ctx->list);
         ctx->list = next_ctx;
     }
-    if (ctx->done) {
-        serf_bucket_destroy(ctx->done);
-    }
+    cleanup_aggregate(ctx, bucket->allocator);
 
     serf_default_destroy_and_data(bucket);
 }
@@ -117,20 +133,55 @@ SERF_DECLARE(void) serf_bucket_aggregate_append(
     }
 }
 
-static apr_status_t serf_aggregate_read(serf_bucket_t *bucket,
-                                        apr_size_t requested,
-                                        const char **data, apr_size_t *len)
+SERF_DECLARE(void) serf_bucket_aggregate_prepend_iovec(
+    serf_bucket_t *aggregate_bucket,
+    struct iovec *vecs,
+    int vecs_count)
+{
+    int i = 0;
+    bucket_list_t *new_list;
+
+    /* Add in reverse order. */
+    for (i = vecs_count - 1; i > 0; i--) {
+        serf_bucket_t *new_bucket;
+
+        new_bucket = serf_bucket_simple_create(vecs[i].iov_base,
+                                               vecs[i].iov_len,
+                                               NULL, NULL,
+                                               aggregate_bucket->allocator);
+
+        serf_bucket_aggregate_prepend(aggregate_bucket, new_bucket);
+
+    }
+}
+
+SERF_DECLARE(void) serf_bucket_aggregate_append_iovec(
+    serf_bucket_t *aggregate_bucket,
+    struct iovec *vecs,
+    int vecs_count)
+{
+    int i = 0;
+    bucket_list_t *new_list;
+
+    for (i = 0; i < vecs_count; i++) {
+        serf_bucket_t *new_bucket;
+
+        new_bucket = serf_bucket_simple_create(vecs[i].iov_base,
+                                               vecs[i].iov_len,
+                                               NULL, NULL,
+                                               aggregate_bucket->allocator);
+
+        serf_bucket_aggregate_append(aggregate_bucket, new_bucket);
+
+    }
+}
+
+static apr_status_t read_aggregate(serf_bucket_t *bucket,
+                                   apr_size_t requested,
+                                   const char **data, apr_size_t *len)
 {
     aggregate_context_t *ctx = bucket->data;
     bucket_list_t *next_list;
-
-    /* If we finished reading a bucket during the previous read, then
-     * we can now toss that bucket.
-     */
-    if (ctx->done != NULL) {
-        serf_bucket_destroy(ctx->done);
-        ctx->done = NULL;
-    }
 
     if (!ctx->list) {
         *len = 0;
@@ -155,9 +206,9 @@ static apr_status_t serf_aggregate_read(serf_bucket_t *bucket,
                  * next time we perform a read operation.
                  */
                 next_list = ctx->list->next;
-                serf_bucket_mem_free(bucket->allocator, ctx->list);
+                ctx->list->next = ctx->done;
+                ctx->done = ctx->list;
                 ctx->list = next_list;
-                ctx->done = head;
 
                 /* Return the data, and note that we can be read again. */
                 return ctx->list ? APR_SUCCESS : APR_EOF;
@@ -190,6 +241,47 @@ static apr_status_t serf_aggregate_read(serf_bucket_t *bucket,
         }
     }
     /* NOTREACHED */
+}
+
+static apr_status_t serf_aggregate_read(serf_bucket_t *bucket,
+                                        apr_size_t requested,
+                                        const char **data, apr_size_t *len)
+{
+    aggregate_context_t *ctx = bucket->data;
+
+    cleanup_aggregate(ctx, bucket->allocator);
+    return read_aggregate(bucket, requested, data, len);
+}
+
+static apr_status_t serf_aggregate_read_iovec(serf_bucket_t *bucket,
+                                              apr_size_t requested,
+                                              int vecs_size,
+                                              struct iovec *vecs,
+                                              int *vecs_used)
+{
+    aggregate_context_t *ctx = bucket->data;
+    int i;
+    apr_status_t status;
+
+    cleanup_aggregate(ctx, bucket->allocator);
+
+    for (i = 0; i < vecs_size; i++) {
+        if (!ctx->list) {
+            break;
+        }
+        status = read_aggregate(bucket, requested,
+                                (const char**)(&vecs[i].iov_base),
+                                &vecs[i].iov_len);
+        if (SERF_BUCKET_READ_ERROR(status) || APR_STATUS_IS_EAGAIN(status)) {
+            break;
+        }
+        if (requested != SERF_READ_ALL_AVAIL) {
+            requested -= vecs[i].iov_len;
+        }
+    }
+
+    *vecs_used = i;
+    return status;
 }
 
 static apr_status_t serf_aggregate_readline(serf_bucket_t *bucket,
@@ -234,7 +326,7 @@ SERF_DECLARE_DATA const serf_bucket_type_t serf_bucket_type_aggregate = {
     "AGGREGATE",
     serf_aggregate_read,
     serf_aggregate_readline,
-    serf_default_read_iovec,
+    serf_aggregate_read_iovec,
     serf_default_read_for_sendfile,
     serf_aggregate_read_bucket,
     serf_aggregate_peek,

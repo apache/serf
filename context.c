@@ -107,8 +107,8 @@ struct serf_connection_t {
      */
     serf_request_t *hold_requests;
 
-    const char *unwritten_ptr;
-    apr_size_t unwritten_len;
+    struct iovec vec[IOV_MAX];
+    int vec_len;
 
     serf_connection_setup_t setup;
     void *setup_baton;
@@ -160,7 +160,7 @@ static apr_status_t update_pollset(serf_connection_t *conn)
         /* If the connection has unwritten data, or there are any requests
          * that still have buckets to write out, then we want to write.
          */
-        if (conn->unwritten_len)
+        if (conn->vec_len)
             desc.reqevents |= APR_POLLOUT;
         else {
             serf_request_t *request = conn->requests;
@@ -274,12 +274,49 @@ static apr_status_t no_more_writes(serf_connection_t *conn,
   conn->hold_requests = request->next;
   request->next = NULL;
 
+  /* Clear our iovec. */
+  conn->vec_len = 0;
+
   /* Update the pollset to know we don't want to write on this socket any
    * more.
    */
   conn->dirty_conn = 1;
   conn->ctx->dirty_pollset = 1;
   return APR_SUCCESS;
+}
+
+static apr_status_t socket_writev(serf_connection_t *conn)
+{
+    apr_size_t written;
+    apr_status_t status;
+
+    status = apr_socket_sendv(conn->skt, conn->vec,
+                              conn->vec_len, &written);
+
+    /* did we write everything? */
+    if (written) {
+        apr_size_t len = 0;
+        int i;
+
+        for (i = 0; i < conn->vec_len; i++) {
+            len += conn->vec[i].iov_len;
+            if (written < len) {
+                if (i) {
+                    memmove(conn->vec, &conn->vec[i],
+                            sizeof(struct iovec) * (conn->vec_len - i));
+                    conn->vec_len -= i;
+                }
+                conn->vec[0].iov_base += conn->vec[0].iov_len - (len - written);
+                conn->vec[0].iov_len = len - written;
+                break;
+            }
+        }
+        if (len == written) {
+            conn->vec_len = 0;
+        }
+    }
+
+    return status;
 }
 
 /* write data out to the connection */
@@ -297,7 +334,7 @@ static apr_status_t write_to_connection(serf_connection_t *conn)
     while (request != NULL && request->req_bkt == NULL)
         request = request->next;
 
-    /* assert: request != NULL || conn->unwritten_len */
+    /* assert: request != NULL || conn->vec_len */
 
     /* Keep reading and sending until we run out of stuff to read, or
      * writing would block.
@@ -308,12 +345,11 @@ static apr_status_t write_to_connection(serf_connection_t *conn)
         apr_status_t read_status;
         const char *data;
         apr_size_t len;
+        int i;
 
         /* If we have unwritten data, then write what we can. */
-        if ((len = conn->unwritten_len) != 0) {
-            status = apr_socket_send(conn->skt, conn->unwritten_ptr, &len);
-            /* ### bug?: need to update unwritten_ptr */
-            conn->unwritten_len -= len;
+        while (conn->vec_len) {
+            status = socket_writev(conn);
 
             /* If the write would have blocked, then we're done. Don't try
              * to write anything else to the socket.
@@ -347,8 +383,12 @@ static apr_status_t write_to_connection(serf_connection_t *conn)
 
         /* ### optimize at some point by using read_for_sendfile */
 
-        read_status = serf_bucket_read(request->req_bkt, SERF_READ_ALL_AVAIL,
-                                       &data, &len);
+        read_status = serf_bucket_read_iovec(request->req_bkt,
+                                             SERF_READ_ALL_AVAIL,
+                                             IOV_MAX,
+                                             conn->vec,
+                                             &conn->vec_len);
+
         if (APR_STATUS_IS_EAGAIN(read_status)) {
             /* We read some stuff, but should not try to read again. */
             stop_reading = 1;
@@ -368,15 +408,7 @@ static apr_status_t write_to_connection(serf_connection_t *conn)
         /* If we got some data, then deliver it. */
         /* ### what to do if we got no data?? is that a problem? */
         if (len > 0) {
-            apr_size_t written = len;
-
-            status = apr_socket_send(conn->skt, data, &written);
-
-            if (written < len) {
-                /* We didn't write it all. Save it away for writing later. */
-                conn->unwritten_ptr = data + written;
-                conn->unwritten_len = len - written;
-            }
+            status = socket_writev(conn);
 
             /* If we can't write any more, or an error occurred, then
              * we're done here.
@@ -798,8 +830,7 @@ SERF_DECLARE(apr_status_t) serf_connection_reset(
     }
 
     /* Don't try to resume any writes */
-    conn->unwritten_ptr = NULL;
-    conn->unwritten_len = 0;
+    conn->vec_len = 0;
 
     conn->dirty_conn = 1;
     conn->ctx->dirty_pollset = 1;

@@ -51,6 +51,71 @@ SERF_DECLARE(serf_bucket_t *) serf_bucket_chunk_create(
 
 #define CRLF "\r\n"
 
+static apr_status_t create_chunk(serf_bucket_t *bucket)
+{
+    chunk_context_t *ctx = bucket->data;
+    apr_status_t status;
+    serf_bucket_t *simple_bkt;
+    apr_size_t chunk_len;
+    apr_size_t stream_len;
+    struct iovec vecs[35]; /* 32 + header + chunk trailer + EOF trailer = 35 */
+    int vecs_read;
+    int i;
+
+    if (ctx->state != STATE_FETCH) {
+        return APR_SUCCESS;
+    }
+
+    ctx->last_status =
+        serf_bucket_read_iovec(ctx->stream, SERF_READ_ALL_AVAIL,
+                               32, vecs+1, &vecs_read);
+
+    if (SERF_BUCKET_READ_ERROR(ctx->last_status)) {
+        /* Uh-oh. */
+        return ctx->last_status;
+    }
+
+    /* Count the length of the data we read. */
+    stream_len = 0;
+    for (i = 0; i < vecs_read; i++) {
+        stream_len += vecs[i+1].iov_len;
+    }
+
+    /* assert: stream_len in hex < sizeof(ctx->chunk_hdr) */
+
+    /* Build the chunk header. */
+    chunk_len = apr_snprintf(ctx->chunk_hdr, sizeof(ctx->chunk_hdr),
+                             "%" APR_UINT64_T_HEX_FMT CRLF,
+                             (apr_uint64_t)stream_len);
+
+    vecs[0].iov_base = ctx->chunk_hdr;
+    vecs[0].iov_len = chunk_len;
+
+    /* Adjust the count to compensate for the chunk header. */
+    vecs_read++;
+
+    /* Insert the chunk footer. */
+    vecs[vecs_read].iov_base = CRLF;
+    vecs[vecs_read++].iov_len = sizeof(CRLF) - 1;
+
+    /* We've reached the end of the line for the stream. */
+    if (APR_STATUS_IS_EOF(ctx->last_status)) {
+        /* Insert the chunk footer. */
+        vecs[vecs_read].iov_base = "0" CRLF CRLF;
+        vecs[vecs_read++].iov_len = sizeof("0" CRLF CRLF) - 1;
+
+        ctx->state = STATE_EOF;
+    }
+    else {
+        /* Okay, we can return data.  */
+        ctx->state = STATE_CHUNK;
+    }
+
+    serf_bucket_aggregate_append_iovec(ctx->chunk, vecs, vecs_read);
+
+    return APR_SUCCESS;
+}
+
 static apr_status_t serf_chunk_read(serf_bucket_t *bucket,
                                     apr_size_t requested,
                                     const char **data, apr_size_t *len)
@@ -60,52 +125,9 @@ static apr_status_t serf_chunk_read(serf_bucket_t *bucket,
 
     /* Before proceeding, we need to fetch some data from the stream. */
     if (ctx->state == STATE_FETCH) {
-        const char *stream_data;
-        apr_size_t stream_len;
-        serf_bucket_t *simple_bkt;
-        apr_size_t chunk_len;
-
-        ctx->last_status =
-            serf_bucket_read(ctx->stream, 8000, &stream_data, &stream_len);
-
-        if (SERF_BUCKET_READ_ERROR(ctx->last_status)) {
-            /* Uh-oh. */
-            return ctx->last_status;
-        }
-
-        /* assert: stream_len in hex < sizeof(ctx->chunk_hdr) */
-
-        /* Build the chunk header. */
-        chunk_len = apr_snprintf(ctx->chunk_hdr, sizeof(ctx->chunk_hdr),
-                                 "%" APR_UINT64_T_HEX_FMT CRLF,
-                                 (apr_uint64_t)stream_len);
-
-        simple_bkt = SERF_BUCKET_SIMPLE_STRING_LEN(ctx->chunk_hdr, chunk_len,
-                                                   bucket->allocator);
-        serf_bucket_aggregate_append(ctx->chunk, simple_bkt);
-
-        /* Insert the chunk data. */
-        simple_bkt = SERF_BUCKET_SIMPLE_STRING_LEN(stream_data, stream_len,
-                                                   bucket->allocator);
-
-        serf_bucket_aggregate_append(ctx->chunk, simple_bkt);
-
-        /* Insert the chunk footer. */
-        simple_bkt = SERF_BUCKET_SIMPLE_STRING(CRLF, bucket->allocator);
-        serf_bucket_aggregate_append(ctx->chunk, simple_bkt);
-
-        /* We've reached the end of the line for the stream. */
-        if (APR_STATUS_IS_EOF(ctx->last_status)) {
-            /* Insert the chunk footer. */
-            simple_bkt = SERF_BUCKET_SIMPLE_STRING("0" CRLF CRLF,
-                                                   bucket->allocator);
-            serf_bucket_aggregate_append(ctx->chunk, simple_bkt);
-
-            ctx->state = STATE_EOF;
-        }
-        else {
-            /* Okay, we can return data.  */
-            ctx->state = STATE_CHUNK;
+        status = create_chunk(bucket);
+        if (status) {
+            return status;
         }
     }
 
@@ -132,6 +154,35 @@ static apr_status_t serf_chunk_readline(serf_bucket_t *bucket,
     /* Mask EOF from aggregate bucket. */
     if (APR_STATUS_IS_EOF(status) && ctx->state == STATE_CHUNK) {
         status = APR_EAGAIN;
+        ctx->state = STATE_FETCH;
+    }
+
+    return status;
+}
+
+static apr_status_t serf_chunk_read_iovec(serf_bucket_t *bucket,
+                                          apr_size_t requested,
+                                          int vecs_size,
+                                          struct iovec *vecs,
+                                          int *vecs_used)
+{
+    chunk_context_t *ctx = bucket->data;
+    apr_status_t status;
+
+    /* Before proceeding, we need to fetch some data from the stream. */
+    if (ctx->state == STATE_FETCH) {
+        status = create_chunk(bucket);
+        if (status) {
+            return status;
+        }
+    }
+
+    status = serf_bucket_read_iovec(ctx->chunk, requested, vecs_size, vecs,
+                                    vecs_used);
+
+    /* Mask EOF from aggregate bucket. */
+    if (APR_STATUS_IS_EOF(status) && ctx->state == STATE_CHUNK) {
+        status = ctx->last_status;
         ctx->state = STATE_FETCH;
     }
 
@@ -169,7 +220,7 @@ SERF_DECLARE_DATA const serf_bucket_type_t serf_bucket_type_chunk = {
     "CHUNK",
     serf_chunk_read,
     serf_chunk_readline,
-    serf_default_read_iovec,
+    serf_chunk_read_iovec,
     serf_default_read_for_sendfile,
     serf_default_read_bucket,
     serf_chunk_peek,
