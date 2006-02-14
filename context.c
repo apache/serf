@@ -385,6 +385,9 @@ static apr_status_t write_to_connection(serf_connection_t *conn)
                 return APR_SUCCESS;
             if (APR_STATUS_IS_EPIPE(status))
                 return no_more_writes(conn, request);
+            if (APR_STATUS_IS_ECONNRESET(status)) {
+                return no_more_writes(conn, request);
+            }
             if (status)
                 return status;
         }
@@ -460,6 +463,15 @@ static apr_status_t read_from_connection(serf_connection_t *conn)
         status = (*request->handler)(request->resp_bkt,
                                      request->handler_baton,
                                      tmppool);
+
+        /* Some systems will not generate a HUP poll event so we have to
+         * handle the ECONNRESET issue here.
+         */
+        if (APR_STATUS_IS_ECONNRESET(status)) {
+            serf_connection_reset(conn);
+            status = APR_SUCCESS;
+            goto error;
+        }
         if (!APR_STATUS_IS_EOF(status) && status != SERF_ERROR_CLOSING) {
             /* Whether success, or an error, there is no more to do unless
              * this request has been completed.
