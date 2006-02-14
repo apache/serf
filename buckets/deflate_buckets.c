@@ -89,6 +89,7 @@ SERF_DECLARE(serf_bucket_t *) serf_bucket_deflate_create(
 
     ctx = serf_bucket_mem_alloc(allocator, sizeof(*ctx));
     ctx->stream = stream;
+    ctx->stream_status = APR_SUCCESS;
     ctx->inflate_stream = serf_bucket_aggregate_create(allocator);
     ctx->format = format;
     ctx->crc = 0;
@@ -218,6 +219,13 @@ static apr_status_t serf_deflate_read(serf_bucket_t *bucket,
             /* Hide EOF. */
             if (APR_STATUS_IS_EOF(status)) {
                 status = ctx->stream_status;
+                if (APR_STATUS_IS_EOF(status)) {
+                    /* We've read all of the data from our stream, but we
+                     * need to continue to iterate until we flush
+                     * out the zlib buffer.
+                     */
+                    status = APR_SUCCESS;
+                }
             }
             if (*len != 0) {
                 return status;
