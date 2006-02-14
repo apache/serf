@@ -83,13 +83,13 @@ struct serf_connection_t {
     int dirty_conn;
 
     /* number of completed requests we've sent */
-    apr_size_t completed_requests;
+    unsigned int completed_requests;
 
     /* number of completed responses we've got */
-    apr_size_t completed_responses;
+    unsigned int completed_responses;
 
     /* keepalive */
-    apr_size_t probable_keepalive_limit;
+    unsigned int probable_keepalive_limit;
 
     /* someone has told us that the connection is closing
      * so, let's start a new socket.
