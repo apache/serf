@@ -138,7 +138,7 @@ SERF_DECLARE(void) serf_bucket_aggregate_prepend_iovec(
     struct iovec *vecs,
     int vecs_count)
 {
-    int i = 0;
+    int i;
     bucket_list_t *new_list;
 
     /* Add in reverse order. */
@@ -160,7 +160,7 @@ SERF_DECLARE(void) serf_bucket_aggregate_append_iovec(
     struct iovec *vecs,
     int vecs_count)
 {
-    int i = 0;
+    int i;
     bucket_list_t *new_list;
 
     for (i = 0; i < vecs_count; i++) {
@@ -185,7 +185,6 @@ static apr_status_t read_aggregate(serf_bucket_t *bucket,
 
     if (!ctx->list) {
         *len = 0;
-        /* ### can we leave *data unassigned given *len == 0? */
         return APR_EOF;
     }
 
@@ -223,7 +222,7 @@ static apr_status_t read_aggregate(serf_bucket_t *bucket,
          */
         if (APR_STATUS_IS_EAGAIN(status)) {
             *len = 0;
-            return status;
+            return APR_EAGAIN;
         }
 
         /* If we just read no data, then let's try again after destroying
@@ -236,7 +235,6 @@ static apr_status_t read_aggregate(serf_bucket_t *bucket,
 
         if (!ctx->list) {
             *len = 0;
-            /* ### can we leave *data unassigned given *len == 0? */
             return APR_EOF;
         }
     }
@@ -261,7 +259,7 @@ static apr_status_t serf_aggregate_read_iovec(serf_bucket_t *bucket,
 {
     aggregate_context_t *ctx = bucket->data;
     int i;
-    apr_status_t status;
+    apr_status_t status = APR_SUCCESS;
 
     cleanup_aggregate(ctx, bucket->allocator);
 
@@ -270,9 +268,9 @@ static apr_status_t serf_aggregate_read_iovec(serf_bucket_t *bucket,
             break;
         }
         status = read_aggregate(bucket, requested,
-                                (const char**)(&vecs[i].iov_base),
+                                (const char **)&vecs[i].iov_base,
                                 &vecs[i].iov_len);
-        if (SERF_BUCKET_READ_ERROR(status) || APR_STATUS_IS_EAGAIN(status)) {
+        if (status) {
             break;
         }
         if (requested != SERF_READ_ALL_AVAIL) {
