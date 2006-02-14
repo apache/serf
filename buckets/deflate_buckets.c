@@ -161,8 +161,13 @@ static apr_status_t serf_deflate_read(serf_bucket_t *bucket,
 
             if (ctx->stream_left == 0) {
                 ctx->state++;
+                if (APR_STATUS_IS_EAGAIN(status)) {
+                    *len = 0;
+                    return status;
+                }
             }
-            if (status) {
+            else if (status) {
+                *len = 0;
                 return status;
             }
             break;
@@ -236,6 +241,13 @@ static apr_status_t serf_deflate_read(serf_bucket_t *bucket,
 
                 if (SERF_BUCKET_READ_ERROR(ctx->stream_status)) {
                     return ctx->stream_status;
+                }
+
+                if (!private_len && APR_STATUS_IS_EAGAIN(ctx->stream_status)) {
+                    *len = 0;
+                    status = ctx->stream_status;
+                    ctx->stream_status = APR_SUCCESS;
+                    return status;
                 }
 
                 ctx->zstream.next_in = (unsigned char*)private_data;

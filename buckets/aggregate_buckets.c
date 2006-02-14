@@ -167,6 +167,14 @@ static apr_status_t serf_aggregate_read(serf_bucket_t *bucket,
             return status;
         }
 
+        /* If the bucket didn't give us any data but told us to try again,
+         * well, try again later.
+         */
+        if (APR_STATUS_IS_EAGAIN(status)) {
+            *len = 0;
+            return status;
+        }
+
         /* If we just read no data, then let's try again after destroying
          * this bucket.
          */

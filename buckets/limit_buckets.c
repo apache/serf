@@ -44,6 +44,11 @@ static apr_status_t serf_limit_read(serf_bucket_t *bucket,
     limit_context_t *ctx = bucket->data;
     apr_status_t status;
 
+    if (!ctx->remaining) {
+        *len = 0;
+        return APR_EOF;
+    }
+
     if (requested == SERF_READ_ALL_AVAIL || requested > ctx->remaining)
         requested = ctx->remaining;
 
@@ -53,7 +58,12 @@ static apr_status_t serf_limit_read(serf_bucket_t *bucket,
         ctx->remaining -= *len;
     }
 
-    return ctx->remaining ? status : APR_EOF;
+    /* If we have met our limit and don't have a status, return EOF. */
+    if (!ctx->remaining && !status) {
+        status = APR_EOF;
+    }
+
+    return status;
 }
 
 static apr_status_t serf_limit_readline(serf_bucket_t *bucket,
@@ -63,13 +73,23 @@ static apr_status_t serf_limit_readline(serf_bucket_t *bucket,
     limit_context_t *ctx = bucket->data;
     apr_status_t status;
 
+    if (!ctx->remaining) {
+        *len = 0;
+        return APR_EOF;
+    }
+
     status = serf_bucket_readline(ctx->stream, acceptable, found, data, len);
 
     if (!SERF_BUCKET_READ_ERROR(status)) {
         ctx->remaining -= *len;
     }
 
-    return ctx->remaining ? status : APR_EOF;
+    /* If we have met our limit and don't have a status, return EOF. */
+    if (!ctx->remaining && !status) {
+        status = APR_EOF;
+    }
+
+    return status;
 }
 
 static apr_status_t serf_limit_peek(serf_bucket_t *bucket,
