@@ -221,7 +221,6 @@ static apr_status_t read_aggregate(serf_bucket_t *bucket,
          * well, try again later.
          */
         if (APR_STATUS_IS_EAGAIN(status)) {
-            *len = 0;
             return APR_EAGAIN;
         }
 
@@ -234,7 +233,6 @@ static apr_status_t read_aggregate(serf_bucket_t *bucket,
         ctx->list = next_list;
 
         if (!ctx->list) {
-            *len = 0;
             return APR_EOF;
         }
     }
@@ -264,15 +262,12 @@ static apr_status_t serf_aggregate_read_iovec(serf_bucket_t *bucket,
     cleanup_aggregate(ctx, bucket->allocator);
 
     for (i = 0; i < vecs_size; i++) {
-        if (!ctx->list) {
+        if (status || !ctx->list) {
             break;
         }
         status = read_aggregate(bucket, requested,
                                 (const char **)&vecs[i].iov_base,
                                 &vecs[i].iov_len);
-        if (status) {
-            break;
-        }
         if (requested != SERF_READ_ALL_AVAIL) {
             requested -= vecs[i].iov_len;
         }
