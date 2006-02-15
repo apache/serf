@@ -205,9 +205,24 @@ class Builder:
     return 0
 
 
-class APRConfig:
+class ConfigScript(object):
+  script_name = None
+  locations = [
+    '/usr/bin',
+    '/usr/local/bin',
+    '/usr/local/apache2/bin',
+    ### need to take paths from the cmdline
+    ### others?
+    ]
+
   def __init__(self):
-    self.bin = '/usr/local/apache2/bin/apr-config'
+    for dirname in self.locations:
+      bin = os.path.join(dirname, self.script_name)
+      if os.access(bin, os.X_OK):
+        self.bin = bin
+        break
+    else:
+      raise ConfigScriptNotFound(self.script_name)
 
   def get_value(self, env_name, switch):
     if env_name and os.getenv(env_name):
@@ -215,14 +230,12 @@ class APRConfig:
     return os.popen('%s %s' % (self.bin, switch), 'r').read().strip()
 
 
-class APUConfig:
-  def __init__(self):
-    self.bin = '/usr/local/apache2/bin/apu-config'
+class APRConfig(ConfigScript):
+  script_name = 'apr-1-config'
 
-  def get_value(self, env_name, switch):
-    if env_name and os.getenv(env_name):
-      return os.getenv(env_name)
-    return os.popen('%s %s' % (self.bin, switch), 'r').read().strip()
+
+class APUConfig(ConfigScript):
+  script_name = 'apu-1-config'
 
 
 class File:
@@ -250,6 +263,8 @@ class BuildError(Exception):
   "An error occurred while building a target."
 class TestError(Exception):
   "An error occurred while running a unit test."
+class ConfigScriptNotFound(Exception):
+  "A configuration script was not found."
 
 
 if __name__ == '__main__':
