@@ -261,6 +261,11 @@ static apr_status_t serf_aggregate_read_iovec(serf_bucket_t *bucket,
 
     cleanup_aggregate(ctx, bucket->allocator);
 
+    if (!ctx->list) {
+        *vecs_used = 0;
+        return APR_EOF;
+    }
+
     for (i = 0; i < vecs_size; i++) {
         if (status || !ctx->list) {
             break;
