@@ -343,8 +343,6 @@ static apr_status_t write_to_connection(serf_connection_t *conn)
         int stop_reading = 0;
         apr_status_t status;
         apr_status_t read_status;
-        const char *data;
-        apr_size_t len;
         int i;
 
         /* If we have unwritten data, then write what we can. */
@@ -407,7 +405,7 @@ static apr_status_t write_to_connection(serf_connection_t *conn)
 
         /* If we got some data, then deliver it. */
         /* ### what to do if we got no data?? is that a problem? */
-        if (len > 0) {
+        if (conn->vec_len > 0) {
             status = socket_writev(conn);
 
             /* If we can't write any more, or an error occurred, then
