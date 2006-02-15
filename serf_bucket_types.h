@@ -51,6 +51,10 @@ SERF_DECLARE(serf_bucket_t *) serf_bucket_request_create(
 SERF_DECLARE(serf_bucket_t *) serf_bucket_request_get_headers(
     serf_bucket_t *request);
 
+SERF_DECLARE(void) serf_bucket_request_become(serf_bucket_t *bucket,
+                                              const char *method,
+                                              const char *uri,
+                                              serf_bucket_t *body);
 
 /* ==================================================================== */
 

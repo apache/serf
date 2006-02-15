@@ -138,6 +138,25 @@ static apr_status_t serf_request_peek(serf_bucket_t *bucket,
     return serf_bucket_peek(bucket, data, len);
 }
 
+SERF_DECLARE(void) serf_bucket_request_become(serf_bucket_t *bucket,
+                                              const char *method,
+                                              const char *uri,
+                                              serf_bucket_t *body)
+{
+    request_context_t *ctx;
+
+    ctx = serf_bucket_mem_alloc(bucket->allocator, sizeof(*ctx));
+    ctx->method = method;
+    ctx->uri = uri;
+    ctx->headers = serf_bucket_headers_create(bucket->allocator);
+    ctx->body = body;
+
+    bucket->type = &serf_bucket_type_request;
+    bucket->data = ctx;
+
+    /* The allocator remains the same. */
+}
+
 SERF_DECLARE_DATA const serf_bucket_type_t serf_bucket_type_request = {
     "REQUEST",
     serf_request_read,
