@@ -19,6 +19,7 @@
 #include <apr_poll.h>
 
 #include "serf.h"
+#include "serf_bucket_util.h"
 
 
 /* ### what the hell? why does the APR interface have a "size" ??
@@ -37,6 +38,9 @@ struct serf_request_t {
      * bucket has been emptied (for delivery into the socket).
      */
     serf_bucket_t *req_bkt;
+
+    serf_request_setup_t setup;
+    void *setup_baton;
 
     serf_response_acceptor_t acceptor;
     void *acceptor_baton;
@@ -68,6 +72,8 @@ struct serf_connection_t {
     serf_context_t *ctx;
 
     apr_pool_t *pool;
+    serf_bucket_alloc_t *allocator;
+
     apr_sockaddr_t *address;
 
     apr_socket_t *skt;
@@ -165,10 +171,17 @@ static apr_status_t update_pollset(serf_connection_t *conn)
         else {
             serf_request_t *request = conn->requests;
 
-            while (request != NULL && request->req_bkt == NULL)
-                request = request->next;
-            if (request != NULL)
-                desc.reqevents |= APR_POLLOUT;
+            if (conn->probable_keepalive_limit &&
+                conn->completed_requests > conn->probable_keepalive_limit) {
+                /* we wouldn't try to write any way right now. */
+            }
+            else {
+                while (request != NULL && request->req_bkt == NULL &&
+                       request->setup == NULL)
+                    request = request->next;
+                if (request != NULL)
+                    desc.reqevents |= APR_POLLOUT;
+            }
         }
     }
 
@@ -331,7 +344,8 @@ static apr_status_t write_to_connection(serf_connection_t *conn)
     }
 
     /* Find a request that has data which needs to be delivered. */
-    while (request != NULL && request->req_bkt == NULL)
+    while (request != NULL &&
+           request->req_bkt == NULL && request->setup == NULL)
         request = request->next;
 
     /* assert: request != NULL || conn->vec_len */
@@ -366,7 +380,8 @@ static apr_status_t write_to_connection(serf_connection_t *conn)
         /* We may need to move forward to a request which has something
          * to write.
          */
-        while (request != NULL && request->req_bkt == NULL)
+        while (request != NULL &&
+               request->req_bkt == NULL && request->setup == NULL)
             request = request->next;
 
         if (request == NULL) {
@@ -379,8 +394,24 @@ static apr_status_t write_to_connection(serf_connection_t *conn)
             return APR_SUCCESS;
         }
 
-        /* ### optimize at some point by using read_for_sendfile */
+        if (request->req_bkt == NULL) {
+            /* Now that we are about to serve the request, allocate a pool. */
+            apr_pool_create(&request->respool, conn->pool);
+            request->allocator = serf_bucket_allocator_create(request->respool,
+                                                              NULL, NULL);
 
+            /* Fill in the rest of the values for the request. */
+            read_status = request->setup(request, request->setup_baton,
+                                         &request->req_bkt,
+                                         &request->acceptor,
+                                         &request->acceptor_baton,
+                                         &request->handler,
+                                         &request->handler_baton,
+                                         request->respool);
+            request->setup = NULL;
+        }
+
+        /* ### optimize at some point by using read_for_sendfile */
         read_status = serf_bucket_read_iovec(request->req_bkt,
                                              SERF_READ_ALL_AVAIL,
                                              IOV_MAX,
@@ -523,6 +554,7 @@ static apr_status_t read_from_connection(serf_connection_t *conn)
 
         serf_debug__bucket_alloc_check(request->allocator);
         apr_pool_destroy(request->respool);
+        serf_bucket_mem_free(conn->allocator, request);
 
         request = conn->requests;
 
@@ -703,10 +735,13 @@ static apr_status_t cancel_request(serf_request_t *request,
     serf_connection_t *conn = request->conn;
     apr_status_t status;
 
-    /* We actually don't care what the handler returns.
-     * We have bigger matters at hand.
-     */
-    (*request->handler)(NULL, request->handler_baton, request->respool);
+    /* If we haven't run setup, then we won't have a handler to call. */
+    if (request->handler) {
+        /* We actually don't care what the handler returns.
+         * We have bigger matters at hand.
+         */
+        (*request->handler)(NULL, request->handler_baton, request->respool);
+    }
 
     if (*list == request) {
         *list = request->next;
@@ -731,7 +766,11 @@ static apr_status_t cancel_request(serf_request_t *request,
         serf_bucket_destroy(request->req_bkt);
     }
 
-    apr_pool_destroy(request->respool);
+    if (request->respool) {
+        apr_pool_destroy(request->respool);
+    }
+
+    serf_bucket_mem_free(request->conn->allocator, request);
 
     return APR_SUCCESS;
 }
@@ -754,6 +793,7 @@ SERF_DECLARE(serf_connection_t *) serf_connection_create(
     conn->closed = closed;
     conn->closed_baton = closed_baton;
     conn->pool = pool;
+    conn->allocator = serf_bucket_allocator_create(pool, NULL, NULL);
 
     /* Create a subpool for our connection. */
     apr_pool_create(&conn->skt_pool, conn->pool);
@@ -807,7 +847,18 @@ SERF_DECLARE(apr_status_t) serf_connection_reset(
     }
 
     while (old_reqs) {
-        cancel_request(old_reqs, &old_reqs);
+        /* If we haven't started to write the connection, bring it over
+         * unchanged to our new socket.  Otherwise, call the cancel function.
+         */
+        if (old_reqs->setup) {
+            serf_request_t *req = old_reqs;
+            old_reqs = old_reqs->next;
+            req->next = NULL;
+            link_requests(&conn->requests, req);
+        }
+        else {
+            cancel_request(old_reqs, &old_reqs);
+        }
     }
 
     link_requests(&conn->requests, held_reqs);
@@ -891,38 +942,20 @@ SERF_DECLARE(apr_status_t) serf_connection_close(
 }
 
 SERF_DECLARE(serf_request_t *) serf_connection_request_create(
-    serf_connection_t *conn)
+    serf_connection_t *conn,
+    serf_request_setup_t setup,
+    void *setup_baton)
 {
     apr_pool_t *pool;
     serf_request_t *request;
 
-    /* ### return this status? */
-    (void) apr_pool_create(&pool, conn->pool);
-
-    request = apr_pcalloc(pool, sizeof(*request));
+    request = serf_bucket_mem_alloc(conn->allocator, sizeof(*request));
     request->conn = conn;
-    request->respool = pool;
-    request->allocator = serf_bucket_allocator_create(pool, NULL, NULL);
-
-    return request;
-}
-
-SERF_DECLARE(void) serf_request_deliver(
-    serf_request_t *request,
-    serf_bucket_t *req_bkt,
-    serf_response_acceptor_t acceptor,
-    void *acceptor_baton,
-    serf_response_handler_t handler,
-    void *handler_baton)
-{
-    serf_connection_t *conn = request->conn;
-
-    /* Fill in the rest of the values for the request. */
-    request->req_bkt = req_bkt;
-    request->acceptor = acceptor;
-    request->acceptor_baton = acceptor_baton;
-    request->handler = handler;
-    request->handler_baton = handler_baton;
+    request->setup = setup;
+    request->setup_baton = setup_baton;
+    request->req_bkt = NULL;
+    request->resp_bkt = NULL;
+    request->next = NULL;
 
     /* Link the request to the end of the request chain. */
     if (conn->closing) {
@@ -935,6 +968,8 @@ SERF_DECLARE(void) serf_request_deliver(
         conn->ctx->dirty_pollset = 1;
         conn->dirty_conn = 1;
     }
+
+    return request;
 }
 
 

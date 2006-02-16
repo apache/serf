@@ -260,25 +260,13 @@ SERF_DECLARE(apr_status_t) serf_connection_close(
     serf_connection_t *conn);
 
 /**
- * Construct a request object for the @a conn connection.
+ * Setup the @a request for delivery on its connection.
  *
- * A subpool will be built within the connection's pool. The request and
- * its associated response will be allocated within that subpool. An
- * associated bucket allocator will be built. These items may be fetched
- * from the request object through @see serf_request_get_pool or
- * @see serf_request_get_alloc.
- *
- * The returned request can be finalized and queued for delivery with
- * @see serf_request_deliver.
- *
- * If the request has not (yet) been delivered, then it may be canceled
- * with @see serf_request_cancel.
- */
-SERF_DECLARE(serf_request_t *) serf_connection_request_create(
-    serf_connection_t *conn);
-
-/**
- * Schedule the @a request for delivery on the connection.
+ * Right before this is invoked, @a pool will be built within the
+ * connection's pool for the request to use.  The associated response will
+ * be allocated within that subpool. An associated bucket allocator will
+ * be built. These items may be fetched from the request object through
+ * @see serf_request_get_pool or @see serf_request_get_alloc.
  *
  * The content of the request is specified by the @a req_bkt bucket. When
  * a response arrives, the @a acceptor callback will be invoked (along with
@@ -288,13 +276,32 @@ SERF_DECLARE(serf_request_t *) serf_connection_request_create(
  * The responsibility for the request bucket is passed to the request
  * object. When the request is done with the bucket, it will be destroyed.
  */
-SERF_DECLARE(void) serf_request_deliver(
-    serf_request_t *request,
-    serf_bucket_t *req_bkt,
-    serf_response_acceptor_t acceptor,
-    void *acceptor_baton,
-    serf_response_handler_t handler,
-    void *handler_baton);
+typedef apr_status_t (*serf_request_setup_t)(serf_request_t *request,
+                                             void *setup_baton,
+                                             serf_bucket_t **req_bkt,
+                                             serf_response_acceptor_t *acceptor,
+                                             void **acceptor_baton,
+                                             serf_response_handler_t *handler,
+                                             void **handler_baton,
+                                             apr_pool_t *pool);
+
+/**
+ * Construct a request object for the @a conn connection.
+ *
+ * When it is time to deliver the request, the @a setup callback will
+ * be invoked with the @a setup_baton passed into it to complete the
+ * construction of the request object.
+ *
+ * If the request has not (yet) been delivered, then it may be canceled
+ * with @see serf_request_cancel.
+ *
+ * Invoking any calls other than @see serf_request_cancel before the setup
+ * callback executes is not supported.
+ */
+SERF_DECLARE(serf_request_t *) serf_connection_request_create(
+    serf_connection_t *conn,
+    serf_request_setup_t setup,
+    void *setup_baton);
 
 /**
  * Cancel the request specified by the @a request object.
