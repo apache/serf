@@ -107,11 +107,13 @@ struct serf_connection_t {
 
     /* The list of active requests. */
     serf_request_t *requests;
+    serf_request_t *requests_tail;
 
     /* The list of requests we're holding on to because we're going to
      * reset the connection soon.
      */
     serf_request_t *hold_requests;
+    serf_request_t *hold_requests_tail;
 
     struct iovec vec[IOV_MAX];
     int vec_len;
@@ -285,7 +287,9 @@ static apr_status_t no_more_writes(serf_connection_t *conn,
    * been written yet and 'save' it for the new socket.
    */
   conn->hold_requests = request->next;
+  conn->hold_requests_tail = conn->requests_tail;
   request->next = NULL;
+  conn->requests_tail = request;
 
   /* Clear our iovec. */
   conn->vec_len = 0;
@@ -558,6 +562,11 @@ static apr_status_t read_from_connection(serf_connection_t *conn)
 
         request = conn->requests;
 
+        /* If we're truly empty, update our tail. */
+        if (request == NULL) {
+            conn->requests_tail = NULL;
+        }
+
         /* This means that we're being advised that the connection is done. */
         if (status == SERF_ERROR_CLOSING) {
             serf_connection_reset(conn);
@@ -577,11 +586,11 @@ static apr_status_t read_from_connection(serf_connection_t *conn)
             conn->probable_keepalive_limit = 0;
         }
 
-        /* If we just ran out of requests, then update the pollset. We
-         * don't want to read from this socket any more. We are definitely
-         * done with this loop, too.
+        /* If we just ran out of requests or have unwritten requests, then
+         * update the pollset. We don't want to read from this socket any
+         * more. We are definitely done with this loop, too.
          */
-        if (request == NULL) {
+        if (request == NULL || request->setup) {
             conn->dirty_conn = 1;
             conn->ctx->dirty_pollset = 1;
             status = APR_SUCCESS;
@@ -806,19 +815,16 @@ SERF_DECLARE(serf_connection_t *) serf_connection_create(
     return conn;
 }
 
-void link_requests(serf_request_t **list, serf_request_t *request)
+void link_requests(serf_request_t **list, serf_request_t **tail,
+                   serf_request_t *request)
 {
     if (*list == NULL) {
         *list = request;
+        *tail = request;
     }
     else {
-        serf_request_t *scan = *list;
-
-        while (scan->next != NULL) {
-            scan = scan->next;
-        }
-
-        scan->next = request;
+        (*tail)->next = request;
+        *tail = request;
     }
 }
 
@@ -828,7 +834,7 @@ SERF_DECLARE(apr_status_t) serf_connection_reset(
     int i;
     serf_context_t *ctx = conn->ctx;
     apr_status_t status;
-    serf_request_t *old_reqs, *held_reqs;
+    serf_request_t *old_reqs, *held_reqs, *held_reqs_tail;
 
     conn->probable_keepalive_limit = conn->completed_responses;
     conn->completed_requests = 0;
@@ -836,15 +842,16 @@ SERF_DECLARE(apr_status_t) serf_connection_reset(
 
     old_reqs = conn->requests;
     held_reqs = conn->hold_requests;
-
+    held_reqs_tail = conn->hold_requests_tail;
+ 
     if (conn->closing) {
-        conn->requests = NULL;
         conn->hold_requests = NULL;
+        conn->hold_requests_tail = NULL;
         conn->closing = 0;
     }
-    else {
-        conn->requests = NULL;
-    }
+
+    conn->requests = NULL;
+    conn->requests_tail = NULL;
 
     while (old_reqs) {
         /* If we haven't started to write the connection, bring it over
@@ -854,14 +861,22 @@ SERF_DECLARE(apr_status_t) serf_connection_reset(
             serf_request_t *req = old_reqs;
             old_reqs = old_reqs->next;
             req->next = NULL;
-            link_requests(&conn->requests, req);
+            link_requests(&conn->requests, &conn->requests_tail, req);
         }
         else {
             cancel_request(old_reqs, &old_reqs);
         }
     }
 
-    link_requests(&conn->requests, held_reqs);
+    if (conn->requests_tail) {
+        conn->requests_tail->next = held_reqs;
+    }
+    else {
+        conn->requests = held_reqs;
+    }
+    if (held_reqs_tail) {
+        conn->requests_tail = held_reqs_tail;
+    }
 
     if (conn->skt != NULL) {
         remove_connection(ctx, conn);
@@ -959,10 +974,10 @@ SERF_DECLARE(serf_request_t *) serf_connection_request_create(
 
     /* Link the request to the end of the request chain. */
     if (conn->closing) {
-        link_requests(&conn->hold_requests, request);
+        link_requests(&conn->hold_requests, &conn->hold_requests_tail, request);
     }
     else {
-        link_requests(&conn->requests, request);
+        link_requests(&conn->requests, &conn->requests_tail, request);
 
         /* Ensure our pollset becomes writable in context run */
         conn->ctx->dirty_pollset = 1;
