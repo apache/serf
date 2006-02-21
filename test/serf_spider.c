@@ -29,16 +29,36 @@
 #include "serf.h"
 
 #define SERF_VERSION_STRING "0.01"
-/* #define SERF_VERBOSE */
+/*#define SERF_VERBOSE*/
 
 #if !APR_HAS_THREADS
 #error serf spider needs threads.
 #endif
 
+/* This is a rough-sketch example of how a multi-threaded spider could be
+ * constructed using serf.
+ *
+ * A network thread will read in a URL and feed it into an expat parser.
+ * After the entire response is read, the XML structure and the path is
+ * passed to a set of parser threads.  These threads will scan the document
+ * for HTML href's and queue up any links that it finds.
+ *
+ * It does try to stay on the same server as it only uses one connection.
+ *
+ * Because we feed the responses into an XML parser, the documents must be
+ * well-formed XHTML.
+ *
+ * There is no duplicate link detection.  You've been warned.
+ */
+
+/* The structure passed to the parser thread after we've read the entire
+ * response.
+ */
 typedef struct {
     apr_xml_doc *doc;
-    apr_uri_t url;
-} doc_uri_pair_t;
+    char *path;
+    apr_pool_t *pool;
+} doc_path_t;
 
 typedef struct {
     const char *authn;
@@ -95,10 +115,33 @@ typedef struct {
     serf_bucket_alloc_t *doc_queue_alloc;
     apr_array_header_t *doc_queue;
     apr_thread_cond_t *doc_queue_condvar;
-    apr_uri_t url;
+
+    const char *hostinfo;
+  
+    /* includes: path, query, fragment. */ 
+    char *full_path;
+    apr_size_t full_path_len;
+
+    char *path;
+    apr_size_t path_len;
+
+    char *query;
+    apr_size_t query_len;
+
+    char *fragment;
+    apr_size_t fragment_len;
+
     apr_xml_parser *parser;
+    apr_pool_t *parser_pool;
+
     int hdr_read;
     int is_html;
+
+    serf_response_acceptor_t acceptor;
+    void *acceptor_baton;
+    serf_response_handler_t handler;
+
+    app_baton_t *app_ctx;
 } handler_baton_t;
 
 static apr_status_t handle_response(serf_bucket_t *response,
@@ -111,16 +154,17 @@ static apr_status_t handle_response(serf_bucket_t *response,
     apr_status_t status;
     handler_baton_t *ctx = handler_baton;
 
+    if (!response) {
+        /* Oh no!  We've been cancelled! */
+        abort();
+    }
+
     status = serf_bucket_response_status(response, &sl);
     if (status) {
         if (APR_STATUS_IS_EAGAIN(status)) {
             return APR_SUCCESS;
         }
         abort();
-    }
-
-    if (!ctx->hdr_read) {
-        printf("Processing %s\n", ctx->url.path);
     }
 
     while (1) {
@@ -134,14 +178,18 @@ static apr_status_t handle_response(serf_bucket_t *response,
         if (!ctx->hdr_read) {
             serf_bucket_t *hdrs;
             const char *val;
+
+            printf("Processing %s\n", ctx->path);
+
             hdrs = serf_bucket_response_get_headers(response);
             val = serf_bucket_headers_get(hdrs, "Content-Type");
-#ifdef strcasestr
-            if (val && strcasestr(val, "text/html")) {
-#else
-            if (val && strcasecmp(val, "text/html")) {
-#endif
+            /* FIXME: This check isn't quite right because Content-Type could
+             * be decorated; ideally strcasestr would be correct.
+             */
+            if (val && strcasecmp(val, "text/html") == 0) {
                 ctx->is_html = 1;
+                apr_pool_create(&ctx->parser_pool, NULL);
+                ctx->parser = apr_xml_parser_create(ctx->parser_pool);
             }
             else {
                 ctx->is_html = 0;
@@ -167,7 +215,7 @@ static apr_status_t handle_response(serf_bucket_t *response,
             if (ctx->is_html) {
                 apr_xml_doc *xmld;
                 apr_status_t xs;
-                doc_uri_pair_t *dup;
+                doc_path_t *dup;
 
                 xs = apr_xml_parser_done(ctx->parser, &xmld);
                 if (xs) {
@@ -176,16 +224,29 @@ static apr_status_t handle_response(serf_bucket_t *response,
 #endif
                     return xs;
                 }
-                dup = (doc_uri_pair_t*)
+                dup = (doc_path_t*)
                     serf_bucket_mem_alloc(ctx->doc_queue_alloc,
-                                          sizeof(doc_uri_pair_t));
+                                          sizeof(doc_path_t));
                 dup->doc = xmld;
-                dup->url = ctx->url;
-                *(doc_uri_pair_t **)apr_array_push(ctx->doc_queue) = dup;
+                dup->path = (char*)serf_bucket_mem_alloc(ctx->doc_queue_alloc,
+                                                         ctx->path_len);
+                memcpy(dup->path, ctx->path, ctx->path_len);
+                dup->pool = ctx->parser_pool;
+
+                *(doc_path_t **)apr_array_push(ctx->doc_queue) = dup;
+
                 apr_thread_cond_signal(ctx->doc_queue_condvar);
             }
 
             apr_atomic_dec32(ctx->requests_outstanding);
+            serf_bucket_mem_free(ctx->allocator, ctx->path);
+            if (ctx->query) {
+                serf_bucket_mem_free(ctx->allocator, ctx->query);
+                serf_bucket_mem_free(ctx->allocator, ctx->full_path);
+            }
+            if (ctx->fragment) {
+                serf_bucket_mem_free(ctx->allocator, ctx->fragment);
+            }
             serf_bucket_mem_free(ctx->allocator, ctx);
             return APR_EOF;
         }
@@ -208,33 +269,32 @@ typedef struct {
     apr_thread_cond_t *condvar;
     apr_thread_mutex_t *mutex;
 
+    /* Master host: for now, we'll stick to one host. */
+    const char *hostinfo;
+
     app_baton_t *app_ctx;
 } parser_baton_t;
 
-static apr_status_t create_request(apr_uri_t url,
-                                   parser_baton_t *ctx,
-                                   apr_pool_t *tmppool)
+static apr_status_t setup_request(serf_request_t *request,
+                                  void *setup_baton,
+                                  serf_bucket_t **req_bkt,
+                                  serf_response_acceptor_t *acceptor,
+                                  void **acceptor_baton,
+                                  serf_response_handler_t *handler,
+                                  void **handler_baton,
+                                  apr_pool_t *pool)
 {
-    serf_request_t *request;
-    serf_bucket_t *req_bkt, *hdrs_bkt;
-    handler_baton_t *new_ctx;
-    apr_pool_t *pool;
+    handler_baton_t *ctx = setup_baton;
+    serf_bucket_t *hdrs_bkt;
     char *req_path;
 
-    request = serf_connection_request_create(ctx->connection);
+    *req_bkt = serf_bucket_request_create("GET", ctx->full_path, NULL,
+                                          serf_request_get_alloc(request));
 
-    pool = serf_request_get_pool(request);
-
-    /* we need to copy it so it falls under the request's scope. */
-    req_path = apr_pstrdup(pool, url.path);
-
-    req_bkt = serf_bucket_request_create("GET", req_path, NULL,
-                                         serf_request_get_alloc(request));
-
-    hdrs_bkt = serf_bucket_request_get_headers(req_bkt);
+    hdrs_bkt = serf_bucket_request_get_headers(*req_bkt);
 
     /* FIXME: Shouldn't we be able to figure out the host ourselves? */
-    serf_bucket_headers_setn(hdrs_bkt, "Host", url.hostinfo);
+    serf_bucket_headers_setn(hdrs_bkt, "Host", ctx->hostinfo);
     serf_bucket_headers_setn(hdrs_bkt, "User-Agent",
                              "Serf/" SERF_VERSION_STRING);
 
@@ -252,43 +312,120 @@ static apr_status_t create_request(apr_uri_t url,
         req_alloc = serf_request_get_alloc(request);
 
         if (ctx->app_ctx->ssl_ctx == NULL) {
-            req_bkt = serf_bucket_ssl_encrypt_create(req_bkt, NULL,
-                                                     ctx->app_ctx->bkt_alloc);
+            *req_bkt = serf_bucket_ssl_encrypt_create(*req_bkt, NULL,
+                                                      ctx->app_ctx->bkt_alloc);
             ctx->app_ctx->ssl_ctx =
-                serf_bucket_ssl_encrypt_context_get(req_bkt);
+                serf_bucket_ssl_encrypt_context_get(*req_bkt);
         }
         else {
-            req_bkt =
-                serf_bucket_ssl_encrypt_create(req_bkt, ctx->app_ctx->ssl_ctx,
+            *req_bkt =
+                serf_bucket_ssl_encrypt_create(*req_bkt, ctx->app_ctx->ssl_ctx,
                                                ctx->app_ctx->bkt_alloc);
         }
     }
 
+
+#ifdef SERF_VERBOSE
+    printf("Url requesting: %s\n", ctx->full_path);
+#endif
+
+    *acceptor = ctx->acceptor;
+    *acceptor_baton = ctx->acceptor_baton;
+    *handler = ctx->handler;
+    *handler_baton = ctx;
+
+    return APR_SUCCESS;
+}
+
+static apr_status_t create_request(const char *hostinfo,
+                                   const char *path,
+                                   const char *query,
+                                   const char *fragment,
+                                   parser_baton_t *ctx,
+                                   apr_pool_t *tmppool)
+{
+    handler_baton_t *new_ctx;
+
+    if (hostinfo) {
+        /* Yes, this is a pointer comparison; not a string comparison. */
+        if (hostinfo != ctx->hostinfo) {
+            /* Not on the same host; ignore */
+            return APR_SUCCESS;
+        }
+    }
+
     new_ctx = (handler_baton_t*)serf_bucket_mem_alloc(ctx->app_ctx->bkt_alloc,
-                                    sizeof(handler_baton_t));
+                                                      sizeof(handler_baton_t));
     new_ctx->allocator = ctx->app_ctx->bkt_alloc;
     new_ctx->requests_outstanding = ctx->requests_outstanding;
-    new_ctx->url = url;
-    new_ctx->url.path = req_path;
-    new_ctx->parser = apr_xml_parser_create(pool);
+    new_ctx->app_ctx = ctx->app_ctx;
+
+    /* See above: this example restricts ourselves to the same vhost. */
+    new_ctx->hostinfo = ctx->hostinfo;
+
+    /* we need to copy it so it falls under the request's scope. */
+    new_ctx->path_len = strlen(path);
+    new_ctx->path = (char*)serf_bucket_mem_alloc(ctx->app_ctx->bkt_alloc,
+                                                 new_ctx->path_len + 1);
+    memcpy(new_ctx->path, path, new_ctx->path_len + 1);
+
+    /* we need to copy it so it falls under the request's scope. */
+    if (query) {
+        new_ctx->query_len = strlen(query);
+        new_ctx->query = (char*)serf_bucket_mem_alloc(ctx->app_ctx->bkt_alloc,
+                                                      new_ctx->query_len + 1);
+        memcpy(new_ctx->query, query, new_ctx->query_len + 1);
+    }
+    else {
+        new_ctx->query = NULL;
+        new_ctx->query_len = 0;
+    }
+
+    /* we need to copy it so it falls under the request's scope. */
+    if (fragment) {
+        new_ctx->fragment_len = strlen(fragment);
+        new_ctx->fragment =
+            (char*)serf_bucket_mem_alloc(ctx->app_ctx->bkt_alloc,
+                                         new_ctx->fragment_len + 1);
+        memcpy(new_ctx->fragment, fragment, new_ctx->fragment_len + 1);
+    }
+    else {
+        new_ctx->fragment = NULL;
+        new_ctx->fragment_len = 0;
+    }
+
+    if (!new_ctx->query) {
+        new_ctx->full_path = new_ctx->path;
+        new_ctx->full_path_len = new_ctx->path_len;
+    }
+    else {
+        new_ctx->full_path_len = new_ctx->path_len + new_ctx->query_len;
+        new_ctx->full_path =
+            (char*)serf_bucket_mem_alloc(ctx->app_ctx->bkt_alloc,
+                                         new_ctx->full_path_len + 1);
+        memcpy(new_ctx->full_path, new_ctx->path, new_ctx->path_len);
+        memcpy(new_ctx->full_path + new_ctx->path_len, new_ctx->query,
+               new_ctx->query_len + 1);
+    }
+
     new_ctx->hdr_read = 0;
 
     new_ctx->doc_queue_condvar = ctx->condvar;
     new_ctx->doc_queue = ctx->doc_queue;
     new_ctx->doc_queue_alloc = ctx->doc_queue_alloc;
 
+    new_ctx->acceptor = accept_response;
+    new_ctx->acceptor_baton = &ctx->app_ctx;
+    new_ctx->handler = handle_response;
+
     apr_atomic_inc32(ctx->requests_outstanding);
 
-#ifdef SERF_VERBOSE
-    printf("Url requesting: %s\n", url.path);
-#endif
-    serf_request_deliver(request, req_bkt, accept_response, &ctx->app_ctx,
-                         handle_response, new_ctx);
+    serf_connection_request_create(ctx->connection, setup_request, new_ctx);
 
     return APR_SUCCESS;
 }
 
-static apr_status_t put_req(const char *c, apr_uri_t *orig_url,
+static apr_status_t put_req(const char *c, const char *orig_path,
                             parser_baton_t *ctx, apr_pool_t *pool)
 {
     apr_status_t status;
@@ -303,48 +440,59 @@ static apr_status_t put_req(const char *c, apr_uri_t *orig_url,
 
     /* We got something that was minimally useful. */
     if (status == 0 && url.path) {
-        if (!url.hostinfo) {
-            /* This is likely a relative URL. So, merge and hope for the
-             * best.
-             */
-            apr_uri_t new_url;
+        const char *path, *query, *fragment;
 
-            new_url = *orig_url;
+        /* This is likely a relative URL. So, merge and hope for the
+         * best.
+         */
+        if (!url.hostinfo && url.path[0] != '/') {
+            struct iovec vec[2];
+            char *c;
+            apr_size_t nbytes;
 
-            if (url.path[0] == '/') {
-                new_url.path = url.path;
+            c = strrchr(orig_path, '/');
+
+            /* assert c */
+            if (!c) {
+                return APR_EGENERAL;
             }
-            else {
-                struct iovec vec[2];
-                char *c;
-                apr_size_t nbytes;
 
-                c = strrchr(orig_url->path, '/');
+            vec[0].iov_base = (char*)orig_path;
+            vec[0].iov_len = c - orig_path + 1;
 
-                /* assert c */
-                if (!c) {
-                    return APR_EGENERAL;
-                }
-
-                vec[0].iov_base = orig_url->path;
-                vec[0].iov_len = c - orig_url->path + 1;
+            /* If the HTML is cute and gives us ./foo - skip the ./ */
+            if (url.path[0] == '.' && url.path[1] == '/') {
+                vec[1].iov_base = url.path + 2;
+                vec[1].iov_len = strlen(url.path + 2);
+            }
+            else if (url.path[0] == '.' && url.path[1] == '.') {
+                /* FIXME We could be cute and consolidate the path; we're a
+                 * toy example.  So no.
+                 */
                 vec[1].iov_base = url.path;
                 vec[1].iov_len = strlen(url.path);
-
-                new_url.path = apr_pstrcatv(pool, vec, 2, &nbytes);
+            }
+            else {
+                vec[1].iov_base = url.path;
+                vec[1].iov_len = strlen(url.path);
             }
 
-            new_url.query = url.query;
-            new_url.fragment = url.fragment;
-
-            url = new_url;
+            path = apr_pstrcatv(pool, vec, 2, &nbytes);
         }
+        else {
+            path = url.path;
+        }
+
+        query = url.query;
+        fragment = url.fragment;
+
+        return create_request(url.hostinfo, path, query, fragment, ctx, pool);
     }
 
-    return create_request(url, ctx, pool);
+    return APR_SUCCESS;
 }
 
-static apr_status_t find_href(apr_xml_elem *e, apr_uri_t *url,
+static apr_status_t find_href(apr_xml_elem *e, const char *orig_path,
                               parser_baton_t *ctx, apr_pool_t *pool)
 {
     apr_status_t status;
@@ -362,7 +510,7 @@ static apr_status_t find_href(apr_xml_elem *e, apr_uri_t *url,
                 a = a->next;
             }
             if (a) {
-                status = put_req(a->value, url, ctx, pool);
+                status = put_req(a->value, orig_path, ctx, pool);
                 if (status) {
                     return status;
                 }
@@ -370,7 +518,7 @@ static apr_status_t find_href(apr_xml_elem *e, apr_uri_t *url,
         }
 
         if (e->first_child) {
-            status = find_href(e->first_child, url, ctx, pool);
+            status = find_href(e->first_child, orig_path, ctx, pool);
             if (status) {
                 return status;
             }
@@ -383,11 +531,11 @@ static apr_status_t find_href(apr_xml_elem *e, apr_uri_t *url,
     return APR_SUCCESS;
 }
 
-static apr_status_t find_href_doc(apr_xml_doc *doc, apr_uri_t *url,
+static apr_status_t find_href_doc(apr_xml_doc *doc, const char *path,
                                   parser_baton_t *ctx,
                                   apr_pool_t *pool)
 {
-    return find_href(doc->root, url, ctx, pool);
+    return find_href(doc->root, path, ctx, pool);
 }
 
 static void * APR_THREAD_FUNC parser_thread(apr_thread_t *thread, void *data)
@@ -404,7 +552,7 @@ static void * APR_THREAD_FUNC parser_thread(apr_thread_t *thread, void *data)
     while (1) {
         apr_pool_clear(subpool);
 
-        doc_uri_pair_t *dup;
+        doc_path_t *dup;
 
         /* Grab it. */
         apr_thread_mutex_lock(ctx->mutex);
@@ -413,7 +561,7 @@ static void * APR_THREAD_FUNC parser_thread(apr_thread_t *thread, void *data)
 
         /* Fetch the doc off the list. */
         if (ctx->doc_queue->nelts) {
-            dup = *(doc_uri_pair_t**)(apr_array_pop(ctx->doc_queue));
+            dup = *(doc_path_t**)(apr_array_pop(ctx->doc_queue));
             /* dup = (ctx->doc_queue->conns->elts)[0]; */
         }
         else {
@@ -425,11 +573,13 @@ static void * APR_THREAD_FUNC parser_thread(apr_thread_t *thread, void *data)
 
         /* Parse the doc/url pair. */
         if (dup) {
-            status = find_href_doc(dup->doc, &dup->url, ctx, subpool);
+            status = find_href_doc(dup->doc, dup->path, ctx, subpool);
             if (status) {
-                printf("Error finding hrefs: %d %s\n", status, dup->url);
+                printf("Error finding hrefs: %d %s\n", status, dup->path);
             }
-            /* Free the doc pair. */
+            /* Free the doc pair and its pool. */
+            apr_pool_destroy(dup->pool);
+            serf_bucket_mem_free(ctx->doc_queue_alloc, dup->path);
             serf_bucket_mem_free(ctx->doc_queue_alloc, dup);
         }
 
@@ -447,10 +597,7 @@ void print_usage(apr_pool_t *pool)
     puts("-h\tDisplay this help");
     puts("-v\tDisplay version");
     puts("-H\tPrint response headers");
-    puts("-n <count> Fetch URL <count> times");
     puts("-a <user:password> Present Basic authentication credentials");
-    puts("-m <method> Use the <method> HTTP Method");
-    puts("-f <file> Use the <file> as the request body");
 }
 
 int main(int argc, const char **argv)
@@ -496,7 +643,7 @@ int main(int argc, const char **argv)
 
     apr_getopt_init(&opt, pool, argc, argv);
 
-    while ((status = apr_getopt(opt, "a:f:hm:n:v", &opt_c, &opt_arg)) ==
+    while ((status = apr_getopt(opt, "a:hv", &opt_c, &opt_arg)) ==
            APR_SUCCESS) {
         int srclen, enclen;
 
@@ -508,24 +655,9 @@ int main(int argc, const char **argv)
             strcpy(authn, "Basic ");
             (void) apr_base64_encode(&authn[6], opt_arg, srclen);
             break;
-        case 'f':
-            req_body_path = opt_arg;
-            break;
         case 'h':
             print_usage(pool);
             exit(0);
-            break;
-        case 'm':
-            method = opt_arg;
-            break;
-        case 'n':
-            errno = 0;
-            count = apr_strtoi64(opt_arg, NULL, 10);
-            if (errno) {
-                printf("Problem converting number of times to fetch URL (%d)\n",
-                       errno);
-                return errno;
-            }
             break;
         case 'v':
             puts("Serf version: " SERF_VERSION_STRING);
@@ -580,14 +712,12 @@ int main(int argc, const char **argv)
     handler_ctx = (handler_baton_t*)serf_bucket_mem_alloc(app_ctx.bkt_alloc,
                                                       sizeof(handler_baton_t));
     handler_ctx->allocator = app_ctx.bkt_alloc;
-    handler_ctx->doc_queue = apr_array_make(pool, 1, sizeof(doc_uri_pair_t*));
+    handler_ctx->doc_queue = apr_array_make(pool, 1, sizeof(doc_path_t*));
     handler_ctx->doc_queue_alloc = app_ctx.bkt_alloc;
 
     handler_ctx->requests_outstanding =
         (apr_uint32_t*)serf_bucket_mem_alloc(app_ctx.bkt_alloc,
                                              sizeof(apr_uint32_t));
-    handler_ctx->url = url;
-    handler_ctx->parser = apr_xml_parser_create(pool);
     handler_ctx->hdr_read = 0;
 
     parser_ctx = (void*)serf_bucket_mem_alloc(app_ctx.bkt_alloc,
@@ -598,6 +728,8 @@ int main(int argc, const char **argv)
     parser_ctx->app_ctx = &app_ctx;
     parser_ctx->doc_queue = handler_ctx->doc_queue;
     parser_ctx->doc_queue_alloc = handler_ctx->doc_queue_alloc;
+    /* Restrict ourselves to this host. */
+    parser_ctx->hostinfo = url.hostinfo;
 
     status = apr_thread_mutex_create(&parser_ctx->mutex,
                                      APR_THREAD_MUTEX_DEFAULT, pool);
@@ -620,71 +752,8 @@ int main(int argc, const char **argv)
     /* Start the parser thread. */
     apr_thread_create(&thread[0], tattr, parser_thread, parser_ctx, pool);
 
-    /* Deliver the request. */
-    for (i = 0; i < count; i++) {
-        serf_bucket_t *body_bkt;
-
-        request = serf_connection_request_create(connection);
-
-        if (req_body_path) {
-            apr_file_t *file;
-
-            status = apr_file_open(&file, req_body_path, APR_READ,
-                                   APR_OS_DEFAULT, pool);
-
-            if (status) {
-                printf("Error opening file (%s): %d\n", req_body_path,
-                       status);
-                exit(2);
-            }
-            body_bkt = serf_bucket_file_create(file,
-                                               serf_request_get_alloc(request));
-        }
-        else {
-            body_bkt = NULL;
-        }
-
-        req_bkt = serf_bucket_request_create(method, url.path, body_bkt,
-                                             serf_request_get_alloc(request));
-
-        hdrs_bkt = serf_bucket_request_get_headers(req_bkt);
-
-        /* FIXME: Shouldn't we be able to figure out the host ourselves? */
-        serf_bucket_headers_setn(hdrs_bkt, "Host", url.hostinfo);
-        serf_bucket_headers_setn(hdrs_bkt, "User-Agent",
-                                 "Serf/" SERF_VERSION_STRING);
-        /* Shouldn't serf do this for us? */
-        serf_bucket_headers_setn(hdrs_bkt, "Accept-Encoding", "gzip");
-
-        if (authn != NULL) {
-            serf_bucket_headers_setn(hdrs_bkt, "Authorization", authn);
-        }
-
-        apr_atomic_inc32(handler_ctx->requests_outstanding);
-
-        if (app_ctx.using_ssl) {
-            serf_bucket_alloc_t *req_alloc;
-
-            req_alloc = serf_request_get_alloc(request);
-
-            if (app_ctx.ssl_ctx == NULL) {
-                req_bkt =
-                    serf_bucket_ssl_encrypt_create(req_bkt, NULL,
-                                                   app_ctx.bkt_alloc);
-                app_ctx.ssl_ctx =
-                    serf_bucket_ssl_encrypt_context_get(req_bkt);
-            }
-            else {
-                req_bkt =
-                    serf_bucket_ssl_encrypt_create(req_bkt, app_ctx.ssl_ctx,
-                                                   app_ctx.bkt_alloc);
-            }
-        }
-
-        serf_request_deliver(request, req_bkt,
-                             accept_response, &app_ctx,
-                             handle_response, handler_ctx);
-    }
+    /* Deliver the first request. */
+    create_request(url.hostinfo, url.path, NULL, NULL, parser_ctx, pool);
 
     /* Go run our normal thread. */
     while (1) {
@@ -700,6 +769,10 @@ int main(int argc, const char **argv)
                    apr_strerror(status, buf, sizeof(buf)));
             exit(1);
         }
+
+        /* We run this check to allow our parser threads to add more
+         * requests to our queue.
+         */
         for (tries = 0; tries < 3; tries++) {
             if (!apr_atomic_read32(handler_ctx->requests_outstanding)) {
 #ifdef SERF_VERBOSE

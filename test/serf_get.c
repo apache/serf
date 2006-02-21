@@ -77,6 +77,17 @@ static serf_bucket_t* accept_response(serf_request_t *request,
 typedef struct {
     apr_uint32_t requests_outstanding;
     int print_headers;
+
+    serf_response_acceptor_t acceptor;
+    app_baton_t *acceptor_baton;
+
+    serf_response_handler_t handler;
+
+    const char *host;
+    const char *method;
+    const char *path;
+    const char *req_body_path;
+    const char *authn;
 } handler_baton_t;
 
 static apr_status_t handle_response(serf_bucket_t *response,
@@ -135,6 +146,83 @@ static apr_status_t handle_response(serf_bucket_t *response,
     /* NOTREACHED */
 }
 
+static apr_status_t setup_request(serf_request_t *request,
+                                  void *setup_baton,
+                                  serf_bucket_t **req_bkt,
+                                  serf_response_acceptor_t *acceptor,                                             void **acceptor_baton,
+                                  serf_response_handler_t *handler,
+                                  void **handler_baton,
+                                  apr_pool_t *pool)
+{
+    handler_baton_t *ctx = setup_baton;
+    serf_bucket_t *hdrs_bkt;
+    serf_bucket_t *body_bkt;
+
+    if (ctx->req_body_path) {
+        apr_file_t *file;
+        apr_status_t status;
+
+        status = apr_file_open(&file, ctx->req_body_path, APR_READ,
+                               APR_OS_DEFAULT, pool);
+
+        if (status) {
+            printf("Error opening file (%s)\n", ctx->req_body_path);
+            return status;
+        }
+
+        body_bkt = serf_bucket_file_create(file,
+                                           serf_request_get_alloc(request));
+    }
+    else {
+        body_bkt = NULL;
+    }
+
+    *req_bkt = serf_bucket_request_create(ctx->method, ctx->path, body_bkt,
+                                          serf_request_get_alloc(request));
+
+    hdrs_bkt = serf_bucket_request_get_headers(*req_bkt);
+
+    /* FIXME: Shouldn't we be able to figure out the host ourselves? */
+    serf_bucket_headers_setn(hdrs_bkt, "Host", ctx->host);
+    serf_bucket_headers_setn(hdrs_bkt, "User-Agent",
+                             "Serf/" SERF_VERSION_STRING);
+    /* Shouldn't serf do this for us? */
+    serf_bucket_headers_setn(hdrs_bkt, "Accept-Encoding", "gzip");
+
+    if (ctx->authn != NULL) {
+        serf_bucket_headers_setn(hdrs_bkt, "Authorization", ctx->authn);
+    }
+
+    apr_atomic_inc32(&(ctx->requests_outstanding));
+
+    if (ctx->acceptor_baton->using_ssl) {
+        serf_bucket_alloc_t *req_alloc;
+        app_baton_t *app_ctx = ctx->acceptor_baton;
+
+        req_alloc = serf_request_get_alloc(request);
+
+        if (app_ctx->ssl_ctx == NULL) {
+            *req_bkt =
+                serf_bucket_ssl_encrypt_create(*req_bkt, NULL,
+                                               app_ctx->bkt_alloc);
+            app_ctx->ssl_ctx =
+                serf_bucket_ssl_encrypt_context_get(*req_bkt);
+        }
+        else {
+            *req_bkt =
+                serf_bucket_ssl_encrypt_create(*req_bkt, app_ctx->ssl_ctx,
+                                               app_ctx->bkt_alloc);
+        }
+    }
+
+    *acceptor = ctx->acceptor;
+    *acceptor_baton = ctx->acceptor_baton;
+    *handler = ctx->handler;
+    *handler_baton = ctx;
+
+    return APR_SUCCESS;
+}
+
 void print_usage(apr_pool_t *pool)
 {
     puts("serf_get [options] URL");
@@ -155,8 +243,6 @@ int main(int argc, const char **argv)
     serf_context_t *context;
     serf_connection_t *connection;
     serf_request_t *request;
-    serf_bucket_t *req_bkt;
-    serf_bucket_t *hdrs_bkt;
     app_baton_t app_ctx;
     handler_baton_t handler_ctx;
     apr_uri_t url;
@@ -270,69 +356,21 @@ int main(int argc, const char **argv)
 
     handler_ctx.requests_outstanding = 0;
     handler_ctx.print_headers = print_headers;
+
+    handler_ctx.host = url.hostinfo;
+    handler_ctx.method = method;
+    handler_ctx.path = url.path;
+    handler_ctx.authn = authn;
+
+    handler_ctx.req_body_path = req_body_path;
+
+    handler_ctx.acceptor = accept_response;
+    handler_ctx.acceptor_baton = &app_ctx;
+    handler_ctx.handler = handle_response;
+
     for (i = 0; i < count; i++) {
-        serf_bucket_t *body_bkt;
-
-        request = serf_connection_request_create(connection);
-
-        if (req_body_path) {
-            apr_file_t *file;
-
-            status = apr_file_open(&file, req_body_path, APR_READ,
-                                   APR_OS_DEFAULT, pool);
-
-            if (status) {
-                printf("Error opening file (%s): %d\n", req_body_path,
-                       status);
-                exit(2);
-            }
-            body_bkt = serf_bucket_file_create(file,
-                                               serf_request_get_alloc(request));
-        }
-        else {
-            body_bkt = NULL;
-        }
-
-        req_bkt = serf_bucket_request_create(method, url.path, body_bkt,
-                                             serf_request_get_alloc(request));
-
-        hdrs_bkt = serf_bucket_request_get_headers(req_bkt);
-
-        /* FIXME: Shouldn't we be able to figure out the host ourselves? */
-        serf_bucket_headers_setn(hdrs_bkt, "Host", url.hostinfo);
-        serf_bucket_headers_setn(hdrs_bkt, "User-Agent",
-                                 "Serf/" SERF_VERSION_STRING);
-        /* Shouldn't serf do this for us? */
-        serf_bucket_headers_setn(hdrs_bkt, "Accept-Encoding", "gzip");
-
-        if (authn != NULL) {
-            serf_bucket_headers_setn(hdrs_bkt, "Authorization", authn);
-        }
-
-        apr_atomic_inc32(&handler_ctx.requests_outstanding);
-
-        if (app_ctx.using_ssl) {
-            serf_bucket_alloc_t *req_alloc;
-
-            req_alloc = serf_request_get_alloc(request);
-
-            if (app_ctx.ssl_ctx == NULL) {
-                req_bkt =
-                    serf_bucket_ssl_encrypt_create(req_bkt, NULL,
-                                                   app_ctx.bkt_alloc);
-                app_ctx.ssl_ctx =
-                    serf_bucket_ssl_encrypt_context_get(req_bkt);
-            }
-            else {
-                req_bkt =
-                    serf_bucket_ssl_encrypt_create(req_bkt, app_ctx.ssl_ctx,
-                                                   app_ctx.bkt_alloc);
-            }
-        }
-
-        serf_request_deliver(request, req_bkt,
-                             accept_response, &app_ctx,
-                             handle_response, &handler_ctx);
+        request = serf_connection_request_create(connection, setup_request,
+                                                 &handler_ctx);
     }
 
     while (1) {
