@@ -102,7 +102,10 @@ static apr_status_t allocator_cleanup(void *data)
 {
     serf_bucket_alloc_t *allocator = data;
 
-    apr_allocator_free(allocator->allocator, allocator->blocks);
+    /* If we allocated anything, give it back. */
+    if (allocator->blocks) {
+        apr_allocator_free(allocator->allocator, allocator->blocks);
+    }
 
     return APR_SUCCESS;
 }
