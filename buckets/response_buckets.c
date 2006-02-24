@@ -42,6 +42,7 @@ typedef struct {
     serf_status_line sl;
 
     int chunked;                /* Do we need to read trailers? */
+    int head_req;               /* Was this a HEAD request? */
 } response_context_t;
 
 
@@ -57,10 +58,19 @@ SERF_DECLARE(serf_bucket_t *) serf_bucket_response_create(
     ctx->headers = serf_bucket_headers_create(allocator);
     ctx->state = STATE_STATUS_LINE;
     ctx->chunked = 0;
+    ctx->head_req = 0;
 
     serf_linebuf_init(&ctx->linebuf);
 
     return serf_bucket_create(&serf_bucket_type_response, allocator, ctx);
+}
+
+SERF_DECLARE(void) serf_bucket_response_set_head(
+    serf_bucket_t *bucket)
+{
+    response_context_t *ctx = bucket->data;
+
+    ctx->head_req = 1;
 }
 
 SERF_DECLARE(serf_bucket_t *) serf_bucket_response_get_headers(
@@ -240,7 +250,13 @@ static apr_status_t run_machine(serf_bucket_t *bkt, response_context_t *ctx)
                                                    SERF_DEFLATE_DEFLATE);
                 }
             }
-            ctx->state = STATE_BODY;
+            /* If we're a HEAD request, we don't receive a body. */
+            if (ctx->head_req) {
+                ctx->state = STATE_DONE;
+            }
+            else {
+                ctx->state = STATE_BODY;
+            }
         }
         break;
     case STATE_BODY:

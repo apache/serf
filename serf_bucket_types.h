@@ -92,6 +92,12 @@ SERF_DECLARE(apr_status_t) serf_bucket_response_status(
 SERF_DECLARE(serf_bucket_t *) serf_bucket_response_get_headers(
     serf_bucket_t *response);
 
+/**
+ * Advise the response @a bucket that this was from a HEAD request and
+ * that it should not expect to see a response body.
+ */
+SERF_DECLARE(void) serf_bucket_response_set_head(serf_bucket_t *bucket);
+
 /* ==================================================================== */
 
 
