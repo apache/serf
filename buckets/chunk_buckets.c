@@ -58,7 +58,7 @@ static apr_status_t create_chunk(serf_bucket_t *bucket)
     serf_bucket_t *simple_bkt;
     apr_size_t chunk_len;
     apr_size_t stream_len;
-    struct iovec vecs[35]; /* 32 + header + chunk trailer + EOF trailer = 35 */
+    struct iovec vecs[34]; /* 32 + chunk trailer + EOF trailer = 34 */
     int vecs_read;
     int i;
 
@@ -68,7 +68,7 @@ static apr_status_t create_chunk(serf_bucket_t *bucket)
 
     ctx->last_status =
         serf_bucket_read_iovec(ctx->stream, SERF_READ_ALL_AVAIL,
-                               32, vecs+1, &vecs_read);
+                               32, vecs, &vecs_read);
 
     if (SERF_BUCKET_READ_ERROR(ctx->last_status)) {
         /* Uh-oh. */
@@ -78,7 +78,7 @@ static apr_status_t create_chunk(serf_bucket_t *bucket)
     /* Count the length of the data we read. */
     stream_len = 0;
     for (i = 0; i < vecs_read; i++) {
-        stream_len += vecs[i+1].iov_len;
+        stream_len += vecs[i].iov_len;
     }
 
     /* assert: stream_len in hex < sizeof(ctx->chunk_hdr) */
@@ -88,11 +88,12 @@ static apr_status_t create_chunk(serf_bucket_t *bucket)
                              "%" APR_UINT64_T_HEX_FMT CRLF,
                              (apr_uint64_t)stream_len);
 
-    vecs[0].iov_base = ctx->chunk_hdr;
-    vecs[0].iov_len = chunk_len;
-
-    /* Adjust the count to compensate for the chunk header. */
-    vecs_read++;
+    /* Create a copy of the chunk header so we can have multiple chunks
+     * in the pipeline at the same time.
+     */
+    simple_bkt = serf_bucket_simple_copy_create(ctx->chunk_hdr, chunk_len,
+                                                bucket->allocator);
+    serf_bucket_aggregate_append(ctx->chunk, simple_bkt);
 
     /* Insert the chunk footer. */
     vecs[vecs_read].iov_base = CRLF;
