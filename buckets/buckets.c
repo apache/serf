@@ -167,6 +167,8 @@ static void find_crlf(const char **data, apr_size_t *len, int *found)
         start = cr;
     }
 
+    *data = start + *len;
+    *len -= *data - start;
     *found = SERF_NEWLINE_NONE;
 }
 
