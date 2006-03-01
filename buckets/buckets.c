@@ -45,15 +45,28 @@ SERF_DECLARE(apr_status_t) serf_default_read_iovec(
     const char *data;
     apr_size_t len;
 
-    /* Read some data from the bucket. */
-    apr_status_t status = serf_bucket_read(bucket, requested, &data, &len);
+    /* Read some data from the bucket.
+     *
+     * Because we're an internal 'helper' to the bucket, we can't call the
+     * normal serf_bucket_read() call because the debug allocator tracker will
+     * end up marking the bucket as read *twice* - once for us and once for
+     * our caller - which is reading the same bucket.  This leads to premature
+     * abort()s if we ever see EAGAIN.  Instead, we'll go directly to the
+     * vtable and bypass the debug tracker.
+     */
+    apr_status_t status = bucket->type->read(bucket, requested, &data, &len);
 
     /* assert that vecs_size >= 1 ? */
 
     /* Return that data as a single iovec. */
-    vecs[0].iov_base = (void *)data; /* loses the 'const' */
-    vecs[0].iov_len = len;
-    *vecs_used = 1;
+    if (len) {
+        vecs[0].iov_base = (void *)data; /* loses the 'const' */
+        vecs[0].iov_len = len;
+        *vecs_used = 1;
+    }
+    else {
+        *vecs_used = 0;
+    }
 
     return status;
 }
@@ -66,11 +79,15 @@ SERF_DECLARE(apr_status_t) serf_default_read_for_sendfile(
     apr_off_t *offset,
     apr_size_t *len)
 {
-    /* Read a bunch of stuff into the headers. */
-    apr_status_t status = serf_bucket_read_iovec(bucket, requested,
-                                                 hdtr->numheaders,
-                                                 hdtr->headers,
-                                                 &hdtr->numheaders);
+    /* Read a bunch of stuff into the headers.
+     *
+     * See serf_default_read_iovec as to why we call into the vtable
+     * directly.
+     */
+    apr_status_t status = bucket->type->read_iovec(bucket, requested,
+                                                   hdtr->numheaders,
+                                                   hdtr->headers,
+                                                   &hdtr->numheaders);
 
     /* There isn't a file, and there are no trailers. */
     *file = NULL;
