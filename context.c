@@ -398,6 +398,15 @@ static apr_status_t write_to_connection(serf_connection_t *conn)
             return APR_SUCCESS;
         }
 
+        /* If the connection does not have an associated bucket, then
+         * call the setup callback to get one.
+         */
+        if (conn->stream == NULL) {
+            conn->stream = (*conn->setup)(conn->skt,
+                                          conn->setup_baton,
+                                          conn->pool);
+        }
+
         if (request->req_bkt == NULL) {
             /* Now that we are about to serve the request, allocate a pool. */
             apr_pool_create(&request->respool, conn->pool);
