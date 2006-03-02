@@ -365,13 +365,13 @@ static apr_status_t ssl_encrypt(void *baton, apr_size_t bufsize,
 
             /* Ah, bugger. We need to put that data back. */
             if (!SERF_BUCKET_IS_AGGREGATE(ctx->encrypt.stream)) {
-                tmp = serf_bucket_aggregate_create(ctx->allocator);
+                tmp = serf_bucket_aggregate_create(ctx->encrypt.stream->allocator);
                 serf_bucket_aggregate_append(tmp, ctx->encrypt.stream);
                 ctx->encrypt.stream = tmp;
             }
 
             tmp = serf_bucket_simple_copy_create(data, *len,
-                                                 ctx->allocator);
+                                             ctx->encrypt.stream->allocator);
 
             serf_bucket_aggregate_prepend(ctx->encrypt.stream, tmp);
 
@@ -397,24 +397,35 @@ static apr_status_t ssl_encrypt(void *baton, apr_size_t bufsize,
             apr_status_t agg_status;
 
             /* We read something! */
-            agg_status = serf_bucket_read(ctx->encrypt.pending, ssl_len,
+            agg_status = serf_bucket_read(ctx->encrypt.pending, bufsize,
                                           &data, len);
-            /* Assert ssl_len == *len */
+
             memcpy(buf, data, *len);
 
-            /* ### do something with agg_status */
+            if (APR_STATUS_IS_EOF(status) && !APR_STATUS_IS_EOF(agg_status)) {
+                status = agg_status;
+            }
         }
     }
 
-    /* We can't send EOF. */
-    if (APR_STATUS_IS_EOF(status) && ctx->refcount > 1) {
-        status = APR_EAGAIN;
-    }
 #ifdef SSL_VERBOSE
-    printf("ssl_encrypt: %d %d %d\n", status, *len,
+    printf("ssl_encrypt finished: %d %d %d\n", status, *len,
            BIO_get_retry_flags(ctx->bio));
 #endif
     return status;
+}
+
+static int have_init_ssl = 0;
+
+static void init_ssl_libraries(void)
+{
+    if (!have_init_ssl) {
+        SSL_library_init();
+        OpenSSL_add_ssl_algorithms();
+        SSL_load_error_strings();
+        ERR_load_crypto_strings();
+        have_init_ssl = 1;
+    }
 }
 
 static serf_ssl_context_t *ssl_init_context(void)
@@ -423,11 +434,7 @@ static serf_ssl_context_t *ssl_init_context(void)
     apr_pool_t *pool;
     serf_bucket_alloc_t *allocator;
 
-    /* XXX Only do this ONCE! */
-    SSL_library_init();
-    OpenSSL_add_ssl_algorithms();
-    SSL_load_error_strings();
-    ERR_load_crypto_strings();
+    init_ssl_libraries();
 
     apr_pool_create(&pool, NULL);
     allocator = serf_bucket_allocator_create(pool, NULL, NULL);
@@ -452,14 +459,14 @@ static serf_ssl_context_t *ssl_init_context(void)
     SSL_set_connect_state(ssl_ctx->ssl);
 
     ssl_ctx->encrypt.stream = NULL;
-    ssl_ctx->encrypt.pending = serf_bucket_aggregate_create(ssl_ctx->allocator);
+    ssl_ctx->encrypt.pending = NULL;
     ssl_ctx->encrypt.status = APR_SUCCESS;
     serf_databuf_init(&ssl_ctx->encrypt.databuf);
     ssl_ctx->encrypt.databuf.read = ssl_encrypt;
     ssl_ctx->encrypt.databuf.read_baton = ssl_ctx;
 
     ssl_ctx->decrypt.stream = NULL;
-    ssl_ctx->decrypt.pending = serf_bucket_aggregate_create(ssl_ctx->allocator);
+    ssl_ctx->decrypt.pending = NULL;
     ssl_ctx->decrypt.status = APR_SUCCESS;
     serf_databuf_init(&ssl_ctx->decrypt.databuf);
     ssl_ctx->decrypt.databuf.read = ssl_decrypt;
@@ -473,8 +480,13 @@ static apr_status_t ssl_free_context(
 {
     apr_pool_t *p;
 
-    serf_bucket_destroy(ssl_ctx->decrypt.pending);
-    serf_bucket_destroy(ssl_ctx->encrypt.pending);
+    /* If never had the pending buckets, don't try to free them. */
+    if (ssl_ctx->decrypt.pending != NULL) {
+        serf_bucket_destroy(ssl_ctx->decrypt.pending);
+    }
+    if (ssl_ctx->encrypt.pending != NULL) {
+        serf_bucket_destroy(ssl_ctx->encrypt.pending);
+    }
 
     /* SSL_free implicitly frees the underlying BIO. */
     SSL_free(ssl_ctx->ssl);
@@ -526,6 +538,8 @@ SERF_DECLARE(serf_bucket_t *) serf_bucket_ssl_decrypt_create(
     }
     ctx->ssl_ctx->decrypt.stream = stream;
     ctx->our_stream = &ctx->ssl_ctx->decrypt.stream;
+    ctx->ssl_ctx->decrypt.pending =
+        serf_bucket_aggregate_create(allocator);
 
     return bkt;
 }
@@ -554,6 +568,8 @@ SERF_DECLARE(serf_bucket_t *) serf_bucket_ssl_encrypt_create(
     ctx->our_stream = &ctx->ssl_ctx->encrypt.stream;
     if (ctx->ssl_ctx->encrypt.stream == NULL) {
         ctx->ssl_ctx->encrypt.stream = stream;
+        ctx->ssl_ctx->encrypt.pending =
+            serf_bucket_aggregate_create(allocator);
     }
     else {
         bucket_list_t *new_list;
@@ -611,15 +627,24 @@ static void serf_ssl_encrypt_destroy_and_data(serf_bucket_t *bucket)
 
     if (ssl_ctx->encrypt.stream == *ctx->our_stream) {
         serf_bucket_destroy(*ctx->our_stream);
+        serf_bucket_destroy(ssl_ctx->encrypt.pending);
+
+        /* Reset our encrypted status and databuf. */
+        ssl_ctx->encrypt.status = APR_SUCCESS;
+        ssl_ctx->encrypt.databuf.status = APR_SUCCESS;
+
+        /* Advance to the next stream - if we have one. */
         if (ssl_ctx->encrypt.stream_next == NULL) {
             ssl_ctx->encrypt.stream = NULL;
+            ssl_ctx->encrypt.pending = NULL;
         }
         else {
             bucket_list_t *cur;
 
             cur = ssl_ctx->encrypt.stream_next;
             ssl_ctx->encrypt.stream = cur->bucket;
-            ssl_ctx->encrypt.status = APR_SUCCESS;
+            ssl_ctx->encrypt.pending =
+                serf_bucket_aggregate_create(cur->bucket->allocator);
             ssl_ctx->encrypt.stream_next = cur->next;
             serf_bucket_mem_free(ssl_ctx->allocator, cur);
         }
