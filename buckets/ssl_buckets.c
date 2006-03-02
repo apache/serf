@@ -142,6 +142,9 @@ static int bio_bucket_read(BIO *bio, char *in, int inlen)
     status = serf_bucket_read(ctx->decrypt.pending, inlen, &data, &len);
 
     ctx->decrypt.status = status;
+#ifdef SSL_VERBOSE
+    printf("bio_bucket_read received %d bytes (%d)\n", len, status);
+#endif
 
     if (!SERF_BUCKET_READ_ERROR(status)) {
         /* Oh suck. */
@@ -245,8 +248,9 @@ static apr_status_t ssl_decrypt(void *baton, apr_size_t bufsize,
     ssl_len = SSL_read(ctx->ssl, buf, bufsize);
     if (ssl_len > 0) {
 #ifdef SSL_VERBOSE
-        printf("ssl_decrypt: read %d bytes (%d); bio %d (cached)\n",
-               ssl_len, bufsize, BIO_get_retry_flags(ctx->bio));
+        printf("ssl_decrypt: %d bytes (%d); status: %d; flags: %d\n",
+               ssl_len, bufsize, ctx->decrypt.status,
+               BIO_get_retry_flags(ctx->bio));
 #endif
         *len = ssl_len;
         return APR_SUCCESS;
@@ -320,7 +324,7 @@ static apr_status_t ssl_encrypt(void *baton, apr_size_t bufsize,
             status = APR_SUCCESS;
         }
 #ifdef SSL_VERBOSE
-        printf("ssl_encrypt: %d %d %d\n", status, *len,
+        printf("ssl_encrypt: %d %d %d (quick read)\n", status, *len,
                BIO_get_retry_flags(ctx->bio));
 #endif
         return status;
@@ -347,11 +351,14 @@ static apr_status_t ssl_encrypt(void *baton, apr_size_t bufsize,
         int ssl_len;
 
 #ifdef SSL_VERBOSE
-        printf("ssl_encrypt: read %d bytes; status %d\n", *len, status);
+        printf("ssl_encrypt: bucket read %d bytes; status %d\n", *len, status);
 #endif
         ctx->encrypt.status = status;
 
         ssl_len = SSL_write(ctx->ssl, data, *len);
+#ifdef SSL_VERBOSE
+        printf("ssl_encrypt: SSL write: %d\n", ssl_len);
+#endif
         if (ssl_len == -1) {
             int ssl_err;
             serf_bucket_t *tmp;
