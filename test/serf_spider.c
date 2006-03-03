@@ -27,6 +27,7 @@
 #include <apr_thread_cond.h>
 
 #include "serf.h"
+#include "serf_bucket_util.h"
 
 #define SERF_VERSION_STRING "0.01"
 /*#define SERF_VERBOSE*/
@@ -144,7 +145,8 @@ typedef struct {
     app_baton_t *app_ctx;
 } handler_baton_t;
 
-static apr_status_t handle_response(serf_bucket_t *response,
+static apr_status_t handle_response(serf_request_t *request,
+                                    serf_bucket_t *response,
                                     void *handler_baton,
                                     apr_pool_t *pool)
 {

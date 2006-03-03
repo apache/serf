@@ -186,10 +186,10 @@ typedef void (*serf_connection_closed_t)(serf_connection_t *conn,
 /**
  * Response data has arrived and should be processed.
  *
- * Whenever a response arrives (initially, or continued data arrival), this
- * handler is invoked. The response data is available in the @a response
- * bucket. The @a handler_baton is passed along from the baton provided to
- * the creation of this response's associated request.
+ * Whenever a response to a @request arrives (initially, or continued data
+ * arrival), this handler is invoked. The response data is available in the
+ * @a response bucket. The @a handler_baton is passed along from the baton
+ * provided to the creation of this response's associated request.
  *
  * The handler MUST process data from the @a response bucket until the
  * bucket's read function states it would block (see APR_STATUS_IS_EAGAIN).
@@ -198,7 +198,8 @@ typedef void (*serf_connection_closed_t)(serf_connection_t *conn,
  * system can result in a deadlock around the unprocessed, but read, data.
  *
  * The handler should return APR_EOF when the response has been fully read.
- * APR_EAGAIN should not be returned; simply return APR_SUCCESS.
+ * If calling the handler again would block, APR_EAGAIN should be returned.
+ * If the handler should be invoked again, simply return APR_SUCCESS.
  *
  * Note: if the connection closed (at the request of the application, or
  * because of an (abnormal) termination) while a request is being delivered,
@@ -210,7 +211,8 @@ typedef void (*serf_connection_closed_t)(serf_connection_t *conn,
  *
  * All temporary allocations should be made in @a pool.
  */
-typedef apr_status_t (*serf_response_handler_t)(serf_bucket_t *response,
+typedef apr_status_t (*serf_response_handler_t)(serf_request_t *request,
+                                                serf_bucket_t *response,
                                                 void *handler_baton,
                                                 apr_pool_t *pool);
 

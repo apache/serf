@@ -55,7 +55,8 @@ typedef struct {
     apr_uint32_t requests_outstanding;
 } handler_baton_t;
 
-static apr_status_t handle_response(serf_bucket_t *response,
+static apr_status_t handle_response(serf_request_t *request,
+                                    serf_bucket_t *response,
                                     void *handler_baton,
                                     apr_pool_t *pool)
 {
@@ -129,7 +130,7 @@ int main(int argc, const char **argv)
 
     resp_bkt = accept_response(&accept_ctx, allocator, pool);
     while (1) {
-        status = handle_response(resp_bkt, &handler_ctx, pool);
+        status = handle_response(NULL, resp_bkt, &handler_ctx, pool);
         if (APR_STATUS_IS_TIMEUP(status))
             continue;
         if (SERF_BUCKET_READ_ERROR(status)) {

@@ -534,7 +534,8 @@ static apr_status_t read_from_connection(serf_connection_t *conn)
             apr_pool_clear(tmppool);
         }
 
-        status = (*request->handler)(request->resp_bkt,
+        status = (*request->handler)(request,
+                                     request->resp_bkt,
                                      request->handler_baton,
                                      tmppool);
 
@@ -546,6 +547,20 @@ static apr_status_t read_from_connection(serf_connection_t *conn)
             status = APR_SUCCESS;
             goto error;
         }
+
+        /* If our response handler says it can't do anything more, we now
+         * treat that as a success.
+         */
+        if (APR_STATUS_IS_EAGAIN(status)) {
+            status = APR_SUCCESS;
+            goto error;
+        }
+
+        /* If we received APR_SUCCESS, run this loop again. */
+        if (!status) {
+            continue;
+        }
+
         if (!APR_STATUS_IS_EOF(status) && status != SERF_ERROR_CLOSING) {
             /* Whether success, or an error, there is no more to do unless
              * this request has been completed.
@@ -758,7 +773,8 @@ static apr_status_t cancel_request(serf_request_t *request,
         /* We actually don't care what the handler returns.
          * We have bigger matters at hand.
          */
-        (*request->handler)(NULL, request->handler_baton, request->respool);
+        (*request->handler)(request, NULL, request->handler_baton,
+                            request->respool);
     }
 
     if (*list == request) {

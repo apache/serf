@@ -90,7 +90,8 @@ typedef struct {
     const char *authn;
 } handler_baton_t;
 
-static apr_status_t handle_response(serf_bucket_t *response,
+static apr_status_t handle_response(serf_request_t *request,
+                                    serf_bucket_t *response,
                                     void *handler_baton,
                                     apr_pool_t *pool)
 {
@@ -103,7 +104,7 @@ static apr_status_t handle_response(serf_bucket_t *response,
     status = serf_bucket_response_status(response, &sl);
     if (status) {
         if (APR_STATUS_IS_EAGAIN(status)) {
-            return APR_SUCCESS;
+            return status;
         }
         abort();
     }
@@ -139,7 +140,7 @@ static apr_status_t handle_response(serf_bucket_t *response,
 
         /* have we drained the response so far? */
         if (APR_STATUS_IS_EAGAIN(status))
-            return APR_SUCCESS;
+            return status;
 
         /* loop to read some more. */
     }
