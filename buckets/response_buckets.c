@@ -301,6 +301,14 @@ static apr_status_t wait_for_body(serf_bucket_t *bkt, response_context_t *ctx)
     return APR_SUCCESS;
 }
 
+SERF_DECLARE(apr_status_t) serf_bucket_response_wait_for_headers(
+    serf_bucket_t *bucket)
+{
+    response_context_t *ctx = bucket->data;
+
+    return wait_for_body(bucket, ctx);
+}
+
 SERF_DECLARE(apr_status_t) serf_bucket_response_status(
     serf_bucket_t *bkt,
     serf_status_line *sline)

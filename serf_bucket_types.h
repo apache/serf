@@ -89,6 +89,18 @@ SERF_DECLARE(apr_status_t) serf_bucket_response_status(
     serf_bucket_t *bkt,
     serf_status_line *sline);
 
+/**
+ * Wait for the HTTP headers to be processed for a @a response.
+ *
+ * If the headers are available, APR_SUCCESS is returned.
+ * If the headers aren't available, APR_EAGAIN is returned.
+ */
+SERF_DECLARE(apr_status_t) serf_bucket_response_wait_for_headers(
+    serf_bucket_t *response);
+
+/**
+ * Get the headers bucket for @a response.
+ */
 SERF_DECLARE(serf_bucket_t *) serf_bucket_response_get_headers(
     serf_bucket_t *response);
 
