@@ -186,10 +186,10 @@ typedef void (*serf_connection_closed_t)(serf_connection_t *conn,
 /**
  * Response data has arrived and should be processed.
  *
- * Whenever a response to a @request arrives (initially, or continued data
+ * Whenever response data for @a request arrives (initially, or continued data
  * arrival), this handler is invoked. The response data is available in the
  * @a response bucket. The @a handler_baton is passed along from the baton
- * provided to the creation of this response's associated request.
+ * provided by the request setup callback (@see serf_request_setup_t).
  *
  * The handler MUST process data from the @a response bucket until the
  * bucket's read function states it would block (see APR_STATUS_IS_EAGAIN).
