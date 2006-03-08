@@ -993,6 +993,7 @@ SERF_DECLARE(serf_request_t *) serf_connection_request_create(
     request->conn = conn;
     request->setup = setup;
     request->setup_baton = setup_baton;
+    request->handler = NULL;
     request->req_bkt = NULL;
     request->resp_bkt = NULL;
     request->next = NULL;
