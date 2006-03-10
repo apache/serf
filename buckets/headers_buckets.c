@@ -153,6 +153,22 @@ SERF_DECLARE(const char *) serf_bucket_headers_get(
     return NULL;
 }
 
+SERF_DECLARE(void) serf_bucket_headers_do(
+    serf_bucket_t *headers_bucket,
+    serf_bucket_headers_do_callback_fn_t func, 
+    void *baton)
+{
+    headers_context_t *ctx = headers_bucket->data;
+    header_list_t *scan = ctx->list;
+
+    while (scan) {
+        if (func(baton, scan->header, scan->value) != 0) {
+            break;
+        }
+        scan = scan->next;
+    }
+}
+
 static void serf_headers_destroy_and_data(serf_bucket_t *bucket)
 {
     headers_context_t *ctx = bucket->data;

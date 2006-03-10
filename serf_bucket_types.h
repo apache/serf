@@ -268,6 +268,26 @@ SERF_DECLARE(const char *) serf_bucket_headers_get(
     serf_bucket_t *headers_bucket,
     const char *header);
 
+/**
+ * @param baton opaque baton as passed to @see serf_bucket_headers_do
+ * @param key The header key from this iteration through the table
+ * @param value The header value from this iteration through the table
+ */
+typedef int (serf_bucket_headers_do_callback_fn_t)(
+    void *baton,
+    const char *key, 
+    const char *value);
+
+/**
+ * @param headers_bucket headers to iterate over
+ * @param func callback routine to invoke for every header in the bucket
+ * @param baton baton to pass on each invocation to func
+ */
+SERF_DECLARE(void) serf_bucket_headers_do(
+    serf_bucket_t *headers_bucket,
+    serf_bucket_headers_do_callback_fn_t func,
+    void *baton);
+
 
 /* ==================================================================== */
 
