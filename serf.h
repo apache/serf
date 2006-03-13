@@ -335,6 +335,17 @@ SERF_DECLARE(serf_bucket_alloc_t *) serf_request_get_alloc(
     const serf_request_t *request);
 
 
+/**
+ * Update the @a handler and @a handler_baton for this @a request.
+ *
+ * This can be called after the request has started processing -
+ * subsequent data will be delivered to this new handler.
+ */
+SERF_DECLARE(void) serf_request_set_handler(
+    serf_request_t *request,
+    const serf_response_handler_t *handler,
+    const void **handler_baton);
+
 /* ### maybe some connection control functions for flood? */
 
 /** @} */
