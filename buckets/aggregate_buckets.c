@@ -178,13 +178,15 @@ SERF_DECLARE(void) serf_bucket_aggregate_append_iovec(
 
 static apr_status_t read_aggregate(serf_bucket_t *bucket,
                                    apr_size_t requested,
-                                   const char **data, apr_size_t *len)
+                                   int vecs_size, struct iovec *vecs,
+                                   int *vecs_used)
 {
     aggregate_context_t *ctx = bucket->data;
-    bucket_list_t *next_list;
+    int cur_vecs_used;
+
+    *vecs_used = 0;
 
     if (!ctx->list) {
-        *len = 0;
         return APR_EOF;
     }
 
@@ -192,48 +194,62 @@ static apr_status_t read_aggregate(serf_bucket_t *bucket,
         serf_bucket_t *head = ctx->list->bucket;
         apr_status_t status;
 
-        status = serf_bucket_read(head, requested, data, len);
+        status = serf_bucket_read_iovec(head, requested, vecs_size, vecs,
+                                        &cur_vecs_used);
+
         if (SERF_BUCKET_READ_ERROR(status))
             return status;
 
-        if (*len > 0) {
-            /* We have some data. Process the status, and return the data. */
+        /* Add the number of vecs we read to our running total. */
+        *vecs_used += cur_vecs_used;
 
-            if (APR_STATUS_IS_EOF(status)) {
-                /* We finished reading this bucket. It must stay alive,
-                 * though, so that we can return its data. Destroy it the
-                 * next time we perform a read operation.
-                 */
-                next_list = ctx->list->next;
-                ctx->list->next = ctx->done;
-                ctx->done = ctx->list;
-                ctx->list = next_list;
+        if (cur_vecs_used > 0 || status) {
+            bucket_list_t *next_list;
 
-                /* Return the data, and note that we can be read again. */
-                return ctx->list ? APR_SUCCESS : APR_EOF;
+            /* If we got SUCCESS (w/bytes) or EAGAIN, we want to return now
+             * as it isn't safe to read more without returning to our caller.
+             */
+            if (!status || APR_STATUS_IS_EAGAIN(status)) {
+                return status;
             }
 
-            /* status is APR_SUCCESS or APR_EAGAIN. */
-            return status;
-        }
+            /* However, if we read EOF, we can stash this bucket in a
+             * to-be-freed list and move on to the next bucket.  This ensures
+             * that the bucket stays alive (so as not to violate our read
+             * semantics).  We'll destroy this list of buckets the next time
+             * we are asked to perform a read operation - thus ensuring the
+             * proper read lifetime.
+             */
+            next_list = ctx->list->next;
+            ctx->list->next = ctx->done;
+            ctx->done = ctx->list;
+            ctx->list = next_list;
 
-        /* If the bucket didn't give us any data but told us to try again,
-         * well, try again later.
-         */
-        if (APR_STATUS_IS_EAGAIN(status)) {
-            return APR_EAGAIN;
-        }
+            /* If we have no more in our list, return EOF. */
+            if (!ctx->list) {
+                return status;
+            }
 
-        /* If we just read no data, then let's try again after destroying
-         * this bucket.
-         */
-        serf_bucket_destroy(head);
-        next_list = ctx->list->next;
-        serf_bucket_mem_free(bucket->allocator, ctx->list);
-        ctx->list = next_list;
+            /* At this point, it safe to read the next bucket - if we can. */
 
-        if (!ctx->list) {
-            return APR_EOF;
+            /* If the caller doesn't want ALL_AVAIL, decrement the size
+             * of the items we just read from the list.
+             */
+            if (requested != SERF_READ_ALL_AVAIL) {
+                int i;
+
+                for (i = 0; i < cur_vecs_used; i++)
+                    requested -= vecs[i].iov_len;
+            }
+
+            /* Adjust our vecs to account for what we just read. */
+            vecs_size -= cur_vecs_used;
+            vecs += cur_vecs_used;
+
+            /* We reached our max.  Oh well. */
+            if (!requested || !vecs_size) {
+                return APR_SUCCESS;
+            }
         }
     }
     /* NOTREACHED */
@@ -244,9 +260,23 @@ static apr_status_t serf_aggregate_read(serf_bucket_t *bucket,
                                         const char **data, apr_size_t *len)
 {
     aggregate_context_t *ctx = bucket->data;
+    struct iovec vec;
+    int vecs_used;
+    apr_status_t status;
 
     cleanup_aggregate(ctx, bucket->allocator);
-    return read_aggregate(bucket, requested, data, len);
+
+    status = read_aggregate(bucket, requested, 1, &vec, &vecs_used);
+
+    if (!vecs_used) {
+        *len = 0;
+    }
+    else {
+        *data = vec.iov_base;
+        *len = vec.iov_len;
+    }
+
+    return status;
 }
 
 static apr_status_t serf_aggregate_read_iovec(serf_bucket_t *bucket,
@@ -256,30 +286,10 @@ static apr_status_t serf_aggregate_read_iovec(serf_bucket_t *bucket,
                                               int *vecs_used)
 {
     aggregate_context_t *ctx = bucket->data;
-    int i;
-    apr_status_t status = APR_SUCCESS;
 
     cleanup_aggregate(ctx, bucket->allocator);
 
-    if (!ctx->list) {
-        *vecs_used = 0;
-        return APR_EOF;
-    }
-
-    for (i = 0; i < vecs_size; i++) {
-        if (status || !ctx->list) {
-            break;
-        }
-        status = read_aggregate(bucket, requested,
-                                (const char **)&vecs[i].iov_base,
-                                &vecs[i].iov_len);
-        if (requested != SERF_READ_ALL_AVAIL) {
-            requested -= vecs[i].iov_len;
-        }
-    }
-
-    *vecs_used = i;
-    return status;
+    return read_aggregate(bucket, requested, vecs_size, vecs, vecs_used);
 }
 
 static apr_status_t serf_aggregate_readline(serf_bucket_t *bucket,
