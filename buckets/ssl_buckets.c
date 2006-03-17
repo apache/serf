@@ -458,6 +458,7 @@ static serf_ssl_context_t *ssl_init_context(void)
     SSL_set_connect_state(ssl_ctx->ssl);
 
     ssl_ctx->encrypt.stream = NULL;
+    ssl_ctx->encrypt.stream_next = NULL;
     ssl_ctx->encrypt.pending = NULL;
     ssl_ctx->encrypt.status = APR_SUCCESS;
     serf_databuf_init(&ssl_ctx->encrypt.databuf);
