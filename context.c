@@ -138,6 +138,15 @@ static apr_status_t clean_skt(void *data)
     return status;
 }
 
+static apr_status_t clean_resp(void *data)
+{
+    serf_request_t *req = data;
+
+    req->respool = NULL;
+
+    return APR_SUCCESS;
+}
+
 /* Update the pollset for this connection. We tweak the pollset based on
  * whether we want to read and/or write, given conditions within the
  * connection. If the connection is not (yet) in the pollset, then it
@@ -412,6 +421,8 @@ static apr_status_t write_to_connection(serf_connection_t *conn)
             apr_pool_create(&request->respool, conn->pool);
             request->allocator = serf_bucket_allocator_create(request->respool,
                                                               NULL, NULL);
+            apr_pool_cleanup_register(request->respool, request,
+                                      clean_resp, clean_resp);
 
             /* Fill in the rest of the values for the request. */
             read_status = request->setup(request, request->setup_baton,
@@ -763,13 +774,14 @@ static apr_status_t remove_connection(serf_context_t *ctx,
 }
 
 static apr_status_t cancel_request(serf_request_t *request,
-                                   serf_request_t **list)
+                                   serf_request_t **list,
+                                   int notify_request)
 {
     serf_connection_t *conn = request->conn;
     apr_status_t status;
 
     /* If we haven't run setup, then we won't have a handler to call. */
-    if (request->handler) {
+    if (request->handler && notify_request) {
         /* We actually don't care what the handler returns.
          * We have bigger matters at hand.
          */
@@ -889,7 +901,7 @@ SERF_DECLARE(apr_status_t) serf_connection_reset(
             link_requests(&conn->requests, &conn->requests_tail, req);
         }
         else {
-            cancel_request(old_reqs, &old_reqs);
+            cancel_request(old_reqs, &old_reqs, 1);
         }
     }
 
@@ -1016,7 +1028,7 @@ SERF_DECLARE(serf_request_t *) serf_connection_request_create(
 
 SERF_DECLARE(apr_status_t) serf_request_cancel(serf_request_t *request)
 {
-    return cancel_request(request, &request->conn->requests);
+    return cancel_request(request, &request->conn->requests, 0);
 }
 
 SERF_DECLARE(apr_pool_t *) serf_request_get_pool(const serf_request_t *request)
