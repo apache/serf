@@ -172,16 +172,14 @@ static apr_status_t serf_dechunk_read(serf_bucket_t *bucket,
 
 /* ### need to implement */
 #define serf_dechunk_readline NULL
-#define serf_dechunk_read_iovec NULL
-#define serf_dechunk_read_for_sendfile NULL
 #define serf_dechunk_peek NULL
 
 SERF_DECLARE_DATA const serf_bucket_type_t serf_bucket_type_dechunk = {
     "DECHUNK",
     serf_dechunk_read,
     serf_dechunk_readline,
-    serf_dechunk_read_iovec,
-    serf_dechunk_read_for_sendfile,
+    serf_default_read_iovec,
+    serf_default_read_for_sendfile,
     serf_default_read_bucket,
     serf_dechunk_peek,
     serf_dechunk_destroy_and_data,
