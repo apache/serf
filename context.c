@@ -142,6 +142,9 @@ static apr_status_t clean_resp(void *data)
 {
     serf_request_t *req = data;
 
+    /* This pool just got cleared/destroyed. Don't try to destroy the pool
+     * (again) when the request is canceled.
+     */
     req->respool = NULL;
 
     return APR_SUCCESS;
