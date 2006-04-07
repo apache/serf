@@ -2,6 +2,7 @@
 
 import os
 import re
+import shutil
 import sys
 import stat
 
@@ -50,24 +51,28 @@ TESTCASES = [
 
 
 def main(argv):
-  openssl = None
-  if len(argv) > 1:
-    if argv[1].startswith('--with-openssl='):
-      idx = argv[1].index('=')
-      openssl = argv[1][idx+1:].strip()
-      argv = argv[:]
-      del argv[1]
+  params = {}
 
-  cmd = 'build'
-  if len(argv) > 1:
-    cmd = argv[1]
+  cmd = None
 
+  for i in argv[1:]:
+    idx = i.find('=')
+    if idx > 0:
+      start = i.rfind('-', 0, idx)
+      if start > 0:
+        params[i[start+1:idx]] = i[idx+1:].strip()
+    elif not cmd:
+      cmd = i
+
+  if not cmd:
+    cmd = 'build'
+ 
   func = globals().get('cmd_' + cmd)
   if not func:
     print 'ERROR: no such command:', cmd
     usage()
 
-  func()
+  func(params)
 
 
 def usage():
@@ -75,17 +80,18 @@ def usage():
   sys.exit(1)
 
 
-def cmd_build():
-  builder = Builder()
+def cmd_build(param):
+  builder = Builder(param)
   builder.build_target(File('.', 'libserf-1', 'la'), False)
 
 
-def cmd_install():
-  pass
+def cmd_install(param):
+  builder = Builder(param)
+  builder.install_target(File('.', 'libserf-1', 'la'), False)
 
 
 def cmd_check():
-  builder = Builder()
+  builder = Builder(param)
   builder.build_target(File('test', 'serf_response', None), False)
 
   for dirpath, fname in TESTCASES:
@@ -96,16 +102,21 @@ def cmd_check():
       raise TestError(case, result)
 
 
-def cmd_clean():
+def cmd_clean(param):
   pass
 
 
 class Builder:
-  def __init__(self):
-    self.apr = APRConfig()
-    self.apu = APUConfig()
+  def __init__(self, params):
+    self.apr = APRConfig(params['apr'])
+    self.apu = APUConfig(params['apr'])
 
-    self.libdir = '/usr/local/lib'
+    try:
+      self.libdir = os.path.join(params['prefix'], 'lib')
+      self.includedir = os.path.join(params['prefix'], 'include')
+    except:
+      self.libdir = '/usr/local/lib'
+      self.includedir = '/usr/local/include'
 
     self.load_vars()
     self.load_deps()
@@ -132,6 +143,8 @@ class Builder:
                 + ' ' + self.apr.get_value(None, '--libs') \
                 + ' -lz -lssl -lcrypto'
 
+    self.MODE = 644
+
   def load_deps(self):
     self.deps = { }
 
@@ -140,6 +153,8 @@ class Builder:
     libobjs = [File(dirpath, fname, 'lo') for dirpath, fname in LIB_FILES]
     for src, obj in zip(libfiles, libobjs):
       self._add_compile(src, obj, hdrs)
+
+    self.hdrs = hdrs
 
     lib = File('.', 'libserf-1', 'la')
     cmd = '%s --silent --mode=link %s %s -rpath %s -o %s %s %s' % (
@@ -204,6 +219,32 @@ class Builder:
     del self.deps[target]
     return 0
 
+  def install_target(self, target, dry_run):
+    self.build_target(target, dry_run)
+
+    # install the target now
+    if not dry_run:
+
+      try:
+        os.makedirs(self.includedir)
+        os.makedirs(self.libdir)
+      except:
+        pass
+
+      for f in self.hdrs:
+        shutil.copy(f.fname, self.includedir)
+
+      cmd = '%s --silent --mode=install %s -c -m %d %s %s' % (
+            self.LIBTOOL, '/usr/bin/install', self.MODE, target.fname,
+            self.libdir)
+
+      result = os.system(cmd)
+      if result:
+        raise BuildError(cmd, result)
+      # FALLTHROUGH
+
+    return 0
+
 
 class ConfigScript(object):
   script_name = None
@@ -211,11 +252,12 @@ class ConfigScript(object):
     '/usr/bin',
     '/usr/local/bin',
     '/usr/local/apache2/bin',
-    ### need to take paths from the cmdline
-    ### others?
     ]
 
-  def __init__(self):
+  def __init__(self, search_dir):
+    if search_dir:
+      self.locations.append(search_dir)
+      self.locations.append(os.path.join(search_dir, 'bin'))
     for dirname in self.locations:
       bin = os.path.join(dirname, self.script_name)
       if os.access(bin, os.X_OK):
