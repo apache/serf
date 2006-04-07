@@ -648,7 +648,7 @@ static apr_status_t process_connection(serf_connection_t *conn,
     apr_status_t status;
 
     if ((events & APR_POLLHUP) != 0) {
-        return serf_connection_reset(conn);
+        return APR_ECONNRESET;
     }
     if ((events & APR_POLLERR) != 0) {
         /* We might be talking to a buggy HTTP server that doesn't
