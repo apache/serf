@@ -19,6 +19,7 @@
 #include <apr_uri.h>
 #include <apr_strings.h>
 #include <apr_atomic.h>
+#include <apr_version.h>
 
 #include "serf.h"
 
@@ -52,8 +53,19 @@ static serf_bucket_t* accept_response(void *acceptor_baton,
 }
 
 typedef struct {
+#if APR_MAJOR_VERSION > 0
     apr_uint32_t requests_outstanding;
+#else
+    apr_atomic_t requests_outstanding;
+#endif
 } handler_baton_t;
+
+/* Kludges for APR 0.9 support. */
+#if APR_MAJOR_VERSION == 0
+#define apr_atomic_inc32 apr_atomic_inc
+#define apr_atomic_dec32 apr_atomic_dec
+#define apr_atomic_read32 apr_atomic_read
+#endif
 
 static apr_status_t handle_response(serf_request_t *request,
                                     serf_bucket_t *response,

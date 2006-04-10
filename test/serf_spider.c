@@ -25,6 +25,7 @@
 #include <apr_thread_proc.h>
 #include <apr_thread_mutex.h>
 #include <apr_thread_cond.h>
+#include <apr_version.h>
 
 #include "serf.h"
 #include "serf_bucket_util.h"
@@ -112,7 +113,11 @@ static serf_bucket_t* accept_response(serf_request_t *request,
 
 typedef struct {
     serf_bucket_alloc_t *allocator;
+#if APR_MAJOR_VERSION > 0
     apr_uint32_t *requests_outstanding;
+#else
+    apr_atomic_t *requests_outstanding;
+#endif
     serf_bucket_alloc_t *doc_queue_alloc;
     apr_array_header_t *doc_queue;
     apr_thread_cond_t *doc_queue_condvar;
@@ -144,6 +149,13 @@ typedef struct {
 
     app_baton_t *app_ctx;
 } handler_baton_t;
+
+/* Kludges for APR 0.9 support. */
+#if APR_MAJOR_VERSION == 0
+#define apr_atomic_inc32 apr_atomic_inc
+#define apr_atomic_dec32 apr_atomic_dec
+#define apr_atomic_read32 apr_atomic_read
+#endif
 
 static apr_status_t handle_response(serf_request_t *request,
                                     serf_bucket_t *response,
