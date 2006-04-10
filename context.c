@@ -28,6 +28,11 @@
    ### stop, rebuild a pollset, and repopulate it. what suckage.  */
 #define MAX_CONN 16
 
+/* Windows does not define IOV_MAX, so we need to ensure it is defined. */
+#ifndef IOV_MAX
+#define IOV_MAX 16
+#endif
+
 /* Holds all the information corresponding to a request/response pair. */
 struct serf_request_t {
     serf_connection_t *conn;
