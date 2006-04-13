@@ -322,6 +322,84 @@ static apr_status_t no_more_writes(serf_connection_t *conn,
   return APR_SUCCESS;
 }
 
+static apr_status_t reset_connection(serf_connection_t *conn,
+                                     int requeue_requests)
+{
+    int i;
+    serf_context_t *ctx = conn->ctx;
+    apr_status_t status;
+    serf_request_t *old_reqs, *held_reqs, *held_reqs_tail;
+
+    conn->probable_keepalive_limit = conn->completed_responses;
+    conn->completed_requests = 0;
+    conn->completed_responses = 0;
+
+    old_reqs = conn->requests;
+    held_reqs = conn->hold_requests;
+    held_reqs_tail = conn->hold_requests_tail;
+ 
+    if (conn->closing) {
+        conn->hold_requests = NULL;
+        conn->hold_requests_tail = NULL;
+        conn->closing = 0;
+    }
+
+    conn->requests = NULL;
+    conn->requests_tail = NULL;
+
+    while (old_reqs) {
+        /* If we haven't started to write the connection, bring it over
+         * unchanged to our new socket.  Otherwise, call the cancel function.
+         */
+        if (requeue_requests && old_reqs->setup) {
+            serf_request_t *req = old_reqs;
+            old_reqs = old_reqs->next;
+            req->next = NULL;
+            link_requests(&conn->requests, &conn->requests_tail, req);
+        }
+        else {
+            cancel_request(old_reqs, &old_reqs, requeue_requests);
+        }
+    }
+
+    if (conn->requests_tail) {
+        conn->requests_tail->next = held_reqs;
+    }
+    else {
+        conn->requests = held_reqs;
+    }
+    if (held_reqs_tail) {
+        conn->requests_tail = held_reqs_tail;
+    }
+
+    if (conn->skt != NULL) {
+        remove_connection(ctx, conn);
+        status = apr_socket_close(conn->skt);
+        if (conn->closed != NULL) {
+            (*conn->closed)(conn, conn->closed_baton, status,
+                            conn->pool);
+        }
+        conn->skt = NULL;
+    }
+
+    if (conn->stream != NULL) {
+        serf_bucket_destroy(conn->stream);
+        conn->stream = NULL;
+    }
+
+    /* Don't try to resume any writes */
+    conn->vec_len = 0;
+
+    conn->dirty_conn = 1;
+    conn->ctx->dirty_pollset = 1;
+
+    /* Let our context know that we've 'reset' the socket already. */
+    conn->seen_in_pollset |= APR_POLLHUP;
+
+    /* Found the connection. Closed it. All done. */
+    return APR_SUCCESS;
+}
+
 static apr_status_t socket_writev(serf_connection_t *conn)
 {
     apr_size_t written;
@@ -565,7 +643,7 @@ static apr_status_t read_from_connection(serf_connection_t *conn)
          * handle the ECONNRESET issue here.
          */
         if (APR_STATUS_IS_ECONNRESET(status)) {
-            serf_connection_reset(conn);
+            reset_connection(conn, 1);
             status = APR_SUCCESS;
             goto error;
         }
@@ -615,7 +693,7 @@ static apr_status_t read_from_connection(serf_connection_t *conn)
 
         /* This means that we're being advised that the connection is done. */
         if (status == SERF_ERROR_CLOSING) {
-            serf_connection_reset(conn);
+            reset_connection(conn, 1);
             status = APR_SUCCESS;
             goto error;
         }
@@ -667,7 +745,7 @@ static apr_status_t process_connection(serf_connection_t *conn,
          * http://issues.apache.org/bugzilla/show_bug.cgi?id=35292
          */
         if (!conn->probable_keepalive_limit) {
-            return serf_connection_reset(conn);
+            return reset_connection(conn, 1);
         }
         abort();
     }
@@ -879,79 +957,7 @@ void link_requests(serf_request_t **list, serf_request_t **tail,
 SERF_DECLARE(apr_status_t) serf_connection_reset(
     serf_connection_t *conn)
 {
-    int i;
-    serf_context_t *ctx = conn->ctx;
-    apr_status_t status;
-    serf_request_t *old_reqs, *held_reqs, *held_reqs_tail;
-
-    conn->probable_keepalive_limit = conn->completed_responses;
-    conn->completed_requests = 0;
-    conn->completed_responses = 0;
-
-    old_reqs = conn->requests;
-    held_reqs = conn->hold_requests;
-    held_reqs_tail = conn->hold_requests_tail;
- 
-    if (conn->closing) {
-        conn->hold_requests = NULL;
-        conn->hold_requests_tail = NULL;
-        conn->closing = 0;
-    }
-
-    conn->requests = NULL;
-    conn->requests_tail = NULL;
-
-    while (old_reqs) {
-        /* If we haven't started to write the connection, bring it over
-         * unchanged to our new socket.  Otherwise, call the cancel function.
-         */
-        if (old_reqs->setup) {
-            serf_request_t *req = old_reqs;
-            old_reqs = old_reqs->next;
-            req->next = NULL;
-            link_requests(&conn->requests, &conn->requests_tail, req);
-        }
-        else {
-            cancel_request(old_reqs, &old_reqs, 1);
-        }
-    }
-
-    if (conn->requests_tail) {
-        conn->requests_tail->next = held_reqs;
-    }
-    else {
-        conn->requests = held_reqs;
-    }
-    if (held_reqs_tail) {
-        conn->requests_tail = held_reqs_tail;
-    }
-
-    if (conn->skt != NULL) {
-        remove_connection(ctx, conn);
-        status = apr_socket_close(conn->skt);
-        if (conn->closed != NULL) {
-            (*conn->closed)(conn, conn->closed_baton, status,
-                            conn->pool);
-        }
-        conn->skt = NULL;
-    }
-
-    if (conn->stream != NULL) {
-        serf_bucket_destroy(conn->stream);
-        conn->stream = NULL;
-    }
-
-    /* Don't try to resume any writes */
-    conn->vec_len = 0;
-
-    conn->dirty_conn = 1;
-    conn->ctx->dirty_pollset = 1;
-
-    /* Let our context know that we've 'reset' the socket already. */
-    conn->seen_in_pollset |= APR_POLLHUP;
-
-    /* Found the connection. Closed it. All done. */
-    return APR_SUCCESS;
+    return reset_connection(conn, 0);
 }
 
 SERF_DECLARE(apr_status_t) serf_connection_close(
