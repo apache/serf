@@ -322,10 +322,82 @@ static apr_status_t no_more_writes(serf_connection_t *conn,
   return APR_SUCCESS;
 }
 
+static void link_requests(serf_request_t **list, serf_request_t **tail,
+                          serf_request_t *request)
+{
+    if (*list == NULL) {
+        *list = request;
+        *tail = request;
+    }
+    else {
+        (*tail)->next = request;
+        *tail = request;
+    }
+}
+
+static apr_status_t cancel_request(serf_request_t *request,
+                                   serf_request_t **list,
+                                   int notify_request)
+{
+    serf_connection_t *conn = request->conn;
+    apr_status_t status;
+
+    /* If we haven't run setup, then we won't have a handler to call. */
+    if (request->handler && notify_request) {
+        /* We actually don't care what the handler returns.
+         * We have bigger matters at hand.
+         */
+        (*request->handler)(request, NULL, request->handler_baton,
+                            request->respool);
+    }
+
+    if (*list == request) {
+        *list = request->next;
+    }
+    else {
+        serf_request_t *scan = *list;
+
+        while (scan->next && scan->next != request)
+            scan = scan->next;
+
+        if (scan->next) {
+            scan->next = scan->next->next;
+        }
+    }
+
+    if (request->resp_bkt) {
+        serf_debug__closed_conn(request->resp_bkt->allocator);
+        serf_bucket_destroy(request->resp_bkt);
+    }
+    if (request->req_bkt) {
+        serf_debug__closed_conn(request->req_bkt->allocator);
+        serf_bucket_destroy(request->req_bkt);
+    }
+
+    if (request->respool) {
+        apr_pool_destroy(request->respool);
+    }
+
+    serf_bucket_mem_free(request->conn->allocator, request);
+
+    return APR_SUCCESS;
+}
+
+static apr_status_t remove_connection(serf_context_t *ctx,
+                                      serf_connection_t *conn)
+{
+    apr_pollfd_t desc = { 0 };
+
+    desc.desc_type = APR_POLL_SOCKET;
+    desc.desc.s = conn->skt;
+    desc.reqevents = conn->reqevents;
+
+    return apr_pollset_remove(ctx->pollset, &desc);
+}
+
 static apr_status_t reset_connection(serf_connection_t *conn,
                                      int requeue_requests)
 {
-    int i;
     serf_context_t *ctx = conn->ctx;
     apr_status_t status;
     serf_request_t *old_reqs, *held_reqs, *held_reqs_tail;
@@ -459,7 +531,6 @@ static apr_status_t write_to_connection(serf_connection_t *conn)
         int stop_reading = 0;
         apr_status_t status;
         apr_status_t read_status;
-        int i;
 
         /* If we have unwritten data, then write what we can. */
         while (conn->vec_len) {
@@ -850,66 +921,6 @@ SERF_DECLARE(apr_status_t) serf_context_run(serf_context_t *ctx,
 }
 
 
-static apr_status_t remove_connection(serf_context_t *ctx,
-                                      serf_connection_t *conn)
-{
-    apr_pollfd_t desc = { 0 };
-
-    desc.desc_type = APR_POLL_SOCKET;
-    desc.desc.s = conn->skt;
-    desc.reqevents = conn->reqevents;
-
-    return apr_pollset_remove(ctx->pollset, &desc);
-}
-
-static apr_status_t cancel_request(serf_request_t *request,
-                                   serf_request_t **list,
-                                   int notify_request)
-{
-    serf_connection_t *conn = request->conn;
-    apr_status_t status;
-
-    /* If we haven't run setup, then we won't have a handler to call. */
-    if (request->handler && notify_request) {
-        /* We actually don't care what the handler returns.
-         * We have bigger matters at hand.
-         */
-        (*request->handler)(request, NULL, request->handler_baton,
-                            request->respool);
-    }
-
-    if (*list == request) {
-        *list = request->next;
-    }
-    else {
-        serf_request_t *scan = *list;
-
-        while (scan->next && scan->next != request)
-            scan = scan->next;
-
-        if (scan->next) {
-            scan->next = scan->next->next;
-        }
-    }
-
-    if (request->resp_bkt) {
-        serf_debug__closed_conn(request->resp_bkt->allocator);
-        serf_bucket_destroy(request->resp_bkt);
-    }
-    if (request->req_bkt) {
-        serf_debug__closed_conn(request->req_bkt->allocator);
-        serf_bucket_destroy(request->req_bkt);
-    }
-
-    if (request->respool) {
-        apr_pool_destroy(request->respool);
-    }
-
-    serf_bucket_mem_free(request->conn->allocator, request);
-
-    return APR_SUCCESS;
-}
-
 SERF_DECLARE(serf_connection_t *) serf_connection_create(
     serf_context_t *ctx,
     apr_sockaddr_t *address,
@@ -939,19 +950,6 @@ SERF_DECLARE(serf_connection_t *) serf_connection_create(
     *(serf_connection_t **)apr_array_push(ctx->conns) = conn;
 
     return conn;
-}
-
-void link_requests(serf_request_t **list, serf_request_t **tail,
-                   serf_request_t *request)
-{
-    if (*list == NULL) {
-        *list = request;
-        *tail = request;
-    }
-    else {
-        (*tail)->next = request;
-        *tail = request;
-    }
 }
 
 SERF_DECLARE(apr_status_t) serf_connection_reset(
