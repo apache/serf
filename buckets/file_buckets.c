@@ -49,10 +49,15 @@ SERF_DECLARE(serf_bucket_t *) serf_bucket_file_create(
     apr_stat(&finfo, file_path, APR_FINFO_SIZE,
              serf_bucket_allocator_get_pool(allocator));
     if (APR_MMAP_CANDIDATE(finfo.size)) {
+        apr_status_t status;
         apr_mmap_t *file_mmap;
-        apr_mmap_create(&file_mmap, file, 0, finfo.size, APR_MMAP_READ,
-                        serf_bucket_allocator_get_pool(allocator));
-        return serf_bucket_mmap_create(file_mmap, allocator);
+        status = apr_mmap_create(&file_mmap, file, 0, finfo.size,
+                                 APR_MMAP_READ,
+                                 serf_bucket_allocator_get_pool(allocator));
+
+        if (status == APR_SUCCESS) {
+            return serf_bucket_mmap_create(file_mmap, allocator);
+        }
     }
 #endif
 
