@@ -1,12 +1,66 @@
 STATUS: The Serf Project                                -*-indented-text-*-
 
   Code: http://svn.webdav.org/repos/projects/serf/
+  Mail: serf-dev@webdav.org
 People: Justin Erenkrantz, Greg Stein
 
 
+RELEASE SHOWSTOPPERS
+
+  * Come up with a better way of enabling or disabling serf's debug checks.
+    They are too expensive to do in a release build by default and changes
+    the external ABI.  We can just duck it and hard code the checks to be
+    disabled by default and require manual editing of serf.h to enable them.
+
+  * Create a placeholder webpage pointing people at downloads, SVN, and mail
+    off http://www.webdav.org/serf/
+
+  * Publish doxygen docs on website.
+
+  * Create a quick howto that covers installation.
+
+  * Issue a packaged release for easier consuming.
+
 OPEN ISSUES
 
-  * HEAD responses with a non-zero C-L can trigger a segfault.
+  * Produce binaries for Windows users?  Will Subversion do this for free?
+
+  * Go through design-guide.txt; create a detailed 'walking tour' of serf.
+
+  * Add a higher-level, more dev-friendly API.  See Subversion's ra_serf
+    for an example of how this might be done.
+
+  * Add a bit of polish to serfmake script.
+
+  * Specifying metadata that describes the stream rather than being
+    associated with a single bucket type.
+
+    Currently, each bucket may define a custom type that allows a bucket to
+    have some attached metadata.  See serf_bucket_request_get_headers(), etc.
+
+    The original idea for metadata was to have a way to specify things like
+    content type, charset, or the content encoding (for the data residing
+    in the bucket).
+
+    I (Greg) would propose that in tossing the metadata, we create a
+    "serf_content_description" type which can describe the data within a
+    bucket. These descriptions would be at least a few pointers and might
+    be too much overhead per bucket. Thus, a solution would be a registry
+    of content descriptions. A bucket can simply refer to a descrption
+    stored in the registry. (maybe some common, static descriptions plus
+    the dynamic registry) Unknown how a dynamic registry would be
+    built. We could make it an app-provided piece, or we could
+    automatically create and associate one with a serf_context. I'd go
+    with an app thingy since the registry could be shared across
+    multiple contexts.
+
+  * review the various OUT parameters and see if any make sense to
+    allow a NULL value to designate non-interest in the result.
+
+    also: review functions which *don't* return an apr_status to see if
+    they _should_
+
+ISSUES ON THE BACKBURNER (for now)
 
   * rather than having serf_bucket_alloc_t, can we make
     apr_allocator_t work "well" for bunches o' small allocations?
@@ -14,9 +68,11 @@ OPEN ISSUES
                  and merge that (somehow) with apr_allocator_t. 
                  (< MIN_ALLOC_SIZE allocations - i.e. <8k)
     A: Sander says that the cost-per-alloc'd-byte is too
-       expensive. the apr_allocator works best for 4k multiples. it
-       provides a buffer between system alloc and the app. small
-       allocs should be built as another layer.
+       expensive. the apr_allocator works best for 4k multiples.
+       apr_allocator provides a buffer between system alloc and the
+       app. small allocs (such as what serf likes) should be built as
+       another layer.
+    Justin says: So, let's put this on hold...
 
   * memory usage probably needs some thought. in particular, the mix
     between the bucket allocators and any pools associated with the
@@ -33,111 +89,12 @@ OPEN ISSUES
                  context's worth of buckets. any pool within this
                  system ought to be transaction-scoped (e.g. tied to a
                  particular request/response pair).
-
-  * the original idea for metadata was to have a way to specify things
-    like content type, charset, or the content encoding (for the data
-    residing in the bucket). I would propose that in tossing the
-    metadata, we create a "serf_content_description" type which can
-    describe the data within a bucket. These descriptions would be at
-    least a few pointers and might be too much overhead per
-    bucket. Thus, a solution would be a registry of content
-    descriptions. A bucket can simply refer to a descrption stored in
-    the registry. (maybe some common, static descriptions plus the
-    dynamic registry) Unknown how a dynamic registry would be
-    built. We could make it an app-provided piece, or we could
-    automatically create and associate one with a serf_context. I'd go
-    with an app thingy since the registry could be shared across
-    multiple contexts.
-
-  * How does serf_aggregate_bucket_become(bucket) work?
-    Justin says: We want bucket to be an aggregate bucket, and for the first
-                 bucket in that aggregate bucket to be the 'original' bucket.
-                 I think we just swap internal data structures, but not sure.
-    gstein says: we don't necessarily want to preserve the original
-                 bucket. consider a REQUEST bucket which could
-                 "become" an aggregate containing two buckets: one for
-                 the serialized request-line and headers, and one for
-                 the body. there is no REQUEST bucket any more.
-
-  * If anyone knows how to use APR_RING, we could probably use that for the
-    aggregate bucket list.
-    gstein says: I think this implies a little entry structure which
-                 contains the "link", plus a pointer to the bucket. I
-                 was thinking of just using an apr array.
-    gstein says: apr array? that is pool-based which blows. the
-                 current implementation uses a linked list. maybe the
-                 RING can help, but we aren't doing sophisticated
-                 rearrangement, splicing, or anything else. the RING
-                 stuff probably isn't all that helpful.
-
-  * How does something like deflate get inserted into both the request and
-    response?
-    Justin says: I'm still not crystal clear on how this should work.
-                 I'd like the concept of a 'filter' somehow as we can
-                 shield the 'user programmer' from this, but I dunno.
-                 A 'hook' after the request is created, but before it
-                 is sent???
-    gstein says: when assembling the request bucket, a "deflate"
-                 bucket can be wrapped around the body bucket. it
-                 reads raw content, compresses it, and returns
-                 that. when a response arrives, an "inflate" bucket is
-                 wrapped around the body bucket to inflate the
-                 response. (of course, the decision points are made
-                 based upon headers and server capabilities whatnot)
-
-                 filters are just buckets that wrap other buckets.
-
-  * if the poll() does not return POLLHUP, then how do we detect EOF?
-    we'd end up seeing POLLIN, go for a read(), and probably get a
-    SIGHUP or SIGPIPE as a result. if it just keeps returning len==0,
-    then we could have a problem. part of the issue here is that we
-    get a POLLIN from poll(), but the reading occurs in an entirely
-    different context (call a response handler, which reads a bucket,
-    which trickles down to a socket bucket, and then reading the
-    socket object). transmitting "there should be something to read"
-    over to that other context could be difficult.
-
-    see: http://www.greenend.org.uk/rjk/2001/06/poll.html
-
-  * review the various OUT parameters and see if any make sense to
-    allow a NULL value to designate non-interest in the result.
-
-    also: review functions which *don't* return an apr_status to see if
-    they _should_
-
-  * The current API specifies that the app can close a connection by
-    destroying or clearing the connection pool. Terminating a
-    connection requires call the close-callback for each outstanding
-    request. All subpools will be destroyed. Note that requests are
-    built within subpools of the connection pool, so all the request
-    objects will suddenly disappear. The allocators will try to go
-    away, but it is very likely that request/response buckets might
-    still be alive at that time. As a result, the app will get a lot
-    of notifications of buggy bucket memory behavior.
-
-    gstein: I propose we add serf_connection_close() for the app to
-            request the closure of a connection. It can systematically
-            go through the structures and clear things out. We'll need
-            to ensure that the app is called-back at the sufficent
-            points to free buckets (before we toss a pool and the
-            allocator goes cranky).
-
-            If a connection needs to close because of an abnormal
-            close condition, then (obviously) the internal serf system
-            can shut it down in an orderly fashion.
-
-  * Need to examine pool relationships. If an application is opening
-    and closing a multitude of connections, can it properly manage
-    lifetimes? Would it affect other connections? If an app is
-    generating a gazillion requests, then are they managed properly?
-
-    The context can be "loose", but the rest of the items seem to be
-    operationally-unbounded (thus, subject to the pool design/use
-    constraints).
-    
-    NOTE: at APR's default of 8k per pool, then 10k outstanding
-    requests is a whole lot of memory... (80 meg)  I could see a high
-    perf system trying to do this.
+    Justin says: The change to delay creation of the request/response
+                 pool until we are about to deliver the request to the
+                 server is about the best that we can do.  So, we'll have
+                 as many 8k-min pools open as there are requests in-flight.
+                 I'm not sure we can really do better than that (and still
+                 use pools).
 
   * serf_request_t should contain two allocators: one for request
     buckets and one for response buckets. When the context loop is
