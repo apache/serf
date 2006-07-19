@@ -547,7 +547,7 @@ struct serf_bucket_type_t {
  * ### we may want to examine when/how we provide this. should it always
  * ### be compiled in? and apps select it before including this header?
  */
-#define SERF_DEBUG_BUCKET_USE
+/* #define SERF_DEBUG_BUCKET_USE */
 
 
 /* Internal macros for tracking bucket use. */
