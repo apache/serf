@@ -695,6 +695,39 @@ static apr_status_t read_from_connection(serf_connection_t *conn)
             apr_pool_clear(tmppool);
         }
 
+        /* We are reading a response for a request we haven't
+         * written yet!
+         *
+         * This shouldn't normally happen EXCEPT when the other end
+         * has closed the socket and we're pending an EOF return.
+         *
+         * This happens with an expired timeout - so we'll reset the
+         * connection and open a new one.
+         */
+        if (request->req_bkt || request->setup) {
+            const char *data;
+            apr_size_t len;
+
+            status = serf_bucket_read(conn->stream, SERF_READ_ALL_AVAIL,
+                                      &data, &len);
+
+            if (APR_STATUS_IS_EOF(status)) {
+                reset_connection(conn, 1);
+                status = APR_SUCCESS;
+                goto error;
+            }
+
+            /* If we reach here, this is really bad as we didn't get an
+             * EOF that we were expecting.  So, we'll treat 'success'
+             * as a failure.
+             */
+            if (!status) {
+                status = APR_EGENERAL;
+            }
+
+            goto error;
+        }
+
         /* If the request doesn't have a response bucket, then call the
          * acceptor to get one created.
          */
@@ -820,12 +853,19 @@ static apr_status_t process_connection(serf_connection_t *conn,
         }
         abort();
     }
-    if ((events & APR_POLLOUT) != 0) {
-        if ((status = write_to_connection(conn)) != APR_SUCCESS)
-            return status;
-    }
     if ((events & APR_POLLIN) != 0) {
         if ((status = read_from_connection(conn)) != APR_SUCCESS)
+            return status;
+
+        /* If we decided to reset our connection, return now as we don't
+         * want to write.
+         */
+        if ((conn->seen_in_pollset & APR_POLLHUP) != 0) {
+            return APR_SUCCESS;
+        }
+    }
+    if ((events & APR_POLLOUT) != 0) {
+        if ((status = write_to_connection(conn)) != APR_SUCCESS)
             return status;
     }
     return APR_SUCCESS;
