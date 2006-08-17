@@ -53,6 +53,9 @@ static serf_bucket_t* conn_setup(apr_socket_t *skt,
     c = serf_bucket_socket_create(skt, ctx->bkt_alloc);
     if (ctx->using_ssl) {
         c = serf_bucket_ssl_decrypt_create(c, ctx->ssl_ctx, ctx->bkt_alloc);
+        if (!ctx->ssl_ctx) {
+            ctx->ssl_ctx = serf_bucket_ssl_decrypt_context_get(c);
+        }
     }
 
     return c;

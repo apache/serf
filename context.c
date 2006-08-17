@@ -698,10 +698,17 @@ static apr_status_t read_from_connection(serf_connection_t *conn)
         /* We are reading a response for a request we haven't
          * written yet!
          *
-         * This shouldn't normally happen EXCEPT when the other end
-         * has closed the socket and we're pending an EOF return.
+         * This shouldn't normally happen EXCEPT:
          *
-         * This happens with an expired timeout - so we'll reset the
+         * 1) when the other end has closed the socket and we're
+         *    pending an EOF return.
+         * 2) Doing the initial SSL handshake - we'll get EAGAIN
+         *    as the SSL buckets will hide the handshake from us
+         *    but not return any data.
+         *
+         * In these cases, we should not receive any actual user data.
+         *
+         * If we see an EOF (due to an expired timeout), we'll reset the
          * connection and open a new one.
          */
         if (request->req_bkt || request->setup) {
@@ -711,17 +718,17 @@ static apr_status_t read_from_connection(serf_connection_t *conn)
             status = serf_bucket_read(conn->stream, SERF_READ_ALL_AVAIL,
                                       &data, &len);
 
-            if (APR_STATUS_IS_EOF(status)) {
+            if (len) {
+                status = APR_EGENERAL;
+            }
+            else if (APR_STATUS_IS_EOF(status)) {
                 reset_connection(conn, 1);
                 status = APR_SUCCESS;
-                goto error;
             }
-
-            /* If we reach here, this is really bad as we didn't get an
-             * EOF that we were expecting.  So, we'll treat 'success'
-             * as a failure.
-             */
-            if (!status) {
+            else if (APR_STATUS_IS_EAGAIN(status)) {
+                status = APR_SUCCESS;
+            }
+            else if (!status) {
                 status = APR_EGENERAL;
             }
 
