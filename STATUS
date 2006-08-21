@@ -1,7 +1,9 @@
 STATUS: The Serf Project                                -*-indented-text-*-
 
-  Code: http://svn.webdav.org/repos/projects/serf/
-  Mail: serf-dev@webdav.org
+  Site: http://code.google.com/p/serf/
+  Code: http://serf.googlecode.com/svn/
+Issues: http://code.google.com/p/serf/issues/list
+  Mail: serf-dev@googlegroups.com
 People: Justin Erenkrantz, Greg Stein
 
 
@@ -11,9 +13,6 @@ RELEASE SHOWSTOPPERS
     They are too expensive to do in a release build by default and changes
     the external ABI.  We can just duck it and hard code the checks to be
     disabled by default and require manual editing of serf.h to enable them.
-
-  * Create a placeholder webpage pointing people at downloads, SVN, and mail
-    off http://www.webdav.org/serf/
 
   * Publish doxygen docs on website.
 
