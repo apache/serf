@@ -423,6 +423,7 @@ static void init_ssl_libraries(void)
         CRYPTO_malloc_init();
         ERR_load_crypto_strings();
         SSL_load_error_strings();
+        SSL_library_init();
         OpenSSL_add_all_algorithms();
         have_init_ssl = 1;
     }
