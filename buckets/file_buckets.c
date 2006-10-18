@@ -44,7 +44,13 @@ SERF_DECLARE(serf_bucket_t *) serf_bucket_file_create(
     apr_finfo_t finfo;
     const char *file_path;
 
-    /* See if we'd be better off mmap'ing this file instead. */
+    /* See if we'd be better off mmap'ing this file instead.
+     *
+     * Note that there is a failure case here that we purposely fall through:
+     * if a file is buffered, apr_mmap will reject it.  However, on older
+     * versions of APR, we have no way of knowing this - but apr_mmap_create
+     * will check for this and return APR_EBADF.
+     */
     apr_file_name_get(&file_path, file);
     apr_stat(&finfo, file_path, APR_FINFO_SIZE,
              serf_bucket_allocator_get_pool(allocator));
