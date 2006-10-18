@@ -139,7 +139,6 @@ SERF_DECLARE(void) serf_bucket_aggregate_prepend_iovec(
     int vecs_count)
 {
     int i;
-    bucket_list_t *new_list;
 
     /* Add in reverse order. */
     for (i = vecs_count - 1; i > 0; i--) {
@@ -161,7 +160,6 @@ SERF_DECLARE(void) serf_bucket_aggregate_append_iovec(
     int vecs_count)
 {
     int i;
-    bucket_list_t *new_list;
 
     for (i = 0; i < vecs_count; i++) {
         serf_bucket_t *new_bucket;

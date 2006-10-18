@@ -300,7 +300,6 @@ static apr_status_t setup_request(serf_request_t *request,
 {
     handler_baton_t *ctx = setup_baton;
     serf_bucket_t *hdrs_bkt;
-    char *req_path;
 
     *req_bkt = serf_bucket_request_create("GET", ctx->full_path, NULL,
                                           serf_request_get_alloc(request));
@@ -605,7 +604,7 @@ static void * APR_THREAD_FUNC parser_thread(apr_thread_t *thread, void *data)
     return NULL;
 }
 
-void print_usage(apr_pool_t *pool)
+static void print_usage(apr_pool_t *pool)
 {
     puts("serf_get [options] URL");
     puts("-h\tDisplay this help");
@@ -621,15 +620,11 @@ int main(int argc, const char **argv)
     apr_sockaddr_t *address;
     serf_context_t *context;
     serf_connection_t *connection;
-    serf_request_t *request;
-    serf_bucket_t *req_bkt;
-    serf_bucket_t *hdrs_bkt;
     app_baton_t app_ctx;
     handler_baton_t *handler_ctx;
     apr_uri_t url;
-    const char *raw_url, *method, *req_body_path = NULL;
+    const char *raw_url, *method;
     int count;
-    int i;
     apr_getopt_t *opt;
     char opt_c;
     char *authn = NULL;
@@ -639,8 +634,6 @@ int main(int argc, const char **argv)
     apr_thread_t *thread[3];
     apr_threadattr_t *tattr;
     apr_status_t parser_status;
-    apr_thread_mutex_t *mutex;
-    apr_thread_cond_t *condvar;
     parser_baton_t *parser_ctx;
 
     apr_initialize();

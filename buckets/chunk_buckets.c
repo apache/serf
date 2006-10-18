@@ -54,7 +54,6 @@ SERF_DECLARE(serf_bucket_t *) serf_bucket_chunk_create(
 static apr_status_t create_chunk(serf_bucket_t *bucket)
 {
     chunk_context_t *ctx = bucket->data;
-    apr_status_t status;
     serf_bucket_t *simple_bkt;
     apr_size_t chunk_len;
     apr_size_t stream_len;

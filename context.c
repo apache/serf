@@ -339,9 +339,6 @@ static apr_status_t cancel_request(serf_request_t *request,
                                    serf_request_t **list,
                                    int notify_request)
 {
-    serf_connection_t *conn = request->conn;
-    apr_status_t status;
-
     /* If we haven't run setup, then we won't have a handler to call. */
     if (request->handler && notify_request) {
         /* We actually don't care what the handler returns.
@@ -1060,7 +1057,6 @@ SERF_DECLARE(serf_request_t *) serf_connection_request_create(
     serf_request_setup_t setup,
     void *setup_baton)
 {
-    apr_pool_t *pool;
     serf_request_t *request;
 
     request = serf_bucket_mem_alloc(conn->allocator, sizeof(*request));
