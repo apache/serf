@@ -54,7 +54,11 @@ APRUTIL_LIBS = "$(APRUTIL_SRC)\$(INTDIR)\libaprutil.lib"
 !ELSE
 ZLIB_FLAGS = /I "$(ZLIB_SRC)"
 !IF "$(ZLIB_DLL)" == ""
+!IF "$(ZLIB_LIBDIR)" == ""
 ZLIB_LIBS = "$(ZLIB_SRC)\zlibstat.lib"
+!ELSE
+ZLIB_LIBS = "$(ZLIB_LIBDIR)\x86\ZlibStat$(INTDIR)\zlibstat.lib"
+!ENDIF
 !ELSE
 ZLIB_FLAGS = $(ZLIB_FLAGS) /D ZLIB_DLL
 ZLIB_LIBS = "$(ZLIB_SRC)\zlibdll.lib"
