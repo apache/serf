@@ -36,7 +36,11 @@ OPENSSL_FLAGS = /I "$(OPENSSL_SRC)\inc32"
 !ENDIF
 
 APR_FLAGS = /I "$(APR_SRC)\include"
+!IF [IF EXIST "$(APR_SRC)\$(INTDIR)\libapr-1.lib" exit 1] == 1
+APR_LIBS = "$(APR_SRC)\$(INTDIR)\libapr-1.lib"
+!ELSE
 APR_LIBS = "$(APR_SRC)\$(INTDIR)\libapr.lib"
+!ENDIF
 
 ########
 # APR Util
@@ -45,7 +49,11 @@ APR_LIBS = "$(APR_SRC)\$(INTDIR)\libapr.lib"
 !ENDIF
 
 APRUTIL_FLAGS = /I "$(APRUTIL_SRC)\include"
+!IF [IF EXIST "$(APRUTIL_SRC)\$(INTDIR)\libaprutil-1.lib" exit 1] == 1
+APRUTIL_LIBS = "$(APRUTIL_SRC)\$(INTDIR)\libaprutil-1.lib"
+!ELSE
 APRUTIL_LIBS = "$(APRUTIL_SRC)\$(INTDIR)\libaprutil.lib"
+!ENDIF
 
 ########
 # Support for zlib integration
@@ -58,6 +66,7 @@ ZLIB_FLAGS = /I "$(ZLIB_SRC)"
 ZLIB_LIBS = "$(ZLIB_SRC)\zlibstat.lib"
 !ELSE
 ZLIB_LIBS = "$(ZLIB_LIBDIR)\x86\ZlibStat$(INTDIR)\zlibstat.lib"
+ZLIB_FLAGS = $(ZLIB_FLAGS) /D ZLIB_WINAPI
 !ENDIF
 !ELSE
 ZLIB_FLAGS = $(ZLIB_FLAGS) /D ZLIB_DLL
