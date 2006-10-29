@@ -688,8 +688,7 @@ static apr_status_t read_from_connection(serf_connection_t *conn)
         if (conn->stream == NULL) {
             conn->stream = (*conn->setup)(conn->skt,
                                           conn->setup_baton,
-                                          tmppool);
-            apr_pool_clear(tmppool);
+                                          conn->pool);
         }
 
         /* We are reading a response for a request we haven't
@@ -1023,11 +1022,6 @@ SERF_DECLARE(apr_status_t) serf_connection_close(
                     (*conn->closed)(conn, conn->closed_baton, status,
                                     conn->pool);
                 }
-            }
-
-            /* No more need for the wrapper bucket. */
-            if (conn->stream != NULL) {
-                serf_bucket_destroy(conn->stream);
             }
 
             /* Remove the connection from the context. We don't want to
