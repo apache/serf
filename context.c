@@ -261,7 +261,8 @@ static apr_status_t open_connections(serf_context_t *ctx)
         apr_pool_clear(conn->skt_pool);
         apr_pool_cleanup_register(conn->skt_pool, conn, clean_skt, clean_skt);
 
-        if ((status = apr_socket_create(&skt, APR_INET, SOCK_STREAM,
+        if ((status = apr_socket_create(&skt, conn->address->family,
+                                        SOCK_STREAM,
 #if APR_MAJOR_VERSION > 0
                                         APR_PROTO_TCP,
 #endif
