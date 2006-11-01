@@ -841,6 +841,21 @@ static apr_status_t process_connection(serf_connection_t *conn,
 {
     apr_status_t status;
 
+    /* POLLHUP/ERR should come after POLLIN so if there's an error message or
+     * the like sitting on the connection, we give the app a chance to read
+     * it before we trigger a reset condition.
+     */
+    if ((events & APR_POLLIN) != 0) {
+        if ((status = read_from_connection(conn)) != APR_SUCCESS)
+            return status;
+
+        /* If we decided to reset our connection, return now as we don't
+         * want to write.
+         */
+        if ((conn->seen_in_pollset & APR_POLLHUP) != 0) {
+            return APR_SUCCESS;
+        }
+    }
     if ((events & APR_POLLHUP) != 0) {
         return APR_ECONNRESET;
     }
@@ -856,17 +871,6 @@ static apr_status_t process_connection(serf_connection_t *conn,
             return reset_connection(conn, 1);
         }
         abort();
-    }
-    if ((events & APR_POLLIN) != 0) {
-        if ((status = read_from_connection(conn)) != APR_SUCCESS)
-            return status;
-
-        /* If we decided to reset our connection, return now as we don't
-         * want to write.
-         */
-        if ((conn->seen_in_pollset & APR_POLLHUP) != 0) {
-            return APR_SUCCESS;
-        }
     }
     if ((events & APR_POLLOUT) != 0) {
         if ((status = write_to_connection(conn)) != APR_SUCCESS)
