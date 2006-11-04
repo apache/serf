@@ -715,7 +715,7 @@ static apr_status_t read_from_connection(serf_connection_t *conn)
             status = serf_bucket_read(conn->stream, SERF_READ_ALL_AVAIL,
                                       &data, &len);
 
-            if (len) {
+            if (!status && len) {
                 status = APR_EGENERAL;
             }
             else if (APR_STATUS_IS_EOF(status)) {
@@ -724,9 +724,6 @@ static apr_status_t read_from_connection(serf_connection_t *conn)
             }
             else if (APR_STATUS_IS_EAGAIN(status)) {
                 status = APR_SUCCESS;
-            }
-            else if (!status) {
-                status = APR_EGENERAL;
             }
 
             goto error;
