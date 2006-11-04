@@ -334,6 +334,11 @@ SERF_DECLARE(apr_pool_t *) serf_request_get_pool(
 SERF_DECLARE(serf_bucket_alloc_t *) serf_request_get_alloc(
     const serf_request_t *request);
 
+/**
+ * Return the connection associated with @a request.
+ */
+SERF_DECLARE(serf_connection_t *) serf_request_get_conn(
+    const serf_request_t *request);
 
 /**
  * Update the @a handler and @a handler_baton for this @a request.

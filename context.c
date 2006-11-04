@@ -1100,6 +1100,12 @@ SERF_DECLARE(serf_bucket_alloc_t *) serf_request_get_alloc(
     return request->allocator;
 }
 
+SERF_DECLARE(serf_connection_t *) serf_request_get_conn(
+    const serf_request_t *request)
+{
+    return request->conn;
+}
+
 SERF_DECLARE(void) serf_request_set_handler(
     serf_request_t *request,
     const serf_response_handler_t handler,
