@@ -130,7 +130,7 @@ ALL: INTDIR $(STATIC_LIB) TESTS
  
 
 CLEAN:
-  -@erase "$(INTDIR)" >nul
+  -@erase /q "$(INTDIR)" >nul
 
 INTDIR:
   -@if not exist "$(INTDIR)/$(NULL)" mkdir "$(INTDIR)"
