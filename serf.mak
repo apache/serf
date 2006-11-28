@@ -28,11 +28,21 @@ STATIC_LIB = $(INTDIR)\serf.lib
 OPENSSL_FLAGS = /I "$(OPENSSL_SRC)\inc32"
 !ENDIF
 
+!IF "$(HTTPD_SRC)" != ""
+!IF "$(APR_SRC)" == ""
+APR_SRC=$(HTTPD_SRC)\srclib\apr
+!ENDIF
+
+!IF "$(APRUTIL_SRC)" == ""
+APRUTIL_SRC=$(HTTPD_SRC)\srclib\apr-util
+!ENDIF
+
+!ENDIF
 
 ########
 # APR
 !IF "$(APR_SRC)" == ""
-!ERROR APR is required. Please define APR_SRC.
+!ERROR APR is required. Please define APR_SRC or HTTPD_SRC.
 !ENDIF
 
 APR_FLAGS = /I "$(APR_SRC)\include"
@@ -45,7 +55,7 @@ APR_LIBS = "$(APR_SRC)\$(INTDIR)\libapr.lib"
 ########
 # APR Util
 !IF "$(APRUTIL_SRC)" == ""
-!ERROR APR-Util is required. Please define APRUTIL_SRC.
+!ERROR APR-Util is required. Please define APRUTIL_SRC or HTTPD_SRC.
 !ENDIF
 
 APRUTIL_FLAGS = /I "$(APRUTIL_SRC)\include"
