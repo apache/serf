@@ -126,7 +126,7 @@ LIB32_OBJS = $(LIB32_OBJS) "$(OPENSSL_SRC)\out32dll\libeay32.lib" \
 
 LIB32_OBJS = $(LIB32_OBJS) $(APR_LIBS) $(APRUTIL_LIBS) $(ZLIB_LIBS) 
 
-ALL: INTDIR $(STATIC_LIB)
+ALL: INTDIR $(STATIC_LIB) TESTS
  
 
 CLEAN:
@@ -135,6 +135,16 @@ CLEAN:
 INTDIR:
   -@if not exist "$(INTDIR)/$(NULL)" mkdir "$(INTDIR)"
 
+TESTS: $(STATIC_LIB) $(INTDIR)\serf_response.exe $(INTDIR)\serf_get.exe \
+       $(INTDIR)\serf_request.exe
+
+CHECK: INTDIR TESTS
+  $(INTDIR)\serf_response.exe test\testcases\simple.response
+  $(INTDIR)\serf_response.exe test\testcases\chunked-empty.response
+  $(INTDIR)\serf_response.exe test\testcases\chunked.response
+  $(INTDIR)\serf_response.exe test\testcases\chunked-trailers.response
+  $(INTDIR)\serf_response.exe test\testcases\deflate.response
+  
 "$(STATIC_LIB)": INTDIR $(LIB32_OBJS)
   $(LIB32) -lib @<<
     $(LIB32_FLAGS) $(LIB32_OBJS) /OUT:"$(STATIC_LIB)"
@@ -150,3 +160,20 @@ INTDIR:
   $(CPP) @<<
     $(CPP_PROJ) $<
 <<
+
+{test}.c{$(INTDIR)}.obj: 
+  $(CPP) @<<
+    $(CPP_PROJ) $<
+<<
+
+$(INTDIR)\serf_response.exe: $(INTDIR)\serf_response.obj $(STATIC_LIB)
+  $(LIB32) /DEBUG  $(INTDIR)\serf_response.obj /OUT:$(INTDIR)\serf_response.exe $(LIB32_FLAGS) $(STATIC_LIB)
+
+$(INTDIR)\serf_get.exe: $(INTDIR)\serf_get.obj $(STATIC_LIB)
+  $(LIB32) $(INTDIR)\serf_get.obj /OUT:$(INTDIR)\serf_get.exe $(LIB32_FLAGS) $(STATIC_LIB)
+
+$(INTDIR)\serf_request.exe: $(INTDIR)\serf_request.obj $(STATIC_LIB)
+  $(LIB32) $(INTDIR)\serf_request.obj /OUT:$(INTDIR)\serf_request.exe $(LIB32_FLAGS) $(STATIC_LIB)
+
+$(INTDIR)\serf_spider.exe: $(INTDIR)\serf_spider.obj $(STATIC_LIB)
+  $(LIB32) $(INTDIR)\serf_spider.obj /OUT:$(INTDIR)\serf_spider.exe $(LIB32_FLAGS) $(STATIC_LIB)
