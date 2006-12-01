@@ -212,6 +212,9 @@ static apr_status_t run_machine(serf_bucket_t *bkt, response_context_t *ctx)
         if (ctx->linebuf.state == SERF_LINEBUF_READY && !ctx->linebuf.used) {
             const void *v;
 
+            /* Advance the state. */
+            ctx->state = STATE_BODY;
+
             ctx->body =
                 serf_bucket_barrier_create(ctx->stream, bkt->allocator);
 
@@ -235,6 +238,10 @@ static apr_status_t run_machine(serf_bucket_t *bkt, response_context_t *ctx)
                     ctx->body = serf_bucket_dechunk_create(ctx->body,
                                                            bkt->allocator);
                 }
+
+                if (!v && (ctx->sl.code == 204 || ctx->sl.code == 304)) {
+                    ctx->state = STATE_DONE;
+                }
             }
             v = serf_bucket_headers_get(ctx->headers, "Content-Encoding");
             if (v) {
@@ -253,9 +260,6 @@ static apr_status_t run_machine(serf_bucket_t *bkt, response_context_t *ctx)
             /* If we're a HEAD request, we don't receive a body. */
             if (ctx->head_req) {
                 ctx->state = STATE_DONE;
-            }
-            else {
-                ctx->state = STATE_BODY;
             }
         }
         break;

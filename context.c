@@ -950,7 +950,8 @@ SERF_DECLARE(apr_status_t) serf_context_run(serf_context_t *ctx,
         serf_connection_t *conn = desc->client_data;
 
         /* apr_pollset_poll() can return a conn multiple times... */
-        if ((conn->seen_in_pollset & desc->rtnevents) != 0) {
+        if ((conn->seen_in_pollset & desc->rtnevents) != 0 ||
+            (conn->seen_in_pollset & APR_POLLHUP) != 0) {
             continue;
         }
         conn->seen_in_pollset |= desc->rtnevents;
