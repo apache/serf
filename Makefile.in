@@ -17,7 +17,11 @@ OBJECTS = buckets/aggregate_buckets.lo buckets/request_buckets.lo context.lo \
           buckets/chunk_buckets.lo
 
 TARGET_LIB=libserf-$(SERF_MAJOR_VERSION).la
-PROGRAMS = test/serf_get test/serf_response test/serf_request test/serf_spider
+
+TEST_OBJECTS = test/serf_get.lo test/serf_response.lo test/serf_request.lo \
+               test/serf_spider.lo
+PROGRAMS = $(TEST_OBJECTS:.lo=)
+
 TESTCASES = test/testcases/simple.response \
   test/testcases/chunked-empty.response test/testcases/chunked.response \
   test/testcases/chunked-trailers.response \
@@ -96,7 +100,7 @@ install: $(TARGET_LIB)
 	done
 
 clean:
-	rm -f $(TARGET_LIB) $(OBJECTS) $(PROGRAMS) $(OBJECTS:.lo=.o)
+	rm -f $(TARGET_LIB) $(OBJECTS) $(OBJECTS:.lo=.o) $(PROGRAMS) $(TEST_OBJECTS) $(TEST_OBJECTS:.lo=.o)·
 
 .SUFFIXES:
 .SUFFIXES: .c .lo .o
