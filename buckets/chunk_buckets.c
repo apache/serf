@@ -82,21 +82,28 @@ static apr_status_t create_chunk(serf_bucket_t *bucket)
 
     /* assert: stream_len in hex < sizeof(ctx->chunk_hdr) */
 
-    /* Build the chunk header. */
-    chunk_len = apr_snprintf(ctx->chunk_hdr, sizeof(ctx->chunk_hdr),
-                             "%" APR_UINT64_T_HEX_FMT CRLF,
-                             (apr_uint64_t)stream_len);
-
-    /* Create a copy of the chunk header so we can have multiple chunks
-     * in the pipeline at the same time.
+    /* Inserting a 0 byte chunk indicates a terminator, which already happens
+     * during the EOF handler below.  Adding another one here will cause the
+     * EOF chunk to be interpreted by the server as a new request.  So,
+     * we'll only do this if we have something to write.
      */
-    simple_bkt = serf_bucket_simple_copy_create(ctx->chunk_hdr, chunk_len,
-                                                bucket->allocator);
-    serf_bucket_aggregate_append(ctx->chunk, simple_bkt);
+    if (stream_len) {
+        /* Build the chunk header. */
+        chunk_len = apr_snprintf(ctx->chunk_hdr, sizeof(ctx->chunk_hdr),
+                                 "%" APR_UINT64_T_HEX_FMT CRLF,
+                                 (apr_uint64_t)stream_len);
 
-    /* Insert the chunk footer. */
-    vecs[vecs_read].iov_base = CRLF;
-    vecs[vecs_read++].iov_len = sizeof(CRLF) - 1;
+        /* Create a copy of the chunk header so we can have multiple chunks
+         * in the pipeline at the same time.
+         */
+        simple_bkt = serf_bucket_simple_copy_create(ctx->chunk_hdr, chunk_len,
+                                                    bucket->allocator);
+        serf_bucket_aggregate_append(ctx->chunk, simple_bkt);
+
+        /* Insert the chunk footer. */
+        vecs[vecs_read].iov_base = CRLF;
+        vecs[vecs_read++].iov_len = sizeof(CRLF) - 1;
+    }
 
     /* We've reached the end of the line for the stream. */
     if (APR_STATUS_IS_EOF(ctx->last_status)) {
