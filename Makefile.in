@@ -101,6 +101,12 @@ install: $(TARGET_LIB)
 
 clean:
 	rm -f $(TARGET_LIB) $(OBJECTS) $(OBJECTS:.lo=.o) $(PROGRAMS) $(TEST_OBJECTS) $(TEST_OBJECTS:.lo=.o)
+	for subdir in . buckets test; do \
+		(cd $$subdir && rm -rf .libs) ; \
+	done
+
+distclean: clean
+	rm -f Makefile config.log config.status
 
 .SUFFIXES:
 .SUFFIXES: .c .lo .o
