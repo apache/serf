@@ -100,7 +100,7 @@ install: $(TARGET_LIB)
 	done
 
 clean:
-	rm -f $(TARGET_LIB) $(OBJECTS) $(OBJECTS:.lo=.o) $(PROGRAMS) $(TEST_OBJECTS) $(TEST_OBJECTS:.lo=.o)·
+	rm -f $(TARGET_LIB) $(OBJECTS) $(OBJECTS:.lo=.o) $(PROGRAMS) $(TEST_OBJECTS) $(TEST_OBJECTS:.lo=.o)
 
 .SUFFIXES:
 .SUFFIXES: .c .lo .o
