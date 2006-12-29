@@ -331,12 +331,48 @@ static apr_status_t serf_headers_readline(serf_bucket_t *bucket,
     return status;
 }
 
-/* ### need to implement iovec */
+static apr_status_t serf_headers_read_iovec(serf_bucket_t *bucket,
+                                            apr_size_t requested,
+                                            int vecs_size,
+                                            struct iovec *vecs,
+                                            int *vecs_used)
+{
+    apr_size_t avail = requested;
+    int i;
+
+    *vecs_used = 0;
+
+    for (i = 0; i < vecs_size; i++) {
+        const char *data;
+        apr_size_t len;
+        apr_status_t status;
+
+        status = serf_headers_read(bucket, avail, &data, &len);
+
+        if (len) {
+          vecs[*vecs_used].iov_base = (char*)data;
+          vecs[*vecs_used].iov_len = len;
+
+          if (avail != SERF_READ_ALL_AVAIL) {
+              avail -= len;
+          }
+
+          (*vecs_used)++;
+        }
+
+        if (status) {
+            return status;
+        }
+    }
+
+    return APR_SUCCESS;
+}
+
 SERF_DECLARE_DATA const serf_bucket_type_t serf_bucket_type_headers = {
     "HEADERS",
     serf_headers_read,
     serf_headers_readline,
-    serf_default_read_iovec,
+    serf_headers_read_iovec,
     serf_default_read_for_sendfile,
     serf_default_read_bucket,
     serf_headers_peek,
