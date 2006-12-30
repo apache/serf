@@ -347,17 +347,27 @@ static apr_status_t serf_headers_read_iovec(serf_bucket_t *bucket,
         apr_size_t len;
         apr_status_t status;
 
+        /* Calling read() would not be a safe opt in the general case, but it
+         * is here for the header bucket as it only frees all of the header
+         * keys and values when the entire bucket goes away - not on a
+         * per-read() basis as is normally the case.
+         */
         status = serf_headers_read(bucket, avail, &data, &len);
 
         if (len) {
-          vecs[*vecs_used].iov_base = (char*)data;
-          vecs[*vecs_used].iov_len = len;
+            vecs[*vecs_used].iov_base = (char*)data;
+            vecs[*vecs_used].iov_len = len;
 
-          if (avail != SERF_READ_ALL_AVAIL) {
-              avail -= len;
-          }
+            (*vecs_used)++;
 
-          (*vecs_used)++;
+            if (avail != SERF_READ_ALL_AVAIL) {
+                avail -= len;
+
+                /* If we reach 0, then read()'s status will suffice.  */
+                if (avail == 0) {
+                    return status;
+                }
+            }
         }
 
         if (status) {
