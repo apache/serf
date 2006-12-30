@@ -127,6 +127,20 @@ static apr_status_t serf_request_readline(serf_bucket_t *bucket,
     return serf_bucket_readline(bucket, acceptable, found, data, len);
 }
 
+static apr_status_t serf_request_read_iovec(serf_bucket_t *bucket,
+                                            apr_size_t requested,
+                                            int vecs_size,
+                                            struct iovec *vecs,
+                                            int *vecs_used)
+{
+    /* Seralize our private data into a new aggregate bucket. */
+    serialize_data(bucket);
+
+    /* Delegate to the "new" aggregate bucket to do the read. */
+    return serf_bucket_read_iovec(bucket, requested,
+                                  vecs_size, vecs, vecs_used);
+}
+
 static apr_status_t serf_request_peek(serf_bucket_t *bucket,
                                       const char **data,
                                       apr_size_t *len)
@@ -161,7 +175,7 @@ SERF_DECLARE_DATA const serf_bucket_type_t serf_bucket_type_request = {
     "REQUEST",
     serf_request_read,
     serf_request_readline,
-    serf_default_read_iovec,
+    serf_request_read_iovec,
     serf_default_read_for_sendfile,
     serf_default_read_bucket,
     serf_request_peek,
