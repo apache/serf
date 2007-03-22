@@ -346,6 +346,25 @@ SERF_DECLARE_DATA extern const serf_bucket_type_t serf_bucket_type_ssl_encrypt;
 
 typedef struct serf_ssl_context_t serf_ssl_context_t;
 
+typedef apr_status_t (*serf_ssl_need_client_cert_t)(void *data,
+                                                    const char **cert_path);
+
+typedef apr_status_t (*serf_ssl_need_cert_password_t)(void *data,
+                                                      const char *cert_path,
+                                                      const char **password);
+
+SERF_DECLARE(void)
+serf_ssl_client_cert_provider_set(serf_ssl_context_t *context,
+                                  serf_ssl_need_client_cert_t callback,
+                                  void *data,
+                                  void *cache_pool);
+
+SERF_DECLARE(void)
+serf_ssl_client_cert_password_set(serf_ssl_context_t *context,
+                                  serf_ssl_need_cert_password_t callback,
+                                  void *data,
+                                  void *cache_pool);
+
 SERF_DECLARE(serf_bucket_t *) serf_bucket_ssl_encrypt_create(
     serf_bucket_t *stream,
     serf_ssl_context_t *ssl_context,
