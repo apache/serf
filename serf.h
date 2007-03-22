@@ -712,6 +712,22 @@ SERF_DECLARE(void) serf_debug__bucket_alloc_check(serf_bucket_alloc_t *allocator
 #define SERF_MINOR_VERSION 1
 #define SERF_PATCH_VERSION 1
 
+/**
+ * Check at compile time if the Serf version is at least a certain
+ * level.
+ * @param major The major version component of the version checked
+ * for (e.g., the "1" of "1.3.0").
+ * @param minor The minor version component of the version checked
+ * for (e.g., the "3" of "1.3.0").
+ * @param patch The patch level component of the version checked
+ * for (e.g., the "0" of "1.3.0").
+ */
+#define SERF_VERSION_AT_LEAST(major,minor,patch)                         \
+(((major) < SERF_MAJOR_VERSION)                                          \
+  || ((major) == SERF_MAJOR_VERSION && (minor) < SERF_MINOR_VERSION)     \
+   || ((major) == SERF_MAJOR_VERSION && (minor) == SERF_MINOR_VERSION && \
+            (patch) <= SERF_PATCH_VERSION))
+
 #ifdef __cplusplus
 }
 #endif

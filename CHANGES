@@ -2,6 +2,7 @@ Serf 0.1.1 []
   Add SSL client certificate support
   Implement optimized iovec reads for header buckets
   Fix up 'make clean' and 'make distclean' (Issues 9, 10)
+  Add SERF_VERSION_AT_LEAST macro
 
 Serf 0.1.0 [2006-12-14, r1087]
   Initial Packaged Release
