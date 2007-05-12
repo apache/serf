@@ -164,7 +164,8 @@ static apr_status_t serf_dechunk_read(serf_bucket_t *bucket,
             return APR_EOF;
 
         default:
-            abort();
+            /* Not reachable */
+            return APR_EGENERAL;
         }
     }
     /* NOTREACHED */

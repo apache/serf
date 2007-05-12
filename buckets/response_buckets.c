@@ -280,7 +280,8 @@ static apr_status_t run_machine(serf_bucket_t *bkt, response_context_t *ctx)
     case STATE_DONE:
         return APR_EOF;
     default:
-        abort();
+        /* Not reachable */
+        return APR_EGENERAL;
     }
 
     return status;

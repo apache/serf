@@ -231,7 +231,8 @@ static void select_value(
         *len = 0;
         return;
     default:
-        abort();
+        /* Not reachable */
+        return;
     }
 
     *value = v + ctx->amt_read;
@@ -312,9 +313,9 @@ static apr_status_t serf_headers_readline(serf_bucket_t *bucket,
     headers_context_t *ctx = bucket->data;
     apr_status_t status;
 
-    /* ### what behavior should we use here? abort() isn't very friendly */
+    /* ### what behavior should we use here? APR_EGENERAL for now */
     if ((acceptable & SERF_NEWLINE_CRLF) == 0)
-        abort();
+        return APR_EGENERAL;
 
     /* get whatever is in this chunk */
     select_value(ctx, data, len);

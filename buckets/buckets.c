@@ -259,7 +259,8 @@ SERF_DECLARE(void) serf_util_readline(const char **data, apr_size_t *len,
         *data += *len;
         break;
       default:
-        abort();
+        /* Not reachable */
+        return;
     }
 
     *len -= *data - start;

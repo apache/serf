@@ -867,7 +867,7 @@ static apr_status_t process_connection(serf_connection_t *conn,
         if (!conn->probable_keepalive_limit) {
             return reset_connection(conn, 1);
         }
-        abort();
+        return APR_EGENERAL;
     }
     if ((events & APR_POLLOUT) != 0) {
         if ((status = write_to_connection(conn)) != APR_SUCCESS)

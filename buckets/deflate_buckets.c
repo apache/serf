@@ -105,7 +105,8 @@ SERF_DECLARE(serf_bucket_t *) serf_bucket_deflate_create(
             ctx->state = STATE_INIT;
             break;
         default:
-            abort();
+            /* Not reachable */
+            return NULL;
     }
 
     /* Initial size of gzip header. */
@@ -321,7 +322,8 @@ static apr_status_t serf_deflate_read(serf_bucket_t *bucket,
                         ctx->state = STATE_FINISH;
                         break;
                     default:
-                        abort();
+                        /* Not reachable */
+                        return APR_EGENERAL;
                     }
 
                     break;
@@ -348,7 +350,8 @@ static apr_status_t serf_deflate_read(serf_bucket_t *bucket,
             /* We're done inflating.  Use our finished buffer. */
             return serf_bucket_read(ctx->stream, requested, data, len);
         default:
-            abort();
+            /* Not reachable */
+            return APR_EGENERAL;
         }
     }
 
