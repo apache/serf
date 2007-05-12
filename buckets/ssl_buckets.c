@@ -525,6 +525,7 @@ static int ssl_need_client_cert(SSL *ssl, X509 **cert, EVP_PKEY **pkey)
     while (ctx->cert_callback) {
         const char *cert_path;
         apr_file_t *cert_file;
+        BIO *bio;
         PKCS12 *p12;
         int i;
         int retrying_success = 0;
@@ -550,7 +551,7 @@ static int ssl_need_client_cert(SSL *ssl, X509 **cert, EVP_PKEY **pkey)
             continue;
         }
 
-        BIO *bio = BIO_new(&bio_file_method);
+        bio = BIO_new(&bio_file_method);
         bio->ptr = cert_file;
 
         ctx->cert_path = cert_path;
