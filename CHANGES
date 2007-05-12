@@ -1,3 +1,5 @@
+Serf 0.1.2 []
+
 Serf 0.1.1 [2007-5-12, r1105]
   Add SSL client certificate support
   Implement optimized iovec reads for header buckets
