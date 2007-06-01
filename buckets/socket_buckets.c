@@ -81,13 +81,6 @@ static apr_status_t serf_socket_peek(serf_bucket_t *bucket,
     return serf_databuf_peek(&ctx->databuf, data, len);
 }
 
-static void serf_socket_destroy_and_data(serf_bucket_t *bucket)
-{
-    serf_bucket_mem_free(bucket->allocator, bucket->data);
-
-    serf_default_destroy_and_data(bucket);
-}
-
 SERF_DECLARE_DATA const serf_bucket_type_t serf_bucket_type_socket = {
     "SOCKET",
     serf_socket_read,
@@ -96,5 +89,5 @@ SERF_DECLARE_DATA const serf_bucket_type_t serf_bucket_type_socket = {
     serf_default_read_for_sendfile,
     serf_default_read_bucket,
     serf_socket_peek,
-    serf_socket_destroy_and_data,
+    serf_default_destroy_and_data,
 };
