@@ -155,6 +155,7 @@ typedef struct {
 #define apr_atomic_inc32 apr_atomic_inc
 #define apr_atomic_dec32 apr_atomic_dec
 #define apr_atomic_read32 apr_atomic_read
+#define apr_atomic_set32 apr_atomic_set
 #endif
 
 static apr_status_t handle_response(serf_request_t *request,
@@ -725,6 +726,7 @@ int main(int argc, const char **argv)
     handler_ctx->requests_outstanding =
         (apr_uint32_t*)serf_bucket_mem_alloc(app_ctx.bkt_alloc,
                                              sizeof(apr_uint32_t));
+    apr_atomic_set32(handler_ctx->requests_outstanding, 0);
     handler_ctx->hdr_read = 0;
 
     parser_ctx = (void*)serf_bucket_mem_alloc(app_ctx.bkt_alloc,
