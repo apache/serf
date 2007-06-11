@@ -200,6 +200,15 @@ static apr_status_t run_machine(serf_bucket_t *bkt, response_context_t *ctx)
             /* Okay... move on to reading the headers. */
             ctx->state = STATE_HEADERS;
         }
+        else {
+            /* The connection closed before we could get the next
+             * response.  Treat the request as lost so that our upper
+             * end knows the server never tried to give us a response.
+             */
+            if (APR_STATUS_IS_EOF(status)) {
+                return SERF_ERROR_REQUEST_LOST;
+            }
+        }
         break;
     case STATE_HEADERS:
         status = fetch_headers(bkt, ctx);

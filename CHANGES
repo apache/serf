@@ -1,4 +1,6 @@
 Serf 0.1.2 []
+  Be more tolerant when servers close the connection without telling us.
+  Do not open the connection until we have requests to deliver.
   Fix serfmake to produce the library that corresponds to the minor version.
   Fix a memory leak with the socket bucket (Issue 14)
   Fix uninitialized branch in serf_spider (Issue 15)

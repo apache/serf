@@ -57,7 +57,15 @@ typedef struct serf_request_t serf_request_t;
  */
 #define SERF_ERROR_RANGE 100
 
+/* This code is for when this is the last response on this connection:
+ * i.e. do not send any more requests on this connection or expect
+ * any more responses.
+ */
 #define SERF_ERROR_CLOSING (APR_OS_START_USERERR + SERF_ERROR_RANGE + 1)
+/* This code is for when the connection terminated before the request
+ * could be processed on the other side.
+ */
+#define SERF_ERROR_REQUEST_LOST (APR_OS_START_USERERR + SERF_ERROR_RANGE + 2)
 
 /**
  * Create a new context for serf operations.

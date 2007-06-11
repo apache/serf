@@ -258,6 +258,11 @@ static apr_status_t open_connections(serf_context_t *ctx)
             continue;
         }
 
+        /* Delay opening until we have something to deliver! */
+        if (conn->requests == NULL) {
+            continue;
+        }
+
         apr_pool_clear(conn->skt_pool);
         apr_pool_cleanup_register(conn->skt_pool, conn, clean_skt, clean_skt);
 
@@ -747,7 +752,8 @@ static apr_status_t read_from_connection(serf_connection_t *conn)
         /* Some systems will not generate a HUP poll event so we have to
          * handle the ECONNRESET issue here.
          */
-        if (APR_STATUS_IS_ECONNRESET(status)) {
+        if (APR_STATUS_IS_ECONNRESET(status) ||
+            status == SERF_ERROR_REQUEST_LOST) {
             reset_connection(conn, 1);
             status = APR_SUCCESS;
             goto error;
