@@ -1,4 +1,5 @@
 Serf 0.1.2 []
+  Fix serfmake to produce the library that corresponds to the minor version.
   Fix a memory leak with the socket bucket (Issue 14)
   Fix uninitialized branch in serf_spider (Issue 15)
 

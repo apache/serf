@@ -98,12 +98,12 @@ def usage():
 
 def cmd_build(param):
   builder = Builder(param)
-  builder.build_target(File('.', 'libserf-1', 'la'), False)
+  builder.build_target(File('.', 'libserf-0', 'la'), False)
 
 
 def cmd_install(param):
   builder = Builder(param)
-  builder.install_target(File('.', 'libserf-1', 'la'), False)
+  builder.install_target(File('.', 'libserf-0', 'la'), False)
 
 
 def cmd_check(param):
@@ -121,7 +121,7 @@ def cmd_check(param):
 def cmd_clean(param):
   clean = [File(dirpath, fname, 'o') for dirpath, fname in LIB_FILES]
   clean += [File(dirpath, fname, 'lo') for dirpath, fname in LIB_FILES]
-  clean += [File('.', 'libserf-1', 'la')]
+  clean += [File('.', 'libserf-0', 'la')]
   clean += [File(dirpath, fname, 'o') for dirpath, fname in TEST_FILES]
   clean += [File(dirpath, fname, 'lo') for dirpath, fname in TEST_FILES]
   clean += [File(dirpath, fname, None) for dirpath, fname in TEST_FILES]
@@ -183,7 +183,7 @@ class Builder:
 
     self.hdrs = hdrs
 
-    lib = File('.', 'libserf-1', 'la')
+    lib = File('.', 'libserf-0', 'la')
     cmd = '%s --silent --mode=link %s %s -rpath %s -o %s %s %s' % (
       self.LIBTOOL, self.CC, self.LDFLAGS, self.libdir,
       lib.fname, ' '.join([l.fname for l in libobjs]), self.LIBS)
