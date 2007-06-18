@@ -11,6 +11,27 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * ----
+ *
+ * For the OpenSSL thread-safety locking code:
+ *
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *
+ * Originally developed by Aaron Bannert and Justin Erenkrantz, eBuilt.
  */
 
 #include <apr_pools.h>
@@ -497,16 +518,96 @@ static apr_status_t ssl_encrypt(void *baton, apr_size_t bufsize,
     return status;
 }
 
+#if APR_HAS_THREADS
+apr_pool_t *ssl_pool;
+apr_thread_mutex_t **ssl_locks;
+
+typedef struct CRYPTO_dynlock_value {
+    apr_thread_mutex_t *lock;
+} CRYPTO_dynlock_value;
+
+static CRYPTO_dynlock_value *ssl_dyn_create(const char* file, int line)
+{
+    CRYPTO_dynlock_value *l;
+    apr_status_t rv;
+
+    l = apr_palloc(ssl_pool, sizeof(CRYPTO_dynlock_value));
+    rv = apr_thread_mutex_create(&l->lock, APR_THREAD_MUTEX_DEFAULT, ssl_pool);
+    if (rv != APR_SUCCESS) {
+        /* FIXME: return error here */
+    }
+    return l;
+}
+
+static void ssl_dyn_lock(int mode, CRYPTO_dynlock_value *l, const char *file,
+                         int line)
+{
+    if (mode & CRYPTO_LOCK) {
+        apr_thread_mutex_lock(l->lock);
+    }
+    else if (mode & CRYPTO_UNLOCK) {
+        apr_thread_mutex_unlock(l->lock);
+    }
+}
+
+static void ssl_dyn_destroy(CRYPTO_dynlock_value *l, const char *file,
+                            int line)
+{
+    apr_thread_mutex_destroy(l->lock);
+}
+
+static void ssl_lock(int mode, int n, const char *file, int line)
+{
+    if (mode & CRYPTO_LOCK) {
+        apr_thread_mutex_lock(ssl_locks[n]);
+    }
+    else if (mode & CRYPTO_UNLOCK) {
+        apr_thread_mutex_unlock(ssl_locks[n]);
+    }
+}
+
+static unsigned long ssl_id(void)
+{
+    /* FIXME: This is lame and not portable. -aaron */
+    return (unsigned long) apr_os_thread_current();
+}
+#endif
+
 static int have_init_ssl = 0;
 
 static void init_ssl_libraries(void)
 {
     if (!have_init_ssl) {
+#if APR_HAS_THREADS
+        int i, numlocks;
+#endif
         CRYPTO_malloc_init();
         ERR_load_crypto_strings();
         SSL_load_error_strings();
         SSL_library_init();
         OpenSSL_add_all_algorithms();
+
+#if APR_HAS_THREADS
+        numlocks = CRYPTO_num_locks();
+        apr_pool_create(&ssl_pool, NULL);
+        ssl_locks = apr_palloc(ssl_pool, sizeof(apr_thread_mutex_t*)*numlocks);
+        for (i = 0; i < numlocks; i++) {
+            apr_status_t rv;
+
+            /* Intraprocess locks don't /need/ a filename... */
+            rv = apr_thread_mutex_create(&ssl_locks[i],
+                                         APR_THREAD_MUTEX_DEFAULT, ssl_pool);
+            if (rv != APR_SUCCESS) {
+                /* FIXME: error out here */
+            }
+        }
+        CRYPTO_set_locking_callback(ssl_lock);
+        CRYPTO_set_id_callback(ssl_id);
+        CRYPTO_set_dynlock_create_callback(ssl_dyn_create);
+        CRYPTO_set_dynlock_lock_callback(ssl_dyn_lock);
+        CRYPTO_set_dynlock_destroy_callback(ssl_dyn_destroy);
+#endif
+
         have_init_ssl = 1;
     }
 }
