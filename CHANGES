@@ -1,4 +1,5 @@
 Serf 0.1.2 []
+  Teach serfmake to install into include/serf-0.
   Be more tolerant when servers close the connection without telling us.
   Do not open the connection until we have requests to deliver.
   Fix serfmake to produce the library that corresponds to the minor version.

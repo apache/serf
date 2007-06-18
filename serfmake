@@ -140,10 +140,10 @@ class Builder:
 
     try:
       self.libdir = os.path.join(params['prefix'], 'lib')
-      self.includedir = os.path.join(params['prefix'], 'include')
+      self.includedir = os.path.join(params['prefix'], 'include', 'serf-0')
     except:
       self.libdir = '/usr/local/lib'
-      self.includedir = '/usr/local/include'
+      self.includedir = '/usr/local/include/serf-0'
 
     self.load_vars()
     self.load_deps()
