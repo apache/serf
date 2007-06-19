@@ -1,4 +1,4 @@
-Serf 0.1.2 []
+Serf 0.1.2 [2007-6-18, r1114]
   Enable thread-safety with OpenSSL (Issue 19)
   Teach serfmake to install headers into include/serf-0.
   Be more tolerant when servers close the connection without telling us.
