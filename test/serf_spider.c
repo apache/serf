@@ -30,7 +30,6 @@
 #include "serf.h"
 #include "serf_bucket_util.h"
 
-#define SERF_VERSION_STRING "0.01"
 /*#define SERF_VERBOSE*/
 
 #if !APR_HAS_THREADS

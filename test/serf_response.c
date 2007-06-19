@@ -23,8 +23,6 @@
 
 #include "serf.h"
 
-#define SERF_VERSION_STRING "0.01"
-
 typedef struct {
     const char *resp_file;
     serf_bucket_t *bkt;

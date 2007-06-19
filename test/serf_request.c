@@ -17,10 +17,6 @@
 
 #include "serf.h"
 
-/* ### should this be in the header? */
-#define SERF_VERSION_STRING "0.01"
-
-
 static apr_status_t drain_bucket(serf_bucket_t *bucket)
 {
     apr_status_t status;

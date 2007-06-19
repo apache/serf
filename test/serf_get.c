@@ -25,8 +25,6 @@
 
 #include "serf.h"
 
-#define SERF_VERSION_STRING "0.01"
-
 typedef struct {
     int using_ssl;
     serf_ssl_context_t *ssl_ctx;
