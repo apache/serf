@@ -563,9 +563,9 @@ static void * APR_THREAD_FUNC parser_thread(apr_thread_t *thread, void *data)
     apr_pool_create(&subpool, pool);
 
     while (1) {
-        apr_pool_clear(subpool);
-
         doc_path_t *dup;
+
+        apr_pool_clear(subpool);
 
         /* Grab it. */
         apr_thread_mutex_lock(ctx->mutex);
