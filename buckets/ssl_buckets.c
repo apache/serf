@@ -571,6 +571,18 @@ static unsigned long ssl_id(void)
     /* FIXME: This is lame and not portable. -aaron */
     return (unsigned long) apr_os_thread_current();
 }
+
+static apr_status_t cleanup_ssl(void *data)
+{
+    CRYPTO_set_locking_callback(NULL);
+    CRYPTO_set_id_callback(NULL);
+    CRYPTO_set_dynlock_create_callback(NULL);
+    CRYPTO_set_dynlock_lock_callback(NULL);
+    CRYPTO_set_dynlock_destroy_callback(NULL);
+
+    return APR_SUCCESS;
+}
+
 #endif
 
 static int have_init_ssl = 0;
@@ -606,6 +618,8 @@ static void init_ssl_libraries(void)
         CRYPTO_set_dynlock_create_callback(ssl_dyn_create);
         CRYPTO_set_dynlock_lock_callback(ssl_dyn_lock);
         CRYPTO_set_dynlock_destroy_callback(ssl_dyn_destroy);
+
+        apr_pool_cleanup_register(ssl_pool, NULL, cleanup_ssl, cleanup_ssl);
 #endif
 
         have_init_ssl = 1;
