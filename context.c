@@ -130,6 +130,18 @@ struct serf_connection_t {
     void *closed_baton;
 };
 
+static apr_status_t remove_connection(serf_context_t *ctx,
+                                      serf_connection_t *conn)
+{
+    apr_pollfd_t desc = { 0 };
+
+    desc.desc_type = APR_POLL_SOCKET;
+    desc.desc.s = conn->skt;
+    desc.reqevents = conn->reqevents;
+
+    return apr_pollset_remove(ctx->pollset, &desc);
+}
+
 /* cleanup for sockets */
 static apr_status_t clean_skt(void *data)
 {
@@ -137,6 +149,7 @@ static apr_status_t clean_skt(void *data)
     apr_status_t status = APR_SUCCESS;
 
     if (conn->skt) {
+        remove_connection(conn->ctx, conn);
         status = apr_socket_close(conn->skt);
         conn->skt = NULL;
     }
@@ -166,6 +179,10 @@ static apr_status_t update_pollset(serf_connection_t *conn)
     serf_context_t *ctx = conn->ctx;
     apr_status_t status;
     apr_pollfd_t desc = { 0 };
+
+    if (!conn->skt) {
+        return APR_SUCCESS;
+    }
 
     /* Remove the socket from the poll set. */
     desc.desc_type = APR_POLL_SOCKET;
@@ -384,18 +401,6 @@ static apr_status_t cancel_request(serf_request_t *request,
     serf_bucket_mem_free(request->conn->allocator, request);
 
     return APR_SUCCESS;
-}
-
-static apr_status_t remove_connection(serf_context_t *ctx,
-                                      serf_connection_t *conn)
-{
-    apr_pollfd_t desc = { 0 };
-
-    desc.desc_type = APR_POLL_SOCKET;
-    desc.desc.s = conn->skt;
-    desc.reqevents = conn->reqevents;
-
-    return apr_pollset_remove(ctx->pollset, &desc);
 }
 
 static apr_status_t reset_connection(serf_connection_t *conn,
