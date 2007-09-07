@@ -996,6 +996,7 @@ SERF_DECLARE(serf_connection_t *) serf_connection_create(
     conn->closed_baton = closed_baton;
     conn->pool = pool;
     conn->allocator = serf_bucket_allocator_create(pool, NULL, NULL);
+    conn->stream = NULL;
 
     /* Create a subpool for our connection. */
     apr_pool_create(&conn->skt_pool, conn->pool);
