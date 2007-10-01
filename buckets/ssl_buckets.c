@@ -225,7 +225,6 @@ static int bio_bucket_write(BIO *bio, const char *in, int inl)
 static int bio_file_read(BIO *bio, char *in, int inlen)
 {
     apr_file_t *file = bio->ptr;
-    const char *data;
     apr_status_t status;
     apr_size_t len;
 

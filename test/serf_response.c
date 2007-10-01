@@ -125,6 +125,7 @@ int main(int argc, const char **argv)
         exit(-1);
     }
     accept_ctx.resp_file = argv[1];
+    accept_ctx.bkt = NULL;
 
     apr_initialize();
     atexit(apr_terminate);
