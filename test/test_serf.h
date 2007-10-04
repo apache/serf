@@ -44,6 +44,7 @@ extern apr_pool_t *test_pool;
 CuSuite *getsuite(void);
 
 CuSuite *test_context(void);
+CuSuite *test_buckets(void);
 
 typedef struct
 {

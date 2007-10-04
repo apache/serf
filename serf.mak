@@ -131,6 +131,7 @@ TEST_OBJS = \
     "$(INTDIR)\test_all.obj" \
     "$(INTDIR)\test_util.obj" \
     "$(INTDIR)\test_context.obj" \
+    "$(INTDIR)\test_buckets.obj" \
         
 ALL: INTDIR $(STATIC_LIB) TESTS
 

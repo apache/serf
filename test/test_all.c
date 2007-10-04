@@ -25,6 +25,7 @@ static const struct testlist {
     CuSuite *(*func)(void);
 } tests[] = {
     {"context", test_context},
+    {"buckets", test_buckets},
     {"LastTest", NULL}
 };
 

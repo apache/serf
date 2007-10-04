@@ -92,8 +92,16 @@ static apr_status_t serf_simple_readline(serf_bucket_t *bucket,
                                          int acceptable, int *found,
                                          const char **data, apr_size_t *len)
 {
-    /* ### need our utility function... */
-    return APR_ENOTIMPL;
+    simple_context_t *ctx = bucket->data;
+
+    /* Returned data will be from current position. */
+    *data = ctx->current;
+    serf_util_readline(&ctx->current, &ctx->remaining, acceptable, found);
+
+    /* See how much ctx->current moved forward. */
+    *len = ctx->current - *data;
+
+    return ctx->remaining ? APR_SUCCESS : APR_EOF;
 }
 
 static apr_status_t serf_simple_peek(serf_bucket_t *bucket,
