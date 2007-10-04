@@ -401,16 +401,14 @@ static apr_status_t serf_response_readline(serf_bucket_t *bucket,
 }
 
 /* ### need to implement */
-#define serf_response_read_iovec NULL
-#define serf_response_read_for_sendfile NULL
 #define serf_response_peek NULL
 
 SERF_DECLARE_DATA const serf_bucket_type_t serf_bucket_type_response = {
     "RESPONSE",
     serf_response_read,
     serf_response_readline,
-    serf_response_read_iovec,
-    serf_response_read_for_sendfile,
+    serf_default_read_iovec,
+    serf_default_read_for_sendfile,
     serf_default_read_bucket,
     serf_response_peek,
     serf_response_destroy_and_data,

@@ -360,16 +360,14 @@ static apr_status_t serf_deflate_read(serf_bucket_t *bucket,
 
 /* ### need to implement */
 #define serf_deflate_readline NULL
-#define serf_deflate_read_iovec NULL
-#define serf_deflate_read_for_sendfile NULL
 #define serf_deflate_peek NULL
 
 SERF_DECLARE_DATA const serf_bucket_type_t serf_bucket_type_deflate = {
     "DEFLATE",
     serf_deflate_read,
     serf_deflate_readline,
-    serf_deflate_read_iovec,
-    serf_deflate_read_for_sendfile,
+    serf_default_read_iovec,
+    serf_default_read_for_sendfile,
     serf_default_read_bucket,
     serf_deflate_peek,
     serf_deflate_destroy_and_data,
