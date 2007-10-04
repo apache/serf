@@ -133,7 +133,6 @@ TEST_OBJS = \
     "$(INTDIR)\test_context.obj" \
         
 ALL: INTDIR $(STATIC_LIB) TESTS
- 
 
 CLEAN:
   -@erase /q "$(INTDIR)" >nul
@@ -154,7 +153,7 @@ CHECK: INTDIR TESTS
   
 "$(STATIC_LIB)": INTDIR $(LIB32_OBJS)
   $(LIB32) -lib @<<
-    $(LIB32_FLAGS) $(LIB32_OBJS) /OUT:"$(STATIC_LIB)"
+    $(LIB32_FLAGS) $(LIB32_OBJS) /OUT:$@
 <<
 
 
@@ -174,13 +173,13 @@ CHECK: INTDIR TESTS
 <<
 
 $(INTDIR)\serf_response.exe: $(INTDIR)\serf_response.obj $(STATIC_LIB)
-  $(LIB32) /DEBUG  $(INTDIR)\serf_response.obj /OUT:$(INTDIR)\serf_response.exe $(LIB32_FLAGS) $(STATIC_LIB)
+  $(LIB32) /DEBUG /OUT:$@ $** $(LIB32_FLAGS)
 
 $(INTDIR)\serf_get.exe: $(INTDIR)\serf_get.obj $(STATIC_LIB)
-  $(LIB32) $(INTDIR)\serf_get.obj /OUT:$(INTDIR)\serf_get.exe $(LIB32_FLAGS) $(STATIC_LIB)
+  $(LIB32) /OUT:$@ $** $(LIB32_FLAGS)
 
 $(INTDIR)\serf_request.exe: $(INTDIR)\serf_request.obj $(STATIC_LIB)
-  $(LIB32) $(INTDIR)\serf_request.obj /OUT:$(INTDIR)\serf_request.exe $(LIB32_FLAGS) $(STATIC_LIB)
+  $(LIB32) /OUT:$@ $** $(LIB32_FLAGS)
 
 $(INTDIR)\test_all.exe: $(TEST_OBJS) $(STATIC_LIB)
   $(LIB32) /DEBUG /OUT:$@ $** $(LIB32_FLAGS)
