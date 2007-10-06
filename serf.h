@@ -314,6 +314,25 @@ SERF_DECLARE(serf_request_t *) serf_connection_request_create(
     void *setup_baton);
 
 /**
+ * Construct a request object for the @a conn connection, add it in the
+ * list as the next to-be-written request before all unwritten requests.
+ *
+ * When it is time to deliver the request, the @a setup callback will
+ * be invoked with the @a setup_baton passed into it to complete the
+ * construction of the request object.
+ *
+ * If the request has not (yet) been delivered, then it may be canceled
+ * with @see serf_request_cancel.
+ *
+ * Invoking any calls other than @see serf_request_cancel before the setup
+ * callback executes is not supported.
+ */
+SERF_DECLARE(serf_request_t *) serf_connection_priority_request_create(
+    serf_connection_t *conn,
+    serf_request_setup_t setup,
+    void *setup_baton);
+
+/**
  * Cancel the request specified by the @a request object.
  *
  * If the request has been scheduled for delivery, then its response

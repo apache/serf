@@ -1096,6 +1096,61 @@ SERF_DECLARE(serf_request_t *) serf_connection_request_create(
     return request;
 }
 
+SERF_DECLARE(serf_request_t *) serf_connection_priority_request_create(
+    serf_connection_t *conn,
+    serf_request_setup_t setup,
+    void *setup_baton)
+{
+    serf_request_t *request;
+    serf_request_t *iter, *prev;
+
+    request = serf_bucket_mem_alloc(conn->allocator, sizeof(*request));
+    request->conn = conn;
+    request->setup = setup;
+    request->setup_baton = setup_baton;
+    request->handler = NULL;
+    request->respool = NULL;
+    request->req_bkt = NULL;
+    request->resp_bkt = NULL;
+    request->next = NULL;
+
+    /* Link the new request after the last written request, but before all
+       upcoming requests. */
+    if (conn->closing) {
+        iter = conn->hold_requests;
+    }
+    else {
+        iter = conn->requests;
+    }
+    prev = NULL;
+
+    /* Find a request that has data which needs to be delivered. */
+    while (iter != NULL && iter->req_bkt == NULL && iter->setup == NULL) {
+        prev = iter;
+        iter = iter->next;
+    }
+
+    if (prev) {
+        request->next = iter;
+        prev->next = request;
+    } else {
+        request->next = iter;
+        if (conn->closing) {
+            conn->hold_requests = request;
+        }
+        else {
+            conn->requests = request;
+        }
+    }
+
+    if (! conn->closing) {
+        /* Ensure our pollset becomes writable in context run */
+        conn->ctx->dirty_pollset = 1;
+        conn->dirty_conn = 1;
+    }
+
+    return request;
+}
 
 SERF_DECLARE(apr_status_t) serf_request_cancel(serf_request_t *request)
 {
