@@ -41,9 +41,9 @@ static void test_simple_bucket(CuTest *tc)
     data = 0;
     status = serf_bucket_readline(bkt, SERF_NEWLINE_CRLF, &found, &data, &len);
 
-    CuAssertIntEquals(tc, status, APR_SUCCESS);
-    CuAssertIntEquals(tc, found, SERF_NEWLINE_CRLF);
-    CuAssertIntEquals(tc, len, 7);
+    CuAssertIntEquals(tc, APR_SUCCESS, status);
+    CuAssertIntEquals(tc, SERF_NEWLINE_CRLF, found);
+    CuAssertIntEquals(tc, 7, len);
     CuAssert(tc, data, strncmp("line1" CRLF, data, len) == 0);
 
     /* Initialize parameters to check that they will be initialized. */
@@ -51,9 +51,9 @@ static void test_simple_bucket(CuTest *tc)
     data = 0;
     status = serf_bucket_readline(bkt, SERF_NEWLINE_CRLF, &found, &data, &len);
 
-    CuAssertIntEquals(tc, status, APR_EOF);
-    CuAssertIntEquals(tc, found, SERF_NEWLINE_NONE);
-    CuAssertIntEquals(tc, len, 5);
+    CuAssertIntEquals(tc, APR_EOF, status);
+    CuAssertIntEquals(tc, SERF_NEWLINE_NONE, found);
+    CuAssertIntEquals(tc, 5, len);
     CuAssert(tc, data, strncmp("line2", data, len) == 0);
 }
 
