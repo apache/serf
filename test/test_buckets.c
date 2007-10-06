@@ -22,7 +22,7 @@
 
 #define CRLF "\r\n"
 
-static void test_simple_bucket(CuTest *tc)
+static void test_simple_bucket_readline(CuTest *tc)
 {
     serf_bucket_alloc_t *alloc = serf_bucket_allocator_create(test_pool, NULL, NULL);
     apr_status_t status;
@@ -61,7 +61,7 @@ CuSuite *test_buckets(void)
 {
     CuSuite *suite = CuSuiteNew();
 
-    SUITE_ADD_TEST(suite, test_simple_bucket);
+    SUITE_ADD_TEST(suite, test_simple_bucket_readline);
 
     return suite;
 }
