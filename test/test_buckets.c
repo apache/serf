@@ -37,20 +37,20 @@ static void test_simple_bucket(CuTest *tc)
         alloc);
 
     /* Initialize parameters to check that they will be initialized. */
-    len = 0x112233; 
+    len = 0x112233;
     data = 0;
     status = serf_bucket_readline(bkt, SERF_NEWLINE_CRLF, &found, &data, &len);
-    
+
     CuAssertIntEquals(tc, status, APR_SUCCESS);
     CuAssertIntEquals(tc, found, SERF_NEWLINE_CRLF);
     CuAssertIntEquals(tc, len, 7);
     CuAssert(tc, data, strncmp("line1" CRLF, data, len) == 0);
 
     /* Initialize parameters to check that they will be initialized. */
-    len = 0x112233; 
+    len = 0x112233;
     data = 0;
     status = serf_bucket_readline(bkt, SERF_NEWLINE_CRLF, &found, &data, &len);
-    
+
     CuAssertIntEquals(tc, status, APR_EOF);
     CuAssertIntEquals(tc, found, SERF_NEWLINE_NONE);
     CuAssertIntEquals(tc, len, 5);

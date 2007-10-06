@@ -107,7 +107,7 @@ static apr_status_t setup_request(serf_request_t *request,
                                          serf_request_get_alloc(request));
     *req_bkt = serf_bucket_request_create(ctx->method, ctx->path, body_bkt,
                                       serf_request_get_alloc(request));
-    
+
     APR_ARRAY_PUSH(ctx->sent_requests, int) = ctx->req_id;
 
     *acceptor = ctx->acceptor;
@@ -202,9 +202,9 @@ void test_serf_connection_request_create(CuTest *tc)
             status = APR_SUCCESS;
         CuAssertIntEquals(tc, APR_SUCCESS, status);
 
-        status = serf_context_run(tb->context, 0, iter_pool);        
+        status = serf_context_run(tb->context, 0, iter_pool);
         if (APR_STATUS_IS_TIMEUP(status))
-            status = APR_SUCCESS;        
+            status = APR_SUCCESS;
         CuAssertIntEquals(tc, APR_SUCCESS, status);
 
         /* Debugging purposes only! */

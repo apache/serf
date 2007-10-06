@@ -72,14 +72,14 @@ typedef struct {
     apr_size_t action_count;
     /* Index of current action. */
     apr_size_t cur_action;
-    
+
     /* Position in action buffer. */
     apr_size_t action_buf_pos;
 
     /* Address for server binding. */
     apr_sockaddr_t *serv_addr;
     apr_socket_t *serv_sock;
-    
+
     /* Accepted client socket. NULL if there is no client socket. */
     apr_socket_t *client_sock;
 } test_baton_t;

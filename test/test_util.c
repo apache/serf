@@ -89,7 +89,7 @@ static apr_status_t replay(test_baton_t *tb,
 
         if (tb->options & TEST_SERVER_DUMP)
             fwrite(buf, len, 1, stdout);
-            
+
         if (strncmp(buf, action->text + tb->action_buf_pos, len) != 0) {
             /* ## TODO: Better diagnostics. */
             printf("While expected of: (\n");
@@ -100,19 +100,19 @@ static apr_status_t replay(test_baton_t *tb,
         }
 
         tb->action_buf_pos += len;
-        
+
         if (tb->action_buf_pos >= msg_len)
             next_action(tb);
     }
     else if (action->kind == SERVER_SEND) {
         apr_size_t msg_len;
         apr_size_t len;
-        
+
         msg_len = strlen(action->text);
 
         len = msg_len - tb->action_buf_pos;
         status = apr_socket_send(tb->client_sock, action->text + tb->action_buf_pos, &len);
-                
+
         if (tb->options & TEST_SERVER_DUMP)
             fwrite(action->text + tb->action_buf_pos, len, 1, stdout);
 
@@ -170,10 +170,10 @@ apr_status_t test_server_run(test_baton_t *tb,
             status = apr_socket_accept(&tb->client_sock, tb->serv_sock, tb->pool);
             if (status != APR_SUCCESS)
               return status;
-            
+
             apr_socket_opt_set(tb->client_sock, APR_SO_NONBLOCK, 1);
             apr_socket_timeout_set(tb->client_sock, 0);
-            
+
             /* Start replay from first action. */
             tb->cur_action = 0;
             tb->action_buf_pos = 0;
@@ -183,7 +183,7 @@ apr_status_t test_server_run(test_baton_t *tb,
         if (desc->desc.s == tb->client_sock) {
             /* Replay data to socket. */
             status = replay(tb, pool);
-            
+
             if (APR_STATUS_IS_EOF(status)) {
                 apr_socket_close(tb->client_sock);
                 tb->client_sock = NULL;
@@ -193,10 +193,10 @@ apr_status_t test_server_run(test_baton_t *tb,
             }
             else if (status != APR_SUCCESS) {
                 /* Real error. */
-                return status; 
+                return status;
             }
         }
-        
+
         desc++;
     }
 
@@ -248,7 +248,7 @@ apr_status_t test_server_create(test_baton_t **tb_p,
 
     tb = apr_palloc(pool, sizeof(*tb));
     *tb_p = tb;
-   
+
     status = get_server_address(&tb->serv_addr, pool);
     if (status != APR_SUCCESS)
       return status;
@@ -280,7 +280,7 @@ apr_status_t test_server_destroy(test_baton_t *tb, apr_pool_t *pool)
     serf_connection_close(tb->connection);
 
     apr_socket_close(tb->serv_sock);
-   
+
     if (tb->client_sock) {
         apr_socket_close(tb->client_sock);
     }
