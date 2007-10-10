@@ -238,7 +238,7 @@ static apr_status_t setup_request(serf_request_t *request,
     return APR_SUCCESS;
 }
 
-void print_usage(apr_pool_t *pool)
+static void print_usage(apr_pool_t *pool)
 {
     puts("serf_get [options] URL");
     puts("-h\tDisplay this help");
