@@ -334,12 +334,120 @@ void test_serf_connection_priority_request_create(CuTest *tc)
     test_server_destroy(tb, test_pool);
 }
 
+#define NUM_REQUESTS 10
+void test_serf_closed_connection(CuTest *tc)
+{
+    apr_pool_t *child_pool;
+    test_baton_t *tb;
+    apr_array_header_t *accepted_requests, *handled_requests, *sent_requests;
+    apr_status_t status;
+    handler_baton_t handler_ctx[NUM_REQUESTS];
+    int done = FALSE, i;
+
+    test_server_action_t action_list[] = {
+        {SERVER_RECV,
+         CHUNCKED_REQUEST(1, "1")
+         CHUNCKED_REQUEST(1, "2")
+         CHUNCKED_REQUEST(1, "3")
+         CHUNCKED_REQUEST(1, "4")
+         CHUNCKED_REQUEST(1, "5")
+         CHUNCKED_REQUEST(1, "6")
+         CHUNCKED_REQUEST(1, "7")
+         CHUNCKED_REQUEST(1, "8")
+         CHUNCKED_REQUEST(1, "9")
+         CHUNCKED_REQUEST(2, "10")
+        },
+        {SERVER_SEND,
+         CHUNKED_EMPTY_RESPONSE
+         CHUNKED_EMPTY_RESPONSE
+         CHUNKED_EMPTY_RESPONSE
+         "HTTP/1.1 200 OK" CRLF\
+         "Transfer-Encoding: chunked" CRLF\
+         "Connection: close" CRLF\
+         CRLF\
+         "0" CRLF\
+         CRLF
+         CHUNKED_EMPTY_RESPONSE
+         CHUNKED_EMPTY_RESPONSE
+         CHUNKED_EMPTY_RESPONSE
+         "HTTP/1.1 200 OK" CRLF\
+         "Transfer-Encoding: chunked" CRLF\
+         "Connection: close" CRLF\
+         CRLF\
+         "0" CRLF\
+         CRLF
+         CHUNKED_EMPTY_RESPONSE
+         CHUNKED_EMPTY_RESPONSE
+        }
+    };
+
+    accepted_requests = apr_array_make(test_pool, NUM_REQUESTS, sizeof(int));
+    sent_requests = apr_array_make(test_pool, NUM_REQUESTS, sizeof(int));
+    handled_requests = apr_array_make(test_pool, NUM_REQUESTS, sizeof(int));
+
+    /* Set up a test context with a server. */
+    status = test_server_create(&tb, action_list, 2, 0, test_pool);
+
+    for (i = 0 ; i < NUM_REQUESTS ; i++) {
+        /* Send some requests on the connections */
+        handler_ctx[i].method = "GET";
+        handler_ctx[i].path = "/";
+        handler_ctx[i].done = FALSE;
+
+        handler_ctx[i].acceptor = accept_response;
+        handler_ctx[i].acceptor_baton = NULL;
+        handler_ctx[i].handler = handle_response;
+        handler_ctx[i].req_id = i+1;
+        handler_ctx[i].accepted_requests = accepted_requests;
+        handler_ctx[i].sent_requests = sent_requests;
+        handler_ctx[i].handled_requests = handled_requests;
+
+        serf_connection_request_create(tb->connection,
+                                       setup_request,
+                                       &handler_ctx[i]);
+    }
+
+    while (1) {
+        status = test_server_run(tb, 0, test_pool);
+        if (APR_STATUS_IS_TIMEUP(status))
+            status = APR_SUCCESS;
+        CuAssertIntEquals(tc, APR_SUCCESS, status);
+
+        status = serf_context_run(tb->context, 0, test_pool);
+        if (APR_STATUS_IS_TIMEUP(status))
+            status = APR_SUCCESS;
+        CuAssertIntEquals(tc, APR_SUCCESS, status);
+
+        /* Debugging purposes only! */
+        serf_debug__closed_conn(tb->bkt_alloc);
+
+        done = TRUE;
+        for (i = 0 ; i < NUM_REQUESTS ; i++)
+            if (handler_ctx[i].done == FALSE) {
+                done = FALSE;
+                break;
+            }
+        if (done)
+            break;
+    }
+
+    /* Check that all requests were received */
+    CuAssertIntEquals(tc, NUM_REQUESTS, sent_requests->nelts);
+    CuAssertIntEquals(tc, NUM_REQUESTS, accepted_requests->nelts);
+    CuAssertIntEquals(tc, NUM_REQUESTS, handled_requests->nelts);
+
+    /* Cleanup */
+    test_server_destroy(tb, test_pool);
+}
+#undef NUM_REQUESTS
+
 CuSuite *test_context(void)
 {
     CuSuite *suite = CuSuiteNew();
 
     SUITE_ADD_TEST(suite, test_serf_connection_request_create);
     SUITE_ADD_TEST(suite, test_serf_connection_priority_request_create);
+    SUITE_ADD_TEST(suite, test_serf_closed_connection);
 
     return suite;
 }
