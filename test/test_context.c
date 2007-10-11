@@ -337,7 +337,6 @@ void test_serf_connection_priority_request_create(CuTest *tc)
 #define NUM_REQUESTS 10
 void test_serf_closed_connection(CuTest *tc)
 {
-    apr_pool_t *child_pool;
     test_baton_t *tb;
     apr_array_header_t *accepted_requests, *handled_requests, *sent_requests;
     apr_status_t status;
@@ -361,20 +360,20 @@ void test_serf_closed_connection(CuTest *tc)
          CHUNKED_EMPTY_RESPONSE
          CHUNKED_EMPTY_RESPONSE
          CHUNKED_EMPTY_RESPONSE
-         "HTTP/1.1 200 OK" CRLF\
-         "Transfer-Encoding: chunked" CRLF\
-         "Connection: close" CRLF\
-         CRLF\
-         "0" CRLF\
+         "HTTP/1.1 200 OK" CRLF
+         "Transfer-Encoding: chunked" CRLF
+         "Connection: close" CRLF
+         CRLF
+         "0" CRLF
          CRLF
          CHUNKED_EMPTY_RESPONSE
          CHUNKED_EMPTY_RESPONSE
          CHUNKED_EMPTY_RESPONSE
-         "HTTP/1.1 200 OK" CRLF\
-         "Transfer-Encoding: chunked" CRLF\
-         "Connection: close" CRLF\
-         CRLF\
-         "0" CRLF\
+         "HTTP/1.1 200 OK" CRLF
+         "Transfer-Encoding: chunked" CRLF
+         "Connection: close" CRLF
+         CRLF
+         "0" CRLF
          CRLF
          CHUNKED_EMPTY_RESPONSE
          CHUNKED_EMPTY_RESPONSE
