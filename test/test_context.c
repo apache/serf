@@ -334,6 +334,9 @@ void test_serf_connection_priority_request_create(CuTest *tc)
     test_server_destroy(tb, test_pool);
 }
 
+/* TODO: this test would be more useful if our test server would also close
+   the connection after sending the response with the Connection: close 
+   header */
 #define NUM_REQUESTS 10
 void test_serf_closed_connection(CuTest *tc)
 {
