@@ -16,6 +16,7 @@
 #include "apr.h"
 #include "apr_pools.h"
 #include <apr_poll.h>
+#include <stdlib.h>
 
 #include "serf.h"
 
@@ -213,7 +214,7 @@ static apr_status_t prepare_server(test_baton_t *tb,
     apr_socket_t *serv_sock;
 
     /* create server socket */
-    status = apr_socket_create(&serv_sock, APR_INET, SOCK_STREAM, pool);
+    status = apr_socket_create(&serv_sock, APR_INET, SOCK_STREAM, 0, pool);
     if (status != APR_SUCCESS)
         return status;
 

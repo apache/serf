@@ -39,7 +39,7 @@ typedef struct {
 
     const char *method;
     const char *path;
-    BOOL done;
+    int done;
 } handler_baton_t;
 
 static serf_bucket_t* accept_response(serf_request_t *request,
