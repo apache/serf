@@ -34,11 +34,24 @@ LIB_FILES = [
   ('buckets', 'chunk_buckets'),
   ]
 
+TEST_DEPS = [
+	('test', 'CuTest'),
+	('test', 'test_util'),
+	('test', 'test_context'),
+	('test', 'test_buckets'),
+  ]
+
+TEST_HDR_FILES = [
+  ('test', 'CuTest'),
+  ('test', 'test_serf'),
+  ]
+
 TEST_FILES = [
   ('test', 'serf_get'),
   ('test', 'serf_response'),
   ('test', 'serf_request'),
   ('test', 'serf_spider'),
+  ('test', 'test_all'),
   ]
 
 TESTCASES = [
@@ -108,15 +121,20 @@ def cmd_install(param):
 
 def cmd_check(param):
   builder = Builder(param)
-  builder.build_target(File('test', 'serf_response', None), False)
+  for dirpath, fname in TEST_FILES:
+    builder.build_target(File(dirpath, fname, None), False)
 
   for dirpath, fname in TESTCASES:
     case = os.path.join(dirpath, fname)
     print '== Testing %s ==' % case
     result = os.system('%s %s' % (os.path.join('test', 'serf_response'), case))
     if result:
-      raise TestError(case, result)
+      raise TestError("", result)
 
+  # run the test suite based on the CuTest framework
+  result = os.system(os.path.join('test', 'test_all'))
+  if result:
+    raise TestError(case, result)  
 
 def cmd_clean(param):
   clean = [File(dirpath, fname, 'o') for dirpath, fname in LIB_FILES]
@@ -125,6 +143,8 @@ def cmd_clean(param):
   clean += [File(dirpath, fname, 'o') for dirpath, fname in TEST_FILES]
   clean += [File(dirpath, fname, 'lo') for dirpath, fname in TEST_FILES]
   clean += [File(dirpath, fname, None) for dirpath, fname in TEST_FILES]
+  clean += [File(dirpath, fname, 'o') for dirpath, fname in TEST_DEPS]
+  clean += [File(dirpath, fname, 'lo') for dirpath, fname in TEST_DEPS]
   for i in clean:
     if i.mtime:
       os.remove(i.fname)
@@ -190,6 +210,14 @@ class Builder:
     self._add_dep(lib, libobjs, cmd)
 
     # load the test program dependencies now
+    testhdrs = hdrs
+    testhdrs += [File(dirpath, fname, 'h') for dirpath, fname in TEST_HDR_FILES]
+    testdeps = [File(dirpath, fname, 'c') for dirpath, fname in TEST_DEPS]
+    testobjs = [File(dirpath, fname, 'lo') for dirpath, fname in TEST_DEPS]
+
+    for testsrc, testobj in zip(testdeps, testobjs):
+      self._add_compile(testsrc, testobj, testhdrs)
+
     for dirpath, fname in TEST_FILES:
       src = File(dirpath, fname, 'c')
       obj = File(dirpath, fname, 'lo')
@@ -197,10 +225,18 @@ class Builder:
 
       self._add_compile(src, obj, hdrs)
 
-      cmd = '%s --silent --mode=link %s %s -static -o %s %s %s %s' % (
-        self.LIBTOOL, self.CC, self.LDFLAGS,
-        prog.fname, lib.fname, obj.fname, self.LIBS)
-      self._add_dep(prog, [lib, obj], cmd)
+      # test_all requires extra dependencies
+      if fname == "test_all":
+        cmd = '%s --silent --mode=link %s %s -static -o %s %s %s %s' % (
+          self.LIBTOOL, self.CC, self.LDFLAGS,
+          prog.fname, lib.fname, ' '.join([l.fname for l in [obj] + testobjs]), 
+          self.LIBS)
+        self._add_dep(prog, [lib, obj] + testobjs, cmd)
+      else:
+        cmd = '%s --silent --mode=link %s %s -static -o %s %s %s %s' % (
+          self.LIBTOOL, self.CC, self.LDFLAGS,
+          prog.fname, lib.fname, obj.fname, self.LIBS)
+        self._add_dep(prog, [lib, obj], cmd)
 
   def _add_compile(self, src, obj, hdrs):
     cmd = '%s --silent --mode=compile %s %s %s %s -c -o %s %s' % (
