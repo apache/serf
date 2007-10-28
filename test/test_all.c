@@ -16,6 +16,7 @@
 #include "apr.h"
 #include "apr_pools.h"
 #include "test_serf.h"
+#include <stdlib.h>
 
 /* Top-level pool which can be used by tests. */
 apr_pool_t *test_pool;
