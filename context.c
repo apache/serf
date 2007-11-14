@@ -59,13 +59,19 @@ struct serf_request_t {
     struct serf_request_t *next;
 };
 
+typedef struct serf_pollset_t {
+    /* the set of connections to poll */
+    apr_pollset_t *pollset;
+} serf_pollset_t;
+
 struct serf_context_t {
     /* the pool used for self and for other allocations */
     apr_pool_t *pool;
 
-    /* the set of connections to poll */
-    apr_pollset_t *pollset;
-
+    void *pollset_baton;
+    serf_socket_add_t pollset_add;
+    serf_socket_remove_t pollset_rm;
+    
     /* one of our connections has a dirty pollset state. */
     int dirty_pollset;
 
@@ -176,7 +182,8 @@ static apr_status_t update_pollset(serf_connection_t *conn)
     desc.desc.s = conn->skt;
     desc.reqevents = conn->reqevents;
 
-    status = apr_pollset_remove(ctx->pollset, &desc);
+    status = ctx->pollset_rm(ctx->pollset_baton,
+                              &desc, conn);
     if (status && !APR_STATUS_IS_NOTFOUND(status))
         return status;
 
@@ -209,15 +216,14 @@ static apr_status_t update_pollset(serf_connection_t *conn)
         }
     }
 
-    desc.client_data = conn;
-
     /* save our reqevents, so we can pass it in to remove later. */
     conn->reqevents = desc.reqevents;
 
     /* Note: even if we don't want to read/write this socket, we still
      * want to poll it for hangups and errors.
      */
-    return apr_pollset_add(ctx->pollset, &desc);
+    return ctx->pollset_add(ctx->pollset_baton,
+                            &desc, conn);
 }
 
 #ifdef SERF_DEBUG_BUCKET_USE
@@ -399,7 +405,8 @@ static apr_status_t remove_connection(serf_context_t *ctx,
     desc.desc.s = conn->skt;
     desc.reqevents = conn->reqevents;
 
-    return apr_pollset_remove(ctx->pollset, &desc);
+    return ctx->pollset_rm(ctx->pollset_baton,
+                           &desc, conn);
 }
 
 static apr_status_t reset_connection(serf_connection_t *conn,
@@ -918,19 +925,94 @@ static apr_status_t check_dirty_pollsets(serf_context_t *ctx)
     return APR_SUCCESS;
 }
 
-SERF_DECLARE(serf_context_t *) serf_context_create(apr_pool_t *pool)
+
+static apr_status_t pollset_add(void *user_baton,
+                                 apr_pollfd_t *pfd,
+                                 void *serf_baton)
+{
+    serf_pollset_t *s = (serf_pollset_t*)user_baton;
+    pfd->client_data = serf_baton;
+    return apr_pollset_add(s->pollset, pfd);
+}
+
+static apr_status_t pollset_rm(void *user_baton,
+                                apr_pollfd_t *pfd,
+                                void *serf_baton)
+{
+    serf_pollset_t *s = (serf_pollset_t*)user_baton;
+    pfd->client_data = serf_baton;
+    return apr_pollset_remove(s->pollset, pfd);
+}
+
+
+SERF_DECLARE(serf_context_t *) serf_context_create_ex(apr_pool_t *pool,
+                                                      void *user_baton,
+                                                      serf_socket_add_t addf,
+                                                      serf_socket_remove_t rmf)
 {
     serf_context_t *ctx = apr_pcalloc(pool, sizeof(*ctx));
-
+    
     ctx->pool = pool;
-
-    /* build the pollset with a (default) number of connections */
-    (void) apr_pollset_create(&ctx->pollset, MAX_CONN, pool, 0);
-
+    
+    if (user_baton != NULL) {
+        ctx->pollset_baton = user_baton;
+        ctx->pollset_add = addf;
+        ctx->pollset_rm = rmf;
+    }
+    else {
+        /* build the pollset with a (default) number of connections */
+        serf_pollset_t *ps = apr_pcalloc(pool, sizeof(*ps));
+        (void) apr_pollset_create(&ps->pollset, MAX_CONN, pool, 0);
+        ctx->pollset_baton = ps;
+        ctx->pollset_add = pollset_add;
+        ctx->pollset_rm = pollset_rm;
+    }
+    
     /* default to a single connection since that is the typical case */
     ctx->conns = apr_array_make(pool, 1, sizeof(serf_connection_t *));
-
+    
+    
     return ctx;
+}
+
+SERF_DECLARE(serf_context_t *) serf_context_create(apr_pool_t *pool)
+{
+    return serf_context_create_ex(pool, NULL, NULL, NULL);
+}
+
+SERF_DECLARE(apr_status_t) serf_context_prerun(serf_context_t *ctx)
+{
+    apr_status_t status = APR_SUCCESS;
+    if ((status = open_connections(ctx)) != APR_SUCCESS)
+        return status;
+    
+    if ((status = check_dirty_pollsets(ctx)) != APR_SUCCESS)
+        return status;
+    return status;
+}
+
+SERF_DECLARE(apr_status_t) serf_event_trigger(serf_context_t *s,
+                                              void *baton,
+                                              const apr_pollfd_t *desc)
+{
+    apr_status_t status = APR_SUCCESS;
+
+    serf_connection_t *conn = baton;
+    
+    /* apr_pollset_poll() can return a conn multiple times... */
+    if ((conn->seen_in_pollset & desc->rtnevents) != 0 ||
+        (conn->seen_in_pollset & APR_POLLHUP) != 0) {
+        return APR_SUCCESS;
+    }
+
+    conn->seen_in_pollset |= desc->rtnevents;
+    
+    if ((status = process_connection(conn,
+                                     desc->rtnevents)) != APR_SUCCESS) {
+        return status;
+    }
+    
+    return status;
 }
 
 SERF_DECLARE(apr_status_t) serf_context_run(serf_context_t *ctx,
@@ -940,14 +1022,13 @@ SERF_DECLARE(apr_status_t) serf_context_run(serf_context_t *ctx,
     apr_status_t status;
     apr_int32_t num;
     const apr_pollfd_t *desc;
-
-    if ((status = open_connections(ctx)) != APR_SUCCESS)
+    serf_pollset_t *ps = (serf_pollset_t*)ctx->pollset_baton;
+ 
+    if ((status = serf_context_prerun(ctx)) != APR_SUCCESS) {
         return status;
+    }
 
-    if ((status = check_dirty_pollsets(ctx)) != APR_SUCCESS)
-        return status;
-
-    if ((status = apr_pollset_poll(ctx->pollset, duration, &num,
+    if ((status = apr_pollset_poll(ps->pollset, duration, &num,
                                    &desc)) != APR_SUCCESS) {
         /* ### do we still need to dispatch stuff here?
            ### look at the potential return codes. map to our defined
@@ -959,18 +1040,12 @@ SERF_DECLARE(apr_status_t) serf_context_run(serf_context_t *ctx,
     while (num--) {
         serf_connection_t *conn = desc->client_data;
 
-        /* apr_pollset_poll() can return a conn multiple times... */
-        if ((conn->seen_in_pollset & desc->rtnevents) != 0 ||
-            (conn->seen_in_pollset & APR_POLLHUP) != 0) {
-            continue;
-        }
-        conn->seen_in_pollset |= desc->rtnevents;
-
-        if ((status = process_connection(conn,
-                                         desc++->rtnevents)) != APR_SUCCESS) {
-            /* ### what else to do? */
+        status = serf_event_trigger(ctx, conn, desc);
+        if (status) {
             return status;
         }
+
+        desc++;
     }
 
     return APR_SUCCESS;

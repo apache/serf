@@ -27,6 +27,7 @@
 #include <apr_pools.h>
 #include <apr_network_io.h>
 #include <apr_time.h>
+#include <apr_poll.h>
 
 #include "serf_declare.h"
 
@@ -77,6 +78,22 @@ typedef struct serf_request_t serf_request_t;
  */
 SERF_DECLARE(serf_context_t *) serf_context_create(apr_pool_t *pool);
 
+typedef apr_status_t (*serf_socket_add_t)(void *user_baton,
+                                          apr_pollfd_t *pfd,
+                                          void *serf_baton);
+typedef apr_status_t (*serf_socket_remove_t)(void *user_baton,
+                                             apr_pollfd_t *pfd,
+                                             void *serf_baton);
+    
+SERF_DECLARE(serf_context_t *) serf_context_create_ex(apr_pool_t *pool,
+                                                      void *user_baton,
+                                                      serf_socket_add_t addf,
+                                                      serf_socket_remove_t rmf);
+
+SERF_DECLARE(apr_status_t) serf_event_trigger(serf_context_t *s,
+                                              void *baton,
+                                              const apr_pollfd_t *pfd);
+    
 /** @see serf_context_run should not block at all. */
 #define SERF_DURATION_NOBLOCK 0
 /** @see serf_context_run should run for (nearly) "forever". */
@@ -103,6 +120,9 @@ SERF_DECLARE(apr_status_t) serf_context_run(serf_context_t *ctx,
                                             apr_short_interval_time_t duration,
                                             apr_pool_t *pool);
 
+
+SERF_DECLARE(apr_status_t) serf_context_prerun(serf_context_t *ctx);
+    
 
 /** @} */
 
