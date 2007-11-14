@@ -114,7 +114,7 @@ install: $(TARGET_LIB)
 	done
 
 clean:
-	rm -f $(TARGET_LIB) $(OBJECTS) $(OBJECTS:.lo=.o) $(PROGRAMS) $(TEST_OBJECTS) $(TEST_OBJECTS:.lo=.o)
+	rm -f $(TARGET_LIB) $(OBJECTS) $(OBJECTS:.lo=.o) $(PROGRAMS) $(TEST_OBJECTS) $(TEST_OBJECTS:.lo=.o) $(TEST_SUITE_OBJECTS) $(TEST_SUITE_OBJECTS:.lo=.o)
 	for subdir in . buckets test; do \
 		(cd $$subdir && rm -rf .libs) ; \
 	done
