@@ -24,7 +24,8 @@
 
 static void test_simple_bucket_readline(CuTest *tc)
 {
-    serf_bucket_alloc_t *alloc = serf_bucket_allocator_create(test_pool, NULL, NULL);
+    serf_bucket_alloc_t *alloc = serf_bucket_allocator_create(test_pool, NULL,
+                                                              NULL);
     apr_status_t status;
     serf_bucket_t *bkt;
     const char *data;
@@ -84,7 +85,8 @@ static void read_and_check_bucket(CuTest *tc, serf_bucket_t *bkt,
 
 static void test_response_bucket_read(CuTest *tc)
 {
-    serf_bucket_alloc_t *alloc = serf_bucket_allocator_create(test_pool, NULL, NULL);
+    serf_bucket_alloc_t *alloc = serf_bucket_allocator_create(test_pool, NULL,
+                                                              NULL);
     serf_bucket_t *bkt, *tmp;
 
     tmp = SERF_BUCKET_SIMPLE_STRING(
@@ -102,7 +104,8 @@ static void test_response_bucket_read(CuTest *tc)
 
 static void test_response_bucket_chunked_read(CuTest *tc)
 {
-    serf_bucket_alloc_t *alloc = serf_bucket_allocator_create(test_pool, NULL, NULL);
+    serf_bucket_alloc_t *alloc = serf_bucket_allocator_create(test_pool, NULL,
+                                                              NULL);
     serf_bucket_t *bkt, *tmp, *hdrs;
 
     tmp = SERF_BUCKET_SIMPLE_STRING(

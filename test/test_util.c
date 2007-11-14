@@ -112,7 +112,8 @@ static apr_status_t replay(test_baton_t *tb,
         msg_len = strlen(action->text);
 
         len = msg_len - tb->action_buf_pos;
-        status = apr_socket_send(tb->client_sock, action->text + tb->action_buf_pos, &len);
+        status = apr_socket_send(tb->client_sock,
+                                 action->text + tb->action_buf_pos, &len);
 
         if (tb->options & TEST_SERVER_DUMP)
             fwrite(action->text + tb->action_buf_pos, len, 1, stdout);
@@ -168,7 +169,8 @@ apr_status_t test_server_run(test_baton_t *tb,
 
     while (num--) {
         if (desc->desc.s == tb->serv_sock) {
-            status = apr_socket_accept(&tb->client_sock, tb->serv_sock, tb->pool);
+            status = apr_socket_accept(&tb->client_sock, tb->serv_sock,
+                                       tb->pool);
             if (status != APR_SUCCESS)
               return status;
 
