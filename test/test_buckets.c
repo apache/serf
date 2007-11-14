@@ -133,6 +133,23 @@ static void test_response_bucket_chunked_read(CuTest *tc)
     CuAssertStrEquals(tc, "value", serf_bucket_headers_get(hdrs, "Footer"));
 }
 
+static void test_bucket_header_set(CuTest *tc)
+{
+    serf_bucket_alloc_t *alloc = serf_bucket_allocator_create(test_pool, NULL,
+                                                              NULL);
+    serf_bucket_t *hdrs = serf_bucket_headers_create(alloc);
+
+    CuAssertTrue(tc, hdrs != NULL);
+
+    serf_bucket_headers_set(hdrs, "Foo", "bar");
+
+    CuAssertStrEquals(tc, "bar", serf_bucket_headers_get(hdrs, "Foo"));
+
+    serf_bucket_headers_set(hdrs, "Foo", "baz");
+
+    CuAssertStrEquals(tc, "bar,baz", serf_bucket_headers_get(hdrs, "Foo"));
+}
+
 CuSuite *test_buckets(void)
 {
     CuSuite *suite = CuSuiteNew();
@@ -140,6 +157,7 @@ CuSuite *test_buckets(void)
     SUITE_ADD_TEST(suite, test_simple_bucket_readline);
     SUITE_ADD_TEST(suite, test_response_bucket_read);
     SUITE_ADD_TEST(suite, test_response_bucket_chunked_read);
+    SUITE_ADD_TEST(suite, test_bucket_header_set);
 
     return suite;
 }

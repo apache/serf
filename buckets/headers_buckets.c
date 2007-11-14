@@ -71,9 +71,39 @@ SERF_DECLARE(void) serf_bucket_headers_setx(
     const char *value, apr_size_t value_size, int value_copy)
 {
     headers_context_t *ctx = bkt->data;
-    header_list_t *hdr = serf_bucket_mem_alloc(bkt->allocator, sizeof(*hdr));
+    header_list_t *found = ctx->list;
+    header_list_t *hdr;
 
-    /* ### should check if the header exists before adding. overwrite. */
+    /* Check to see if this header is already present. */
+    while (found) {
+      if (strncasecmp(found->header, header, header_size) == 0)
+            break;
+      found = found->next;
+    }
+    
+    if (found) {
+
+        /* The header is already present.  RFC 2616, section 4.2
+           indicates that we should append the new value, separated by
+           a comma.  Reasoning: for headers whose values are known to
+           be comma-separated, that is clearly the correct behavior;
+           for others, the correct behavior is undefined anyway. */ 
+
+        /* The "+1" is for the comma; serf_bstrmemdup() will also add
+           one slot for the terminating '\0'. */
+        apr_size_t new_size = found->value_size + value_size + 1;
+        char *new_val = serf_bucket_mem_alloc(bkt->allocator, new_size);
+        memcpy(new_val, found->value, found->value_size);
+        new_val[found->value_size] = ',';
+        memcpy(new_val + found->value_size + 1, value, value_size);
+        new_val[new_size] = '\0';
+        found->value = new_val;
+        found->value_size = new_size;
+        found->alloc_flags |= ALLOC_VALUE;
+        return;
+    }
+
+    /* Else the header is not already present.  Add it to the bucket. */
 
 #if 0
     /* ### include this? */
@@ -83,6 +113,7 @@ SERF_DECLARE(void) serf_bucket_headers_setx(
     }
 #endif
 
+    hdr = serf_bucket_mem_alloc(bkt->allocator, sizeof(*hdr));
     hdr->header_size = header_size;
     hdr->value_size = value_size;
     hdr->alloc_flags = 0;

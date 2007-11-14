@@ -244,6 +244,9 @@ SERF_DECLARE(void) serf_bucket_headers_setc(
  * Set the specified @a header and @a value into the bucket, without
  * copying either attribute. Both attributes should remain in scope at
  * least as long as the bucket.
+ *
+ * @note In the case where a header already exists this will result
+ *       in a reallocation and copy, @see serf_bucket_headers_setn.
  */
 SERF_DECLARE(void) serf_bucket_headers_setn(
     serf_bucket_t *headers_bucket,
@@ -258,6 +261,12 @@ SERF_DECLARE(void) serf_bucket_headers_setn(
  * be copied if @a header_copy is set, and the value is copied if
  * @a value_copy is set. If the values are not copied, then they should
  * remain in scope at least as long as the bucket.
+ *
+ * If @a headers_bucket already contains a header with the same name
+ * as @a header, then append @a value to the existing value,
+ * separating with a comma (as per RFC 2616, section 4.2).  In this
+ * case, the new value must be allocated and the header re-used, so
+ * behave as if @a value_copy were true and @a header_copy false.
  */
 SERF_DECLARE(void) serf_bucket_headers_setx(
     serf_bucket_t *headers_bucket,
