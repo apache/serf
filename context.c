@@ -783,6 +783,13 @@ static apr_status_t read_from_connection(serf_connection_t *conn)
             continue;
         }
 
+        if (!APR_STATUS_IS_EOF(status) && status != SERF_ERROR_CLOSING) {
+            /* Whether success, or an error, there is no more to do unless
+             * this request has been completed.
+             */
+            goto error;
+        }
+
         /* The request has been fully-delivered, and the response has
          * been fully-read. Remove it from our queue and loop to read
          * another response.
@@ -810,13 +817,6 @@ static apr_status_t read_from_connection(serf_connection_t *conn)
         if (status == SERF_ERROR_CLOSING) {
             reset_connection(conn, 1);
             status = APR_SUCCESS;
-            goto error;
-        }
-
-        if (!APR_STATUS_IS_EOF(status) && status != SERF_ERROR_CLOSING) {
-            /* Whether success, or an error, there is no more to do unless
-             * this request has been completed.
-             */
             goto error;
         }
 
