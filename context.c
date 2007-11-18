@@ -704,6 +704,7 @@ static apr_status_t read_from_connection(serf_connection_t *conn)
 {
     apr_status_t status;
     apr_pool_t *tmppool;
+    int close_connection = FALSE;
 
     /* Whatever is coming in on the socket corresponds to the first request
      * on our chain.
@@ -803,16 +804,10 @@ static apr_status_t read_from_connection(serf_connection_t *conn)
             continue;
         }
 
-        /* The server told us this was the last response on this connection, so
-           reset the connection. No need to requeue this request. */
-        if (is_conn_closing(request->resp_bkt) == SERF_ERROR_CLOSING) {
-            reset_connection(conn, 0);
-            if (APR_STATUS_IS_EOF(status))
-                status = APR_SUCCESS;
-            goto error;
-        }
+        close_connection = is_conn_closing(request->resp_bkt);
 
-        if (!APR_STATUS_IS_EOF(status)) {
+        if (!APR_STATUS_IS_EOF(status) && 
+            close_connection != SERF_ERROR_CLOSING) {
             /* Whether success, or an error, there is no more to do unless
              * this request has been completed.
              */
@@ -843,6 +838,14 @@ static apr_status_t read_from_connection(serf_connection_t *conn)
         }
 
         conn->completed_responses++;
+
+        /* This means that we're being advised that the connection is done. */
+        if (close_connection == SERF_ERROR_CLOSING) {
+            reset_connection(conn, 1);
+            if (APR_STATUS_IS_EOF(status))
+                status = APR_SUCCESS;
+            goto error;
+        }
 
         /* The server is suddenly deciding to serve more responses than we've
          * seen before.
