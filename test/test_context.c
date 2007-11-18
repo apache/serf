@@ -40,6 +40,8 @@ typedef struct {
     const char *method;
     const char *path;
     int done;
+
+    test_baton_t *tb;
 } handler_baton_t;
 
 static serf_bucket_t* accept_response(serf_request_t *request,
@@ -97,6 +99,13 @@ static apr_status_t handle_response(serf_request_t *request,
                                     apr_pool_t *pool)
 {
     handler_baton_t *ctx = handler_baton;
+
+    if (! response) {
+        serf_connection_request_create(ctx->tb->connection,
+                                       setup_request,
+                                       ctx);
+        return APR_SUCCESS;
+    }
 
     while (1) {
         apr_status_t status;
@@ -333,9 +342,8 @@ void test_serf_connection_priority_request_create(CuTest *tc)
     test_server_destroy(tb, test_pool);
 }
 
-/* TODO: this test would be more useful if our test server would also close
-   the connection after sending the response with the Connection: close 
-   header */
+/* Test that serf correctly handles the 'Connection:close' header when the 
+   server is planning to close the connection. */
 #define NUM_REQUESTS 10
 void test_serf_closed_connection(CuTest *tc)
 {
@@ -368,6 +376,7 @@ void test_serf_closed_connection(CuTest *tc)
          CRLF
          "0" CRLF
          CRLF
+         "\01"
          CHUNKED_EMPTY_RESPONSE
          CHUNKED_EMPTY_RESPONSE
          CHUNKED_EMPTY_RESPONSE
@@ -377,6 +386,7 @@ void test_serf_closed_connection(CuTest *tc)
          CRLF
          "0" CRLF
          CRLF
+         "\01"
          CHUNKED_EMPTY_RESPONSE
          CHUNKED_EMPTY_RESPONSE
         }
@@ -402,6 +412,7 @@ void test_serf_closed_connection(CuTest *tc)
         handler_ctx[i].accepted_requests = accepted_requests;
         handler_ctx[i].sent_requests = sent_requests;
         handler_ctx[i].handled_requests = handled_requests;
+        handler_ctx[i].tb = tb;
 
         serf_connection_request_create(tb->connection,
                                        setup_request,
@@ -433,7 +444,7 @@ void test_serf_closed_connection(CuTest *tc)
     }
 
     /* Check that all requests were received */
-    CuAssertIntEquals(tc, NUM_REQUESTS, sent_requests->nelts);
+    CuAssertTrue(tc, sent_requests->nelts >= NUM_REQUESTS);
     CuAssertIntEquals(tc, NUM_REQUESTS, accepted_requests->nelts);
     CuAssertIntEquals(tc, NUM_REQUESTS, handled_requests->nelts);
 

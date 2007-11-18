@@ -93,8 +93,11 @@ static apr_status_t replay(test_baton_t *tb,
 
         if (strncmp(buf, action->text + tb->action_buf_pos, len) != 0) {
             /* ## TODO: Better diagnostics. */
-            printf("While expected of: (\n");
+            printf("Expected: (\n");
             fwrite(action->text + tb->action_buf_pos, len, 1, stdout);
+            printf(")\n");
+            printf("Actual: (\n");
+            fwrite(buf, len, 1, stdout);
             printf(")\n");
 
             return APR_EGENERAL;
@@ -108,10 +111,17 @@ static apr_status_t replay(test_baton_t *tb,
     else if (action->kind == SERVER_SEND) {
         apr_size_t msg_len;
         apr_size_t len;
+        char *kill_pos;
 
         msg_len = strlen(action->text);
+        /* If there are any \01 characters in the response stream, write all 
+           characters up to \01 and kill the connection. */
+        kill_pos = strchr(action->text + tb->action_buf_pos, '\01');
+        if (kill_pos)
+            len = kill_pos - (action->text + tb->action_buf_pos);
+        else
+            len = strlen(action->text)- tb->action_buf_pos;
 
-        len = msg_len - tb->action_buf_pos;
         status = apr_socket_send(tb->client_sock,
                                  action->text + tb->action_buf_pos, &len);
 
@@ -119,6 +129,12 @@ static apr_status_t replay(test_baton_t *tb,
             fwrite(action->text + tb->action_buf_pos, len, 1, stdout);
 
         tb->action_buf_pos += len;
+
+        if (kill_pos) {
+            apr_socket_close(tb->client_sock);
+            tb->client_sock = NULL;
+            tb->action_buf_pos ++;
+        }
 
         if (tb->action_buf_pos >= msg_len)
             next_action(tb);
@@ -177,9 +193,6 @@ apr_status_t test_server_run(test_baton_t *tb,
             apr_socket_opt_set(tb->client_sock, APR_SO_NONBLOCK, 1);
             apr_socket_timeout_set(tb->client_sock, 0);
 
-            /* Start replay from first action. */
-            tb->cur_action = 0;
-            tb->action_buf_pos = 0;
             return APR_SUCCESS;
         }
 
@@ -227,6 +240,10 @@ static apr_status_t prepare_server(test_baton_t *tb,
     status = apr_socket_bind(serv_sock, tb->serv_addr);
     if (status != APR_SUCCESS)
         return status;
+
+    /* Start replay from first action. */
+    tb->cur_action = 0;
+    tb->action_buf_pos = 0;
 
     /* listen for clients */
     apr_socket_listen(serv_sock, SOMAXCONN);
