@@ -62,33 +62,6 @@ static serf_bucket_t* accept_response(serf_request_t *request,
     return serf_bucket_response_create(c, bkt_alloc);
 }
 
-static apr_status_t handle_response(serf_request_t *request,
-                                    serf_bucket_t *response,
-                                    void *handler_baton,
-                                    apr_pool_t *pool)
-{
-    handler_baton_t *ctx = handler_baton;
-
-    while (1) {
-        apr_status_t status;
-        const char *data;
-        apr_size_t len;
-
-        status = serf_bucket_read(response, 2048, &data, &len);
-        if (SERF_BUCKET_READ_ERROR(status))
-            return status;
-
-        if (APR_STATUS_IS_EOF(status)) {
-            APR_ARRAY_PUSH(ctx->handled_requests, int) = ctx->req_id;
-            ctx->done = TRUE;
-            return APR_EOF;
-        }
-
-    }
-
-    return APR_SUCCESS;
-}
-
 static apr_status_t setup_request(serf_request_t *request,
                                   void *setup_baton,
                                   serf_bucket_t **req_bkt,
@@ -118,6 +91,32 @@ static apr_status_t setup_request(serf_request_t *request,
     return APR_SUCCESS;
 }
 
+static apr_status_t handle_response(serf_request_t *request,
+                                    serf_bucket_t *response,
+                                    void *handler_baton,
+                                    apr_pool_t *pool)
+{
+    handler_baton_t *ctx = handler_baton;
+
+    while (1) {
+        apr_status_t status;
+        const char *data;
+        apr_size_t len;
+
+        status = serf_bucket_read(response, 2048, &data, &len);
+        if (SERF_BUCKET_READ_ERROR(status))
+            return status;
+
+        if (APR_STATUS_IS_EOF(status)) {
+            APR_ARRAY_PUSH(ctx->handled_requests, int) = ctx->req_id;
+            ctx->done = TRUE;
+            return APR_EOF;
+        }
+
+    }
+
+    return APR_SUCCESS;
+}
 
 /* Validate that requests are sent and completed in the order of creation. */
 void test_serf_connection_request_create(CuTest *tc)
