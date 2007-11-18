@@ -338,6 +338,26 @@ static apr_status_t no_more_writes(serf_connection_t *conn,
   return APR_SUCCESS;
 }
 
+/* Read the 'Connection' header from the response. Return SERF_ERROR_CLOSING if
+ * the header contains value 'close' indicating the server is closing the 
+ * connection right after this response. 
+ * Otherwise returns APR_SUCCESS.
+ */
+static apr_status_t is_conn_closing(serf_bucket_t *response)
+{
+  serf_bucket_t *hdrs;
+  const char *val;
+
+  hdrs = serf_bucket_response_get_headers(response);
+  val = serf_bucket_headers_get(hdrs, "Connection");
+  if (val && strcasecmp("close", val) == 0)
+    {
+      return SERF_ERROR_CLOSING;
+    }
+
+  return APR_SUCCESS;
+}
+
 static void link_requests(serf_request_t **list, serf_request_t **tail,
                           serf_request_t *request)
 {
@@ -783,7 +803,16 @@ static apr_status_t read_from_connection(serf_connection_t *conn)
             continue;
         }
 
-        if (!APR_STATUS_IS_EOF(status) && status != SERF_ERROR_CLOSING) {
+        /* The server told us this was the last response on this connection, so
+           reset the connection. No need to requeue this request. */
+        if (is_conn_closing(request->resp_bkt) == SERF_ERROR_CLOSING) {
+            reset_connection(conn, 0);
+            if (APR_STATUS_IS_EOF(status))
+                status = APR_SUCCESS;
+            goto error;
+        }
+
+        if (!APR_STATUS_IS_EOF(status)) {
             /* Whether success, or an error, there is no more to do unless
              * this request has been completed.
              */
@@ -811,13 +840,6 @@ static apr_status_t read_from_connection(serf_connection_t *conn)
         /* If we're truly empty, update our tail. */
         if (request == NULL) {
             conn->requests_tail = NULL;
-        }
-
-        /* This means that we're being advised that the connection is done. */
-        if (status == SERF_ERROR_CLOSING) {
-            reset_connection(conn, 1);
-            status = APR_SUCCESS;
-            goto error;
         }
 
         conn->completed_responses++;
