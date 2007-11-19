@@ -77,7 +77,8 @@ typedef struct
 {
     enum {
         SERVER_RECV,
-        SERVER_SEND
+        SERVER_SEND,
+        SERVER_KILL_CONNECTION
     } kind;
 
     const char *text;

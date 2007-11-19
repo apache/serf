@@ -376,7 +376,9 @@ void test_serf_closed_connection(CuTest *tc)
          CRLF
          "0" CRLF
          CRLF
-         "\01"
+        },
+        {SERVER_KILL_CONNECTION},
+        {SERVER_SEND,
          CHUNKED_EMPTY_RESPONSE
          CHUNKED_EMPTY_RESPONSE
          CHUNKED_EMPTY_RESPONSE
@@ -386,10 +388,12 @@ void test_serf_closed_connection(CuTest *tc)
          CRLF
          "0" CRLF
          CRLF
-         "\01"
+        },
+        {SERVER_KILL_CONNECTION},
+        {SERVER_SEND,
          CHUNKED_EMPTY_RESPONSE
          CHUNKED_EMPTY_RESPONSE
-        }
+        },
     };
 
     accepted_requests = apr_array_make(test_pool, NUM_REQUESTS, sizeof(int));
@@ -397,7 +401,7 @@ void test_serf_closed_connection(CuTest *tc)
     handled_requests = apr_array_make(test_pool, NUM_REQUESTS, sizeof(int));
 
     /* Set up a test context with a server. */
-    status = test_server_create(&tb, action_list, 2, 0, test_pool);
+    status = test_server_create(&tb, action_list, 6, 0, test_pool);
 
     for (i = 0 ; i < NUM_REQUESTS ; i++) {
         /* Send some requests on the connections */
