@@ -73,6 +73,14 @@ static apr_status_t replay(test_baton_t *tb,
         return APR_EOF;
     }
 
+    if (tb->action_list == NULL)
+    {
+        /* we're not expecting any requests to reach this server! */
+        printf("Received request where none was expected\n");
+
+        return APR_EGENERAL;
+    }
+
     action = &tb->action_list[tb->cur_action];
 
     if (action->kind == SERVER_RECV)
@@ -253,6 +261,7 @@ apr_status_t test_server_create(test_baton_t **tb_p,
                                 test_server_action_t *action_list,
                                 apr_size_t action_count,
                                 apr_int32_t options,
+                                apr_sockaddr_t *address,
                                 apr_pool_t *pool)
 {
     apr_status_t status;
@@ -261,9 +270,14 @@ apr_status_t test_server_create(test_baton_t **tb_p,
     tb = apr_palloc(pool, sizeof(*tb));
     *tb_p = tb;
 
-    status = get_server_address(&tb->serv_addr, pool);
-    if (status != APR_SUCCESS)
-      return status;
+    if (address) { 
+        tb->serv_addr = address;
+    }
+    else {
+        status = get_server_address(&tb->serv_addr, pool);
+        if (status != APR_SUCCESS)
+          return status;
+    }
 
     tb->pool = pool;
     tb->options = options;

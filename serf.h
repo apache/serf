@@ -398,6 +398,20 @@ SERF_DECLARE(void) serf_request_set_handler(
     const serf_response_handler_t handler,
     const void **handler_baton);
 
+/**
+ * Configure proxy server settings, to be used by all connections associated
+ * with the @a ctx serf context.
+ *
+ * The next connection will be created to connect to the proxy server
+ * specified by @a address. The address must live at least as long as the 
+ * serf context.
+ *
+ * TODO: THIS IS WORK-IN-PROGRESS, PROXY SUPPORT IS NOT FINISHED!
+ */
+SERF_DECLARE(void) serf_config_proxy(
+    serf_context_t *ctx,
+    apr_sockaddr_t *address);
+
 /* ### maybe some connection control functions for flood? */
 
 /** @} */

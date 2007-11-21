@@ -173,7 +173,7 @@ void test_serf_connection_request_create(CuTest *tc)
     handled_requests = apr_array_make(test_pool, 2, sizeof(int));
 
     /* Set up a test context with a server */
-    status = test_server_create(&tb, action_list, 2, 0, test_pool);
+    status = test_server_create(&tb, action_list, 2, 0, NULL, test_pool);
     CuAssertIntEquals(tc, APR_SUCCESS, status);
 
     handler_ctx.method = "GET";
@@ -269,7 +269,7 @@ void test_serf_connection_priority_request_create(CuTest *tc)
     handled_requests = apr_array_make(test_pool, 3, sizeof(int));
 
     /* Set up a test context with a server */
-    status = test_server_create(&tb, action_list, 2, 0, test_pool);
+    status = test_server_create(&tb, action_list, 2, 0, NULL, test_pool);
     CuAssertIntEquals(tc, APR_SUCCESS, status);
 
     handler_ctx.method = "GET";
@@ -401,7 +401,7 @@ void test_serf_closed_connection(CuTest *tc)
     handled_requests = apr_array_make(test_pool, NUM_REQUESTS, sizeof(int));
 
     /* Set up a test context with a server. */
-    status = test_server_create(&tb, action_list, 6, 0, test_pool);
+    status = test_server_create(&tb, action_list, 6, 0, NULL, test_pool);
 
     for (i = 0 ; i < NUM_REQUESTS ; i++) {
         /* Send some requests on the connections */
@@ -457,6 +457,112 @@ void test_serf_closed_connection(CuTest *tc)
 }
 #undef NUM_REQUESTS
 
+/* Test if serf is sending the request to the proxy, not to the server 
+   directly. */
+void test_serf_setup_proxy(CuTest *tc)
+{
+    test_baton_t *tb_server, *tb_proxy;
+    serf_request_t *request;
+    handler_baton_t handler_ctx;
+    apr_status_t status;
+    apr_pool_t *iter_pool;
+    apr_array_header_t *accepted_requests, *handled_requests, *sent_requests;
+    int i;
+    int numrequests = 1;
+    apr_sockaddr_t *proxy_address;
+    test_server_action_t *action_list_server = NULL;
+    test_server_action_t action_list_proxy[] = {
+        {SERVER_RECV,
+         CHUNCKED_REQUEST(1, "1")
+        },
+        {SERVER_SEND,
+         CHUNKED_EMPTY_RESPONSE
+        }
+    };
+
+    accepted_requests = apr_array_make(test_pool, numrequests, sizeof(int));
+    sent_requests = apr_array_make(test_pool, numrequests, sizeof(int));
+    handled_requests = apr_array_make(test_pool, numrequests, sizeof(int));
+
+    /* Set up a test context with a server */
+    status = test_server_create(&tb_server, action_list_server, 2, 0, NULL,
+                                test_pool);
+    CuAssertIntEquals(tc, APR_SUCCESS, status);
+
+    /* Set up another test context for the proxy server */
+    status = apr_sockaddr_info_get(&proxy_address,
+                                   "localhost", APR_INET, 21212, 0,
+                                   test_pool);
+    status = test_server_create(&tb_proxy, action_list_proxy, 2, 0, 
+                                proxy_address, test_pool);
+
+    CuAssertIntEquals(tc, APR_SUCCESS, status);
+
+    handler_ctx.method = "GET";
+    handler_ctx.path = "/";
+    handler_ctx.done = FALSE;
+
+    handler_ctx.acceptor = accept_response;
+    handler_ctx.acceptor_baton = NULL;
+    handler_ctx.handler = handle_response;
+    handler_ctx.req_id = 1;
+    handler_ctx.accepted_requests = accepted_requests;
+    handler_ctx.sent_requests = sent_requests;
+    handler_ctx.handled_requests = handled_requests;
+
+    /* Configure serf to use the proxy server */
+    serf_config_proxy(tb_server->context, proxy_address);
+
+    request = serf_connection_request_create(tb_server->connection,
+                                             setup_request,
+                                             &handler_ctx);
+
+    apr_pool_create(&iter_pool, test_pool);
+
+    while (!handler_ctx.done)
+    {
+        apr_pool_clear(iter_pool);
+
+        status = test_server_run(tb_server, 0, iter_pool);
+        if (APR_STATUS_IS_TIMEUP(status))
+            status = APR_SUCCESS;
+        CuAssertIntEquals(tc, APR_SUCCESS, status);
+
+        status = test_server_run(tb_proxy, 0, iter_pool);
+        if (APR_STATUS_IS_TIMEUP(status))
+            status = APR_SUCCESS;
+        CuAssertIntEquals(tc, APR_SUCCESS, status);
+
+        status = serf_context_run(tb_server->context, 0, iter_pool);
+        if (APR_STATUS_IS_TIMEUP(status))
+            status = APR_SUCCESS;
+        CuAssertIntEquals(tc, APR_SUCCESS, status);
+
+        /* Debugging purposes only! */
+        serf_debug__closed_conn(tb_server->bkt_alloc);
+    }
+    apr_pool_destroy(iter_pool);
+
+    /* Check that all requests were received */
+    CuAssertIntEquals(tc, numrequests, sent_requests->nelts);
+    CuAssertIntEquals(tc, numrequests, accepted_requests->nelts);
+    CuAssertIntEquals(tc, numrequests, handled_requests->nelts);
+
+    /* Check that the requests were sent in the order we created them */
+    for (i = 0; i < sent_requests->nelts; i++) {
+        int req_nr = APR_ARRAY_IDX(sent_requests, i, int);
+        CuAssertIntEquals(tc, i + 1, req_nr);
+    }
+
+    /* Check that the requests were received in the order we created them */
+    for (i = 0; i < handled_requests->nelts; i++) {
+        int req_nr = APR_ARRAY_IDX(handled_requests, i, int);
+        CuAssertIntEquals(tc, i + 1, req_nr);
+    }
+
+    test_server_destroy(tb_server, test_pool);
+}
+
 CuSuite *test_context(void)
 {
     CuSuite *suite = CuSuiteNew();
@@ -464,6 +570,7 @@ CuSuite *test_context(void)
     SUITE_ADD_TEST(suite, test_serf_connection_request_create);
     SUITE_ADD_TEST(suite, test_serf_connection_priority_request_create);
     SUITE_ADD_TEST(suite, test_serf_closed_connection);
+    SUITE_ADD_TEST(suite, test_serf_setup_proxy);
 
     return suite;
 }

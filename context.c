@@ -78,6 +78,9 @@ struct serf_context_t {
     /* the list of active connections */
     apr_array_header_t *conns;
 #define GET_CONN(ctx, i) (((serf_connection_t **)(ctx)->conns->elts)[i])
+
+    /* Proxy server address */
+    apr_sockaddr_t *proxy_address;
 };
 
 struct serf_connection_t {
@@ -258,6 +261,7 @@ static apr_status_t open_connections(serf_context_t *ctx)
         serf_connection_t *conn = GET_CONN(ctx, i);
         apr_status_t status;
         apr_socket_t *skt;
+        apr_sockaddr_t *serv_addr;
 
         conn->seen_in_pollset = 0;
 
@@ -296,11 +300,17 @@ static apr_status_t open_connections(serf_context_t *ctx)
         /* Configured. Store it into the connection now. */
         conn->skt = skt;
 
+        /* Do we have to connect to a proxy server? */
+        if (ctx->proxy_address)
+            serv_addr = ctx->proxy_address;
+        else
+            serv_addr = conn->address;
+
         /* Now that the socket is set up, let's connect it. This should
          * return immediately.
          */
         if ((status = apr_socket_connect(skt,
-                                         conn->address)) != APR_SUCCESS) {
+                                         serv_addr)) != APR_SUCCESS) {
             if (!APR_STATUS_IS_EINPROGRESS(status))
                 return status;
         }
@@ -969,6 +979,12 @@ static apr_status_t pollset_rm(void *user_baton,
     return apr_pollset_remove(s->pollset, pfd);
 }
 
+
+SERF_DECLARE(void) serf_config_proxy(serf_context_t *ctx,
+                                     apr_sockaddr_t *address)
+{
+    ctx->proxy_address = address;
+}
 
 SERF_DECLARE(serf_context_t *) serf_context_create_ex(apr_pool_t *pool,
                                                       void *user_baton,

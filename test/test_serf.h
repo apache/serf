@@ -117,6 +117,7 @@ apr_status_t test_server_create(test_baton_t **tb,
                                 test_server_action_t *action_list,
                                 apr_size_t action_count,
                                 apr_int32_t options,
+                                apr_sockaddr_t *adress,
                                 apr_pool_t *pool);
 
 apr_status_t test_server_run(test_baton_t *tb,
