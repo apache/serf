@@ -24,8 +24,6 @@
 
 #include "test_serf.h"
 
-#define CRLF "\r\n"
-
 typedef struct {
     serf_response_acceptor_t acceptor;
     void *acceptor_baton;

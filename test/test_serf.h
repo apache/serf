@@ -48,6 +48,8 @@ CuSuite *test_buckets(void);
 
 /* Test setup declarations */
 
+#define CRLF "\r\n"
+
 #define CHUNCKED_REQUEST(len, body)\
         "GET / HTTP/1.1" CRLF\
         "Transfer-Encoding: chunked" CRLF\
