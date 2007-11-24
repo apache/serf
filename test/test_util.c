@@ -26,8 +26,6 @@
 /* Server setup functions
  */
 
-#define SERV_PORT 12345
-
 /* Default implementation of a serf_connection_closed_t callback. */
 static void default_closed_connection(serf_connection_t *conn,
                                       void *closed_baton,

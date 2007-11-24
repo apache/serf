@@ -41,6 +41,9 @@ typedef struct {
     const char *path;
     int done;
 
+    const char *server_root;
+    int use_proxy;
+
     test_baton_t *tb;
 } handler_baton_t;
 
@@ -82,6 +85,9 @@ static apr_status_t setup_request(serf_request_t *request,
                                          serf_request_get_alloc(request));
     *req_bkt = serf_bucket_request_create(ctx->method, ctx->path, body_bkt,
                                       serf_request_get_alloc(request));
+
+    if (ctx->use_proxy)
+      serf_bucket_request_set_root(*req_bkt, ctx->server_root);
 
     APR_ARRAY_PUSH(ctx->sent_requests, int) = ctx->req_id;
 
@@ -187,6 +193,8 @@ void test_serf_connection_request_create(CuTest *tc)
     handler_ctx.accepted_requests = accepted_requests;
     handler_ctx.sent_requests = sent_requests;
     handler_ctx.handled_requests = handled_requests;
+    handler_ctx.use_proxy = FALSE;
+    handler_ctx.server_root = NULL;
 
     request1 = serf_connection_request_create(tb->connection,
                                               setup_request,
@@ -283,6 +291,8 @@ void test_serf_connection_priority_request_create(CuTest *tc)
     handler_ctx.accepted_requests = accepted_requests;
     handler_ctx.sent_requests = sent_requests;
     handler_ctx.handled_requests = handled_requests;
+    handler_ctx.use_proxy = FALSE;
+    handler_ctx.server_root = NULL;
 
     request1 = serf_connection_request_create(tb->connection,
                                               setup_request,
@@ -417,6 +427,8 @@ void test_serf_closed_connection(CuTest *tc)
         handler_ctx[i].sent_requests = sent_requests;
         handler_ctx[i].handled_requests = handled_requests;
         handler_ctx[i].tb = tb;
+        handler_ctx[i].use_proxy = FALSE;
+        handler_ctx[i].server_root = NULL;
 
         serf_connection_request_create(tb->connection,
                                        setup_request,
@@ -473,7 +485,13 @@ void test_serf_setup_proxy(CuTest *tc)
     test_server_action_t *action_list_server = NULL;
     test_server_action_t action_list_proxy[] = {
         {SERVER_RECV,
-         CHUNCKED_REQUEST(1, "1")
+         "GET http://localhost:" SERV_PORT_STR " HTTP/1.1" CRLF\
+         "Transfer-Encoding: chunked" CRLF\
+         CRLF\
+         "1" CRLF\
+         "1" CRLF\
+         "0" CRLF\
+         CRLF
         },
         {SERVER_SEND,
          CHUNKED_EMPTY_RESPONSE
@@ -509,6 +527,8 @@ void test_serf_setup_proxy(CuTest *tc)
     handler_ctx.accepted_requests = accepted_requests;
     handler_ctx.sent_requests = sent_requests;
     handler_ctx.handled_requests = handled_requests;
+    handler_ctx.use_proxy = TRUE;
+    handler_ctx.server_root = "http://localhost:" SERV_PORT_STR;
 
     /* Configure serf to use the proxy server */
     serf_config_proxy(tb_server->context, proxy_address);

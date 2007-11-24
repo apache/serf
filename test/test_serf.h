@@ -113,6 +113,10 @@ typedef struct {
 
 #define TEST_SERVER_DUMP 1
 
+/* Default port for our test server. */
+#define SERV_PORT 12345
+#define SERV_PORT_STR "12345"
+
 apr_status_t test_server_create(test_baton_t **tb,
                                 test_server_action_t *action_list,
                                 apr_size_t action_count,

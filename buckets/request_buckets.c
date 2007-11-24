@@ -52,6 +52,27 @@ SERF_DECLARE(serf_bucket_t *) serf_bucket_request_get_headers(
     return ((request_context_t *)bucket->data)->headers;
 }
 
+SERF_DECLARE(void) serf_bucket_request_set_root(
+    serf_bucket_t *bucket, 
+    const char *root_url)
+{
+    request_context_t *ctx = (request_context_t *)bucket->data;
+
+    /* If uri is already absolute, don't change it. */
+    if (ctx->uri[0] != '/')
+        return;
+
+    /* If uri is '/' replace it with root_url. */
+    if (ctx->uri[1] == '\0')
+        ctx->uri = root_url;
+    else
+        ctx->uri = 
+            apr_pstrcat(serf_bucket_allocator_get_pool(bucket->allocator), 
+                        root_url,
+                        ctx->uri, 
+                        NULL);
+}
+
 static void serialize_data(serf_bucket_t *bucket)
 {
     request_context_t *ctx = bucket->data;
