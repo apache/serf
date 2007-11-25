@@ -68,7 +68,10 @@ static apr_status_t replay(test_baton_t *tb,
     test_server_action_t *action;
 
     if (tb->cur_action >= tb->action_count) {
-        return APR_EOF;
+        /* we're out of actions! */
+        printf("Received more requests than expected\n");
+
+        return APR_EGENERAL;
     }
 
     if (tb->action_list == NULL)

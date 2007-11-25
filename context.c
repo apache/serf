@@ -137,6 +137,9 @@ struct serf_connection_t {
     void *setup_baton;
     serf_connection_closed_t closed;
     void *closed_baton;
+
+    /* Max. number of outstanding requests. */
+    unsigned int max_outstanding_requests;
 };
 
 /* cleanup for sockets */
@@ -205,8 +208,11 @@ static apr_status_t update_pollset(serf_connection_t *conn)
         else {
             serf_request_t *request = conn->requests;
 
-            if (conn->probable_keepalive_limit &&
-                conn->completed_requests > conn->probable_keepalive_limit) {
+            if ((conn->probable_keepalive_limit &&
+                 conn->completed_requests > conn->probable_keepalive_limit) || 
+                (conn->max_outstanding_requests &&
+                 conn->completed_requests - conn->completed_responses >=
+                     conn->max_outstanding_requests)) {
                 /* we wouldn't try to write any way right now. */
             }
             else {
@@ -575,6 +581,13 @@ static apr_status_t write_to_connection(serf_connection_t *conn)
         int stop_reading = 0;
         apr_status_t status;
         apr_status_t read_status;
+
+        if (conn->max_outstanding_requests &&
+            conn->completed_requests - 
+                conn->completed_responses >= conn->max_outstanding_requests) {
+            /* backoff for now. */
+            return APR_SUCCESS;
+        }
 
         /* If we have unwritten data, then write what we can. */
         while (conn->vec_len) {
@@ -1178,6 +1191,12 @@ SERF_DECLARE(apr_status_t) serf_connection_close(
     /* We didn't find the specified connection. */
     /* ### doc talks about this w.r.t poll structures. use something else? */
     return APR_NOTFOUND;
+}
+
+SERF_DECLARE(void) serf_set_max_outstanding_requests(serf_connection_t *conn,
+                                                     unsigned int max_requests)
+{
+    conn->max_outstanding_requests = max_requests;
 }
 
 SERF_DECLARE(serf_request_t *) serf_connection_request_create(

@@ -290,6 +290,15 @@ SERF_DECLARE(apr_status_t) serf_connection_close(
     serf_connection_t *conn);
 
 /**
+ * Sets the maximum number of outstanding requests @a max_requests on the 
+ * connection @a conn. Setting max_requests to 0 means unlimited (the default).
+ * Ex.: setting max_requests to 1 means a request is sent when a response on the 
+ * previous request was received and handled. 
+ */
+SERF_DECLARE(void) serf_set_max_outstanding_requests(serf_connection_t *conn,
+                                                     unsigned int max_requests);
+
+/**
  * Setup the @a request for delivery on its connection.
  *
  * Right before this is invoked, @a pool will be built within the

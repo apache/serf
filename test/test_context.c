@@ -581,6 +581,328 @@ void test_serf_setup_proxy(CuTest *tc)
     test_server_destroy(tb_server, test_pool);
 }
 
+/*****************************************************************************
+ * Test if we can make serf send requests one by one.
+ *****************************************************************************/
+
+/* Resend the first request 4 times by reducing the pipeline bandwidth to 
+   one request at a time, and by adding the first request again at the start of 
+   the outgoing queue. */
+static apr_status_t
+handle_response_keepalive_limit(serf_request_t *request,
+                                serf_bucket_t *response,
+                                void *handler_baton,
+                                apr_pool_t *pool)
+{
+    handler_baton_t *ctx = handler_baton;
+
+    if (! response) {
+        return APR_SUCCESS;
+    }
+
+    while (1) {
+        apr_status_t status;
+        const char *data;
+        apr_size_t len;
+
+        status = serf_bucket_read(response, 2048, &data, &len);
+        if (SERF_BUCKET_READ_ERROR(status)) {
+            return status;
+        }
+
+        if (APR_STATUS_IS_EOF(status)) {
+            APR_ARRAY_PUSH(ctx->handled_requests, int) = ctx->req_id;
+            ctx->done = TRUE;
+            if (ctx->req_id == 1 && ctx->handled_requests->nelts < 3) {
+                serf_connection_priority_request_create(ctx->tb->connection,
+                                                        setup_request,
+                                                        ctx);
+                ctx->done = FALSE;
+            }
+            return APR_EOF;
+        }
+    }
+
+    return APR_SUCCESS;
+}
+
+#define SEND_REQUESTS 5
+#define RCVD_REQUESTS 7
+void test_keepalive_limit_one_by_one(CuTest *tc)
+{
+    test_baton_t *tb;
+    apr_array_header_t *accepted_requests, *handled_requests, *sent_requests;
+    apr_status_t status;
+    handler_baton_t handler_ctx[SEND_REQUESTS];
+    int done = FALSE, i;
+
+    test_server_action_t action_list[] = {
+        {SERVER_RECV,
+         CHUNCKED_REQUEST(1, "1")
+        },
+        {SERVER_SEND,
+         CHUNKED_EMPTY_RESPONSE
+        },
+        {SERVER_RECV,
+         CHUNCKED_REQUEST(1, "1")
+        },
+        {SERVER_SEND,
+         CHUNKED_EMPTY_RESPONSE
+        },
+        {SERVER_RECV,
+         CHUNCKED_REQUEST(1, "1")
+        },
+        {SERVER_SEND,
+         CHUNKED_EMPTY_RESPONSE
+        },
+        {SERVER_RECV,
+         CHUNCKED_REQUEST(1, "2")
+        },
+        {SERVER_SEND,
+         CHUNKED_EMPTY_RESPONSE
+        },
+        {SERVER_RECV,
+         CHUNCKED_REQUEST(1, "3")
+        },
+        {SERVER_SEND,
+         CHUNKED_EMPTY_RESPONSE
+        },
+        {SERVER_RECV,
+         CHUNCKED_REQUEST(1, "4")
+        },
+        {SERVER_SEND,
+         CHUNKED_EMPTY_RESPONSE
+        },
+        {SERVER_RECV,
+         CHUNCKED_REQUEST(1, "5")
+        },
+        {SERVER_SEND,
+         CHUNKED_EMPTY_RESPONSE
+        },
+    };
+
+    accepted_requests = apr_array_make(test_pool, RCVD_REQUESTS, sizeof(int));
+    sent_requests = apr_array_make(test_pool, RCVD_REQUESTS, sizeof(int));
+    handled_requests = apr_array_make(test_pool, RCVD_REQUESTS, sizeof(int));
+
+    /* Set up a test context with a server. */
+    status = test_server_create(&tb, action_list, 14, 0, NULL, test_pool);
+
+    for (i = 0 ; i < SEND_REQUESTS ; i++) {
+        /* Send some requests on the connections */
+        handler_ctx[i].method = "GET";
+        handler_ctx[i].path = "/";
+        handler_ctx[i].done = FALSE;
+
+        handler_ctx[i].acceptor = accept_response;
+        handler_ctx[i].acceptor_baton = NULL;
+        handler_ctx[i].handler = handle_response_keepalive_limit;
+        handler_ctx[i].req_id = i+1;
+        handler_ctx[i].accepted_requests = accepted_requests;
+        handler_ctx[i].sent_requests = sent_requests;
+        handler_ctx[i].handled_requests = handled_requests;
+        handler_ctx[i].tb = tb;
+        handler_ctx[i].use_proxy = FALSE;
+        handler_ctx[i].server_root = NULL;
+
+        serf_connection_request_create(tb->connection,
+                                       setup_request,
+                                       &handler_ctx[i]);
+        serf_set_max_outstanding_requests(tb->connection, 1);
+    }
+
+    while (1) {
+        status = test_server_run(tb, 0, test_pool);
+        if (APR_STATUS_IS_TIMEUP(status))
+            status = APR_SUCCESS;
+        CuAssertIntEquals(tc, APR_SUCCESS, status);
+
+        status = serf_context_run(tb->context, 0, test_pool);
+        if (APR_STATUS_IS_TIMEUP(status))
+            status = APR_SUCCESS;
+        CuAssertIntEquals(tc, APR_SUCCESS, status);
+
+        /* Debugging purposes only! */
+        serf_debug__closed_conn(tb->bkt_alloc);
+
+        done = TRUE;
+        for (i = 0 ; i < SEND_REQUESTS ; i++)
+            if (handler_ctx[i].done == FALSE) {
+                done = FALSE;
+                break;
+            }
+        if (done)
+            break;
+    }
+
+    /* Check that all requests were received */
+    CuAssertIntEquals(tc, RCVD_REQUESTS, sent_requests->nelts);
+    CuAssertIntEquals(tc, RCVD_REQUESTS, accepted_requests->nelts);
+    CuAssertIntEquals(tc, RCVD_REQUESTS, handled_requests->nelts);
+
+    /* Cleanup */
+    test_server_destroy(tb, test_pool);
+}
+#undef SEND_REQUESTS
+#undef RCVD_REQUESTS
+
+/*****************************************************************************
+ * Test if we can make serf first send requests one by one, and then change
+ * back to burst mode.
+ *****************************************************************************/
+#define SEND_REQUESTS 5
+#define RCVD_REQUESTS 7
+/* Resend the first request 4 times by reducing the pipeline bandwidth to 
+   one request at a time, and by adding the first request again at the start of 
+   the outgoing queue. */
+static apr_status_t
+handle_response_keepalive_limit_burst(serf_request_t *request,
+                                      serf_bucket_t *response,
+                                      void *handler_baton,
+                                      apr_pool_t *pool)
+{
+    handler_baton_t *ctx = handler_baton;
+
+    if (! response) {
+        return APR_SUCCESS;
+    }
+
+    while (1) {
+        apr_status_t status;
+        const char *data;
+        apr_size_t len;
+
+        status = serf_bucket_read(response, 2048, &data, &len);
+        if (SERF_BUCKET_READ_ERROR(status)) {
+            return status;
+        }
+
+        if (APR_STATUS_IS_EOF(status)) {
+            APR_ARRAY_PUSH(ctx->handled_requests, int) = ctx->req_id;
+            ctx->done = TRUE;
+            if (ctx->req_id == 1 && ctx->handled_requests->nelts < 3) {
+                serf_connection_priority_request_create(ctx->tb->connection,
+                                                        setup_request,
+                                                        ctx);
+                ctx->done = FALSE;
+            }
+            else  {
+                /* No more one-by-one. */
+                serf_set_max_outstanding_requests(ctx->tb->connection, 0);
+            }
+            return APR_EOF;
+        }
+    }
+
+    return APR_SUCCESS;
+}
+
+void test_keepalive_limit_one_by_one_and_burst(CuTest *tc)
+{
+    test_baton_t *tb;
+    apr_array_header_t *accepted_requests, *handled_requests, *sent_requests;
+    apr_status_t status;
+    handler_baton_t handler_ctx[SEND_REQUESTS];
+    int done = FALSE, i;
+
+    test_server_action_t action_list[] = {
+        {SERVER_RECV,
+         CHUNCKED_REQUEST(1, "1")
+        },
+        {SERVER_SEND,
+         CHUNKED_EMPTY_RESPONSE
+        },
+        {SERVER_RECV,
+         CHUNCKED_REQUEST(1, "1")
+        },
+        {SERVER_SEND,
+         CHUNKED_EMPTY_RESPONSE
+        },
+        {SERVER_RECV,
+         CHUNCKED_REQUEST(1, "1")
+        },
+        {SERVER_SEND,
+         CHUNKED_EMPTY_RESPONSE
+        },
+        {SERVER_RECV,
+         CHUNCKED_REQUEST(1, "2")
+         CHUNCKED_REQUEST(1, "3")
+         CHUNCKED_REQUEST(1, "4")
+         CHUNCKED_REQUEST(1, "5")
+        },
+        {SERVER_SEND,
+         CHUNKED_EMPTY_RESPONSE
+         CHUNKED_EMPTY_RESPONSE
+         CHUNKED_EMPTY_RESPONSE
+         CHUNKED_EMPTY_RESPONSE
+        },
+    };
+
+    accepted_requests = apr_array_make(test_pool, RCVD_REQUESTS, sizeof(int));
+    sent_requests = apr_array_make(test_pool, RCVD_REQUESTS, sizeof(int));
+    handled_requests = apr_array_make(test_pool, RCVD_REQUESTS, sizeof(int));
+
+    /* Set up a test context with a server. */
+    status = test_server_create(&tb, action_list, 8, 0, NULL, test_pool);
+
+    for (i = 0 ; i < SEND_REQUESTS ; i++) {
+        /* Send some requests on the connections */
+        handler_ctx[i].method = "GET";
+        handler_ctx[i].path = "/";
+        handler_ctx[i].done = FALSE;
+
+        handler_ctx[i].acceptor = accept_response;
+        handler_ctx[i].acceptor_baton = NULL;
+        handler_ctx[i].handler = handle_response_keepalive_limit_burst;
+        handler_ctx[i].req_id = i+1;
+        handler_ctx[i].accepted_requests = accepted_requests;
+        handler_ctx[i].sent_requests = sent_requests;
+        handler_ctx[i].handled_requests = handled_requests;
+        handler_ctx[i].tb = tb;
+        handler_ctx[i].use_proxy = FALSE;
+        handler_ctx[i].server_root = NULL;
+
+        serf_connection_request_create(tb->connection,
+                                       setup_request,
+                                       &handler_ctx[i]);
+        serf_set_max_outstanding_requests(tb->connection, 1);
+    }
+
+    while (1) {
+        status = test_server_run(tb, 0, test_pool);
+        if (APR_STATUS_IS_TIMEUP(status))
+            status = APR_SUCCESS;
+        CuAssertIntEquals(tc, APR_SUCCESS, status);
+
+        status = serf_context_run(tb->context, 0, test_pool);
+        if (APR_STATUS_IS_TIMEUP(status))
+            status = APR_SUCCESS;
+        CuAssertIntEquals(tc, APR_SUCCESS, status);
+
+        /* Debugging purposes only! */
+        serf_debug__closed_conn(tb->bkt_alloc);
+
+        done = TRUE;
+        for (i = 0 ; i < SEND_REQUESTS ; i++)
+            if (handler_ctx[i].done == FALSE) {
+                done = FALSE;
+                break;
+            }
+        if (done)
+            break;
+    }
+
+    /* Check that all requests were received */
+    CuAssertIntEquals(tc, RCVD_REQUESTS, sent_requests->nelts);
+    CuAssertIntEquals(tc, RCVD_REQUESTS, accepted_requests->nelts);
+    CuAssertIntEquals(tc, RCVD_REQUESTS, handled_requests->nelts);
+
+    /* Cleanup */
+    test_server_destroy(tb, test_pool);
+}
+#undef SEND_REQUESTS
+#undef RCVD_REQUESTS
+
 CuSuite *test_context(void)
 {
     CuSuite *suite = CuSuiteNew();
@@ -589,6 +911,8 @@ CuSuite *test_context(void)
     SUITE_ADD_TEST(suite, test_serf_connection_priority_request_create);
     SUITE_ADD_TEST(suite, test_serf_closed_connection);
     SUITE_ADD_TEST(suite, test_serf_setup_proxy);
+    SUITE_ADD_TEST(suite, test_keepalive_limit_one_by_one);
+    SUITE_ADD_TEST(suite, test_keepalive_limit_one_by_one_and_burst);
 
     return suite;
 }
