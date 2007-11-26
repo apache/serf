@@ -132,7 +132,7 @@ static apr_status_t handle_response(serf_request_t *request,
 }
 
 /* Validate that requests are sent and completed in the order of creation. */
-void test_serf_connection_request_create(CuTest *tc)
+static void test_serf_connection_request_create(CuTest *tc)
 {
     test_baton_t *tb;
     serf_request_t *request1, *request2;
@@ -248,7 +248,7 @@ void test_serf_connection_request_create(CuTest *tc)
 
 /* Validate that priority requests are sent and completed before normal 
    requests. */
-void test_serf_connection_priority_request_create(CuTest *tc)
+static void test_serf_connection_priority_request_create(CuTest *tc)
 {
     test_baton_t *tb;
     serf_request_t *request1, *request2, *request3;
@@ -353,7 +353,7 @@ void test_serf_connection_priority_request_create(CuTest *tc)
 /* Test that serf correctly handles the 'Connection:close' header when the 
    server is planning to close the connection. */
 #define NUM_REQUESTS 10
-void test_serf_closed_connection(CuTest *tc)
+static void test_serf_closed_connection(CuTest *tc)
 {
     test_baton_t *tb;
     apr_array_header_t *accepted_requests, *handled_requests, *sent_requests;
@@ -469,7 +469,7 @@ void test_serf_closed_connection(CuTest *tc)
 
 /* Test if serf is sending the request to the proxy, not to the server 
    directly. */
-void test_serf_setup_proxy(CuTest *tc)
+static void test_serf_setup_proxy(CuTest *tc)
 {
     test_baton_t *tb_server, *tb_proxy;
     serf_request_t *request;
@@ -628,7 +628,7 @@ handle_response_keepalive_limit(serf_request_t *request,
 
 #define SEND_REQUESTS 5
 #define RCVD_REQUESTS 7
-void test_keepalive_limit_one_by_one(CuTest *tc)
+static void test_keepalive_limit_one_by_one(CuTest *tc)
 {
     test_baton_t *tb;
     apr_array_header_t *accepted_requests, *handled_requests, *sent_requests;
@@ -797,7 +797,7 @@ handle_response_keepalive_limit_burst(serf_request_t *request,
     return APR_SUCCESS;
 }
 
-void test_keepalive_limit_one_by_one_and_burst(CuTest *tc)
+static void test_keepalive_limit_one_by_one_and_burst(CuTest *tc)
 {
     test_baton_t *tb;
     apr_array_header_t *accepted_requests, *handled_requests, *sent_requests;
