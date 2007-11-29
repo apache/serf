@@ -132,4 +132,12 @@ apr_status_t test_server_run(test_baton_t *tb,
 
 apr_status_t test_server_destroy(test_baton_t *tb, apr_pool_t *pool);
 
+#ifndef APR_VERSION_AT_LEAST /* Introduced in APR 1.3.0 */
+#define APR_VERSION_AT_LEAST(major,minor,patch)                  \
+(((major) < APR_MAJOR_VERSION)                                       \
+ || ((major) == APR_MAJOR_VERSION && (minor) < APR_MINOR_VERSION)    \
+ || ((major) == APR_MAJOR_VERSION && (minor) == APR_MINOR_VERSION && \
+     (patch) <= APR_PATCH_VERSION))
+#endif /* APR_VERSION_AT_LEAST */
+
 #endif /* TEST_SERF_H */
