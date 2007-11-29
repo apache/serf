@@ -708,7 +708,7 @@ static void test_keepalive_limit_one_by_one(CuTest *tc)
         serf_connection_request_create(tb->connection,
                                        setup_request,
                                        &handler_ctx[i]);
-        serf_set_max_outstanding_requests(tb->connection, 1);
+        serf_connection_set_max_outstanding_requests(tb->connection, 1);
     }
 
     while (1) {
@@ -788,7 +788,8 @@ handle_response_keepalive_limit_burst(serf_request_t *request,
             }
             else  {
                 /* No more one-by-one. */
-                serf_set_max_outstanding_requests(ctx->tb->connection, 0);
+                serf_connection_set_max_outstanding_requests(ctx->tb->connection, 
+                                                             0);
             }
             return APR_EOF;
         }
@@ -865,7 +866,7 @@ static void test_keepalive_limit_one_by_one_and_burst(CuTest *tc)
         serf_connection_request_create(tb->connection,
                                        setup_request,
                                        &handler_ctx[i]);
-        serf_set_max_outstanding_requests(tb->connection, 1);
+        serf_connection_set_max_outstanding_requests(tb->connection, 1);
     }
 
     while (1) {

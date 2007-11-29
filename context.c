@@ -1193,8 +1193,9 @@ SERF_DECLARE(apr_status_t) serf_connection_close(
     return APR_NOTFOUND;
 }
 
-SERF_DECLARE(void) serf_set_max_outstanding_requests(serf_connection_t *conn,
-                                                     unsigned int max_requests)
+SERF_DECLARE(void)
+serf_connection_set_max_outstanding_requests(serf_connection_t *conn,
+                                             unsigned int max_requests)
 {
     conn->max_outstanding_requests = max_requests;
 }

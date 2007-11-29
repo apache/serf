@@ -295,8 +295,9 @@ SERF_DECLARE(apr_status_t) serf_connection_close(
  * Ex.: setting max_requests to 1 means a request is sent when a response on the 
  * previous request was received and handled. 
  */
-SERF_DECLARE(void) serf_set_max_outstanding_requests(serf_connection_t *conn,
-                                                     unsigned int max_requests);
+SERF_DECLARE(void) 
+serf_connection_set_max_outstanding_requests(serf_connection_t *conn,
+                                             unsigned int max_requests);
 
 /**
  * Setup the @a request for delivery on its connection.
