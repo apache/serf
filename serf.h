@@ -78,20 +78,49 @@ typedef struct serf_request_t serf_request_t;
  */
 SERF_DECLARE(serf_context_t *) serf_context_create(apr_pool_t *pool);
 
+/**
+ * Callback function. Add a socket to the externally managed poll set.
+ *
+ * Both @a pfd and @a serf_baton should be used when calling serf_event_trigger
+ * later.
+ */
 typedef apr_status_t (*serf_socket_add_t)(void *user_baton,
                                           apr_pollfd_t *pfd,
                                           void *serf_baton);
+/**
+ * Callback function. Remove the socket, identified by both @a pfd and 
+ * @a serf_baton from the externally managed poll set.
+ */
 typedef apr_status_t (*serf_socket_remove_t)(void *user_baton,
                                              apr_pollfd_t *pfd,
                                              void *serf_baton);
 
-SERF_DECLARE(serf_context_t *) serf_context_create_ex(apr_pool_t *pool,
-                                                      void *user_baton,
+/* Create a new context for serf operations.
+ *
+ * Use this function to make serf not use its internal control loop, but
+ * instead rely on an external event loop. Serf will use the @a addf and @a rmf 
+ * callbacks to notify of any event on a connection. The @a user_baton will be 
+ * passed through the addf and rmf callbacks.
+ *
+ * The context will be allocated within @a pool.
+ */
+SERF_DECLARE(serf_context_t *) serf_context_create_ex(void *user_baton,
                                                       serf_socket_add_t addf,
-                                                      serf_socket_remove_t rmf);
+                                                      serf_socket_remove_t rmf,
+                                                      apr_pool_t *pool);
 
+/**
+ * Make serf process events on a connection, identified by both @a pfd and 
+ * @a serf_baton.
+ *
+ * Any outbound data is delivered, and incoming data is made available to
+ * the associated response handlers and their buckets.
+ *
+ * If any data is processed (incoming or outgoing), then this function will
+ * return with APR_SUCCESS.
+ */
 SERF_DECLARE(apr_status_t) serf_event_trigger(serf_context_t *s,
-                                              void *baton,
+                                              void *serf_baton,
                                               const apr_pollfd_t *pfd);
 
 /** @see serf_context_run should not block at all. */

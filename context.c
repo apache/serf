@@ -975,8 +975,8 @@ static apr_status_t check_dirty_pollsets(serf_context_t *ctx)
 
 
 static apr_status_t pollset_add(void *user_baton,
-                                 apr_pollfd_t *pfd,
-                                 void *serf_baton)
+                                apr_pollfd_t *pfd,
+                                void *serf_baton)
 {
     serf_pollset_t *s = (serf_pollset_t*)user_baton;
     pfd->client_data = serf_baton;
@@ -984,8 +984,8 @@ static apr_status_t pollset_add(void *user_baton,
 }
 
 static apr_status_t pollset_rm(void *user_baton,
-                                apr_pollfd_t *pfd,
-                                void *serf_baton)
+                               apr_pollfd_t *pfd,
+                               void *serf_baton)
 {
     serf_pollset_t *s = (serf_pollset_t*)user_baton;
     pfd->client_data = serf_baton;
@@ -999,10 +999,10 @@ SERF_DECLARE(void) serf_config_proxy(serf_context_t *ctx,
     ctx->proxy_address = address;
 }
 
-SERF_DECLARE(serf_context_t *) serf_context_create_ex(apr_pool_t *pool,
-                                                      void *user_baton,
+SERF_DECLARE(serf_context_t *) serf_context_create_ex(void *user_baton,
                                                       serf_socket_add_t addf,
-                                                      serf_socket_remove_t rmf)
+                                                      serf_socket_remove_t rmf,
+                                                      apr_pool_t *pool)
 {
     serf_context_t *ctx = apr_pcalloc(pool, sizeof(*ctx));
 
@@ -1031,7 +1031,7 @@ SERF_DECLARE(serf_context_t *) serf_context_create_ex(apr_pool_t *pool,
 
 SERF_DECLARE(serf_context_t *) serf_context_create(apr_pool_t *pool)
 {
-    return serf_context_create_ex(pool, NULL, NULL, NULL);
+    return serf_context_create_ex(NULL, NULL, NULL, pool);
 }
 
 SERF_DECLARE(apr_status_t) serf_context_prerun(serf_context_t *ctx)
@@ -1046,12 +1046,12 @@ SERF_DECLARE(apr_status_t) serf_context_prerun(serf_context_t *ctx)
 }
 
 SERF_DECLARE(apr_status_t) serf_event_trigger(serf_context_t *s,
-                                              void *baton,
+                                              void *serf_baton,
                                               const apr_pollfd_t *desc)
 {
     apr_status_t status = APR_SUCCESS;
 
-    serf_connection_t *conn = baton;
+    serf_connection_t *conn = serf_baton;
 
     /* apr_pollset_poll() can return a conn multiple times... */
     if ((conn->seen_in_pollset & desc->rtnevents) != 0 ||
