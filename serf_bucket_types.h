@@ -59,7 +59,7 @@ SERF_DECLARE(void) serf_bucket_request_become(serf_bucket_t *bucket,
 /**
  * Sets the root url of the remote host. If this request contains a relative
  * url, it will be prefixed with the root url to form an absolute url.
- * @a bucket is the request bucket. @a root_url is the absolute url of the 
+ * @a bucket is the request bucket. @a root_url is the absolute url of the
  * root of the remote host.
  */
 SERF_DECLARE(void) serf_bucket_request_set_root(serf_bucket_t *bucket,
@@ -293,7 +293,7 @@ SERF_DECLARE(const char *) serf_bucket_headers_get(
  */
 typedef int (serf_bucket_headers_do_callback_fn_t)(
     void *baton,
-    const char *key, 
+    const char *key,
     const char *value);
 
 /**

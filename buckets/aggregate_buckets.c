@@ -117,7 +117,7 @@ SERF_DECLARE(void) serf_bucket_aggregate_append(
     new_list->bucket = append_bucket;
     new_list->next = NULL;
 
-    /* If we use APR_RING, this is trivial.  So, wait. 
+    /* If we use APR_RING, this is trivial.  So, wait.
     new_list->next = ctx->list;
     ctx->list = new_list;
     */

@@ -71,7 +71,7 @@ struct serf_context_t {
     void *pollset_baton;
     serf_socket_add_t pollset_add;
     serf_socket_remove_t pollset_rm;
-    
+
     /* one of our connections has a dirty pollset state. */
     int dirty_pollset;
 
@@ -209,7 +209,7 @@ static apr_status_t update_pollset(serf_connection_t *conn)
             serf_request_t *request = conn->requests;
 
             if ((conn->probable_keepalive_limit &&
-                 conn->completed_requests > conn->probable_keepalive_limit) || 
+                 conn->completed_requests > conn->probable_keepalive_limit) ||
                 (conn->max_outstanding_requests &&
                  conn->completed_requests - conn->completed_responses >=
                      conn->max_outstanding_requests)) {
@@ -355,8 +355,8 @@ static apr_status_t no_more_writes(serf_connection_t *conn,
 }
 
 /* Read the 'Connection' header from the response. Return SERF_ERROR_CLOSING if
- * the header contains value 'close' indicating the server is closing the 
- * connection right after this response. 
+ * the header contains value 'close' indicating the server is closing the
+ * connection right after this response.
  * Otherwise returns APR_SUCCESS.
  */
 static apr_status_t is_conn_closing(serf_bucket_t *response)
@@ -459,7 +459,7 @@ static apr_status_t reset_connection(serf_connection_t *conn,
     old_reqs = conn->requests;
     held_reqs = conn->hold_requests;
     held_reqs_tail = conn->hold_requests_tail;
- 
+
     if (conn->closing) {
         conn->hold_requests = NULL;
         conn->hold_requests_tail = NULL;
@@ -583,7 +583,7 @@ static apr_status_t write_to_connection(serf_connection_t *conn)
         apr_status_t read_status;
 
         if (conn->max_outstanding_requests &&
-            conn->completed_requests - 
+            conn->completed_requests -
                 conn->completed_responses >= conn->max_outstanding_requests) {
             /* backoff for now. */
             return APR_SUCCESS;
@@ -829,7 +829,7 @@ static apr_status_t read_from_connection(serf_connection_t *conn)
 
         close_connection = is_conn_closing(request->resp_bkt);
 
-        if (!APR_STATUS_IS_EOF(status) && 
+        if (!APR_STATUS_IS_EOF(status) &&
             close_connection != SERF_ERROR_CLOSING) {
             /* Whether success, or an error, there is no more to do unless
              * this request has been completed.
@@ -1005,9 +1005,9 @@ SERF_DECLARE(serf_context_t *) serf_context_create_ex(apr_pool_t *pool,
                                                       serf_socket_remove_t rmf)
 {
     serf_context_t *ctx = apr_pcalloc(pool, sizeof(*ctx));
-    
+
     ctx->pool = pool;
-    
+
     if (user_baton != NULL) {
         ctx->pollset_baton = user_baton;
         ctx->pollset_add = addf;
@@ -1021,11 +1021,11 @@ SERF_DECLARE(serf_context_t *) serf_context_create_ex(apr_pool_t *pool,
         ctx->pollset_add = pollset_add;
         ctx->pollset_rm = pollset_rm;
     }
-    
+
     /* default to a single connection since that is the typical case */
     ctx->conns = apr_array_make(pool, 1, sizeof(serf_connection_t *));
-    
-    
+
+
     return ctx;
 }
 
@@ -1039,7 +1039,7 @@ SERF_DECLARE(apr_status_t) serf_context_prerun(serf_context_t *ctx)
     apr_status_t status = APR_SUCCESS;
     if ((status = open_connections(ctx)) != APR_SUCCESS)
         return status;
-    
+
     if ((status = check_dirty_pollsets(ctx)) != APR_SUCCESS)
         return status;
     return status;
@@ -1052,7 +1052,7 @@ SERF_DECLARE(apr_status_t) serf_event_trigger(serf_context_t *s,
     apr_status_t status = APR_SUCCESS;
 
     serf_connection_t *conn = baton;
-    
+
     /* apr_pollset_poll() can return a conn multiple times... */
     if ((conn->seen_in_pollset & desc->rtnevents) != 0 ||
         (conn->seen_in_pollset & APR_POLLHUP) != 0) {
@@ -1060,12 +1060,12 @@ SERF_DECLARE(apr_status_t) serf_event_trigger(serf_context_t *s,
     }
 
     conn->seen_in_pollset |= desc->rtnevents;
-    
+
     if ((status = process_connection(conn,
                                      desc->rtnevents)) != APR_SUCCESS) {
         return status;
     }
-    
+
     return status;
 }
 
@@ -1077,7 +1077,7 @@ SERF_DECLARE(apr_status_t) serf_context_run(serf_context_t *ctx,
     apr_int32_t num;
     const apr_pollfd_t *desc;
     serf_pollset_t *ps = (serf_pollset_t*)ctx->pollset_baton;
- 
+
     if ((status = serf_context_prerun(ctx)) != APR_SUCCESS) {
         return status;
     }

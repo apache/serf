@@ -53,7 +53,7 @@ SERF_DECLARE(serf_bucket_t *) serf_bucket_request_get_headers(
 }
 
 SERF_DECLARE(void) serf_bucket_request_set_root(
-    serf_bucket_t *bucket, 
+    serf_bucket_t *bucket,
     const char *root_url)
 {
     request_context_t *ctx = (request_context_t *)bucket->data;
@@ -66,10 +66,10 @@ SERF_DECLARE(void) serf_bucket_request_set_root(
     if (ctx->uri[1] == '\0')
         ctx->uri = root_url;
     else
-        ctx->uri = 
-            apr_pstrcat(serf_bucket_allocator_get_pool(bucket->allocator), 
+        ctx->uri =
+            apr_pstrcat(serf_bucket_allocator_get_pool(bucket->allocator),
                         root_url,
-                        ctx->uri, 
+                        ctx->uri,
                         NULL);
 }
 

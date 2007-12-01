@@ -246,7 +246,7 @@ static void test_serf_connection_request_create(CuTest *tc)
     test_server_destroy(tb, test_pool);
 }
 
-/* Validate that priority requests are sent and completed before normal 
+/* Validate that priority requests are sent and completed before normal
    requests. */
 static void test_serf_connection_priority_request_create(CuTest *tc)
 {
@@ -350,7 +350,7 @@ static void test_serf_connection_priority_request_create(CuTest *tc)
     test_server_destroy(tb, test_pool);
 }
 
-/* Test that serf correctly handles the 'Connection:close' header when the 
+/* Test that serf correctly handles the 'Connection:close' header when the
    server is planning to close the connection. */
 #define NUM_REQUESTS 10
 static void test_serf_closed_connection(CuTest *tc)
@@ -467,7 +467,7 @@ static void test_serf_closed_connection(CuTest *tc)
 }
 #undef NUM_REQUESTS
 
-/* Test if serf is sending the request to the proxy, not to the server 
+/* Test if serf is sending the request to the proxy, not to the server
    directly. */
 static void test_serf_setup_proxy(CuTest *tc)
 {
@@ -509,7 +509,7 @@ static void test_serf_setup_proxy(CuTest *tc)
     status = apr_sockaddr_info_get(&proxy_address,
                                    "localhost", APR_INET, 21212, 0,
                                    test_pool);
-    status = test_server_create(&tb_proxy, action_list_proxy, 2, 0, 
+    status = test_server_create(&tb_proxy, action_list_proxy, 2, 0,
                                 proxy_address, test_pool);
 
     CuAssertIntEquals(tc, APR_SUCCESS, status);
@@ -585,8 +585,8 @@ static void test_serf_setup_proxy(CuTest *tc)
  * Test if we can make serf send requests one by one.
  *****************************************************************************/
 
-/* Resend the first request 4 times by reducing the pipeline bandwidth to 
-   one request at a time, and by adding the first request again at the start of 
+/* Resend the first request 4 times by reducing the pipeline bandwidth to
+   one request at a time, and by adding the first request again at the start of
    the outgoing queue. */
 static apr_status_t
 handle_response_keepalive_limit(serf_request_t *request,
@@ -752,8 +752,8 @@ static void test_keepalive_limit_one_by_one(CuTest *tc)
  *****************************************************************************/
 #define SEND_REQUESTS 5
 #define RCVD_REQUESTS 7
-/* Resend the first request 4 times by reducing the pipeline bandwidth to 
-   one request at a time, and by adding the first request again at the start of 
+/* Resend the first request 4 times by reducing the pipeline bandwidth to
+   one request at a time, and by adding the first request again at the start of
    the outgoing queue. */
 static apr_status_t
 handle_response_keepalive_limit_burst(serf_request_t *request,
@@ -788,7 +788,7 @@ handle_response_keepalive_limit_burst(serf_request_t *request,
             }
             else  {
                 /* No more one-by-one. */
-                serf_connection_set_max_outstanding_requests(ctx->tb->connection, 
+                serf_connection_set_max_outstanding_requests(ctx->tb->connection,
                                                              0);
             }
             return APR_EOF;

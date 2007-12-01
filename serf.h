@@ -84,7 +84,7 @@ typedef apr_status_t (*serf_socket_add_t)(void *user_baton,
 typedef apr_status_t (*serf_socket_remove_t)(void *user_baton,
                                              apr_pollfd_t *pfd,
                                              void *serf_baton);
-    
+
 SERF_DECLARE(serf_context_t *) serf_context_create_ex(apr_pool_t *pool,
                                                       void *user_baton,
                                                       serf_socket_add_t addf,
@@ -93,7 +93,7 @@ SERF_DECLARE(serf_context_t *) serf_context_create_ex(apr_pool_t *pool,
 SERF_DECLARE(apr_status_t) serf_event_trigger(serf_context_t *s,
                                               void *baton,
                                               const apr_pollfd_t *pfd);
-    
+
 /** @see serf_context_run should not block at all. */
 #define SERF_DURATION_NOBLOCK 0
 /** @see serf_context_run should run for (nearly) "forever". */
@@ -122,7 +122,7 @@ SERF_DECLARE(apr_status_t) serf_context_run(serf_context_t *ctx,
 
 
 SERF_DECLARE(apr_status_t) serf_context_prerun(serf_context_t *ctx);
-    
+
 
 /** @} */
 
@@ -290,12 +290,12 @@ SERF_DECLARE(apr_status_t) serf_connection_close(
     serf_connection_t *conn);
 
 /**
- * Sets the maximum number of outstanding requests @a max_requests on the 
+ * Sets the maximum number of outstanding requests @a max_requests on the
  * connection @a conn. Setting max_requests to 0 means unlimited (the default).
- * Ex.: setting max_requests to 1 means a request is sent when a response on the 
- * previous request was received and handled. 
+ * Ex.: setting max_requests to 1 means a request is sent when a response on the
+ * previous request was received and handled.
  */
-SERF_DECLARE(void) 
+SERF_DECLARE(void)
 serf_connection_set_max_outstanding_requests(serf_connection_t *conn,
                                              unsigned int max_requests);
 
@@ -413,7 +413,7 @@ SERF_DECLARE(void) serf_request_set_handler(
  * with the @a ctx serf context.
  *
  * The next connection will be created to connect to the proxy server
- * specified by @a address. The address must live at least as long as the 
+ * specified by @a address. The address must live at least as long as the
  * serf context.
  *
  * TODO: THIS IS WORK-IN-PROGRESS, PROXY SUPPORT IS NOT FINISHED!

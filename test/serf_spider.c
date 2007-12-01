@@ -122,8 +122,8 @@ typedef struct {
     apr_thread_cond_t *doc_queue_condvar;
 
     const char *hostinfo;
-  
-    /* includes: path, query, fragment. */ 
+
+    /* includes: path, query, fragment. */
     char *full_path;
     apr_size_t full_path_len;
 

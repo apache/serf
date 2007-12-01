@@ -80,14 +80,14 @@ SERF_DECLARE(void) serf_bucket_headers_setx(
             break;
       found = found->next;
     }
-    
+
     if (found) {
 
         /* The header is already present.  RFC 2616, section 4.2
            indicates that we should append the new value, separated by
            a comma.  Reasoning: for headers whose values are known to
            be comma-separated, that is clearly the correct behavior;
-           for others, the correct behavior is undefined anyway. */ 
+           for others, the correct behavior is undefined anyway. */
 
         /* The "+1" is for the comma; serf_bstrmemdup() will also add
            one slot for the terminating '\0'. */
@@ -186,7 +186,7 @@ SERF_DECLARE(const char *) serf_bucket_headers_get(
 
 SERF_DECLARE(void) serf_bucket_headers_do(
     serf_bucket_t *headers_bucket,
-    serf_bucket_headers_do_callback_fn_t func, 
+    serf_bucket_headers_do_callback_fn_t func,
     void *baton)
 {
     headers_context_t *ctx = headers_bucket->data;
@@ -324,7 +324,7 @@ static apr_status_t serf_headers_read(serf_bucket_t *bucket,
     if (requested >= avail) {
         /* return everything from this chunk */
         *len = avail;
-        
+
         /* we consumed this chunk. advance the state. */
         return consume_chunk(ctx);
     }

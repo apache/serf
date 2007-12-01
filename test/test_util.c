@@ -277,7 +277,7 @@ apr_status_t test_server_create(test_baton_t **tb_p,
     tb = apr_palloc(pool, sizeof(*tb));
     *tb_p = tb;
 
-    if (address) { 
+    if (address) {
         tb->serv_addr = address;
     }
     else {
