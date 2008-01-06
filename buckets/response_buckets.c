@@ -13,8 +13,6 @@
  * limitations under the License.
  */
 
-#include <stdlib.h>
-
 #include <apr_lib.h>
 #include <apr_strings.h>
 #include <apr_date.h>

@@ -13,8 +13,6 @@
  * limitations under the License.
  */
 
-#include <stdlib.h>  /* for abort() */
-
 #include <apr_pools.h>
 
 #include "serf.h"
