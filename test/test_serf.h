@@ -111,6 +111,10 @@ typedef struct {
 
     /* Accepted client socket. NULL if there is no client socket. */
     apr_socket_t *client_sock;
+
+    /* An extra baton which can be freely used by tests. */
+    void *user_baton;
+
 } test_baton_t;
 
 #define TEST_SERVER_DUMP 1
@@ -124,6 +128,7 @@ apr_status_t test_server_create(test_baton_t **tb,
                                 apr_size_t action_count,
                                 apr_int32_t options,
                                 apr_sockaddr_t *adress,
+                                serf_connection_setup_t conn_setup,
                                 apr_pool_t *pool);
 
 apr_status_t test_server_run(test_baton_t *tb,

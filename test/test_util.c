@@ -269,6 +269,7 @@ apr_status_t test_server_create(test_baton_t **tb_p,
                                 apr_size_t action_count,
                                 apr_int32_t options,
                                 apr_sockaddr_t *address,
+                                serf_connection_setup_t conn_setup,
                                 apr_pool_t *pool)
 {
     apr_status_t status;
@@ -292,7 +293,8 @@ apr_status_t test_server_create(test_baton_t **tb_p,
     tb->bkt_alloc = serf_bucket_allocator_create(pool, NULL, NULL);
     tb->connection = serf_connection_create(tb->context,
                                             tb->serv_addr,
-                                            default_conn_setup,
+                                            conn_setup ? conn_setup : 
+                                                default_conn_setup,
                                             tb,
                                             default_closed_connection,
                                             tb,

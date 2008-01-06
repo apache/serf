@@ -177,7 +177,7 @@ static void test_serf_connection_request_create(CuTest *tc)
     handled_requests = apr_array_make(test_pool, 2, sizeof(int));
 
     /* Set up a test context with a server */
-    status = test_server_create(&tb, action_list, 2, 0, NULL, test_pool);
+    status = test_server_create(&tb, action_list, 2, 0, NULL, NULL, test_pool);
     CuAssertIntEquals(tc, APR_SUCCESS, status);
 
     handler_ctx.method = "GET";
@@ -275,7 +275,7 @@ static void test_serf_connection_priority_request_create(CuTest *tc)
     handled_requests = apr_array_make(test_pool, 3, sizeof(int));
 
     /* Set up a test context with a server */
-    status = test_server_create(&tb, action_list, 2, 0, NULL, test_pool);
+    status = test_server_create(&tb, action_list, 2, 0, NULL, NULL, test_pool);
     CuAssertIntEquals(tc, APR_SUCCESS, status);
 
     handler_ctx.method = "GET";
@@ -409,7 +409,7 @@ static void test_serf_closed_connection(CuTest *tc)
     handled_requests = apr_array_make(test_pool, NUM_REQUESTS, sizeof(int));
 
     /* Set up a test context with a server. */
-    status = test_server_create(&tb, action_list, 6, 0, NULL, test_pool);
+    status = test_server_create(&tb, action_list, 6, 0, NULL, NULL, test_pool);
 
     for (i = 0 ; i < NUM_REQUESTS ; i++) {
         /* Send some requests on the connections */
@@ -502,7 +502,7 @@ static void test_serf_setup_proxy(CuTest *tc)
 
     /* Set up a test context with a server */
     status = test_server_create(&tb_server, action_list_server, 2, 0, NULL,
-                                test_pool);
+                                NULL, test_pool);
     CuAssertIntEquals(tc, APR_SUCCESS, status);
 
     /* Set up another test context for the proxy server */
@@ -510,7 +510,7 @@ static void test_serf_setup_proxy(CuTest *tc)
                                    "localhost", APR_INET, 21212, 0,
                                    test_pool);
     status = test_server_create(&tb_proxy, action_list_proxy, 2, 0,
-                                proxy_address, test_pool);
+                                proxy_address, NULL, test_pool);
 
     CuAssertIntEquals(tc, APR_SUCCESS, status);
 
@@ -686,7 +686,7 @@ static void test_keepalive_limit_one_by_one(CuTest *tc)
     handled_requests = apr_array_make(test_pool, RCVD_REQUESTS, sizeof(int));
 
     /* Set up a test context with a server. */
-    status = test_server_create(&tb, action_list, 14, 0, NULL, test_pool);
+    status = test_server_create(&tb, action_list, 14, 0, NULL, NULL, test_pool);
 
     for (i = 0 ; i < SEND_REQUESTS ; i++) {
         /* Send some requests on the connections */
@@ -844,7 +844,7 @@ static void test_keepalive_limit_one_by_one_and_burst(CuTest *tc)
     handled_requests = apr_array_make(test_pool, RCVD_REQUESTS, sizeof(int));
 
     /* Set up a test context with a server. */
-    status = test_server_create(&tb, action_list, 8, 0, NULL, test_pool);
+    status = test_server_create(&tb, action_list, 8, 0, NULL, NULL, test_pool);
 
     for (i = 0 ; i < SEND_REQUESTS ; i++) {
         /* Send some requests on the connections */
