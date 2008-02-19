@@ -79,6 +79,12 @@ struct serf_context_t {
 
     /* Proxy server address */
     apr_sockaddr_t *proxy_address;
+
+    /* Progress callback */
+    serf_progress_t progress_func;
+    void *progress_baton;
+    apr_off_t progress_read;
+    apr_off_t progress_written;
 };
 
 struct serf_connection_t {
@@ -520,6 +526,27 @@ static apr_status_t reset_connection(serf_connection_t *conn,
     return APR_SUCCESS;
 }
 
+/**
+ * Callback function (implements serf_progress_t). Takes a number of bytes
+ * read @a read and bytes written @a written, adds those to the total for this
+ * context and notifies an interested party (if any).
+ */
+static void serf_context_progress_delta(
+    void *progress_baton,
+    apr_off_t read,
+    apr_off_t written)
+{
+    serf_context_t *ctx = progress_baton;
+
+    ctx->progress_read += read;
+    ctx->progress_written += written;
+
+    if (ctx->progress_func)
+        ctx->progress_func(ctx->progress_baton,
+                           ctx->progress_read,
+                           ctx->progress_written);
+}
+
 static apr_status_t socket_writev(serf_connection_t *conn)
 {
     apr_size_t written;
@@ -549,6 +576,9 @@ static apr_status_t socket_writev(serf_connection_t *conn)
         if (len == written) {
             conn->vec_len = 0;
         }
+
+        /* Log progress information */
+        serf_context_progress_delta(conn->ctx, 0, written);
     }
 
     return status;
@@ -1023,6 +1053,9 @@ SERF_DECLARE(serf_context_t *) serf_context_create_ex(void *user_baton,
     /* default to a single connection since that is the typical case */
     ctx->conns = apr_array_make(pool, 1, sizeof(serf_connection_t *));
 
+    /* Initialize progress status */
+    ctx->progress_read = 0;
+    ctx->progress_written = 0;
 
     return ctx;
 }
@@ -1103,6 +1136,14 @@ SERF_DECLARE(apr_status_t) serf_context_run(serf_context_t *ctx,
     return APR_SUCCESS;
 }
 
+SERF_DECLARE(void) serf_context_set_progress_cb(
+    serf_context_t *ctx,
+    const serf_progress_t progress_func,
+    void *progress_baton)
+{
+    ctx->progress_func = progress_func;
+    ctx->progress_baton = progress_baton;
+}
 
 SERF_DECLARE(serf_connection_t *) serf_connection_create(
     serf_context_t *ctx,
@@ -1315,4 +1356,19 @@ SERF_DECLARE(void) serf_request_set_handler(
 {
     request->handler = handler;
     request->handler_baton = handler_baton;
+}
+
+SERF_DECLARE(serf_bucket_t *) serf_context_bucket_socket_create(
+    serf_context_t *ctx,
+    apr_socket_t *skt,
+    serf_bucket_alloc_t *allocator)
+{
+    serf_bucket_t *bucket = serf_bucket_socket_create(skt, allocator);
+
+    /* Use serf's default bytes read/written callback */
+    serf_bucket_socket_set_read_progress_cb(bucket,
+                                            serf_context_progress_delta,
+                                            ctx);
+
+    return bucket;
 }

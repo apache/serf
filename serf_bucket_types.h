@@ -172,6 +172,18 @@ SERF_DECLARE(serf_bucket_t *) serf_bucket_socket_create(
     apr_socket_t *skt,
     serf_bucket_alloc_t *allocator);
 
+/**
+ * Call @a progress_func every time bytes are read from the socket, pass
+ * the number of bytes read.
+ *
+ * When using serf's bytes read & written progress indicator, pass 
+ * @a serf_context_progress_delta for progress_func and the serf_context for
+ * progress_baton.
+ */
+SERF_DECLARE(void) serf_bucket_socket_set_read_progress_cb(
+    serf_bucket_t *bucket,
+    const serf_progress_t progress_func,
+    void *progress_baton);
 
 /* ==================================================================== */
 

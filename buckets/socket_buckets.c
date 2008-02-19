@@ -25,6 +25,9 @@ typedef struct {
 
     serf_databuf_t databuf;
 
+    /* Progress callback */
+    serf_progress_t progress_func;
+    void *progress_baton;
 } socket_context_t;
 
 
@@ -32,9 +35,15 @@ static apr_status_t socket_reader(void *baton, apr_size_t bufsize,
                                   char *buf, apr_size_t *len)
 {
     socket_context_t *ctx = baton;
+    apr_status_t status;
 
     *len = bufsize;
-    return apr_socket_recv(ctx->skt, buf, len);
+    status = apr_socket_recv(ctx->skt, buf, len);
+
+    if (ctx->progress_func)
+        ctx->progress_func(ctx->progress_baton, *len, 0);
+
+    return status;
 }
 
 SERF_DECLARE(serf_bucket_t *) serf_bucket_socket_create(
@@ -51,7 +60,19 @@ SERF_DECLARE(serf_bucket_t *) serf_bucket_socket_create(
     ctx->databuf.read = socket_reader;
     ctx->databuf.read_baton = ctx;
 
+    ctx->progress_func = ctx->progress_baton = NULL;
     return serf_bucket_create(&serf_bucket_type_socket, allocator, ctx);
+}
+
+SERF_DECLARE(void) serf_bucket_socket_set_read_progress_cb(
+    serf_bucket_t *bucket,
+    const serf_progress_t progress_func,
+    void *progress_baton)
+{
+    socket_context_t *ctx = bucket->data;
+
+    ctx->progress_func = progress_func;
+    ctx->progress_baton = progress_baton;
 }
 
 static apr_status_t serf_socket_read(serf_bucket_t *bucket,

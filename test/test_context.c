@@ -904,6 +904,130 @@ static void test_keepalive_limit_one_by_one_and_burst(CuTest *tc)
 #undef SEND_REQUESTS
 #undef RCVD_REQUESTS
 
+#define NUM_REQUESTS 5
+typedef struct {
+  apr_off_t read;
+  apr_off_t written;
+} progress_baton_t;
+
+static void
+progress_cb(void *progress_baton, apr_off_t read, apr_off_t written)
+{
+    test_baton_t *tb = progress_baton;
+    progress_baton_t *pb = tb->user_baton;
+
+    pb->read = read;
+    pb->written = written;
+}
+
+static serf_bucket_t* progress_conn_setup(apr_socket_t *skt,
+                                          void *setup_baton,
+                                          apr_pool_t *pool)
+{
+    test_baton_t *tb = setup_baton;
+
+    return serf_context_bucket_socket_create(tb->context, skt, tb->bkt_alloc);
+}
+
+static void test_serf_progress_callback(CuTest *tc)
+{
+    test_baton_t *tb;
+    apr_array_header_t *accepted_requests, *handled_requests, *sent_requests;
+    apr_status_t status;
+    handler_baton_t handler_ctx[NUM_REQUESTS];
+    int done = FALSE, i;
+    progress_baton_t *pb;
+
+    test_server_action_t action_list[] = {
+        {SERVER_RECV,
+         CHUNCKED_REQUEST(1, "1")
+         CHUNCKED_REQUEST(1, "2")
+         CHUNCKED_REQUEST(1, "3")
+         CHUNCKED_REQUEST(1, "4")
+         CHUNCKED_REQUEST(1, "5")
+        },
+        {SERVER_SEND,
+         CHUNKED_EMPTY_RESPONSE
+         CHUNKED_RESPONSE(1, "2")
+         CHUNKED_EMPTY_RESPONSE
+         CHUNKED_EMPTY_RESPONSE
+         CHUNKED_EMPTY_RESPONSE
+        },
+    };
+
+    accepted_requests = apr_array_make(test_pool, NUM_REQUESTS, sizeof(int));
+    sent_requests = apr_array_make(test_pool, NUM_REQUESTS, sizeof(int));
+    handled_requests = apr_array_make(test_pool, NUM_REQUESTS, sizeof(int));
+
+    /* Set up a test context with a server. */
+    status = test_server_create(&tb, action_list, 2, 0, NULL, 
+                                progress_conn_setup, test_pool);
+    
+    /* Set up the progress callback. */
+    pb = apr_pcalloc(test_pool, sizeof(*pb));
+    tb->user_baton = pb;
+    serf_context_set_progress_cb(tb->context, progress_cb, tb);
+
+    for (i = 0 ; i < NUM_REQUESTS ; i++) {
+        /* Send some requests on the connections */
+        handler_ctx[i].method = "GET";
+        handler_ctx[i].path = "/";
+        handler_ctx[i].done = FALSE;
+
+        handler_ctx[i].acceptor = accept_response;
+        handler_ctx[i].acceptor_baton = NULL;
+        handler_ctx[i].handler = handle_response;
+        handler_ctx[i].req_id = i+1;
+        handler_ctx[i].accepted_requests = accepted_requests;
+        handler_ctx[i].sent_requests = sent_requests;
+        handler_ctx[i].handled_requests = handled_requests;
+        handler_ctx[i].tb = tb;
+        handler_ctx[i].use_proxy = FALSE;
+        handler_ctx[i].server_root = NULL;
+
+        serf_connection_request_create(tb->connection,
+                                       setup_request,
+                                       &handler_ctx[i]);
+    }
+
+    while (1) {
+        status = test_server_run(tb, 0, test_pool);
+        if (APR_STATUS_IS_TIMEUP(status))
+            status = APR_SUCCESS;
+        CuAssertIntEquals(tc, APR_SUCCESS, status);
+
+        status = serf_context_run(tb->context, 0, test_pool);
+        if (APR_STATUS_IS_TIMEUP(status))
+            status = APR_SUCCESS;
+        CuAssertIntEquals(tc, APR_SUCCESS, status);
+
+        /* Debugging purposes only! */
+        serf_debug__closed_conn(tb->bkt_alloc);
+
+        done = TRUE;
+        for (i = 0 ; i < NUM_REQUESTS ; i++)
+            if (handler_ctx[i].done == FALSE) {
+                done = FALSE;
+                break;
+            }
+        if (done)
+            break;
+    }
+
+    /* Check that all requests were received */
+    CuAssertTrue(tc, sent_requests->nelts >= NUM_REQUESTS);
+    CuAssertIntEquals(tc, NUM_REQUESTS, accepted_requests->nelts);
+    CuAssertIntEquals(tc, NUM_REQUESTS, handled_requests->nelts);
+
+    /* Check that progress was reported. */
+    CuAssertTrue(tc, pb->written > 0);
+    CuAssertTrue(tc, pb->read > 0);
+
+    /* Cleanup */
+    test_server_destroy(tb, test_pool);
+}
+#undef NUM_REQUESTS
+
 CuSuite *test_context(void)
 {
     CuSuite *suite = CuSuiteNew();
@@ -914,6 +1038,7 @@ CuSuite *test_context(void)
     SUITE_ADD_TEST(suite, test_serf_setup_proxy);
     SUITE_ADD_TEST(suite, test_keepalive_limit_one_by_one);
     SUITE_ADD_TEST(suite, test_keepalive_limit_one_by_one_and_burst);
+    SUITE_ADD_TEST(suite, test_serf_progress_callback);
 
     return suite;
 }

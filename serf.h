@@ -152,6 +152,22 @@ SERF_DECLARE(apr_status_t) serf_context_run(serf_context_t *ctx,
 
 SERF_DECLARE(apr_status_t) serf_context_prerun(serf_context_t *ctx);
 
+/**
+ * Callback function for progress information. @a progress indicates cumulative
+ * number of bytes read or written, for the whole context.
+ */
+typedef void (*serf_progress_t)(void *progress_baton,
+                                apr_off_t read,
+                                apr_off_t write);
+
+/**
+ * Sets the progress callback function. @a progress_func will be called every
+ * time bytes are read of or written on a socket.
+ */
+SERF_DECLARE(void) serf_context_set_progress_cb(
+    serf_context_t *ctx,
+    const serf_progress_t progress_func,
+    void *progress_baton);
 
 /** @} */
 
@@ -452,6 +468,20 @@ SERF_DECLARE(void) serf_config_proxy(
     apr_sockaddr_t *address);
 
 /* ### maybe some connection control functions for flood? */
+
+/*** Special bucket creation functions ***/
+
+/**
+ * Create a bucket of type 'socket bucket'. 
+ * This is basically a wrapper around @a serf_bucket_socket_create, which 
+ * initializes the bucket using request, connection and/or context specific
+ * settings. 
+ */
+SERF_DECLARE(serf_bucket_t *) serf_context_bucket_socket_create(
+    serf_context_t *ctx,
+    apr_socket_t *skt,
+    serf_bucket_alloc_t *allocator);
+
 
 /** @} */
 
