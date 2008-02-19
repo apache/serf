@@ -460,8 +460,6 @@ SERF_DECLARE(void) serf_request_set_handler(
  * The next connection will be created to connect to the proxy server
  * specified by @a address. The address must live at least as long as the
  * serf context.
- *
- * TODO: THIS IS WORK-IN-PROGRESS, PROXY SUPPORT IS NOT FINISHED!
  */
 SERF_DECLARE(void) serf_config_proxy(
     serf_context_t *ctx,
