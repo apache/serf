@@ -472,8 +472,7 @@ SERF_DECLARE(void) serf_config_proxy(
 /**
  * Create a bucket of type 'socket bucket'. 
  * This is basically a wrapper around @a serf_bucket_socket_create, which 
- * initializes the bucket using request, connection and/or context specific
- * settings. 
+ * initializes the bucket using connection and/or context specific settings. 
  */
 SERF_DECLARE(serf_bucket_t *) serf_context_bucket_socket_create(
     serf_context_t *ctx,
