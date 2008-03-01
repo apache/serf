@@ -36,6 +36,7 @@ int main(int argc, char *argv[])
     CuString *output = CuStringNew();
     int i;
     int list_provided = 0;
+    int exit_code;
 
     apr_initialize();
     atexit(apr_terminate);
@@ -63,7 +64,9 @@ int main(int argc, char *argv[])
     if (!list_provided) {
         /* add everything */
         for (i = 0; tests[i].func != NULL; i++) {
-            CuSuiteAddSuite(alltests, tests[i].func());
+            CuSuite *st = tests[i].func();
+            CuSuiteAddSuite(alltests, st);
+            CuSuiteFree(st);
         }
     }
     else {
@@ -93,5 +96,10 @@ int main(int argc, char *argv[])
     CuSuiteDetails(alltests, output);
     printf("%s\n", output->buffer);
 
-    return alltests->failCount > 0 ? 1 : 0;
+    exit_code = alltests->failCount > 0 ? 1 : 0;
+
+    CuSuiteFreeDeep(alltests);
+    CuStringFree(output);
+
+    return exit_code;
 }
