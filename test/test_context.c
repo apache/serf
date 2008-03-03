@@ -81,11 +81,11 @@ static apr_status_t setup_request(serf_request_t *request,
     const char *str = apr_psprintf(pool, "%d", ctx->req_id);
     body_bkt = serf_bucket_simple_create(str, strlen(str), NULL, NULL,
                                          serf_request_get_alloc(request));
-    *req_bkt = serf_bucket_request_create(ctx->method, ctx->path, body_bkt,
-                                      serf_request_get_alloc(request));
-
-    if (ctx->use_proxy)
-      serf_bucket_request_set_root(*req_bkt, ctx->server_root);
+    *req_bkt = 
+        serf_request_bucket_request_create(request, 
+                                           ctx->method, ctx->path, 
+                                           body_bkt,
+                                           serf_request_get_alloc(request));
 
     APR_ARRAY_PUSH(ctx->sent_requests, int) = ctx->req_id;
 
@@ -177,7 +177,8 @@ static void test_serf_connection_request_create(CuTest *tc)
     handled_requests = apr_array_make(test_pool, 2, sizeof(int));
 
     /* Set up a test context with a server */
-    status = test_server_create(&tb, action_list, 2, 0, NULL, NULL, test_pool);
+    status = test_server_create(&tb, action_list, 2, 0, NULL, NULL, NULL,
+                                test_pool);
     CuAssertIntEquals(tc, APR_SUCCESS, status);
 
     handler_ctx.method = "GET";
@@ -275,7 +276,8 @@ static void test_serf_connection_priority_request_create(CuTest *tc)
     handled_requests = apr_array_make(test_pool, 3, sizeof(int));
 
     /* Set up a test context with a server */
-    status = test_server_create(&tb, action_list, 2, 0, NULL, NULL, test_pool);
+    status = test_server_create(&tb, action_list, 2, 0, NULL, NULL, NULL,
+                                test_pool);
     CuAssertIntEquals(tc, APR_SUCCESS, status);
 
     handler_ctx.method = "GET";
@@ -409,7 +411,8 @@ static void test_serf_closed_connection(CuTest *tc)
     handled_requests = apr_array_make(test_pool, NUM_REQUESTS, sizeof(int));
 
     /* Set up a test context with a server. */
-    status = test_server_create(&tb, action_list, 6, 0, NULL, NULL, test_pool);
+    status = test_server_create(&tb, action_list, 6, 0, NULL, NULL, NULL,
+                                test_pool);
 
     for (i = 0 ; i < NUM_REQUESTS ; i++) {
         /* Send some requests on the connections */
@@ -485,6 +488,7 @@ static void test_serf_setup_proxy(CuTest *tc)
         {SERVER_RECV,
          "GET http://localhost:" SERV_PORT_STR " HTTP/1.1" CRLF\
          "Transfer-Encoding: chunked" CRLF\
+         "Host: localhost" CRLF\
          CRLF\
          "1" CRLF\
          "1" CRLF\
@@ -501,7 +505,8 @@ static void test_serf_setup_proxy(CuTest *tc)
     handled_requests = apr_array_make(test_pool, numrequests, sizeof(int));
 
     /* Set up a test context with a server */
-    status = test_server_create(&tb_server, action_list_server, 2, 0, NULL,
+    status = test_server_create(&tb_server, action_list_server, 2, 0,
+                                "http://localhost:" SERV_PORT_STR, NULL,
                                 NULL, test_pool);
     CuAssertIntEquals(tc, APR_SUCCESS, status);
 
@@ -510,7 +515,8 @@ static void test_serf_setup_proxy(CuTest *tc)
                                    "localhost", APR_INET, 21212, 0,
                                    test_pool);
     status = test_server_create(&tb_proxy, action_list_proxy, 2, 0,
-                                proxy_address, NULL, test_pool);
+                                NULL, proxy_address, NULL,
+                                test_pool);
 
     CuAssertIntEquals(tc, APR_SUCCESS, status);
 
@@ -686,7 +692,8 @@ static void test_keepalive_limit_one_by_one(CuTest *tc)
     handled_requests = apr_array_make(test_pool, RCVD_REQUESTS, sizeof(int));
 
     /* Set up a test context with a server. */
-    status = test_server_create(&tb, action_list, 14, 0, NULL, NULL, test_pool);
+    status = test_server_create(&tb, action_list, 14, 0, NULL, NULL, NULL,
+                                test_pool);
 
     for (i = 0 ; i < SEND_REQUESTS ; i++) {
         /* Send some requests on the connections */
@@ -844,7 +851,8 @@ static void test_keepalive_limit_one_by_one_and_burst(CuTest *tc)
     handled_requests = apr_array_make(test_pool, RCVD_REQUESTS, sizeof(int));
 
     /* Set up a test context with a server. */
-    status = test_server_create(&tb, action_list, 8, 0, NULL, NULL, test_pool);
+    status = test_server_create(&tb, action_list, 8, 0, NULL, NULL, NULL, 
+                                test_pool);
 
     for (i = 0 ; i < SEND_REQUESTS ; i++) {
         /* Send some requests on the connections */
@@ -960,7 +968,7 @@ static void test_serf_progress_callback(CuTest *tc)
     handled_requests = apr_array_make(test_pool, NUM_REQUESTS, sizeof(int));
 
     /* Set up a test context with a server. */
-    status = test_server_create(&tb, action_list, 2, 0, NULL, 
+    status = test_server_create(&tb, action_list, 2, 0, NULL, NULL, 
                                 progress_conn_setup, test_pool);
     
     /* Set up the progress callback. */

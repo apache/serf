@@ -144,6 +144,10 @@ struct serf_connection_t {
 
     /* Max. number of outstanding requests. */
     unsigned int max_outstanding_requests;
+
+    /* Host info. */
+    const char *host_url;
+    apr_uri_t host_info;
 };
 
 /* cleanup for sockets */
@@ -1177,6 +1181,41 @@ SERF_DECLARE(serf_connection_t *) serf_connection_create(
     return conn;
 }
 
+SERF_DECLARE(apr_status_t) serf_connection_create2(
+    serf_connection_t **conn,
+    serf_context_t *ctx,
+    apr_uri_t host_info,
+    serf_connection_setup_t setup,
+    void *setup_baton,
+    serf_connection_closed_t closed,
+    void *closed_baton,
+    apr_pool_t *pool)
+{
+    apr_status_t status;
+    serf_connection_t *c;
+    apr_sockaddr_t *host_address;
+
+    /* Parse the url, store the address of the server. */
+    status = apr_sockaddr_info_get(&host_address,
+                                   host_info.hostname,
+                                   APR_UNSPEC, host_info.port, 0, pool);
+    if (status)
+        return status;
+
+    c = serf_connection_create(ctx, host_address, setup, setup_baton,
+                               closed, closed_baton, pool);
+
+    /* We're not interested in the path following the hostname. */
+    c->host_url = apr_uri_unparse(c->pool,
+                                  &host_info, 
+                                  APR_URI_UNP_OMITPATHINFO);
+    c->host_info = host_info;
+
+    *conn = c;
+
+    return status;
+}
+
 SERF_DECLARE(apr_status_t) serf_connection_reset(
     serf_connection_t *conn)
 {
@@ -1371,4 +1410,27 @@ SERF_DECLARE(serf_bucket_t *) serf_context_bucket_socket_create(
                                             ctx);
 
     return bucket;
+}
+
+SERF_DECLARE(serf_bucket_t *) serf_request_bucket_request_create(
+    serf_request_t *request,
+    const char *method,
+    const char *uri,
+    serf_bucket_t *body,
+    serf_bucket_alloc_t *allocator)
+{
+    serf_bucket_t *req_bkt, *hdrs_bkt;
+
+    req_bkt = serf_bucket_request_create(method, uri, body, allocator);
+    hdrs_bkt = serf_bucket_request_get_headers(req_bkt);
+
+    /* Proxy? */
+    if (request->conn->ctx->proxy_address && request->conn->host_url)
+      serf_bucket_request_set_root(req_bkt, request->conn->host_url);
+
+    if (request->conn->host_info.hostname)
+      serf_bucket_headers_setn(hdrs_bkt, "Host",
+                               request->conn->host_info.hostname);
+
+    return req_bkt;
 }

@@ -127,7 +127,8 @@ apr_status_t test_server_create(test_baton_t **tb,
                                 test_server_action_t *action_list,
                                 apr_size_t action_count,
                                 apr_int32_t options,
-                                apr_sockaddr_t *adress,
+                                const char *host_url,
+                                apr_sockaddr_t *address,
                                 serf_connection_setup_t conn_setup,
                                 apr_pool_t *pool);
 

@@ -28,6 +28,7 @@
 #include <apr_network_io.h>
 #include <apr_time.h>
 #include <apr_poll.h>
+#include <apr_uri.h>
 
 #include "serf_declare.h"
 
@@ -320,6 +321,39 @@ SERF_DECLARE(serf_connection_t *) serf_connection_create(
     apr_pool_t *pool);
 
 /**
+ * Create a new connection associated with the @a ctx serf context.
+ *
+ * A connection will be created to (eventually) connect to the address
+ * specified by @a address. The address must live at least as long as
+ * @a pool (thus, as long as the connection object).
+ *
+ * The host address will be looked up based on the hostname in @a host_info.
+ *
+ * The connection object will be allocated within @a pool. Clearing or
+ * destroying this pool will close the connection, and terminate any
+ * outstanding requests or responses.
+ *
+ * When the connection is closed (upon request or because of an error),
+ * then the @a closed callback is invoked, and @a closed_baton is passed.
+ *
+ * ### doc on setup(_baton). tweak below comment re: acceptor.
+ * NULL may be passed for @a acceptor and @a closed; default implementations
+ * will be used.
+ *
+ * Note: the connection is not made immediately. It will be opened on
+ * the next call to @see serf_context_run.
+ */
+SERF_DECLARE(apr_status_t) serf_connection_create2(
+    serf_connection_t **conn,
+    serf_context_t *ctx,
+    apr_uri_t host_info,
+    serf_connection_setup_t setup,
+    void *setup_baton,
+    serf_connection_closed_t closed,
+    void *closed_baton,
+    apr_pool_t *pool);
+
+/**
  * Reset the connection, but re-open the socket again.
  */
 SERF_DECLARE(apr_status_t) serf_connection_reset(
@@ -479,6 +513,21 @@ SERF_DECLARE(serf_bucket_t *) serf_context_bucket_socket_create(
     apr_socket_t *skt,
     serf_bucket_alloc_t *allocator);
 
+/**
+ * Create a bucket of type 'request bucket'. 
+ * This is basically a wrapper around @a serf_bucket_request_create, which 
+ * initializes the bucket using request, connection and/or context specific
+ * settings.
+ * 
+ * If the host_url and/or user_agent options are set on the connection, 
+ * headers 'Host' and/or 'User-Agent' will be set on the request message.
+ */
+SERF_DECLARE(serf_bucket_t *) serf_request_bucket_request_create(
+    serf_request_t *request,
+    const char *method,
+    const char *uri,
+    serf_bucket_t *body,
+    serf_bucket_alloc_t *allocator);
 
 /** @} */
 

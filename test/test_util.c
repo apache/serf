@@ -268,6 +268,7 @@ apr_status_t test_server_create(test_baton_t **tb_p,
                                 test_server_action_t *action_list,
                                 apr_size_t action_count,
                                 apr_int32_t options,
+                                const char *host_url,
                                 apr_sockaddr_t *address,
                                 serf_connection_setup_t conn_setup,
                                 apr_pool_t *pool)
@@ -291,14 +292,32 @@ apr_status_t test_server_create(test_baton_t **tb_p,
     tb->options = options;
     tb->context = serf_context_create(pool);
     tb->bkt_alloc = serf_bucket_allocator_create(pool, NULL, NULL);
-    tb->connection = serf_connection_create(tb->context,
-                                            tb->serv_addr,
-                                            conn_setup ? conn_setup : 
-                                                default_conn_setup,
-                                            tb,
-                                            default_closed_connection,
-                                            tb,
-                                            pool);
+    if (host_url) {
+        apr_uri_t url;
+        status = apr_uri_parse(pool, host_url, &url);
+        if (status != APR_SUCCESS)
+            return status;
+
+        status = serf_connection_create2(&tb->connection, tb->context,
+                                         url,
+                                         conn_setup ? conn_setup : 
+                                             default_conn_setup,
+                                         tb,
+                                         default_closed_connection,
+                                         tb,
+                                         pool);
+        if (status != APR_SUCCESS)
+          return status;
+    } else {
+        tb->connection = serf_connection_create(tb->context,
+                                                tb->serv_addr,
+                                                conn_setup ? conn_setup : 
+                                                    default_conn_setup,
+                                                tb,
+                                                default_closed_connection,
+                                                tb,
+                                                pool);
+    }
     tb->action_list = action_list;
     tb->action_count = action_count;
 
