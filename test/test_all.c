@@ -101,5 +101,7 @@ int main(int argc, char *argv[])
     CuSuiteFreeDeep(alltests);
     CuStringFree(output);
 
+    apr_pool_destroy(test_pool);
+
     return exit_code;
 }
