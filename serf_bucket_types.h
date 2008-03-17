@@ -17,6 +17,7 @@
 #define SERF_BUCKET_TYPES_H
 
 #include <apr_mmap.h>
+#include <apr_hash.h>
 
 /* this header and serf.h refer to each other, so take a little extra care */
 #ifndef SERF_H
@@ -369,12 +370,17 @@ SERF_DECLARE(serf_bucket_t *) serf_bucket_limit_create(
 
 
 /* ==================================================================== */
-
+#define SERF_SSL_CERT_NOTYETVALID       1
+#define SERF_SSL_CERT_EXPIRED           2
+#define SERF_SSL_CERT_UNKNOWNCA         4
+#define SERF_SSL_CERT_SELF_SIGNED       8
+#define SERF_SSL_CERT_UNKNOWN_FAILURE  16
 
 SERF_DECLARE_DATA extern const serf_bucket_type_t serf_bucket_type_ssl_encrypt;
 #define SERF_BUCKET_IS_SSL_ENCRYPT(b) SERF_BUCKET_CHECK((b), ssl_encrypt)
 
 typedef struct serf_ssl_context_t serf_ssl_context_t;
+typedef struct serf_ssl_certificate_t serf_ssl_certificate_t;
 
 typedef apr_status_t (*serf_ssl_need_client_cert_t)(void *data,
                                                     const char **cert_path);
@@ -382,6 +388,11 @@ typedef apr_status_t (*serf_ssl_need_client_cert_t)(void *data,
 typedef apr_status_t (*serf_ssl_need_cert_password_t)(void *data,
                                                       const char *cert_path,
                                                       const char **password);
+
+typedef apr_status_t
+(*serf_ssl_need_server_cert_t)(void *data, 
+                               int failures,
+                               const serf_ssl_certificate_t *cert);
 
 SERF_DECLARE(void)
 serf_ssl_client_cert_provider_set(serf_ssl_context_t *context,
@@ -394,6 +405,41 @@ serf_ssl_client_cert_password_set(serf_ssl_context_t *context,
                                   serf_ssl_need_cert_password_t callback,
                                   void *data,
                                   void *cache_pool);
+/**
+ * Set a callback to override the default SSL server certificate validation 
+ * algorithm.
+ */
+SERF_DECLARE(void)
+serf_ssl_server_cert_callback_set(serf_ssl_context_t *context,
+                                  serf_ssl_need_server_cert_t callback,
+                                  void *data);
+
+/**
+ * Use the default root CA certificates as included with the OpenSSL library.
+ */
+SERF_DECLARE(apr_status_t)
+serf_ssl_use_default_certificates(serf_ssl_context_t *context);
+
+/**
+ * Extract the fields of the issuer in a table with keys (E, CN, OU, O, L, 
+ * ST and C). The returned table will be allocated in @a pool.
+ */
+SERF_DECLARE(apr_hash_t *)
+serf_ssl_cert_issuer(const serf_ssl_certificate_t *cert, apr_pool_t *pool);
+
+/**
+ * Extract the fields of the subject in a table with keys (E, CN, OU, O, L, 
+ * ST and C). The returned table will be allocated in @a pool.
+ */
+SERF_DECLARE(apr_hash_t *)
+serf_ssl_cert_subject(const serf_ssl_certificate_t *cert, apr_pool_t *pool);
+
+/**
+ * Extract the fields of the certificate in a table with keys (sha1, notBefore,
+ * notAfter). The returned table will be allocated in @a pool.
+ */
+SERF_DECLARE(apr_hash_t *)
+serf_ssl_cert_certificate(const serf_ssl_certificate_t *cert, apr_pool_t *pool);
 
 SERF_DECLARE(serf_bucket_t *) serf_bucket_ssl_encrypt_create(
     serf_bucket_t *stream,

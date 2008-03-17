@@ -148,10 +148,16 @@ struct serf_ssl_context_t {
     apr_pool_t *cert_pw_cache_pool;
     const char *cert_pw_success;
 
+    /* Server cert callbacks */
+    serf_ssl_need_server_cert_t server_cert_callback;
+    void *server_cert_userdata;
+
     const char *cert_path;
 
     X509 *cached_cert;
     EVP_PKEY *cached_cert_pw;
+
+    apr_status_t pending_err;
 };
 
 typedef struct {
@@ -165,6 +171,9 @@ typedef struct {
     serf_bucket_t **our_stream;
 } ssl_context_t;
 
+struct serf_ssl_certificate_t {
+    X509 *ssl_cert;
+};
 
 /* Returns the amount read. */
 static int bio_bucket_read(BIO *bio, char *in, int inlen)
@@ -334,6 +343,79 @@ static BIO_METHOD bio_file_method = {
 #endif
 };
 
+static int
+validate_server_certificate(int cert_valid, X509_STORE_CTX *store_ctx)
+{
+/* serf_ssl_context_t *ctx) */
+    SSL *ssl;
+    serf_ssl_context_t *ctx;
+    X509 *server_cert;
+    int err, depth;
+    int failures =  0;
+
+    ssl = X509_STORE_CTX_get_ex_data(store_ctx,
+                                     SSL_get_ex_data_X509_STORE_CTX_idx());
+    ctx = SSL_get_app_data(ssl);
+
+    server_cert = X509_STORE_CTX_get_current_cert(store_ctx);
+    depth = X509_STORE_CTX_get_error_depth(store_ctx);
+
+    /* If the certification was found invalid, get the error and convert it to
+       something our caller will understand. */
+    if (! cert_valid) {
+        err = X509_STORE_CTX_get_error(store_ctx);
+
+        switch(err) {
+            case X509_V_ERR_CERT_NOT_YET_VALID: 
+                    failures |= SERF_SSL_CERT_NOTYETVALID;
+                    break;
+            case X509_V_ERR_CERT_HAS_EXPIRED:
+                    failures |= SERF_SSL_CERT_EXPIRED;
+                    break;
+            case X509_V_ERR_DEPTH_ZERO_SELF_SIGNED_CERT:
+            case X509_V_ERR_SELF_SIGNED_CERT_IN_CHAIN:
+                    failures |= SERF_SSL_CERT_SELF_SIGNED;
+                    break;
+            case X509_V_ERR_UNABLE_TO_GET_ISSUER_CERT_LOCALLY:
+                    failures |= SERF_SSL_CERT_UNKNOWNCA;
+                    break;
+            default:
+                    failures |= SERF_SSL_CERT_UNKNOWN_FAILURE;
+                    break;
+        }
+    }
+
+    /* Check certificate expiry dates. */
+    if (X509_cmp_current_time(X509_get_notBefore(server_cert)) >= 0) {
+        failures |= SERF_SSL_CERT_NOTYETVALID;
+    }
+    else if (X509_cmp_current_time(X509_get_notAfter(server_cert)) <= 0) {
+        failures |= SERF_SSL_CERT_EXPIRED;
+    }
+
+    if (ctx->server_cert_callback &&
+        (depth == 0 || failures)) {
+        apr_pool_t *subpool;
+        apr_pool_create(&subpool, ctx->pool);
+
+        serf_ssl_certificate_t *cert = apr_palloc(subpool,
+                                             sizeof(serf_ssl_certificate_t)); 
+        cert->ssl_cert = server_cert;
+
+        /* Callback for further verification. */
+        apr_status_t status = ctx->server_cert_callback(ctx->server_cert_userdata,
+                                                        failures, cert);
+        if (status == APR_SUCCESS)
+            cert_valid = 1;
+        else
+            /* Pass the error back to the caller through the context-run. */
+            ctx->pending_err = status;
+        apr_pool_destroy(subpool);
+    }
+
+    return cert_valid;
+}
+
 /* This function reads an encrypted stream and returns the decrypted stream. */
 static apr_status_t ssl_decrypt(void *baton, apr_size_t bufsize,
                                 char *buf, apr_size_t *len)
@@ -384,6 +466,11 @@ static apr_status_t ssl_decrypt(void *baton, apr_size_t bufsize,
             case SSL_ERROR_WANT_READ:
                 *len = 0;
                 status = APR_EAGAIN;
+                break;
+            case SSL_ERROR_SSL:
+                *len = 0;
+                status = ctx->pending_err;
+                ctx->pending_err = 0;
                 break;
             default:
                 *len = 0;
@@ -782,6 +869,15 @@ serf_ssl_client_cert_password_set(serf_ssl_context_t *context,
     }
 }
 
+SERF_DECLARE(void)
+serf_ssl_server_cert_callback_set(serf_ssl_context_t *context,
+                                  serf_ssl_need_server_cert_t callback,
+                                  void *data)
+{
+    context->server_cert_callback = callback;
+    context->server_cert_userdata = data;
+}
+
 static serf_ssl_context_t *ssl_init_context(void)
 {
     serf_ssl_context_t *ssl_ctx;
@@ -805,6 +901,8 @@ static serf_ssl_context_t *ssl_init_context(void)
     ssl_ctx->cached_cert = 0;
     ssl_ctx->cached_cert_pw = 0;
 
+    SSL_CTX_set_verify(ssl_ctx->ctx, SSL_VERIFY_PEER,
+                       validate_server_certificate);
     SSL_CTX_set_options(ssl_ctx->ctx, SSL_OP_ALL);
 
     ssl_ctx->ssl = SSL_new(ssl_ctx->ctx);
@@ -877,6 +975,16 @@ static serf_bucket_t * serf_bucket_ssl_create(
     ctx->ssl_ctx->refcount++;
 
     return serf_bucket_create(type, allocator, ctx);
+}
+
+SERF_DECLARE(apr_status_t)
+serf_ssl_use_default_certificates(serf_ssl_context_t *ssl_ctx)
+{
+    X509_STORE *store = SSL_CTX_get_cert_store(ssl_ctx->ctx);
+
+    int result = X509_STORE_set_default_paths(store);
+
+    return result ? APR_SUCCESS : APR_EGENERAL;
 }
 
 SERF_DECLARE(serf_bucket_t *) serf_bucket_ssl_decrypt_create(
@@ -958,6 +1066,124 @@ SERF_DECLARE(serf_ssl_context_t *) serf_bucket_ssl_encrypt_context_get(
 {
     ssl_context_t *ctx = bucket->data;
     return ctx->ssl_ctx;
+}
+
+/* Functions to read a serf_ssl_certificate structure. */
+
+/* Creates a hash_table with keys (E, CN, OU, O, L, ST and C). */
+static apr_hash_t *
+convert_X509_NAME_to_table(X509_NAME *org, apr_pool_t *pool)
+{
+    char buf[1024];
+    int ret;
+
+    apr_hash_t *tgt = apr_hash_make(pool);
+
+    ret = X509_NAME_get_text_by_NID(org,
+                                    NID_commonName,
+                                    buf, 1024);
+    apr_hash_set(tgt, "CN", APR_HASH_KEY_STRING, apr_pstrdup(pool, buf));
+    ret = X509_NAME_get_text_by_NID(org,
+                                    NID_pkcs9_emailAddress,
+                                    buf, 1024);
+    apr_hash_set(tgt, "E", APR_HASH_KEY_STRING, apr_pstrdup(pool, buf));
+    ret = X509_NAME_get_text_by_NID(org,
+                                    NID_organizationalUnitName,
+                                    buf, 1024);
+    apr_hash_set(tgt, "OU", APR_HASH_KEY_STRING, apr_pstrdup(pool, buf));
+    ret = X509_NAME_get_text_by_NID(org,
+                                    NID_organizationName,
+                                    buf, 1024);
+    apr_hash_set(tgt, "O", APR_HASH_KEY_STRING, apr_pstrdup(pool, buf));
+    ret = X509_NAME_get_text_by_NID(org,
+                                    NID_localityName,
+                                    buf, 1024);
+    apr_hash_set(tgt, "L", APR_HASH_KEY_STRING, apr_pstrdup(pool, buf));
+    ret = X509_NAME_get_text_by_NID(org,
+                                    NID_stateOrProvinceName,
+                                    buf, 1024);
+    apr_hash_set(tgt, "ST", APR_HASH_KEY_STRING, apr_pstrdup(pool, buf));
+    ret = X509_NAME_get_text_by_NID(org,
+                                    NID_countryName,
+                                    buf, 1024);
+    apr_hash_set(tgt, "C", APR_HASH_KEY_STRING, apr_pstrdup(pool, buf));
+
+    return tgt;
+}
+
+SERF_DECLARE(apr_hash_t *)
+serf_ssl_cert_issuer(const serf_ssl_certificate_t *cert, apr_pool_t *pool)
+{
+
+    X509_NAME *issuer = X509_get_issuer_name(cert->ssl_cert);
+    if (!issuer)
+        return NULL;
+
+    return convert_X509_NAME_to_table(issuer, pool);
+}
+
+SERF_DECLARE(apr_hash_t *)
+serf_ssl_cert_subject(const serf_ssl_certificate_t *cert, apr_pool_t *pool)
+{
+
+    X509_NAME *subject = X509_get_subject_name(cert->ssl_cert);
+    if (!subject)
+        return NULL;
+
+    return convert_X509_NAME_to_table(subject, pool);
+}
+
+SERF_DECLARE(apr_hash_t *)
+serf_ssl_cert_certificate(const serf_ssl_certificate_t *cert, apr_pool_t *pool)
+{
+    apr_hash_t *tgt = apr_hash_make(pool);
+    unsigned int md_size, i;
+    unsigned char md[EVP_MAX_MD_SIZE];
+    BIO *bio;
+
+    /* sha1 fingerprint */
+    if (X509_digest(cert->ssl_cert, EVP_sha1(), md, &md_size)) {
+        const char hex[] = "0123456789ABCDEF";
+        char fingerprint[EVP_MAX_MD_SIZE * 3];
+
+        for (i=0; i<md_size; i++) {
+            fingerprint[3*i] = hex[(md[i] & 0xf0) >> 4];
+            fingerprint[(3*i)+1] = hex[(md[i] & 0x0f)];
+            fingerprint[(3*i)+2] = ':';
+        }
+        if (md_size > 0)
+            fingerprint[(3*(md_size-1))+2] = '\0';
+        else
+            fingerprint[0] = '\0';
+
+        apr_hash_set(tgt, "sha1", APR_HASH_KEY_STRING,
+                     apr_pstrdup(pool, fingerprint));
+    }
+
+    /* set expiry dates */
+    bio = BIO_new(BIO_s_mem());
+    if (bio) {
+        ASN1_TIME *notBefore, *notAfter;
+        char buf[256];
+
+        memset (buf, 0, sizeof (buf));
+        notBefore = X509_get_notBefore(cert->ssl_cert);
+        if (ASN1_TIME_print(bio, notBefore)) {
+            BIO_read(bio, buf, 255);
+            apr_hash_set(tgt, "notBefore", APR_HASH_KEY_STRING,
+                         apr_pstrdup(pool, buf));
+        }
+        memset (buf, 0, sizeof (buf));
+        notAfter = X509_get_notAfter(cert->ssl_cert);
+        if (ASN1_TIME_print(bio, notAfter)) {
+            BIO_read(bio, buf, 255);
+            apr_hash_set(tgt, "notAfter", APR_HASH_KEY_STRING,
+                         apr_pstrdup(pool, buf));
+        }
+    }
+    BIO_free(bio);
+
+    return tgt;
 }
 
 static void serf_ssl_destroy_and_data(serf_bucket_t *bucket)
