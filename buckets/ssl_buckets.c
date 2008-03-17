@@ -346,12 +346,11 @@ static BIO_METHOD bio_file_method = {
 static int
 validate_server_certificate(int cert_valid, X509_STORE_CTX *store_ctx)
 {
-/* serf_ssl_context_t *ctx) */
     SSL *ssl;
     serf_ssl_context_t *ctx;
     X509 *server_cert;
     int err, depth;
-    int failures =  0;
+    int failures = 0;
 
     ssl = X509_STORE_CTX_get_ex_data(store_ctx,
                                      SSL_get_ex_data_X509_STORE_CTX_idx());
@@ -395,16 +394,18 @@ validate_server_certificate(int cert_valid, X509_STORE_CTX *store_ctx)
 
     if (ctx->server_cert_callback &&
         (depth == 0 || failures)) {
+        apr_status_t status;
+        serf_ssl_certificate_t *cert;
         apr_pool_t *subpool;
+
         apr_pool_create(&subpool, ctx->pool);
 
-        serf_ssl_certificate_t *cert = apr_palloc(subpool,
-                                             sizeof(serf_ssl_certificate_t)); 
+        cert = apr_palloc(subpool, sizeof(serf_ssl_certificate_t));
         cert->ssl_cert = server_cert;
 
         /* Callback for further verification. */
-        apr_status_t status = ctx->server_cert_callback(ctx->server_cert_userdata,
-                                                        failures, cert);
+        status = ctx->server_cert_callback(ctx->server_cert_userdata,
+                                           failures, cert);
         if (status == APR_SUCCESS)
             cert_valid = 1;
         else
