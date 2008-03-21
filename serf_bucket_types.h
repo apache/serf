@@ -441,6 +441,15 @@ serf_ssl_cert_subject(const serf_ssl_certificate_t *cert, apr_pool_t *pool);
 SERF_DECLARE(apr_hash_t *)
 serf_ssl_cert_certificate(const serf_ssl_certificate_t *cert, apr_pool_t *pool);
 
+/**
+ * Load a CA certificate file from a path @a file_path. If the file was loaded
+ * and parsed correctly, a certificate @a cert will be created and returned.
+ * This certificate object will be alloced in @a pool.
+ */
+SERF_DECLARE(apr_status_t)
+serf_ssl_load_cert_file(serf_ssl_certificate_t **cert, const char *file_path,
+                        apr_pool_t *pool);
+
 SERF_DECLARE(serf_bucket_t *) serf_bucket_ssl_encrypt_create(
     serf_bucket_t *stream,
     serf_ssl_context_t *ssl_context,

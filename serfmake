@@ -35,10 +35,11 @@ LIB_FILES = [
   ]
 
 TEST_DEPS = [
-	('test', 'CuTest'),
-	('test', 'test_util'),
-	('test', 'test_context'),
-	('test', 'test_buckets'),
+  ('test', 'CuTest'),
+  ('test', 'test_util'),
+  ('test', 'test_context'),
+  ('test', 'test_buckets'),
+  ('test', 'test_ssl'),
   ]
 
 TEST_HDR_FILES = [

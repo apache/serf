@@ -45,6 +45,7 @@ CuSuite *getsuite(void);
 
 CuSuite *test_context(void);
 CuSuite *test_buckets(void);
+CuSuite *test_ssl(void);
 
 /* Test setup declarations */
 

@@ -22,7 +22,8 @@ TEST_OBJECTS = test/serf_get.lo test/serf_response.lo test/serf_request.lo \
                test/serf_spider.lo
 
 TEST_SUITE_OBJECTS = test/CuTest.lo test/test_all.lo test/test_util.lo \
-                     test/test_buckets.lo test/test_context.lo
+                     test/test_buckets.lo test/test_context.lo \
+                     test/test_ssl.lo 
 
 PROGRAMS = $(TEST_OBJECTS:.lo=) test/test_all
 
@@ -79,6 +80,7 @@ test/test_all.lo: test/test_all.c $(HEADERS)
 test/test_util.lo: test/test_util.c $(HEADERS)
 test/test_buckets.lo: test/test_buckets.c $(HEADERS)
 test/test_context.lo: test/test_context.c $(HEADERS)
+test/test_ssl.lo: test/test_ssl.c $(HEADERS)
 
 $(TARGET_LIB): $(OBJECTS)
 	$(LIBTOOL) --mode=link $(CC) $(LDFLAGS) -rpath $(libdir) -o $@ $^ $(LIBS)

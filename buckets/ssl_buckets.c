@@ -988,6 +988,27 @@ serf_ssl_use_default_certificates(serf_ssl_context_t *ssl_ctx)
     return result ? APR_SUCCESS : APR_EGENERAL;
 }
 
+SERF_DECLARE(apr_status_t)
+serf_ssl_load_cert_file(serf_ssl_certificate_t **cert, const char *file_path,
+                        apr_pool_t *pool)
+{
+    FILE *fp = fopen(file_path, "r");
+        
+    if (fp) {
+        X509 *ssl_cert = PEM_read_X509(fp, NULL, NULL, NULL);
+        fclose(fp);
+
+        if (ssl_cert) {
+            *cert = apr_palloc(pool, sizeof(serf_ssl_certificate_t));
+            (*cert)->ssl_cert = ssl_cert;
+
+            return APR_SUCCESS;
+        }
+    }
+
+    return APR_EGENERAL;
+}
+
 SERF_DECLARE(serf_bucket_t *) serf_bucket_ssl_decrypt_create(
     serf_bucket_t *stream,
     serf_ssl_context_t *ssl_ctx,
@@ -1083,31 +1104,38 @@ convert_X509_NAME_to_table(X509_NAME *org, apr_pool_t *pool)
     ret = X509_NAME_get_text_by_NID(org,
                                     NID_commonName,
                                     buf, 1024);
-    apr_hash_set(tgt, "CN", APR_HASH_KEY_STRING, apr_pstrdup(pool, buf));
+    if (ret != -1)
+        apr_hash_set(tgt, "CN", APR_HASH_KEY_STRING, apr_pstrdup(pool, buf));
     ret = X509_NAME_get_text_by_NID(org,
                                     NID_pkcs9_emailAddress,
                                     buf, 1024);
-    apr_hash_set(tgt, "E", APR_HASH_KEY_STRING, apr_pstrdup(pool, buf));
+    if (ret != -1)
+        apr_hash_set(tgt, "E", APR_HASH_KEY_STRING, apr_pstrdup(pool, buf));
     ret = X509_NAME_get_text_by_NID(org,
                                     NID_organizationalUnitName,
                                     buf, 1024);
-    apr_hash_set(tgt, "OU", APR_HASH_KEY_STRING, apr_pstrdup(pool, buf));
+    if (ret != -1)
+        apr_hash_set(tgt, "OU", APR_HASH_KEY_STRING, apr_pstrdup(pool, buf));
     ret = X509_NAME_get_text_by_NID(org,
                                     NID_organizationName,
                                     buf, 1024);
-    apr_hash_set(tgt, "O", APR_HASH_KEY_STRING, apr_pstrdup(pool, buf));
+    if (ret != -1)
+        apr_hash_set(tgt, "O", APR_HASH_KEY_STRING, apr_pstrdup(pool, buf));
     ret = X509_NAME_get_text_by_NID(org,
                                     NID_localityName,
                                     buf, 1024);
-    apr_hash_set(tgt, "L", APR_HASH_KEY_STRING, apr_pstrdup(pool, buf));
+    if (ret != -1)
+        apr_hash_set(tgt, "L", APR_HASH_KEY_STRING, apr_pstrdup(pool, buf));
     ret = X509_NAME_get_text_by_NID(org,
                                     NID_stateOrProvinceName,
                                     buf, 1024);
-    apr_hash_set(tgt, "ST", APR_HASH_KEY_STRING, apr_pstrdup(pool, buf));
+    if (ret != -1)
+        apr_hash_set(tgt, "ST", APR_HASH_KEY_STRING, apr_pstrdup(pool, buf));
     ret = X509_NAME_get_text_by_NID(org,
                                     NID_countryName,
                                     buf, 1024);
-    apr_hash_set(tgt, "C", APR_HASH_KEY_STRING, apr_pstrdup(pool, buf));
+    if (ret != -1)
+        apr_hash_set(tgt, "C", APR_HASH_KEY_STRING, apr_pstrdup(pool, buf));
 
     return tgt;
 }

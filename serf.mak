@@ -132,7 +132,8 @@ TEST_OBJS = \
     "$(INTDIR)\test_util.obj" \
     "$(INTDIR)\test_context.obj" \
     "$(INTDIR)\test_buckets.obj" \
-        
+    "$(INTDIR)\test_ssl.obj" \
+
 ALL: INTDIR $(STATIC_LIB) TESTS
 
 CLEAN:

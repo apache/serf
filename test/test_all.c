@@ -27,6 +27,7 @@ static const struct testlist {
 } tests[] = {
     {"context", test_context},
     {"buckets", test_buckets},
+    {"ssl",     test_ssl},
     {"LastTest", NULL}
 };
 
