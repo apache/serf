@@ -1,5 +1,4 @@
 Serf 0.2 []
-  Send current version string in the test programs (Issue 21)
   Enable use of external event loop: serf_create_context_ex.
   Enable adding new requests at the beginning of the request queue.
   Handle 'Connection:close' headers.
@@ -10,7 +9,9 @@ Serf 0.2 []
   Add proxy server support.
   Add progress feedback support. (Issue 11)
   Provide new API to simplify use of proxy and progress feedback support.
+  Add callback to validate SSL server certificates. (Issue 31)
   Add new test framework.
+  Send current version string in the test programs (Issue 21)
   Bugfixes:
      Fix segfault with epoll when removing a NULL socket.
      Reset OpenSSL thread-safety callbacks when apr_terminate() called.
