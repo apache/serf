@@ -16,6 +16,7 @@ Serf 0.2 []
      Fix segfault with epoll when removing a NULL socket.
      Reset OpenSSL thread-safety callbacks when apr_terminate() called.
      Do not remove the socket from the pollset on pool cleanup.
+     Do not issue double close on skt w/second one being close(-1) (Issue 33)
 
 Serf 0.1.2 [2007-6-18, r1114]
   Enable thread-safety with OpenSSL (Issue 19)

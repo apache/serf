@@ -1243,6 +1243,7 @@ SERF_DECLARE(apr_status_t) serf_connection_close(
                     (*conn->closed)(conn, conn->closed_baton, status,
                                     conn->pool);
                 }
+                conn->skt = NULL;
             }
             if (conn->stream != NULL) {
                 serf_bucket_destroy(conn->stream);
