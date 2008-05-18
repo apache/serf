@@ -413,6 +413,7 @@ static void test_serf_closed_connection(CuTest *tc)
     /* Set up a test context with a server. */
     status = test_server_create(&tb, action_list, 6, 0, NULL, NULL, NULL,
                                 test_pool);
+    CuAssertIntEquals(tc, APR_SUCCESS, status);
 
     for (i = 0 ; i < NUM_REQUESTS ; i++) {
         /* Send some requests on the connections */
@@ -514,6 +515,8 @@ static void test_serf_setup_proxy(CuTest *tc)
     status = apr_sockaddr_info_get(&proxy_address,
                                    "localhost", APR_INET, 21212, 0,
                                    test_pool);
+    CuAssertIntEquals(tc, APR_SUCCESS, status);
+
     status = test_server_create(&tb_proxy, action_list_proxy, 2, 0,
                                 NULL, proxy_address, NULL,
                                 test_pool);
@@ -694,6 +697,7 @@ static void test_keepalive_limit_one_by_one(CuTest *tc)
     /* Set up a test context with a server. */
     status = test_server_create(&tb, action_list, 14, 0, NULL, NULL, NULL,
                                 test_pool);
+    CuAssertIntEquals(tc, APR_SUCCESS, status);
 
     for (i = 0 ; i < SEND_REQUESTS ; i++) {
         /* Send some requests on the connections */
@@ -853,6 +857,7 @@ static void test_keepalive_limit_one_by_one_and_burst(CuTest *tc)
     /* Set up a test context with a server. */
     status = test_server_create(&tb, action_list, 8, 0, NULL, NULL, NULL, 
                                 test_pool);
+    CuAssertIntEquals(tc, APR_SUCCESS, status);
 
     for (i = 0 ; i < SEND_REQUESTS ; i++) {
         /* Send some requests on the connections */
@@ -970,7 +975,8 @@ static void test_serf_progress_callback(CuTest *tc)
     /* Set up a test context with a server. */
     status = test_server_create(&tb, action_list, 2, 0, NULL, NULL, 
                                 progress_conn_setup, test_pool);
-    
+    CuAssertIntEquals(tc, APR_SUCCESS, status);
+
     /* Set up the progress callback. */
     pb = apr_pcalloc(test_pool, sizeof(*pb));
     tb->user_baton = pb;
