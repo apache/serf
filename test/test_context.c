@@ -763,7 +763,7 @@ static void test_keepalive_limit_one_by_one(CuTest *tc)
  *****************************************************************************/
 #define SEND_REQUESTS 5
 #define RCVD_REQUESTS 7
-/* Resend the first request 4 times by reducing the pipeline bandwidth to
+/* Resend the first request 2 times by reducing the pipeline bandwidth to
    one request at a time, and by adding the first request again at the start of
    the outgoing queue. */
 static apr_status_t
