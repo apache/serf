@@ -69,10 +69,18 @@ static apr_status_t replay(test_baton_t *tb,
     test_server_action_t *action;
 
     if (tb->cur_action >= tb->action_count) {
-        /* we're out of actions! */
-        printf("Received more requests than expected\n");
+        char buf[128];
+        apr_size_t len = sizeof(buf);
 
-        return APR_EGENERAL;
+        status = apr_socket_recv(tb->client_sock, buf, &len);
+        if (! APR_STATUS_IS_EAGAIN(status)) {
+            /* we're out of actions! */
+            printf("Received more requests than expected\n");
+
+            return APR_EGENERAL;
+        }
+
+        return status;
     }
 
     if (tb->action_list == NULL)
