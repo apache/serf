@@ -97,6 +97,8 @@ static apr_status_t replay(test_baton_t *tb,
             len = sizeof(buf);
 
         status = apr_socket_recv(tb->client_sock, buf, &len);
+        if (status != APR_SUCCESS)
+            return status;
 
         if (tb->options & TEST_SERVER_DUMP)
             fwrite(buf, len, 1, stdout);
@@ -127,6 +129,8 @@ static apr_status_t replay(test_baton_t *tb,
 
         status = apr_socket_send(tb->client_sock,
                                  action->text + tb->action_buf_pos, &len);
+        if (status != APR_SUCCESS)
+            return status;
 
         if (tb->options & TEST_SERVER_DUMP)
             fwrite(action->text + tb->action_buf_pos, len, 1, stdout);
@@ -170,7 +174,7 @@ apr_status_t test_server_run(test_baton_t *tb,
         pfd.desc.s = tb->client_sock;
         status = apr_pollset_add(pollset, &pfd);
         if (status != APR_SUCCESS)
-            return status;
+            goto cleanup;
     }
     else {
         apr_pollfd_t pfd = { pool, APR_POLL_SOCKET, APR_POLLIN, 0,
@@ -178,24 +182,25 @@ apr_status_t test_server_run(test_baton_t *tb,
         pfd.desc.s = tb->serv_sock;
         status = apr_pollset_add(pollset, &pfd);
         if (status != APR_SUCCESS)
-            return status;
+            goto cleanup;
     }
 
     status = apr_pollset_poll(pollset, APR_USEC_PER_SEC >> 1, &num, &desc);
     if (status != APR_SUCCESS)
-        return status;
+        goto cleanup;
 
     while (num--) {
         if (desc->desc.s == tb->serv_sock) {
             status = apr_socket_accept(&tb->client_sock, tb->serv_sock,
                                        tb->pool);
             if (status != APR_SUCCESS)
-              return status;
+                goto cleanup;
 
             apr_socket_opt_set(tb->client_sock, APR_SO_NONBLOCK, 1);
             apr_socket_timeout_set(tb->client_sock, 0);
 
-            return APR_SUCCESS;
+            status = APR_SUCCESS;
+            goto cleanup;
         }
 
         if (desc->desc.s == tb->client_sock) {
@@ -211,14 +216,17 @@ apr_status_t test_server_run(test_baton_t *tb,
             }
             else if (status != APR_SUCCESS) {
                 /* Real error. */
-                return status;
+                goto cleanup;
             }
         }
 
         desc++;
     }
 
-    return APR_SUCCESS;
+cleanup:
+    apr_pollset_destroy(pollset);
+
+    return status;
 }
 
 /* Start a TCP server on port SERV_PORT in thread THREAD. srv_replay is a array
