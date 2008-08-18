@@ -151,8 +151,13 @@ AC_ARG_WITH(openssl,
     fi
 
     APR_ADDTO(CPPFLAGS, "-I${openssl_prefix}/include")
-    APR_ADDTO(LDFLAGS, "-L${openssl_prefix}/lib")
-    APR_ADDTO(LDFLAGS, "-R${openssl_prefix}/lib")
+    if test -e "${openssl_prefix}/Makefile"; then
+      APR_ADDTO(LDFLAGS, "-L${openssl_prefix}")
+      APR_ADDTO(LDFLAGS, "-R${openssl_prefix}")
+    else
+      APR_ADDTO(LDFLAGS, "-L${openssl_prefix}/lib")
+      APR_ADDTO(LDFLAGS, "-R${openssl_prefix}/lib")
+    fi
   fi
 ])
 
