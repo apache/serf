@@ -1,3 +1,7 @@
+Serf ... []
+  Build with bundled apr and apr-util VPATH builds.
+  Build with bundled OpenSSL builds.
+
 Serf 0.2 [2008-06-06, r1188]
   Enable use of external event loop: serf_create_context_ex.
   Enable adding new requests at the beginning of the request queue.
