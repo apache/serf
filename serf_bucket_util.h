@@ -105,6 +105,14 @@ SERF_DECLARE(void *) serf_bucket_mem_alloc(
     apr_size_t size);
 
 /**
+ * Allocate @a size bytes of memory using @a allocator and set all of the
+ * memory to 0.
+ */
+SERF_DECLARE(void *) serf_bucket_mem_calloc(
+    serf_bucket_alloc_t *allocator,
+    apr_size_t size);
+
+/**
  * Free the memory at @a block, returning it to @a allocator.
  */
 SERF_DECLARE(void) serf_bucket_mem_free(

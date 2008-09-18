@@ -204,6 +204,16 @@ SERF_DECLARE(void *) serf_bucket_mem_alloc(
     return ((char *)node) + SIZEOF_NODE_HEADER_T;
 }
 
+SERF_DECLARE(void *) serf_bucket_mem_calloc(
+    serf_bucket_alloc_t *allocator,
+    apr_size_t size)
+{
+    void *mem;
+    mem = serf_bucket_mem_alloc(allocator, size);
+    memset(mem, 0, size);
+    return mem;
+}
+
 SERF_DECLARE(void) serf_bucket_mem_free(
     serf_bucket_alloc_t *allocator,
     void *block)
