@@ -38,6 +38,7 @@
 #include <apr_network_io.h>
 #include <apr_portable.h>
 #include <apr_strings.h>
+#include <apr_base64.h>
 
 #include "serf.h"
 #include "serf_bucket_util.h"
@@ -1223,6 +1224,32 @@ serf_ssl_cert_certificate(const serf_ssl_certificate_t *cert, apr_pool_t *pool)
     BIO_free(bio);
 
     return tgt;
+}
+
+SERF_DECLARE(const char *)
+serf_ssl_cert_export(const serf_ssl_certificate_t *cert, apr_pool_t *pool)
+{
+    char *binary_cert, *p;
+    char *encoded_cert;
+    int len;
+
+    /* find the length of the DER encoding. */
+    len = i2d_X509(cert->ssl_cert, NULL);
+    if (len < 0) {
+        return NULL;
+    }
+
+    binary_cert = apr_palloc(pool, len);
+    p = binary_cert;
+    len = i2d_X509(cert->ssl_cert, &p); /* p is incremented */
+    if (len < 0) {
+        return NULL;
+    }
+
+    encoded_cert = apr_palloc(pool, apr_base64_encode_len(len));
+    apr_base64_encode(encoded_cert, binary_cert, len);
+    
+    return encoded_cert;
 }
 
 static void serf_ssl_destroy_and_data(serf_bucket_t *bucket)

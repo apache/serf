@@ -442,6 +442,13 @@ SERF_DECLARE(apr_hash_t *)
 serf_ssl_cert_certificate(const serf_ssl_certificate_t *cert, apr_pool_t *pool);
 
 /**
+ * Export a certificate to base64-encoded, zero-terminated string.
+ * The returned string is allocated in @a pool. Returns NULL on failure.
+ */
+SERF_DECLARE(const char *)
+serf_ssl_cert_export(const serf_ssl_certificate_t *cert, apr_pool_t *pool);
+
+/**
  * Load a CA certificate file from a path @a file_path. If the file was loaded
  * and parsed correctly, a certificate @a cert will be created and returned.
  * This certificate object will be alloced in @a pool.
