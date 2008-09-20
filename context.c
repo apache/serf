@@ -726,15 +726,16 @@ static apr_status_t write_to_connection(serf_connection_t *conn)
                 return status;
         }
 
-        if (APR_STATUS_IS_EOF(read_status)) {
-            /* If we hit the end of the request bucket, then clear it out to
-             * signify that we're done sending the request. On the next
-             * iteration through this loop, we'll see if there are other
-             * requests that need to be sent ("pipelining").
+        if (APR_STATUS_IS_EOF(read_status) &&
+            conn->vec_len == 0) {
+            /* If we hit the end of the request bucket and all of its data has
+             * been written, then clear it out to signify that we're done
+             * sending the request. On the next iteration through this loop:
+             * - if there are remaining bytes they will be written, and as the 
+             * request bucket will be completely read it will be destroyed then.
+             * - we'll see if there are other requests that need to be sent 
+             * ("pipelining").
              */
-            /* ### woah. watch out for the unwritten stuff. gotta restructure
-               ### this a bit more to avoid killing a bucket where the
-               ### data is hanging out in the unwritten field. */
             serf_bucket_destroy(request->req_bkt);
             request->req_bkt = NULL;
 
