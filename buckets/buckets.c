@@ -116,6 +116,22 @@ SERF_DECLARE(void) serf_default_destroy_and_data(serf_bucket_t *bucket)
     serf_default_destroy(bucket);
 }
 
+SERF_DECLARE(apr_status_t) serf_default_snapshot(serf_bucket_t *bucket)
+{
+    /* Not implemented. */
+    return APR_ENOTIMPL;
+}
+
+SERF_DECLARE(apr_status_t) serf_default_restore_snapshot(serf_bucket_t *bucket)
+{
+    /* Not implemented. */
+    return APR_ENOTIMPL;
+}
+
+SERF_DECLARE(int) serf_default_is_snapshot_set(serf_bucket_t *bucket)
+{
+    return 0;  
+}
 
 /* ==================================================================== */
 

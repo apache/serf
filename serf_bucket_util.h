@@ -96,6 +96,26 @@ SERF_DECLARE(void) serf_default_destroy(serf_bucket_t *bucket);
  */
 SERF_DECLARE(void) serf_default_destroy_and_data(serf_bucket_t *bucket);
 
+/**
+ * Default implementation of the @see snapshot functionality
+ *
+ * This function will return an error to indicate it's not implemented.
+ */
+SERF_DECLARE(apr_status_t) serf_default_snapshot(serf_bucket_t *bucket);
+
+/*
+ * Default implementation of the @see restore_snapshot functionality
+ *
+ * This function will return an error to indicate it's not implemented.
+ */
+SERF_DECLARE(apr_status_t) serf_default_restore_snapshot(serf_bucket_t *bucket);
+
+/*
+ * Default implementation of the @see is_snapshot_set functionality
+ *
+ * This function will return 0 (no snapshot set).
+ */
+SERF_DECLARE(int) serf_default_is_snapshot_set(serf_bucket_t *bucket);
 
 /**
  * Allocate @a size bytes of memory using @a allocator.

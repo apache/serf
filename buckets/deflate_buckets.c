@@ -369,5 +369,8 @@ SERF_DECLARE_DATA const serf_bucket_type_t serf_bucket_type_deflate = {
     serf_default_read_bucket,
     serf_deflate_peek,
     serf_deflate_destroy_and_data,
+    serf_default_snapshot,
+    serf_default_restore_snapshot,
+    serf_default_is_snapshot_set,
 };
 

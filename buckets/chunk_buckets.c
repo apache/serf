@@ -232,4 +232,7 @@ SERF_DECLARE_DATA const serf_bucket_type_t serf_bucket_type_chunk = {
     serf_default_read_bucket,
     serf_chunk_peek,
     serf_chunk_destroy,
+    serf_default_snapshot,
+    serf_default_restore_snapshot,
+    serf_default_is_snapshot_set,
 };

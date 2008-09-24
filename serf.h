@@ -704,6 +704,27 @@ struct serf_bucket_type_t {
      */
     void (*destroy)(serf_bucket_t *bucket);
 
+    /**
+     * Save the current state of the @a bucket for later retrieval and return
+     * APR_SUCCESS. A previously set snapshot will be cleared.
+     * In case of error, the bucket should be considered invalid.
+     */
+    apr_status_t (*snapshot)(serf_bucket_t *bucket);
+
+    /**
+     * Restore the state of the @a bucket to the state set in the last
+     * snapshot and returns APR_SUCCESS. If no snapshot was set, the bucket's
+     * state is unchanged and APR_SUCCESS is returned. 
+     * In case of error, the bucket should be considered invalid.
+     */
+    apr_status_t (*restore_snapshot)(serf_bucket_t *bucket);
+
+    /**
+     * Test if a snapshot is set. Returns 0 if no snapshot was set, a non-0 
+     * value if there is a snapshot set.
+     */
+    int (*is_snapshot_set)(serf_bucket_t *bucket);
+
     /* ### apr buckets have 'copy', 'split', and 'setaside' functions.
        ### not sure whether those will be needed in this bucket model.
     */
@@ -748,6 +769,9 @@ struct serf_bucket_type_t {
 #define serf_bucket_read_bucket(b,t) ((b)->type->read_bucket(b,t))
 #define serf_bucket_peek(b,d,l) ((b)->type->peek(b,d,l))
 #define serf_bucket_destroy(b) ((b)->type->destroy(b))
+#define serf_bucket_snapshot(b) ((b)->type->snapshot(b))
+#define serf_bucket_restore_snapshot(b) ((b)->type->restore_snapshot(b))
+#define serf_bucket_is_snapshot_set(b) ((b)->type->is_snapshot_set(b))
 
 /**
  * Check whether a real error occurred. Note that bucket read functions
