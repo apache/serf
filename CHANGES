@@ -1,5 +1,7 @@
 Serf ... []
   Fix socket address family issue when opening a connection to a proxy.
+  Provide new API to take snapshots of buckets.
+  Implement snapshot API for simple and aggregate buckets.
   Build with bundled apr and apr-util VPATH builds.
   Build with bundled OpenSSL builds.
 
