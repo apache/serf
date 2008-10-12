@@ -206,11 +206,6 @@ void CuAssertPtrNotNull(CuTest* tc, void* pointer);
 
 The project is open source and so you can add other more powerful
 asserts to make your tests easier to write and more concise.
-Please feel free to send me changes you make so that I can
-incorporate them into future releases.
-
-If you see any errors in this document please contact me at
-asimjalis@peakprogramming.com.
 
 
 AUTOMATING TEST SUITE GENERATION
@@ -223,7 +218,7 @@ AllTests.c or dealing with any of the other suite code.
 
 CREDITS
 
-[02.23.2003] Dave Glowacki <dglo@hyde.ssec.wisc.edu> has added
+[02.23.2003] Dave Glowacki has added
 (1) file name and line numbers to the error messages, (2)
 AssertDblEquals for doubles, (3) Assert<X>Equals_Msg version of
 all the Assert<X>Equals to pass in optional message which is
