@@ -1,4 +1,5 @@
 Serf ... []
+  Expose the depth of the SSL certificate so the validator can use that info.
   Fix socket address family issue when opening a connection to a proxy.
   Provide new API to take snapshots of buckets.
   Implement snapshot API for simple and aggregate buckets.

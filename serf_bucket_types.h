@@ -421,6 +421,11 @@ SERF_DECLARE(apr_status_t)
 serf_ssl_use_default_certificates(serf_ssl_context_t *context);
 
 /**
+ * Return the depth of the certificate.
+ */
+SERF_DECLARE(int) serf_ssl_cert_depth(const serf_ssl_certificate_t *cert);
+
+/**
  * Extract the fields of the issuer in a table with keys (E, CN, OU, O, L, 
  * ST and C). The returned table will be allocated in @a pool.
  */
