@@ -474,6 +474,12 @@ SERF_DECLARE(apr_status_t) serf_linebuf_fetch(
             if (SERF_BUCKET_READ_ERROR(status)) {
                 return status;
             }
+            /* Some bucket types (socket) might need an extra read to find
+               out EOF state, so they'll return no data in that read. This
+               means we're done reading, return what we got. */
+            if (APR_STATUS_IS_EOF(status) && len == 0) {
+	        return status;
+            }
             if (linebuf->used + len > sizeof(linebuf->line)) {
                 /* ### need a "line too long" error */
                 return APR_EGENERAL;
