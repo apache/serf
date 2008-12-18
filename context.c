@@ -176,6 +176,16 @@ static apr_status_t clean_resp(void *data)
     return APR_SUCCESS;
 }
 
+/* cleanup for conns */
+static apr_status_t clean_conn(void *data)
+{
+    serf_connection_t *conn = data;
+
+    serf_connection_close(conn);
+
+    return APR_SUCCESS;
+}
+
 /* Update the pollset for this connection. We tweak the pollset based on
  * whether we want to read and/or write, given conditions within the
  * connection. If the connection is not (yet) in the pollset, then it
@@ -1174,7 +1184,8 @@ SERF_DECLARE(serf_connection_t *) serf_connection_create(
     /* Create a subpool for our connection. */
     apr_pool_create(&conn->skt_pool, conn->pool);
 
-    /* ### register a cleanup */
+    /* register a cleanup */
+    apr_pool_cleanup_register(conn->pool, conn, clean_conn, clean_conn);
 
     /* Add the connection to the context. */
     *(serf_connection_t **)apr_array_push(ctx->conns) = conn;
