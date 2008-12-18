@@ -228,7 +228,7 @@ static apr_status_t run_machine(serf_bucket_t *bkt, response_context_t *ctx)
             /* Are we C-L, chunked, or conn close? */
             v = serf_bucket_headers_get(ctx->headers, "Content-Length");
             if (v) {
-                apr_size_t length;
+                apr_uint64_t length;
                 length = apr_strtoi64(v, NULL, 10);
                 if (errno == ERANGE) {
                     return APR_FROM_OS_ERROR(ERANGE);
