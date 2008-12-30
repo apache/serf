@@ -39,6 +39,8 @@
 #include <apr_portable.h>
 #include <apr_strings.h>
 #include <apr_base64.h>
+#include <apr_version.h>
+#include <apr_atomic.h>
 
 #include "serf.h"
 #include "serf_bucket_util.h"
@@ -47,6 +49,14 @@
 #include <openssl/ssl.h>
 #include <openssl/err.h>
 #include <openssl/pkcs12.h>
+
+#ifndef APR_VERSION_AT_LEAST /* Introduced in APR 1.3.0 */
+#define APR_VERSION_AT_LEAST(major,minor,patch)                           \
+    (((major) < APR_MAJOR_VERSION)                                        \
+      || ((major) == APR_MAJOR_VERSION && (minor) < APR_MINOR_VERSION)    \
+      || ((major) == APR_MAJOR_VERSION && (minor) == APR_MINOR_VERSION && \
+               (patch) <= APR_PATCH_VERSION))
+#endif /* APR_VERSION_AT_LEAST */
 
 /*#define SSL_VERBOSE*/
 
@@ -675,11 +685,18 @@ static apr_status_t cleanup_ssl(void *data)
 
 #endif
 
-static int have_init_ssl = 0;
+static apr_uint32_t have_init_ssl = 0;
 
 static void init_ssl_libraries(void)
 {
-    if (!have_init_ssl) {
+    apr_uint32_t val;
+#if APR_VERSION_AT_LEAST(1,0,0)
+    val = apr_atomic_xchg32(&have_init_ssl, 1);
+#else
+    val = apr_atomic_cas(&have_init_ssl, 1, 0);
+#endif
+
+    if (!val) {
 #if APR_HAS_THREADS
         int i, numlocks;
 #endif
@@ -711,8 +728,6 @@ static void init_ssl_libraries(void)
 
         apr_pool_cleanup_register(ssl_pool, NULL, cleanup_ssl, cleanup_ssl);
 #endif
-
-        have_init_ssl = 1;
     }
 }
 
