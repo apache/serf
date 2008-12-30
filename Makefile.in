@@ -39,7 +39,8 @@ exec_prefix=@exec_prefix@
 libdir=@libdir@
 includedir=@includedir@
 
-LIBTOOL = @APR_LIBTOOL@ --silent
+LIBTOOL = @APR_LIBTOOL@
+LTFLAGS = @LTFLAGS@
 CC = @CC@
 CFLAGS = @CFLAGS@
 CPPFLAGS = @CPPFLAGS@
@@ -83,22 +84,22 @@ test/test_context.lo: test/test_context.c $(HEADERS)
 test/test_ssl.lo: test/test_ssl.c $(HEADERS)
 
 $(TARGET_LIB): $(OBJECTS)
-	$(LIBTOOL) --mode=link $(CC) $(LDFLAGS) -rpath $(libdir) -o $@ $^ $(LIBS)
+	$(LIBTOOL) $(LTFLAGS) --mode=link $(CC) $(LDFLAGS) -rpath $(libdir) -o $@ $^ $(LIBS)
 
 test/serf_get: $(TARGET_LIB) test/serf_get.lo
-	$(LIBTOOL) --mode=link $(CC) $(LDFLAGS) -static -o $@ $^ $(LIBS)
+	$(LIBTOOL) $(LTFLAGS) --mode=link $(CC) $(LDFLAGS) -static -o $@ $^ $(LIBS)
 
 test/serf_response: $(TARGET_LIB) test/serf_response.lo
-	$(LIBTOOL) --mode=link $(CC) $(LDFLAGS) -static -o $@ $^ $(LIBS)
+	$(LIBTOOL) $(LTFLAGS) --mode=link $(CC) $(LDFLAGS) -static -o $@ $^ $(LIBS)
 
 test/serf_request: $(TARGET_LIB) test/serf_request.lo
-	$(LIBTOOL) --mode=link $(CC) $(LDFLAGS) -static -o $@ $^ $(LIBS)
+	$(LIBTOOL) $(LTFLAGS) --mode=link $(CC) $(LDFLAGS) -static -o $@ $^ $(LIBS)
 
 test/serf_spider: $(TARGET_LIB) test/serf_spider.lo
-	$(LIBTOOL) --mode=link $(CC) $(LDFLAGS) -static -o $@ $^ $(LIBS)
+	$(LIBTOOL) $(LTFLAGS) --mode=link $(CC) $(LDFLAGS) -static -o $@ $^ $(LIBS)
 
 test/test_all: $(TARGET_LIB) $(TEST_SUITE_OBJECTS)
-	$(LIBTOOL) --mode=link $(CC) $(LDFLAGS) -static -o $@ $^ $(LIBS)
+	$(LIBTOOL) $(LTFLAGS) --mode=link $(CC) $(LDFLAGS) -static -o $@ $^ $(LIBS)
 
 check: test/serf_response test/test_all
 	@for i in $(TESTCASES); \
@@ -110,7 +111,7 @@ check: test/serf_response test/test_all
 
 install: $(TARGET_LIB)
 	$(MKDIR) $(DESTDIR)$(libdir) $(DESTDIR)$(includedir)
-	$(LIBTOOL) --mode=install $(INSTALL) -m 644 $(TARGET_LIB) $(DESTDIR)$(libdir)
+	$(LIBTOOL) $(LTFLAGS) --mode=install $(INSTALL) -m 644 $(TARGET_LIB) $(DESTDIR)$(libdir)
 	for i in $(srcdir)/*.h; do \
 		$(INSTALL) -m 644 $$i $(DESTDIR)$(includedir); \
 	done
@@ -136,4 +137,4 @@ mkdir-vpath:
 	fi;
 
 .c.lo:
-	$(LIBTOOL) --mode=compile $(CC) $(CFLAGS) $(CPPFLAGS) $(INCLUDES) -c -o $@ $< && touch $@
+	$(LIBTOOL) $(LTFLAGS) --mode=compile $(CC) $(CFLAGS) $(CPPFLAGS) $(INCLUDES) -c -o $@ $< && touch $@
