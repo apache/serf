@@ -1,4 +1,5 @@
 Serf ... []
+  Fix test_ssl.c compilation with mingw+msys.
   Fix conn close segfault by explicitly closing conn when pool is destroyed.
   Expose the depth of the SSL certificate so the validator can use that info.
   Fix socket address family issue when opening a connection to a proxy.

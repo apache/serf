@@ -22,7 +22,7 @@
 
 #include "test_serf.h"
 
-#ifdef WIN32
+#if defined(WIN32) && defined(_DEBUG)
 /* Include this file to allow running a Debug build of serf with a Release
    build of OpenSSL. */
 #include <openssl/applink.c>
