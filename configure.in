@@ -165,7 +165,10 @@ dnl Look for OpenSSL
 AC_CHECK_HEADER([openssl/opensslv.h], [],
                 [AC_MSG_ERROR([We require OpenSSL; try --with-openssl])])
 
-libs="`$apu_config --link-libtool --libs` `$apr_config --link-libtool --libs`"
+dnl CuTest requires libm on Solaris
+AC_SEARCH_LIBS(fabs, m)
+
+libs="`$apu_config --link-libtool --libs` `$apr_config --link-libtool --libs` $LIBS"
 APR_ADDTO(SERF_LIBS, [$libs])
 AC_SUBST(SERF_LIBS)
 

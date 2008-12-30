@@ -1,4 +1,5 @@
 Serf ... []
+  Fix CUTest test harness compilation on Solaris (Issue 43)
   Fix small race condition in OpenSSL initialization (Issue 39)
   Handle content streams larger than 4GB on 32-bit OSes (Issue 41)
   Fix test_ssl.c compilation with mingw+msys.
