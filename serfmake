@@ -367,8 +367,8 @@ class File:
     else:
       self.mtime = s[stat.ST_MTIME]
 
-  def __cmp__(self, other):
-    return cmp(self.fname, other.fname)
+  def __eq__(self, other):
+    return self.fname == other.fname
 
   def __hash__(self):
     return hash(self.fname)
