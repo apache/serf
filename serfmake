@@ -67,30 +67,31 @@ TESTCASES = [
 def main(argv):
   params = {}
 
-  cmd = None
+  commands = []
 
-  for i in argv[1:]:
-    idx = i.find('=')
+  for arg in argv[1:]:
+    idx = arg.find('=')
     if idx > 0:
-      start = i.rfind('-', 0, idx)
+      start = arg.rfind('-', 0, idx)
       if start > 0:
-        params[i[start+1:idx]] = i[idx+1:].strip()
-    elif not cmd:
-      cmd = i
+        params[arg[start+1:idx]] = arg[idx+1:].strip()
+    else:
+      func = globals().get('cmd_' + arg)
+      if func:
+        commands.append(func)
+      else:
+        print 'ERROR: unknown argument:', arg
+        usage()
 
-  if not cmd:
-    cmd = 'build'
- 
-  func = globals().get('cmd_' + cmd)
-  if not func:
-    print 'ERROR: no such command:', cmd
+  if not commands:
     usage()
 
-  try:
-    func(params)
-  except Exception, e:
-    print e
-    usage()
+  for func in commands:
+    try:
+      func(params)
+    except Exception, e:
+      print e
+      usage()
 
 
 def usage():
@@ -138,17 +139,24 @@ def cmd_check(param):
     raise TestError(case, result)  
 
 def cmd_clean(param):
-  clean = [File(dirpath, fname, 'o') for dirpath, fname in LIB_FILES]
-  clean += [File(dirpath, fname, 'lo') for dirpath, fname in LIB_FILES]
-  clean += [File('.', 'libserf-0', 'la')]
-  clean += [File(dirpath, fname, 'o') for dirpath, fname in TEST_FILES]
-  clean += [File(dirpath, fname, 'lo') for dirpath, fname in TEST_FILES]
-  clean += [File(dirpath, fname, None) for dirpath, fname in TEST_FILES]
-  clean += [File(dirpath, fname, 'o') for dirpath, fname in TEST_DEPS]
-  clean += [File(dirpath, fname, 'lo') for dirpath, fname in TEST_DEPS]
-  for i in clean:
-    if i.mtime:
-      os.remove(i.fname)
+  targets = [File(dirpath, fname, 'o') for dirpath, fname in LIB_FILES]
+  targets += [File(dirpath, fname, 'lo') for dirpath, fname in LIB_FILES]
+  targets += [File('.', 'libserf-0', 'la')]
+  targets += [File(dirpath, fname, 'o') for dirpath, fname in TEST_FILES]
+  targets += [File(dirpath, fname, 'lo') for dirpath, fname in TEST_FILES]
+  targets += [File(dirpath, fname, None) for dirpath, fname in TEST_FILES]
+  targets += [File(dirpath, fname, 'o') for dirpath, fname in TEST_DEPS]
+  targets += [File(dirpath, fname, 'lo') for dirpath, fname in TEST_DEPS]
+
+  clean = [file for file in targets if file.mtime]
+  if clean:
+    print 'Cleaning %d files...' % len(clean),
+    for i in clean:
+      if i.mtime:
+        os.remove(i.fname)
+    print 'done.'
+  else:
+    print 'Clean.'
 
 class Builder:
   def __init__(self, params):
@@ -378,3 +386,11 @@ class ConfigScriptNotFound(Exception):
 
 if __name__ == '__main__':
   main(sys.argv)
+
+
+###
+### TODO:
+### * obey DESTDIR
+### * arfrever says LDFLAGS is passed twice
+### * be able to specify libdir and includedir
+###
