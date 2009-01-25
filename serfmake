@@ -80,7 +80,7 @@ def main(argv):
       if func:
         commands.append(func)
       else:
-        print 'ERROR: unknown argument:', arg
+        print('ERROR: unknown argument: ' + arg)
         usage()
 
   if not commands:
@@ -89,29 +89,32 @@ def main(argv):
   for func in commands:
     try:
       func(params)
-    except Exception, e:
-      print e
+    except:
+      print('ERROR: exception:')
+      print(sys.exc_info()[1])
+      print("")
       usage()
 
 
 def usage():
   ### print something
-  print 'serfmake [cmd] [options]'
-  print 'Commands:'
-  print '\tbuild\tBuilds (default)'
-  print '\tcheck\tRuns test cases'
-  print '\tinstall\tInstalls serf into PREFIX'
-  print '\tclean\tCleans'
-  print 'Options:'
-  print '\t--with-apr=PATH\tprefix for installed APR and APR-util'
-  print '\t\t\t(needs apr-1-config and apu-1-config; will look in PATH)'
-  print '\t--prefix=PATH\tinstall serf into PATH (default: /usr/local)'
-  print 'Quick guide:'
-  print '\tserfmake --prefix=/usr/local/serf --with-apr=/usr/local/apr install'
+  print('serfmake [cmd] [options]')
+  print('Commands:')
+  print('\tbuild\tBuilds (default)')
+  print('\tcheck\tRuns test cases')
+  print('\tinstall\tInstalls serf into PREFIX')
+  print('\tclean\tCleans')
+  print('Options:')
+  print('\t--with-apr=PATH\tprefix for installed APR and APR-util')
+  print('\t\t\t(needs apr-1-config and apu-1-config; will look in PATH)')
+  print('\t--prefix=PATH\tinstall serf into PATH (default: /usr/local)')
+  print('Quick guide:')
+  print('\tserfmake --prefix=/usr/local/serf --with-apr=/usr/local/apr install')
   sys.exit(1)
 
 
 def cmd_build(param):
+  raise Exception("boom")
   builder = Builder(param)
   builder.build_target(File('.', 'libserf-0', 'la'), False)
 
@@ -128,7 +131,7 @@ def cmd_check(param):
 
   for dirpath, fname in TESTCASES:
     case = os.path.join(dirpath, fname)
-    print '== Testing %s ==' % case
+    print('== Testing %s ==' % case)
     result = os.system('%s %s' % (os.path.join('test', 'serf_response'), case))
     if result:
       raise TestError("", result)
@@ -150,13 +153,13 @@ def cmd_clean(param):
 
   clean = [file for file in targets if file.mtime]
   if clean:
-    print 'Cleaning %d files...' % len(clean),
+    sys.stdout.write('Cleaning %d files... ' % len(clean))
     for i in clean:
       if i.mtime:
         os.remove(i.fname)
-    print 'done.'
+    print('done.')
   else:
-    print 'Clean.'
+    print('Clean.')
 
 class Builder:
   def __init__(self, params):
@@ -256,8 +259,7 @@ class Builder:
   def _add_dep(self, target, deps, cmd):
     if target.mtime:
       for dep in deps:
-        if self.deps.has_key(dep) \
-               or (dep.mtime and dep.mtime > target.mtime):
+        if dep in self.deps or (dep.mtime and dep.mtime > target.mtime):
           # a dep is newer. this needs to be rebuilt.
           break
       else:
@@ -280,7 +282,7 @@ class Builder:
         self.build_target(f, dry_run)
 
     # build the target now
-    print dep[1]
+    print(dep[1])
     if not dry_run:
       result = os.system(dep[1])
       if result:
