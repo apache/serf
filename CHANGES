@@ -1,4 +1,4 @@
-Serf ... []
+Serf 0.3.0 [2009-01-26, r1216]
   Support LTFLAGS override as a config-time env. variable (Issue 44)
   Fix CUTest test harness compilation on Solaris (Issue 43)
   Fix small race condition in OpenSSL initialization (Issue 39)
@@ -12,7 +12,7 @@ Serf ... []
   Build with bundled apr and apr-util VPATH builds.
   Build with bundled OpenSSL builds.
 
-Serf 0.2 [2008-06-06, r1188]
+Serf 0.2.0 [2008-06-06, r1188]
   Enable use of external event loop: serf_create_context_ex.
   Enable adding new requests at the beginning of the request queue.
   Handle 'Connection:close' headers.
