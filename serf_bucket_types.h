@@ -310,6 +310,11 @@ typedef int (serf_bucket_headers_do_callback_fn_t)(
     const char *value);
 
 /**
+ * Iterates over all headers of the message and invokes the callback 
+ * function with header key and value. Stop iterating when no more
+ * headers are available or when the callback function returned a 
+ * non-0 value.
+ *
  * @param headers_bucket headers to iterate over
  * @param func callback routine to invoke for every header in the bucket
  * @param baton baton to pass on each invocation to func
