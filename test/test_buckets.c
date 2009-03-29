@@ -148,6 +148,13 @@ static void test_bucket_header_set(CuTest *tc)
     serf_bucket_headers_set(hdrs, "Foo", "baz");
 
     CuAssertStrEquals(tc, "bar,baz", serf_bucket_headers_get(hdrs, "Foo"));
+
+    serf_bucket_headers_set(hdrs, "Foo", "test");
+
+    CuAssertStrEquals(tc, "bar,baz,test", serf_bucket_headers_get(hdrs, "Foo"));
+
+    // headers are case insensitive.
+    CuAssertStrEquals(tc, "bar,baz,test", serf_bucket_headers_get(hdrs, "fOo"));
 }
 
 static void test_simple_read_restore_snapshot_read(CuTest *tc)
