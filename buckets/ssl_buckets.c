@@ -619,8 +619,8 @@ static apr_status_t ssl_encrypt(void *baton, apr_size_t bufsize,
 }
 
 #if APR_HAS_THREADS
-apr_pool_t *ssl_pool;
-apr_thread_mutex_t **ssl_locks;
+static apr_pool_t *ssl_pool;
+static apr_thread_mutex_t **ssl_locks;
 
 typedef struct CRYPTO_dynlock_value {
     apr_thread_mutex_t *lock;
