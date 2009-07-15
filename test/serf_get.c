@@ -41,6 +41,13 @@ static void closed_connection(serf_connection_t *conn,
     }
 }
 
+static apr_status_t ignore_all_cert_errors(void *data, int failures,
+                                           const serf_ssl_certificate_t *cert)
+{
+    /* In a real application, you would normally would not want to do this */
+    return APR_SUCCESS;
+}
+
 static serf_bucket_t* conn_setup(apr_socket_t *skt,
                                 void *setup_baton,
                                 apr_pool_t *pool)
@@ -54,6 +61,7 @@ static serf_bucket_t* conn_setup(apr_socket_t *skt,
         if (!ctx->ssl_ctx) {
             ctx->ssl_ctx = serf_bucket_ssl_decrypt_context_get(c);
         }
+        serf_ssl_server_cert_callback_set(ctx->ssl_ctx, ignore_all_cert_errors, NULL);
     }
 
     return c;
