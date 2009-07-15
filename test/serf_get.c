@@ -274,7 +274,6 @@ int main(int argc, const char **argv)
     atexit(apr_terminate);
 
     apr_pool_create(&pool, NULL);
-    apr_atomic_init(pool);
     /* serf_initialize(); */
 
     /* Default to one round of fetching. */
@@ -355,6 +354,7 @@ int main(int argc, const char **argv)
                                    pool);
     if (status) {
         printf("Error creating address: %d\n", status);
+        apr_pool_destroy(pool);
         exit(1);
     }
 
@@ -397,6 +397,7 @@ int main(int argc, const char **argv)
 
             printf("Error running context: (%d) %s\n", status,
                    apr_strerror(status, buf, sizeof(buf)));
+            apr_pool_destroy(pool);
             exit(1);
         }
         if (!apr_atomic_read32(&handler_ctx.requests_outstanding)) {
