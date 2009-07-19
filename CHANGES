@@ -1,4 +1,5 @@
 Serf 0.3.1 []
+  Fix loss of error on request->setup() callback. (Issue 47)
   Support APR 2.x. (Issue 48)
 
 Serf 0.3.0 [2009-01-26, r1216]
