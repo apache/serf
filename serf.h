@@ -44,6 +44,8 @@ typedef struct serf_bucket_type_t serf_bucket_type_t;
 typedef struct serf_bucket_alloc_t serf_bucket_alloc_t;
 
 typedef struct serf_connection_t serf_connection_t;
+typedef struct serf_listener_t serf_listener_t;
+typedef struct serf_incoming_t serf_incoming_t;
 
 typedef struct serf_request_t serf_request_t;
 
@@ -351,6 +353,21 @@ SERF_DECLARE(apr_status_t) serf_connection_create2(
     void *setup_baton,
     serf_connection_closed_t closed,
     void *closed_baton,
+    apr_pool_t *pool);
+
+
+typedef void (*serf_accept_client_t)(serf_listener_t *l,
+                                         void *accept_baton,
+                                         serf_incoming_t *client,
+                                         apr_pool_t *pool);
+                                         
+SERF_DECLARE(apr_status_t) serf_listener_create(
+    serf_listener_t **listener,
+    serf_context_t *ctx,
+    const char *host,
+    apr_uint16_t port,
+    void *accept_baton,
+    serf_accept_client_t accept,
     apr_pool_t *pool);
 
 /**

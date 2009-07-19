@@ -31,6 +31,19 @@
 #define IOV_MAX 16
 #endif
 
+#define SERF_IO_CLIENT (1)
+#define SERF_IO_CONN (2)
+#define SERF_IO_LISTENER (3)
+
+typedef struct serf_io_baton_t {
+    int type;
+    union {
+        serf_incoming_t *client;
+        serf_connection_t *conn;
+        serf_listener_t *listener;
+    } u;
+} serf_io_baton_t;
+
 /* Holds all the information corresponding to a request/response pair. */
 struct serf_request_t {
     serf_connection_t *conn;
@@ -87,8 +100,17 @@ struct serf_context_t {
     apr_off_t progress_written;
 };
 
+struct serf_listener_t {
+    serf_io_baton_t baton;
+    apr_socket_t *skt;
+    apr_pool_t *pool;
+    apr_pollfd_t desc;
+};
+
 struct serf_connection_t {
     serf_context_t *ctx;
+
+    serf_io_baton_t baton;
 
     apr_pool_t *pool;
     serf_bucket_alloc_t *allocator;
@@ -250,7 +272,7 @@ static apr_status_t update_pollset(serf_connection_t *conn)
      * want to poll it for hangups and errors.
      */
     return ctx->pollset_add(ctx->pollset_baton,
-                            &desc, conn);
+                            &desc, &conn->baton);
 }
 
 #ifdef SERF_DEBUG_BUCKET_USE
@@ -946,6 +968,15 @@ static apr_status_t read_from_connection(serf_connection_t *conn)
     return status;
 }
 
+static apr_status_t process_listener(serf_listener_t *l)
+{
+    /* TODO: call non-blocking accept() 
+     *  - create serf_incoming_t
+     * 
+     * */
+    return APR_SUCCESS;
+}
+
 /* process all events on the connection */
 static apr_status_t process_connection(serf_connection_t *conn,
                                        apr_int16_t events)
@@ -1102,22 +1133,37 @@ SERF_DECLARE(apr_status_t) serf_event_trigger(serf_context_t *s,
                                               const apr_pollfd_t *desc)
 {
     apr_status_t status = APR_SUCCESS;
+    serf_io_baton_t *io = serf_baton;
 
-    serf_connection_t *conn = serf_baton;
+    if (io->type == SERF_IO_CONN) {
+        serf_connection_t *conn = io->u.conn;
 
-    /* apr_pollset_poll() can return a conn multiple times... */
-    if ((conn->seen_in_pollset & desc->rtnevents) != 0 ||
-        (conn->seen_in_pollset & APR_POLLHUP) != 0) {
-        return APR_SUCCESS;
+        /* apr_pollset_poll() can return a conn multiple times... */
+        if ((conn->seen_in_pollset & desc->rtnevents) != 0 ||
+            (conn->seen_in_pollset & APR_POLLHUP) != 0) {
+            return APR_SUCCESS;
+        }
+
+        conn->seen_in_pollset |= desc->rtnevents;
+
+        if ((status = process_connection(conn,
+                                         desc->rtnevents)) != APR_SUCCESS) {
+            return status;
+        }
     }
+    else if (io->type == SERF_IO_LISTENER) {
+        serf_listener_t *l = io->u.listener;
 
-    conn->seen_in_pollset |= desc->rtnevents;
+        status = process_listener(l);
 
-    if ((status = process_connection(conn,
-                                     desc->rtnevents)) != APR_SUCCESS) {
-        return status;
+        if (status) {
+            return status;
+        }
     }
-
+    else if (io->type == SERF_IO_CLIENT) {
+        /* TODO: ... client code ! */
+        return APR_ENOTIMPL;
+    }
     return status;
 }
 
@@ -1166,6 +1212,58 @@ SERF_DECLARE(void) serf_context_set_progress_cb(
     ctx->progress_baton = progress_baton;
 }
 
+
+SERF_DECLARE(apr_status_t) serf_listener_create(
+    serf_listener_t **listener,
+    serf_context_t *ctx,
+    const char *host,
+    apr_uint16_t port,
+    void *accept_baton,
+    serf_accept_client_t accept,
+    apr_pool_t *pool)
+{
+    apr_sockaddr_t *sa;
+    apr_status_t rv;
+    serf_listener_t *l = apr_palloc(pool, sizeof(*l));
+
+    l->baton.type = SERF_IO_LISTENER;
+    l->baton.u.listener = l;
+
+    apr_pool_create(&pool, l->pool);
+
+    rv = apr_sockaddr_info_get(&sa, host, APR_UNSPEC, port, 0, l->pool);
+    if (rv)
+        return rv;
+
+    rv = apr_socket_create(&l->skt, sa->family, SOCK_STREAM,
+                           APR_PROTO_TCP, l->pool);
+    if (rv)
+        return rv;
+
+    rv = apr_socket_opt_set(l->skt, APR_SO_REUSEADDR, 1);
+    if (rv)
+        return rv;
+    
+    rv = apr_socket_bind(l->skt, sa);
+    if (rv)
+        return rv;
+
+    rv = apr_socket_listen(l->skt, 5);
+    if (rv)
+        return rv;
+
+    l->desc.desc_type = APR_POLL_SOCKET;
+    l->desc.desc.s = l->skt;
+    l->desc.reqevents = APR_POLLIN;
+
+    rv = ctx->pollset_add(ctx->pollset_baton,
+                            &l->desc, &l->baton);
+    *listener = l;
+
+    return APR_SUCCESS;
+}
+
+
 SERF_DECLARE(serf_connection_t *) serf_connection_create(
     serf_context_t *ctx,
     apr_sockaddr_t *address,
@@ -1186,6 +1284,8 @@ SERF_DECLARE(serf_connection_t *) serf_connection_create(
     conn->pool = pool;
     conn->allocator = serf_bucket_allocator_create(pool, NULL, NULL);
     conn->stream = NULL;
+    conn->baton.type = SERF_IO_CONN;
+    conn->baton.u.conn = conn;
 
     /* Create a subpool for our connection. */
     apr_pool_create(&conn->skt_pool, conn->pool);
