@@ -101,10 +101,13 @@ struct serf_context_t {
 };
 
 struct serf_listener_t {
+    serf_context_t *ctx;
     serf_io_baton_t baton;
     apr_socket_t *skt;
     apr_pool_t *pool;
     apr_pollfd_t desc;
+    void *accept_baton;
+    serf_accept_client_t accept;
 };
 
 struct serf_connection_t {
@@ -970,11 +973,27 @@ static apr_status_t read_from_connection(serf_connection_t *conn)
 
 static apr_status_t process_listener(serf_listener_t *l)
 {
-    /* TODO: call non-blocking accept() 
-     *  - create serf_incoming_t
-     * 
-     * */
-    return APR_SUCCESS;
+    apr_status_t rv;
+    apr_socket_t *in;
+    apr_pool_t *p;
+    /* THIS IS NOT OPTIMAL */
+    apr_pool_create(&p, l->pool);
+
+    rv = apr_socket_accept(&in, l->skt, p);
+
+    if (rv) {
+        apr_pool_destroy(p);
+        return rv;
+    }
+
+    rv = l->accept(l->ctx, l, l->accept_baton, in, p);
+
+    if (rv) {
+        apr_pool_destroy(p);
+        return rv;
+    }
+
+    return rv;
 }
 
 /* process all events on the connection */
@@ -1226,8 +1245,11 @@ SERF_DECLARE(apr_status_t) serf_listener_create(
     apr_status_t rv;
     serf_listener_t *l = apr_palloc(pool, sizeof(*l));
 
+    l->ctx = ctx;
     l->baton.type = SERF_IO_LISTENER;
     l->baton.u.listener = l;
+    l->accept = accept;
+    l->accept_baton = accept_baton;
 
     apr_pool_create(&pool, l->pool);
 

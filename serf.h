@@ -356,10 +356,11 @@ SERF_DECLARE(apr_status_t) serf_connection_create2(
     apr_pool_t *pool);
 
 
-typedef void (*serf_accept_client_t)(serf_listener_t *l,
-                                         void *accept_baton,
-                                         serf_incoming_t *client,
-                                         apr_pool_t *pool);
+typedef apr_status_t (*serf_accept_client_t)(serf_context_t *ctx, 
+                                        serf_listener_t *l,
+                                        void *accept_baton,
+                                        apr_socket_t *insock,
+                                        apr_pool_t *pool);
                                          
 SERF_DECLARE(apr_status_t) serf_listener_create(
     serf_listener_t **listener,
