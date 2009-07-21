@@ -938,14 +938,14 @@ static serf_ssl_context_t *ssl_init_context(void)
 
     ssl_ctx->encrypt.stream = NULL;
     ssl_ctx->encrypt.stream_next = NULL;
-    ssl_ctx->encrypt.pending = NULL;
+    ssl_ctx->encrypt.pending = serf_bucket_aggregate_create(allocator);
     ssl_ctx->encrypt.status = APR_SUCCESS;
     serf_databuf_init(&ssl_ctx->encrypt.databuf);
     ssl_ctx->encrypt.databuf.read = ssl_encrypt;
     ssl_ctx->encrypt.databuf.read_baton = ssl_ctx;
 
     ssl_ctx->decrypt.stream = NULL;
-    ssl_ctx->decrypt.pending = NULL;
+    ssl_ctx->decrypt.pending = serf_bucket_aggregate_create(allocator);
     ssl_ctx->decrypt.status = APR_SUCCESS;
     serf_databuf_init(&ssl_ctx->decrypt.databuf);
     ssl_ctx->decrypt.databuf.read = ssl_decrypt;
