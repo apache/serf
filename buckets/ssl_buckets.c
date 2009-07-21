@@ -80,6 +80,7 @@
  *            |- 2. Try to read from ctx->stream [REQUEST bucket]
  *            |- 3. Call SSL_write with read data
  *              |- ...
+ *                |- bio_bucket_read can be called
  *                |- bio_bucket_write with encrypted data
  *                  |- store in sink
  *            |- 4. If successful, read pending encrypted data and return.
@@ -100,6 +101,7 @@
  *              |- 3. Append data to ssl_ctx->source
  *              |- 4. Call SSL_read()
  *                |- ...
+ *                  |- bio_bucket_write can be called
  *                  |- bio_bucket_read
  *                    |- read data from ssl_ctx->source
  *              |- If data read, return it.
