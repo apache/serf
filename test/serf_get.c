@@ -48,7 +48,9 @@ static apr_status_t ignore_all_cert_errors(void *data, int failures,
     return APR_SUCCESS;
 }
 
-static serf_bucket_t* conn_setup(apr_socket_t *skt,
+static apr_status_t conn_setup(apr_socket_t *skt,
+                                serf_bucket_t **input_bkt,
+                                serf_bucket_t **output_bkt,
                                 void *setup_baton,
                                 apr_pool_t *pool)
 {
@@ -62,9 +64,14 @@ static serf_bucket_t* conn_setup(apr_socket_t *skt,
             ctx->ssl_ctx = serf_bucket_ssl_decrypt_context_get(c);
         }
         serf_ssl_server_cert_callback_set(ctx->ssl_ctx, ignore_all_cert_errors, NULL);
+
+        *output_bkt = serf_bucket_ssl_encrypt_create(*output_bkt, ctx->ssl_ctx,
+                                                    ctx->bkt_alloc);
     }
 
-    return c;
+    *input_bkt = c;
+
+    return APR_SUCCESS;
 }
 
 static serf_bucket_t* accept_response(serf_request_t *request,
@@ -217,26 +224,6 @@ static apr_status_t setup_request(serf_request_t *request,
     }
 
     apr_atomic_inc32(&(ctx->requests_outstanding));
-
-    if (ctx->acceptor_baton->using_ssl) {
-        serf_bucket_alloc_t *req_alloc;
-        app_baton_t *app_ctx = ctx->acceptor_baton;
-
-        req_alloc = serf_request_get_alloc(request);
-
-        if (app_ctx->ssl_ctx == NULL) {
-            *req_bkt =
-                serf_bucket_ssl_encrypt_create(*req_bkt, NULL,
-                                               app_ctx->bkt_alloc);
-            app_ctx->ssl_ctx =
-                serf_bucket_ssl_encrypt_context_get(*req_bkt);
-        }
-        else {
-            *req_bkt =
-                serf_bucket_ssl_encrypt_create(*req_bkt, app_ctx->ssl_ctx,
-                                               app_ctx->bkt_alloc);
-        }
-    }
 
     *acceptor = ctx->acceptor;
     *acceptor_baton = ctx->acceptor_baton;

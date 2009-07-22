@@ -200,12 +200,14 @@ SERF_DECLARE(void) serf_context_set_progress_cb(
  * ### callback. it may be wasteful to create a per-conn allocator, so this
  * ### baton-based, app-responsible form might be best.
  *
- * Responsibility for the bucket is passed to the serf library. It will be
+ * Responsibility for the buckets is passed to the serf library. They will be
  * destroyed when the connection is closed.
  *
  * All temporary allocations should be made in @a pool.
  */
-typedef serf_bucket_t * (*serf_connection_setup_t)(apr_socket_t *skt,
+typedef apr_status_t (*serf_connection_setup_t)(apr_socket_t *skt,
+                                                   serf_bucket_t **read_bkt,
+                                                   serf_bucket_t **write_bkt,
                                                    void *setup_baton,
                                                    apr_pool_t *pool);
 
