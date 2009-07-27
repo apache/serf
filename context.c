@@ -110,6 +110,15 @@ struct serf_listener_t {
     serf_accept_client_t accept;
 };
 
+struct serf_incoming_t {
+    serf_context_t *ctx;
+    serf_io_baton_t baton;
+    void *request_baton;
+    serf_incoming_request_cb_t request;
+    apr_socket_t *skt;
+    apr_pollfd_t desc;
+};
+
 struct serf_connection_t {
     serf_context_t *ctx;
 
@@ -998,6 +1007,11 @@ static apr_status_t read_from_connection(serf_connection_t *conn)
     return status;
 }
 
+static apr_status_t process_client(serf_incoming_t *l)
+{
+    return APR_ENOTIMPL;
+}
+
 static apr_status_t process_listener(serf_listener_t *l)
 {
     apr_status_t rv;
@@ -1207,8 +1221,12 @@ SERF_DECLARE(apr_status_t) serf_event_trigger(serf_context_t *s,
         }
     }
     else if (io->type == SERF_IO_CLIENT) {
-        /* TODO: ... client code ! */
-        return APR_ENOTIMPL;
+        serf_incoming_t *c = io->u.client;
+        status = process_client(c);
+
+        if (status) {
+            return status;
+        }
     }
     return status;
 }
@@ -1258,6 +1276,33 @@ SERF_DECLARE(void) serf_context_set_progress_cb(
     ctx->progress_baton = progress_baton;
 }
 
+SERF_DECLARE(apr_status_t) serf_incoming_create(
+    serf_incoming_t **client,
+    serf_context_t *ctx,
+    apr_socket_t *insock,
+    void *request_baton,
+    serf_incoming_request_cb_t request,
+    apr_pool_t *pool)
+{
+    apr_status_t rv;
+    serf_incoming_t *ic = apr_palloc(pool, sizeof(*ic));
+
+    ic->ctx = ctx;
+    ic->baton.type = SERF_IO_CLIENT;
+    ic->baton.u.client = ic;
+    ic->request_baton =  request_baton;
+    ic->request = request;
+    ic->skt = insock;
+    ic->desc.desc_type = APR_POLL_SOCKET;
+    ic->desc.desc.s = ic->skt;
+    ic->desc.reqevents = APR_POLLIN;
+
+    rv = ctx->pollset_add(ctx->pollset_baton,
+                         &ic->desc, &ic->baton);
+    *client = ic;
+
+    return rv;
+}
 
 SERF_DECLARE(apr_status_t) serf_listener_create(
     serf_listener_t **listener,
@@ -1278,7 +1323,7 @@ SERF_DECLARE(apr_status_t) serf_listener_create(
     l->accept = accept;
     l->accept_baton = accept_baton;
 
-    apr_pool_create(&pool, l->pool);
+    apr_pool_create(&l->pool, pool);
 
     rv = apr_sockaddr_info_get(&sa, host, APR_UNSPEC, port, 0, l->pool);
     if (rv)

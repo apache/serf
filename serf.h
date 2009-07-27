@@ -46,6 +46,7 @@ typedef struct serf_bucket_alloc_t serf_bucket_alloc_t;
 typedef struct serf_connection_t serf_connection_t;
 typedef struct serf_listener_t serf_listener_t;
 typedef struct serf_incoming_t serf_incoming_t;
+typedef struct serf_incoming_request_t serf_incoming_request_t;
 
 typedef struct serf_request_t serf_request_t;
 
@@ -372,6 +373,22 @@ SERF_DECLARE(apr_status_t) serf_listener_create(
     void *accept_baton,
     serf_accept_client_t accept,
     apr_pool_t *pool);
+
+typedef apr_status_t (*serf_incoming_request_cb_t)(serf_context_t *ctx,
+                                        serf_incoming_request_t *req,
+                                        void *request_baton,
+                                        apr_pool_t *pool);
+
+SERF_DECLARE(apr_status_t) serf_incoming_create(
+    serf_incoming_t **client,
+    serf_context_t *ctx,
+    apr_socket_t *insock,
+    void *request_baton,
+    serf_incoming_request_cb_t request,
+    apr_pool_t *pool);
+
+
+
 
 /**
  * Reset the connection, but re-open the socket again.

@@ -31,7 +31,7 @@ typedef struct {
 
 
 static apr_status_t incoming_request(serf_context_t *ctx,
-                                        /* TODO: more fields */
+                                        serf_incoming_request_t *req,
                                         void *request_baton,
                                         apr_pool_t *pool)
 {
