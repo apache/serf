@@ -470,6 +470,7 @@ static apr_status_t do_conn_setup(serf_connection_t *conn)
         return status;
     }
 
+    ostream = serf_bucket_barrier_create(ostream, conn->allocator);
     serf_bucket_aggregate_append(conn->ostream_head, ostream);
 
     return APR_SUCCESS;
