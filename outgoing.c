@@ -399,12 +399,11 @@ static apr_status_t reset_connection(serf_connection_t *conn,
         conn->stream = NULL;
     }
 
-    if (conn->ostream != NULL) {
-        serf_bucket_destroy(conn->ostream);
+    if (conn->ostream_head != NULL) {
+        serf_bucket_destroy(conn->ostream_head);
+        conn->ostream_head = NULL;
         conn->ostream = NULL;
     }
-
-    conn->ostream_tail = NULL;
 
     /* Don't try to resume any writes */
     conn->vec_len = 0;
@@ -527,16 +526,20 @@ static apr_status_t write_to_connection(serf_connection_t *conn)
         /* If the connection does not have an associated bucket, then
          * call the setup callback to get one.
          */
-        if (conn->stream == NULL || conn->ostream == NULL) {
-            conn->ostream = serf_bucket_aggregate_create(conn->allocator);
-            conn->ostream_tail = conn->ostream;
+        if (conn->stream == NULL || conn->ostream_head == NULL) {
+            conn->ostream_head = serf_bucket_aggregate_create(conn->allocator);
             status = (*conn->setup)(conn->skt,
                                           &conn->stream,
                                           &conn->ostream,
                                           conn->setup_baton,
                                           conn->pool);
-            if (status)
+            if (status) {
                 return status;
+            }
+
+            if (conn->ostream) {
+                serf_bucket_aggregate_append(conn->ostream_head, conn->ostream);
+            }
         }
 
         if (request->req_bkt == NULL) {
@@ -563,11 +566,11 @@ static apr_status_t write_to_connection(serf_connection_t *conn)
 
             request->setup = NULL;
 
-            serf_bucket_aggregate_append(conn->ostream_tail, request->req_bkt);
+            serf_bucket_aggregate_append(conn->ostream_head, request->req_bkt);
         }
 
         /* ### optimize at some point by using read_for_sendfile */
-        read_status = serf_bucket_read_iovec(conn->ostream,
+        read_status = serf_bucket_read_iovec(conn->ostream_head,
                                              SERF_READ_ALL_AVAIL,
                                              IOV_MAX,
                                              conn->vec,
@@ -661,16 +664,20 @@ static apr_status_t read_from_connection(serf_connection_t *conn)
         /* If the connection does not have an associated bucket, then
          * call the setup callback to get one.
          */
-        if (conn->stream == NULL || conn->ostream == NULL) {
-            conn->ostream = serf_bucket_aggregate_create(conn->allocator);
-            conn->ostream_tail = conn->ostream;
+        if (conn->stream == NULL || conn->ostream_head == NULL) {
+            conn->ostream_head = serf_bucket_aggregate_create(conn->allocator);
             status = (*conn->setup)(conn->skt,
                                           &conn->stream,
                                           &conn->ostream,
                                           conn->setup_baton,
                                           conn->pool);
-            if (status)
+            if (status) {
                 goto error;
+            }
+
+            if (conn->ostream) {
+                serf_bucket_aggregate_append(conn->ostream_head, conn->ostream);
+            }
         }
 
         /* We are reading a response for a request we haven't
@@ -883,7 +890,7 @@ SERF_DECLARE(serf_connection_t *) serf_connection_create(
     conn->allocator = serf_bucket_allocator_create(pool, NULL, NULL);
     conn->stream = NULL;
     conn->ostream = NULL;
-    conn->ostream_tail = NULL;
+    conn->ostream_head = NULL;
     conn->baton.type = SERF_IO_CONN;
     conn->baton.u.conn = conn;
 

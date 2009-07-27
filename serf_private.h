@@ -157,7 +157,7 @@ struct serf_connection_t {
     /* A reference to the aggregate bucket that provides the boundary between
      * request level buckets and connection level buckets.
      */
-    serf_bucket_t *ostream_tail;
+    serf_bucket_t *ostream_head;
 
     /* The list of active requests. */
     serf_request_t *requests;
