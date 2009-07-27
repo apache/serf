@@ -191,7 +191,7 @@ void serf__context_progress_delta(void *progress_baton, apr_off_t read,
                                   apr_off_t written);
 
 /* from incoming.c */
-apr_status_t serf__process_client(serf_incoming_t *l);
+apr_status_t serf__process_client(serf_incoming_t *l, apr_int16_t events);
 apr_status_t serf__process_listener(serf_listener_t *l);
 
 /* from outgoing.c */

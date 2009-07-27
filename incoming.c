@@ -22,9 +22,42 @@
 
 #include "serf_private.h"
 
-apr_status_t serf__process_client(serf_incoming_t *l)
+static apr_status_t read_from_client(serf_incoming_t *client)
 {
     return APR_ENOTIMPL;
+}
+
+static apr_status_t write_to_client(serf_incoming_t *client)
+{
+    return APR_ENOTIMPL;
+}
+
+apr_status_t serf__process_client(serf_incoming_t *client, apr_int16_t events)
+{
+    apr_status_t rv;
+    if ((events & APR_POLLIN) != 0) {
+        rv = read_from_client(client);
+        if (rv) {
+            return rv;
+        }
+    }
+
+    if ((events & APR_POLLHUP) != 0) {
+        return APR_ECONNRESET;
+    }
+
+    if ((events & APR_POLLERR) != 0) {
+        return APR_EGENERAL;
+    }
+
+    if ((events & APR_POLLOUT) != 0) {
+        rv = write_to_client(client);
+        if (rv) {
+            return rv;
+        }
+    }
+
+    return APR_SUCCESS;
 }
 
 apr_status_t serf__process_listener(serf_listener_t *l)

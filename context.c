@@ -186,7 +186,7 @@ SERF_DECLARE(apr_status_t) serf_event_trigger(serf_context_t *s,
     else if (io->type == SERF_IO_CLIENT) {
         serf_incoming_t *c = io->u.client;
 
-        status = serf__process_client(c);
+        status = serf__process_client(c, desc->rtnevents);
 
         if (status) {
             return status;
