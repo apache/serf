@@ -186,8 +186,18 @@ struct serf_connection_t {
 };
 
 
+/* fromt context.c */
+void serf__context_progress_delta(void *progress_baton, apr_off_t read,
+                                  apr_off_t written);
+
 /* from incoming.c */
 apr_status_t serf__process_client(serf_incoming_t *l);
 apr_status_t serf__process_listener(serf_listener_t *l);
+
+/* from outgoing.c */
+apr_status_t serf__open_connections(serf_context_t *ctx);
+apr_status_t serf__process_connection(serf_connection_t *conn,
+                                       apr_int16_t events);
+apr_status_t serf__conn_update_pollset(serf_connection_t *conn);
 
 #endif
