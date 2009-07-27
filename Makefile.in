@@ -19,7 +19,7 @@ OBJECTS = buckets/aggregate_buckets.lo buckets/request_buckets.lo context.lo \
 TARGET_LIB=libserf-$(SERF_MAJOR_VERSION).la
 
 TEST_OBJECTS = test/serf_get.lo test/serf_response.lo test/serf_request.lo \
-               test/serf_spider.lo
+               test/serf_spider.lo test/serf_server.lo
 
 TEST_SUITE_OBJECTS = test/CuTest.lo test/test_all.lo test/test_util.lo \
                      test/test_buckets.lo test/test_context.lo \
@@ -42,14 +42,14 @@ includedir=@includedir@
 LIBTOOL = @APR_LIBTOOL@
 LTFLAGS = @LTFLAGS@
 CC = @CC@
-CFLAGS = @CFLAGS@
-CPPFLAGS = @CPPFLAGS@
-INCLUDES = -I$(srcdir) @APR_INCLUDES@ @APU_INCLUDES@ $(EXTRA_INCLUDES)
+CFLAGS =  @EXTRA_CFLAGS@ @CFLAGS@
+CPPFLAGS = @EXTRA_CPPFLAGS@ @CPPFLAGS@
+INCLUDES = -I$(srcdir) @APR_INCLUDES@ @APU_INCLUDES@ @EXTRA_INCLUDES@
 MKDIR = @mkdir_p@
 INSTALL = @INSTALL@
 
-LDFLAGS = @LDFLAGS@
-LIBS = @SERF_LIBS@ -lz -lssl -lcrypto
+LDFLAGS = @EXTRA_LDFLAGS@ @LDFLAGS@
+LIBS = @EXTRA_LIBS@  @SERF_LIBS@ -lz -lssl -lcrypto
 
 all: $(TARGET_LIB) $(PROGRAMS)
 
@@ -74,6 +74,7 @@ buckets/chunk_buckets.lo: buckets/chunk_buckets.c $(HEADERS)
 test/serf_get.lo: test/serf_get.c $(HEADERS)
 test/serf_response.lo: test/serf_response.c $(HEADERS)
 test/serf_request.lo: test/serf_request.c $(HEADERS)
+test/serf_server.lo: test/serf_server.c $(HEADERS)
 test/serf_spider.lo: test/serf_spider.c $(HEADERS)
 
 test/CuTest.lo: test/CuTest.c $(HEADERS)
@@ -93,6 +94,9 @@ test/serf_response: $(TARGET_LIB) test/serf_response.lo
 	$(LIBTOOL) $(LTFLAGS) --mode=link $(CC) $(LDFLAGS) -static -o $@ $^ $(LIBS)
 
 test/serf_request: $(TARGET_LIB) test/serf_request.lo
+	$(LIBTOOL) $(LTFLAGS) --mode=link $(CC) $(LDFLAGS) -static -o $@ $^ $(LIBS)
+
+test/serf_server: $(TARGET_LIB) test/serf_server.lo
 	$(LIBTOOL) $(LTFLAGS) --mode=link $(CC) $(LDFLAGS) -static -o $@ $^ $(LIBS)
 
 test/serf_spider: $(TARGET_LIB) test/serf_spider.lo
