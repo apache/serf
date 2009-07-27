@@ -93,7 +93,7 @@ if [ $apu_found -lt 1 ]; then
     echo ""
     echo "APR-util not found.  Assuming you are using APR 2.x."
     echo ""
-    apu_src_dir=
+    apu_src_dir=$apr_src_dir
 fi
 
 if [ $should_exit -gt 0 ]; then
