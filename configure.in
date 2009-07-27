@@ -7,7 +7,6 @@ AC_CONFIG_AUX_DIR(build)
 
 sinclude(build/apr_common.m4)
 sinclude(build/find_apr.m4)
-sinclude(build/find_apu.m4)
 
 AC_PREFIX_DEFAULT(/usr/local/serf)
 
@@ -94,6 +93,8 @@ if test "$APR_VERSION_NUM" -ge "200000"; then
   APU_CONFIG=""
 
 else
+  sinclude(build/find_apu.m4)
+
   echo $ac_n "${nl}Configuring Apache Portable Runtime Utility library...${nl}"
 
    ifdef([APR_FIND_APU], [
