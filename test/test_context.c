@@ -933,13 +933,15 @@ progress_cb(void *progress_baton, apr_off_t read, apr_off_t written)
     pb->written = written;
 }
 
-static serf_bucket_t* progress_conn_setup(apr_socket_t *skt,
+static apr_status_t progress_conn_setup(apr_socket_t *skt,
+                                          serf_bucket_t **input_bkt,
+                                          serf_bucket_t **output_bkt,
                                           void *setup_baton,
                                           apr_pool_t *pool)
 {
     test_baton_t *tb = setup_baton;
-
-    return serf_context_bucket_socket_create(tb->context, skt, tb->bkt_alloc);
+    *input_bkt = serf_context_bucket_socket_create(tb->context, skt, tb->bkt_alloc);
+    return APR_SUCCESS;
 }
 
 static void test_serf_progress_callback(CuTest *tc)
