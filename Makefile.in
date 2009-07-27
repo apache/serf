@@ -14,7 +14,7 @@ OBJECTS = buckets/aggregate_buckets.lo buckets/request_buckets.lo context.lo \
           buckets/allocator.lo buckets/dechunk_buckets.lo \
           buckets/deflate_buckets.lo buckets/limit_buckets.lo \
           buckets/ssl_buckets.lo buckets/barrier_buckets.lo \
-          buckets/chunk_buckets.lo
+          buckets/chunk_buckets.lo incoming.lo
 
 TARGET_LIB=libserf-$(SERF_MAJOR_VERSION).la
 
@@ -54,6 +54,7 @@ LIBS = @EXTRA_LIBS@  @SERF_LIBS@ -lz -lssl -lcrypto
 all: $(TARGET_LIB) $(PROGRAMS)
 
 context.lo: context.c $(HEADERS)
+incoming.lo: incoming.c $(HEADERS)
 buckets/aggregate_buckets.lo: buckets/aggregate_buckets.c $(HEADERS)
 buckets/request_buckets.lo: buckets/request_buckets.c $(HEADERS)
 buckets/buckets.lo: buckets/buckets.c $(HEADERS)

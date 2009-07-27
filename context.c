@@ -839,36 +839,6 @@ static apr_status_t read_from_connection(serf_connection_t *conn)
     return status;
 }
 
-static apr_status_t process_client(serf_incoming_t *l)
-{
-    return APR_ENOTIMPL;
-}
-
-static apr_status_t process_listener(serf_listener_t *l)
-{
-    apr_status_t rv;
-    apr_socket_t *in;
-    apr_pool_t *p;
-    /* THIS IS NOT OPTIMAL */
-    apr_pool_create(&p, l->pool);
-
-    rv = apr_socket_accept(&in, l->skt, p);
-
-    if (rv) {
-        apr_pool_destroy(p);
-        return rv;
-    }
-
-    rv = l->accept(l->ctx, l, l->accept_baton, in, p);
-
-    if (rv) {
-        apr_pool_destroy(p);
-        return rv;
-    }
-
-    return rv;
-}
-
 /* process all events on the connection */
 static apr_status_t process_connection(serf_connection_t *conn,
                                        apr_int16_t events)
@@ -1046,7 +1016,7 @@ SERF_DECLARE(apr_status_t) serf_event_trigger(serf_context_t *s,
     else if (io->type == SERF_IO_LISTENER) {
         serf_listener_t *l = io->u.listener;
 
-        status = process_listener(l);
+        status = serf__process_listener(l);
 
         if (status) {
             return status;
@@ -1054,7 +1024,8 @@ SERF_DECLARE(apr_status_t) serf_event_trigger(serf_context_t *s,
     }
     else if (io->type == SERF_IO_CLIENT) {
         serf_incoming_t *c = io->u.client;
-        status = process_client(c);
+
+        status = serf__process_client(c);
 
         if (status) {
             return status;
@@ -1107,88 +1078,6 @@ SERF_DECLARE(void) serf_context_set_progress_cb(
     ctx->progress_func = progress_func;
     ctx->progress_baton = progress_baton;
 }
-
-SERF_DECLARE(apr_status_t) serf_incoming_create(
-    serf_incoming_t **client,
-    serf_context_t *ctx,
-    apr_socket_t *insock,
-    void *request_baton,
-    serf_incoming_request_cb_t request,
-    apr_pool_t *pool)
-{
-    apr_status_t rv;
-    serf_incoming_t *ic = apr_palloc(pool, sizeof(*ic));
-
-    ic->ctx = ctx;
-    ic->baton.type = SERF_IO_CLIENT;
-    ic->baton.u.client = ic;
-    ic->request_baton =  request_baton;
-    ic->request = request;
-    ic->skt = insock;
-    ic->desc.desc_type = APR_POLL_SOCKET;
-    ic->desc.desc.s = ic->skt;
-    ic->desc.reqevents = APR_POLLIN;
-
-    rv = ctx->pollset_add(ctx->pollset_baton,
-                         &ic->desc, &ic->baton);
-    *client = ic;
-
-    return rv;
-}
-
-SERF_DECLARE(apr_status_t) serf_listener_create(
-    serf_listener_t **listener,
-    serf_context_t *ctx,
-    const char *host,
-    apr_uint16_t port,
-    void *accept_baton,
-    serf_accept_client_t accept,
-    apr_pool_t *pool)
-{
-    apr_sockaddr_t *sa;
-    apr_status_t rv;
-    serf_listener_t *l = apr_palloc(pool, sizeof(*l));
-
-    l->ctx = ctx;
-    l->baton.type = SERF_IO_LISTENER;
-    l->baton.u.listener = l;
-    l->accept = accept;
-    l->accept_baton = accept_baton;
-
-    apr_pool_create(&l->pool, pool);
-
-    rv = apr_sockaddr_info_get(&sa, host, APR_UNSPEC, port, 0, l->pool);
-    if (rv)
-        return rv;
-
-    rv = apr_socket_create(&l->skt, sa->family, SOCK_STREAM,
-                           APR_PROTO_TCP, l->pool);
-    if (rv)
-        return rv;
-
-    rv = apr_socket_opt_set(l->skt, APR_SO_REUSEADDR, 1);
-    if (rv)
-        return rv;
-    
-    rv = apr_socket_bind(l->skt, sa);
-    if (rv)
-        return rv;
-
-    rv = apr_socket_listen(l->skt, 5);
-    if (rv)
-        return rv;
-
-    l->desc.desc_type = APR_POLL_SOCKET;
-    l->desc.desc.s = l->skt;
-    l->desc.reqevents = APR_POLLIN;
-
-    rv = ctx->pollset_add(ctx->pollset_baton,
-                            &l->desc, &l->baton);
-    *listener = l;
-
-    return APR_SUCCESS;
-}
-
 
 SERF_DECLARE(serf_connection_t *) serf_connection_create(
     serf_context_t *ctx,

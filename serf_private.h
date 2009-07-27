@@ -186,4 +186,8 @@ struct serf_connection_t {
 };
 
 
+/* from incoming.c */
+apr_status_t serf__process_client(serf_incoming_t *l);
+apr_status_t serf__process_listener(serf_listener_t *l);
+
 #endif
