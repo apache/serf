@@ -400,9 +400,10 @@ static apr_status_t reset_connection(serf_connection_t *conn,
     }
 
     if (conn->ostream_head != NULL) {
+        /* XXXX: tail is always inserted into head ? */
         serf_bucket_destroy(conn->ostream_head);
-        conn->ostream_head = NULL;
-        conn->ostream = NULL;
+        conn->ostream_head = serf_bucket_aggregate_create(conn->allocator);
+        conn->ostream_tail = serf_bucket_aggregate_create(conn->allocator);
     }
 
     /* Don't try to resume any writes */
@@ -453,6 +454,25 @@ static apr_status_t socket_writev(serf_connection_t *conn)
     }
 
     return status;
+}
+
+static apr_status_t do_conn_setup(serf_connection_t *conn)
+{
+    apr_status_t status;
+    serf_bucket_t *ostream = conn->ostream_tail;
+
+    status = (*conn->setup)(conn->skt,
+                            &conn->stream,
+                            &ostream,
+                            conn->setup_baton,
+                            conn->pool);
+    if (status) {
+        return status;
+    }
+
+    serf_bucket_aggregate_append(conn->ostream_head, ostream);
+
+    return APR_SUCCESS;
 }
 
 /* write data out to the connection */
@@ -526,19 +546,10 @@ static apr_status_t write_to_connection(serf_connection_t *conn)
         /* If the connection does not have an associated bucket, then
          * call the setup callback to get one.
          */
-        if (conn->stream == NULL || conn->ostream_head == NULL) {
-            conn->ostream_head = serf_bucket_aggregate_create(conn->allocator);
-            status = (*conn->setup)(conn->skt,
-                                          &conn->stream,
-                                          &conn->ostream,
-                                          conn->setup_baton,
-                                          conn->pool);
+        if (conn->stream == NULL) {
+            status = do_conn_setup(conn);
             if (status) {
                 return status;
-            }
-
-            if (conn->ostream) {
-                serf_bucket_aggregate_append(conn->ostream_head, conn->ostream);
             }
         }
 
@@ -566,7 +577,7 @@ static apr_status_t write_to_connection(serf_connection_t *conn)
 
             request->setup = NULL;
 
-            serf_bucket_aggregate_append(conn->ostream_head, request->req_bkt);
+            serf_bucket_aggregate_append(conn->ostream_tail, request->req_bkt);
         }
 
         /* ### optimize at some point by using read_for_sendfile */
@@ -664,19 +675,10 @@ static apr_status_t read_from_connection(serf_connection_t *conn)
         /* If the connection does not have an associated bucket, then
          * call the setup callback to get one.
          */
-        if (conn->stream == NULL || conn->ostream_head == NULL) {
-            conn->ostream_head = serf_bucket_aggregate_create(conn->allocator);
-            status = (*conn->setup)(conn->skt,
-                                          &conn->stream,
-                                          &conn->ostream,
-                                          conn->setup_baton,
-                                          conn->pool);
+        if (conn->stream == NULL) {
+            status = do_conn_setup(conn);
             if (status) {
                 goto error;
-            }
-
-            if (conn->ostream) {
-                serf_bucket_aggregate_append(conn->ostream_head, conn->ostream);
             }
         }
 
@@ -889,8 +891,8 @@ SERF_DECLARE(serf_connection_t *) serf_connection_create(
     conn->pool = pool;
     conn->allocator = serf_bucket_allocator_create(pool, NULL, NULL);
     conn->stream = NULL;
-    conn->ostream = NULL;
-    conn->ostream_head = NULL;
+    conn->ostream_head = serf_bucket_aggregate_create(conn->allocator);
+    conn->ostream_tail = serf_bucket_aggregate_create(conn->allocator);
     conn->baton.type = SERF_IO_CONN;
     conn->baton.u.conn = conn;
 

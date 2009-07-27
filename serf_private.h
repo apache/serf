@@ -152,12 +152,11 @@ struct serf_connection_t {
 
     /* A bucket wrapped around our socket (for reading responses). */
     serf_bucket_t *stream;
-    /* A bucket to provide connection level filters for writes. */
-    serf_bucket_t *ostream;
     /* A reference to the aggregate bucket that provides the boundary between
      * request level buckets and connection level buckets.
      */
     serf_bucket_t *ostream_head;
+    serf_bucket_t *ostream_tail;
 
     /* The list of active requests. */
     serf_request_t *requests;

@@ -68,9 +68,6 @@ static apr_status_t conn_setup(apr_socket_t *skt,
         *output_bkt = serf_bucket_ssl_encrypt_create(*output_bkt, ctx->ssl_ctx,
                                                     ctx->bkt_alloc);
     }
-    else {
-        *output_bkt = NULL;
-    }
 
     *input_bkt = c;
 
