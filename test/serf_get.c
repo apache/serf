@@ -129,6 +129,10 @@ static apr_status_t handle_response(serf_request_t *request,
     apr_status_t status;
     handler_baton_t *ctx = handler_baton;
 
+    if (!response) {
+        /* A NULL response can come back if the request failed completely */
+        return APR_EGENERAL;
+    }
     status = serf_bucket_response_status(response, &sl);
     if (status) {
         if (APR_STATUS_IS_EAGAIN(status)) {
