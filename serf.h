@@ -805,7 +805,7 @@ struct serf_bucket_type_t {
     SERF__RECREAD(b, (b)->type->read_for_sendfile(b,r,h,f,o,l))
 #define serf_bucket_read_bucket(b,t) ((b)->type->read_bucket(b,t))
 #define serf_bucket_peek(b,d,l) ((b)->type->peek(b,d,l))
-#define serf_bucket_destroy(b) {fprintf(stderr, "[%p] destroy: %s\n", (b), (b)->type->name);}; ((b)->type->destroy(b))
+#define serf_bucket_destroy(b) ((b)->type->destroy(b))
 #define serf_bucket_snapshot(b) ((b)->type->snapshot(b))
 #define serf_bucket_restore_snapshot(b) ((b)->type->restore_snapshot(b))
 #define serf_bucket_is_snapshot_set(b) ((b)->type->is_snapshot_set(b))
