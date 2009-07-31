@@ -456,12 +456,19 @@ static apr_status_t socket_writev(serf_connection_t *conn)
     return status;
 }
 
+static apr_status_t resetup_conn(serf_connection_t *conn)
+{
+    serf_bucket_destroy(conn->ostream_head);
+    conn->ostream_head = serf_bucket_aggregate_create(conn->allocator);
+    serf_bucket_aggregate_append(conn->ostream_head, 
+                                 serf_bucket_barrier_create(conn->ostream_middle, conn->allocator));
+    return APR_SUCCESS;
+}
+
 static apr_status_t do_conn_setup(serf_connection_t *conn)
 {
     apr_status_t status;
     serf_bucket_t *ostream = conn->ostream_tail;
-
-    ostream = serf_bucket_barrier_create(ostream, conn->allocator);
 
     status = (*conn->setup)(conn->skt,
                             &conn->stream,
@@ -471,10 +478,13 @@ static apr_status_t do_conn_setup(serf_connection_t *conn)
     if (status) {
         return status;
     }
+    
+    conn->ostream_middle = ostream;
 
-    serf_bucket_aggregate_append(conn->ostream_head, ostream);
+    serf_bucket_aggregate_append(conn->ostream_head,
+                                 serf_bucket_barrier_create(ostream, conn->allocator));
 
-    return APR_SUCCESS;
+    return status;
 }
 
 /* write data out to the connection */
@@ -578,7 +588,7 @@ static apr_status_t write_to_connection(serf_connection_t *conn)
             }
 
             request->setup = NULL;
-
+            resetup_conn(conn);
             serf_bucket_aggregate_append(conn->ostream_tail, request->req_bkt);
         }
 
@@ -634,7 +644,6 @@ static apr_status_t write_to_connection(serf_connection_t *conn)
              * - we'll see if there are other requests that need to be sent 
              * ("pipelining").
              */
-            serf_bucket_destroy(request->req_bkt);
             request->req_bkt = NULL;
 
             conn->completed_requests++;

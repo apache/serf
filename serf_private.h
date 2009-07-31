@@ -156,6 +156,7 @@ struct serf_connection_t {
      * request level buckets and connection level buckets.
      */
     serf_bucket_t *ostream_head;
+    serf_bucket_t *ostream_middle;
     serf_bucket_t *ostream_tail;
 
     /* The list of active requests. */
