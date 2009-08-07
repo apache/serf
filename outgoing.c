@@ -456,12 +456,10 @@ static apr_status_t socket_writev(serf_connection_t *conn)
     return status;
 }
 
-static apr_status_t resetup_conn(serf_connection_t *conn)
+static apr_status_t detect_eof(void *baton, serf_bucket_t *aggregate_bucket)
 {
-    serf_bucket_destroy(conn->ostream_head);
-    conn->ostream_head = serf_bucket_aggregate_create(conn->allocator);
-    serf_bucket_aggregate_append(conn->ostream_head, 
-                                 serf_bucket_barrier_create(conn->ostream_middle, conn->allocator));
+    serf_connection_t *conn = baton;
+    conn->hit_eof = 1;
     return APR_SUCCESS;
 }
 
@@ -470,6 +468,10 @@ static apr_status_t do_conn_setup(serf_connection_t *conn)
     apr_status_t status;
     serf_bucket_t *ostream = conn->ostream_tail;
 
+    serf_bucket_aggregate_hold_open(conn->ostream_tail,
+                                    detect_eof,
+                                    conn);
+    
     status = (*conn->setup)(conn->skt,
                             &conn->stream,
                             &ostream,
@@ -479,10 +481,8 @@ static apr_status_t do_conn_setup(serf_connection_t *conn)
         return status;
     }
     
-    conn->ostream_middle = ostream;
-
     serf_bucket_aggregate_append(conn->ostream_head,
-                                 serf_bucket_barrier_create(ostream, conn->allocator));
+                                 ostream);
 
     return status;
 }
@@ -588,7 +588,6 @@ static apr_status_t write_to_connection(serf_connection_t *conn)
             }
 
             request->setup = NULL;
-            resetup_conn(conn);
             serf_bucket_aggregate_append(conn->ostream_tail, request->req_bkt);
         }
 
@@ -599,20 +598,22 @@ static apr_status_t write_to_connection(serf_connection_t *conn)
                                              conn->vec,
                                              &conn->vec_len);
 
-        if (APR_STATUS_IS_EAGAIN(read_status)) {
-            /* We read some stuff, but should not try to read again. */
-            stop_reading = 1;
+        if (!conn->hit_eof) {
+            if (APR_STATUS_IS_EAGAIN(read_status)) {
+                /* We read some stuff, but should not try to read again. */
+                stop_reading = 1;
 
-            /* ### we should avoid looking for writability for a while so
-               ### that (hopefully) something will appear in the bucket so
-               ### we can actually write something. otherwise, we could
-               ### end up in a CPU spin: socket wants something, but we
-               ### don't have anything (and keep returning EAGAIN)
-            */
-        }
-        else if (read_status && !APR_STATUS_IS_EOF(read_status)) {
-            /* Something bad happened. Propagate any errors. */
-            return read_status;
+                /* ### we should avoid looking for writability for a while so
+                   ### that (hopefully) something will appear in the bucket so
+                   ### we can actually write something. otherwise, we could
+                   ### end up in a CPU spin: socket wants something, but we
+                   ### don't have anything (and keep returning EAGAIN)
+                */
+            }
+            else if (read_status && !APR_STATUS_IS_EOF(read_status)) {
+                /* Something bad happened. Propagate any errors. */
+                return read_status;
+            }
         }
 
         /* If we got some data, then deliver it. */
@@ -634,7 +635,7 @@ static apr_status_t write_to_connection(serf_connection_t *conn)
                 return status;
         }
 
-        if (APR_STATUS_IS_EOF(read_status) &&
+        if (conn->hit_eof &&
             conn->vec_len == 0) {
             /* If we hit the end of the request bucket and all of its data has
              * been written, then clear it out to signify that we're done
@@ -644,6 +645,7 @@ static apr_status_t write_to_connection(serf_connection_t *conn)
              * - we'll see if there are other requests that need to be sent 
              * ("pipelining").
              */
+            conn->hit_eof = 0;
             request->req_bkt = NULL;
 
             conn->completed_requests++;
@@ -906,6 +908,7 @@ SERF_DECLARE(serf_connection_t *) serf_connection_create(
     conn->ostream_tail = serf_bucket_aggregate_create(conn->allocator);
     conn->baton.type = SERF_IO_CONN;
     conn->baton.u.conn = conn;
+    conn->hit_eof = 0;
 
     /* Create a subpool for our connection. */
     apr_pool_create(&conn->skt_pool, conn->pool);

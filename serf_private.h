@@ -156,7 +156,6 @@ struct serf_connection_t {
      * request level buckets and connection level buckets.
      */
     serf_bucket_t *ostream_head;
-    serf_bucket_t *ostream_middle;
     serf_bucket_t *ostream_tail;
 
     /* The list of active requests. */
@@ -180,6 +179,7 @@ struct serf_connection_t {
     /* Max. number of outstanding requests. */
     unsigned int max_outstanding_requests;
 
+    int hit_eof;
     /* Host info. */
     const char *host_url;
     apr_uri_t host_info;
