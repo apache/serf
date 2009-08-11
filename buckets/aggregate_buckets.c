@@ -96,7 +96,9 @@ SERF_DECLARE(void) serf_bucket_aggregate_become(serf_bucket_t *bucket)
     ctx->list = NULL;
     ctx->done = NULL;
     ctx->snapshot = 0;
-
+    ctx->hold_open = NULL;
+    ctx->hold_open_baton = NULL;
+  
     bucket->type = &serf_bucket_type_aggregate;
     bucket->data = ctx;
 
