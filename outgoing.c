@@ -460,7 +460,7 @@ static apr_status_t detect_eof(void *baton, serf_bucket_t *aggregate_bucket)
 {
     serf_connection_t *conn = baton;
     conn->hit_eof = 1;
-    return APR_SUCCESS;
+    return APR_EAGAIN;
 }
 
 static apr_status_t do_conn_setup(serf_connection_t *conn)
