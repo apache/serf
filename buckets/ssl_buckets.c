@@ -485,7 +485,7 @@ static apr_status_t ssl_decrypt(void *baton, apr_size_t bufsize,
                 break;
             case SSL_ERROR_SSL:
                 *len = 0;
-                status = ctx->pending_err;
+                status = ctx->pending_err ? ctx->pending_err : APR_EGENERAL;
                 ctx->pending_err = 0;
                 break;
             default:
@@ -921,6 +921,7 @@ static serf_ssl_context_t *ssl_init_context(void)
     SSL_CTX_set_client_cert_cb(ssl_ctx->ctx, ssl_need_client_cert);
     ssl_ctx->cached_cert = 0;
     ssl_ctx->cached_cert_pw = 0;
+    ssl_ctx->pending_err = APR_SUCCESS;
 
     SSL_CTX_set_verify(ssl_ctx->ctx, SSL_VERIFY_PEER,
                        validate_server_certificate);
