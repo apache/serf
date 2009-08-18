@@ -135,10 +135,7 @@ static apr_status_t handle_response(serf_request_t *request,
     }
     status = serf_bucket_response_status(response, &sl);
     if (status) {
-        if (APR_STATUS_IS_EAGAIN(status)) {
-            return status;
-        }
-        abort();
+        return status;
     }
 
     while (1) {
