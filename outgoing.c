@@ -896,6 +896,7 @@ SERF_DECLARE(serf_connection_t *) serf_connection_create(
     serf_connection_t *conn = apr_pcalloc(pool, sizeof(*conn));
 
     conn->ctx = ctx;
+    conn->status = APR_SUCCESS;
     conn->address = address;
     conn->setup = setup;
     conn->setup_baton = setup_baton;

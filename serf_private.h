@@ -117,6 +117,7 @@ struct serf_incoming_t {
 struct serf_connection_t {
     serf_context_t *ctx;
 
+    apr_status_t status;
     serf_io_baton_t baton;
 
     apr_pool_t *pool;

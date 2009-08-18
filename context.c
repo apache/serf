@@ -155,12 +155,25 @@ SERF_DECLARE(apr_status_t) serf_event_trigger(serf_context_t *s,
                                               void *serf_baton,
                                               const apr_pollfd_t *desc)
 {
+    apr_pollfd_t tdesc = { 0 };
     apr_status_t status = APR_SUCCESS;
     serf_io_baton_t *io = serf_baton;
 
     if (io->type == SERF_IO_CONN) {
         serf_connection_t *conn = io->u.conn;
-
+        serf_context_t *ctx = conn->ctx;
+      
+        /* If this connection has already failed, return the error again, and try 
+         * to remove it from the pollset again 
+         */
+        if (conn->status) {
+            tdesc.desc_type = APR_POLL_SOCKET;
+            tdesc.desc.s = conn->skt;
+            tdesc.reqevents = conn->reqevents;
+            ctx->pollset_rm(ctx->pollset_baton,
+                            &tdesc, conn);
+            return conn->status;
+        }
         /* apr_pollset_poll() can return a conn multiple times... */
         if ((conn->seen_in_pollset & desc->rtnevents) != 0 ||
             (conn->seen_in_pollset & APR_POLLHUP) != 0) {
@@ -169,9 +182,15 @@ SERF_DECLARE(apr_status_t) serf_event_trigger(serf_context_t *s,
 
         conn->seen_in_pollset |= desc->rtnevents;
 
-        if ((status = serf__process_connection(conn,
+        if ((conn->status = serf__process_connection(conn,
                                          desc->rtnevents)) != APR_SUCCESS) {
-            return status;
+          
+            tdesc.desc_type = APR_POLL_SOCKET;
+            tdesc.desc.s = conn->skt;
+            tdesc.reqevents = conn->reqevents;
+            ctx->pollset_rm(ctx->pollset_baton,
+                            &tdesc, conn);
+            return conn->status;
         }
     }
     else if (io->type == SERF_IO_LISTENER) {
