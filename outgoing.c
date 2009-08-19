@@ -335,6 +335,15 @@ static apr_status_t remove_connection(serf_context_t *ctx,
                            &desc, conn);
 }
 
+static void destroy_ostream(serf_connection_t *conn)
+{
+    if (conn->ostream_head != NULL) {
+        serf_bucket_destroy(conn->ostream_head);
+        conn->ostream_head = NULL;
+        conn->ostream_tail = NULL;
+    }
+}
+
 static apr_status_t reset_connection(serf_connection_t *conn,
                                      int requeue_requests)
 {
@@ -399,12 +408,7 @@ static apr_status_t reset_connection(serf_connection_t *conn,
         conn->stream = NULL;
     }
 
-    if (conn->ostream_head != NULL) {
-        /* XXXX: tail is always inserted into head ? */
-        serf_bucket_destroy(conn->ostream_head);
-        conn->ostream_head = serf_bucket_aggregate_create(conn->allocator);
-        conn->ostream_tail = serf_bucket_aggregate_create(conn->allocator);
-    }
+    destroy_ostream(conn);
 
     /* Don't try to resume any writes */
     conn->vec_len = 0;
@@ -466,7 +470,17 @@ static apr_status_t detect_eof(void *baton, serf_bucket_t *aggregate_bucket)
 static apr_status_t do_conn_setup(serf_connection_t *conn)
 {
     apr_status_t status;
-    serf_bucket_t *ostream = conn->ostream_tail;
+    serf_bucket_t *ostream;
+
+    if (conn->ostream_head == NULL) {
+        conn->ostream_head = serf_bucket_aggregate_create(conn->allocator);
+    }
+
+    if (conn->ostream_tail == NULL) {
+        conn->ostream_tail = serf_bucket_aggregate_create(conn->allocator);
+    }
+
+    ostream = conn->ostream_tail;
 
     serf_bucket_aggregate_hold_open(conn->ostream_tail,
                                     detect_eof,
@@ -478,6 +492,9 @@ static apr_status_t do_conn_setup(serf_connection_t *conn)
                             conn->setup_baton,
                             conn->pool);
     if (status) {
+        /* extra destroy here since it wasn't added to the head bucket yet. */
+        serf_bucket_destroy(conn->ostream_tail);
+        destroy_ostream(conn);
         return status;
     }
     
@@ -905,8 +922,8 @@ SERF_DECLARE(serf_connection_t *) serf_connection_create(
     conn->pool = pool;
     conn->allocator = serf_bucket_allocator_create(pool, NULL, NULL);
     conn->stream = NULL;
-    conn->ostream_head = serf_bucket_aggregate_create(conn->allocator);
-    conn->ostream_tail = serf_bucket_aggregate_create(conn->allocator);
+    conn->ostream_head = NULL;
+    conn->ostream_tail = NULL;
     conn->baton.type = SERF_IO_CONN;
     conn->baton.u.conn = conn;
     conn->hit_eof = 0;
