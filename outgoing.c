@@ -932,7 +932,7 @@ SERF_DECLARE(serf_connection_t *) serf_connection_create(
     apr_pool_create(&conn->skt_pool, conn->pool);
 
     /* register a cleanup */
-    apr_pool_cleanup_register(conn->pool, conn, clean_conn, clean_conn);
+    apr_pool_cleanup_register(conn->pool, conn, clean_conn, apr_pool_cleanup_null);
 
     /* Add the connection to the context. */
     *(serf_connection_t **)apr_array_push(ctx->conns) = conn;
