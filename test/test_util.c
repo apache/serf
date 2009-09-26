@@ -48,7 +48,6 @@ static apr_status_t default_conn_setup(apr_socket_t *skt,
     test_baton_t *ctx = setup_baton;
 
     *input_bkt = serf_bucket_socket_create(skt, ctx->bkt_alloc);
-    *output_bkt = serf_bucket_aggregate_create(ctx->bkt_alloc);
     return APR_SUCCESS;
 }
 
