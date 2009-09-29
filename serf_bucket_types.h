@@ -126,6 +126,12 @@ SERF_DECLARE(void) serf_bucket_response_set_head(serf_bucket_t *bucket);
 SERF_DECLARE_DATA extern const serf_bucket_type_t serf_bucket_type_aggregate;
 #define SERF_BUCKET_IS_AGGREGATE(b) SERF_BUCKET_CHECK((b), aggregate)
 
+/** serf_bucket_aggregate_cleanup will instantly destroy all buckets in
+    the aggregate bucket that have been read completely. Whereas normally, 
+    these buckets are destroyed on every read operation. */ 
+SERF_DECLARE(void) serf_bucket_aggregate_cleanup(
+    serf_bucket_t *bucket, serf_bucket_alloc_t *allocator);
+
 SERF_DECLARE(serf_bucket_t *) serf_bucket_aggregate_create(
     serf_bucket_alloc_t *allocator);
 

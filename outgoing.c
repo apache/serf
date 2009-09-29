@@ -803,8 +803,13 @@ static apr_status_t read_from_connection(serf_connection_t *conn)
          */
         conn->requests = request->next;
 
-        /* The bucket is no longer needed, nor is the request's pool. */
+        /* The bucket is no longer needed, nor is the request's pool.
+	   Note that before we can cleanup the request's pool, we have to 
+           ensure that the ostream_tail aggregate bucket destroys the 
+           use request bucket (which it owns).
+	 */
         serf_bucket_destroy(request->resp_bkt);
+	serf_bucket_aggregate_cleanup(conn->ostream_tail, conn->allocator);
         if (request->req_bkt) {
             serf_bucket_destroy(request->req_bkt);
         }

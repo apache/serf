@@ -58,6 +58,14 @@ static void cleanup_aggregate(aggregate_context_t *ctx,
     }
 }
 
+SERF_DECLARE(void) serf_bucket_aggregate_cleanup(
+    serf_bucket_t *bucket, serf_bucket_alloc_t *allocator)
+{
+    aggregate_context_t *ctx = bucket->data;
+
+    cleanup_aggregate(ctx, allocator);
+}
+  
 SERF_DECLARE(serf_bucket_t *) serf_bucket_aggregate_create(
     serf_bucket_alloc_t *allocator)
 {
