@@ -108,8 +108,10 @@ LIB32_OBJS= \
     "$(INTDIR)\deflate_buckets.obj" \
     "$(INTDIR)\file_buckets.obj" \
     "$(INTDIR)\headers_buckets.obj" \
+    "$(INTDIR)\incoming.obj" \
     "$(INTDIR)\limit_buckets.obj" \
     "$(INTDIR)\mmap_buckets.obj" \
+    "$(INTDIR)\outgoing.obj" \
     "$(INTDIR)\request_buckets.obj" \
     "$(INTDIR)\response_buckets.obj" \
     "$(INTDIR)\simple_buckets.obj" \
