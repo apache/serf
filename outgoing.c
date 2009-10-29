@@ -681,6 +681,21 @@ static apr_status_t write_to_connection(serf_connection_t *conn)
     /* NOTREACHED */
 }
 
+/* A response message was received from the server, so call
+   the handler as specified on the original request. */ 
+static apr_status_t handle_response(serf_request_t *request,
+				    apr_pool_t *pool)
+{
+    apr_status_t status;
+
+    status = (*request->handler)(request,
+				 request->resp_bkt,
+				 request->handler_baton,
+				 pool);
+
+    return status;
+}
+
 /* read data from the connection */
 static apr_status_t read_from_connection(serf_connection_t *conn)
 {
@@ -759,10 +774,7 @@ static apr_status_t read_from_connection(serf_connection_t *conn)
             apr_pool_clear(tmppool);
         }
 
-        status = (*request->handler)(request,
-                                     request->resp_bkt,
-                                     request->handler_baton,
-                                     tmppool);
+	status = handle_response(request, tmppool);
 
         /* Some systems will not generate a HUP poll event so we have to
          * handle the ECONNRESET issue here.
