@@ -122,6 +122,39 @@ SERF_DECLARE(void) serf_bucket_response_set_head(serf_bucket_t *bucket);
 
 /* ==================================================================== */
 
+SERF_DECLARE_DATA extern const serf_bucket_type_t serf_bucket_type_bwtp_frame;
+#define SERF_BUCKET_IS_BWTP_FRAME(b) SERF_BUCKET_CHECK((b), bwtp_frame)
+
+SERF_DECLARE(int) serf_bucket_bwtp_frame_get_channel(serf_bucket_t *hdr);
+
+SERF_DECLARE(serf_bucket_t *) serf_bucket_bwtp_frame_get_headers(
+    serf_bucket_t *hdr);
+
+SERF_DECLARE(serf_bucket_t *) serf_bucket_bwtp_channel_open(
+    int channel,
+    const char *URI,
+    serf_bucket_alloc_t *allocator);
+
+SERF_DECLARE(serf_bucket_t *) serf_bucket_bwtp_channel_close(
+    int channel,
+    serf_bucket_alloc_t *allocator);
+
+SERF_DECLARE(serf_bucket_t *) serf_bucket_bwtp_frame_create(
+    serf_bucket_t *bkt,
+    serf_bucket_alloc_t *allocator);
+
+SERF_DECLARE(serf_bucket_t *) serf_bucket_bwtp_header_create(
+    int channel,
+    const char *phrase,
+    serf_bucket_alloc_t *allocator);
+
+SERF_DECLARE(serf_bucket_t *) serf_bucket_bwtp_message_create(
+    int channel,
+    serf_bucket_t *body,
+    serf_bucket_alloc_t *allocator);
+
+/* ==================================================================== */
+
 
 SERF_DECLARE_DATA extern const serf_bucket_type_t serf_bucket_type_aggregate;
 #define SERF_BUCKET_IS_AGGREGATE(b) SERF_BUCKET_CHECK((b), aggregate)

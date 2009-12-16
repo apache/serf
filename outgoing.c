@@ -115,6 +115,11 @@ apr_status_t serf__conn_update_pollset(serf_connection_t *conn)
         }
     }
 
+    /* If we can have async responses, always look for something to read. */
+    if (conn->async_responses) {
+        desc.reqevents |= APR_POLLIN;
+    }
+
     /* save our reqevents, so we can pass it in to remove later. */
     conn->reqevents = desc.reqevents;
 
@@ -504,6 +509,30 @@ static apr_status_t do_conn_setup(serf_connection_t *conn)
     return status;
 }
 
+static apr_status_t destroy_request(serf_request_t *request)
+{
+    serf_connection_t *conn = request->conn;
+
+    /* The bucket is no longer needed, nor is the request's pool.
+       Note that before we can cleanup the request's pool, we have to 
+       ensure that the ostream_tail aggregate bucket destroys the 
+       use request bucket (which it owns).
+    */
+    if (request->resp_bkt) {
+       serf_bucket_destroy(request->resp_bkt);
+    }
+    serf_bucket_aggregate_cleanup(conn->ostream_tail, conn->allocator);
+    if (request->req_bkt) {
+        serf_bucket_destroy(request->req_bkt);
+    }
+
+    serf_debug__bucket_alloc_check(request->allocator);
+    apr_pool_destroy(request->respool);
+    serf_bucket_mem_free(conn->allocator, request);
+
+    return APR_SUCCESS;
+}
+
 /* write data out to the connection */
 static apr_status_t write_to_connection(serf_connection_t *conn)
 {
@@ -665,6 +694,14 @@ static apr_status_t write_to_connection(serf_connection_t *conn)
             conn->hit_eof = 0;
             request->req_bkt = NULL;
 
+            /* If our connection has async responses enabled, we're not
+             * going to get a reply back, so kill the request.
+             */
+            if (conn->async_responses) {
+                conn->requests = request->next;
+                destroy_request(request);
+            }
+
             conn->completed_requests++;
 
             if (conn->probable_keepalive_limit &&
@@ -684,14 +721,35 @@ static apr_status_t write_to_connection(serf_connection_t *conn)
 /* A response message was received from the server, so call
    the handler as specified on the original request. */ 
 static apr_status_t handle_response(serf_request_t *request,
-				    apr_pool_t *pool)
+                                    apr_pool_t *pool)
 {
     apr_status_t status;
 
-    status = (*request->handler)(request,
-				 request->resp_bkt,
-				 request->handler_baton,
-				 pool);
+    status = (*request->handler)(request, request->resp_bkt,
+                                 request->handler_baton, pool);
+
+    return status;
+}
+
+/* An async response message was received from the server. */
+static apr_status_t handle_async_response(serf_connection_t *conn,
+                                          apr_pool_t *pool)
+{
+    apr_status_t status;
+
+    if (conn->current_async_response == NULL) {
+        conn->current_async_response =
+            (*conn->async_acceptor)(NULL, conn->stream,
+                                    conn->async_acceptor_baton, pool);
+    }
+
+    status = (*conn->async_handler)(NULL, conn->current_async_response,
+                                    conn->async_handler_baton, pool);
+
+    if (APR_STATUS_IS_EOF(status)) {
+        serf_bucket_destroy(conn->current_async_response);
+        conn->current_async_response = NULL;
+    }
 
     return status;
 }
@@ -725,6 +783,16 @@ static apr_status_t read_from_connection(serf_connection_t *conn)
             if (status) {
                 goto error;
             }
+        }
+
+        /* We have a different codepath when we can have async responses. */
+        if (conn->async_responses) {
+            /* TODO What about socket errors? */
+            status = handle_async_response(conn, tmppool);
+            if (status) {
+                goto error;
+            }
+            continue;
         }
 
         /* We are reading a response for a request we haven't
@@ -774,7 +842,7 @@ static apr_status_t read_from_connection(serf_connection_t *conn)
             apr_pool_clear(tmppool);
         }
 
-	status = handle_response(request, tmppool);
+        status = handle_response(request, tmppool);
 
         /* Some systems will not generate a HUP poll event so we have to
          * handle the ECONNRESET issue here.
@@ -815,20 +883,7 @@ static apr_status_t read_from_connection(serf_connection_t *conn)
          */
         conn->requests = request->next;
 
-        /* The bucket is no longer needed, nor is the request's pool.
-	   Note that before we can cleanup the request's pool, we have to 
-           ensure that the ostream_tail aggregate bucket destroys the 
-           use request bucket (which it owns).
-	 */
-        serf_bucket_destroy(request->resp_bkt);
-	serf_bucket_aggregate_cleanup(conn->ostream_tail, conn->allocator);
-        if (request->req_bkt) {
-            serf_bucket_destroy(request->req_bkt);
-        }
-
-        serf_debug__bucket_alloc_check(request->allocator);
-        apr_pool_destroy(request->respool);
-        serf_bucket_mem_free(conn->allocator, request);
+        destroy_request(request);
 
         request = conn->requests;
 
@@ -1053,6 +1108,20 @@ serf_connection_set_max_outstanding_requests(serf_connection_t *conn,
                                              unsigned int max_requests)
 {
     conn->max_outstanding_requests = max_requests;
+}
+
+SERF_DECLARE(void)
+serf_connection_set_async_responses(serf_connection_t *conn,
+                                    serf_response_acceptor_t acceptor,
+                                    void *acceptor_baton,
+                                    serf_response_handler_t handler,
+                                    void *handler_baton)
+{
+    conn->async_responses = 1;
+    conn->async_acceptor = acceptor;
+    conn->async_acceptor_baton = acceptor_baton;
+    conn->async_handler = handler;
+    conn->async_handler_baton = handler_baton;
 }
 
 SERF_DECLARE(serf_request_t *) serf_connection_request_create(

@@ -415,6 +415,13 @@ SERF_DECLARE(void)
 serf_connection_set_max_outstanding_requests(serf_connection_t *conn,
                                              unsigned int max_requests);
 
+SERF_DECLARE(void)
+serf_connection_set_async_responses(serf_connection_t *conn,
+                                    serf_response_acceptor_t acceptor,
+                                    void *acceptor_baton,
+                                    serf_response_handler_t handler,
+                                    void *handler_baton);
+
 /**
  * Setup the @a request for delivery on its connection.
  *

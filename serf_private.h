@@ -151,6 +151,14 @@ struct serf_connection_t {
      */
     int closing;
 
+    /* This connection may have responses without a request! */
+    int async_responses;
+    serf_bucket_t *current_async_response;
+    serf_response_acceptor_t async_acceptor;
+    void *async_acceptor_baton;
+    serf_response_handler_t async_handler;
+    void *async_handler_baton;
+
     /* A bucket wrapped around our socket (for reading responses). */
     serf_bucket_t *stream;
     /* A reference to the aggregate bucket that provides the boundary between

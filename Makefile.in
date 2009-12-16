@@ -14,12 +14,13 @@ OBJECTS = buckets/aggregate_buckets.lo buckets/request_buckets.lo context.lo \
           buckets/allocator.lo buckets/dechunk_buckets.lo \
           buckets/deflate_buckets.lo buckets/limit_buckets.lo \
           buckets/ssl_buckets.lo buckets/barrier_buckets.lo \
-          buckets/chunk_buckets.lo incoming.lo outgoing.lo
+          buckets/chunk_buckets.lo buckets/bwtp_buckets.lo \
+          incoming.lo outgoing.lo
 
 TARGET_LIB=libserf-$(SERF_MAJOR_VERSION).la
 
 TEST_OBJECTS = test/serf_get.lo test/serf_response.lo test/serf_request.lo \
-               test/serf_spider.lo test/serf_server.lo
+               test/serf_spider.lo test/serf_server.lo test/serf_bwtp.lo
 
 TEST_SUITE_OBJECTS = test/CuTest.lo test/test_all.lo test/test_util.lo \
                      test/test_buckets.lo test/test_context.lo \
@@ -72,12 +73,14 @@ buckets/limit_buckets.lo: buckets/limit_buckets.c $(HEADERS)
 buckets/ssl_buckets.lo: buckets/ssl_buckets.c $(HEADERS)
 buckets/barrier_buckets.lo: buckets/barrier_buckets.c $(HEADERS)
 buckets/chunk_buckets.lo: buckets/chunk_buckets.c $(HEADERS)
+buckets/bwtp_buckets.lo: buckets/bwtp_buckets.c $(HEADERS)
 
 test/serf_get.lo: test/serf_get.c $(HEADERS)
 test/serf_response.lo: test/serf_response.c $(HEADERS)
 test/serf_request.lo: test/serf_request.c $(HEADERS)
 test/serf_server.lo: test/serf_server.c $(HEADERS)
 test/serf_spider.lo: test/serf_spider.c $(HEADERS)
+test/serf_bwtp.lo: test/serf_bwtp.c $(HEADERS)
 
 test/CuTest.lo: test/CuTest.c $(HEADERS)
 test/test_all.lo: test/test_all.c $(HEADERS)
@@ -102,6 +105,9 @@ test/serf_server: $(TARGET_LIB) test/serf_server.lo
 	$(LIBTOOL) $(LTFLAGS) --mode=link $(CC) $(LDFLAGS) -static -o $@ $^ $(LIBS)
 
 test/serf_spider: $(TARGET_LIB) test/serf_spider.lo
+	$(LIBTOOL) $(LTFLAGS) --mode=link $(CC) $(LDFLAGS) -static -o $@ $^ $(LIBS)
+
+test/serf_bwtp: $(TARGET_LIB) test/serf_bwtp.lo
 	$(LIBTOOL) $(LTFLAGS) --mode=link $(CC) $(LDFLAGS) -static -o $@ $^ $(LIBS)
 
 test/test_all: $(TARGET_LIB) $(TEST_SUITE_OBJECTS)

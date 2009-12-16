@@ -195,6 +195,14 @@ static apr_status_t run_machine(serf_bucket_t *bkt, response_context_t *ctx)
             if (status)
                 return status;
 
+            /* Good times ahead: we're switching protocols! */
+            if (ctx->sl.code == 101) {
+                ctx->body =
+                    serf_bucket_barrier_create(ctx->stream, bkt->allocator);
+                ctx->state = STATE_DONE;
+                break;
+            }
+
             /* Okay... move on to reading the headers. */
             ctx->state = STATE_HEADERS;
         }
