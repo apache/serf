@@ -130,7 +130,7 @@ static serf_bucket_t* accept_bwtp(serf_request_t *request,
     /* Create a barrier so the response doesn't eat us! */
     c = serf_bucket_barrier_create(stream, app_ctx->bkt_alloc);
 
-    return serf_bucket_bwtp_frame_create(c, app_ctx->bkt_alloc);
+    return serf_bucket_bwtp_incoming_frame_create(c, app_ctx->bkt_alloc);
 }
 
 /* fwd declare */
@@ -301,10 +301,15 @@ static apr_status_t handle_bwtp(serf_request_t *request,
         /* A NULL response can come back if the request failed completely */
         return APR_EGENERAL;
     }
-    status = serf_bucket_response_status(response, &sl);
-    if (status) {
+    status = serf_bucket_bwtp_incoming_frame_wait_for_headers(response);
+    if (SERF_BUCKET_READ_ERROR(status) || APR_STATUS_IS_EAGAIN(status)) {
         return status;
     }
+    printf("BWTP %p frame: %d %d %s\n",
+           response, serf_bucket_bwtp_frame_get_channel(response),
+           serf_bucket_bwtp_frame_get_type(response),
+           serf_bucket_bwtp_frame_get_phrase(response));
+
 
     while (1) {
         status = serf_bucket_read(response, 2048, &data, &len);
@@ -312,7 +317,11 @@ static apr_status_t handle_bwtp(serf_request_t *request,
             return status;
 
         /* got some data. print it out. */
-        fwrite(data, 1, len, stdout);
+        if (len) {
+            puts("BWTP body:\n---");
+            fwrite(data, 1, len, stdout);
+            puts("\n---");
+        }
 
         /* are we done yet? */
         if (APR_STATUS_IS_EOF(status)) {

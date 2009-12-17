@@ -749,6 +749,7 @@ static apr_status_t handle_async_response(serf_connection_t *conn,
     if (APR_STATUS_IS_EOF(status)) {
         serf_bucket_destroy(conn->current_async_response);
         conn->current_async_response = NULL;
+        status = APR_SUCCESS;
     }
 
     return status;
@@ -789,6 +790,10 @@ static apr_status_t read_from_connection(serf_connection_t *conn)
         if (conn->async_responses) {
             /* TODO What about socket errors? */
             status = handle_async_response(conn, tmppool);
+            if (APR_STATUS_IS_EAGAIN(status)) {
+                status = APR_SUCCESS;
+                goto error;
+            }
             if (status) {
                 goto error;
             }

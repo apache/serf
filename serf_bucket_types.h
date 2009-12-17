@@ -125,7 +125,14 @@ SERF_DECLARE(void) serf_bucket_response_set_head(serf_bucket_t *bucket);
 SERF_DECLARE_DATA extern const serf_bucket_type_t serf_bucket_type_bwtp_frame;
 #define SERF_BUCKET_IS_BWTP_FRAME(b) SERF_BUCKET_CHECK((b), bwtp_frame)
 
+SERF_DECLARE_DATA extern const serf_bucket_type_t serf_bucket_type_bwtp_incoming_frame;
+#define SERF_BUCKET_IS_BWTP_INCOMING_FRAME(b) SERF_BUCKET_CHECK((b), bwtp_incoming_frame)
+
 SERF_DECLARE(int) serf_bucket_bwtp_frame_get_channel(serf_bucket_t *hdr);
+
+SERF_DECLARE(int) serf_bucket_bwtp_frame_get_type(serf_bucket_t *hdr);
+
+SERF_DECLARE(const char *) serf_bucket_bwtp_frame_get_phrase(serf_bucket_t *hdr);
 
 SERF_DECLARE(serf_bucket_t *) serf_bucket_bwtp_frame_get_headers(
     serf_bucket_t *hdr);
@@ -139,10 +146,6 @@ SERF_DECLARE(serf_bucket_t *) serf_bucket_bwtp_channel_close(
     int channel,
     serf_bucket_alloc_t *allocator);
 
-SERF_DECLARE(serf_bucket_t *) serf_bucket_bwtp_frame_create(
-    serf_bucket_t *bkt,
-    serf_bucket_alloc_t *allocator);
-
 SERF_DECLARE(serf_bucket_t *) serf_bucket_bwtp_header_create(
     int channel,
     const char *phrase,
@@ -152,6 +155,13 @@ SERF_DECLARE(serf_bucket_t *) serf_bucket_bwtp_message_create(
     int channel,
     serf_bucket_t *body,
     serf_bucket_alloc_t *allocator);
+
+SERF_DECLARE(serf_bucket_t *) serf_bucket_bwtp_incoming_frame_create(
+    serf_bucket_t *bkt,
+    serf_bucket_alloc_t *allocator);
+
+SERF_DECLARE(apr_status_t) serf_bucket_bwtp_incoming_frame_wait_for_headers(
+    serf_bucket_t *bkt);
 
 /* ==================================================================== */
 
