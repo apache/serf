@@ -105,7 +105,6 @@ SERF_DECLARE(void) serf_bucket_headers_setx(
     }
 
     /* Add the new header at the end of the list. */
-    iter = ctx->list;
     while (iter && iter->next) {
         iter = iter->next;
     }
