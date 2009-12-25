@@ -119,6 +119,11 @@ SERF_DECLARE(serf_bucket_alloc_t *) serf_bucket_allocator_create(
 
     allocator->pool = pool;
     allocator->allocator = apr_pool_allocator_get(pool);
+    if (allocator->allocator == NULL) {
+        /* This most likely means pools are running in debug mode, create our
+         * own allocator to deal with memory ourselves */
+        apr_allocator_create(&allocator->allocator);
+    }
     allocator->unfreed = unfreed;
     allocator->unfreed_baton = unfreed_baton;
 
