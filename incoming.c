@@ -161,6 +161,9 @@ SERF_DECLARE(apr_status_t) serf_listener_create(
 
     rv = ctx->pollset_add(ctx->pollset_baton,
                             &l->desc, &l->baton);
+    if (rv)
+        return rv;
+
     *listener = l;
 
     return APR_SUCCESS;
