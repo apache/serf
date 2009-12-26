@@ -79,7 +79,7 @@ apr_status_t serf__conn_update_pollset(serf_connection_t *conn)
     desc.reqevents = conn->reqevents;
 
     status = ctx->pollset_rm(ctx->pollset_baton,
-                              &desc, conn);
+                             &desc, conn);
     if (status && !APR_STATUS_IS_NOTFOUND(status))
         return status;
 
@@ -227,26 +227,26 @@ apr_status_t serf__open_connections(serf_context_t *ctx)
 static apr_status_t no_more_writes(serf_connection_t *conn,
                                    serf_request_t *request)
 {
-  /* Note that we should hold new requests until we open our new socket. */
-  conn->closing = 1;
+    /* Note that we should hold new requests until we open our new socket. */
+    conn->closing = 1;
 
-  /* We can take the *next* request in our list and assume it hasn't
-   * been written yet and 'save' it for the new socket.
-   */
-  conn->hold_requests = request->next;
-  conn->hold_requests_tail = conn->requests_tail;
-  request->next = NULL;
-  conn->requests_tail = request;
+    /* We can take the *next* request in our list and assume it hasn't
+     * been written yet and 'save' it for the new socket.
+     */
+    conn->hold_requests = request->next;
+    conn->hold_requests_tail = conn->requests_tail;
+    request->next = NULL;
+    conn->requests_tail = request;
 
-  /* Clear our iovec. */
-  conn->vec_len = 0;
+    /* Clear our iovec. */
+    conn->vec_len = 0;
 
-  /* Update the pollset to know we don't want to write on this socket any
-   * more.
-   */
-  conn->dirty_conn = 1;
-  conn->ctx->dirty_pollset = 1;
-  return APR_SUCCESS;
+    /* Update the pollset to know we don't want to write on this socket any
+     * more.
+     */
+    conn->dirty_conn = 1;
+    conn->ctx->dirty_pollset = 1;
+    return APR_SUCCESS;
 }
 
 /* Read the 'Connection' header from the response. Return SERF_ERROR_CLOSING if
@@ -256,17 +256,17 @@ static apr_status_t no_more_writes(serf_connection_t *conn,
  */
 static apr_status_t is_conn_closing(serf_bucket_t *response)
 {
-  serf_bucket_t *hdrs;
-  const char *val;
+    serf_bucket_t *hdrs;
+    const char *val;
 
-  hdrs = serf_bucket_response_get_headers(response);
-  val = serf_bucket_headers_get(hdrs, "Connection");
-  if (val && strcasecmp("close", val) == 0)
-    {
-      return SERF_ERROR_CLOSING;
-    }
+    hdrs = serf_bucket_response_get_headers(response);
+    val = serf_bucket_headers_get(hdrs, "Connection");
+    if (val && strcasecmp("close", val) == 0)
+        {
+            return SERF_ERROR_CLOSING;
+        }
 
-  return APR_SUCCESS;
+    return APR_SUCCESS;
 }
 
 static void link_requests(serf_request_t **list, serf_request_t **tail,
@@ -490,7 +490,7 @@ static apr_status_t do_conn_setup(serf_connection_t *conn)
     serf_bucket_aggregate_hold_open(conn->ostream_tail,
                                     detect_eof,
                                     conn);
-    
+
     status = (*conn->setup)(conn->skt,
                             &conn->stream,
                             &ostream,
@@ -502,7 +502,7 @@ static apr_status_t do_conn_setup(serf_connection_t *conn)
         destroy_ostream(conn);
         return status;
     }
-    
+
     serf_bucket_aggregate_append(conn->ostream_head,
                                  ostream);
 
@@ -514,12 +514,12 @@ static apr_status_t destroy_request(serf_request_t *request)
     serf_connection_t *conn = request->conn;
 
     /* The bucket is no longer needed, nor is the request's pool.
-       Note that before we can cleanup the request's pool, we have to 
-       ensure that the ostream_tail aggregate bucket destroys the 
+       Note that before we can cleanup the request's pool, we have to
+       ensure that the ostream_tail aggregate bucket destroys the
        use request bucket (which it owns).
     */
     if (request->resp_bkt) {
-       serf_bucket_destroy(request->resp_bkt);
+        serf_bucket_destroy(request->resp_bkt);
     }
     serf_bucket_aggregate_cleanup(conn->ostream_tail, conn->allocator);
     if (request->req_bkt) {
@@ -719,7 +719,7 @@ static apr_status_t write_to_connection(serf_connection_t *conn)
 }
 
 /* A response message was received from the server, so call
-   the handler as specified on the original request. */ 
+   the handler as specified on the original request. */
 static apr_status_t handle_response(serf_request_t *request,
                                     apr_pool_t *pool)
 {
@@ -929,14 +929,14 @@ static apr_status_t read_from_connection(serf_connection_t *conn)
         }
     }
 
-  error:
+error:
     apr_pool_destroy(tmppool);
     return status;
 }
 
 /* process all events on the connection */
 apr_status_t serf__process_connection(serf_connection_t *conn,
-                                       apr_int16_t events)
+                                      apr_int16_t events)
 {
     apr_status_t status;
 
@@ -1043,7 +1043,7 @@ SERF_DECLARE(apr_status_t) serf_connection_create2(
 
     /* We're not interested in the path following the hostname. */
     c->host_url = apr_uri_unparse(c->pool,
-                                  &host_info, 
+                                  &host_info,
                                   APR_URI_UNP_OMITPATHINFO);
     c->host_info = host_info;
 
@@ -1264,11 +1264,11 @@ SERF_DECLARE(serf_bucket_t *) serf_request_bucket_request_create(
 
     /* Proxy? */
     if (request->conn->ctx->proxy_address && request->conn->host_url)
-      serf_bucket_request_set_root(req_bkt, request->conn->host_url);
+        serf_bucket_request_set_root(req_bkt, request->conn->host_url);
 
     if (request->conn->host_info.hostname)
-      serf_bucket_headers_setn(hdrs_bkt, "Host",
-                               request->conn->host_info.hostname);
+        serf_bucket_headers_setn(hdrs_bkt, "Host",
+                                 request->conn->host_info.hostname);
 
     return req_bkt;
 }
