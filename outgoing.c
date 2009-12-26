@@ -107,7 +107,7 @@ apr_status_t serf__conn_update_pollset(serf_connection_t *conn)
             }
             else {
                 while (request != NULL && request->req_bkt == NULL &&
-                       request->setup == NULL)
+                       request->written)
                     request = request->next;
                 if (request != NULL)
                     desc.reqevents |= APR_POLLOUT;
