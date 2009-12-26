@@ -62,6 +62,8 @@ struct serf_request_t {
 
     serf_bucket_t *resp_bkt;
 
+    int written;
+
     struct serf_request_t *next;
 };
 

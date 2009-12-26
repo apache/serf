@@ -377,7 +377,7 @@ static apr_status_t reset_connection(serf_connection_t *conn,
         /* If we haven't started to write the connection, bring it over
          * unchanged to our new socket.  Otherwise, call the cancel function.
          */
-        if (requeue_requests && old_reqs->setup) {
+        if (requeue_requests && !old_reqs->written) {
             serf_request_t *req = old_reqs;
             old_reqs = old_reqs->next;
             req->next = NULL;
@@ -546,7 +546,7 @@ static apr_status_t write_to_connection(serf_connection_t *conn)
 
     /* Find a request that has data which needs to be delivered. */
     while (request != NULL &&
-           request->req_bkt == NULL && request->setup == NULL)
+           request->req_bkt == NULL && request->written)
         request = request->next;
 
     /* assert: request != NULL || conn->vec_len */
@@ -588,7 +588,7 @@ static apr_status_t write_to_connection(serf_connection_t *conn)
          * to write.
          */
         while (request != NULL &&
-               request->req_bkt == NULL && request->setup == NULL)
+               request->req_bkt == NULL && request->written)
             request = request->next;
 
         if (request == NULL) {
@@ -633,7 +633,7 @@ static apr_status_t write_to_connection(serf_connection_t *conn)
                 return read_status;
             }
 
-            request->setup = NULL;
+            request->written = 1;
             serf_bucket_aggregate_append(conn->ostream_tail, request->req_bkt);
         }
 
@@ -816,7 +816,7 @@ static apr_status_t read_from_connection(serf_connection_t *conn)
          * If we see an EOF (due to an expired timeout), we'll reset the
          * connection and open a new one.
          */
-        if (request->req_bkt || request->setup) {
+        if (request->req_bkt || !request->written) {
             const char *data;
             apr_size_t len;
 
@@ -921,7 +921,7 @@ static apr_status_t read_from_connection(serf_connection_t *conn)
          * update the pollset. We don't want to read from this socket any
          * more. We are definitely done with this loop, too.
          */
-        if (request == NULL || request->setup) {
+        if (request == NULL || !request->written) {
             conn->dirty_conn = 1;
             conn->ctx->dirty_pollset = 1;
             status = APR_SUCCESS;
@@ -1144,6 +1144,7 @@ SERF_DECLARE(serf_request_t *) serf_connection_request_create(
     request->respool = NULL;
     request->req_bkt = NULL;
     request->resp_bkt = NULL;
+    request->written = 0;
     request->next = NULL;
 
     /* Link the request to the end of the request chain. */
@@ -1177,6 +1178,7 @@ SERF_DECLARE(serf_request_t *) serf_connection_priority_request_create(
     request->respool = NULL;
     request->req_bkt = NULL;
     request->resp_bkt = NULL;
+    request->written = 0;
     request->next = NULL;
 
     /* Link the new request after the last written request, but before all
@@ -1190,7 +1192,7 @@ SERF_DECLARE(serf_request_t *) serf_connection_priority_request_create(
     prev = NULL;
 
     /* Find a request that has data which needs to be delivered. */
-    while (iter != NULL && iter->req_bkt == NULL && iter->setup == NULL) {
+    while (iter != NULL && iter->req_bkt == NULL && iter->written) {
         prev = iter;
         iter = iter->next;
     }
