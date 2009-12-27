@@ -470,7 +470,7 @@ static apr_status_t ssl_decrypt(void *baton, apr_size_t bufsize,
         serf_bucket_aggregate_append(ctx->decrypt.pending, tmp);
 
         ssl_len = SSL_read(ctx->ssl, buf, bufsize);
-        if (ssl_len == -1) {
+        if (ssl_len < 0) {
             int ssl_err;
 
             ssl_err = SSL_get_error(ctx->ssl, ssl_len);
@@ -564,7 +564,7 @@ static apr_status_t ssl_encrypt(void *baton, apr_size_t bufsize,
 #ifdef SSL_VERBOSE
         printf("ssl_encrypt: SSL write: %d\n", ssl_len);
 #endif
-        if (ssl_len == -1) {
+        if (ssl_len < 0) {
             int ssl_err;
             serf_bucket_t *tmp;
 
