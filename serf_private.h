@@ -30,6 +30,8 @@
 #define SERF_IO_CONN (2)
 #define SERF_IO_LISTENER (3)
 
+typedef struct serf__authn_scheme_t serf__authn_scheme_t;
+
 typedef struct serf_io_baton_t {
     int type;
     union {
@@ -72,6 +74,14 @@ typedef struct serf_pollset_t {
     apr_pollset_t *pollset;
 } serf_pollset_t;
 
+typedef struct serf__authn_info_t {
+    const char *realm;
+
+    const serf__authn_scheme_t *scheme;
+
+    void *baton;
+} serf__authn_info_t;
+
 struct serf_context_t {
     /* the pool used for self and for other allocations */
     apr_pool_t *pool;
@@ -95,6 +105,15 @@ struct serf_context_t {
     void *progress_baton;
     apr_off_t progress_read;
     apr_off_t progress_written;
+
+    /* authentication info for this context, shared by all connections. */
+    serf__authn_info_t authn_info;
+    serf__authn_info_t proxy_authn_info;
+
+    /* List of authn types supported by the client.*/
+    int authn_types;
+    /* Callback function used to get credentials for a realm. */
+    serf_credentials_callback_t cred_cb; 
 };
 
 struct serf_listener_t {
@@ -194,8 +213,112 @@ struct serf_connection_t {
     /* Host info. */
     const char *host_url;
     apr_uri_t host_info;
+
+    /* connection and authentication scheme specific information */ 
+    void *authn_baton;
+    void *proxy_authn_baton;
 };
 
+/*** Authentication handler declarations ***/
+
+/**
+ * For each authentication scheme we need a handler function of type
+ * serf__auth_handler_func_t. This function will be called when an
+ * authentication challenge is received in a session.
+ */
+typedef apr_status_t
+(*serf__auth_handler_func_t)(int code,
+                             serf_request_t *request,
+                             serf_bucket_t *response,
+                             const char *auth_hdr,
+                             const char *auth_attr,
+                             void *baton,
+                             apr_pool_t *pool);
+
+/**
+ * For each authentication scheme we need an initialization function of type
+ * serf__init_context_func_t. This function will be called the first time
+ * serf tries a specific authentication scheme handler.
+ */
+typedef apr_status_t
+(*serf__init_context_func_t)(int code,
+                             serf_context_t *conn,
+                             apr_pool_t *pool);
+
+/**
+ * For each authentication scheme we need an initialization function of type
+ * serf__init_conn_func_t. This function will be called when a new
+ * connection is opened.
+ */
+typedef apr_status_t
+(*serf__init_conn_func_t)(int code,
+                          serf_connection_t *conn,
+                          apr_pool_t *pool);
+
+/**
+ * For each authentication scheme we need a setup_request function of type
+ * serf__setup_request_func_t. This function will be called when a
+ * new serf_request_t object is created and should fill in the correct
+ * authentication headers (if needed).
+ */
+typedef apr_status_t
+(*serf__setup_request_func_t)(int code,
+                              serf_connection_t *conn,
+                              const char *method,
+                              const char *uri,
+                              serf_bucket_t *hdrs_bkt);
+
+/**
+ * This function will be called when a response is received, so that the 
+ * scheme handler can validate the Authentication related response headers
+ * (if needed).
+ */
+typedef apr_status_t
+(*serf__validate_response_func_t)(serf_request_t *request,
+                                  serf_bucket_t *response,
+                                  apr_pool_t *pool);
+
+/**
+ * serf__authn_scheme_t: vtable for an authn scheme provider.
+ */
+struct serf__authn_scheme_t {
+    /* The http status code that's handled by this authentication scheme.
+       Normal values are 401 for server authentication and 407 for proxy
+       authentication */
+    int code;
+
+    /* The name of this authentication scheme. This should be a case
+       sensitive match of the string sent in the HTTP authentication header. */
+    const char *name;
+
+    /* Internal code used for this authn type. */
+    int type;
+
+    /* The context initialization function if any; otherwise, NULL */
+    serf__init_context_func_t init_ctx_func;
+
+    /* The connection initialization function if any; otherwise, NULL */
+    serf__init_conn_func_t init_conn_func;
+
+    /* The authentication handler function */
+    serf__auth_handler_func_t handle_func;
+
+    /* Function to set up the authentication header of a request */
+    serf__setup_request_func_t setup_request_func;
+
+    /* Function to validate the authentication header of a response */
+    serf__validate_response_func_t validate_response_func;
+};
+
+/**
+ * Handles a 401 or 407 response, tries the different available authentication
+ * handlers.
+ */
+apr_status_t serf__handle_auth_response(int *consumed_response,
+                                        serf_request_t *request,
+                                        serf_bucket_t *response,
+                                        void *baton,
+                                        apr_pool_t *pool);
 
 /* fromt context.c */
 void serf__context_progress_delta(void *progress_baton, apr_off_t read,

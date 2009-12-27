@@ -219,6 +219,19 @@ apr_status_t serf__open_connections(serf_context_t *ctx)
         /* Flag our pollset as dirty now that we have a new socket. */
         conn->dirty_conn = 1;
         ctx->dirty_pollset = 1;
+
+        /* If the authentication was already started on another connection,
+           prepare this connection (it might be possible to skip some
+           part of the handshaking). */
+        if (ctx->proxy_address) {
+            if (conn->ctx->authn_info.scheme)
+                conn->ctx->authn_info.scheme->init_conn_func(401, conn,
+                                                             conn->pool);
+        } else {
+            if (conn->ctx->proxy_authn_info.scheme)
+                conn->ctx->proxy_authn_info.scheme->init_conn_func(407, conn,
+                                                                   conn->pool);
+        }
     }
 
     return APR_SUCCESS;
@@ -349,6 +362,13 @@ static void destroy_ostream(serf_connection_t *conn)
     }
 }
 
+/* A socket was closed, inform the application. */
+static void handle_conn_closed(serf_connection_t *conn, apr_status_t status)
+{
+    (*conn->closed)(conn, conn->closed_baton, status,
+                    conn->pool);
+}
+
 static apr_status_t reset_connection(serf_connection_t *conn,
                                      int requeue_requests)
 {
@@ -402,8 +422,7 @@ static apr_status_t reset_connection(serf_connection_t *conn,
         remove_connection(ctx, conn);
         status = apr_socket_close(conn->skt);
         if (conn->closed != NULL) {
-            (*conn->closed)(conn, conn->closed_baton, status,
-                            conn->pool);
+            handle_conn_closed(conn, status);
         }
         conn->skt = NULL;
     }
@@ -724,9 +743,31 @@ static apr_status_t handle_response(serf_request_t *request,
                                     apr_pool_t *pool)
 {
     apr_status_t status;
+    int consumed_response = 0;
 
-    status = (*request->handler)(request, request->resp_bkt,
-                                 request->handler_baton, pool);
+    status = serf__handle_auth_response(&consumed_response,
+                                        request,
+                                        request->resp_bkt,
+                                        request->handler_baton,
+                                        pool);
+
+    /* If there was an error reading the response (maybe there wasn't
+       enough data available), don't bother passing the response to the
+       application.
+
+       If the authentication was tried, but failed, pass the response
+       to the application, maybe it can do better. */
+    if (APR_STATUS_IS_EOF(status) ||
+        APR_STATUS_IS_EAGAIN(status)) {
+        return status;
+    }
+
+    if (!consumed_response) {
+        return (*request->handler)(request,
+                                   request->resp_bkt,
+                                   request->handler_baton,
+                                   pool);
+    }
 
     return status;
 }
@@ -1076,8 +1117,7 @@ SERF_DECLARE(apr_status_t) serf_connection_close(
                 remove_connection(ctx, conn);
                 status = apr_socket_close(conn->skt);
                 if (conn->closed != NULL) {
-                    (*conn->closed)(conn, conn->closed_baton, status,
-                                    conn->pool);
+                    handle_conn_closed(conn, status);
                 }
                 conn->skt = NULL;
             }
@@ -1258,17 +1298,29 @@ SERF_DECLARE(serf_bucket_t *) serf_request_bucket_request_create(
     serf_bucket_alloc_t *allocator)
 {
     serf_bucket_t *req_bkt, *hdrs_bkt;
+    serf_connection_t *conn = request->conn;
+    serf_context_t *ctx = conn->ctx;
 
     req_bkt = serf_bucket_request_create(method, uri, body, allocator);
     hdrs_bkt = serf_bucket_request_get_headers(req_bkt);
 
     /* Proxy? */
-    if (request->conn->ctx->proxy_address && request->conn->host_url)
-        serf_bucket_request_set_root(req_bkt, request->conn->host_url);
+    if (ctx->proxy_address && conn->host_url)
+        serf_bucket_request_set_root(req_bkt, conn->host_url);
 
-    if (request->conn->host_info.hostname)
+    if (conn->host_info.hostname)
         serf_bucket_headers_setn(hdrs_bkt, "Host",
-                                 request->conn->host_info.hostname);
+                                 conn->host_info.hostname);
+
+    /* Setup server authorization headers */
+    if (ctx->authn_info.scheme)
+        ctx->authn_info.scheme->setup_request_func(401, conn, method, uri,
+                                                   hdrs_bkt);
+
+    /* Setup proxy authorization headers */
+    if (ctx->proxy_authn_info.scheme)
+        ctx->proxy_authn_info.scheme->setup_request_func(407, conn, method,
+                                                         uri, hdrs_bkt);
 
     return req_bkt;
 }

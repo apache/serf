@@ -102,6 +102,18 @@ SERF_DECLARE(void) serf_config_proxy(serf_context_t *ctx,
     ctx->proxy_address = address;
 }
 
+SERF_DECLARE(void) serf_config_credentials_callback(serf_context_t *ctx,
+                                                    serf_credentials_callback_t cred_cb)
+{
+    ctx->cred_cb = cred_cb;
+}
+
+SERF_DECLARE(void) serf_config_authn_types(serf_context_t *ctx,
+                                           int authn_types)
+{
+    ctx->authn_types = authn_types;
+}
+
 SERF_DECLARE(serf_context_t *) serf_context_create_ex(void *user_baton,
                                                       serf_socket_add_t addf,
                                                       serf_socket_remove_t rmf,
@@ -131,6 +143,8 @@ SERF_DECLARE(serf_context_t *) serf_context_create_ex(void *user_baton,
     /* Initialize progress status */
     ctx->progress_read = 0;
     ctx->progress_written = 0;
+
+    ctx->authn_types = SERF_AUTHN_ALL;
 
     return ctx;
 }

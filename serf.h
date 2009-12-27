@@ -72,6 +72,15 @@ typedef struct serf_request_t serf_request_t;
  */
 #define SERF_ERROR_REQUEST_LOST (APR_OS_START_USERERR + SERF_ERROR_RANGE + 2)
 
+/* General authentication related errors */
+#define SERF_ERROR_AUTHN_FAILED (APR_OS_START_USERERR + SERF_ERROR_RANGE + 90)
+
+/* None of the available authn mechanisms for the request are supported */
+#define SERF_ERROR_AUTHN_NOT_SUPPORTED (APR_OS_START_USERERR + SERF_ERROR_RANGE + 91)
+
+/* Authn was requested by the server but the header lacked some attribute  */
+#define SERF_ERROR_AUTHN_MISSING_ATTRIBUTE (APR_OS_START_USERERR + SERF_ERROR_RANGE + 92)
+
 /**
  * Create a new context for serf operations.
  *
@@ -296,6 +305,20 @@ typedef apr_status_t (*serf_response_handler_t)(serf_request_t *request,
                                                 apr_pool_t *pool);
 
 /**
+ * Callback function to be implemented by the application, so that serf
+ * can handle server and proxy authentication.
+ * code = 401 (server) or 407 (proxy).
+ * baton = the baton passed to serf_context_run.
+ * authn_type = one of "Basic", "Digest".
+ */
+typedef apr_status_t (*serf_credentials_callback_t)(char **username,
+    char **password,
+    serf_request_t *request, void *baton,
+    int code, const char *authn_type,
+    const char *realm,
+    apr_pool_t *pool);
+
+/**
  * Create a new connection associated with the @a ctx serf context.
  *
  * A connection will be created to (eventually) connect to the address
@@ -364,7 +387,7 @@ typedef apr_status_t (*serf_accept_client_t)(serf_context_t *ctx,
                                         void *accept_baton,
                                         apr_socket_t *insock,
                                         apr_pool_t *pool);
-                                         
+
 SERF_DECLARE(apr_status_t) serf_listener_create(
     serf_listener_t **listener,
     serf_context_t *ctx,
@@ -542,6 +565,28 @@ SERF_DECLARE(void) serf_request_set_handler(
 SERF_DECLARE(void) serf_config_proxy(
     serf_context_t *ctx,
     apr_sockaddr_t *address);
+
+/* Supported authentication types. */
+#define SERF_AUTHN_NONE      0x00
+#define SERF_AUTHN_BASIC     0x01
+#define SERF_AUTHN_DIGEST    0x02
+#define SERF_AUTHN_NTLM      0x04
+#define SERF_AUTHN_NEGOTIATE 0x08
+#define SERF_AUTHN_ALL       0xFF
+
+/**
+ * Define the authentication handlers that serf will try on incoming requests.
+ */
+SERF_DECLARE(void) serf_config_authn_types(
+    serf_context_t *ctx,
+    int authn_types);
+
+/**
+ * Set the credentials callback handler.
+ */
+SERF_DECLARE(void) serf_config_credentials_callback(
+    serf_context_t *ctx,
+    serf_credentials_callback_t cred_cb);
 
 /* ### maybe some connection control functions for flood? */
 
@@ -991,4 +1036,4 @@ SERF_DECLARE(void) serf_debug__bucket_alloc_check(serf_bucket_alloc_t *allocator
 #include "serf_bucket_types.h"
 
 
-#endif	/* !SERF_H */
+#endif    /* !SERF_H */
