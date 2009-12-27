@@ -15,7 +15,8 @@ OBJECTS = buckets/aggregate_buckets.lo buckets/request_buckets.lo context.lo \
           buckets/deflate_buckets.lo buckets/limit_buckets.lo \
           buckets/ssl_buckets.lo buckets/barrier_buckets.lo \
           buckets/chunk_buckets.lo buckets/bwtp_buckets.lo \
-          incoming.lo outgoing.lo
+          incoming.lo outgoing.lo \
+          auth/auth.lo auth/auth_basic.lo
 
 TARGET_LIB=libserf-$(SERF_MAJOR_VERSION).la
 
@@ -41,7 +42,7 @@ libdir=@libdir@
 includedir=@includedir@
 
 LIBTOOL = @APR_LIBTOOL@
-LTFLAGS = @LTFLAGS@
+LTFLAGS = @LTFLAGS@ --tag=CC
 CC = @CC@
 CFLAGS =  @EXTRA_CFLAGS@ @CFLAGS@
 CPPFLAGS = @EXTRA_CPPFLAGS@ @CPPFLAGS@
