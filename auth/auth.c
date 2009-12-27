@@ -18,6 +18,7 @@
 #include "auth.h"
 
 #include <apr.h>
+#include <apr_base64.h>
 #include <apr_strings.h>
 
 static apr_status_t
