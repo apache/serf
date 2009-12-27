@@ -208,13 +208,12 @@ static apr_status_t setup_request(serf_request_t *request,
         body_bkt = NULL;
     }
 
-    *req_bkt = serf_bucket_request_create(ctx->method, ctx->path, body_bkt,
-                                          serf_request_get_alloc(request));
+    *req_bkt = serf_request_bucket_request_create(request, ctx->method,
+                                                  ctx->path, body_bkt,
+                                                  serf_request_get_alloc(request));
 
     hdrs_bkt = serf_bucket_request_get_headers(*req_bkt);
 
-    /* FIXME: Shouldn't we be able to figure out the host ourselves? */
-    serf_bucket_headers_setn(hdrs_bkt, "Host", ctx->host);
     serf_bucket_headers_setn(hdrs_bkt, "User-Agent",
                              "Serf/" SERF_VERSION_STRING);
     /* Shouldn't serf do this for us? */
