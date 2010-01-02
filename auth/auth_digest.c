@@ -233,6 +233,12 @@ serf__handle_digest_auth(int code,
     apr_pool_t *cred_pool;
     char *username, *password;
 
+    /* Can't do Digest authentication if there's no callback to get
+       username & password. */
+    if (!ctx->cred_cb) {
+        return SERF_ERROR_AUTHN_FAILED;
+    }
+
     /* Need a copy cuz we're going to write NUL characters into the string.  */
     attrs = apr_pstrdup(pool, auth_attr);
 
