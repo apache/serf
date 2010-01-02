@@ -127,8 +127,6 @@ serf__init_basic_connection(int code,
                             serf_connection_t *conn,
                             apr_pool_t *pool)
 {
-    printf("init basic conn\n");
-
     return APR_SUCCESS;
 }
 
