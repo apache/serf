@@ -274,7 +274,9 @@ typedef apr_status_t
  * (if needed).
  */
 typedef apr_status_t
-(*serf__validate_response_func_t)(serf_request_t *request,
+(*serf__validate_response_func_t)(int code,
+                                  serf_connection_t *conn,
+                                  serf_request_t *request,
                                   serf_bucket_t *response,
                                   apr_pool_t *pool);
 

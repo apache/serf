@@ -101,6 +101,7 @@ LIB32_OBJS= \
     "$(INTDIR)\aggregate_buckets.obj" \
     "$(INTDIR)\auth.obj" \
     "$(INTDIR)\auth_basic.obj" \
+    "$(INTDIR)\auth_digest.obj" \
     "$(INTDIR)\context.obj" \
     "$(INTDIR)\allocator.obj" \
     "$(INTDIR)\barrier_buckets.obj" \

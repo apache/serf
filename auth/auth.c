@@ -22,7 +22,9 @@
 #include <apr_strings.h>
 
 static apr_status_t
-default_auth_response_handler(serf_request_t *request,
+default_auth_response_handler(int code,
+                              serf_connection_t *conn,
+                              serf_request_t *request,
                               serf_bucket_t *response,
                               apr_pool_t *pool)
 {
@@ -49,16 +51,17 @@ static const serf__authn_scheme_t serf_authn_schemes[] = {
           serf__handle_proxy_basic_auth,
           serf__setup_request_proxy_basic_auth,
           default_auth_response_handler,
-          },
-          {
-          401,
-          "Digest",
-          SERF_AUTHN_DIGEST,
-          serf__init_digest_connection,
-          serf__handle_digest_auth,
-          serf__setup_request_digest_auth,
-          serf__validate_response_digest_auth,
-          },*/
+          }, */
+    {
+        401,
+        "Digest",
+        SERF_AUTHN_DIGEST,
+        serf__init_digest,
+        serf__init_digest_connection,
+        serf__handle_digest_auth,
+        serf__setup_request_digest_auth,
+        serf__validate_response_digest_auth,
+    },
 
     /* ADD NEW AUTHENTICATION IMPLEMENTATIONS HERE (as they're written) */
 
@@ -149,17 +152,25 @@ static int handle_auth_header(void *baton,
                make sure to initialize the authentication handler first. */
             if (ab->code == 401 && ctx->authn_info.scheme != scheme) {
                 status = scheme->init_ctx_func(ab->code, ctx, ctx->pool);
-                if (!status)
-                    ctx->authn_info.scheme = scheme;
-                else
-                    ctx->authn_info.scheme = NULL;
+                if (!status) {
+                    status = scheme->init_conn_func(ab->code, conn, conn->pool);
+
+                    if (!status)
+                        ctx->authn_info.scheme = scheme;
+                    else
+                        ctx->authn_info.scheme = NULL;
+                }
             }
             else if (ab->code == 407 && ctx->proxy_authn_info.scheme != scheme) {
                 status = scheme->init_ctx_func(ab->code, ctx, ctx->pool);
-                if (!status)
-                    ctx->proxy_authn_info.scheme = scheme;
-                else
-                    ctx->proxy_authn_info.scheme = NULL;
+                if (!status) {
+                    status = scheme->init_conn_func(ab->code, conn, conn->pool);
+
+                    if (!status)
+                        ctx->proxy_authn_info.scheme = scheme;
+                    else
+                        ctx->proxy_authn_info.scheme = NULL;
+                }
             }
 
             if (!status) {
@@ -195,15 +206,11 @@ static apr_status_t dispatch_auth(int code,
                                   void *baton,
                                   apr_pool_t *pool)
 {
-    serf_context_t *ctx = request->conn->ctx;
     serf_bucket_t *hdrs;
-    serf__authn_info_t authn_info = (code == 401 ? ctx->authn_info :
-                                     ctx->proxy_authn_info);
 
     if (code == 401 || code == 407) {
         auth_baton_t ab = { 0 };
         const char *auth_hdr;
-        apr_status_t status;
 
         ab.code = code;
         ab.status = APR_SUCCESS;

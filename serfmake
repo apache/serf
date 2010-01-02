@@ -36,6 +36,7 @@ LIB_FILES = [
   ('buckets', 'chunk_buckets'),
   ('auth', 'auth'),
   ('auth', 'auth_basic'),
+  ('auth', 'auth_digest'),
   ]
 
 TEST_DEPS = [
