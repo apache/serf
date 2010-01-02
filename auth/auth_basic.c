@@ -57,7 +57,6 @@ serf__handle_basic_auth(int code,
     if (!authn_info->realm) {
         char *realm_name = NULL;
         const char *eq = strchr(auth_attr, '=');
-        apr_port_t port;
 
         if (eq && strncasecmp(auth_attr, "realm", 5) == 0) {
             realm_name = apr_pstrdup(pool, eq + 1);
