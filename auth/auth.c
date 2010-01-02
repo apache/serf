@@ -42,16 +42,16 @@ static const serf__authn_scheme_t serf_authn_schemes[] = {
         serf__setup_request_basic_auth,
         default_auth_response_handler,
     },
-    /*    {
+    {
           407,
           "Basic",
           SERF_AUTHN_BASIC,
           serf__init_basic,
           serf__init_basic_connection,
-          serf__handle_proxy_basic_auth,
-          serf__setup_request_proxy_basic_auth,
+          serf__handle_basic_auth,
+          serf__setup_request_basic_auth,
           default_auth_response_handler,
-          }, */
+    },
     {
         401,
         "Digest",
@@ -62,7 +62,16 @@ static const serf__authn_scheme_t serf_authn_schemes[] = {
         serf__setup_request_digest_auth,
         serf__validate_response_digest_auth,
     },
-
+    {
+        407,
+        "Digest",
+        SERF_AUTHN_DIGEST,
+        serf__init_digest,
+        serf__init_digest_connection,
+        serf__handle_digest_auth,
+        serf__setup_request_digest_auth,
+        serf__validate_response_digest_auth,
+    },
     /* ADD NEW AUTHENTICATION IMPLEMENTATIONS HERE (as they're written) */
 
     /* sentinel */

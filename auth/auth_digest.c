@@ -25,7 +25,7 @@
 #include <apr_uuid.h>
 #include <apr_md5.h>
 
-/** Digest authentication, implements RFC 2671. **/
+/** Digest authentication, implements RFC 2617. **/
 
 /* Stores the context information related to Digest authentication.
    The context is per connection. */
@@ -376,7 +376,8 @@ serf__setup_request_digest_auth(int code,
         status = apr_uri_parse(conn->pool, uri, &parsed_uri);
 
         /* Build a new Authorization header. */
-        digest_info->header = "Authorization";
+        digest_info->header = (code == 401) ? "Authorization" :
+            "Proxy-Authorization";
         value = build_auth_header(digest_info, parsed_uri.path, method,
                                   conn->pool);
 
@@ -408,9 +409,12 @@ serf__validate_response_digest_auth(int code,
     hdrs = serf_bucket_response_get_headers(response);
 
     /* Need a copy cuz we're going to write NUL characters into the string.  */
-    auth_attr = apr_pstrdup(pool,
-                            serf_bucket_headers_get(hdrs,
-                                                    "Authentication-Info"));
+    if (code == 401)
+        auth_attr = apr_pstrdup(pool,
+            serf_bucket_headers_get(hdrs, "Authentication-Info"));
+    else
+        auth_attr = apr_pstrdup(pool,
+            serf_bucket_headers_get(hdrs, "Proxy-Authentication-Info"));
 
     /* If there's no Authentication-Info header there's nothing to validate. */
     if (! auth_attr)
