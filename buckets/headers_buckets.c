@@ -151,39 +151,40 @@ SERF_DECLARE(const char *) serf_bucket_headers_get(
     headers_context_t *ctx = headers_bucket->data;
     header_list_t *found = ctx->list;
     const char *val = NULL;
-    int value_size;
+    int value_size = 0;
     int val_alloc = 0;
 
     while (found) {
         if (strcasecmp(found->header, header) == 0) {
-	    if (val) {
-	        /* The header is already present.  RFC 2616, section 4.2
-		   indicates that we should append the new value, separated by
-		   a comma.  Reasoning: for headers whose values are known to
-		   be comma-separated, that is clearly the correct behavior;
-		   for others, the correct behavior is undefined anyway. */
+            if (val) {
+                /* The header is already present.  RFC 2616, section 4.2
+                   indicates that we should append the new value, separated by
+                   a comma.  Reasoning: for headers whose values are known to
+                   be comma-separated, that is clearly the correct behavior;
+                   for others, the correct behavior is undefined anyway. */
 
-	        /* The "+1" is for the comma; serf_bstrmemdup() will also add
-		   one slot for the terminating '\0'. */
-  	        apr_size_t new_size = found->value_size + value_size + 1;
-		char *new_val = serf_bucket_mem_alloc(headers_bucket->allocator, 
-						      new_size);
-		memcpy(new_val, val, value_size);
-		new_val[value_size] = ',';
-		memcpy(new_val + value_size + 1, found->value, found->value_size);
-		new_val[new_size] = '\0';
-		/* Copy the new value over the already existing value. */
-		if (val_alloc)
-		  serf_bucket_mem_free(headers_bucket->allocator, (void*)val);
+                /* The "+1" is for the comma; serf_bstrmemdup() will also add
+                   one slot for the terminating '\0'. */
+                apr_size_t new_size = found->value_size + value_size + 1;
+                char *new_val = serf_bucket_mem_alloc(headers_bucket->allocator,
+                                                      new_size);
+                memcpy(new_val, val, value_size);
+                new_val[value_size] = ',';
+                memcpy(new_val + value_size + 1, found->value,
+                       found->value_size);
+                new_val[new_size] = '\0';
+                /* Copy the new value over the already existing value. */
+                if (val_alloc)
+                    serf_bucket_mem_free(headers_bucket->allocator, (void*)val);
                 val_alloc |= ALLOC_VALUE;
-		val = new_val;
-		value_size = new_size;
-	    }
-	    else {
-	        val = found->value;
-		value_size = found->value_size;
-	    }
-	}
+                val = new_val;
+                value_size = new_size;
+            }
+            else {
+                val = found->value;
+                value_size = found->value_size;
+            }
+        }
         found = found->next;
     }
 
