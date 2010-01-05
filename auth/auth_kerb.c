@@ -13,6 +13,8 @@
  * limitations under the License.
  */
 
+#ifdef SERF_HAVE_GSSAPI
+
 /*** Kerberos authentication ***/
 
 #include <serf.h>
@@ -414,3 +416,5 @@ serf__validate_response_kerb_auth(int code,
 
     return APR_SUCCESS;
 }
+
+#endif /* SERF_HAVE_GSSAPI */
