@@ -199,11 +199,15 @@ SERF_DECLARE(apr_status_t) serf_event_trigger(serf_context_t *s,
         if ((conn->status = serf__process_connection(conn,
                                          desc->rtnevents)) != APR_SUCCESS) {
 
-            tdesc.desc_type = APR_POLL_SOCKET;
-            tdesc.desc.s = conn->skt;
-            tdesc.reqevents = conn->reqevents;
-            ctx->pollset_rm(ctx->pollset_baton,
-                            &tdesc, conn);
+            /* it's possible that the connection was already reset and thus the
+               socket cleaned up. */
+            if (conn->skt) {
+                tdesc.desc_type = APR_POLL_SOCKET;
+                tdesc.desc.s = conn->skt;
+                tdesc.reqevents = conn->reqevents;
+                ctx->pollset_rm(ctx->pollset_baton,
+                                &tdesc, conn);
+            }
             return conn->status;
         }
     }
