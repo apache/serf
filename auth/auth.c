@@ -72,6 +72,17 @@ static const serf__authn_scheme_t serf_authn_schemes[] = {
         serf__setup_request_digest_auth,
         serf__validate_response_digest_auth,
     },
+    {
+        401,
+        "Negotiate",
+        SERF_AUTHN_NEGOTIATE,
+        serf__init_kerb,
+        serf__init_kerb_connection,
+        serf__handle_kerb_auth,
+        serf__setup_request_kerb_auth,
+        serf__validate_response_kerb_auth,
+    },
+
     /* ADD NEW AUTHENTICATION IMPLEMENTATIONS HERE (as they're written) */
 
     /* sentinel */

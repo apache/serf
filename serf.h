@@ -81,6 +81,10 @@ typedef struct serf_request_t serf_request_t;
 /* Authn was requested by the server but the header lacked some attribute  */
 #define SERF_ERROR_AUTHN_MISSING_ATTRIBUTE (APR_OS_START_USERERR + SERF_ERROR_RANGE + 92)
 
+/* Authentication handler initialization related errors */
+#define SERF_ERROR_AUTHN_INITALIZATION_FAILED (APR_OS_START_USERERR +\
+    SERF_ERROR_RANGE + 93)
+
 /**
  * Create a new context for serf operations.
  *
