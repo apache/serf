@@ -16,6 +16,7 @@
 #include <apr_pools.h>
 #include <apr_strings.h>
 #include <apr_lib.h>
+#include <apr_date.h>
 
 #include "serf.h"
 #include "serf_bucket_util.h"
@@ -499,8 +500,6 @@ static apr_status_t run_machine(serf_bucket_t *bkt, incoming_context_t *ctx)
          * Move on to the body.
          */
         if (ctx->linebuf.state == SERF_LINEBUF_READY && !ctx->linebuf.used) {
-            const void *v;
-
             /* Advance the state. */
             ctx->state = STATE_DONE;
         }

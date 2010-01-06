@@ -274,7 +274,6 @@ static apr_status_t setup_close(serf_request_t *request,
                                 apr_pool_t *pool)
 {
     handler_baton_t *ctx = setup_baton;
-    serf_bucket_t *hdrs_bkt;
 
     *req_bkt = serf_bucket_bwtp_channel_close(0, serf_request_get_alloc(request));
 
@@ -293,9 +292,7 @@ static apr_status_t handle_bwtp(serf_request_t *request,
 {
     const char *data;
     apr_size_t len;
-    serf_status_line sl;
     apr_status_t status;
-    handler_baton_t *ctx = handler_baton;
 
     if (!response) {
         /* A NULL response can come back if the request failed completely */
