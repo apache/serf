@@ -105,7 +105,7 @@ typedef apr_status_t (*serf_socket_add_t)(void *user_baton,
                                           apr_pollfd_t *pfd,
                                           void *serf_baton);
 /**
- * Callback function. Remove the socket, identified by both @a pfd and 
+ * Callback function. Remove the socket, identified by both @a pfd and
  * @a serf_baton from the externally managed poll set.
  */
 typedef apr_status_t (*serf_socket_remove_t)(void *user_baton,
@@ -115,8 +115,8 @@ typedef apr_status_t (*serf_socket_remove_t)(void *user_baton,
 /* Create a new context for serf operations.
  *
  * Use this function to make serf not use its internal control loop, but
- * instead rely on an external event loop. Serf will use the @a addf and @a rmf 
- * callbacks to notify of any event on a connection. The @a user_baton will be 
+ * instead rely on an external event loop. Serf will use the @a addf and @a rmf
+ * callbacks to notify of any event on a connection. The @a user_baton will be
  * passed through the addf and rmf callbacks.
  *
  * The context will be allocated within @a pool.
@@ -127,7 +127,7 @@ SERF_DECLARE(serf_context_t *) serf_context_create_ex(void *user_baton,
                                                       apr_pool_t *pool);
 
 /**
- * Make serf process events on a connection, identified by both @a pfd and 
+ * Make serf process events on a connection, identified by both @a pfd and
  * @a serf_baton.
  *
  * Any outbound data is delivered, and incoming data is made available to
@@ -386,7 +386,7 @@ SERF_DECLARE(apr_status_t) serf_connection_create2(
     apr_pool_t *pool);
 
 
-typedef apr_status_t (*serf_accept_client_t)(serf_context_t *ctx, 
+typedef apr_status_t (*serf_accept_client_t)(serf_context_t *ctx,
                                         serf_listener_t *l,
                                         void *accept_baton,
                                         apr_socket_t *insock,
@@ -597,9 +597,9 @@ SERF_DECLARE(void) serf_config_credentials_callback(
 /*** Special bucket creation functions ***/
 
 /**
- * Create a bucket of type 'socket bucket'. 
- * This is basically a wrapper around @a serf_bucket_socket_create, which 
- * initializes the bucket using connection and/or context specific settings. 
+ * Create a bucket of type 'socket bucket'.
+ * This is basically a wrapper around @a serf_bucket_socket_create, which
+ * initializes the bucket using connection and/or context specific settings.
  */
 SERF_DECLARE(serf_bucket_t *) serf_context_bucket_socket_create(
     serf_context_t *ctx,
@@ -607,8 +607,8 @@ SERF_DECLARE(serf_bucket_t *) serf_context_bucket_socket_create(
     serf_bucket_alloc_t *allocator);
 
 /**
- * Create a bucket of type 'request bucket'. 
- * This is basically a wrapper around @a serf_bucket_request_create, which 
+ * Create a bucket of type 'request bucket'.
+ * This is basically a wrapper around @a serf_bucket_request_create, which
  * initializes the bucket using request, connection and/or context specific
  * settings.
  *
@@ -807,13 +807,13 @@ struct serf_bucket_type_t {
     /**
      * Restore the state of the @a bucket to the state set in the last
      * snapshot and returns APR_SUCCESS. If no snapshot was set, the bucket's
-     * state is unchanged and APR_SUCCESS is returned. 
+     * state is unchanged and APR_SUCCESS is returned.
      * In case of error, the bucket should be considered invalid.
      */
     apr_status_t (*restore_snapshot)(serf_bucket_t *bucket);
 
     /**
-     * Test if a snapshot is set. Returns 0 if no snapshot was set, a non-0 
+     * Test if a snapshot is set. Returns 0 if no snapshot was set, a non-0
      * value if there is a snapshot set.
      */
     int (*is_snapshot_set)(serf_bucket_t *bucket);
