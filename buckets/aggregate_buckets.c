@@ -25,6 +25,7 @@ typedef struct bucket_list {
 
 typedef struct {
     bucket_list_t *list; /* active buckets */
+    bucket_list_t *last; /* last bucket of the list */
     bucket_list_t *done; /* we finished reading this; now pending a destroy */
 
     /* Marks if a snapshot is set. */
@@ -90,6 +91,7 @@ SERF_DECLARE(void) serf_bucket_aggregate_become(serf_bucket_t *bucket)
 
     ctx = serf_bucket_mem_alloc(bucket->allocator, sizeof(*ctx));
     ctx->list = NULL;
+    ctx->last = NULL;
     ctx->done = NULL;
     ctx->snapshot = 0;
 
@@ -133,13 +135,11 @@ SERF_DECLARE(void) serf_bucket_aggregate_append(
     */
     if (ctx->list == NULL) {
         ctx->list = new_list;
+	ctx->last = new_list;
     }
     else {
-        bucket_list_t *scan = ctx->list;
-
-        while (scan->next != NULL)
-            scan = scan->next;
-        scan->next = new_list;
+        ctx->last->next = new_list;
+	ctx->last = ctx->last->next;
     }
 }
 
@@ -369,6 +369,9 @@ static apr_status_t serf_aggregate_restore_snapshot(serf_bucket_t *bucket)
     apr_status_t status;
 
     /* Move all the DONE buckets back in the LIST. */
+    if (! ctx->last && ! ctx->list)
+        ctx->last = ctx->done;
+
     while (ctx->done) {
         next_ctx = ctx->done->next;
         ctx->done->next = ctx->list;

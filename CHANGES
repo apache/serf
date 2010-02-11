@@ -1,5 +1,8 @@
 Serf 0.3.1 []
+  Fix loss of error on request->setup() callback. (Issue 47)
   Support APR 2.x. (Issue 48)
+  Fixed slowdown in aggregate bucket with millions of child buckets.
+  Avoid hang in apr_pollset_poll() by unclosed connections after fork().
 
 Serf 0.3.0 [2009-01-26, r1216]
   Support LTFLAGS override as a config-time env. variable (Issue 44)

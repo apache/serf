@@ -691,6 +691,12 @@ static apr_status_t write_to_connection(serf_connection_t *conn)
                                          &request->handler,
                                          &request->handler_baton,
                                          request->respool);
+
+            if (read_status) {
+                /* Something bad happened. Propagate any errors. */
+                return read_status;
+            }
+
             request->setup = NULL;
         }
 

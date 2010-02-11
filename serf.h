@@ -518,9 +518,9 @@ SERF_DECLARE(serf_bucket_t *) serf_context_bucket_socket_create(
  * This is basically a wrapper around @a serf_bucket_request_create, which 
  * initializes the bucket using request, connection and/or context specific
  * settings.
- * 
- * If the host_url and/or user_agent options are set on the connection, 
- * headers 'Host' and/or 'User-Agent' will be set on the request message.
+ *
+ * This function will set following header(s):
+ * - Host: if the connection was created with @a serf_connection_create2.
  */
 SERF_DECLARE(serf_bucket_t *) serf_request_bucket_request_create(
     serf_request_t *request,
