@@ -1,3 +1,6 @@
+Serf 0.3.1 []
+  Support APR 2.x. (Issue 48)
+
 Serf 0.3.0 [2009-01-26, r1216]
   Support LTFLAGS override as a config-time env. variable (Issue 44)
   Fix CUTest test harness compilation on Solaris (Issue 43)

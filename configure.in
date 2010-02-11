@@ -36,7 +36,7 @@ orig_prefix="$prefix"
 
 echo $ac_n "${nl}Configuring Apache Portable Runtime library...${nl}"
 
-APR_FIND_APR("$srcdir/apr", "./apr", 1, [0 1])
+APR_FIND_APR("$srcdir/apr", "./apr", 1, 0 1 2)
 
 if test "$apr_found" = "no"; then
   AC_MSG_ERROR([APR not found.  Please read the documentation.])
@@ -72,38 +72,56 @@ AC_SUBST(APR_INCLUDES)
 AC_SUBST(APR_VERSION)
 AC_SUBST(APR_CONFIG)
 
-echo $ac_n "${nl}Configuring Apache Portable Runtime Utility library...${nl}"
+APR_VERSION_MAJOR="`echo \"$APR_VERSION\" | sed 's,\..*,,'`"
+APR_VERSION_NUM="`echo \"$APR_VERSION\" | \
+                sed -e 's/[[^0-9\.]].*$//' \
+                    -e 's/\.\([[0-9]]\)$/.0\1/' \
+                    -e 's/\.\([[0-9]][[0-9]]\)$/.0\1/' \
+                    -e 's/\.\([[0-9]]\)\./0\1/; s/\.//g;'`"
 
-APR_FIND_APU("$srcdir/apr-util", "./apr-util", 1, [0 1])
+if test "$APR_VERSION_NUM" -ge "200000"; then
 
-if test "$apu_found" = "no"; then
-  AC_MSG_ERROR([APR-util not found.  Please read the documentation.])
+  APU_BINDIR=""
+  APU_INCLUDES=""
+  APU_VERSION=""
+  APU_CONFIG=""
+
+else
+  echo $ac_n "${nl}Configuring Apache Portable Runtime Utility library...${nl}"
+
+   ifdef([APR_FIND_APU], [
+     APR_FIND_APU("$srcdir/apr-util", "./apr-util", 1, $APR_VERSION_MAJOR)
+   ], [AC_MSG_ERROR([APR-util required, but find_apu.m4 not present!])])
+
+  if test "$apu_found" = "no"; then
+    AC_MSG_ERROR([APR-util not found.  Please read the documentation.])
+  fi
+
+  # Catch some misconfigurations:
+  case ${apr_found}.${apu_found} in
+    reconfig.yes)
+      AC_MSG_ERROR([Cannot use an external APR-util with the bundled APR])
+      ;;
+    yes.reconfig)
+      AC_MSG_ERROR([Cannot use an external APR with the bundled APR-util])
+      ;;
+  esac  
+
+  if test "$apu_found" = "reconfig"; then
+    APR_SUBDIR_CONFIG(apr-util,
+                      [--with-apr=../apr --prefix=$prefix --exec-prefix=$exec_prefix --libdir=$libdir --includedir=$includedir --bindir=$bindir],
+                      [--enable-layout=*|\'--enable-layout=*])
+    dnl We must be the last to build and the first to be cleaned
+    SERF_BUILD_SRCLIB_DIRS="$SERF_BUILD_SRCLIB_DIRS apr-util"
+    SERF_CLEAN_SRCLIB_DIRS="apr-util $SERF_CLEAN_SRCLIB_DIRS"
+  fi
+
+  APR_ADDTO(LDFLAGS, `$apu_config --ldflags`)
+  APU_BINDIR=`$apu_config --bindir`
+  APU_INCLUDES=`$apu_config --includes`
+  APU_VERSION=`$apu_config --version`
+  APU_CONFIG="$APU_BINDIR/apu-`echo ${APU_VERSION} | sed 's,\..*,,'`-config"
 fi
-
-# Catch some misconfigurations:
-case ${apr_found}.${apu_found} in
-reconfig.yes)
-  AC_MSG_ERROR([Cannot use an external APR-util with the bundled APR])
-  ;;
-yes.reconfig)
-  AC_MSG_ERROR([Cannot use an external APR with the bundled APR-util])
-  ;;
-esac  
-
-if test "$apu_found" = "reconfig"; then
-  APR_SUBDIR_CONFIG(apr-util,
-                    [--with-apr=../apr --prefix=$prefix --exec-prefix=$exec_prefix --libdir=$libdir --includedir=$includedir --bindir=$bindir],
-                    [--enable-layout=*|\'--enable-layout=*])
-  dnl We must be the last to build and the first to be cleaned
-  SERF_BUILD_SRCLIB_DIRS="$SERF_BUILD_SRCLIB_DIRS apr-util"
-  SERF_CLEAN_SRCLIB_DIRS="apr-util $SERF_CLEAN_SRCLIB_DIRS"
-fi
-
-APR_ADDTO(LDFLAGS, `$apu_config --ldflags`)
-APU_BINDIR=`$apu_config --bindir`
-APU_INCLUDES=`$apu_config --includes`
-APU_VERSION=`$apu_config --version`
-APU_CONFIG="$APU_BINDIR/apu-`echo ${APU_VERSION} | sed 's,\..*,,'`-config"
 
 AC_SUBST(APU_BINDIR)
 AC_SUBST(APU_INCLUDES)
@@ -171,7 +189,12 @@ AC_CHECK_HEADER([openssl/opensslv.h], [],
 dnl CuTest requires libm on Solaris
 AC_SEARCH_LIBS(fabs, m)
 
-libs="`$apu_config --link-libtool --libs` `$apr_config --link-libtool --libs` $LIBS"
+libs=""
+if test -n "$apu_config"; then
+  APR_ADDTO(libs, [`$apu_config --link-libtool --libs`])
+fi
+APR_ADDTO(libs, [`$apr_config --link-libtool --libs` $LIBS])
+
 APR_ADDTO(SERF_LIBS, [$libs])
 AC_SUBST(SERF_LIBS)
 

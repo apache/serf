@@ -162,10 +162,10 @@ def cmd_clean(param):
 
 class Builder:
   def __init__(self, params):
-    try:
+    if 'apr' in params:
       self.apr = APRConfig(params['apr'])
       self.apu = APUConfig(params['apr'])
-    except:
+    else:
       self.apr = APRConfig(None)
       self.apu = APUConfig(None)
 
@@ -329,9 +329,11 @@ class ConfigScript(object):
 
   def __init__(self, search_dir):
     if search_dir:
-      self.locations.append(search_dir)
-      self.locations.append(os.path.join(search_dir, 'bin'))
-    for dirname in self.locations:
+      locations = [search_dir, os.path.join(search_dir, 'bin')]
+    else:
+      locations = self.locations
+
+    for dirname in locations:
       bin = os.path.join(dirname, self.script_name)
       if os.access(bin, os.X_OK):
         self.bin = bin
