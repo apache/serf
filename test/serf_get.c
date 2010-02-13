@@ -243,19 +243,20 @@ static void print_usage(apr_pool_t *pool)
     puts("-a <user:password> Present Basic authentication credentials");
     puts("-m <method> Use the <method> HTTP Method");
     puts("-f <file> Use the <file> as the request body");
+    puts("-p <hostname:port> Use the <host:port> as proxy server");
 }
 
 int main(int argc, const char **argv)
 {
     apr_status_t status;
     apr_pool_t *pool;
-    apr_sockaddr_t *address;
     serf_context_t *context;
     serf_connection_t *connection;
     serf_request_t *request;
     app_baton_t app_ctx;
     handler_baton_t handler_ctx;
     apr_uri_t url;
+    const char *proxy = NULL;
     const char *raw_url, *method, *req_body_path = NULL;
     int count;
     int i;
@@ -280,7 +281,7 @@ int main(int argc, const char **argv)
 
     apr_getopt_init(&opt, pool, argc, argv);
 
-    while ((status = apr_getopt(opt, "a:f:hHm:n:v", &opt_c, &opt_arg)) ==
+    while ((status = apr_getopt(opt, "a:f:hHm:n:vp:", &opt_c, &opt_arg)) ==
            APR_SUCCESS) {
         int srclen, enclen;
 
@@ -314,6 +315,9 @@ int main(int argc, const char **argv)
                 return errno;
             }
             break;
+        case 'p':
+            proxy = opt_arg;
+            break;
         case 'v':
             puts("Serf version: " SERF_VERSION_STRING);
             exit(0);
@@ -344,25 +348,63 @@ int main(int argc, const char **argv)
         app_ctx.using_ssl = 0;
     }
 
-    status = apr_sockaddr_info_get(&address,
-                                   url.hostname, APR_UNSPEC, url.port, 0,
-                                   pool);
-    if (status) {
-        printf("Error creating address: %d\n", status);
-        apr_pool_destroy(pool);
-        exit(1);
-    }
-
     context = serf_context_create(pool);
+
+    if (proxy)
+    {
+        apr_sockaddr_t *proxy_address = NULL;
+        apr_port_t proxy_port;
+        char *proxy_host;
+        char *proxy_scope;
+
+        status = apr_parse_addr_port(&proxy_host, &proxy_scope, &proxy_port, proxy, pool);
+        if (status)
+        {
+            printf("Cannot parse proxy hostname/port: %d\n", status);
+            apr_pool_destroy(pool);
+            exit(1);
+        }
+
+        if (!proxy_host)
+        {
+            printf("Proxy hostname must be specified\n");
+            apr_pool_destroy(pool);
+            exit(1);
+        }
+
+        if (!proxy_port)
+        {
+            printf("Proxy port must be specified\n");
+            apr_pool_destroy(pool);
+            exit(1);
+        }
+
+        status = apr_sockaddr_info_get(&proxy_address, proxy_host, APR_UNSPEC,
+                                       proxy_port, 0, pool);
+
+        if (status)
+        {
+            printf("Cannot resolve proxy address '%s': %d\n", proxy_host, status);
+            apr_pool_destroy(pool);
+            exit(1);
+        }
+
+        serf_config_proxy(context, proxy_address);
+    }
 
     /* ### Connection or Context should have an allocator? */
     app_ctx.bkt_alloc = serf_bucket_allocator_create(pool, NULL, NULL);
     app_ctx.ssl_ctx = NULL;
 
-    connection = serf_connection_create(context, address,
-                                        conn_setup, &app_ctx,
-                                        closed_connection, &app_ctx,
-                                        pool);
+    status = serf_connection_create2(&connection, context, url,
+                                     conn_setup, &app_ctx,
+                                     closed_connection, &app_ctx,
+                                     pool);
+    if (status) {
+        printf("Error creating connection: %d\n", status);
+        apr_pool_destroy(pool);
+        exit(1);
+    }
 
     handler_ctx.requests_outstanding = 0;
     handler_ctx.print_headers = print_headers;
