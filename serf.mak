@@ -189,10 +189,10 @@ $(INTDIR)\serf_response.exe: $(INTDIR)\serf_response.obj $(STATIC_LIB)
   $(LIB32) /DEBUG /OUT:$@ $** $(LIB32_FLAGS)
 
 $(INTDIR)\serf_get.exe: $(INTDIR)\serf_get.obj $(STATIC_LIB)
-  $(LIB32) /OUT:$@ $** $(LIB32_FLAGS)
+  $(LIB32) /DEBUG /OUT:$@ $** $(LIB32_FLAGS)
 
 $(INTDIR)\serf_request.exe: $(INTDIR)\serf_request.obj $(STATIC_LIB)
-  $(LIB32) /OUT:$@ $** $(LIB32_FLAGS)
+  $(LIB32) /DEBUG /OUT:$@ $** $(LIB32_FLAGS)
 
 $(INTDIR)\test_all.exe: $(TEST_OBJS) $(STATIC_LIB)
   $(LIB32) /DEBUG /OUT:$@ $** $(LIB32_FLAGS)
