@@ -93,9 +93,9 @@ static serf_bucket_t* accept_response(serf_request_t *request,
 
 typedef struct {
 #if APR_MAJOR_VERSION > 0
-    apr_uint32_t requests_outstanding;
+    apr_uint32_t completed_requests;
 #else
-    apr_atomic_t requests_outstanding;
+    apr_atomic_t completed_requests;
 #endif
     int print_headers;
 
@@ -163,7 +163,7 @@ static apr_status_t handle_response(serf_request_t *request,
                 }
             }
 
-            apr_atomic_dec32(&ctx->requests_outstanding);
+            apr_atomic_inc32(&ctx->completed_requests);
             return APR_EOF;
         }
 
@@ -222,8 +222,6 @@ static apr_status_t setup_request(serf_request_t *request,
     if (ctx->authn != NULL) {
         serf_bucket_headers_setn(hdrs_bkt, "Authorization", ctx->authn);
     }
-
-    apr_atomic_inc32(&(ctx->requests_outstanding));
 
     *acceptor = ctx->acceptor;
     *acceptor_baton = ctx->acceptor_baton;
@@ -406,7 +404,7 @@ int main(int argc, const char **argv)
         exit(1);
     }
 
-    handler_ctx.requests_outstanding = 0;
+    handler_ctx.completed_requests = 0;
     handler_ctx.print_headers = print_headers;
 
     handler_ctx.host = url.hostinfo;
@@ -437,7 +435,7 @@ int main(int argc, const char **argv)
             apr_pool_destroy(pool);
             exit(1);
         }
-        if (!apr_atomic_read32(&handler_ctx.requests_outstanding)) {
+        if (apr_atomic_read32(&handler_ctx.completed_requests) >= count) {
             break;
         }
         /* Debugging purposes only! */
