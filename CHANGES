@@ -1,4 +1,4 @@
-Serf 0.3.1 []
+Serf 0.3.1 [2010-02-14, r1320]
   Fix loss of error on request->setup() callback. (Issue 47)
   Support APR 2.x. (Issue 48)
   Fixed slowdown in aggregate bucket with millions of child buckets.
