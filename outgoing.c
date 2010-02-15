@@ -1308,9 +1308,9 @@ SERF_DECLARE(serf_bucket_t *) serf_request_bucket_request_create(
     if (ctx->proxy_address && conn->host_url)
         serf_bucket_request_set_root(req_bkt, conn->host_url);
 
-    if (conn->host_info.hostname)
+    if (conn->host_info.hostinfo)
         serf_bucket_headers_setn(hdrs_bkt, "Host",
-                                 conn->host_info.hostname);
+                                 conn->host_info.hostinfo);
 
     /* Setup server authorization headers */
     if (ctx->authn_info.scheme)
