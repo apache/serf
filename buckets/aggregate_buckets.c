@@ -149,11 +149,11 @@ SERF_DECLARE(void) serf_bucket_aggregate_append(
     */
     if (ctx->list == NULL) {
         ctx->list = new_list;
-	ctx->last = new_list;
+        ctx->last = new_list;
     }
     else {
         ctx->last->next = new_list;
-	ctx->last = ctx->last->next;
+        ctx->last = ctx->last->next;
     }
 }
 
