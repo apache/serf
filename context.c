@@ -1447,9 +1447,9 @@ SERF_DECLARE(serf_bucket_t *) serf_request_bucket_request_create(
     if (request->conn->ctx->proxy_address && request->conn->host_url)
       serf_bucket_request_set_root(req_bkt, request->conn->host_url);
 
-    if (request->conn->host_info.hostname)
+    if (request->conn->host_info.hostinfo)
       serf_bucket_headers_setn(hdrs_bkt, "Host",
-                               request->conn->host_info.hostname);
+                               request->conn->host_info.hostinfo);
 
     return req_bkt;
 }
