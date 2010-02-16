@@ -73,6 +73,7 @@ SERF_DECLARE(serf_bucket_t *) serf_bucket_aggregate_create(
 
     ctx = serf_bucket_mem_alloc(allocator, sizeof(*ctx));
     ctx->list = NULL;
+    ctx->last = NULL;
     ctx->done = NULL;
     ctx->snapshot = 0;
     ctx->hold_open = NULL;
