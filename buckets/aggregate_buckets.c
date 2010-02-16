@@ -65,19 +65,29 @@ SERF_DECLARE(void) serf_bucket_aggregate_cleanup(
 
     cleanup_aggregate(ctx, allocator);
 }
-  
-SERF_DECLARE(serf_bucket_t *) serf_bucket_aggregate_create(
-    serf_bucket_alloc_t *allocator)
+
+static aggregate_context_t *create_aggregate(serf_bucket_alloc_t *allocator)
 {
     aggregate_context_t *ctx;
 
     ctx = serf_bucket_mem_alloc(allocator, sizeof(*ctx));
+
     ctx->list = NULL;
     ctx->last = NULL;
     ctx->done = NULL;
     ctx->snapshot = 0;
     ctx->hold_open = NULL;
     ctx->hold_open_baton = NULL;
+
+    return ctx;
+}
+
+SERF_DECLARE(serf_bucket_t *) serf_bucket_aggregate_create(
+    serf_bucket_alloc_t *allocator)
+{
+    aggregate_context_t *ctx;
+
+    ctx = create_aggregate(allocator);
 
     return serf_bucket_create(&serf_bucket_type_aggregate, allocator, ctx);
 }
@@ -102,14 +112,8 @@ SERF_DECLARE(void) serf_bucket_aggregate_become(serf_bucket_t *bucket)
 {
     aggregate_context_t *ctx;
 
-    ctx = serf_bucket_mem_alloc(bucket->allocator, sizeof(*ctx));
-    ctx->list = NULL;
-    ctx->last = NULL;
-    ctx->done = NULL;
-    ctx->snapshot = 0;
-    ctx->hold_open = NULL;
-    ctx->hold_open_baton = NULL;
-  
+    ctx = create_aggregate(bucket->allocator);
+
     bucket->type = &serf_bucket_type_aggregate;
     bucket->data = ctx;
 
