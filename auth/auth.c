@@ -72,7 +72,7 @@ static const serf__authn_scheme_t serf_authn_schemes[] = {
         serf__setup_request_digest_auth,
         serf__validate_response_digest_auth,
     },
-#ifdef SERF_HAVE_GSSAPI
+#ifdef SERF_HAVE_KERB
     {
         401,
         "Negotiate",
@@ -82,28 +82,6 @@ static const serf__authn_scheme_t serf_authn_schemes[] = {
         serf__handle_kerb_auth,
         serf__setup_request_kerb_auth,
         serf__validate_response_kerb_auth,
-    },
-#endif
-#ifdef WIN32
-    {
-        401,
-        "NTLM",
-        SERF_AUTHN_NTLM,
-        serf__init_sspi,
-        serf__init_sspi_connection,
-        serf__handle_sspi_auth,
-        serf__setup_request_sspi_auth,
-        serf__validate_response_sspi_auth,
-    },
-    {
-        407,
-        "NTLM",
-        SERF_AUTHN_NTLM,
-        serf__init_sspi,
-        serf__init_sspi_connection,
-        serf__handle_sspi_auth,
-        serf__setup_request_sspi_auth,
-        serf__validate_response_sspi_auth,
     },
 #endif
     /* ADD NEW AUTHENTICATION IMPLEMENTATIONS HERE (as they're written) */

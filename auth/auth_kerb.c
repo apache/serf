@@ -13,7 +13,9 @@
  * limitations under the License.
  */
 
-#ifdef SERF_HAVE_GSSAPI
+#include "auth_kerb.h"
+
+#ifdef SERF_HAVE_KERB
 
 /*** Kerberos authentication ***/
 
@@ -24,7 +26,6 @@
 #include <apr.h>
 #include <apr_base64.h>
 #include <apr_strings.h>
-#include <gssapi/gssapi.h>
 
 /** These functions implements Kerberos authentication, using GSS-API
  *  (RFC 2743). The message-exchange is documented in RFC 4559.
@@ -104,52 +105,14 @@ typedef struct
     apr_pool_t *pool;
 
     /* GSSAPI context */
-    gss_ctx_id_t gss_ctx;
+    serf__kerb_context_t *gss_ctx;
 
     /* Current state of the authentication cycle. */
     gss_api_auth_state state;
 
-    /* Mechanism used to authenticate, should be Kerberos. */
-    gss_OID mech;
-
     const char *header;
     const char *value;
 } gss_authn_info_t;
-
-static apr_status_t
-create_gss_api_error(OM_uint32 maj_err, OM_uint32 min_err, apr_pool_t *pool)
-{
-    OM_uint32 message_ctx = 0;
-    OM_uint32 min_stat;
-    char *maj_err_str = NULL, *min_err_str = NULL;
-
-    maj_err_str = apr_psprintf(pool, "major status: %8.8x", maj_err);
-    do {
-        gss_buffer_desc err_str;
-        if (GSS_ERROR(gss_display_status(&min_stat, maj_err, GSS_C_GSS_CODE,
-                                         GSS_C_NO_OID, &message_ctx, &err_str)))
-            break;
-        maj_err_str = apr_pstrcat(pool, maj_err_str, ": ",
-                                  (char *)err_str.value, NULL);
-        gss_release_buffer(&min_stat, &err_str);
-    } while (message_ctx);
-
-    message_ctx = 0;
-    min_err_str = apr_psprintf(pool, "minor status: %8.8x", min_err);
-    do {
-        gss_buffer_desc err_str;
-        if (GSS_ERROR(gss_display_status(&min_stat, min_err, GSS_C_MECH_CODE,
-                                         GSS_C_NO_OID, &message_ctx, &err_str)))
-            break;
-        min_err_str = apr_pstrcat(pool, min_err_str, ": ",
-                                  (char *)err_str.value, NULL);
-        gss_release_buffer(&min_stat, &err_str);
-    } while (message_ctx);
-
-    /* Initialization of the GSSAPI context failed.
-       See min_err_str and maj_err_str for more information. */
-    return SERF_ERROR_AUTHN_INITALIZATION_FAILED;
-}
 
 /* On the initial 401 response of the server, request a session key from
    the Kerberos KDC to pass to the server, proving that we are who we
@@ -161,69 +124,47 @@ gss_api_get_credentials(char *token, apr_size_t token_len,
                         const char **buf, apr_size_t *buf_len,
                         gss_authn_info_t *gss_info)
 {
-    gss_buffer_desc input_buf = GSS_C_EMPTY_BUFFER;
-    gss_buffer_desc output_buf;
-    OM_uint32 min_stat, maj_stat;
-    gss_name_t host_gss_name;
-    gss_buffer_desc bufdesc;
+    serf__kerb_buffer_t input_buf;
+    serf__kerb_buffer_t output_buf;
     apr_status_t status = APR_SUCCESS;
-
-    /* Get the name for the HTTP service at the target host. */
-    bufdesc.value = apr_psprintf(gss_info->pool, KRB_HTTP_SERVICE "@%s",
-                                 hostname);
-    bufdesc.length = strlen(bufdesc.value);
-    maj_stat = gss_import_name (&min_stat, &bufdesc, GSS_C_NT_HOSTBASED_SERVICE,
-                                &host_gss_name);
-    if(GSS_ERROR(maj_stat)) {
-        return create_gss_api_error(maj_stat, min_stat, gss_info->pool);
-    }
 
     /* If the server sent us a token, pass it to gss_init_sec_token for
        validation. */
     if (token) {
         input_buf.value = token;
         input_buf.length = token_len;
+    } else {
+        input_buf.value = 0;
+        input_buf.length = 0;
     }
 
     /* Establish a security context to the server. */
-    maj_stat = gss_init_sec_context
-        (&min_stat,                 /* minor_status */
-         GSS_C_NO_CREDENTIAL,       /* XXXXX claimant_cred_handle */
-         &gss_info->gss_ctx,        /* gssapi context handle */
-         host_gss_name,             /* HTTP@server name */
-         gss_info->mech,            /* mech_type (0 ininitially */
-         GSS_C_MUTUAL_FLAG,         /* ensure the peer authenticates itself */
-         0,                         /* default validity period */
-         GSS_C_NO_CHANNEL_BINDINGS, /* do not use channel bindings */
-         &input_buf,                /* server token, initially empty */
-         &gss_info->mech,           /* actual mech type */
-         &output_buf,               /* output_token */
-         NULL,                      /* ret_flags */
-         NULL                       /* not interested in remaining validity */
-         );
+    status = serf__kerb_init_sec_context
+        (&gss_info->gss_ctx,
+         KRB_HTTP_SERVICE, hostname,
+         &input_buf,
+         &output_buf,
+         gss_info->pool
+        );
 
-    if(GSS_ERROR(maj_stat)) {
-        switch(maj_stat) {
-        case GSS_S_COMPLETE:
-            gss_info->state = gss_api_auth_completed;
-            break;
-        case GSS_S_CONTINUE_NEEDED:
-            gss_info->state = gss_api_auth_in_progress;
-            break;
-        default:
-            status = create_gss_api_error(maj_stat, min_stat, gss_info->pool);
-            goto cleanup;
-        }
+    switch(status) {
+    case APR_SUCCESS:
+        gss_info->state = gss_api_auth_completed;
+        break;
+    case APR_EAGAIN:
+        gss_info->state = gss_api_auth_in_progress;
+        status = APR_SUCCESS;
+        break;
+    default:
+        status = SERF_ERROR_AUTHN_FAILED;
+        break;
     }
 
     /* Return the session key to our caller. */
     *buf = apr_pmemdup(gss_info->pool, output_buf.value, output_buf.length);
     *buf_len = output_buf.length;
 
-    gss_release_buffer(&min_stat, &output_buf);
-
- cleanup:
-    gss_release_name(&min_stat, &host_gss_name);
+    serf__kerb_release_buffer(&output_buf);
 
     return status;
 }
@@ -305,12 +246,13 @@ static apr_status_t
 cleanup_gss_info(void *data)
 {
     gss_authn_info_t *gss_info = data;
-    OM_uint32 min_stat;
 
-    if (gss_info->gss_ctx != GSS_C_NO_CONTEXT) {
-        if (gss_delete_sec_context(&min_stat, &gss_info->gss_ctx,
-                                   GSS_C_NO_BUFFER) == GSS_S_FAILURE)
+    if (gss_info->gss_ctx != SERF__KERB_NO_CONTEXT) {
+        if (serf__kerb_delete_sec_context(gss_info->gss_ctx)) {
             return APR_EGENERAL;
+        }
+
+        gss_info->gss_ctx = SERF__KERB_NO_CONTEXT;
     }
 
     return APR_SUCCESS;
@@ -328,7 +270,7 @@ serf__init_kerb_connection(int code,
     gss_info = apr_pcalloc(pool, sizeof(*gss_info));
     gss_info->pool = conn->pool;
     gss_info->state = gss_api_auth_not_started;
-    gss_info->gss_ctx = GSS_C_NO_CONTEXT;
+    gss_info->gss_ctx = SERF__KERB_NO_CONTEXT;
     if (code == 401) {
         conn->authn_baton = gss_info;
     } else {

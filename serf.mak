@@ -103,7 +103,8 @@ LIB32_OBJS= \
     "$(INTDIR)\auth_basic.obj" \
     "$(INTDIR)\auth_digest.obj" \
     "$(INTDIR)\auth_kerb.obj" \
-    "$(INTDIR)\auth_sspi.obj" \
+    "$(INTDIR)\auth_kerb_gss.obj" \
+    "$(INTDIR)\auth_kerb_sspi.obj" \
     "$(INTDIR)\context.obj" \
     "$(INTDIR)\allocator.obj" \
     "$(INTDIR)\barrier_buckets.obj" \
