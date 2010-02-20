@@ -302,13 +302,13 @@ serf__init_kerb(int code,
 /* Cleans the gssapi context object, when the pool used to create it gets
    cleared or destroyed. */
 static apr_status_t
-cleanup_gss_ctx(void *data)
+cleanup_gss_info(void *data)
 {
-    gss_ctx_id_t gss_ctx = data;
+    gss_authn_info_t *gss_info = data;
     OM_uint32 min_stat;
 
-    if (gss_ctx != GSS_C_NO_CONTEXT) {
-        if (gss_delete_sec_context(&min_stat, &gss_ctx,
+    if (gss_info->gss_ctx != GSS_C_NO_CONTEXT) {
+        if (gss_delete_sec_context(&min_stat, &gss_info->gss_ctx,
                                    GSS_C_NO_BUFFER) == GSS_S_FAILURE)
             return APR_EGENERAL;
     }
@@ -335,8 +335,8 @@ serf__init_kerb_connection(int code,
         conn->proxy_authn_baton = gss_info;
     }
 
-    apr_pool_cleanup_register(gss_info->pool, gss_info->gss_ctx,
-                              cleanup_gss_ctx,
+    apr_pool_cleanup_register(gss_info->pool, gss_info,
+                              cleanup_gss_info,
                               apr_pool_cleanup_null);
 
     /* Make serf send the initial requests one by one */
