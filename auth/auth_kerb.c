@@ -235,7 +235,7 @@ static apr_status_t
 do_auth(int code,
         gss_authn_info_t *gss_info,
         serf_connection_t *conn,
-        const char *auth_attr,
+        const char *auth_hdr,
         apr_pool_t *pool)
 {
     serf_context_t *ctx = conn->ctx;
@@ -254,8 +254,8 @@ do_auth(int code,
 
        Read this base64 value, decode it and validate it so we're sure the server
        is who we expect it to be. */
-    if (auth_attr)
-        space = strchr(auth_attr, ' ');
+    if (auth_hdr)
+        space = strchr(auth_hdr, ' ');
 
     if (space) {
         token = apr_palloc(pool, apr_base64_decode_len(space + 1));
@@ -362,7 +362,7 @@ serf__handle_kerb_auth(int code,
     return do_auth(code,
                    gss_info,
                    request->conn,
-                   auth_attr,
+                   auth_hdr,
                    pool);
 }
 
@@ -401,16 +401,16 @@ serf__validate_response_kerb_auth(int code,
     gss_authn_info_t *gss_info = (code == 401) ? conn->authn_baton :
         conn->proxy_authn_baton;
     serf_bucket_t *hdrs;
-    const char *auth_attr;
+    const char *auth_hdr;
 
     hdrs = serf_bucket_response_get_headers(response);
-    auth_attr = serf_bucket_headers_get(hdrs, "WWW-Authenticate");
+    auth_hdr = serf_bucket_headers_get(hdrs, "WWW-Authenticate");
 
     if (gss_info->state != gss_api_auth_completed) {
         return do_auth(code,
                        gss_info,
                        conn,
-                       auth_attr,
+                       auth_hdr,
                        pool);
     }
 
