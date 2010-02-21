@@ -17,8 +17,10 @@
 
 #ifdef SERF_USE_GSSAPI
 #include <apr_strings.h>
+#include <gssapi/gssapi.h>
+#include <stdlib.h>
 
-struct serf__spnego_context_t
+struct serf__kerb_context_t
 {
     /* GSSAPI context */
     gss_ctx_id_t gss_ctx;
@@ -28,11 +30,11 @@ struct serf__spnego_context_t
 };
 
 apr_status_t
-serf__spnego_init_sec_context(serf__spnego_context_t **ctx_p,
+serf__kerb_init_sec_context(serf__kerb_context_t **ctx_p,
                               const char *service,
                               const char *hostname,
-                              serf__spnego_buffer_t *input_buf,
-                              serf__spnego_buffer_t *output_buf,
+                              serf__kerb_buffer_t *input_buf,
+                              serf__kerb_buffer_t *output_buf,
                               apr_pool_t *scratch_pool
                               )
 {
@@ -41,8 +43,7 @@ serf__spnego_init_sec_context(serf__spnego_context_t **ctx_p,
     OM_uint32 gss_min_stat, gss_maj_stat;
     gss_name_t host_gss_name;
     gss_buffer_desc bufdesc;
-    apr_status_t status = APR_SUCCESS;
-    serf__spnego_context_t *ctx = *ctx_p;
+    serf__kerb_context_t *ctx = *ctx_p;
 
     /* Get the name for the HTTP service at the target host. */
     bufdesc.value = apr_pstrcat(scratch_pool, service, "@", hostname, NULL);
@@ -96,7 +97,7 @@ serf__spnego_init_sec_context(serf__spnego_context_t **ctx_p,
     }
 }
 
-apr_status_t serf__kerb_delete_sec_context(serf__spnego_context_t *ctx)
+apr_status_t serf__kerb_delete_sec_context(serf__kerb_context_t *ctx)
 {
     OM_uint32 min_stat;
 
@@ -111,7 +112,7 @@ apr_status_t serf__kerb_delete_sec_context(serf__spnego_context_t *ctx)
     return APR_SUCCESS;
 }
 
-apr_status_t serf__kerb_release_buffer(serf__spnego_buffer_t *buf)
+apr_status_t serf__kerb_release_buffer(serf__kerb_buffer_t *buf)
 {
     OM_uint32 min_stat;
     gss_buffer_desc gss_buf;

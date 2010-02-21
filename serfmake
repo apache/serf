@@ -38,6 +38,7 @@ LIB_FILES = [
   ('auth', 'auth_basic'),
   ('auth', 'auth_digest'),
   ('auth', 'auth_kerb'),
+  ('auth', 'auth_kerb_gss'),
   ]
 
 TEST_DEPS = [
