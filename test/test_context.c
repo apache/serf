@@ -489,7 +489,7 @@ static void test_serf_setup_proxy(CuTest *tc)
         {SERVER_RECV,
          "GET http://localhost:" SERV_PORT_STR " HTTP/1.1" CRLF\
          "Transfer-Encoding: chunked" CRLF\
-         "Host: localhost" CRLF\
+         "Host: localhost:" SERV_PORT_STR CRLF\
          CRLF\
          "1" CRLF\
          "1" CRLF\
