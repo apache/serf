@@ -140,10 +140,11 @@ gss_api_get_credentials(char *token, apr_size_t token_len,
 
     /* Establish a security context to the server. */
     status = serf__kerb_init_sec_context
-        (&gss_info->gss_ctx,
+        (gss_info->gss_ctx,
          KRB_HTTP_SERVICE, hostname,
          &input_buf,
          &output_buf,
+         gss_info->pool,
          gss_info->pool
         );
 
@@ -161,10 +162,8 @@ gss_api_get_credentials(char *token, apr_size_t token_len,
     }
 
     /* Return the session key to our caller. */
-    *buf = apr_pmemdup(gss_info->pool, output_buf.value, output_buf.length);
+    *buf = output_buf.value;
     *buf_len = output_buf.length;
-
-    serf__kerb_release_buffer(&output_buf);
 
     return status;
 }
@@ -240,24 +239,6 @@ serf__init_kerb(int code,
     return APR_SUCCESS;
 }
 
-/* Cleans the gssapi context object, when the pool used to create it gets
-   cleared or destroyed. */
-static apr_status_t
-cleanup_gss_info(void *data)
-{
-    gss_authn_info_t *gss_info = data;
-
-    if (gss_info->gss_ctx != SERF__KERB_NO_CONTEXT) {
-        if (serf__kerb_delete_sec_context(gss_info->gss_ctx)) {
-            return APR_EGENERAL;
-        }
-
-        gss_info->gss_ctx = SERF__KERB_NO_CONTEXT;
-    }
-
-    return APR_SUCCESS;
-}
-
 /* A new connection is created to a server that's known to use
    Kerberos. */
 apr_status_t
@@ -266,20 +247,23 @@ serf__init_kerb_connection(int code,
                            apr_pool_t *pool)
 {
     gss_authn_info_t *gss_info;
+    apr_status_t status;
 
     gss_info = apr_pcalloc(pool, sizeof(*gss_info));
     gss_info->pool = conn->pool;
     gss_info->state = gss_api_auth_not_started;
-    gss_info->gss_ctx = SERF__KERB_NO_CONTEXT;
+    status = serf__kerb_create_sec_context(&gss_info->gss_ctx, pool,
+                                           gss_info->pool);
+
+    if (status) {
+        return status;
+    }
+
     if (code == 401) {
         conn->authn_baton = gss_info;
     } else {
         conn->proxy_authn_baton = gss_info;
     }
-
-    apr_pool_cleanup_register(gss_info->pool, gss_info,
-                              cleanup_gss_info,
-                              apr_pool_cleanup_null);
 
     /* Make serf send the initial requests one by one */
     serf_connection_set_max_outstanding_requests(conn, 1);

@@ -29,13 +29,74 @@ struct serf__kerb_context_t
     BOOL initalized;
 };
 
+/* Cleans the SSPI context object, when the pool used to create it gets
+   cleared or destroyed. */
+static apr_status_t
+cleanup_ctx(void *data)
+{
+    serf__kerb_context_t *ctx = data;
+
+    if (SecIsValidHandle(&ctx->sspi_context)) {
+        DeleteSecurityContext(&ctx->sspi_context);
+        SecInvalidateHandle(&ctx->sspi_context);
+    }
+
+    if (SecIsValidHandle(&ctx->sspi_credentials)) {
+        FreeCredentialsHandle(&ctx->sspi_context);
+        SecInvalidateHandle(&ctx->sspi_context);
+    }
+
+    return APR_SUCCESS;
+}
+
+static apr_status_t
+cleanup_sec_buffer(void *data)
+{
+    FreeContextBuffer(data);
+
+    return APR_SUCCESS;
+}
+
 apr_status_t
-serf__kerb_init_sec_context(serf__kerb_context_t **ctx_p,
+serf__kerb_create_sec_context(serf__kerb_context_t **ctx_p,
+                              apr_pool_t *scratch_pool,
+                              apr_pool_t *result_pool)
+{
+    SECURITY_STATUS sspi_status;
+    serf__kerb_context_t *ctx;
+
+    ctx = apr_pcalloc(result_pool, sizeof(*ctx));
+
+    SecInvalidateHandle(&ctx->sspi_context);
+    SecInvalidateHandle(&ctx->sspi_credentials);
+    ctx->initalized = FALSE;
+
+    apr_pool_cleanup_register(result_pool, ctx,
+                              cleanup_ctx,
+                              apr_pool_cleanup_null);
+
+    sspi_status = AcquireCredentialsHandle(
+        NULL, "Negotiate", SECPKG_CRED_OUTBOUND,
+        NULL, NULL, NULL, NULL,
+        &ctx->sspi_credentials, NULL);
+
+    if (FAILED(sspi_status)) {
+        return APR_EGENERAL;
+    }
+
+    *ctx_p = ctx;
+
+    return APR_SUCCESS;
+}
+
+apr_status_t
+serf__kerb_init_sec_context(serf__kerb_context_t *ctx,
                             const char *service,
                             const char *hostname,
                             serf__kerb_buffer_t *input_buf,
                             serf__kerb_buffer_t *output_buf,
-                            apr_pool_t *scratch_pool
+                            apr_pool_t *scratch_pool,
+                            apr_pool_t *result_pool
                             )
 {
     SECURITY_STATUS status;
@@ -44,26 +105,7 @@ serf__kerb_init_sec_context(serf__kerb_context_t **ctx_p,
     SecBufferDesc sspi_in_buffer_desc;
     SecBuffer sspi_out_buffer;
     SecBufferDesc sspi_out_buffer_desc;
-    serf__kerb_context_t *context = *ctx_p;
     char *target_name;
-
-    if (context == SERF__KERB_NO_CONTEXT) {
-        context = malloc(sizeof(*context));
-        SecInvalidateHandle(&context->sspi_context);
-        SecInvalidateHandle(&context->sspi_credentials);
-        context->initalized = FALSE;
-
-        status = AcquireCredentialsHandle(
-            NULL, "Negotiate", SECPKG_CRED_OUTBOUND,
-            NULL, NULL, NULL, NULL,
-            &context->sspi_credentials, NULL);
-
-        if (FAILED(status)) {
-            return APR_EGENERAL;
-        }
-
-        *ctx_p = context;
-    }
 
     target_name = apr_pstrcat(scratch_pool, service, "/", hostname, NULL);
 
@@ -86,8 +128,8 @@ serf__kerb_init_sec_context(serf__kerb_context_t **ctx_p,
     sspi_out_buffer_desc.ulVersion = SECBUFFER_VERSION;
 
     status = InitializeSecurityContext(
-        &context->sspi_credentials,
-        context->initalized ? &context->sspi_context : NULL,
+        &ctx->sspi_credentials,
+        ctx->initalized ? &ctx->sspi_context : NULL,
         target_name,
         ISC_REQ_ALLOCATE_MEMORY
         | ISC_REQ_MUTUAL_AUTH
@@ -96,18 +138,24 @@ serf__kerb_init_sec_context(serf__kerb_context_t **ctx_p,
         SECURITY_NETWORK_DREP,
         &sspi_in_buffer_desc,
         0,                          /* Reserved2 */
-        &context->sspi_context,
+        &ctx->sspi_context,
         &sspi_out_buffer_desc,
         &actual_attr,
         NULL);
 
-    context->initalized = TRUE;
+    if (sspi_out_buffer.cbBuffer > 0) {
+        apr_pool_cleanup_register(result_pool, sspi_out_buffer.pvBuffer,
+                                  cleanup_sec_buffer,
+                                  apr_pool_cleanup_null);
+    }
+
+    ctx->initalized = TRUE;
 
     /* Finish authentication if SSPI requires so. */
     if (status == SEC_I_COMPLETE_NEEDED
         || status == SEC_I_COMPLETE_AND_CONTINUE)
     {
-        CompleteAuthToken(&context->sspi_context, &sspi_out_buffer_desc);
+        CompleteAuthToken(&ctx->sspi_context, &sspi_out_buffer_desc);
     }
 
     output_buf->value = sspi_out_buffer.pvBuffer;
@@ -125,36 +173,6 @@ serf__kerb_init_sec_context(serf__kerb_context_t **ctx_p,
     default:
         return APR_EGENERAL;
     }
-}
-
-apr_status_t
-serf__kerb_release_buffer(serf__kerb_buffer_t *buf)
-{
-    if (buf->length > 0 && buf->value != NULL) {
-        FreeContextBuffer(buf->value);
-        buf->length = 0;
-        buf->value = NULL;
-    }
-
-    return APR_SUCCESS;
-}
-
-apr_status_t
-serf__kerb_delete_sec_context(serf__kerb_context_t *ctx)
-{
-    if (SecIsValidHandle(&ctx->sspi_context)) {
-        DeleteSecurityContext(&ctx->sspi_context);
-        SecInvalidateHandle(&ctx->sspi_context);
-    }
-
-    if (SecIsValidHandle(&ctx->sspi_credentials)) {
-        FreeCredentialsHandle(&ctx->sspi_context);
-        SecInvalidateHandle(&ctx->sspi_context);
-    }
-
-    free(ctx);
-
-    return APR_SUCCESS;
 }
 
 #endif /* SERF_USE_SSPI */
