@@ -72,7 +72,7 @@ static const serf__authn_scheme_t serf_authn_schemes[] = {
         serf__setup_request_digest_auth,
         serf__validate_response_digest_auth,
     },
-#ifdef SERF_HAVE_GSSAPI
+#ifdef SERF_HAVE_KERB
     {
         401,
         "Negotiate",
@@ -84,7 +84,6 @@ static const serf__authn_scheme_t serf_authn_schemes[] = {
         serf__validate_response_kerb_auth,
     },
 #endif
-
     /* ADD NEW AUTHENTICATION IMPLEMENTATIONS HERE (as they're written) */
 
     /* sentinel */

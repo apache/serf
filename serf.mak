@@ -90,7 +90,7 @@ ZLIB_LIBS = "$(ZLIB_SRC)\zlibdll.lib"
 
 
 # Exclude stuff we don't need from the Win32 headers
-WIN32_DEFS = /D WIN32 /D WIN32_LEAN_AND_MEAN /D NOUSER /D NOGDI /D NONLS /D NOCRYPT
+WIN32_DEFS = /D WIN32 /D WIN32_LEAN_AND_MEAN /D NOUSER /D NOGDI /D NONLS /D NOCRYPT /D SERF_HAVE_SSPI
 
 CPP=cl.exe
 CPP_PROJ = /c /nologo $(CFLAGS) $(WIN32_DEFS) $(EXPAT_FLAGS) $(APR_FLAGS) $(APRUTIL_FLAGS) $(OPENSSL_FLAGS) $(ZLIB_FLAGS) /Fo"$(INTDIR)\\" /Fd"$(INTDIR)\\"
@@ -103,6 +103,8 @@ LIB32_OBJS= \
     "$(INTDIR)\auth_basic.obj" \
     "$(INTDIR)\auth_digest.obj" \
     "$(INTDIR)\auth_kerb.obj" \
+    "$(INTDIR)\auth_kerb_gss.obj" \
+    "$(INTDIR)\auth_kerb_sspi.obj" \
     "$(INTDIR)\context.obj" \
     "$(INTDIR)\allocator.obj" \
     "$(INTDIR)\barrier_buckets.obj" \
@@ -131,6 +133,8 @@ LIB32_OBJS = $(LIB32_OBJS) "$(OPENSSL_SRC)\out32dll\libeay32.lib" \
 !ENDIF
 
 LIB32_OBJS = $(LIB32_OBJS) $(APR_LIBS) $(APRUTIL_LIBS) $(ZLIB_LIBS) 
+
+SYS_LIBS = secur32.lib
 
 TEST_OBJS = \
     "$(INTDIR)\CuTest.obj" \
@@ -161,7 +165,7 @@ CHECK: INTDIR TESTS
   
 "$(STATIC_LIB)": INTDIR $(LIB32_OBJS)
   $(LIB32) -lib @<<
-    $(LIB32_FLAGS) $(LIB32_OBJS) /OUT:$@
+    $(LIB32_FLAGS) $(LIB32_OBJS) $(SYS_LIBS) /OUT:$@
 <<
 
 

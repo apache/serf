@@ -16,6 +16,8 @@
 #ifndef AUTH_H
 #define AUTH_H
 
+#include "auth_kerb.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -69,7 +71,7 @@ apr_status_t serf__validate_response_digest_auth(int code,
                                                  serf_bucket_t *response,
                                                  apr_pool_t *pool);
 
-#ifdef SERF_HAVE_GSSAPI
+#ifdef SERF_HAVE_KERB
 /** Kerberos authentication **/
 apr_status_t serf__init_kerb(int code,
                              serf_context_t *ctx,
@@ -94,7 +96,7 @@ apr_status_t serf__validate_response_kerb_auth(int code,
                                                serf_request_t *request,
                                                serf_bucket_t *response,
                                                apr_pool_t *pool);
-#endif /* SERF_HAVE_GSSAPI */
+#endif /* SERF_HAVE_SPNEGO */
 
 #ifdef __cplusplus
 }
