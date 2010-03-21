@@ -306,6 +306,10 @@ serf__setup_request_kerb_auth(int code,
     if (gss_info && gss_info->header && gss_info->value) {
         serf_bucket_headers_setn(hdrs_bkt, gss_info->header,
                                  gss_info->value);
+
+        /* We should send each token only once. */
+        gss_info->header = NULL;
+        gss_info->value = NULL;
         return APR_SUCCESS;
     }
 
