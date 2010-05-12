@@ -398,7 +398,7 @@ SERF_DECLARE(apr_status_t) serf_listener_create(
     const char *host,
     apr_uint16_t port,
     void *accept_baton,
-    serf_accept_client_t accept,
+    serf_accept_client_t accept_func,
     apr_pool_t *pool);
 
 typedef apr_status_t (*serf_incoming_request_cb_t)(serf_context_t *ctx,
