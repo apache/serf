@@ -2,9 +2,10 @@
 
 REPOS="http://serf.googlecode.com/svn/trunk/"
 
-CONTENTS="[CLMNR]* buckets build buildconf config* context.c \
-          design-guide.txt *.h serf.mak serfmake test"
-
+if ! test -e serf.h ; then
+  echo "$0 must be run from trunk"
+  exit 1
+fi
 
 major="`sed -n '/SERF_MAJOR_VERSION/s/[^0-9]*//p' serf.h`"
 minor="`sed -n '/SERF_MINOR_VERSION/s/[^0-9]*//p' serf.h`"
@@ -13,8 +14,9 @@ patch="`sed -n '/SERF_PATCH_VERSION/s/[^0-9]*//p' serf.h`"
 version="serf-${major}.${minor}.${patch}"
 
 work="${TMPDIR}/serf-dist.$$"
+short='${TMPDIR}'/serf-dist.$$
 
-echo "Preparing $version in $work ..."
+echo "Preparing $version in $short ..."
 
 mkdir $work
 cd $work
@@ -30,19 +32,17 @@ if ! ./buildconf $* ; then
   exit 1
 fi
 
+# Remove anything that should not be in the distribution
+echo "Removing from release: dist.sh"
+rm dist.sh
+
 cd $work
 
 tarball="${work}/${version}.tar"
-tar --no-recursion -cf ${tarball} ${version}
-for item in ${CONTENTS} ; do
-  if ! tar --append -f ${tarball} ${version}/${item} ; then
-    echo "${tarball} failed."
-    exit 1
-  fi
-done
+tar -cf ${tarball} ${version}
 
 bzip2 --keep ${tarball}
-echo "${tarball}.bz2 ready."
+echo "${short}/${version}.tar.bz2 ready."
 
 gzip -9 ${tarball}
-echo "${tarball}.gz ready."
+echo "${short}/${version}.tar.gz ready."
