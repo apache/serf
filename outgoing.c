@@ -440,6 +440,8 @@ static apr_status_t reset_connection(serf_connection_t *conn,
     conn->dirty_conn = 1;
     conn->ctx->dirty_pollset = 1;
 
+    conn->status = APR_SUCCESS;
+
     /* Let our context know that we've 'reset' the socket already. */
     conn->seen_in_pollset |= APR_POLLHUP;
 
