@@ -1,4 +1,4 @@
-Serf 0.4.0 [2010-05-13, ]
+Serf 0.4.0 [2010-05-13, r1353]
   Provide authn framework, supporting Basic, Digest, Kerberos (SSPI, GSS),
     along with proxy authn using Basic or Digest
   Added experimental listener framework, along with test_server.c
