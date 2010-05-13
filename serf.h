@@ -1026,6 +1026,18 @@ SERF_DECLARE(void) serf_debug__bucket_alloc_check(serf_bucket_alloc_t *allocator
    || ((major) == SERF_MAJOR_VERSION && (minor) == SERF_MINOR_VERSION && \
             (patch) <= SERF_PATCH_VERSION))
 
+
+/**
+ * Returns the version of the library the application has linked/loaded.
+ * Values are returned in @a major, @a minor, and @a patch.
+ *
+ * Applications will want to use this function to verify compatibility,
+ * expecially while serf has not reached a 1.0 milestone. APIs and
+ * semantics may change drastically until the library hits 1.0.
+ */
+SERF_DECLARE(void) serf_lib_version(int *major, int *minor, int *patch);
+
+
 #ifdef __cplusplus
 }
 #endif

@@ -292,3 +292,12 @@ SERF_DECLARE(serf_bucket_t *) serf_context_bucket_socket_create(
 
     return bucket;
 }
+
+
+/* ### this really ought to go somewhere else, but... meh.  */
+SERF_DECLARE(void) serf_lib_version(int *major, int *minor, int *patch)
+{
+    *major = SERF_MAJOR_VERSION;
+    *minor = SERF_MINOR_VERSION;
+    *patch = SERF_PATCH_VERSION;
+}
