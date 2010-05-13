@@ -1,3 +1,18 @@
+Serf 0.4.0 [2010-05-13, ]
+  Provide authn framework, supporting Basic, Digest, Kerberos (SSPI, GSS),
+    along with proxy authn using Basic or Digest
+  Added experimental listener framework, along with test_server.c
+  Improvements and fixes to SSL support, including connection setup changes
+  Experimental support for unrequested, arriving ("async") responses
+  Experimental BWTP support using the async arrival feature
+  Headers are combined on read (not write), to ease certian classes of parsing
+  Experimental feature on aggregate buckets for a callback-on-empty
+  Fix the bucket allocator for when APR is using its pool debugging features
+  Proxy support in the serf_get testing utility
+  Fix to include the port number in the Host header
+  serf_get propagates errors from the response, instead of aborting (Issue 52)
+  Added serf_lib_version() for runtime version tests
+
 Serf 0.3.1 [2010-02-14, r1320]
   Fix loss of error on request->setup() callback. (Issue 47)
   Support APR 2.x. (Issue 48)
