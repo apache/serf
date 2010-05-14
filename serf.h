@@ -1002,7 +1002,7 @@ SERF_DECLARE(void) serf_debug__bucket_alloc_check(serf_bucket_alloc_t *allocator
 
 /* Version info */
 #define SERF_MAJOR_VERSION 0
-#define SERF_MINOR_VERSION 5
+#define SERF_MINOR_VERSION 6
 #define SERF_PATCH_VERSION 0
 
 /* Version number string */

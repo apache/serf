@@ -1,3 +1,9 @@
+Serf 0.6.0 [2010-05-14, ]
+  No changes. This simply fixes problems with the 0.4.0 packaging.
+
+Serf 0.5.0
+  Not released.
+
 Serf 0.4.0 [2010-05-13, r1353]
   Provide authn framework, supporting Basic, Digest, Kerberos (SSPI, GSS),
     along with proxy authn using Basic or Digest
