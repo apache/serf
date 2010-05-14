@@ -1,33 +1,32 @@
 #!/bin/sh
 
-REPOS="http://serf.googlecode.com/svn/trunk/"
+REPOS="http://serf.googlecode.com/svn/"
 
-if ! test -e serf.h ; then
-  echo "$0 must be run from trunk"
+if test $# != 2; then
+  echo "USAGE: $0 TAG APR-SOURCE-PARENT"
   exit 1
 fi
 
-major="`sed -n '/SERF_MAJOR_VERSION/s/[^0-9]*//p' serf.h`"
-minor="`sed -n '/SERF_MINOR_VERSION/s/[^0-9]*//p' serf.h`"
-patch="`sed -n '/SERF_PATCH_VERSION/s/[^0-9]*//p' serf.h`"
+version=$1
+srcdir=$2
 
-version="serf-${major}.${minor}.${patch}"
+release="serf-${version}"
 
 work="${TMPDIR}/serf-dist.$$"
 short='${TMPDIR}'/serf-dist.$$
 
-echo "Preparing $version in $short ..."
+echo "Preparing ${release} in ${short} ..."
 
-mkdir $work
-cd $work
+mkdir "${work}"
+cd "${work}"
 
 echo "Exporting latest serf ..."
-svn export --quiet $REPOS $version
-echo "`find $version -type f | wc -l` files exported"
+svn export --quiet "${REPOS}/tags/${version}" "${release}" || exit 1
+echo "`find ${release} -type f | wc -l` files exported"
 
-cd $version
+cd "${release}"
 
-if ! ./buildconf $* ; then
+if ! ./buildconf --with-apr="${srcdir}/apr" --with-apr-util="${srcdir}/apr-util" ; then
   echo "Exiting..."
   exit 1
 fi
@@ -36,13 +35,24 @@ fi
 echo "Removing from release: dist.sh"
 rm dist.sh
 
+major="`sed -n '/SERF_MAJOR_VERSION/s/[^0-9]*//p' serf.h`"
+minor="`sed -n '/SERF_MINOR_VERSION/s/[^0-9]*//p' serf.h`"
+patch="`sed -n '/SERF_PATCH_VERSION/s/[^0-9]*//p' serf.h`"
+
+actual_version="${major}.${minor}.${patch}"
+
 cd $work
 
-tarball="${work}/${version}.tar"
-tar -cf ${tarball} ${version}
+if test "${version}" != "${actual_version}"; then
+  echo "ERROR: exported version does not match"
+  exit 1
+fi
 
-bzip2 --keep ${tarball}
-echo "${short}/${version}.tar.bz2 ready."
+tarball="${work}/${release}.tar"
+tar -cf "${tarball}" "${release}"
 
-gzip -9 ${tarball}
-echo "${short}/${version}.tar.gz ready."
+bzip2 --keep "${tarball}"
+echo "${short}/${release}.tar.bz2 ready."
+
+gzip -9 "${tarball}"
+echo "${short}/${release}.tar.gz ready."
