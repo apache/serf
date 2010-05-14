@@ -470,7 +470,7 @@ static apr_status_t socket_writev(serf_connection_t *conn)
                             sizeof(struct iovec) * (conn->vec_len - i));
                     conn->vec_len -= i;
                 }
-                ((char *) conn->vec[0].iov_base) += conn->vec[0].iov_len - (len - written);
+                conn->vec[0].iov_base = (char *)conn->vec[0].iov_base + (conn->vec[0].iov_len - (len - written));
                 conn->vec[0].iov_len = len - written;
                 break;
             }
