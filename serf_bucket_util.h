@@ -24,7 +24,6 @@
  */
 
 #include "serf.h"
-#include "serf_declare.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -38,7 +37,7 @@ extern "C" {
  * memory from @a allocator. The @a data bucket-private information will
  * be stored into the bucket.
  */
-SERF_DECLARE(serf_bucket_t *) serf_bucket_create(
+serf_bucket_t *serf_bucket_create(
     const serf_bucket_type_t *type,
     serf_bucket_alloc_t *allocator,
     void *data);
@@ -49,7 +48,7 @@ SERF_DECLARE(serf_bucket_t *) serf_bucket_create(
  * This function will use the @see read function to get a block of memory,
  * then return it in the iovec.
  */
-SERF_DECLARE(apr_status_t) serf_default_read_iovec(
+apr_status_t serf_default_read_iovec(
     serf_bucket_t *bucket,
     apr_size_t requested,
     int vecs_size,
@@ -62,7 +61,7 @@ SERF_DECLARE(apr_status_t) serf_default_read_iovec(
  * This function will use the @see read function to get a block of memory,
  * then return it as a header. No file will be returned.
  */
-SERF_DECLARE(apr_status_t) serf_default_read_for_sendfile(
+apr_status_t serf_default_read_for_sendfile(
     serf_bucket_t *bucket,
     apr_size_t requested,
     apr_hdtr_t *hdtr,
@@ -76,7 +75,7 @@ SERF_DECLARE(apr_status_t) serf_default_read_for_sendfile(
  * This function will always return NULL, indicating that the @a type
  * of bucket cannot be found within @a bucket.
  */
-SERF_DECLARE(serf_bucket_t *) serf_default_read_bucket(
+serf_bucket_t *serf_default_read_bucket(
     serf_bucket_t *bucket,
     const serf_bucket_type_t *type);
 
@@ -85,42 +84,47 @@ SERF_DECLARE(serf_bucket_t *) serf_default_read_bucket(
  *
  * This function will return the @a bucket to its allcoator.
  */
-SERF_DECLARE(void) serf_default_destroy(serf_bucket_t *bucket);
+void serf_default_destroy(
+    serf_bucket_t *bucket);
 
 
 /**
  * Default implementation of the @see destroy functionality.
  *
  * This function will return the @a bucket, and the data member to its
- * allcoator.
+ * allocator.
  */
-SERF_DECLARE(void) serf_default_destroy_and_data(serf_bucket_t *bucket);
+void serf_default_destroy_and_data(
+    serf_bucket_t *bucket);
 
 /**
  * Default implementation of the @see snapshot functionality
  *
  * This function will return an error to indicate it's not implemented.
  */
-SERF_DECLARE(apr_status_t) serf_default_snapshot(serf_bucket_t *bucket);
+apr_status_t serf_default_snapshot(
+    serf_bucket_t *bucket);
 
 /*
  * Default implementation of the @see restore_snapshot functionality
  *
  * This function will return an error to indicate it's not implemented.
  */
-SERF_DECLARE(apr_status_t) serf_default_restore_snapshot(serf_bucket_t *bucket);
+apr_status_t serf_default_restore_snapshot(
+    serf_bucket_t *bucket);
 
 /*
  * Default implementation of the @see is_snapshot_set functionality
  *
  * This function will return 0 (no snapshot set).
  */
-SERF_DECLARE(int) serf_default_is_snapshot_set(serf_bucket_t *bucket);
+int serf_default_is_snapshot_set(
+    serf_bucket_t *bucket);
 
 /**
  * Allocate @a size bytes of memory using @a allocator.
  */
-SERF_DECLARE(void *) serf_bucket_mem_alloc(
+void *serf_bucket_mem_alloc(
     serf_bucket_alloc_t *allocator,
     apr_size_t size);
 
@@ -128,14 +132,14 @@ SERF_DECLARE(void *) serf_bucket_mem_alloc(
  * Allocate @a size bytes of memory using @a allocator and set all of the
  * memory to 0.
  */
-SERF_DECLARE(void *) serf_bucket_mem_calloc(
+void *serf_bucket_mem_calloc(
     serf_bucket_alloc_t *allocator,
     apr_size_t size);
 
 /**
  * Free the memory at @a block, returning it to @a allocator.
  */
-SERF_DECLARE(void) serf_bucket_mem_free(
+void serf_bucket_mem_free(
     serf_bucket_alloc_t *allocator,
     void *block);
 
@@ -143,22 +147,25 @@ SERF_DECLARE(void) serf_bucket_mem_free(
 /**
  * Analogous to apr_pstrmemdup, using a bucket allocator instead.
  */
-SERF_DECLARE(char *) serf_bstrmemdup(serf_bucket_alloc_t *allocator,
-                                     const char *str,
-                                     apr_size_t size);
+char *serf_bstrmemdup(
+    serf_bucket_alloc_t *allocator,
+    const char *str,
+    apr_size_t size);
 
 /**
  * Analogous to apr_pmemdup, using a bucket allocator instead.
  */
-SERF_DECLARE(void *) serf_bmemdup(serf_bucket_alloc_t *allocator,
-                                  const void *mem,
-                                  apr_size_t size);
+void * serf_bmemdup(
+    serf_bucket_alloc_t *allocator,
+    const void *mem,
+    apr_size_t size);
 
 /**
  * Analogous to apr_pstrdup, using a bucket allocator instead.
  */
-SERF_DECLARE(char *) serf_bstrdup(serf_bucket_alloc_t *allocator,
-                                  const char *str);
+char * serf_bstrdup(
+    serf_bucket_alloc_t *allocator,
+    const char *str);
 
 
 /**
@@ -189,8 +196,11 @@ SERF_DECLARE(char *) serf_bstrdup(serf_bucket_alloc_t *allocator,
  * caller should take particular consideration for the CRLF sequence
  * that may be split across data buffer boundaries.
  */
-SERF_DECLARE(void) serf_util_readline(const char **data, apr_size_t *len,
-                                      int acceptable, int *found);
+void serf_util_readline(
+    const char **data,
+    apr_size_t *len,
+    int acceptable,
+    int *found);
 
 
 /** The buffer size used within @see serf_databuf_t. */
@@ -207,10 +217,11 @@ SERF_DECLARE(void) serf_util_readline(const char **data, apr_size_t *len,
  * should be returned, rather than blocking. In both cases, @a buf
  * should be filled in and @a len set, as appropriate.
  */
-typedef apr_status_t (*serf_databuf_reader_t)(void *baton,
-                                              apr_size_t bufsize,
-                                              char *buf,
-                                              apr_size_t *len);
+typedef apr_status_t (*serf_databuf_reader_t)(
+    void *baton,
+    apr_size_t bufsize,
+    char *buf,
+    apr_size_t *len);
 
 /**
  * This structure is used as an intermediate data buffer for some "external"
@@ -244,7 +255,8 @@ typedef struct {
 /**
  * Initialize the @see serf_databuf_t structure specified by @a databuf.
  */
-SERF_DECLARE(void) serf_databuf_init(serf_databuf_t *databuf);
+void serf_databuf_init(
+    serf_databuf_t *databuf);
 
 /**
  * Implement a bucket-style read function from the @see serf_databuf_t
@@ -253,10 +265,11 @@ SERF_DECLARE(void) serf_databuf_init(serf_databuf_t *databuf);
  * The @a requested, @a data, and @a len fields are interpreted and used
  * as in the read function of @see serf_bucket_t.
  */
-SERF_DECLARE(apr_status_t) serf_databuf_read(serf_databuf_t *databuf,
-                                             apr_size_t requested,
-                                             const char **data,
-                                             apr_size_t *len);
+apr_status_t serf_databuf_read(
+    serf_databuf_t *databuf,
+    apr_size_t requested,
+    const char **data,
+    apr_size_t *len);
 
 /**
  * Implement a bucket-style readline function from the @see serf_databuf_t
@@ -265,10 +278,12 @@ SERF_DECLARE(apr_status_t) serf_databuf_read(serf_databuf_t *databuf,
  * The @a acceptable, @a found, @a data, and @a len fields are interpreted
  * and used as in the read function of @see serf_bucket_t.
  */
-SERF_DECLARE(apr_status_t) serf_databuf_readline(serf_databuf_t *databuf,
-                                                 int acceptable, int *found,
-                                                 const char **data,
-                                                 apr_size_t *len);
+apr_status_t serf_databuf_readline(
+    serf_databuf_t *databuf,
+    int acceptable,
+    int *found,
+    const char **data,
+    apr_size_t *len);
 
 /**
  * Implement a bucket-style peek function from the @see serf_databuf_t
@@ -277,9 +292,10 @@ SERF_DECLARE(apr_status_t) serf_databuf_readline(serf_databuf_t *databuf,
  * The @a data, and @a len fields are interpreted and used as in the
  * peek function of @see serf_bucket_t.
  */
-SERF_DECLARE(apr_status_t) serf_databuf_peek(serf_databuf_t *databuf,
-                                             const char **data,
-                                             apr_size_t *len);
+apr_status_t serf_databuf_peek(
+    serf_databuf_t *databuf,
+    const char **data,
+    apr_size_t *len);
 
 
 #ifdef __cplusplus

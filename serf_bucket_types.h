@@ -24,8 +24,6 @@
 #include "serf.h"
 #endif
 
-#include "serf_declare.h"
-
 
 /**
  * @file serf_bucket_types.h
@@ -40,22 +38,23 @@ extern "C" {
 /* ==================================================================== */
 
 
-SERF_DECLARE_DATA extern const serf_bucket_type_t serf_bucket_type_request;
+extern const serf_bucket_type_t serf_bucket_type_request;
 #define SERF_BUCKET_IS_REQUEST(b) SERF_BUCKET_CHECK((b), request)
 
-SERF_DECLARE(serf_bucket_t *) serf_bucket_request_create(
+serf_bucket_t *serf_bucket_request_create(
     const char *method,
     const char *URI,
     serf_bucket_t *body,
     serf_bucket_alloc_t *allocator);
 
-SERF_DECLARE(serf_bucket_t *) serf_bucket_request_get_headers(
+serf_bucket_t *serf_bucket_request_get_headers(
     serf_bucket_t *request);
 
-SERF_DECLARE(void) serf_bucket_request_become(serf_bucket_t *bucket,
-                                              const char *method,
-                                              const char *uri,
-                                              serf_bucket_t *body);
+void serf_bucket_request_become(
+    serf_bucket_t *bucket,
+    const char *method,
+    const char *uri,
+    serf_bucket_t *body);
 
 /**
  * Sets the root url of the remote host. If this request contains a relative
@@ -63,16 +62,17 @@ SERF_DECLARE(void) serf_bucket_request_become(serf_bucket_t *bucket,
  * @a bucket is the request bucket. @a root_url is the absolute url of the
  * root of the remote host, without the closing '/'.
  */
-SERF_DECLARE(void) serf_bucket_request_set_root(serf_bucket_t *bucket,
-                                                const char *root_url);
+void serf_bucket_request_set_root(
+    serf_bucket_t *bucket,
+    const char *root_url);
 
 /* ==================================================================== */
 
 
-SERF_DECLARE_DATA extern const serf_bucket_type_t serf_bucket_type_response;
+extern const serf_bucket_type_t serf_bucket_type_response;
 #define SERF_BUCKET_IS_RESPONSE(b) SERF_BUCKET_CHECK((b), response)
 
-SERF_DECLARE(serf_bucket_t *) serf_bucket_response_create(
+serf_bucket_t *serf_bucket_response_create(
     serf_bucket_t *stream,
     serf_bucket_alloc_t *allocator);
 
@@ -95,7 +95,7 @@ typedef struct {
  * check the version field in @a sline. A value of 0 means that the
  * data is not (yet) present.
  */
-SERF_DECLARE(apr_status_t) serf_bucket_response_status(
+apr_status_t serf_bucket_response_status(
     serf_bucket_t *bkt,
     serf_status_line *sline);
 
@@ -105,102 +105,111 @@ SERF_DECLARE(apr_status_t) serf_bucket_response_status(
  * If the headers are available, APR_SUCCESS is returned.
  * If the headers aren't available, APR_EAGAIN is returned.
  */
-SERF_DECLARE(apr_status_t) serf_bucket_response_wait_for_headers(
+apr_status_t serf_bucket_response_wait_for_headers(
     serf_bucket_t *response);
 
 /**
  * Get the headers bucket for @a response.
  */
-SERF_DECLARE(serf_bucket_t *) serf_bucket_response_get_headers(
+serf_bucket_t *serf_bucket_response_get_headers(
     serf_bucket_t *response);
 
 /**
  * Advise the response @a bucket that this was from a HEAD request and
  * that it should not expect to see a response body.
  */
-SERF_DECLARE(void) serf_bucket_response_set_head(serf_bucket_t *bucket);
+void serf_bucket_response_set_head(
+    serf_bucket_t *bucket);
 
 /* ==================================================================== */
 
-SERF_DECLARE_DATA extern const serf_bucket_type_t serf_bucket_type_bwtp_frame;
+extern const serf_bucket_type_t serf_bucket_type_bwtp_frame;
 #define SERF_BUCKET_IS_BWTP_FRAME(b) SERF_BUCKET_CHECK((b), bwtp_frame)
 
-SERF_DECLARE_DATA extern const serf_bucket_type_t serf_bucket_type_bwtp_incoming_frame;
+extern const serf_bucket_type_t serf_bucket_type_bwtp_incoming_frame;
 #define SERF_BUCKET_IS_BWTP_INCOMING_FRAME(b) SERF_BUCKET_CHECK((b), bwtp_incoming_frame)
 
-SERF_DECLARE(int) serf_bucket_bwtp_frame_get_channel(serf_bucket_t *hdr);
-
-SERF_DECLARE(int) serf_bucket_bwtp_frame_get_type(serf_bucket_t *hdr);
-
-SERF_DECLARE(const char *) serf_bucket_bwtp_frame_get_phrase(serf_bucket_t *hdr);
-
-SERF_DECLARE(serf_bucket_t *) serf_bucket_bwtp_frame_get_headers(
+int serf_bucket_bwtp_frame_get_channel(
     serf_bucket_t *hdr);
 
-SERF_DECLARE(serf_bucket_t *) serf_bucket_bwtp_channel_open(
+int serf_bucket_bwtp_frame_get_type(
+    serf_bucket_t *hdr);
+
+const char *serf_bucket_bwtp_frame_get_phrase(
+    serf_bucket_t *hdr);
+
+serf_bucket_t *serf_bucket_bwtp_frame_get_headers(
+    serf_bucket_t *hdr);
+
+serf_bucket_t *serf_bucket_bwtp_channel_open(
     int channel,
     const char *URI,
     serf_bucket_alloc_t *allocator);
 
-SERF_DECLARE(serf_bucket_t *) serf_bucket_bwtp_channel_close(
+serf_bucket_t *serf_bucket_bwtp_channel_close(
     int channel,
     serf_bucket_alloc_t *allocator);
 
-SERF_DECLARE(serf_bucket_t *) serf_bucket_bwtp_header_create(
+serf_bucket_t *serf_bucket_bwtp_header_create(
     int channel,
     const char *phrase,
     serf_bucket_alloc_t *allocator);
 
-SERF_DECLARE(serf_bucket_t *) serf_bucket_bwtp_message_create(
+serf_bucket_t *serf_bucket_bwtp_message_create(
     int channel,
     serf_bucket_t *body,
     serf_bucket_alloc_t *allocator);
 
-SERF_DECLARE(serf_bucket_t *) serf_bucket_bwtp_incoming_frame_create(
+serf_bucket_t *serf_bucket_bwtp_incoming_frame_create(
     serf_bucket_t *bkt,
     serf_bucket_alloc_t *allocator);
 
-SERF_DECLARE(apr_status_t) serf_bucket_bwtp_incoming_frame_wait_for_headers(
+apr_status_t serf_bucket_bwtp_incoming_frame_wait_for_headers(
     serf_bucket_t *bkt);
 
 /* ==================================================================== */
 
 
-SERF_DECLARE_DATA extern const serf_bucket_type_t serf_bucket_type_aggregate;
+extern const serf_bucket_type_t serf_bucket_type_aggregate;
 #define SERF_BUCKET_IS_AGGREGATE(b) SERF_BUCKET_CHECK((b), aggregate)
 
 /** serf_bucket_aggregate_cleanup will instantly destroy all buckets in
     the aggregate bucket that have been read completely. Whereas normally, 
     these buckets are destroyed on every read operation. */ 
-SERF_DECLARE(void) serf_bucket_aggregate_cleanup(
-    serf_bucket_t *bucket, serf_bucket_alloc_t *allocator);
+void serf_bucket_aggregate_cleanup(
+    serf_bucket_t *bucket,
+    serf_bucket_alloc_t *allocator);
 
-SERF_DECLARE(serf_bucket_t *) serf_bucket_aggregate_create(
+serf_bucket_t *serf_bucket_aggregate_create(
     serf_bucket_alloc_t *allocator);
 
 /** Transform @a bucket in-place into an aggregate bucket. */
-SERF_DECLARE(void) serf_bucket_aggregate_become(serf_bucket_t *bucket);
+void serf_bucket_aggregate_become(
+    serf_bucket_t *bucket);
 
-SERF_DECLARE(void) serf_bucket_aggregate_prepend(
+void serf_bucket_aggregate_prepend(
     serf_bucket_t *aggregate_bucket,
     serf_bucket_t *prepend_bucket);
 
-SERF_DECLARE(void) serf_bucket_aggregate_append(
+void serf_bucket_aggregate_append(
     serf_bucket_t *aggregate_bucket,
     serf_bucket_t *append_bucket);
 
-typedef apr_status_t (*serf_bucket_aggregate_eof_t)(void *baton, serf_bucket_t *aggregate_bucket);
+typedef apr_status_t (*serf_bucket_aggregate_eof_t)(
+    void *baton,
+    serf_bucket_t *aggregate_bucket);
     
-SERF_DECLARE(void) serf_bucket_aggregate_hold_open(serf_bucket_t *aggregate_bucket,
-                                                   serf_bucket_aggregate_eof_t fn,
-                                                   void *baton);
+void serf_bucket_aggregate_hold_open(
+    serf_bucket_t *aggregate_bucket,
+    serf_bucket_aggregate_eof_t fn,
+    void *baton);
 
-SERF_DECLARE(void) serf_bucket_aggregate_prepend_iovec(
+void serf_bucket_aggregate_prepend_iovec(
     serf_bucket_t *aggregate_bucket,
     struct iovec *vecs,
     int vecs_count);
 
-SERF_DECLARE(void) serf_bucket_aggregate_append_iovec(
+void serf_bucket_aggregate_append_iovec(
     serf_bucket_t *aggregate_bucket,
     struct iovec *vecs,
     int vecs_count);
@@ -208,23 +217,24 @@ SERF_DECLARE(void) serf_bucket_aggregate_append_iovec(
 /* ==================================================================== */
 
 
-SERF_DECLARE_DATA extern const serf_bucket_type_t serf_bucket_type_file;
+extern const serf_bucket_type_t serf_bucket_type_file;
 #define SERF_BUCKET_IS_FILE(b) SERF_BUCKET_CHECK((b), file)
 
-SERF_DECLARE(serf_bucket_t *) serf_bucket_file_create(
+serf_bucket_t *serf_bucket_file_create(
     apr_file_t *file,
     serf_bucket_alloc_t *allocator);
 
-SERF_DECLARE(apr_file_t *) serf_bucket_file_borrow(serf_bucket_t *bkt);
+apr_file_t *serf_bucket_file_borrow(
+    serf_bucket_t *bkt);
 
 
 /* ==================================================================== */
 
 
-SERF_DECLARE_DATA extern const serf_bucket_type_t serf_bucket_type_socket;
+extern const serf_bucket_type_t serf_bucket_type_socket;
 #define SERF_BUCKET_IS_SOCKET(b) SERF_BUCKET_CHECK((b), socket)
 
-SERF_DECLARE(serf_bucket_t *) serf_bucket_socket_create(
+serf_bucket_t *serf_bucket_socket_create(
     apr_socket_t *skt,
     serf_bucket_alloc_t *allocator);
 
@@ -236,7 +246,7 @@ SERF_DECLARE(serf_bucket_t *) serf_bucket_socket_create(
  * @a serf_context_progress_delta for progress_func and the serf_context for
  * progress_baton.
  */
-SERF_DECLARE(void) serf_bucket_socket_set_read_progress_cb(
+void serf_bucket_socket_set_read_progress_cb(
     serf_bucket_t *bucket,
     const serf_progress_t progress_func,
     void *progress_baton);
@@ -244,13 +254,16 @@ SERF_DECLARE(void) serf_bucket_socket_set_read_progress_cb(
 /* ==================================================================== */
 
 
-SERF_DECLARE_DATA extern const serf_bucket_type_t serf_bucket_type_simple;
+extern const serf_bucket_type_t serf_bucket_type_simple;
 #define SERF_BUCKET_IS_SIMPLE(b) SERF_BUCKET_CHECK((b), simple)
 
-typedef void (*serf_simple_freefunc_t)(void *baton, const char *data);
+typedef void (*serf_simple_freefunc_t)(
+    void *baton,
+    const char *data);
 
-SERF_DECLARE(serf_bucket_t *) serf_bucket_simple_create(
-    const char *data, apr_size_t len,
+serf_bucket_t *serf_bucket_simple_create(
+    const char *data,
+    apr_size_t len,
     serf_simple_freefunc_t freefunc,
     void *freefunc_baton,
     serf_bucket_alloc_t *allocator);
@@ -259,8 +272,9 @@ SERF_DECLARE(serf_bucket_t *) serf_bucket_simple_create(
  * Equivalent to serf_bucket_simple_create, except that the bucket takes
  * ownership of a private copy of the data.
  */
-SERF_DECLARE(serf_bucket_t *) serf_bucket_simple_copy_create(
-    const char *data, apr_size_t len,
+serf_bucket_t *serf_bucket_simple_copy_create(
+    const char *data,
+    apr_size_t len,
     serf_bucket_alloc_t *allocator);
 
 #define SERF_BUCKET_SIMPLE_STRING(s,a) \
@@ -275,10 +289,10 @@ SERF_DECLARE(serf_bucket_t *) serf_bucket_simple_copy_create(
 /* Note: apr_mmap_t is always defined, but if APR doesn't have mmaps, then
    the caller can never create an apr_mmap_t to pass to this function. */
 
-SERF_DECLARE_DATA extern const serf_bucket_type_t serf_bucket_type_mmap;
+extern const serf_bucket_type_t serf_bucket_type_mmap;
 #define SERF_BUCKET_IS_MMAP(b) SERF_BUCKET_CHECK((b), mmap)
 
-SERF_DECLARE(serf_bucket_t *) serf_bucket_mmap_create(
+serf_bucket_t *serf_bucket_mmap_create(
     apr_mmap_t *mmap,
     serf_bucket_alloc_t *allocator);
 
@@ -286,10 +300,10 @@ SERF_DECLARE(serf_bucket_t *) serf_bucket_mmap_create(
 /* ==================================================================== */
 
 
-SERF_DECLARE_DATA extern const serf_bucket_type_t serf_bucket_type_headers;
+extern const serf_bucket_type_t serf_bucket_type_headers;
 #define SERF_BUCKET_IS_HEADERS(b) SERF_BUCKET_CHECK((b), headers)
 
-SERF_DECLARE(serf_bucket_t *) serf_bucket_headers_create(
+serf_bucket_t *serf_bucket_headers_create(
     serf_bucket_alloc_t *allocator);
 
 /**
@@ -299,7 +313,7 @@ SERF_DECLARE(serf_bucket_t *) serf_bucket_headers_create(
  * into space from this bucket's allocator. The header is NOT copied,
  * so it should remain in scope at least as long as the bucket.
  */
-SERF_DECLARE(void) serf_bucket_headers_set(
+void serf_bucket_headers_set(
     serf_bucket_t *headers_bucket,
     const char *header,
     const char *value);
@@ -310,7 +324,7 @@ SERF_DECLARE(void) serf_bucket_headers_set(
  * Copy the specified @a header and @a value into the bucket, using space
  * from this bucket's allocator.
  */
-SERF_DECLARE(void) serf_bucket_headers_setc(
+void serf_bucket_headers_setc(
     serf_bucket_t *headers_bucket,
     const char *header,
     const char *value);
@@ -325,7 +339,7 @@ SERF_DECLARE(void) serf_bucket_headers_setc(
  * @note In the case where a header already exists this will result
  *       in a reallocation and copy, @see serf_bucket_headers_setn.
  */
-SERF_DECLARE(void) serf_bucket_headers_setn(
+void serf_bucket_headers_setn(
     serf_bucket_t *headers_bucket,
     const char *header,
     const char *value);
@@ -345,12 +359,16 @@ SERF_DECLARE(void) serf_bucket_headers_setn(
  * case, the new value must be allocated and the header re-used, so
  * behave as if @a value_copy were true and @a header_copy false.
  */
-SERF_DECLARE(void) serf_bucket_headers_setx(
+void serf_bucket_headers_setx(
     serf_bucket_t *headers_bucket,
-    const char *header, apr_size_t header_size, int header_copy,
-    const char *value, apr_size_t value_size, int value_copy);
+    const char *header,
+    apr_size_t header_size,
+    int header_copy,
+    const char *value,
+    apr_size_t value_size,
+    int value_copy);
 
-SERF_DECLARE(const char *) serf_bucket_headers_get(
+const char *serf_bucket_headers_get(
     serf_bucket_t *headers_bucket,
     const char *header);
 
@@ -374,7 +392,7 @@ typedef int (serf_bucket_headers_do_callback_fn_t)(
  * @param func callback routine to invoke for every header in the bucket
  * @param baton baton to pass on each invocation to func
  */
-SERF_DECLARE(void) serf_bucket_headers_do(
+void serf_bucket_headers_do(
     serf_bucket_t *headers_bucket,
     serf_bucket_headers_do_callback_fn_t func,
     void *baton);
@@ -383,10 +401,10 @@ SERF_DECLARE(void) serf_bucket_headers_do(
 /* ==================================================================== */
 
 
-SERF_DECLARE_DATA extern const serf_bucket_type_t serf_bucket_type_chunk;
+extern const serf_bucket_type_t serf_bucket_type_chunk;
 #define SERF_BUCKET_IS_CHUNK(b) SERF_BUCKET_CHECK((b), chunk)
 
-SERF_DECLARE(serf_bucket_t *) serf_bucket_chunk_create(
+serf_bucket_t *serf_bucket_chunk_create(
     serf_bucket_t *stream,
     serf_bucket_alloc_t *allocator);
 
@@ -394,10 +412,10 @@ SERF_DECLARE(serf_bucket_t *) serf_bucket_chunk_create(
 /* ==================================================================== */
 
 
-SERF_DECLARE_DATA extern const serf_bucket_type_t serf_bucket_type_dechunk;
+extern const serf_bucket_type_t serf_bucket_type_dechunk;
 #define SERF_BUCKET_IS_DECHUNK(b) SERF_BUCKET_CHECK((b), dechunk)
 
-SERF_DECLARE(serf_bucket_t *) serf_bucket_dechunk_create(
+serf_bucket_t *serf_bucket_dechunk_create(
     serf_bucket_t *stream,
     serf_bucket_alloc_t *allocator);
 
@@ -405,13 +423,13 @@ SERF_DECLARE(serf_bucket_t *) serf_bucket_dechunk_create(
 /* ==================================================================== */
 
 
-SERF_DECLARE_DATA extern const serf_bucket_type_t serf_bucket_type_deflate;
+extern const serf_bucket_type_t serf_bucket_type_deflate;
 #define SERF_BUCKET_IS_DEFLATE(b) SERF_BUCKET_CHECK((b), deflate)
 
 #define SERF_DEFLATE_GZIP 0
 #define SERF_DEFLATE_DEFLATE 1
 
-SERF_DECLARE(serf_bucket_t *) serf_bucket_deflate_create(
+serf_bucket_t *serf_bucket_deflate_create(
     serf_bucket_t *stream,
     serf_bucket_alloc_t *allocator,
     int format);
@@ -420,10 +438,10 @@ SERF_DECLARE(serf_bucket_t *) serf_bucket_deflate_create(
 /* ==================================================================== */
 
 
-SERF_DECLARE_DATA extern const serf_bucket_type_t serf_bucket_type_limit;
+extern const serf_bucket_type_t serf_bucket_type_limit;
 #define SERF_BUCKET_IS_LIMIT(b) SERF_BUCKET_CHECK((b), limit)
 
-SERF_DECLARE(serf_bucket_t *) serf_bucket_limit_create(
+serf_bucket_t *serf_bucket_limit_create(
     serf_bucket_t *stream,
     apr_size_t limit,
     serf_bucket_alloc_t *allocator);
@@ -436,130 +454,140 @@ SERF_DECLARE(serf_bucket_t *) serf_bucket_limit_create(
 #define SERF_SSL_CERT_SELF_SIGNED       8
 #define SERF_SSL_CERT_UNKNOWN_FAILURE  16
 
-SERF_DECLARE_DATA extern const serf_bucket_type_t serf_bucket_type_ssl_encrypt;
+extern const serf_bucket_type_t serf_bucket_type_ssl_encrypt;
 #define SERF_BUCKET_IS_SSL_ENCRYPT(b) SERF_BUCKET_CHECK((b), ssl_encrypt)
 
 typedef struct serf_ssl_context_t serf_ssl_context_t;
 typedef struct serf_ssl_certificate_t serf_ssl_certificate_t;
 
-typedef apr_status_t (*serf_ssl_need_client_cert_t)(void *data,
-                                                    const char **cert_path);
+typedef apr_status_t (*serf_ssl_need_client_cert_t)(
+    void *data,
+    const char **cert_path);
 
-typedef apr_status_t (*serf_ssl_need_cert_password_t)(void *data,
-                                                      const char *cert_path,
-                                                      const char **password);
+typedef apr_status_t (*serf_ssl_need_cert_password_t)(
+    void *data,
+    const char *cert_path,
+    const char **password);
 
-typedef apr_status_t
-(*serf_ssl_need_server_cert_t)(void *data, 
-                               int failures,
-                               const serf_ssl_certificate_t *cert);
+typedef apr_status_t (*serf_ssl_need_server_cert_t)(
+    void *data, 
+    int failures,
+    const serf_ssl_certificate_t *cert);
 
-SERF_DECLARE(void)
-serf_ssl_client_cert_provider_set(serf_ssl_context_t *context,
-                                  serf_ssl_need_client_cert_t callback,
-                                  void *data,
-                                  void *cache_pool);
+void serf_ssl_client_cert_provider_set(
+    serf_ssl_context_t *context,
+    serf_ssl_need_client_cert_t callback,
+    void *data,
+    void *cache_pool);
 
-SERF_DECLARE(void)
-serf_ssl_client_cert_password_set(serf_ssl_context_t *context,
-                                  serf_ssl_need_cert_password_t callback,
-                                  void *data,
-                                  void *cache_pool);
+void serf_ssl_client_cert_password_set(
+    serf_ssl_context_t *context,
+    serf_ssl_need_cert_password_t callback,
+    void *data,
+    void *cache_pool);
+
 /**
  * Set a callback to override the default SSL server certificate validation 
  * algorithm.
  */
-SERF_DECLARE(void)
-serf_ssl_server_cert_callback_set(serf_ssl_context_t *context,
-                                  serf_ssl_need_server_cert_t callback,
-                                  void *data);
+void serf_ssl_server_cert_callback_set(
+    serf_ssl_context_t *context,
+    serf_ssl_need_server_cert_t callback,
+    void *data);
 
 /**
  * Use the default root CA certificates as included with the OpenSSL library.
  */
-SERF_DECLARE(apr_status_t)
-serf_ssl_use_default_certificates(serf_ssl_context_t *context);
+apr_status_t serf_ssl_use_default_certificates(
+    serf_ssl_context_t *context);
 
 /**
  * Return the depth of the certificate.
  */
-SERF_DECLARE(int) serf_ssl_cert_depth(const serf_ssl_certificate_t *cert);
+int serf_ssl_cert_depth(
+    const serf_ssl_certificate_t *cert);
 
 /**
  * Extract the fields of the issuer in a table with keys (E, CN, OU, O, L, 
  * ST and C). The returned table will be allocated in @a pool.
  */
-SERF_DECLARE(apr_hash_t *)
-serf_ssl_cert_issuer(const serf_ssl_certificate_t *cert, apr_pool_t *pool);
+apr_hash_t *serf_ssl_cert_issuer(
+    const serf_ssl_certificate_t *cert,
+    apr_pool_t *pool);
 
 /**
  * Extract the fields of the subject in a table with keys (E, CN, OU, O, L, 
  * ST and C). The returned table will be allocated in @a pool.
  */
-SERF_DECLARE(apr_hash_t *)
-serf_ssl_cert_subject(const serf_ssl_certificate_t *cert, apr_pool_t *pool);
+apr_hash_t *serf_ssl_cert_subject(
+    const serf_ssl_certificate_t *cert,
+    apr_pool_t *pool);
 
 /**
  * Extract the fields of the certificate in a table with keys (sha1, notBefore,
  * notAfter). The returned table will be allocated in @a pool.
  */
-SERF_DECLARE(apr_hash_t *)
-serf_ssl_cert_certificate(const serf_ssl_certificate_t *cert, apr_pool_t *pool);
+apr_hash_t *serf_ssl_cert_certificate(
+    const serf_ssl_certificate_t *cert,
+    apr_pool_t *pool);
 
 /**
  * Export a certificate to base64-encoded, zero-terminated string.
  * The returned string is allocated in @a pool. Returns NULL on failure.
  */
-SERF_DECLARE(const char *)
-serf_ssl_cert_export(const serf_ssl_certificate_t *cert, apr_pool_t *pool);
+const char *serf_ssl_cert_export(
+    const serf_ssl_certificate_t *cert,
+    apr_pool_t *pool);
 
 /**
  * Load a CA certificate file from a path @a file_path. If the file was loaded
  * and parsed correctly, a certificate @a cert will be created and returned.
  * This certificate object will be alloced in @a pool.
  */
-SERF_DECLARE(apr_status_t)
-serf_ssl_load_cert_file(serf_ssl_certificate_t **cert, const char *file_path,
-                        apr_pool_t *pool);
+apr_status_t serf_ssl_load_cert_file(
+    serf_ssl_certificate_t **cert,
+    const char *file_path,
+    apr_pool_t *pool);
 
 /**
  * Adds the certificate @a cert to the list of trusted certificates in 
  * @a ssl_ctx that will be used for verification. 
  * See also @a serf_ssl_load_cert_file.
  */
-SERF_DECLARE(apr_status_t)
-serf_ssl_trust_cert(serf_ssl_context_t *ssl_ctx, serf_ssl_certificate_t *cert);
+apr_status_t serf_ssl_trust_cert(
+    serf_ssl_context_t *ssl_ctx,
+    serf_ssl_certificate_t *cert);
 
-SERF_DECLARE(serf_bucket_t *) serf_bucket_ssl_encrypt_create(
+serf_bucket_t *serf_bucket_ssl_encrypt_create(
     serf_bucket_t *stream,
     serf_ssl_context_t *ssl_context,
     serf_bucket_alloc_t *allocator);
 
-SERF_DECLARE(serf_ssl_context_t *) serf_bucket_ssl_encrypt_context_get(
+serf_ssl_context_t *serf_bucket_ssl_encrypt_context_get(
     serf_bucket_t *bucket);
 
 /* ==================================================================== */
 
 
-SERF_DECLARE_DATA extern const serf_bucket_type_t serf_bucket_type_ssl_decrypt;
+extern const serf_bucket_type_t serf_bucket_type_ssl_decrypt;
 #define SERF_BUCKET_IS_SSL_DECRYPT(b) SERF_BUCKET_CHECK((b), ssl_decrypt)
 
-SERF_DECLARE(serf_bucket_t *) serf_bucket_ssl_decrypt_create(
+serf_bucket_t *serf_bucket_ssl_decrypt_create(
     serf_bucket_t *stream,
     serf_ssl_context_t *ssl_context,
     serf_bucket_alloc_t *allocator);
 
-SERF_DECLARE(serf_ssl_context_t *) serf_bucket_ssl_decrypt_context_get(
+serf_ssl_context_t *serf_bucket_ssl_decrypt_context_get(
     serf_bucket_t *bucket);
 
 
 /* ==================================================================== */
 
 
-SERF_DECLARE_DATA extern const serf_bucket_type_t serf_bucket_type_barrier;
+extern const serf_bucket_type_t serf_bucket_type_barrier;
 #define SERF_BUCKET_IS_BARRIER(b) SERF_BUCKET_CHECK((b), barrier)
 
-SERF_DECLARE(serf_bucket_t *) serf_bucket_barrier_create(
+serf_bucket_t *serf_bucket_barrier_create(
     serf_bucket_t *stream,
     serf_bucket_alloc_t *allocator);
 

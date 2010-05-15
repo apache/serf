@@ -100,10 +100,6 @@ if [ $should_exit -gt 0 ]; then
     exit 1
 fi
 
-if [ ! -d build ]; then
-  $apr_src_dir/build/mkdir.sh build
-fi
-
 echo copying build files
 cp $apr_src_dir/build/config.guess $apr_src_dir/build/config.sub \
    $apr_src_dir/build/install.sh $apr_src_dir/build/apr_common.m4 \
@@ -118,3 +114,6 @@ ${AUTOCONF:-autoconf}
 
 # Remove autoconf 2.5x's cache directory
 rm -rf autom4te*.cache
+
+echo generating serf.def
+./build/gen_def.py serf.h serf_bucket_*.h > build/serf.def
