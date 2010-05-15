@@ -25,7 +25,7 @@ typedef struct {
 } limit_context_t;
 
 
-SERF_DECLARE(serf_bucket_t *) serf_bucket_limit_create(
+serf_bucket_t *serf_bucket_limit_create(
     serf_bucket_t *stream, apr_size_t len, serf_bucket_alloc_t *allocator)
 {
     limit_context_t *ctx;
@@ -110,7 +110,7 @@ static void serf_limit_destroy(serf_bucket_t *bucket)
     serf_default_destroy_and_data(bucket);
 }
 
-SERF_DECLARE_DATA const serf_bucket_type_t serf_bucket_type_limit = {
+const serf_bucket_type_t serf_bucket_type_limit = {
     "LIMIT",
     serf_limit_read,
     serf_limit_readline,

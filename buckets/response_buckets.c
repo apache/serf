@@ -44,7 +44,7 @@ typedef struct {
 } response_context_t;
 
 
-SERF_DECLARE(serf_bucket_t *) serf_bucket_response_create(
+serf_bucket_t *serf_bucket_response_create(
     serf_bucket_t *stream,
     serf_bucket_alloc_t *allocator)
 {
@@ -63,7 +63,7 @@ SERF_DECLARE(serf_bucket_t *) serf_bucket_response_create(
     return serf_bucket_create(&serf_bucket_type_response, allocator, ctx);
 }
 
-SERF_DECLARE(void) serf_bucket_response_set_head(
+void serf_bucket_response_set_head(
     serf_bucket_t *bucket)
 {
     response_context_t *ctx = bucket->data;
@@ -71,7 +71,7 @@ SERF_DECLARE(void) serf_bucket_response_set_head(
     ctx->head_req = 1;
 }
 
-SERF_DECLARE(serf_bucket_t *) serf_bucket_response_get_headers(
+serf_bucket_t *serf_bucket_response_get_headers(
     serf_bucket_t *bucket)
 {
     return ((response_context_t *)bucket->data)->headers;
@@ -321,7 +321,7 @@ static apr_status_t wait_for_body(serf_bucket_t *bkt, response_context_t *ctx)
     return APR_SUCCESS;
 }
 
-SERF_DECLARE(apr_status_t) serf_bucket_response_wait_for_headers(
+apr_status_t serf_bucket_response_wait_for_headers(
     serf_bucket_t *bucket)
 {
     response_context_t *ctx = bucket->data;
@@ -329,7 +329,7 @@ SERF_DECLARE(apr_status_t) serf_bucket_response_wait_for_headers(
     return wait_for_body(bucket, ctx);
 }
 
-SERF_DECLARE(apr_status_t) serf_bucket_response_status(
+apr_status_t serf_bucket_response_status(
     serf_bucket_t *bkt,
     serf_status_line *sline)
 {
@@ -409,7 +409,7 @@ static apr_status_t serf_response_readline(serf_bucket_t *bucket,
 /* ### need to implement */
 #define serf_response_peek NULL
 
-SERF_DECLARE_DATA const serf_bucket_type_t serf_bucket_type_response = {
+const serf_bucket_type_t serf_bucket_type_response = {
     "RESPONSE",
     serf_response_read,
     serf_response_readline,

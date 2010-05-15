@@ -36,8 +36,9 @@ static void free_copied_data(void *baton, const char *data)
     serf_bucket_mem_free(baton, (char*)data);
 }
 
-SERF_DECLARE(serf_bucket_t *) serf_bucket_simple_create(
-    const char *data, apr_size_t len,
+serf_bucket_t *serf_bucket_simple_create(
+    const char *data,
+    apr_size_t len,
     serf_simple_freefunc_t freefunc,
     void *freefunc_baton,
     serf_bucket_alloc_t *allocator)
@@ -55,7 +56,7 @@ SERF_DECLARE(serf_bucket_t *) serf_bucket_simple_create(
     return serf_bucket_create(&serf_bucket_type_simple, allocator, ctx);
 }
 
-SERF_DECLARE(serf_bucket_t *) serf_bucket_simple_copy_create(
+serf_bucket_t *serf_bucket_simple_copy_create(
     const char *data, apr_size_t len,
     serf_bucket_alloc_t *allocator)
 {
@@ -160,7 +161,7 @@ static int serf_simple_is_snapshot_set(serf_bucket_t *bucket)
     return ctx->original != NULL;  
 }
 
-SERF_DECLARE_DATA const serf_bucket_type_t serf_bucket_type_simple = {
+const serf_bucket_type_t serf_bucket_type_simple = {
     "SIMPLE",
     serf_simple_read,
     serf_simple_readline,

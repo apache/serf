@@ -58,7 +58,7 @@ static void cleanup_aggregate(aggregate_context_t *ctx,
     }
 }
 
-SERF_DECLARE(void) serf_bucket_aggregate_cleanup(
+void serf_bucket_aggregate_cleanup(
     serf_bucket_t *bucket, serf_bucket_alloc_t *allocator)
 {
     aggregate_context_t *ctx = bucket->data;
@@ -82,7 +82,7 @@ static aggregate_context_t *create_aggregate(serf_bucket_alloc_t *allocator)
     return ctx;
 }
 
-SERF_DECLARE(serf_bucket_t *) serf_bucket_aggregate_create(
+serf_bucket_t *serf_bucket_aggregate_create(
     serf_bucket_alloc_t *allocator)
 {
     aggregate_context_t *ctx;
@@ -108,7 +108,7 @@ static void serf_aggregate_destroy_and_data(serf_bucket_t *bucket)
     serf_default_destroy_and_data(bucket);
 }
 
-SERF_DECLARE(void) serf_bucket_aggregate_become(serf_bucket_t *bucket)
+void serf_bucket_aggregate_become(serf_bucket_t *bucket)
 {
     aggregate_context_t *ctx;
 
@@ -121,7 +121,7 @@ SERF_DECLARE(void) serf_bucket_aggregate_become(serf_bucket_t *bucket)
 }
 
 
-SERF_DECLARE(void) serf_bucket_aggregate_prepend(
+void serf_bucket_aggregate_prepend(
     serf_bucket_t *aggregate_bucket,
     serf_bucket_t *prepend_bucket)
 {
@@ -136,7 +136,7 @@ SERF_DECLARE(void) serf_bucket_aggregate_prepend(
     ctx->list = new_list;
 }
 
-SERF_DECLARE(void) serf_bucket_aggregate_append(
+void serf_bucket_aggregate_append(
     serf_bucket_t *aggregate_bucket,
     serf_bucket_t *append_bucket)
 {
@@ -162,16 +162,16 @@ SERF_DECLARE(void) serf_bucket_aggregate_append(
     }
 }
 
-SERF_DECLARE(void) serf_bucket_aggregate_hold_open(serf_bucket_t *aggregate_bucket, 
-                                                   serf_bucket_aggregate_eof_t fn,
-                                                   void *baton)
+void serf_bucket_aggregate_hold_open(serf_bucket_t *aggregate_bucket, 
+                                     serf_bucket_aggregate_eof_t fn,
+                                     void *baton)
 {
     aggregate_context_t *ctx = aggregate_bucket->data;
     ctx->hold_open = fn;
     ctx->hold_open_baton = baton;
 }
 
-SERF_DECLARE(void) serf_bucket_aggregate_prepend_iovec(
+void serf_bucket_aggregate_prepend_iovec(
     serf_bucket_t *aggregate_bucket,
     struct iovec *vecs,
     int vecs_count)
@@ -192,7 +192,7 @@ SERF_DECLARE(void) serf_bucket_aggregate_prepend_iovec(
     }
 }
 
-SERF_DECLARE(void) serf_bucket_aggregate_append_iovec(
+void serf_bucket_aggregate_append_iovec(
     serf_bucket_t *aggregate_bucket,
     struct iovec *vecs,
     int vecs_count)
@@ -438,7 +438,7 @@ static int serf_aggregate_is_snapshot_set(serf_bucket_t *bucket)
     return ctx->snapshot;
 }
 
-SERF_DECLARE_DATA const serf_bucket_type_t serf_bucket_type_aggregate = {
+const serf_bucket_type_t serf_bucket_type_aggregate = {
     "AGGREGATE",
     serf_aggregate_read,
     serf_aggregate_readline,

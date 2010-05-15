@@ -1021,7 +1021,7 @@ apr_status_t serf__process_connection(serf_connection_t *conn,
     return APR_SUCCESS;
 }
 
-SERF_DECLARE(serf_connection_t *) serf_connection_create(
+serf_connection_t *serf_connection_create(
     serf_context_t *ctx,
     apr_sockaddr_t *address,
     serf_connection_setup_t setup,
@@ -1060,7 +1060,7 @@ SERF_DECLARE(serf_connection_t *) serf_connection_create(
     return conn;
 }
 
-SERF_DECLARE(apr_status_t) serf_connection_create2(
+apr_status_t serf_connection_create2(
     serf_connection_t **conn,
     serf_context_t *ctx,
     apr_uri_t host_info,
@@ -1095,13 +1095,14 @@ SERF_DECLARE(apr_status_t) serf_connection_create2(
     return status;
 }
 
-SERF_DECLARE(apr_status_t) serf_connection_reset(
+apr_status_t serf_connection_reset(
     serf_connection_t *conn)
 {
     return reset_connection(conn, 0);
 }
 
-SERF_DECLARE(apr_status_t) serf_connection_close(
+
+apr_status_t serf_connection_close(
     serf_connection_t *conn)
 {
     int i;
@@ -1150,19 +1151,21 @@ SERF_DECLARE(apr_status_t) serf_connection_close(
     return APR_NOTFOUND;
 }
 
-SERF_DECLARE(void)
-serf_connection_set_max_outstanding_requests(serf_connection_t *conn,
-                                             unsigned int max_requests)
+
+void serf_connection_set_max_outstanding_requests(
+    serf_connection_t *conn,
+    unsigned int max_requests)
 {
     conn->max_outstanding_requests = max_requests;
 }
 
-SERF_DECLARE(void)
-serf_connection_set_async_responses(serf_connection_t *conn,
-                                    serf_response_acceptor_t acceptor,
-                                    void *acceptor_baton,
-                                    serf_response_handler_t handler,
-                                    void *handler_baton)
+
+void serf_connection_set_async_responses(
+    serf_connection_t *conn,
+    serf_response_acceptor_t acceptor,
+    void *acceptor_baton,
+    serf_response_handler_t handler,
+    void *handler_baton)
 {
     conn->async_responses = 1;
     conn->async_acceptor = acceptor;
@@ -1171,7 +1174,8 @@ serf_connection_set_async_responses(serf_connection_t *conn,
     conn->async_handler_baton = handler_baton;
 }
 
-SERF_DECLARE(serf_request_t *) serf_connection_request_create(
+
+serf_request_t *serf_connection_request_create(
     serf_connection_t *conn,
     serf_request_setup_t setup,
     void *setup_baton)
@@ -1204,7 +1208,8 @@ SERF_DECLARE(serf_request_t *) serf_connection_request_create(
     return request;
 }
 
-SERF_DECLARE(serf_request_t *) serf_connection_priority_request_create(
+
+serf_request_t *serf_connection_priority_request_create(
     serf_connection_t *conn,
     serf_request_setup_t setup,
     void *setup_baton)
@@ -1261,29 +1266,34 @@ SERF_DECLARE(serf_request_t *) serf_connection_priority_request_create(
     return request;
 }
 
-SERF_DECLARE(apr_status_t) serf_request_cancel(serf_request_t *request)
+
+apr_status_t serf_request_cancel(serf_request_t *request)
 {
     return cancel_request(request, &request->conn->requests, 0);
 }
 
-SERF_DECLARE(apr_pool_t *) serf_request_get_pool(const serf_request_t *request)
+
+apr_pool_t *serf_request_get_pool(const serf_request_t *request)
 {
     return request->respool;
 }
 
-SERF_DECLARE(serf_bucket_alloc_t *) serf_request_get_alloc(
+
+serf_bucket_alloc_t *serf_request_get_alloc(
     const serf_request_t *request)
 {
     return request->allocator;
 }
 
-SERF_DECLARE(serf_connection_t *) serf_request_get_conn(
+
+serf_connection_t *serf_request_get_conn(
     const serf_request_t *request)
 {
     return request->conn;
 }
 
-SERF_DECLARE(void) serf_request_set_handler(
+
+void serf_request_set_handler(
     serf_request_t *request,
     const serf_response_handler_t handler,
     const void **handler_baton)
@@ -1292,7 +1302,8 @@ SERF_DECLARE(void) serf_request_set_handler(
     request->handler_baton = handler_baton;
 }
 
-SERF_DECLARE(serf_bucket_t *) serf_request_bucket_request_create(
+
+serf_bucket_t *serf_request_bucket_request_create(
     serf_request_t *request,
     const char *method,
     const char *uri,

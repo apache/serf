@@ -30,8 +30,6 @@
 #include <apr_poll.h>
 #include <apr_uri.h>
 
-#include "serf_declare.h"
-
 #ifdef __cplusplus
 extern "C" {
 #endif

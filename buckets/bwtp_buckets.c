@@ -61,7 +61,7 @@ typedef struct {
 } incoming_context_t;
 
 
-SERF_DECLARE(serf_bucket_t *) serf_bucket_bwtp_channel_close(
+serf_bucket_t *serf_bucket_bwtp_channel_close(
     int channel,
     serf_bucket_alloc_t *allocator)
 {
@@ -77,7 +77,7 @@ SERF_DECLARE(serf_bucket_t *) serf_bucket_bwtp_channel_close(
     return serf_bucket_create(&serf_bucket_type_bwtp_frame, allocator, ctx);
 }
 
-SERF_DECLARE(serf_bucket_t *) serf_bucket_bwtp_channel_open(
+serf_bucket_t *serf_bucket_bwtp_channel_open(
     int channel,
     const char *uri,
     serf_bucket_alloc_t *allocator)
@@ -94,7 +94,7 @@ SERF_DECLARE(serf_bucket_t *) serf_bucket_bwtp_channel_open(
     return serf_bucket_create(&serf_bucket_type_bwtp_frame, allocator, ctx);
 }
 
-SERF_DECLARE(serf_bucket_t *) serf_bucket_bwtp_header_create(
+serf_bucket_t *serf_bucket_bwtp_header_create(
     int channel,
     const char *phrase,
     serf_bucket_alloc_t *allocator)
@@ -111,7 +111,7 @@ SERF_DECLARE(serf_bucket_t *) serf_bucket_bwtp_header_create(
     return serf_bucket_create(&serf_bucket_type_bwtp_frame, allocator, ctx);
 }
 
-SERF_DECLARE(serf_bucket_t *) serf_bucket_bwtp_message_create(
+serf_bucket_t *serf_bucket_bwtp_message_create(
     int channel,
     serf_bucket_t *body,
     serf_bucket_alloc_t *allocator)
@@ -128,7 +128,7 @@ SERF_DECLARE(serf_bucket_t *) serf_bucket_bwtp_message_create(
     return serf_bucket_create(&serf_bucket_type_bwtp_frame, allocator, ctx);
 }
 
-SERF_DECLARE(int) serf_bucket_bwtp_frame_get_channel(
+int serf_bucket_bwtp_frame_get_channel(
     serf_bucket_t *bucket)
 {
     if (SERF_BUCKET_IS_BWTP_FRAME(bucket)) {
@@ -145,7 +145,7 @@ SERF_DECLARE(int) serf_bucket_bwtp_frame_get_channel(
     return -1;
 }
 
-SERF_DECLARE(int) serf_bucket_bwtp_frame_get_type(
+int serf_bucket_bwtp_frame_get_type(
     serf_bucket_t *bucket)
 {
     if (SERF_BUCKET_IS_BWTP_FRAME(bucket)) {
@@ -162,7 +162,7 @@ SERF_DECLARE(int) serf_bucket_bwtp_frame_get_type(
     return -1;
 }
 
-SERF_DECLARE(const char *) serf_bucket_bwtp_frame_get_phrase(
+const char *serf_bucket_bwtp_frame_get_phrase(
     serf_bucket_t *bucket)
 {
     if (SERF_BUCKET_IS_BWTP_FRAME(bucket)) {
@@ -179,7 +179,7 @@ SERF_DECLARE(const char *) serf_bucket_bwtp_frame_get_phrase(
     return NULL;
 }
 
-SERF_DECLARE(serf_bucket_t *) serf_bucket_bwtp_frame_get_headers(
+serf_bucket_t *serf_bucket_bwtp_frame_get_headers(
     serf_bucket_t *bucket)
 {
     if (SERF_BUCKET_IS_BWTP_FRAME(bucket)) {
@@ -298,7 +298,7 @@ static apr_status_t serf_bwtp_frame_peek(serf_bucket_t *bucket,
     return serf_bucket_peek(bucket, data, len);
 }
 
-SERF_DECLARE_DATA const serf_bucket_type_t serf_bucket_type_bwtp_frame = {
+const serf_bucket_type_t serf_bucket_type_bwtp_frame = {
     "BWTP-FRAME",
     serf_bwtp_frame_read,
     serf_bwtp_frame_readline,
@@ -312,7 +312,8 @@ SERF_DECLARE_DATA const serf_bucket_type_t serf_bucket_type_bwtp_frame = {
     serf_default_is_snapshot_set,
 };
 
-SERF_DECLARE(serf_bucket_t *) serf_bucket_bwtp_incoming_frame_create(
+
+serf_bucket_t *serf_bucket_bwtp_incoming_frame_create(
     serf_bucket_t *stream,
     serf_bucket_alloc_t *allocator)
 {
@@ -536,7 +537,7 @@ static apr_status_t wait_for_body(serf_bucket_t *bkt, incoming_context_t *ctx)
     return APR_SUCCESS;
 }
 
-SERF_DECLARE(apr_status_t) serf_bucket_bwtp_incoming_frame_wait_for_headers(
+apr_status_t serf_bucket_bwtp_incoming_frame_wait_for_headers(
     serf_bucket_t *bucket)
 {
     incoming_context_t *ctx = bucket->data;
@@ -586,7 +587,7 @@ static apr_status_t bwtp_incoming_readline(serf_bucket_t *bucket,
 /* ### need to implement */
 #define bwtp_incoming_peek NULL
 
-SERF_DECLARE_DATA const serf_bucket_type_t serf_bucket_type_bwtp_incoming_frame = {
+const serf_bucket_type_t serf_bucket_type_bwtp_incoming_frame = {
     "BWTP-INCOMING",
     bwtp_incoming_read,
     bwtp_incoming_readline,

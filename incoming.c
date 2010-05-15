@@ -85,7 +85,8 @@ apr_status_t serf__process_listener(serf_listener_t *l)
     return rv;
 }
 
-SERF_DECLARE(apr_status_t) serf_incoming_create(
+
+apr_status_t serf_incoming_create(
     serf_incoming_t **client,
     serf_context_t *ctx,
     apr_socket_t *insock,
@@ -113,7 +114,8 @@ SERF_DECLARE(apr_status_t) serf_incoming_create(
     return rv;
 }
 
-SERF_DECLARE(apr_status_t) serf_listener_create(
+
+apr_status_t serf_listener_create(
     serf_listener_t **listener,
     serf_context_t *ctx,
     const char *host,

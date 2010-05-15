@@ -860,11 +860,12 @@ static int ssl_need_client_cert(SSL *ssl, X509 **cert, EVP_PKEY **pkey)
     return 0;
 }
 
-SERF_DECLARE(void)
-serf_ssl_client_cert_provider_set(serf_ssl_context_t *context,
-                                  serf_ssl_need_client_cert_t callback,
-                                  void *data,
-                                  void *cache_pool)
+
+void serf_ssl_client_cert_provider_set(
+    serf_ssl_context_t *context,
+    serf_ssl_need_client_cert_t callback,
+    void *data,
+    void *cache_pool)
 {
     context->cert_callback = callback;
     context->cert_userdata = data;
@@ -875,11 +876,12 @@ serf_ssl_client_cert_provider_set(serf_ssl_context_t *context,
     }
 }
 
-SERF_DECLARE(void)
-serf_ssl_client_cert_password_set(serf_ssl_context_t *context,
-                                  serf_ssl_need_cert_password_t callback,
-                                  void *data,
-                                  void *cache_pool)
+
+void serf_ssl_client_cert_password_set(
+    serf_ssl_context_t *context,
+    serf_ssl_need_cert_password_t callback,
+    void *data,
+    void *cache_pool)
 {
     context->cert_pw_callback = callback;
     context->cert_pw_userdata = data;
@@ -890,10 +892,11 @@ serf_ssl_client_cert_password_set(serf_ssl_context_t *context,
     }
 }
 
-SERF_DECLARE(void)
-serf_ssl_server_cert_callback_set(serf_ssl_context_t *context,
-                                  serf_ssl_need_server_cert_t callback,
-                                  void *data)
+
+void serf_ssl_server_cert_callback_set(
+    serf_ssl_context_t *context,
+    serf_ssl_need_server_cert_t callback,
+    void *data)
 {
     context->server_cert_callback = callback;
     context->server_cert_userdata = data;
@@ -999,8 +1002,7 @@ static serf_bucket_t * serf_bucket_ssl_create(
     return serf_bucket_create(type, allocator, ctx);
 }
 
-SERF_DECLARE(apr_status_t)
-serf_ssl_use_default_certificates(serf_ssl_context_t *ssl_ctx)
+apr_status_t serf_ssl_use_default_certificates(serf_ssl_context_t *ssl_ctx)
 {
     X509_STORE *store = SSL_CTX_get_cert_store(ssl_ctx->ctx);
 
@@ -1009,9 +1011,10 @@ serf_ssl_use_default_certificates(serf_ssl_context_t *ssl_ctx)
     return result ? APR_SUCCESS : APR_EGENERAL;
 }
 
-SERF_DECLARE(apr_status_t)
-serf_ssl_load_cert_file(serf_ssl_certificate_t **cert, const char *file_path,
-                        apr_pool_t *pool)
+apr_status_t serf_ssl_load_cert_file(
+    serf_ssl_certificate_t **cert,
+    const char *file_path,
+    apr_pool_t *pool)
 {
     FILE *fp = fopen(file_path, "r");
         
@@ -1030,8 +1033,10 @@ serf_ssl_load_cert_file(serf_ssl_certificate_t **cert, const char *file_path,
     return APR_EGENERAL;
 }
 
-SERF_DECLARE(apr_status_t)
-serf_ssl_trust_cert(serf_ssl_context_t *ssl_ctx, serf_ssl_certificate_t *cert)
+
+apr_status_t serf_ssl_trust_cert(
+    serf_ssl_context_t *ssl_ctx,
+    serf_ssl_certificate_t *cert)
 {
     X509_STORE *store = SSL_CTX_get_cert_store(ssl_ctx->ctx);
 
@@ -1040,7 +1045,8 @@ serf_ssl_trust_cert(serf_ssl_context_t *ssl_ctx, serf_ssl_certificate_t *cert)
     return result ? APR_SUCCESS : APR_EGENERAL;
 }
 
-SERF_DECLARE(serf_bucket_t *) serf_bucket_ssl_decrypt_create(
+
+serf_bucket_t *serf_bucket_ssl_decrypt_create(
     serf_bucket_t *stream,
     serf_ssl_context_t *ssl_ctx,
     serf_bucket_alloc_t *allocator)
@@ -1065,14 +1071,16 @@ SERF_DECLARE(serf_bucket_t *) serf_bucket_ssl_decrypt_create(
     return bkt;
 }
 
-SERF_DECLARE(serf_ssl_context_t *) serf_bucket_ssl_decrypt_context_get(
+
+serf_ssl_context_t *serf_bucket_ssl_decrypt_context_get(
      serf_bucket_t *bucket)
 {
     ssl_context_t *ctx = bucket->data;
     return ctx->ssl_ctx;
 }
 
-SERF_DECLARE(serf_bucket_t *) serf_bucket_ssl_encrypt_create(
+
+serf_bucket_t *serf_bucket_ssl_encrypt_create(
     serf_bucket_t *stream,
     serf_ssl_context_t *ssl_ctx,
     serf_bucket_alloc_t *allocator)
@@ -1112,7 +1120,8 @@ SERF_DECLARE(serf_bucket_t *) serf_bucket_ssl_encrypt_create(
     return bkt;
 }
 
-SERF_DECLARE(serf_ssl_context_t *) serf_bucket_ssl_encrypt_context_get(
+
+serf_ssl_context_t *serf_bucket_ssl_encrypt_context_get(
      serf_bucket_t *bucket)
 {
     ssl_context_t *ctx = bucket->data;
@@ -1169,36 +1178,42 @@ convert_X509_NAME_to_table(X509_NAME *org, apr_pool_t *pool)
     return tgt;
 }
 
-SERF_DECLARE(int)
-serf_ssl_cert_depth(const serf_ssl_certificate_t *cert)
+
+int serf_ssl_cert_depth(const serf_ssl_certificate_t *cert)
 {
     return cert->depth;
 }
 
-SERF_DECLARE(apr_hash_t *)
-serf_ssl_cert_issuer(const serf_ssl_certificate_t *cert, apr_pool_t *pool)
-{
 
+apr_hash_t *serf_ssl_cert_issuer(
+    const serf_ssl_certificate_t *cert,
+    apr_pool_t *pool)
+{
     X509_NAME *issuer = X509_get_issuer_name(cert->ssl_cert);
+
     if (!issuer)
         return NULL;
 
     return convert_X509_NAME_to_table(issuer, pool);
 }
 
-SERF_DECLARE(apr_hash_t *)
-serf_ssl_cert_subject(const serf_ssl_certificate_t *cert, apr_pool_t *pool)
-{
 
+apr_hash_t *serf_ssl_cert_subject(
+    const serf_ssl_certificate_t *cert,
+    apr_pool_t *pool)
+{
     X509_NAME *subject = X509_get_subject_name(cert->ssl_cert);
+
     if (!subject)
         return NULL;
 
     return convert_X509_NAME_to_table(subject, pool);
 }
 
-SERF_DECLARE(apr_hash_t *)
-serf_ssl_cert_certificate(const serf_ssl_certificate_t *cert, apr_pool_t *pool)
+
+apr_hash_t *serf_ssl_cert_certificate(
+    const serf_ssl_certificate_t *cert,
+    apr_pool_t *pool)
 {
     apr_hash_t *tgt = apr_hash_make(pool);
     unsigned int md_size, i;
@@ -1250,8 +1265,10 @@ serf_ssl_cert_certificate(const serf_ssl_certificate_t *cert, apr_pool_t *pool)
     return tgt;
 }
 
-SERF_DECLARE(const char *)
-serf_ssl_cert_export(const serf_ssl_certificate_t *cert, apr_pool_t *pool)
+
+const char *serf_ssl_cert_export(
+    const serf_ssl_certificate_t *cert,
+    apr_pool_t *pool)
 {
     char *binary_cert, *p;
     char *encoded_cert;
@@ -1361,7 +1378,7 @@ static apr_status_t serf_ssl_peek(serf_bucket_t *bucket,
 }
 
 
-SERF_DECLARE_DATA const serf_bucket_type_t serf_bucket_type_ssl_encrypt = {
+const serf_bucket_type_t serf_bucket_type_ssl_encrypt = {
     "SSLENCRYPT",
     serf_ssl_read,
     serf_ssl_readline,
@@ -1375,7 +1392,7 @@ SERF_DECLARE_DATA const serf_bucket_type_t serf_bucket_type_ssl_encrypt = {
     serf_default_is_snapshot_set,
 };
 
-SERF_DECLARE_DATA const serf_bucket_type_t serf_bucket_type_ssl_decrypt = {
+const serf_bucket_type_t serf_bucket_type_ssl_decrypt = {
     "SSLDECRYPT",
     serf_ssl_read,
     serf_ssl_readline,

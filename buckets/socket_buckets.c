@@ -46,7 +46,7 @@ static apr_status_t socket_reader(void *baton, apr_size_t bufsize,
     return status;
 }
 
-SERF_DECLARE(serf_bucket_t *) serf_bucket_socket_create(
+serf_bucket_t *serf_bucket_socket_create(
     apr_socket_t *skt,
     serf_bucket_alloc_t *allocator)
 {
@@ -64,7 +64,7 @@ SERF_DECLARE(serf_bucket_t *) serf_bucket_socket_create(
     return serf_bucket_create(&serf_bucket_type_socket, allocator, ctx);
 }
 
-SERF_DECLARE(void) serf_bucket_socket_set_read_progress_cb(
+void serf_bucket_socket_set_read_progress_cb(
     serf_bucket_t *bucket,
     const serf_progress_t progress_func,
     void *progress_baton)
@@ -102,7 +102,7 @@ static apr_status_t serf_socket_peek(serf_bucket_t *bucket,
     return serf_databuf_peek(&ctx->databuf, data, len);
 }
 
-SERF_DECLARE_DATA const serf_bucket_type_t serf_bucket_type_socket = {
+const serf_bucket_type_t serf_bucket_type_socket = {
     "SOCKET",
     serf_socket_read,
     serf_socket_readline,

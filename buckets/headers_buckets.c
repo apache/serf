@@ -53,7 +53,7 @@ typedef struct {
 } headers_context_t;
 
 
-SERF_DECLARE(serf_bucket_t *) serf_bucket_headers_create(
+serf_bucket_t *serf_bucket_headers_create(
     serf_bucket_alloc_t *allocator)
 {
     headers_context_t *ctx;
@@ -65,7 +65,7 @@ SERF_DECLARE(serf_bucket_t *) serf_bucket_headers_create(
     return serf_bucket_create(&serf_bucket_type_headers, allocator, ctx);
 }
 
-SERF_DECLARE(void) serf_bucket_headers_setx(
+void serf_bucket_headers_setx(
     serf_bucket_t *bkt,
     const char *header, apr_size_t header_size, int header_copy,
     const char *value, apr_size_t value_size, int value_copy)
@@ -114,7 +114,7 @@ SERF_DECLARE(void) serf_bucket_headers_setx(
         ctx->list = hdr;
 }
 
-SERF_DECLARE(void) serf_bucket_headers_set(
+void serf_bucket_headers_set(
     serf_bucket_t *headers_bucket,
     const char *header,
     const char *value)
@@ -124,7 +124,7 @@ SERF_DECLARE(void) serf_bucket_headers_set(
                              value, strlen(value), 1);
 }
 
-SERF_DECLARE(void) serf_bucket_headers_setc(
+void serf_bucket_headers_setc(
     serf_bucket_t *headers_bucket,
     const char *header,
     const char *value)
@@ -134,7 +134,7 @@ SERF_DECLARE(void) serf_bucket_headers_setc(
                              value, strlen(value), 1);
 }
 
-SERF_DECLARE(void) serf_bucket_headers_setn(
+void serf_bucket_headers_setn(
     serf_bucket_t *headers_bucket,
     const char *header,
     const char *value)
@@ -144,7 +144,7 @@ SERF_DECLARE(void) serf_bucket_headers_setn(
                              value, strlen(value), 0);
 }
 
-SERF_DECLARE(const char *) serf_bucket_headers_get(
+const char *serf_bucket_headers_get(
     serf_bucket_t *headers_bucket,
     const char *header)
 {
@@ -191,7 +191,7 @@ SERF_DECLARE(const char *) serf_bucket_headers_get(
     return val;
 }
 
-SERF_DECLARE(void) serf_bucket_headers_do(
+void serf_bucket_headers_do(
     serf_bucket_t *headers_bucket,
     serf_bucket_headers_do_callback_fn_t func,
     void *baton)
@@ -417,7 +417,7 @@ static apr_status_t serf_headers_read_iovec(serf_bucket_t *bucket,
     return APR_SUCCESS;
 }
 
-SERF_DECLARE_DATA const serf_bucket_type_t serf_bucket_type_headers = {
+const serf_bucket_type_t serf_bucket_type_headers = {
     "HEADERS",
     serf_headers_read,
     serf_headers_readline,

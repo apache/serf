@@ -96,28 +96,32 @@ static apr_status_t pollset_rm(void *user_baton,
 }
 
 
-SERF_DECLARE(void) serf_config_proxy(serf_context_t *ctx,
-                                     apr_sockaddr_t *address)
+void serf_config_proxy(serf_context_t *ctx,
+                       apr_sockaddr_t *address)
 {
     ctx->proxy_address = address;
 }
 
-SERF_DECLARE(void) serf_config_credentials_callback(serf_context_t *ctx,
-                                                    serf_credentials_callback_t cred_cb)
+
+void serf_config_credentials_callback(serf_context_t *ctx,
+                                      serf_credentials_callback_t cred_cb)
 {
     ctx->cred_cb = cred_cb;
 }
 
-SERF_DECLARE(void) serf_config_authn_types(serf_context_t *ctx,
-                                           int authn_types)
+
+void serf_config_authn_types(serf_context_t *ctx,
+                             int authn_types)
 {
     ctx->authn_types = authn_types;
 }
 
-SERF_DECLARE(serf_context_t *) serf_context_create_ex(void *user_baton,
-                                                      serf_socket_add_t addf,
-                                                      serf_socket_remove_t rmf,
-                                                      apr_pool_t *pool)
+
+serf_context_t *serf_context_create_ex(
+    void *user_baton,
+    serf_socket_add_t addf,
+    serf_socket_remove_t rmf,
+    apr_pool_t *pool)
 {
     serf_context_t *ctx = apr_pcalloc(pool, sizeof(*ctx));
 
@@ -149,12 +153,13 @@ SERF_DECLARE(serf_context_t *) serf_context_create_ex(void *user_baton,
     return ctx;
 }
 
-SERF_DECLARE(serf_context_t *) serf_context_create(apr_pool_t *pool)
+
+serf_context_t *serf_context_create(apr_pool_t *pool)
 {
     return serf_context_create_ex(NULL, NULL, NULL, pool);
 }
 
-SERF_DECLARE(apr_status_t) serf_context_prerun(serf_context_t *ctx)
+apr_status_t serf_context_prerun(serf_context_t *ctx)
 {
     apr_status_t status = APR_SUCCESS;
     if ((status = serf__open_connections(ctx)) != APR_SUCCESS)
@@ -165,9 +170,11 @@ SERF_DECLARE(apr_status_t) serf_context_prerun(serf_context_t *ctx)
     return status;
 }
 
-SERF_DECLARE(apr_status_t) serf_event_trigger(serf_context_t *s,
-                                              void *serf_baton,
-                                              const apr_pollfd_t *desc)
+
+apr_status_t serf_event_trigger(
+    serf_context_t *s,
+    void *serf_baton,
+    const apr_pollfd_t *desc)
 {
     apr_pollfd_t tdesc = { 0 };
     apr_status_t status = APR_SUCCESS;
@@ -232,9 +239,11 @@ SERF_DECLARE(apr_status_t) serf_event_trigger(serf_context_t *s,
     return status;
 }
 
-SERF_DECLARE(apr_status_t) serf_context_run(serf_context_t *ctx,
-                                            apr_short_interval_time_t duration,
-                                            apr_pool_t *pool)
+
+apr_status_t serf_context_run(
+    serf_context_t *ctx,
+    apr_short_interval_time_t duration,
+    apr_pool_t *pool)
 {
     apr_status_t status;
     apr_int32_t num;
@@ -268,7 +277,8 @@ SERF_DECLARE(apr_status_t) serf_context_run(serf_context_t *ctx,
     return APR_SUCCESS;
 }
 
-SERF_DECLARE(void) serf_context_set_progress_cb(
+
+void serf_context_set_progress_cb(
     serf_context_t *ctx,
     const serf_progress_t progress_func,
     void *progress_baton)
@@ -278,7 +288,7 @@ SERF_DECLARE(void) serf_context_set_progress_cb(
 }
 
 
-SERF_DECLARE(serf_bucket_t *) serf_context_bucket_socket_create(
+serf_bucket_t *serf_context_bucket_socket_create(
     serf_context_t *ctx,
     apr_socket_t *skt,
     serf_bucket_alloc_t *allocator)
@@ -295,7 +305,7 @@ SERF_DECLARE(serf_bucket_t *) serf_context_bucket_socket_create(
 
 
 /* ### this really ought to go somewhere else, but... meh.  */
-SERF_DECLARE(void) serf_lib_version(int *major, int *minor, int *patch)
+void serf_lib_version(int *major, int *minor, int *patch)
 {
     *major = SERF_MAJOR_VERSION;
     *minor = SERF_MINOR_VERSION;

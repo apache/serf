@@ -36,7 +36,7 @@ typedef struct {
 } chunk_context_t;
 
 
-SERF_DECLARE(serf_bucket_t *) serf_bucket_chunk_create(
+serf_bucket_t *serf_bucket_chunk_create(
     serf_bucket_t *stream, serf_bucket_alloc_t *allocator)
 {
     chunk_context_t *ctx;
@@ -223,7 +223,7 @@ static void serf_chunk_destroy(serf_bucket_t *bucket)
     serf_default_destroy_and_data(bucket);
 }
 
-SERF_DECLARE_DATA const serf_bucket_type_t serf_bucket_type_chunk = {
+const serf_bucket_type_t serf_bucket_type_chunk = {
     "CHUNK",
     serf_chunk_read,
     serf_chunk_readline,

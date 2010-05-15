@@ -78,7 +78,7 @@ static unsigned long getLong(unsigned char *string)
           | (((unsigned long)string[3]) << 24);
 }
 
-SERF_DECLARE(serf_bucket_t *) serf_bucket_deflate_create(
+serf_bucket_t *serf_bucket_deflate_create(
     serf_bucket_t *stream,
     serf_bucket_alloc_t *allocator,
     int format)
@@ -360,7 +360,7 @@ static apr_status_t serf_deflate_read(serf_bucket_t *bucket,
 #define serf_deflate_readline NULL
 #define serf_deflate_peek NULL
 
-SERF_DECLARE_DATA const serf_bucket_type_t serf_bucket_type_deflate = {
+const serf_bucket_type_t serf_bucket_type_deflate = {
     "DEFLATE",
     serf_deflate_read,
     serf_deflate_readline,

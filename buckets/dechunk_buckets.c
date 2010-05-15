@@ -37,7 +37,7 @@ typedef struct {
 } dechunk_context_t;
 
 
-SERF_DECLARE(serf_bucket_t *) serf_bucket_dechunk_create(
+serf_bucket_t *serf_bucket_dechunk_create(
     serf_bucket_t *stream,
     serf_bucket_alloc_t *allocator)
 {
@@ -173,7 +173,7 @@ static apr_status_t serf_dechunk_read(serf_bucket_t *bucket,
 #define serf_dechunk_readline NULL
 #define serf_dechunk_peek NULL
 
-SERF_DECLARE_DATA const serf_bucket_type_t serf_bucket_type_dechunk = {
+const serf_bucket_type_t serf_bucket_type_dechunk = {
     "DECHUNK",
     serf_dechunk_read,
     serf_dechunk_readline,

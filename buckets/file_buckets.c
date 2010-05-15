@@ -35,7 +35,7 @@ static apr_status_t file_reader(void *baton, apr_size_t bufsize,
     return apr_file_read(ctx->file, buf, len);
 }
 
-SERF_DECLARE(serf_bucket_t *) serf_bucket_file_create(
+serf_bucket_t *serf_bucket_file_create(
     apr_file_t *file,
     serf_bucket_alloc_t *allocator)
 {
@@ -105,7 +105,7 @@ static apr_status_t serf_file_peek(serf_bucket_t *bucket,
     return serf_databuf_peek(&ctx->databuf, data, len);
 }
 
-SERF_DECLARE_DATA const serf_bucket_type_t serf_bucket_type_file = {
+const serf_bucket_type_t serf_bucket_type_file = {
     "FILE",
     serf_file_read,
     serf_file_readline,

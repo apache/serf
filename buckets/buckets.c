@@ -19,7 +19,7 @@
 #include "serf_bucket_util.h"
 
 
-SERF_DECLARE(serf_bucket_t *) serf_bucket_create(
+serf_bucket_t *serf_bucket_create(
     const serf_bucket_type_t *type,
     serf_bucket_alloc_t *allocator,
     void *data)
@@ -33,7 +33,8 @@ SERF_DECLARE(serf_bucket_t *) serf_bucket_create(
     return bkt;
 }
 
-SERF_DECLARE(apr_status_t) serf_default_read_iovec(
+
+apr_status_t serf_default_read_iovec(
     serf_bucket_t *bucket,
     apr_size_t requested,
     int vecs_size,
@@ -69,7 +70,8 @@ SERF_DECLARE(apr_status_t) serf_default_read_iovec(
     return status;
 }
 
-SERF_DECLARE(apr_status_t) serf_default_read_for_sendfile(
+
+apr_status_t serf_default_read_for_sendfile(
     serf_bucket_t *bucket,
     apr_size_t requested,
     apr_hdtr_t *hdtr,
@@ -94,14 +96,16 @@ SERF_DECLARE(apr_status_t) serf_default_read_for_sendfile(
     return status;
 }
 
-SERF_DECLARE(serf_bucket_t *) serf_default_read_bucket(
+
+serf_bucket_t *serf_default_read_bucket(
     serf_bucket_t *bucket,
     const serf_bucket_type_t *type)
 {
     return NULL;
 }
 
-SERF_DECLARE(void) serf_default_destroy(serf_bucket_t *bucket)
+
+void serf_default_destroy(serf_bucket_t *bucket)
 {
 #ifdef SERF_DEBUG_BUCKET_USE
     serf_debug__bucket_destroy(bucket);
@@ -110,25 +114,29 @@ SERF_DECLARE(void) serf_default_destroy(serf_bucket_t *bucket)
     serf_bucket_mem_free(bucket->allocator, bucket);
 }
 
-SERF_DECLARE(void) serf_default_destroy_and_data(serf_bucket_t *bucket)
+
+void serf_default_destroy_and_data(serf_bucket_t *bucket)
 {
     serf_bucket_mem_free(bucket->allocator, bucket->data);
     serf_default_destroy(bucket);
 }
 
-SERF_DECLARE(apr_status_t) serf_default_snapshot(serf_bucket_t *bucket)
+
+apr_status_t serf_default_snapshot(serf_bucket_t *bucket)
 {
     /* Not implemented. */
     return APR_ENOTIMPL;
 }
 
-SERF_DECLARE(apr_status_t) serf_default_restore_snapshot(serf_bucket_t *bucket)
+
+apr_status_t serf_default_restore_snapshot(serf_bucket_t *bucket)
 {
     /* Not implemented. */
     return APR_ENOTIMPL;
 }
 
-SERF_DECLARE(int) serf_default_is_snapshot_set(serf_bucket_t *bucket)
+
+int serf_default_is_snapshot_set(serf_bucket_t *bucket)
 {
     return 0;  
 }
@@ -136,8 +144,9 @@ SERF_DECLARE(int) serf_default_is_snapshot_set(serf_bucket_t *bucket)
 /* ==================================================================== */
 
 
-SERF_DECLARE(char *) serf_bstrmemdup(serf_bucket_alloc_t *allocator,
-                                     const char *str, apr_size_t size)
+char *serf_bstrmemdup(serf_bucket_alloc_t *allocator,
+                      const char *str,
+                      apr_size_t size)
 {
     char *newstr = serf_bucket_mem_alloc(allocator, size + 1);
     memcpy(newstr, str, size);
@@ -145,17 +154,19 @@ SERF_DECLARE(char *) serf_bstrmemdup(serf_bucket_alloc_t *allocator,
     return newstr;
 }
 
-SERF_DECLARE(void *) serf_bmemdup(serf_bucket_alloc_t *allocator,
-                                  const void *mem,
-                                  apr_size_t size)
+
+void *serf_bmemdup(serf_bucket_alloc_t *allocator,
+                   const void *mem,
+                   apr_size_t size)
 {
     void *newmem = serf_bucket_mem_alloc(allocator, size);
     memcpy(newmem, mem, size);
     return newmem;
 }
 
-SERF_DECLARE(char *) serf_bstrdup(serf_bucket_alloc_t *allocator,
-                                  const char *str)
+
+char *serf_bstrdup(serf_bucket_alloc_t *allocator,
+                   const char *str)
 {
     apr_size_t size = strlen(str) + 1;
     char *newstr = serf_bucket_mem_alloc(allocator, size);
@@ -203,8 +214,12 @@ static void find_crlf(const char **data, apr_size_t *len, int *found)
     *found = SERF_NEWLINE_NONE;
 }
 
-SERF_DECLARE(void) serf_util_readline(const char **data, apr_size_t *len,
-                                      int acceptable, int *found)
+
+void serf_util_readline(
+    const char **data,
+    apr_size_t *len,
+    int acceptable,
+    int *found)
 {
     const char *start;
     const char *cr;
@@ -284,7 +299,7 @@ SERF_DECLARE(void) serf_util_readline(const char **data, apr_size_t *len,
 /* ==================================================================== */
 
 
-SERF_DECLARE(void) serf_databuf_init(serf_databuf_t *databuf)
+void serf_databuf_init(serf_databuf_t *databuf)
 {
     /* nothing is sitting in the buffer */
     databuf->remaining = 0;
@@ -326,10 +341,12 @@ static apr_status_t common_databuf_prep(serf_databuf_t *databuf,
     return APR_SUCCESS;
 }
 
-SERF_DECLARE(apr_status_t) serf_databuf_read(serf_databuf_t *databuf,
-                                             apr_size_t requested,
-                                             const char **data,
-                                             apr_size_t *len)
+
+apr_status_t serf_databuf_read(
+    serf_databuf_t *databuf,
+    apr_size_t requested,
+    const char **data,
+    apr_size_t *len)
 {
     apr_status_t status = common_databuf_prep(databuf, len);
     if (status)
@@ -355,10 +372,13 @@ SERF_DECLARE(apr_status_t) serf_databuf_read(serf_databuf_t *databuf,
     return databuf->remaining ? APR_SUCCESS : databuf->status;
 }
 
-SERF_DECLARE(apr_status_t) serf_databuf_readline(serf_databuf_t *databuf,
-                                                 int acceptable, int *found,
-                                                 const char **data,
-                                                 apr_size_t *len)
+
+apr_status_t serf_databuf_readline(
+    serf_databuf_t *databuf,
+    int acceptable,
+    int *found,
+    const char **data,
+    apr_size_t *len)
 {
     apr_status_t status = common_databuf_prep(databuf, len);
     if (status)
@@ -378,9 +398,11 @@ SERF_DECLARE(apr_status_t) serf_databuf_readline(serf_databuf_t *databuf,
     return databuf->remaining ? APR_SUCCESS : databuf->status;
 }
 
-SERF_DECLARE(apr_status_t) serf_databuf_peek(serf_databuf_t *databuf,
-                                             const char **data,
-                                             apr_size_t *len)
+
+apr_status_t serf_databuf_peek(
+    serf_databuf_t *databuf,
+    const char **data,
+    apr_size_t *len)
 {
     apr_status_t status = common_databuf_prep(databuf, len);
     if (status)
@@ -403,13 +425,14 @@ SERF_DECLARE(apr_status_t) serf_databuf_peek(serf_databuf_t *databuf,
 /* ==================================================================== */
 
 
-SERF_DECLARE(void) serf_linebuf_init(serf_linebuf_t *linebuf)
+void serf_linebuf_init(serf_linebuf_t *linebuf)
 {
     linebuf->state = SERF_LINEBUF_EMPTY;
     linebuf->used = 0;
 }
 
-SERF_DECLARE(apr_status_t) serf_linebuf_fetch(
+
+apr_status_t serf_linebuf_fetch(
     serf_linebuf_t *linebuf,
     serf_bucket_t *bucket,
     int acceptable)

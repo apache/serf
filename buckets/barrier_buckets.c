@@ -24,7 +24,7 @@ typedef struct {
 } barrier_context_t;
 
 
-SERF_DECLARE(serf_bucket_t *) serf_bucket_barrier_create(
+serf_bucket_t *serf_bucket_barrier_create(
     serf_bucket_t *stream,
     serf_bucket_alloc_t *allocator)
 {
@@ -74,7 +74,7 @@ static void serf_barrier_destroy(serf_bucket_t *bucket)
     serf_default_destroy_and_data(bucket);
 }
 
-SERF_DECLARE_DATA const serf_bucket_type_t serf_bucket_type_barrier = {
+const serf_bucket_type_t serf_bucket_type_barrier = {
     "BARRIER",
     serf_barrier_read,
     serf_barrier_readline,
