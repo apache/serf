@@ -141,35 +141,36 @@ static void test_serf_connection_request_create(CuTest *tc)
     apr_pool_t *iter_pool;
     apr_array_header_t *accepted_requests, *handled_requests, *sent_requests;
     int i;
+    test_server_message_t message_list[] = {
+        {"GET / HTTP/1.1" CRLF
+         "Transfer-Encoding: chunked" CRLF
+         CRLF
+         "1" CRLF
+         "1" CRLF
+         "0" CRLF
+         CRLF},
+        {"GET / HTTP/1.1" CRLF
+         "Transfer-Encoding: chunked" CRLF
+         "" CRLF
+         "1" CRLF
+         "2" CRLF
+         "0" CRLF
+         CRLF}
+    };
+
     test_server_action_t action_list[] = {
-        {SERVER_RECV,
-        "GET / HTTP/1.1" CRLF
-        "Transfer-Encoding: chunked" CRLF
-        CRLF
-        "1" CRLF
-        "1" CRLF
-        "0" CRLF
-        CRLF
-        "GET / HTTP/1.1" CRLF
-        "Transfer-Encoding: chunked" CRLF
-        "" CRLF
-        "1" CRLF
-        "2" CRLF
-        "0" CRLF
-        CRLF
-        },
-        {SERVER_SEND,
-        "HTTP/1.1 200 OK" CRLF
-        "Transfer-Encoding: chunked" CRLF
-        CRLF
-        "0" CRLF
-        CRLF
-        "HTTP/1.1 200 OK" CRLF
-        "Transfer-Encoding: chunked" CRLF
-        CRLF
-        "0" CRLF
-        CRLF
-        }
+        {SERVER_RESPOND,
+         "HTTP/1.1 200 OK" CRLF
+         "Transfer-Encoding: chunked" CRLF
+         CRLF
+         "0" CRLF
+         CRLF},
+        {SERVER_RESPOND,
+         "HTTP/1.1 200 OK" CRLF
+         "Transfer-Encoding: chunked" CRLF
+         CRLF
+         "0" CRLF
+         CRLF}
     };
 
     accepted_requests = apr_array_make(test_pool, 2, sizeof(int));
@@ -177,7 +178,9 @@ static void test_serf_connection_request_create(CuTest *tc)
     handled_requests = apr_array_make(test_pool, 2, sizeof(int));
 
     /* Set up a test context with a server */
-    status = test_server_create(&tb, action_list, 2, 0, NULL, NULL, NULL,
+    status = test_server_create(&tb,
+                                message_list, 2,
+                                action_list, 2, 0, NULL, NULL, NULL,
                                 test_pool);
     CuAssertIntEquals(tc, APR_SUCCESS, status);
 
@@ -208,7 +211,7 @@ static void test_serf_connection_request_create(CuTest *tc)
 
     apr_pool_create(&iter_pool, test_pool);
 
-    while (!handler_ctx.done && !handler2_ctx.done)
+    while (!handler_ctx.done || !handler2_ctx.done)
     {
         apr_pool_clear(iter_pool);
 
@@ -258,17 +261,17 @@ static void test_serf_connection_priority_request_create(CuTest *tc)
     apr_pool_t *iter_pool;
     apr_array_header_t *accepted_requests, *handled_requests, *sent_requests;
     int i;
+
+    test_server_message_t message_list[] = {
+        {CHUNCKED_REQUEST(1, "1")},
+        {CHUNCKED_REQUEST(1, "2")},
+        {CHUNCKED_REQUEST(1, "3")},
+    };
+
     test_server_action_t action_list[] = {
-        {SERVER_RECV,
-         CHUNCKED_REQUEST(1, "1")
-         CHUNCKED_REQUEST(1, "2")
-         CHUNCKED_REQUEST(1, "3")
-        },
-        {SERVER_SEND,
-         CHUNKED_EMPTY_RESPONSE
-         CHUNKED_EMPTY_RESPONSE
-         CHUNKED_EMPTY_RESPONSE
-        }
+        {SERVER_RESPOND, CHUNKED_EMPTY_RESPONSE},
+        {SERVER_RESPOND, CHUNKED_EMPTY_RESPONSE},
+        {SERVER_RESPOND, CHUNKED_EMPTY_RESPONSE},
     };
 
     accepted_requests = apr_array_make(test_pool, 3, sizeof(int));
@@ -276,7 +279,9 @@ static void test_serf_connection_priority_request_create(CuTest *tc)
     handled_requests = apr_array_make(test_pool, 3, sizeof(int));
 
     /* Set up a test context with a server */
-    status = test_server_create(&tb, action_list, 2, 0, NULL, NULL, NULL,
+    status = test_server_create(&tb,
+                                message_list, 3,
+                                action_list, 3, 0, NULL, NULL, NULL,
                                 test_pool);
     CuAssertIntEquals(tc, APR_SUCCESS, status);
 
@@ -313,7 +318,7 @@ static void test_serf_connection_priority_request_create(CuTest *tc)
 
     apr_pool_create(&iter_pool, test_pool);
 
-    while (!handler_ctx.done && !handler2_ctx.done && !handler3_ctx.done)
+    while (!handler_ctx.done || !handler2_ctx.done || !handler3_ctx.done)
     {
         apr_pool_clear(iter_pool);
 
@@ -363,23 +368,24 @@ static void test_serf_closed_connection(CuTest *tc)
     handler_baton_t handler_ctx[NUM_REQUESTS];
     int done = FALSE, i;
 
+    test_server_message_t message_list[] = {
+        {CHUNCKED_REQUEST(1, "1")},
+        {CHUNCKED_REQUEST(1, "2")},
+        {CHUNCKED_REQUEST(1, "3")},
+        {CHUNCKED_REQUEST(1, "4")},
+        {CHUNCKED_REQUEST(1, "5")},
+        {CHUNCKED_REQUEST(1, "6")},
+        {CHUNCKED_REQUEST(1, "7")},
+        {CHUNCKED_REQUEST(1, "8")},
+        {CHUNCKED_REQUEST(1, "9")},
+        {CHUNCKED_REQUEST(2, "10")}
+        };
+
     test_server_action_t action_list[] = {
-        {SERVER_RECV,
-         CHUNCKED_REQUEST(1, "1")
-         CHUNCKED_REQUEST(1, "2")
-         CHUNCKED_REQUEST(1, "3")
-         CHUNCKED_REQUEST(1, "4")
-         CHUNCKED_REQUEST(1, "5")
-         CHUNCKED_REQUEST(1, "6")
-         CHUNCKED_REQUEST(1, "7")
-         CHUNCKED_REQUEST(1, "8")
-         CHUNCKED_REQUEST(1, "9")
-         CHUNCKED_REQUEST(2, "10")
-        },
-        {SERVER_SEND,
-         CHUNKED_EMPTY_RESPONSE
-         CHUNKED_EMPTY_RESPONSE
-         CHUNKED_EMPTY_RESPONSE
+        {SERVER_RESPOND, CHUNKED_EMPTY_RESPONSE},
+        {SERVER_RESPOND, CHUNKED_EMPTY_RESPONSE},
+        {SERVER_RESPOND, CHUNKED_EMPTY_RESPONSE},
+        {SERVER_RESPOND,
          "HTTP/1.1 200 OK" CRLF
          "Transfer-Encoding: chunked" CRLF
          "Connection: close" CRLF
@@ -387,11 +393,11 @@ static void test_serf_closed_connection(CuTest *tc)
          "0" CRLF
          CRLF
         },
-        {SERVER_KILL_CONNECTION},
-        {SERVER_SEND,
-         CHUNKED_EMPTY_RESPONSE
-         CHUNKED_EMPTY_RESPONSE
-         CHUNKED_EMPTY_RESPONSE
+        {SERVER_IGNORE_AND_KILL_CONNECTION},
+        {SERVER_RESPOND, CHUNKED_EMPTY_RESPONSE},
+        {SERVER_RESPOND, CHUNKED_EMPTY_RESPONSE},
+        {SERVER_RESPOND, CHUNKED_EMPTY_RESPONSE},
+        {SERVER_RESPOND,
          "HTTP/1.1 200 OK" CRLF
          "Transfer-Encoding: chunked" CRLF
          "Connection: close" CRLF
@@ -399,11 +405,9 @@ static void test_serf_closed_connection(CuTest *tc)
          "0" CRLF
          CRLF
         },
-        {SERVER_KILL_CONNECTION},
-        {SERVER_SEND,
-         CHUNKED_EMPTY_RESPONSE
-         CHUNKED_EMPTY_RESPONSE
-        },
+        {SERVER_IGNORE_AND_KILL_CONNECTION},
+        {SERVER_RESPOND, CHUNKED_EMPTY_RESPONSE},
+        {SERVER_RESPOND, CHUNKED_EMPTY_RESPONSE},
     };
 
     accepted_requests = apr_array_make(test_pool, NUM_REQUESTS, sizeof(int));
@@ -411,7 +415,11 @@ static void test_serf_closed_connection(CuTest *tc)
     handled_requests = apr_array_make(test_pool, NUM_REQUESTS, sizeof(int));
 
     /* Set up a test context with a server. */
-    status = test_server_create(&tb, action_list, 6, 0, NULL, NULL, NULL,
+    status = test_server_create(&tb,
+                                message_list, 10,
+                                action_list, 12,
+                                0,
+                                NULL, NULL, NULL,
                                 test_pool);
     CuAssertIntEquals(tc, APR_SUCCESS, status);
 
@@ -484,29 +492,30 @@ static void test_serf_setup_proxy(CuTest *tc)
     int i;
     int numrequests = 1;
     apr_sockaddr_t *proxy_address;
-    test_server_action_t *action_list_server = NULL;
-    test_server_action_t action_list_proxy[] = {
-        {SERVER_RECV,
-         "GET http://localhost:" SERV_PORT_STR " HTTP/1.1" CRLF\
+
+    test_server_message_t message_list[] = {
+        {"GET http://localhost:" SERV_PORT_STR " HTTP/1.1" CRLF\
          "Host: localhost:" SERV_PORT_STR CRLF\
          "Transfer-Encoding: chunked" CRLF\
          CRLF\
          "1" CRLF\
          "1" CRLF\
          "0" CRLF\
-         CRLF
-        },
-        {SERVER_SEND,
-         CHUNKED_EMPTY_RESPONSE
-        }
+         CRLF}
+    };
+
+    test_server_action_t action_list_proxy[] = {
+        {SERVER_RESPOND, CHUNKED_EMPTY_RESPONSE},
     };
 
     accepted_requests = apr_array_make(test_pool, numrequests, sizeof(int));
     sent_requests = apr_array_make(test_pool, numrequests, sizeof(int));
     handled_requests = apr_array_make(test_pool, numrequests, sizeof(int));
 
-    /* Set up a test context with a server */
-    status = test_server_create(&tb_server, action_list_server, 2, 0,
+    /* Set up a test context with a server, no messages expected. */
+    status = test_server_create(&tb_server,
+                                NULL, 0,
+                                NULL, 0, 0,
                                 "http://localhost:" SERV_PORT_STR, NULL,
                                 NULL, test_pool);
     CuAssertIntEquals(tc, APR_SUCCESS, status);
@@ -517,7 +526,9 @@ static void test_serf_setup_proxy(CuTest *tc)
                                    test_pool);
     CuAssertIntEquals(tc, APR_SUCCESS, status);
 
-    status = test_server_create(&tb_proxy, action_list_proxy, 2, 0,
+    status = test_server_create(&tb_proxy,
+                                message_list, 1,
+                                action_list_proxy, 1, 0,
                                 NULL, proxy_address, NULL,
                                 test_pool);
 
@@ -645,49 +656,24 @@ static void test_keepalive_limit_one_by_one(CuTest *tc)
     handler_baton_t handler_ctx[SEND_REQUESTS];
     int done = FALSE, i;
 
+    test_server_message_t message_list[] = {
+        {CHUNCKED_REQUEST(1, "1")},
+        {CHUNCKED_REQUEST(1, "1")},
+        {CHUNCKED_REQUEST(1, "1")},
+        {CHUNCKED_REQUEST(1, "2")},
+        {CHUNCKED_REQUEST(1, "3")},
+        {CHUNCKED_REQUEST(1, "4")},
+        {CHUNCKED_REQUEST(1, "5")},
+    };
+
     test_server_action_t action_list[] = {
-        {SERVER_RECV,
-         CHUNCKED_REQUEST(1, "1")
-        },
-        {SERVER_SEND,
-         CHUNKED_EMPTY_RESPONSE
-        },
-        {SERVER_RECV,
-         CHUNCKED_REQUEST(1, "1")
-        },
-        {SERVER_SEND,
-         CHUNKED_EMPTY_RESPONSE
-        },
-        {SERVER_RECV,
-         CHUNCKED_REQUEST(1, "1")
-        },
-        {SERVER_SEND,
-         CHUNKED_EMPTY_RESPONSE
-        },
-        {SERVER_RECV,
-         CHUNCKED_REQUEST(1, "2")
-        },
-        {SERVER_SEND,
-         CHUNKED_EMPTY_RESPONSE
-        },
-        {SERVER_RECV,
-         CHUNCKED_REQUEST(1, "3")
-        },
-        {SERVER_SEND,
-         CHUNKED_EMPTY_RESPONSE
-        },
-        {SERVER_RECV,
-         CHUNCKED_REQUEST(1, "4")
-        },
-        {SERVER_SEND,
-         CHUNKED_EMPTY_RESPONSE
-        },
-        {SERVER_RECV,
-         CHUNCKED_REQUEST(1, "5")
-        },
-        {SERVER_SEND,
-         CHUNKED_EMPTY_RESPONSE
-        },
+        {SERVER_RESPOND, CHUNKED_EMPTY_RESPONSE},
+        {SERVER_RESPOND, CHUNKED_EMPTY_RESPONSE},
+        {SERVER_RESPOND, CHUNKED_EMPTY_RESPONSE},
+        {SERVER_RESPOND, CHUNKED_EMPTY_RESPONSE},
+        {SERVER_RESPOND, CHUNKED_EMPTY_RESPONSE},
+        {SERVER_RESPOND, CHUNKED_EMPTY_RESPONSE},
+        {SERVER_RESPOND, CHUNKED_EMPTY_RESPONSE},
     };
 
     accepted_requests = apr_array_make(test_pool, RCVD_REQUESTS, sizeof(int));
@@ -695,7 +681,9 @@ static void test_keepalive_limit_one_by_one(CuTest *tc)
     handled_requests = apr_array_make(test_pool, RCVD_REQUESTS, sizeof(int));
 
     /* Set up a test context with a server. */
-    status = test_server_create(&tb, action_list, 14, 0, NULL, NULL, NULL,
+    status = test_server_create(&tb,
+                                message_list, 7,
+                                action_list, 7, 0, NULL, NULL, NULL,
                                 test_pool);
     CuAssertIntEquals(tc, APR_SUCCESS, status);
 
@@ -817,37 +805,24 @@ static void test_keepalive_limit_one_by_one_and_burst(CuTest *tc)
     handler_baton_t handler_ctx[SEND_REQUESTS];
     int done = FALSE, i;
 
+    test_server_message_t message_list[] = {
+        {CHUNCKED_REQUEST(1, "1")},
+        {CHUNCKED_REQUEST(1, "1")},
+        {CHUNCKED_REQUEST(1, "1")},
+        {CHUNCKED_REQUEST(1, "2")},
+        {CHUNCKED_REQUEST(1, "3")},
+        {CHUNCKED_REQUEST(1, "4")},
+        {CHUNCKED_REQUEST(1, "5")},
+    };
+
     test_server_action_t action_list[] = {
-        {SERVER_RECV,
-         CHUNCKED_REQUEST(1, "1")
-        },
-        {SERVER_SEND,
-         CHUNKED_EMPTY_RESPONSE
-        },
-        {SERVER_RECV,
-         CHUNCKED_REQUEST(1, "1")
-        },
-        {SERVER_SEND,
-         CHUNKED_EMPTY_RESPONSE
-        },
-        {SERVER_RECV,
-         CHUNCKED_REQUEST(1, "1")
-        },
-        {SERVER_SEND,
-         CHUNKED_EMPTY_RESPONSE
-        },
-        {SERVER_RECV,
-         CHUNCKED_REQUEST(1, "2")
-         CHUNCKED_REQUEST(1, "3")
-         CHUNCKED_REQUEST(1, "4")
-         CHUNCKED_REQUEST(1, "5")
-        },
-        {SERVER_SEND,
-         CHUNKED_EMPTY_RESPONSE
-         CHUNKED_EMPTY_RESPONSE
-         CHUNKED_EMPTY_RESPONSE
-         CHUNKED_EMPTY_RESPONSE
-        },
+        {SERVER_RESPOND, CHUNKED_EMPTY_RESPONSE},
+        {SERVER_RESPOND, CHUNKED_EMPTY_RESPONSE},
+        {SERVER_RESPOND, CHUNKED_EMPTY_RESPONSE},
+        {SERVER_RESPOND, CHUNKED_EMPTY_RESPONSE},
+        {SERVER_RESPOND, CHUNKED_EMPTY_RESPONSE},
+        {SERVER_RESPOND, CHUNKED_EMPTY_RESPONSE},
+        {SERVER_RESPOND, CHUNKED_EMPTY_RESPONSE},
     };
 
     accepted_requests = apr_array_make(test_pool, RCVD_REQUESTS, sizeof(int));
@@ -855,7 +830,9 @@ static void test_keepalive_limit_one_by_one_and_burst(CuTest *tc)
     handled_requests = apr_array_make(test_pool, RCVD_REQUESTS, sizeof(int));
 
     /* Set up a test context with a server. */
-    status = test_server_create(&tb, action_list, 8, 0, NULL, NULL, NULL, 
+    status = test_server_create(&tb,
+                                message_list, 7,
+                                action_list, 7, 0, NULL, NULL, NULL, 
                                 test_pool);
     CuAssertIntEquals(tc, APR_SUCCESS, status);
 
@@ -953,21 +930,20 @@ static void test_serf_progress_callback(CuTest *tc)
     int done = FALSE, i;
     progress_baton_t *pb;
 
+    test_server_message_t message_list[] = {
+        {CHUNCKED_REQUEST(1, "1")},
+        {CHUNCKED_REQUEST(1, "2")},
+        {CHUNCKED_REQUEST(1, "3")},
+        {CHUNCKED_REQUEST(1, "4")},
+        {CHUNCKED_REQUEST(1, "5")},
+    };
+
     test_server_action_t action_list[] = {
-        {SERVER_RECV,
-         CHUNCKED_REQUEST(1, "1")
-         CHUNCKED_REQUEST(1, "2")
-         CHUNCKED_REQUEST(1, "3")
-         CHUNCKED_REQUEST(1, "4")
-         CHUNCKED_REQUEST(1, "5")
-        },
-        {SERVER_SEND,
-         CHUNKED_EMPTY_RESPONSE
-         CHUNKED_RESPONSE(1, "2")
-         CHUNKED_EMPTY_RESPONSE
-         CHUNKED_EMPTY_RESPONSE
-         CHUNKED_EMPTY_RESPONSE
-        },
+        {SERVER_RESPOND, CHUNKED_EMPTY_RESPONSE},
+        {SERVER_RESPOND, CHUNKED_RESPONSE(1, "2")},
+        {SERVER_RESPOND, CHUNKED_EMPTY_RESPONSE},
+        {SERVER_RESPOND, CHUNKED_EMPTY_RESPONSE},
+        {SERVER_RESPOND, CHUNKED_EMPTY_RESPONSE},
     };
 
     accepted_requests = apr_array_make(test_pool, NUM_REQUESTS, sizeof(int));
@@ -975,7 +951,9 @@ static void test_serf_progress_callback(CuTest *tc)
     handled_requests = apr_array_make(test_pool, NUM_REQUESTS, sizeof(int));
 
     /* Set up a test context with a server. */
-    status = test_server_create(&tb, action_list, 2, 0, NULL, NULL, 
+    status = test_server_create(&tb,
+                                message_list, 5,
+                                action_list, 5, 0, NULL, NULL, 
                                 progress_conn_setup, test_pool);
     CuAssertIntEquals(tc, APR_SUCCESS, status);
 

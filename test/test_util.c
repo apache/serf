@@ -59,6 +59,11 @@ static apr_status_t get_server_address(apr_sockaddr_t **address,
                                  pool);
 }
 
+static void next_message(test_baton_t *tb)
+{
+    tb->cur_message++;
+}
+
 static void next_action(test_baton_t *tb)
 {
     tb->cur_action++;
@@ -66,95 +71,130 @@ static void next_action(test_baton_t *tb)
 }
 
 static apr_status_t replay(test_baton_t *tb,
+                           apr_int16_t rtnevents,
                            apr_pool_t *pool)
 {
     apr_status_t status = APR_SUCCESS;
     test_server_action_t *action;
 
-    if (tb->cur_action >= tb->action_count) {
-        char buf[128];
-        apr_size_t len = sizeof(buf);
-
-        status = apr_socket_recv(tb->client_sock, buf, &len);
-        if (! APR_STATUS_IS_EAGAIN(status)) {
-            /* we're out of actions! */
-            printf("Received more requests than expected\n");
+    if (rtnevents & APR_POLLIN) {
+        if (tb->message_list == NULL) {
+            /* we're not expecting any requests to reach this server! */
+            printf("Received request where none was expected\n");
 
             return APR_EGENERAL;
         }
 
-        return status;
-    }
+        if (tb->cur_action >= tb->action_count) {
+            char buf[128];
+            apr_size_t len = sizeof(buf);
 
-    if (tb->action_list == NULL)
-    {
-        /* we're not expecting any requests to reach this server! */
-        printf("Received request where none was expected\n");
+            status = apr_socket_recv(tb->client_sock, buf, &len);
+            if (! APR_STATUS_IS_EAGAIN(status)) {
+                /* we're out of actions! */
+                printf("Received more requests than expected.\n");
 
-        return APR_EGENERAL;
-    }
-
-    action = &tb->action_list[tb->cur_action];
-
-    if (action->kind == SERVER_RECV)
-    {
-        apr_size_t msg_len, len;
-        char buf[128];
-
-        msg_len = strlen(action->text);
-
-        len = msg_len - tb->action_buf_pos;
-        if (len > sizeof(buf))
-            len = sizeof(buf);
-
-        status = apr_socket_recv(tb->client_sock, buf, &len);
-        if (status != APR_SUCCESS)
+                return APR_EGENERAL;
+            }
             return status;
-
-        if (tb->options & TEST_SERVER_DUMP)
-            fwrite(buf, len, 1, stdout);
-
-        if (strncmp(buf, action->text + tb->action_buf_pos, len) != 0) {
-            /* ## TODO: Better diagnostics. */
-            printf("Expected: (\n");
-            fwrite(action->text + tb->action_buf_pos, len, 1, stdout);
-            printf(")\n");
-            printf("Actual: (\n");
-            fwrite(buf, len, 1, stdout);
-            printf(")\n");
-
-            return APR_EGENERAL;
         }
 
-        tb->action_buf_pos += len;
+        action = &tb->action_list[tb->cur_action];
 
-        if (tb->action_buf_pos >= msg_len)
-            next_action(tb);
-    }
-    else if (action->kind == SERVER_SEND) {
-        apr_size_t msg_len;
-        apr_size_t len;
+        if (action->kind == SERVER_IGNORE_AND_KILL_CONNECTION) {
+            char buf[128];
+            apr_size_t len = sizeof(buf);
 
-        msg_len = strlen(action->text);
-        len = msg_len - tb->action_buf_pos;
+            status = apr_socket_recv(tb->client_sock, buf, &len);
 
-        status = apr_socket_send(tb->client_sock,
-                                 action->text + tb->action_buf_pos, &len);
-        if (status != APR_SUCCESS)
+            if (status == APR_EOF) {
+                apr_socket_close(tb->client_sock);
+                tb->client_sock = NULL;
+                next_action(tb);
+                return APR_SUCCESS;
+            }
+
             return status;
+        }
+        else if (action->kind == SERVER_RECV ||
+                 (action->kind == SERVER_RESPOND &&
+                  tb->outstanding_responses == 0)) {
+            apr_size_t msg_len, len;
+            char buf[128];
+            test_server_message_t *message;
 
-        if (tb->options & TEST_SERVER_DUMP)
-            fwrite(action->text + tb->action_buf_pos, len, 1, stdout);
+            message = &tb->message_list[tb->cur_message];
+            msg_len = strlen(message->text);
 
-        tb->action_buf_pos += len;
+            len = msg_len - tb->message_buf_pos;
+            if (len > sizeof(buf))
+                len = sizeof(buf);
 
-        if (tb->action_buf_pos >= msg_len)
-            next_action(tb);
+            status = apr_socket_recv(tb->client_sock, buf, &len);
+            if (status != APR_SUCCESS)
+                return status;
+
+            if (tb->options & TEST_SERVER_DUMP)
+                fwrite(buf, len, 1, stdout);
+
+            if (strncmp(buf, message->text + tb->message_buf_pos, len) != 0) {
+                /* ## TODO: Better diagnostics. */
+                printf("Expected: (\n");
+                fwrite(message->text + tb->message_buf_pos, len, 1, stdout);
+                printf(")\n");
+                printf("Actual: (\n");
+                fwrite(buf, len, 1, stdout);
+                printf(")\n");
+
+                return APR_EGENERAL;
+            }
+
+            tb->message_buf_pos += len;
+
+            if (tb->message_buf_pos >= msg_len) {
+                next_message(tb);
+                tb->message_buf_pos -= msg_len;
+                if (action->kind == SERVER_RESPOND)
+                    tb->outstanding_responses++;
+                if (action->kind == SERVER_RECV)
+                    next_action(tb);
+            }
+        }
     }
-    else if (action->kind == SERVER_KILL_CONNECTION) {
+    if (rtnevents & APR_POLLOUT) {
+        action = &tb->action_list[tb->cur_action];
+
+        if (action->kind == SERVER_RESPOND && tb->outstanding_responses) {
+            apr_size_t msg_len;
+            apr_size_t len;
+
+            msg_len = strlen(action->text);
+            len = msg_len - tb->action_buf_pos;
+
+            status = apr_socket_send(tb->client_sock,
+                                     action->text + tb->action_buf_pos, &len);
+            if (status != APR_SUCCESS)
+                return status;
+
+            if (tb->options & TEST_SERVER_DUMP)
+                fwrite(action->text + tb->action_buf_pos, len, 1, stdout);
+
+            tb->action_buf_pos += len;
+
+            if (tb->action_buf_pos >= msg_len) {
+                next_action(tb);
+                tb->outstanding_responses--;
+            }
+        }
+    }
+    else if (action->kind == SERVER_KILL_CONNECTION ||
+             action->kind == SERVER_IGNORE_AND_KILL_CONNECTION) {
         apr_socket_close(tb->client_sock);
         tb->client_sock = NULL;
         next_action(tb);
+    }
+    else if (rtnevents & APR_POLLOUT) {
+        /* ignore */
     }
     else {
         abort();
@@ -216,7 +256,7 @@ apr_status_t test_server_run(test_baton_t *tb,
 
         if (desc->desc.s == tb->client_sock) {
             /* Replay data to socket. */
-            status = replay(tb, pool);
+            status = replay(tb, desc->rtnevents, pool);
 
             if (APR_STATUS_IS_EOF(status)) {
                 apr_socket_close(tb->client_sock);
@@ -270,6 +310,7 @@ static apr_status_t prepare_server(test_baton_t *tb,
     /* Start replay from first action. */
     tb->cur_action = 0;
     tb->action_buf_pos = 0;
+    tb->outstanding_responses = 0;
 
     /* listen for clients */
     apr_socket_listen(serv_sock, SOMAXCONN);
@@ -284,6 +325,8 @@ static apr_status_t prepare_server(test_baton_t *tb,
 /*****************************************************************************/
 
 apr_status_t test_server_create(test_baton_t **tb_p,
+                                test_server_message_t *message_list,
+                                apr_size_t message_count,
                                 test_server_action_t *action_list,
                                 apr_size_t action_count,
                                 apr_int32_t options,
@@ -337,6 +380,8 @@ apr_status_t test_server_create(test_baton_t **tb_p,
                                                 tb,
                                                 pool);
     }
+    tb->message_list = message_list;
+    tb->message_count = message_count;
     tb->action_list = action_list;
     tb->action_count = action_count;
 
