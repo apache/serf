@@ -338,7 +338,7 @@ apr_status_t test_server_create(test_baton_t **tb_p,
     apr_status_t status;
     test_baton_t *tb;
 
-    tb = apr_palloc(pool, sizeof(*tb));
+    tb = apr_pcalloc(pool, sizeof(*tb));
     *tb_p = tb;
 
     if (address) {
