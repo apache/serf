@@ -21,7 +21,7 @@
 #
 # Typically, this script is used like:
 #
-#    C:\PATH> python build/gen_def.py serf.h serf_bucket_types.h serf_bucket_utilh. > serf.def
+#    C:\PATH> python build/gen_def.py serf.h serf_bucket_types.h serf_bucket_util.h > serf.def
 #
 
 import re
@@ -38,14 +38,13 @@ import sys
 # a more complicated example might be:
 #    const type * const * serf_func3(...
 #
-_funcs = re.compile(r'^(?:(?:\w+|\*) )+\*?(serf_[a-z_0-9]+)\(',
+_funcs = re.compile(r'^(?:(?:\w+|\*) )+\*?(serf_[a-z][a-z_0-9]*)\(',
                     re.MULTILINE)
 
 def extract_funcs(fname):
   funcs = [ ]
   for name in _funcs.findall(open(fname).read()):
-    if '__' not in name:
-      funcs.append(name)
+    funcs.append(name)
   return funcs
 
 
