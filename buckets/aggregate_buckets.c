@@ -32,6 +32,8 @@ typedef struct {
     int snapshot; 
     serf_bucket_aggregate_eof_t hold_open;
     void *hold_open_baton;
+    /* Does this bucket own its children? !0 if yes, 0 if not. */
+    int bucket_owner;
 } aggregate_context_t;
 
 
@@ -51,7 +53,9 @@ static void cleanup_aggregate(aggregate_context_t *ctx,
     while (ctx->done != NULL) {
         next_list = ctx->done->next;
 
-        serf_bucket_destroy(ctx->done->bucket);
+        if (ctx->bucket_owner) {
+            serf_bucket_destroy(ctx->done->bucket);
+        }
         serf_bucket_mem_free(allocator, ctx->done);
 
         ctx->done = next_list;
@@ -78,6 +82,7 @@ static aggregate_context_t *create_aggregate(serf_bucket_alloc_t *allocator)
     ctx->snapshot = 0;
     ctx->hold_open = NULL;
     ctx->hold_open_baton = NULL;
+	ctx->bucket_owner = 1;
 
     return ctx;
 }
@@ -92,13 +97,31 @@ serf_bucket_t *serf_bucket_aggregate_create(
     return serf_bucket_create(&serf_bucket_type_aggregate, allocator, ctx);
 }
 
+serf_bucket_t *serf__bucket_stream_create(
+    serf_bucket_alloc_t *allocator,
+    serf_bucket_aggregate_eof_t fn,
+    void *baton)
+{
+    serf_bucket_t *bucket = serf_bucket_aggregate_create(allocator);
+    aggregate_context_t *ctx = bucket->data;
+
+    serf_bucket_aggregate_hold_open(bucket, fn, baton);
+
+    ctx->bucket_owner = 0;
+
+    return bucket;
+}
+
+
 static void serf_aggregate_destroy_and_data(serf_bucket_t *bucket)
 {
     aggregate_context_t *ctx = bucket->data;
     bucket_list_t *next_ctx;
 
     while (ctx->list) {
-        serf_bucket_destroy(ctx->list->bucket);
+        if (ctx->bucket_owner) {
+            serf_bucket_destroy(ctx->list->bucket);
+        }
         next_ctx = ctx->list->next;
         serf_bucket_mem_free(bucket->allocator, ctx->list);
         ctx->list = next_ctx;

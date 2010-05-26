@@ -173,6 +173,10 @@ apr_status_t serf_bucket_bwtp_incoming_frame_wait_for_headers(
 extern const serf_bucket_type_t serf_bucket_type_aggregate;
 #define SERF_BUCKET_IS_AGGREGATE(b) SERF_BUCKET_CHECK((b), aggregate)
 
+typedef apr_status_t (*serf_bucket_aggregate_eof_t)(
+    void *baton,
+    serf_bucket_t *aggregate_bucket);
+
 /** serf_bucket_aggregate_cleanup will instantly destroy all buckets in
     the aggregate bucket that have been read completely. Whereas normally, 
     these buckets are destroyed on every read operation. */ 
@@ -182,6 +186,21 @@ void serf_bucket_aggregate_cleanup(
 
 serf_bucket_t *serf_bucket_aggregate_create(
     serf_bucket_alloc_t *allocator);
+
+/* Creates a stream bucket.
+   A stream bucket is like an aggregate bucket, but:
+   - it doesn't destroy its child buckets on cleanup
+   - one can always keep adding child buckets, the handler FN should return
+     APR_EOF when no more buckets will be added.
+
+  Note: keep this factory function internal for now. If it turns out this
+  bucket type is useful outside serf, we should make it an actual separate
+  type.
+  */
+serf_bucket_t *serf__bucket_stream_create(
+    serf_bucket_alloc_t *allocator,
+    serf_bucket_aggregate_eof_t fn,
+    void *baton);
 
 /** Transform @a bucket in-place into an aggregate bucket. */
 void serf_bucket_aggregate_become(
@@ -194,10 +213,6 @@ void serf_bucket_aggregate_prepend(
 void serf_bucket_aggregate_append(
     serf_bucket_t *aggregate_bucket,
     serf_bucket_t *append_bucket);
-
-typedef apr_status_t (*serf_bucket_aggregate_eof_t)(
-    void *baton,
-    serf_bucket_t *aggregate_bucket);
     
 void serf_bucket_aggregate_hold_open(
     serf_bucket_t *aggregate_bucket,
