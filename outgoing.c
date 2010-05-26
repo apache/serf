@@ -295,6 +295,30 @@ static void link_requests(serf_request_t **list, serf_request_t **tail,
     }
 }
 
+static apr_status_t destroy_request(serf_request_t *request)
+{
+    serf_connection_t *conn = request->conn;
+
+    /* The bucket is no longer needed, nor is the request's pool.
+       Note that before we can cleanup the request's pool, we have to
+       ensure that the ostream_tail aggregate bucket destroys the
+       use request bucket (which it owns).
+    */
+    if (request->resp_bkt) {
+        serf_bucket_destroy(request->resp_bkt);
+    }
+    serf_bucket_aggregate_cleanup(conn->ostream_tail, conn->allocator);
+    if (request->req_bkt) {
+        serf_bucket_destroy(request->req_bkt);
+    }
+
+    serf_debug__bucket_alloc_check(request->allocator);
+    apr_pool_destroy(request->respool);
+    serf_bucket_mem_free(conn->allocator, request);
+
+    return APR_SUCCESS;
+}
+
 static apr_status_t cancel_request(serf_request_t *request,
                                    serf_request_t **list,
                                    int notify_request)
@@ -528,30 +552,6 @@ static apr_status_t do_conn_setup(serf_connection_t *conn)
                                  ostream);
 
     return status;
-}
-
-static apr_status_t destroy_request(serf_request_t *request)
-{
-    serf_connection_t *conn = request->conn;
-
-    /* The bucket is no longer needed, nor is the request's pool.
-       Note that before we can cleanup the request's pool, we have to
-       ensure that the ostream_tail aggregate bucket destroys the
-       use request bucket (which it owns).
-    */
-    if (request->resp_bkt) {
-        serf_bucket_destroy(request->resp_bkt);
-    }
-    serf_bucket_aggregate_cleanup(conn->ostream_tail, conn->allocator);
-    if (request->req_bkt) {
-        serf_bucket_destroy(request->req_bkt);
-    }
-
-    serf_debug__bucket_alloc_check(request->allocator);
-    apr_pool_destroy(request->respool);
-    serf_bucket_mem_free(conn->allocator, request);
-
-    return APR_SUCCESS;
 }
 
 /* write data out to the connection */
