@@ -1,3 +1,6 @@
+Serf 0.6.2
+  Fix double free abort when destroying request buckets.
+
 Serf 0.6.1 [2010-05-14, r1370]
   Generally: this release fixes problems with the 0.4.0 packaging.
   Small compilation fix in outgoing.c for Windows builds.
