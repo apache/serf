@@ -35,7 +35,7 @@ TESTCASES = test/testcases/simple.response \
   test/testcases/chunked-trailers.response \
   test/testcases/deflate.response
 
-HEADERS = serf.h serf_bucket_types.h serf_bucket_util.h serf_declare.h
+HEADERS = serf.h serf_bucket_types.h serf_bucket_util.h
 
 prefix=@prefix@
 exec_prefix=@exec_prefix@
