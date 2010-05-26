@@ -81,11 +81,18 @@ typedef struct
     enum {
         SERVER_RECV,
         SERVER_SEND,
+        SERVER_RESPOND,
+        SERVER_IGNORE_AND_KILL_CONNECTION,
         SERVER_KILL_CONNECTION
     } kind;
 
     const char *text;
 } test_server_action_t;
+
+typedef struct
+{
+    const char *text;
+} test_server_message_t;
 
 typedef struct {
     /* Pool for resource allocation. */
@@ -103,7 +110,20 @@ typedef struct {
     /* Index of current action. */
     apr_size_t cur_action;
 
-    /* Position in action buffer. */
+    /* Array of messages the server will receive from the client. */
+    test_server_message_t *message_list;
+    /* Size of message_list array. */
+    apr_size_t message_count;
+    /* Index of current message. */
+    apr_size_t cur_message;
+
+    /* Number of messages received that the server didn't respond to yet. */
+    apr_size_t outstanding_responses;
+
+    /* Position in message buffer (incoming messages being read). */
+    apr_size_t message_buf_pos;
+
+    /* Position in action buffer. (outgoing messages being sent). */
     apr_size_t action_buf_pos;
 
     /* Address for server binding. */
@@ -125,6 +145,8 @@ typedef struct {
 #define SERV_PORT_STR "12345"
 
 apr_status_t test_server_create(test_baton_t **tb,
+                                test_server_message_t *message_list,
+                                apr_size_t message_count,
                                 test_server_action_t *action_list,
                                 apr_size_t action_count,
                                 apr_int32_t options,
