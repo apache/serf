@@ -10,7 +10,6 @@ FILES_HDR = [
   ('.', 'serf'),
   ('.', 'serf_bucket_types'),
   ('.', 'serf_bucket_util'),
-  ('.', 'serf_declare'),
   ]
 
 LIB_FILES = [
