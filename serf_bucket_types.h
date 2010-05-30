@@ -239,9 +239,6 @@ serf_bucket_t *serf_bucket_file_create(
     apr_file_t *file,
     serf_bucket_alloc_t *allocator);
 
-apr_file_t *serf_bucket_file_borrow(
-    serf_bucket_t *bkt);
-
 
 /* ==================================================================== */
 
