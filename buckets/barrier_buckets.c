@@ -45,6 +45,17 @@ static apr_status_t serf_barrier_read(serf_bucket_t *bucket,
     return serf_bucket_read(ctx->stream, requested, data, len);
 }
 
+static apr_status_t serf_barrier_read_iovec(serf_bucket_t *bucket,
+                                            apr_size_t requested,
+                                            int vecs_size, struct iovec *vecs,
+                                            int *vecs_used)
+{
+    barrier_context_t *ctx = bucket->data;
+
+    return serf_bucket_read_iovec(ctx->stream, requested, vecs_size, vecs,
+                                  vecs_used);
+}
+
 static apr_status_t serf_barrier_readline(serf_bucket_t *bucket,
                                          int acceptable, int *found,
                                          const char **data, apr_size_t *len)
@@ -78,7 +89,7 @@ const serf_bucket_type_t serf_bucket_type_barrier = {
     "BARRIER",
     serf_barrier_read,
     serf_barrier_readline,
-    serf_default_read_iovec,
+    serf_barrier_read_iovec,
     serf_default_read_for_sendfile,
     serf_default_read_bucket,
     serf_barrier_peek,
