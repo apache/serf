@@ -188,6 +188,10 @@ void *serf_bucket_mem_alloc(
                 /* ran out of room. grab another block. */
                 active = apr_allocator_alloc(allocator->allocator, ALLOC_AMT);
 
+                /* System couldn't provide us with memory. */
+                if (active == NULL)
+                    return NULL;
+
                 /* link the block into our tracking list */
                 allocator->blocks = active;
                 active->next = head;
@@ -201,6 +205,9 @@ void *serf_bucket_mem_alloc(
     else {
         apr_memnode_t *memnode = apr_allocator_alloc(allocator->allocator,
                                                      size);
+
+        if (memnode == NULL)
+            return NULL;
 
         node = (node_header_t *)memnode->first_avail;
         node->u.memnode = memnode;
@@ -217,6 +224,8 @@ void *serf_bucket_mem_calloc(
 {
     void *mem;
     mem = serf_bucket_mem_alloc(allocator, size);
+    if (mem == NULL)
+        return NULL;
     memset(mem, 0, size);
     return mem;
 }
