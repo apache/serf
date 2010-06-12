@@ -102,6 +102,41 @@ static void test_response_bucket_read(CuTest *tc)
     read_and_check_bucket(tc, bkt, "abc1234");
 }
 
+static void test_response_bucket_headers(CuTest *tc)
+{
+    serf_bucket_alloc_t *alloc = serf_bucket_allocator_create(test_pool, NULL,
+                                                              NULL);
+    serf_bucket_t *bkt, *tmp, *hdr;
+
+    tmp = SERF_BUCKET_SIMPLE_STRING(
+        "HTTP/1.1 405 Method Not Allowed" CRLF
+        "Date: Sat, 12 Jun 2010 14:17:10 GMT"  CRLF
+        "Server: Apache"  CRLF
+        "Allow: "  CRLF
+        "Content-Length: 7"  CRLF
+        "Content-Type: text/html; charset=iso-8859-1" CRLF
+        "NoSpace:" CRLF
+        CRLF
+        "abc1234",
+        alloc);
+
+    bkt = serf_bucket_response_create(tmp, alloc);
+
+    /* Read all bucket and check it content. */
+    read_and_check_bucket(tc, bkt, "abc1234");
+
+    hdr = serf_bucket_response_get_headers(bkt);
+    CuAssertStrEquals(tc,
+        "",
+        serf_bucket_headers_get(hdr, "Allow"));
+    CuAssertStrEquals(tc,
+        "7",
+        serf_bucket_headers_get(hdr, "Content-Length"));
+    CuAssertStrEquals(tc,
+        "",
+        serf_bucket_headers_get(hdr, "NoSpace"));
+}
+
 static void test_response_bucket_chunked_read(CuTest *tc)
 {
     serf_bucket_alloc_t *alloc = serf_bucket_allocator_create(test_pool, NULL,
@@ -286,6 +321,7 @@ CuSuite *test_buckets(void)
 
     SUITE_ADD_TEST(suite, test_simple_bucket_readline);
     SUITE_ADD_TEST(suite, test_response_bucket_read);
+    SUITE_ADD_TEST(suite, test_response_bucket_headers);
     SUITE_ADD_TEST(suite, test_response_bucket_chunked_read);
     SUITE_ADD_TEST(suite, test_bucket_header_set);
     SUITE_ADD_TEST(suite, test_simple_read_restore_snapshot_read);

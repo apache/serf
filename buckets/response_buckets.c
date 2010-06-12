@@ -153,9 +153,17 @@ static apr_status_t fetch_headers(serf_bucket_t *bkt, response_context_t *ctx)
             return APR_EGENERAL;
         }
 
-        /* Skip over initial : and spaces. */
-        while (apr_isspace(*++c))
-            continue;
+        /* Skip over initial ':' */
+        c++;
+
+        /* And skip all whitespaces. */
+        for(; c < ctx->linebuf.line + ctx->linebuf.used; c++)
+        {
+            if (!apr_isspace(*c))
+            {
+              break;
+            }
+        }
 
         /* Always copy the headers (from the linebuf into new mem). */
         /* ### we should be able to optimize some mem copies */
