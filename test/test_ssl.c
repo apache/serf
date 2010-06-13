@@ -28,6 +28,29 @@
 #include <openssl/applink.c>
 #endif
 
+/* Test setting up the openssl library. */
+static void test_ssl_init(CuTest *tc)
+{
+    serf_bucket_t *bkt, *stream;
+    serf_bucket_alloc_t *alloc = serf_bucket_allocator_create(test_pool, NULL,
+                                                              NULL);
+    serf_ssl_context_t *ssl_context;
+    apr_status_t status;
+
+    stream = SERF_BUCKET_SIMPLE_STRING("", alloc);
+
+    bkt = serf_bucket_ssl_decrypt_create(stream, NULL,
+                                         alloc);
+    ssl_context = serf_bucket_ssl_decrypt_context_get(bkt);
+
+    bkt = serf_bucket_ssl_encrypt_create(stream, ssl_context,
+                                         alloc);
+
+    status = serf_ssl_use_default_certificates(ssl_context);
+
+    CuAssertIntEquals(tc, APR_SUCCESS, status);
+}
+
 /* Test that loading a custom CA certificate file works. */
 static void test_ssl_load_cert_file(CuTest *tc)
 {
@@ -74,6 +97,7 @@ CuSuite *test_ssl(void)
 {
     CuSuite *suite = CuSuiteNew();
 
+    SUITE_ADD_TEST(suite, test_ssl_init);
     SUITE_ADD_TEST(suite, test_ssl_load_cert_file);
     SUITE_ADD_TEST(suite, test_ssl_cert_subject);
 
