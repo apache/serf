@@ -314,34 +314,35 @@ apr_status_t serf__handle_auth_response(int *consumed_response,
         return APR_SUCCESS;
     }
 
-    /* Don't bother handling the authentication request if the response
-       wasn't received completely yet. Serf will call serf__handle_auth_response
-       again when more data is received. */
-    if (! APR_STATUS_IS_EAGAIN(status)) {
-        status = dispatch_auth(sl.code, request, response, baton, pool);
+    if (sl.code == 401 || sl.code == 407) {
+        /* Authentication requested. */
 
+        /* Don't bother handling the authentication request if the response
+           wasn't received completely yet. Serf will call serf__handle_auth_response
+           again when more data is received. */
+        status = discard_body(response);
+        *consumed_response = 1;
+        
+        /* Discard all response body before processing authentication. */
+        if (!APR_STATUS_IS_EOF(status)) {
+            return status;
+        }
+
+        status = dispatch_auth(sl.code, request, response, baton, pool);
         if (status != APR_SUCCESS) {
             return status;
         }
 
-        if (sl.code == 401 || sl.code == 407) {
-            /* Authentication requested. */
-            status = discard_body(response);
-            *consumed_response = 1;
+        /* Requeue the request with the necessary auth headers. */
+        /* ### Application doesn't know about this request! */
+        serf_connection_priority_request_create(request->conn,
+                                                request->setup,
+                                                request->setup_baton);
 
-            /* Requeue the request with the necessary auth headers. */
-            /* ### Application doesn't know about this request! */
-            serf_connection_priority_request_create(request->conn,
-                                                    request->setup,
-                                                    request->setup_baton);
-
-            return status;
-        }
-
-        return APR_SUCCESS;
+        return APR_EOF;
     }
 
-    return status;
+    return APR_SUCCESS;
 }
 
 /**
