@@ -1,6 +1,8 @@
 Serf 0.6.2
   Fix double free abort when destroying request buckets.
   Fix test server in unit test framework to avoid random test failures.
+  Allow older Serf programs which don't use the new authn framework to still
+   handle authn without forcing them to switch to the new framework. (r1401)
 
 Serf 0.6.1 [2010-05-14, r1370]
   Generally: this release fixes problems with the 0.4.0 packaging.

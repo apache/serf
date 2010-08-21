@@ -731,21 +731,29 @@ static apr_status_t handle_response(serf_request_t *request,
     apr_status_t status;
     int consumed_response = 0;
 
-    status = serf__handle_auth_response(&consumed_response,
-                                        request,
-                                        request->resp_bkt,
-                                        request->handler_baton,
-                                        pool);
+    /* Only enable the new authentication framework if the program has
+     * registered an authentication credential callback.
+     *
+     * This permits older Serf apps to still handle authentication
+     * themselves by not registering credential callbacks.
+     */
+    if (request->conn->ctx->cred_cb) {
+      status = serf__handle_auth_response(&consumed_response,
+                                          request,
+                                          request->resp_bkt,
+                                          request->handler_baton,
+                                          pool);
 
-    /* If there was an error reading the response (maybe there wasn't
-       enough data available), don't bother passing the response to the
-       application.
+      /* If there was an error reading the response (maybe there wasn't
+         enough data available), don't bother passing the response to the
+         application.
 
-       If the authentication was tried, but failed, pass the response
-       to the application, maybe it can do better. */
-    if (APR_STATUS_IS_EOF(status) ||
-        APR_STATUS_IS_EAGAIN(status)) {
-        return status;
+         If the authentication was tried, but failed, pass the response
+         to the application, maybe it can do better. */
+      if (APR_STATUS_IS_EOF(status) ||
+          APR_STATUS_IS_EAGAIN(status)) {
+          return status;
+      }
     }
 
     if (!consumed_response) {
