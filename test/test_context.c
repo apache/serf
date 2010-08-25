@@ -126,6 +126,10 @@ static apr_status_t handle_response(serf_request_t *request,
             return APR_EOF;
         }
 
+        if (APR_STATUS_IS_EAGAIN(status)) {
+            return status;
+        }
+
     }
 
     return APR_SUCCESS;
@@ -791,6 +795,10 @@ handle_response_keepalive_limit_burst(serf_request_t *request,
                                                              0);
             }
             return APR_EOF;
+        }
+
+        if (APR_STATUS_IS_EAGAIN(status)) {
+            return status;
         }
     }
 

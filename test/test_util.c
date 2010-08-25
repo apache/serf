@@ -193,10 +193,11 @@ static apr_status_t replay(test_baton_t *tb,
         tb->client_sock = NULL;
         next_action(tb);
     }
-    else if (rtnevents & APR_POLLOUT) {
+    else if (rtnevents & APR_POLLIN) {
         /* ignore */
     }
     else {
+        printf("Unknown rtnevents: %d\n", rtnevents);
         abort();
     }
 
