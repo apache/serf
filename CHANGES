@@ -1,8 +1,11 @@
-Serf 0.7.0 [2010-08-25, r]
+Serf 0.7.0 [2010-08-25, r1407]
   Fix double free abort when destroying request buckets.
   Fix test server in unit test framework to avoid random test failures.
   Allow older Serf programs which don't use the new authn framework to still
     handle authn without forcing them to switch to the new framework. (r1401)
+  Remove the SERF_DECLARE macros, preferring a .DEF file for Windows
+  Barrier buckets now pass read_iovec to their wrapped bucket.
+  Fix HTTP header parsing to allow for empty header values.
 
 
 Serf 0.6.1 [2010-05-14, r1370]
