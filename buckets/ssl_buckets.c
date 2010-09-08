@@ -569,12 +569,6 @@ static apr_status_t ssl_encrypt(void *baton, apr_size_t bufsize,
             serf_bucket_t *tmp;
 
             /* Ah, bugger. We need to put that data back. */
-            if (!SERF_BUCKET_IS_AGGREGATE(ctx->encrypt.stream)) {
-                tmp = serf_bucket_aggregate_create(ctx->encrypt.stream->allocator);
-                serf_bucket_aggregate_append(tmp, ctx->encrypt.stream);
-                ctx->encrypt.stream = tmp;
-            }
-
             tmp = serf_bucket_simple_copy_create(data, *len,
                                              ctx->encrypt.stream->allocator);
 
@@ -1096,7 +1090,9 @@ serf_bucket_t *serf_bucket_ssl_encrypt_create(
     ctx->databuf = &ctx->ssl_ctx->encrypt.databuf;
     ctx->our_stream = &ctx->ssl_ctx->encrypt.stream;
     if (ctx->ssl_ctx->encrypt.stream == NULL) {
-        ctx->ssl_ctx->encrypt.stream = stream;
+        serf_bucket_t *tmp = serf_bucket_aggregate_create(stream->allocator);
+        serf_bucket_aggregate_append(tmp, stream);
+        ctx->ssl_ctx->encrypt.stream = tmp;
     }
     else {
         bucket_list_t *new_list;
