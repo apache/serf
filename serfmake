@@ -5,6 +5,7 @@ import re
 import shutil
 import sys
 import stat
+import copy
 
 FILES_HDR = [
   ('.', 'serf'),
@@ -227,7 +228,7 @@ class Builder:
     self._add_dep(lib, libobjs, cmd)
 
     # load the test program dependencies now
-    testhdrs = hdrs
+    testhdrs = copy.deepcopy(hdrs)
     testhdrs += [File(dirpath, fname, 'h') for dirpath, fname in TEST_HDR_FILES]
     testdeps = [File(dirpath, fname, 'c') for dirpath, fname in TEST_DEPS]
     testobjs = [File(dirpath, fname, 'lo') for dirpath, fname in TEST_DEPS]
