@@ -21,7 +21,7 @@
 #
 # Typically, this script is used like:
 #
-#    C:\PATH> python build/gen_def.py serf.h serf_bucket_types.h serf_bucket_util.h > serf.def
+#    C:\PATH> python build/gen_def.py serf.h serf_bucket_types.h serf_bucket_util.h > build/serf.def
 #
 
 import re
