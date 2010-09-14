@@ -15,26 +15,11 @@
 
 #include <apr_pools.h>
 #include <apr_poll.h>
-#include <apr_version.h>
 
 #include "serf.h"
 #include "serf_bucket_util.h"
 
 #include "serf_private.h"
-
-/* cleanup for sockets */
-static apr_status_t clean_skt(void *data)
-{
-    serf_connection_t *conn = data;
-    apr_status_t status = APR_SUCCESS;
-
-    if (conn->skt) {
-        status = apr_socket_close(conn->skt);
-        conn->skt = NULL;
-    }
-
-    return status;
-}
 
 static apr_status_t clean_resp(void *data)
 {
@@ -68,14 +53,15 @@ apr_status_t serf__conn_update_pollset(serf_connection_t *conn)
     serf_context_t *ctx = conn->ctx;
     apr_status_t status;
     apr_pollfd_t desc = { 0 };
+    apr_socket_t *skt = serf_httpconn_socket(conn->httpconn);
 
-    if (!conn->skt) {
+    if (!skt) {
         return APR_SUCCESS;
     }
 
     /* Remove the socket from the poll set. */
     desc.desc_type = APR_POLL_SOCKET;
-    desc.desc.s = conn->skt;
+    desc.desc.s = skt;
     desc.reqevents = conn->reqevents;
 
     status = ctx->pollset_rm(ctx->pollset_baton,
@@ -93,7 +79,7 @@ apr_status_t serf__conn_update_pollset(serf_connection_t *conn)
         /* If the connection has unwritten data, or there are any requests
          * that still have buckets to write out, then we want to write.
          */
-        if (conn->vec_len)
+        if (serf_httpconn_unwritten_data(conn->httpconn))
             desc.reqevents |= APR_POLLOUT;
         else {
             serf_request_t *request = conn->requests;
@@ -151,6 +137,68 @@ static void check_buckets_drained(serf_connection_t *conn)
 
 #endif
 
+static void destroy_ostream(serf_connection_t *conn)
+{
+    if (conn->ostream_head != NULL) {
+        serf_bucket_destroy(conn->ostream_head);
+        conn->ostream_head = NULL;
+        conn->ostream_tail = NULL;
+    }
+}
+
+static apr_status_t detect_eof(void *baton, serf_bucket_t *aggregate_bucket)
+{
+    serf_connection_t *conn = baton;
+    conn->hit_eof = 1;
+    return APR_EAGAIN;
+}
+
+static apr_status_t do_conn_setup(serf_connection_t *conn)
+{
+    apr_status_t status;
+    serf_bucket_t *ostream;
+    apr_socket_t *skt;
+    serf_bucket_t *stream;
+
+    if (conn->ostream_tail == NULL) {
+        conn->ostream_tail = serf__bucket_stream_create(conn->allocator,
+                                                        detect_eof,
+                                                        conn);
+    }
+
+    if (!conn->httpconn) {
+        conn->httpconn = serf_bucket_httpconn_create(
+                                                     conn->allocator,
+                                                     conn->address,
+                                                     conn->ctx->proxy_address,
+                                                     conn->pool);
+    }
+
+    /* Create and open a new connection. */
+    serf_httpconn_connect(conn->httpconn);
+
+    ostream = conn->ostream_tail;
+    skt = serf_httpconn_socket(conn->httpconn);
+    status = (*conn->setup)(skt,
+                            &stream,
+                            &ostream,
+                            conn->setup_baton,
+                            conn->pool);
+
+    conn->ostream_head = ostream;
+
+    if (status) {
+        /* extra destroy here since it wasn't added to the head bucket yet. */
+        serf_bucket_destroy(conn->ostream_tail);
+        destroy_ostream(conn);
+        return status;
+    }
+
+    serf_httpconn_set_streams(conn->httpconn, stream, ostream);
+
+    return status;
+}
+
 /* Create and connect sockets for any connections which don't have them
  * yet. This is the core of our lazy-connect behavior.
  */
@@ -161,12 +209,10 @@ apr_status_t serf__open_connections(serf_context_t *ctx)
     for (i = ctx->conns->nelts; i--; ) {
         serf_connection_t *conn = GET_CONN(ctx, i);
         apr_status_t status;
-        apr_socket_t *skt;
-        apr_sockaddr_t *serv_addr;
 
         conn->seen_in_pollset = 0;
 
-        if (conn->skt != NULL) {
+        if (conn->httpconn && serf_httpconn_socket(conn->httpconn)) {
 #ifdef SERF_DEBUG_BUCKET_USE
             check_buckets_drained(conn);
 #endif
@@ -178,42 +224,10 @@ apr_status_t serf__open_connections(serf_context_t *ctx)
             continue;
         }
 
-        apr_pool_clear(conn->skt_pool);
-        apr_pool_cleanup_register(conn->skt_pool, conn, clean_skt, clean_skt);
-
-        /* Do we have to connect to a proxy server? */
-        if (ctx->proxy_address)
-            serv_addr = ctx->proxy_address;
-        else
-            serv_addr = conn->address;
-
-        if ((status = apr_socket_create(&skt, serv_addr->family,
-                                        SOCK_STREAM,
-#if APR_MAJOR_VERSION > 0
-                                        APR_PROTO_TCP,
-#endif
-                                        conn->skt_pool)) != APR_SUCCESS)
+        /* Call the setup callback to get a bucket wrapping the socket. */
+        status = do_conn_setup(conn);
+        if (status) {
             return status;
-
-        /* Set the socket to be non-blocking */
-        if ((status = apr_socket_timeout_set(skt, 0)) != APR_SUCCESS)
-            return status;
-
-        /* Disable Nagle's algorithm */
-        if ((status = apr_socket_opt_set(skt,
-                                         APR_TCP_NODELAY, 0)) != APR_SUCCESS)
-            return status;
-
-        /* Configured. Store it into the connection now. */
-        conn->skt = skt;
-
-        /* Now that the socket is set up, let's connect it. This should
-         * return immediately.
-         */
-        if ((status = apr_socket_connect(skt,
-                                         serv_addr)) != APR_SUCCESS) {
-            if (!APR_STATUS_IS_EINPROGRESS(status))
-                return status;
         }
 
         /* Flag our pollset as dirty now that we have a new socket. */
@@ -252,7 +266,7 @@ static apr_status_t no_more_writes(serf_connection_t *conn,
     conn->requests_tail = request;
 
     /* Clear our iovec. */
-    conn->vec_len = 0;
+    serf_httpconn_clear_state(conn->httpconn);
 
     /* Update the pollset to know we don't want to write on this socket any
      * more.
@@ -356,20 +370,11 @@ static apr_status_t remove_connection(serf_context_t *ctx,
     apr_pollfd_t desc = { 0 };
 
     desc.desc_type = APR_POLL_SOCKET;
-    desc.desc.s = conn->skt;
+    desc.desc.s = serf_httpconn_socket(conn->httpconn);
     desc.reqevents = conn->reqevents;
 
     return ctx->pollset_rm(ctx->pollset_baton,
                            &desc, conn);
-}
-
-static void destroy_ostream(serf_connection_t *conn)
-{
-    if (conn->ostream_head != NULL) {
-        serf_bucket_destroy(conn->ostream_head);
-        conn->ostream_head = NULL;
-        conn->ostream_tail = NULL;
-    }
 }
 
 /* A socket was closed, inform the application. */
@@ -428,24 +433,18 @@ static apr_status_t reset_connection(serf_connection_t *conn,
         conn->requests_tail = held_reqs_tail;
     }
 
-    if (conn->skt != NULL) {
+    if (conn->httpconn && serf_httpconn_socket(conn->httpconn)) {
         remove_connection(ctx, conn);
-        status = apr_socket_close(conn->skt);
+        status = serf_httpconn_close(conn->httpconn);
         if (conn->closed != NULL) {
             handle_conn_closed(conn, status);
         }
-        conn->skt = NULL;
-    }
-
-    if (conn->stream != NULL) {
-        serf_bucket_destroy(conn->stream);
-        conn->stream = NULL;
     }
 
     destroy_ostream(conn);
 
     /* Don't try to resume any writes */
-    conn->vec_len = 0;
+    serf_httpconn_clear_state(conn->httpconn);
 
     conn->dirty_conn = 1;
     conn->ctx->dirty_pollset = 1;
@@ -457,85 +456,6 @@ static apr_status_t reset_connection(serf_connection_t *conn,
 
     /* Found the connection. Closed it. All done. */
     return APR_SUCCESS;
-}
-
-static apr_status_t socket_writev(serf_connection_t *conn)
-{
-    apr_size_t written;
-    apr_status_t status;
-
-    status = apr_socket_sendv(conn->skt, conn->vec,
-                              conn->vec_len, &written);
-
-    /* did we write everything? */
-    if (written) {
-        apr_size_t len = 0;
-        int i;
-
-        for (i = 0; i < conn->vec_len; i++) {
-            len += conn->vec[i].iov_len;
-            if (written < len) {
-                if (i) {
-                    memmove(conn->vec, &conn->vec[i],
-                            sizeof(struct iovec) * (conn->vec_len - i));
-                    conn->vec_len -= i;
-                }
-                conn->vec[0].iov_base = (char *)conn->vec[0].iov_base + (conn->vec[0].iov_len - (len - written));
-                conn->vec[0].iov_len = len - written;
-                break;
-            }
-        }
-        if (len == written) {
-            conn->vec_len = 0;
-        }
-
-        /* Log progress information */
-        serf__context_progress_delta(conn->ctx, 0, written);
-    }
-
-    return status;
-}
-
-static apr_status_t detect_eof(void *baton, serf_bucket_t *aggregate_bucket)
-{
-    serf_connection_t *conn = baton;
-    conn->hit_eof = 1;
-    return APR_EAGAIN;
-}
-
-static apr_status_t do_conn_setup(serf_connection_t *conn)
-{
-    apr_status_t status;
-    serf_bucket_t *ostream;
-
-    if (conn->ostream_head == NULL) {
-        conn->ostream_head = serf_bucket_aggregate_create(conn->allocator);
-    }
-
-    if (conn->ostream_tail == NULL) {
-        conn->ostream_tail = serf__bucket_stream_create(conn->allocator,
-                                                        detect_eof,
-                                                        conn);
-    }
-
-    ostream = conn->ostream_tail;
-
-    status = (*conn->setup)(conn->skt,
-                            &conn->stream,
-                            &ostream,
-                            conn->setup_baton,
-                            conn->pool);
-    if (status) {
-        /* extra destroy here since it wasn't added to the head bucket yet. */
-        serf_bucket_destroy(conn->ostream_tail);
-        destroy_ostream(conn);
-        return status;
-    }
-
-    serf_bucket_aggregate_append(conn->ostream_head,
-                                 ostream);
-
-    return status;
 }
 
 /* write data out to the connection */
@@ -563,6 +483,7 @@ static apr_status_t write_to_connection(serf_connection_t *conn)
         int stop_reading = 0;
         apr_status_t status;
         apr_status_t read_status;
+        apr_size_t written;
 
         if (conn->max_outstanding_requests &&
             conn->completed_requests -
@@ -572,8 +493,10 @@ static apr_status_t write_to_connection(serf_connection_t *conn)
         }
 
         /* If we have unwritten data, then write what we can. */
-        while (conn->vec_len) {
-            status = socket_writev(conn);
+        while (serf_httpconn_unwritten_data(conn->httpconn)) {
+            status = serf_httpconn_write_iovec(conn->httpconn,
+                                               &read_status, &written);
+            serf__context_progress_delta(conn->ctx, 0, written);
 
             /* If the write would have blocked, then we're done. Don't try
              * to write anything else to the socket.
@@ -606,16 +529,6 @@ static apr_status_t write_to_connection(serf_connection_t *conn)
             return APR_SUCCESS;
         }
 
-        /* If the connection does not have an associated bucket, then
-         * call the setup callback to get one.
-         */
-        if (conn->stream == NULL) {
-            status = do_conn_setup(conn);
-            if (status) {
-                return status;
-            }
-        }
-
         if (request->req_bkt == NULL) {
             /* Now that we are about to serve the request, allocate a pool. */
             apr_pool_create(&request->respool, conn->pool);
@@ -642,12 +555,11 @@ static apr_status_t write_to_connection(serf_connection_t *conn)
             serf_bucket_aggregate_append(conn->ostream_tail, request->req_bkt);
         }
 
-        /* ### optimize at some point by using read_for_sendfile */
-        read_status = serf_bucket_read_iovec(conn->ostream_head,
-                                             SERF_READ_ALL_AVAIL,
-                                             IOV_MAX,
-                                             conn->vec,
-                                             &conn->vec_len);
+        status = serf_httpconn_write_iovec(conn->httpconn,
+                                           &read_status,
+                                           &written);
+        /* Log progress information */
+        serf__context_progress_delta(conn->ctx, 0, written);
 
         if (!conn->hit_eof) {
             if (APR_STATUS_IS_EAGAIN(read_status)) {
@@ -667,27 +579,21 @@ static apr_status_t write_to_connection(serf_connection_t *conn)
             }
         }
 
-        /* If we got some data, then deliver it. */
-        /* ### what to do if we got no data?? is that a problem? */
-        if (conn->vec_len > 0) {
-            status = socket_writev(conn);
-
-            /* If we can't write any more, or an error occurred, then
-             * we're done here.
-             */
-            if (APR_STATUS_IS_EAGAIN(status))
-                return APR_SUCCESS;
-            if (APR_STATUS_IS_EPIPE(status))
-                return no_more_writes(conn, request);
-            if (APR_STATUS_IS_ECONNRESET(status)) {
-                return no_more_writes(conn, request);
-            }
-            if (status)
-                return status;
+        /* If we can't write any more, or an error occurred, then
+         * we're done here.
+         */
+        if (APR_STATUS_IS_EAGAIN(status))
+            return APR_SUCCESS;
+        if (APR_STATUS_IS_EPIPE(status))
+            return no_more_writes(conn, request);
+        if (APR_STATUS_IS_ECONNRESET(status)) {
+            return no_more_writes(conn, request);
         }
+        if (status)
+            return status;
 
         if (conn->hit_eof &&
-            conn->vec_len == 0) {
+            !serf_httpconn_unwritten_data(conn->httpconn)) {
             /* If we hit the end of the request bucket and all of its data has
              * been written, then clear it out to signify that we're done
              * sending the request. On the next iteration through this loop:
@@ -774,7 +680,7 @@ static apr_status_t handle_async_response(serf_connection_t *conn,
 
     if (conn->current_async_response == NULL) {
         conn->current_async_response =
-            (*conn->async_acceptor)(NULL, conn->stream,
+            (*conn->async_acceptor)(NULL, conn->httpconn,
                                     conn->async_acceptor_baton, pool);
     }
 
@@ -811,16 +717,6 @@ static apr_status_t read_from_connection(serf_connection_t *conn)
     while (1) {
         apr_pool_clear(tmppool);
 
-        /* If the connection does not have an associated bucket, then
-         * call the setup callback to get one.
-         */
-        if (conn->stream == NULL) {
-            status = do_conn_setup(conn);
-            if (status) {
-                goto error;
-            }
-        }
-
         /* We have a different codepath when we can have async responses. */
         if (conn->async_responses) {
             /* TODO What about socket errors? */
@@ -855,7 +751,7 @@ static apr_status_t read_from_connection(serf_connection_t *conn)
             const char *data;
             apr_size_t len;
 
-            status = serf_bucket_read(conn->stream, SERF_READ_ALL_AVAIL,
+            status = serf_bucket_read(conn->httpconn, SERF_READ_ALL_AVAIL,
                                       &data, &len);
 
             if (!status && len) {
@@ -876,7 +772,7 @@ static apr_status_t read_from_connection(serf_connection_t *conn)
          * acceptor to get one created.
          */
         if (request->resp_bkt == NULL) {
-            request->resp_bkt = (*request->acceptor)(request, conn->stream,
+            request->resp_bkt = (*request->acceptor)(request, conn->httpconn,
                                                      request->acceptor_baton,
                                                      tmppool);
             apr_pool_clear(tmppool);
@@ -1033,15 +929,11 @@ serf_connection_t *serf_connection_create(
     conn->closed_baton = closed_baton;
     conn->pool = pool;
     conn->allocator = serf_bucket_allocator_create(pool, NULL, NULL);
-    conn->stream = NULL;
     conn->ostream_head = NULL;
     conn->ostream_tail = NULL;
     conn->baton.type = SERF_IO_CONN;
     conn->baton.u.conn = conn;
     conn->hit_eof = 0;
-
-    /* Create a subpool for our connection. */
-    apr_pool_create(&conn->skt_pool, conn->pool);
 
     /* register a cleanup */
     apr_pool_cleanup_register(conn->pool, conn, clean_conn, apr_pool_cleanup_null);
@@ -1108,17 +1000,11 @@ apr_status_t serf_connection_close(
             while (conn->requests) {
                 serf_request_cancel(conn->requests);
             }
-            if (conn->skt != NULL) {
-                remove_connection(ctx, conn);
-                status = apr_socket_close(conn->skt);
+            if (conn->httpconn && serf_httpconn_socket(conn->httpconn)) {
+                status = serf_httpconn_close(conn->httpconn);
                 if (conn->closed != NULL) {
                     handle_conn_closed(conn, status);
                 }
-                conn->skt = NULL;
-            }
-            if (conn->stream != NULL) {
-                serf_bucket_destroy(conn->stream);
-                conn->stream = NULL;
             }
 
             /* Remove the connection from the context. We don't want to

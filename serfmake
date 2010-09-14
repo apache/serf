@@ -34,6 +34,7 @@ LIB_FILES = [
   ('buckets', 'ssl_buckets'),
   ('buckets', 'barrier_buckets'),
   ('buckets', 'chunk_buckets'),
+  ('buckets', 'httpconn_buckets'),
   ('auth', 'auth'),
   ('auth', 'auth_basic'),
   ('auth', 'auth_digest'),

@@ -15,6 +15,7 @@ OBJECTS = buckets/aggregate_buckets.lo buckets/request_buckets.lo context.lo \
           buckets/deflate_buckets.lo buckets/limit_buckets.lo \
           buckets/ssl_buckets.lo buckets/barrier_buckets.lo \
           buckets/chunk_buckets.lo buckets/bwtp_buckets.lo \
+	  buckets/httpconn_buckets.lo \
           incoming.lo outgoing.lo \
           auth/auth.lo auth/auth_basic.lo auth/auth_digest.lo \
           auth/auth_kerb.lo auth/auth_kerb_gss.lo
@@ -76,6 +77,7 @@ buckets/ssl_buckets.lo: buckets/ssl_buckets.c $(HEADERS)
 buckets/barrier_buckets.lo: buckets/barrier_buckets.c $(HEADERS)
 buckets/chunk_buckets.lo: buckets/chunk_buckets.c $(HEADERS)
 buckets/bwtp_buckets.lo: buckets/bwtp_buckets.c $(HEADERS)
+buckets/httpconn_buckets.lo: buckets/httpconn_buckets.c $(HEADERS)
 
 test/serf_get.lo: test/serf_get.c $(HEADERS)
 test/serf_response.lo: test/serf_response.c $(HEADERS)
