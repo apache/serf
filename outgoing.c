@@ -160,12 +160,6 @@ static apr_status_t do_conn_setup(serf_connection_t *conn)
     apr_socket_t *skt;
     serf_bucket_t *stream;
 
-    if (conn->ostream_tail == NULL) {
-        conn->ostream_tail = serf__bucket_stream_create(conn->allocator,
-                                                        detect_eof,
-                                                        conn);
-    }
-
     if (!conn->httpconn) {
         conn->httpconn = serf_bucket_httpconn_create(
                                                      conn->allocator,
@@ -175,7 +169,15 @@ static apr_status_t do_conn_setup(serf_connection_t *conn)
     }
 
     /* Create and open a new connection. */
-    serf_httpconn_connect(conn->httpconn);
+    status = serf_httpconn_connect(conn->httpconn);
+    if (status)
+        return status;
+
+    if (conn->ostream_tail == NULL) {
+        conn->ostream_tail = serf__bucket_stream_create(conn->allocator,
+                                                        detect_eof,
+                                                        conn);
+    }
 
     ostream = conn->ostream_tail;
     skt = serf_httpconn_socket(conn->httpconn);

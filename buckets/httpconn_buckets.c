@@ -19,14 +19,28 @@
 #include <apr_version.h>
 
 typedef struct {
+    /* Temporary store of (pointers to) data that's read from the
+       output stream but not yet send over the socket. */
     struct iovec vec[IOV_MAX];
     int vec_len;
 
+    /* Address of the destination server */
     apr_sockaddr_t *serv_addr;
+
+    /* Address of a proxy server, NULL if not used. */
     apr_sockaddr_t *proxy_addr;
+
+    /* client socket pointer */
     apr_socket_t *skt;
+
+    /* Pool in which the socket is allocated. */
     apr_pool_t *skt_pool;
+
+    /* Output stream, we read data from this bucket to send over the
+       socket. */
     serf_bucket_t *ostream;
+    /* Input stream, provided by the user, wraps a socket.
+       (normally *skt, but that's not guaranteed. */
     serf_bucket_t *stream;
 } httpconn_context_t;
 
