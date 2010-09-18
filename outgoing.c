@@ -1002,10 +1002,11 @@ apr_status_t serf_connection_close(
             while (conn->requests) {
                 serf_request_cancel(conn->requests);
             }
-            if (conn->httpconn && serf_httpconn_socket(conn->httpconn)) {
-                status = serf_httpconn_close(conn->httpconn);
+            if (conn->httpconn) {
+                serf_bucket_destroy(conn->httpconn);
+                conn->httpconn = NULL;
                 if (conn->closed != NULL) {
-                    handle_conn_closed(conn, status);
+                    handle_conn_closed(conn, APR_SUCCESS);
                 }
             }
 
