@@ -277,6 +277,9 @@ static void serf_httpconn_destroy_and_data(serf_bucket_t *bucket)
 {
     httpconn_context_t *ctx = bucket->data;
 
+    serf_bucket_destroy(ctx->stream);
+    serf_bucket_destroy(ctx->ostream);
+
     apr_pool_destroy(ctx->skt_pool);
 
     serf_default_destroy_and_data(bucket);
