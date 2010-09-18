@@ -177,6 +177,8 @@ static void test_serf_connection_request_create(CuTest *tc)
          CRLF}
     };
 
+    apr_pool_t *test_pool = test_setup();
+
     accepted_requests = apr_array_make(test_pool, 2, sizeof(int));
     sent_requests = apr_array_make(test_pool, 2, sizeof(int));
     handled_requests = apr_array_make(test_pool, 2, sizeof(int));
@@ -228,9 +230,6 @@ static void test_serf_connection_request_create(CuTest *tc)
         if (APR_STATUS_IS_TIMEUP(status))
             status = APR_SUCCESS;
         CuAssertIntEquals(tc, APR_SUCCESS, status);
-
-        /* Debugging purposes only! */
-        serf_debug__closed_conn(tb->bkt_alloc);
     }
     apr_pool_destroy(iter_pool);
 
@@ -252,6 +251,7 @@ static void test_serf_connection_request_create(CuTest *tc)
     }
 
     test_server_destroy(tb, test_pool);
+    test_teardown(test_pool);
 }
 
 /* Validate that priority requests are sent and completed before normal
@@ -277,6 +277,8 @@ static void test_serf_connection_priority_request_create(CuTest *tc)
         {SERVER_RESPOND, CHUNKED_EMPTY_RESPONSE},
         {SERVER_RESPOND, CHUNKED_EMPTY_RESPONSE},
     };
+
+    apr_pool_t *test_pool = test_setup();
 
     accepted_requests = apr_array_make(test_pool, 3, sizeof(int));
     sent_requests = apr_array_make(test_pool, 3, sizeof(int));
@@ -359,6 +361,7 @@ static void test_serf_connection_priority_request_create(CuTest *tc)
     }
 
     test_server_destroy(tb, test_pool);
+    test_teardown(test_pool);
 }
 
 /* Test that serf correctly handles the 'Connection:close' header when the
@@ -413,6 +416,8 @@ static void test_serf_closed_connection(CuTest *tc)
         {SERVER_RESPOND, CHUNKED_EMPTY_RESPONSE},
         {SERVER_RESPOND, CHUNKED_EMPTY_RESPONSE},
     };
+
+    apr_pool_t *test_pool = test_setup();
 
     accepted_requests = apr_array_make(test_pool, NUM_REQUESTS, sizeof(int));
     sent_requests = apr_array_make(test_pool, NUM_REQUESTS, sizeof(int));
@@ -480,6 +485,7 @@ static void test_serf_closed_connection(CuTest *tc)
 
     /* Cleanup */
     test_server_destroy(tb, test_pool);
+    test_teardown(test_pool);
 }
 #undef NUM_REQUESTS
 
@@ -511,6 +517,8 @@ static void test_serf_setup_proxy(CuTest *tc)
     test_server_action_t action_list_proxy[] = {
         {SERVER_RESPOND, CHUNKED_EMPTY_RESPONSE},
     };
+
+    apr_pool_t *test_pool = test_setup();
 
     accepted_requests = apr_array_make(test_pool, numrequests, sizeof(int));
     sent_requests = apr_array_make(test_pool, numrequests, sizeof(int));
@@ -603,6 +611,7 @@ static void test_serf_setup_proxy(CuTest *tc)
     }
 
     test_server_destroy(tb_server, test_pool);
+    test_teardown(test_pool);
 }
 
 /*****************************************************************************
@@ -680,6 +689,8 @@ static void test_keepalive_limit_one_by_one(CuTest *tc)
         {SERVER_RESPOND, CHUNKED_EMPTY_RESPONSE},
     };
 
+    apr_pool_t *test_pool = test_setup();
+
     accepted_requests = apr_array_make(test_pool, RCVD_REQUESTS, sizeof(int));
     sent_requests = apr_array_make(test_pool, RCVD_REQUESTS, sizeof(int));
     handled_requests = apr_array_make(test_pool, RCVD_REQUESTS, sizeof(int));
@@ -745,6 +756,7 @@ static void test_keepalive_limit_one_by_one(CuTest *tc)
 
     /* Cleanup */
     test_server_destroy(tb, test_pool);
+    test_teardown(test_pool);
 }
 #undef SEND_REQUESTS
 #undef RCVD_REQUESTS
@@ -833,6 +845,8 @@ static void test_keepalive_limit_one_by_one_and_burst(CuTest *tc)
         {SERVER_RESPOND, CHUNKED_EMPTY_RESPONSE},
     };
 
+    apr_pool_t *test_pool = test_setup();
+
     accepted_requests = apr_array_make(test_pool, RCVD_REQUESTS, sizeof(int));
     sent_requests = apr_array_make(test_pool, RCVD_REQUESTS, sizeof(int));
     handled_requests = apr_array_make(test_pool, RCVD_REQUESTS, sizeof(int));
@@ -898,6 +912,7 @@ static void test_keepalive_limit_one_by_one_and_burst(CuTest *tc)
 
     /* Cleanup */
     test_server_destroy(tb, test_pool);
+    test_teardown(test_pool);
 }
 #undef SEND_REQUESTS
 #undef RCVD_REQUESTS
@@ -953,6 +968,8 @@ static void test_serf_progress_callback(CuTest *tc)
         {SERVER_RESPOND, CHUNKED_EMPTY_RESPONSE},
         {SERVER_RESPOND, CHUNKED_EMPTY_RESPONSE},
     };
+
+    apr_pool_t *test_pool = test_setup();
 
     accepted_requests = apr_array_make(test_pool, NUM_REQUESTS, sizeof(int));
     sent_requests = apr_array_make(test_pool, NUM_REQUESTS, sizeof(int));
@@ -1027,6 +1044,7 @@ static void test_serf_progress_callback(CuTest *tc)
 
     /* Cleanup */
     test_server_destroy(tb, test_pool);
+    test_teardown(test_pool);
 }
 #undef NUM_REQUESTS
 

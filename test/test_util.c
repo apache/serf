@@ -406,3 +406,15 @@ apr_status_t test_server_destroy(test_baton_t *tb, apr_pool_t *pool)
 
     return APR_SUCCESS;
 }
+
+apr_pool_t *test_setup()
+{
+    apr_pool_t *test_pool;
+    apr_pool_create(&test_pool, NULL);
+    return test_pool;
+}
+
+void test_teardown(apr_pool_t *test_pool)
+{
+    apr_pool_destroy(test_pool);
+}

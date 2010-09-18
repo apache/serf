@@ -38,8 +38,6 @@
 #define APR_ARRAY_PUSH(ary,type) (*((type *)apr_array_push(ary)))
 #endif
 
-extern apr_pool_t *test_pool;
-
 /* CuTest declarations */
 CuSuite *getsuite(void);
 
@@ -160,6 +158,9 @@ apr_status_t test_server_run(test_baton_t *tb,
                              apr_pool_t *pool);
 
 apr_status_t test_server_destroy(test_baton_t *tb, apr_pool_t *pool);
+
+apr_pool_t *test_setup();
+void test_teardown(apr_pool_t *test_pool);
 
 #ifndef APR_VERSION_AT_LEAST /* Introduced in APR 1.3.0 */
 #define APR_VERSION_AT_LEAST(major,minor,patch)                  \
