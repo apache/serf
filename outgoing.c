@@ -40,6 +40,11 @@ static apr_status_t clean_conn(void *data)
 
     serf_connection_close(conn);
 
+    if (conn->httpconn) {
+        serf_bucket_destroy(conn->httpconn);
+        conn->httpconn = NULL;
+    }
+
     return APR_SUCCESS;
 }
 
@@ -137,13 +142,12 @@ static void check_buckets_drained(serf_connection_t *conn)
 
 #endif
 
-static void destroy_ostream(serf_connection_t *conn)
+static void destroy_httpconn(serf_connection_t *conn)
 {
-    if (conn->ostream_head != NULL) {
-        serf_bucket_destroy(conn->ostream_head);
-        conn->ostream_head = NULL;
-        conn->ostream_tail = NULL;
-    }
+    serf_bucket_destroy(conn->httpconn);
+    conn->ostream_head = NULL;
+    conn->ostream_tail = NULL;
+    conn->httpconn = NULL;
 }
 
 static apr_status_t detect_eof(void *baton, serf_bucket_t *aggregate_bucket)
@@ -188,15 +192,13 @@ static apr_status_t do_conn_setup(serf_connection_t *conn)
                             conn->pool);
 
     conn->ostream_head = ostream;
+    serf_httpconn_set_streams(conn->httpconn, stream, ostream);
 
     if (status) {
-        /* extra destroy here since it wasn't added to the head bucket yet. */
-        serf_bucket_destroy(conn->ostream_tail);
-        destroy_ostream(conn);
+        /* Destroy the httpconn bucket and the two streams. */
+        destroy_httpconn(conn);
         return status;
     }
-
-    serf_httpconn_set_streams(conn->httpconn, stream, ostream);
 
     return status;
 }
@@ -435,18 +437,14 @@ static apr_status_t reset_connection(serf_connection_t *conn,
         conn->requests_tail = held_reqs_tail;
     }
 
-    if (conn->httpconn && serf_httpconn_socket(conn->httpconn)) {
+    if (conn->httpconn) {
         remove_connection(ctx, conn);
         status = serf_httpconn_close(conn->httpconn);
+        destroy_httpconn(conn);
         if (conn->closed != NULL) {
             handle_conn_closed(conn, status);
         }
     }
-
-    destroy_ostream(conn);
-
-    /* Don't try to resume any writes */
-    serf_httpconn_clear_state(conn->httpconn);
 
     conn->dirty_conn = 1;
     conn->ctx->dirty_pollset = 1;
@@ -1003,10 +1001,10 @@ apr_status_t serf_connection_close(
                 serf_request_cancel(conn->requests);
             }
             if (conn->httpconn) {
-                serf_bucket_destroy(conn->httpconn);
-                conn->httpconn = NULL;
+                status = serf_httpconn_close(conn->httpconn);
+                destroy_httpconn(conn);
                 if (conn->closed != NULL) {
-                    handle_conn_closed(conn, APR_SUCCESS);
+                   handle_conn_closed(conn, status);
                 }
             }
 

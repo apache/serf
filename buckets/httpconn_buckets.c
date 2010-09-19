@@ -145,6 +145,7 @@ apr_status_t serf_httpconn_close(serf_bucket_t *bucket)
     if (ctx->skt) {
         status = apr_socket_close(ctx->skt);
         ctx->skt = NULL;
+        apr_pool_clear(ctx->skt_pool);
         return status;
     }
 
@@ -279,8 +280,6 @@ static void serf_httpconn_destroy_and_data(serf_bucket_t *bucket)
 
     serf_bucket_destroy(ctx->stream);
     serf_bucket_destroy(ctx->ostream);
-
-    apr_pool_destroy(ctx->skt_pool);
 
     serf_default_destroy_and_data(bucket);
 }
