@@ -121,6 +121,10 @@ static void serf_deflate_destroy_and_data(serf_bucket_t *bucket)
 {
     deflate_context_t *ctx = bucket->data;
 
+    if (ctx->state > STATE_INIT &&
+        ctx->state <= STATE_FINISH)
+        inflateEnd(&ctx->zstream);
+
     /* We may have appended inflate_stream into the stream bucket.
      * If so, avoid free'ing it twice.
      */
