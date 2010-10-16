@@ -71,7 +71,6 @@ static void test_ssl_load_cert_file(CuTest *tc)
 /* Test that reading a custom CA certificate file works. */
 static void test_ssl_cert_subject(CuTest *tc)
 {
-    apr_pool_t *subpool;
     apr_hash_t *subject;
     serf_ssl_certificate_t *cert = NULL;
     apr_status_t status;
