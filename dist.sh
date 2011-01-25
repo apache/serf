@@ -12,7 +12,7 @@ srcdir=$2
 
 release="serf-${version}"
 
-work="${TMPDIR}/serf-dist.$$"
+work="${TMPDIR-/tmp}/serf-dist.$$"
 short='${TMPDIR}'/serf-dist.$$
 
 echo "Preparing ${release} in ${short} ..."
