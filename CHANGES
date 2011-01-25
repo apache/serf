@@ -1,3 +1,7 @@
+Serf 0.7.1 [2011-01-25, branch 0.7.x r1431]
+  Fix error leak when using SSL (r1408, r1416).
+  Fix build for blank apr-util directory (r1421).
+
 Serf 0.7.0 [2010-08-25, r1407]
   Fix double free abort when destroying request buckets.
   Fix test server in unit test framework to avoid random test failures.
