@@ -1,4 +1,4 @@
-Serf 0.7.1 [tbd]
+Serf 0.7.1 [2011-01-25, branch 0.7.x r1431]
   Fix error leak when using SSL (r1408, r1416).
   Fix build for blank apr-util directory (r1421).
 
