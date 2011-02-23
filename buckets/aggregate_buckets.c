@@ -220,19 +220,12 @@ void serf_bucket_aggregate_append_iovec(
     struct iovec *vecs,
     int vecs_count)
 {
-    int i;
+    serf_bucket_t *new_bucket;
 
-    for (i = 0; i < vecs_count; i++) {
-        serf_bucket_t *new_bucket;
+    new_bucket = serf_bucket_iovec_create(vecs, vecs_count,
+                                          aggregate_bucket->allocator);
 
-        new_bucket = serf_bucket_simple_create(vecs[i].iov_base,
-                                               vecs[i].iov_len,
-                                               NULL, NULL,
-                                               aggregate_bucket->allocator);
-
-        serf_bucket_aggregate_append(aggregate_bucket, new_bucket);
-
-    }
+    serf_bucket_aggregate_append(aggregate_bucket, new_bucket);
 }
 
 static apr_status_t read_aggregate(serf_bucket_t *bucket,

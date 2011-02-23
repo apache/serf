@@ -335,6 +335,99 @@ static void test_aggregate_read_restore_snapshot_read(CuTest *tc)
     test_teardown(test_pool);
 }
 
+static void test_iovec_buckets(CuTest *tc)
+{
+    apr_status_t status;
+    serf_bucket_t *bkt, *iobkt;
+    const char *data;
+    int found;
+    apr_size_t len;
+    struct iovec vecs[32];
+    struct iovec tgt_vecs[32];
+    int i;
+    int vecs_used;
+
+    apr_pool_t *test_pool = test_setup();
+    serf_bucket_alloc_t *alloc = serf_bucket_allocator_create(test_pool, NULL,
+                                                              NULL);
+
+    /* Test 1: Read a single string in an iovec, store it in a iovec_bucket
+       and then read it back. */
+    bkt = SERF_BUCKET_SIMPLE_STRING(
+        "line1" CRLF
+        "line2",
+        alloc);
+
+    status = serf_bucket_read_iovec(bkt, SERF_READ_ALL_AVAIL, 32, vecs,
+                                    &vecs_used);
+
+    iobkt = serf_bucket_iovec_create(vecs, vecs_used, alloc);
+
+    /* Check available data */
+    status = serf_bucket_peek(iobkt, &data, &len);
+    CuAssertIntEquals(tc, APR_EOF, status);
+    CuAssertIntEquals(tc, strlen("line1" CRLF "line2"), len);
+
+    /* Try to read only a few bytes (less than what's in the first buffer). */
+    status = serf_bucket_read_iovec(iobkt, 3, 32, tgt_vecs, &vecs_used);
+    CuAssertIntEquals(tc, APR_SUCCESS, status);
+    CuAssertIntEquals(tc, 1, vecs_used);
+    CuAssertIntEquals(tc, 3, tgt_vecs[0].iov_len);
+    CuAssert(tc, tgt_vecs[0].iov_base,
+             strncmp("lin", tgt_vecs[0].iov_base, tgt_vecs[0].iov_len) == 0);
+
+    /* Read the rest of the data. */
+    status = serf_bucket_read_iovec(iobkt, SERF_READ_ALL_AVAIL, 32, tgt_vecs,
+                                    &vecs_used);
+    CuAssertIntEquals(tc, APR_EOF, status);
+    CuAssertIntEquals(tc, 1, vecs_used);
+    CuAssertIntEquals(tc, strlen("e1" CRLF "line2"), tgt_vecs[0].iov_len);
+    CuAssert(tc, tgt_vecs[0].iov_base,
+             strncmp("e1" CRLF "line2", tgt_vecs[0].iov_base, tgt_vecs[0].iov_len - 3) == 0);
+
+    /* Bucket should now be empty */
+    status = serf_bucket_peek(iobkt, &data, &len);
+    CuAssertIntEquals(tc, APR_EOF, status);
+    CuAssertIntEquals(tc, 0, len);
+
+    /* Test 2: Read multiple character bufs in an iovec, then read them back
+       in bursts. */
+    for (i = 0; i < 32 ; i++) {
+        vecs[i].iov_base = apr_psprintf(test_pool, "data %2d 901234567890", i);
+        vecs[i].iov_len = strlen(vecs[i].iov_base);
+    }
+
+    iobkt = serf_bucket_iovec_create(vecs, 32, alloc);
+
+    /* Check that some data is in the buffer. Don't verify the actual data, the
+       amount of data returned is not guaranteed to be the full buffer. */
+    status = serf_bucket_peek(iobkt, &data, &len);
+    CuAssertTrue(tc, len > 0);
+    CuAssertIntEquals(tc, APR_SUCCESS, status); /* this assumes not all data is returned at once,
+                                                   not guaranteed! */
+
+    /* Read 1 buf.   20 = sizeof("data %2d 901234567890") */
+    status = serf_bucket_read_iovec(iobkt, 1 * 20, 32,
+                                    tgt_vecs, &vecs_used);
+    CuAssertIntEquals(tc, APR_SUCCESS, status);
+    CuAssertIntEquals(tc, 1, vecs_used);
+
+    /* Read 2 bufs. */
+    status = serf_bucket_read_iovec(iobkt, 2 * 20, 32,
+                                    tgt_vecs, &vecs_used);
+    CuAssertIntEquals(tc, APR_SUCCESS, status);
+    CuAssertIntEquals(tc, 2, vecs_used);
+
+    /* Read the remaining 29 bufs. */
+    vecs_used = 400;  /* test if iovec code correctly resets vecs_used */
+    status = serf_bucket_read_iovec(iobkt, SERF_READ_ALL_AVAIL, 32,
+                                    tgt_vecs, &vecs_used);
+    CuAssertIntEquals(tc, APR_EOF, status);
+    CuAssertIntEquals(tc, 29, vecs_used);
+
+    test_teardown(test_pool);
+}
+
 CuSuite *test_buckets(void)
 {
     CuSuite *suite = CuSuiteNew();
@@ -346,6 +439,7 @@ CuSuite *test_buckets(void)
     SUITE_ADD_TEST(suite, test_bucket_header_set);
     SUITE_ADD_TEST(suite, test_simple_read_restore_snapshot_read);
     SUITE_ADD_TEST(suite, test_aggregate_read_restore_snapshot_read);
+    SUITE_ADD_TEST(suite, test_iovec_buckets);
 
     return suite;
 }
