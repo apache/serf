@@ -116,6 +116,7 @@ LIB32_OBJS= \
     "$(INTDIR)\headers_buckets.obj" \
     "$(INTDIR)\httpconn_buckets.obj" \
     "$(INTDIR)\incoming.obj" \
+    "$(INTDIR)\iovec_buckets.obj" \
     "$(INTDIR)\limit_buckets.obj" \
     "$(INTDIR)\mmap_buckets.obj" \
     "$(INTDIR)\outgoing.obj" \

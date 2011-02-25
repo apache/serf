@@ -87,7 +87,7 @@ static apr_status_t serf_iovec_read_iovec(serf_bucket_t *bucket,
         if (*vecs_used >= vecs_size)
             break;
 
-        vecs[*vecs_used].iov_base = vec.iov_base + ctx->offset;
+        vecs[*vecs_used].iov_base = (char*)vec.iov_base + ctx->offset;
 
         /* Less bytes requested than remaining in the current buffer. */
         if (requested < remaining) {
