@@ -163,7 +163,7 @@ static int serf_iovec_is_snapshot_set(serf_bucket_t *bucket)
 }
 
 const serf_bucket_type_t serf_bucket_type_iovec = {
-    "SIMPLE",
+    "IOVEC",
     serf_iovec_read,
     serf_iovec_readline,
     serf_iovec_read_iovec,
