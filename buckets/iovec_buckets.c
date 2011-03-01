@@ -53,14 +53,6 @@ serf_bucket_t *serf_bucket_iovec_create(
     return serf_bucket_create(&serf_bucket_type_iovec, allocator, ctx);
 }
 
-static apr_status_t serf_iovec_read(serf_bucket_t *bucket,
-                                     apr_size_t requested,
-                                     const char **data, apr_size_t *len)
-{
-    /* To be implemented. */
-    return APR_ENOTIMPL;
-}
-
 static apr_status_t serf_iovec_readline(serf_bucket_t *bucket,
                                          int acceptable, int *found,
                                          const char **data, apr_size_t *len)
@@ -78,36 +70,56 @@ static apr_status_t serf_iovec_read_iovec(serf_bucket_t *bucket,
     apr_size_t current_size = 0;
     *vecs_used = 0;
 
-    /* copy the request amount of buffers to the provided iovec. */
+    /* copy the requested amount of buffers to the provided iovec. */
     for (; ctx->current_vec < ctx->vecs_len; ctx->current_vec++) {
         struct iovec vec = ctx->vecs[ctx->current_vec];
-        int remaining = vec.iov_len - ctx->offset;
-        if (requested <= 0)
+        int remaining;
+
+        if (requested != SERF_READ_ALL_AVAIL && requested <= 0)
             break;
         if (*vecs_used >= vecs_size)
             break;
 
         vecs[*vecs_used].iov_base = (char*)vec.iov_base + ctx->offset;
+        remaining = vec.iov_len - ctx->offset;
 
         /* Less bytes requested than remaining in the current buffer. */
-        if (requested < remaining) {
+        if (requested != SERF_READ_ALL_AVAIL && requested < remaining) {
             vecs[*vecs_used].iov_len = requested;
             ctx->offset += requested;
+            requested = 0;
             (*vecs_used)++;
             break;
+        } else {
+            /* Copy the complete buffer. */
+            vecs[*vecs_used].iov_len = remaining;
+            ctx->offset = 0;
+            if (requested != SERF_READ_ALL_AVAIL)
+                requested -= remaining;
+            (*vecs_used)++;
         }
-        /* Copy the complete buffer. */
-        vecs[*vecs_used].iov_len = remaining;
-
-        (*vecs_used)++;
-        requested -= remaining;
-        ctx->offset = 0;
     }
 
-    if (ctx->current_vec == ctx->vecs_len)
+    if (ctx->current_vec == ctx->vecs_len && !ctx->offset)
         return APR_EOF;
 
     return APR_SUCCESS;
+}
+
+static apr_status_t serf_iovec_read(serf_bucket_t *bucket,
+                                    apr_size_t requested,
+                                    const char **data, apr_size_t *len)
+{
+    struct iovec vec[1];
+    apr_status_t status;
+    int vecs_used;
+
+    status = serf_iovec_read_iovec(bucket, requested, 1, vec, &vecs_used);
+
+    *data = vec[0].iov_base;
+    *len = vec[0].iov_len;
+
+    return status;
 }
 
 static apr_status_t serf_iovec_peek(serf_bucket_t *bucket,

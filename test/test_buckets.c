@@ -393,7 +393,7 @@ static void test_iovec_buckets(CuTest *tc)
     /* Test 2: Read multiple character bufs in an iovec, then read them back
        in bursts. */
     for (i = 0; i < 32 ; i++) {
-        vecs[i].iov_base = apr_psprintf(test_pool, "data %2d 901234567890", i);
+        vecs[i].iov_base = apr_psprintf(test_pool, "data %02d 901234567890", i);
         vecs[i].iov_len = strlen(vecs[i].iov_base);
     }
 
@@ -403,7 +403,8 @@ static void test_iovec_buckets(CuTest *tc)
        amount of data returned is not guaranteed to be the full buffer. */
     status = serf_bucket_peek(iobkt, &data, &len);
     CuAssertTrue(tc, len > 0);
-    CuAssertIntEquals(tc, APR_SUCCESS, status); /* this assumes not all data is returned at once,
+    CuAssertIntEquals(tc, APR_SUCCESS, status); /* this assumes not all data is
+                                                   returned at once,
                                                    not guaranteed! */
 
     /* Read 1 buf.   20 = sizeof("data %2d 901234567890") */
@@ -411,6 +412,8 @@ static void test_iovec_buckets(CuTest *tc)
                                     tgt_vecs, &vecs_used);
     CuAssertIntEquals(tc, APR_SUCCESS, status);
     CuAssertIntEquals(tc, 1, vecs_used);
+    CuAssert(tc, tgt_vecs[0].iov_base,
+             strncmp("data 00 901234567890", tgt_vecs[0].iov_base, tgt_vecs[0].iov_len) == 0);
 
     /* Read 2 bufs. */
     status = serf_bucket_read_iovec(iobkt, 2 * 20, 32,
@@ -424,6 +427,42 @@ static void test_iovec_buckets(CuTest *tc)
                                     tgt_vecs, &vecs_used);
     CuAssertIntEquals(tc, APR_EOF, status);
     CuAssertIntEquals(tc, 29, vecs_used);
+
+    /* Test 3: use serf_bucket_read */
+    for (i = 0; i < 32 ; i++) {
+        vecs[i].iov_base = apr_psprintf(test_pool, "DATA %02d 901234567890", i);
+        vecs[i].iov_len = strlen(vecs[i].iov_base);
+    }
+
+    iobkt = serf_bucket_iovec_create(vecs, 32, alloc);
+
+    status = serf_bucket_read(iobkt, 10, &data, &len);
+    CuAssertIntEquals(tc, APR_SUCCESS, status);
+    CuAssertIntEquals(tc, 10, len);
+    CuAssert(tc, data,
+             strncmp("DATA 00 90", data, len) == 0);
+
+    status = serf_bucket_read(iobkt, 10, &data, &len);
+    CuAssertIntEquals(tc, APR_SUCCESS, status);
+    CuAssertIntEquals(tc, 10, len);
+    CuAssert(tc, tgt_vecs[0].iov_base,
+             strncmp("1234567890", data, len) == 0);
+
+    for (i = 1; i < 31 ; i++) {
+        const char *exp = apr_psprintf(test_pool, "DATA %02d 901234567890", i);
+        status = serf_bucket_read(iobkt, SERF_READ_ALL_AVAIL, &data, &len);
+        CuAssertIntEquals(tc, APR_SUCCESS, status);
+        CuAssertIntEquals(tc, 20, len);
+        CuAssert(tc, data,
+                 strncmp(exp, data, len) == 0);
+
+    }
+
+    status = serf_bucket_read(iobkt, 20, &data, &len);
+    CuAssertIntEquals(tc, APR_EOF, status);
+    CuAssertIntEquals(tc, 20, len);
+    CuAssert(tc, data,
+             strncmp("DATA 31 901234567890", data, len) == 0);
 
     test_teardown(test_pool);
 }
