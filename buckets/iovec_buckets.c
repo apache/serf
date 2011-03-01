@@ -116,8 +116,12 @@ static apr_status_t serf_iovec_read(serf_bucket_t *bucket,
 
     status = serf_iovec_read_iovec(bucket, requested, 1, vec, &vecs_used);
 
-    *data = vec[0].iov_base;
-    *len = vec[0].iov_len;
+    if (vecs_used) {
+        *data = vec[0].iov_base;
+        *len = vec[0].iov_len;
+    } else {
+        *len = 0;
+    }
 
     return status;
 }

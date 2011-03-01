@@ -464,6 +464,17 @@ static void test_iovec_buckets(CuTest *tc)
     CuAssert(tc, data,
              strncmp("DATA 31 901234567890", data, len) == 0);
 
+    /* Test 3: read an empty iovec */
+    iobkt = serf_bucket_iovec_create(vecs, 0, alloc);
+    status = serf_bucket_read_iovec(iobkt, SERF_READ_ALL_AVAIL, 32,
+                                    tgt_vecs, &vecs_used);
+    CuAssertIntEquals(tc, APR_EOF, status);
+    CuAssertIntEquals(tc, 0, vecs_used);
+
+    status = serf_bucket_read(iobkt, SERF_READ_ALL_AVAIL, &data, &len);
+    CuAssertIntEquals(tc, APR_EOF, status);
+    CuAssertIntEquals(tc, 0, len);
+
     test_teardown(test_pool);
 }
 
