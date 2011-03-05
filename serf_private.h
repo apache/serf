@@ -144,6 +144,11 @@ struct serf_connection_t {
     apr_pool_t *pool;
     serf_bucket_alloc_t *allocator;
 
+    apr_sockaddr_t *address;
+
+    apr_socket_t *skt;
+    apr_pool_t *skt_pool;
+
     /* the last reqevents we gave to pollset_add */
     apr_int16_t reqevents;
 
@@ -175,12 +180,8 @@ struct serf_connection_t {
     serf_response_handler_t async_handler;
     void *async_handler_baton;
 
-    /* A bucket wrapped around our socket (for writing requests and
-       reading responses). */
-    serf_bucket_t *httpconn;
-
-    apr_sockaddr_t *address;
-
+    /* A bucket wrapped around our socket (for reading responses). */
+    serf_bucket_t *stream;
     /* A reference to the aggregate bucket that provides the boundary between
      * request level buckets and connection level buckets.
      */
@@ -197,6 +198,9 @@ struct serf_connection_t {
     serf_request_t *hold_requests;
     serf_request_t *hold_requests_tail;
 
+    struct iovec vec[IOV_MAX];
+    int vec_len;
+
     serf_connection_setup_t setup;
     void *setup_baton;
     serf_connection_closed_t closed;
@@ -210,7 +214,7 @@ struct serf_connection_t {
     const char *host_url;
     apr_uri_t host_info;
 
-    /* connection and authentication scheme specific information */
+    /* connection and authentication scheme specific information */ 
     void *authn_baton;
     void *proxy_authn_baton;
 };

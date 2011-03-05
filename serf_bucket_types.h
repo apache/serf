@@ -606,68 +606,6 @@ serf_bucket_t *serf_bucket_barrier_create(
 
 /* ==================================================================== */
 
-
-extern const serf_bucket_type_t serf_bucket_type_httpconn;
-#define SERF_BUCKET_IS_HTTPCONN(b) SERF_BUCKET_CHECK((b), httpconn)
-
-serf_bucket_t *serf_bucket_httpconn_create(
-    serf_bucket_alloc_t *allocator,
-    apr_sockaddr_t *serv_addr,
-    apr_sockaddr_t *proxy_addr,
-    apr_pool_t *pool);
-
-/**
- * Open a TCP connection to a remote server, or proxy if defined
- * during bucket creation.
- */
-apr_status_t serf_httpconn_connect(serf_bucket_t* bucket);
-
-/**
- * Close an open connection.
- */
-apr_status_t serf_httpconn_close(serf_bucket_t *bucket);
-
-/**
- * Returns the number of bytes already read from the output
- * stream but not yet sent on the socket.
- */
-int serf_httpconn_unwritten_data(serf_bucket_t *bucket);
-
-/**
- * Resets the buffer of bytes already read from the output
- * stream but not yet sent on the socket.
- */
-void serf_httpconn_clear_state(serf_bucket_t *bucket);
-
-/**
- * Returns the internal apr_socket_t object.
- */
-apr_socket_t *serf_httpconn_socket(serf_bucket_t *bucket);
-
-/**
- * Sets both the input and the output stream:
- * @a stream is the input stream, wrapping the socket.
- * @a ostream is the output stream, which is read from when
- *  calling @a serf_httpconn_write_iovec.
- */
-void serf_httpconn_set_streams(serf_bucket_t *bucket,
-                               serf_bucket_t *stream,
-                               serf_bucket_t *ostream);
-
-/**
- * Reads a set of pointer/length pairs from the output stream and sends
- * them over the socket.
- * @a read_status is the status returned from reading the output
- * stream. @a written is the number of bytes actually written on
- * the socket.
- */
-apr_status_t serf_httpconn_write_iovec(
-    serf_bucket_t *bucket,
-    apr_status_t *read_status,
-    apr_size_t *written);
-
-/* ==================================================================== */
-
 extern const serf_bucket_type_t serf_bucket_type_iovec;
 #define SERF_BUCKET_IS_IOVEC(b) SERF_BUCKET_CHECK((b), iovec)
 

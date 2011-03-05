@@ -117,7 +117,6 @@ LIB32_OBJS= \
     "$(INTDIR)\deflate_buckets.obj" \
     "$(INTDIR)\file_buckets.obj" \
     "$(INTDIR)\headers_buckets.obj" \
-    "$(INTDIR)\httpconn_buckets.obj" \
     "$(INTDIR)\incoming.obj" \
     "$(INTDIR)\iovec_buckets.obj" \
     "$(INTDIR)\limit_buckets.obj" \

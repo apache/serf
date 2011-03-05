@@ -183,14 +183,13 @@ apr_status_t serf_event_trigger(
     if (io->type == SERF_IO_CONN) {
         serf_connection_t *conn = io->u.conn;
         serf_context_t *ctx = conn->ctx;
-        apr_socket_t *skt = serf_httpconn_socket(conn->httpconn);
 
         /* If this connection has already failed, return the error again, and try
          * to remove it from the pollset again
          */
         if (conn->status) {
             tdesc.desc_type = APR_POLL_SOCKET;
-            tdesc.desc.s = skt;
+            tdesc.desc.s = conn->skt;
             tdesc.reqevents = conn->reqevents;
             ctx->pollset_rm(ctx->pollset_baton,
                             &tdesc, conn);
@@ -209,9 +208,9 @@ apr_status_t serf_event_trigger(
 
             /* it's possible that the connection was already reset and thus the
                socket cleaned up. */
-            if (skt) {
+            if (conn->skt) {
                 tdesc.desc_type = APR_POLL_SOCKET;
-                tdesc.desc.s = skt;
+                tdesc.desc.s = conn->skt;
                 tdesc.reqevents = conn->reqevents;
                 ctx->pollset_rm(ctx->pollset_baton,
                                 &tdesc, conn);
