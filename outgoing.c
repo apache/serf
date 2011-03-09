@@ -201,7 +201,7 @@ apr_status_t serf__open_connections(serf_context_t *ctx)
 
         /* Disable Nagle's algorithm */
         if ((status = apr_socket_opt_set(skt,
-                                         APR_TCP_NODELAY, 0)) != APR_SUCCESS)
+                                         APR_TCP_NODELAY, 1)) != APR_SUCCESS)
             return status;
 
         /* Configured. Store it into the connection now. */
