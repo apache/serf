@@ -1066,6 +1066,10 @@ apr_status_t serf_connection_create2(
     serf_connection_t *c;
     apr_sockaddr_t *host_address;
 
+    /* Support for HTTPS proxies is not implemented yet. */
+    if (ctx->proxy_address && strcmp(host_info.scheme, "https") == 0)
+        return APR_ENOTIMPL;
+
     /* Parse the url, store the address of the server. */
     status = apr_sockaddr_info_get(&host_address,
                                    host_info.hostname,
