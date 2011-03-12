@@ -545,6 +545,10 @@ static apr_status_t write_to_connection(serf_connection_t *conn)
 
     if (conn->probable_keepalive_limit &&
         conn->completed_requests > conn->probable_keepalive_limit) {
+
+        conn->dirty_conn = 1;
+        conn->ctx->dirty_pollset = 1;
+
         /* backoff for now. */
         return APR_SUCCESS;
     }
@@ -933,6 +937,10 @@ static apr_status_t read_from_connection(serf_connection_t *conn)
         }
 
         conn->completed_responses++;
+
+        /* We've to rebuild pollset since completed_responses is changed. */
+        conn->dirty_conn = 1;
+        conn->ctx->dirty_pollset = 1;
 
         /* This means that we're being advised that the connection is done. */
         if (close_connection == SERF_ERROR_CLOSING) {
