@@ -39,6 +39,9 @@ static apr_status_t clean_skt(void *data)
 static apr_status_t clean_resp(void *data)
 {
     serf_request_t *req = data;
+    static int pool_ctr = 0;
+
+    printf("Cleaning pool %d request 0x%x\n", pool_ctr++, req);
 
     /* This pool just got cleared/destroyed. Don't try to destroy the pool
      * (again) when the request is canceled.
@@ -312,6 +315,8 @@ static apr_status_t destroy_request(serf_request_t *request)
 
     serf_debug__bucket_alloc_check(request->allocator);
     if (request->respool) {
+        static int destroy_ctr = 0;
+        printf("Destroying request pool %d\n", destroy_ctr++);
         apr_pool_destroy(request->respool);
     }
 
@@ -617,8 +622,10 @@ static apr_status_t write_to_connection(serf_connection_t *conn)
         }
 
         if (request->req_bkt == NULL) {
+            static int pool_ctr = 0;
             /* Now that we are about to serve the request, allocate a pool. */
             apr_pool_create(&request->respool, conn->pool);
+            printf("Creating pool %d request 0x%x\n", pool_ctr++, request);
             request->allocator = serf_bucket_allocator_create(request->respool,
                                                               NULL, NULL);
             apr_pool_cleanup_register(request->respool, request,

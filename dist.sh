@@ -26,6 +26,7 @@ echo "`find ${release} -type f | wc -l` files exported"
 
 cd "${release}"
 
+echo "Running buildconf ..."
 if ! ./buildconf --with-apr="${srcdir}/apr" --with-apr-util="${srcdir}/apr-util" ; then
   echo "Exiting..."
   exit 1
