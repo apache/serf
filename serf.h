@@ -1024,8 +1024,8 @@ void serf_debug__bucket_alloc_check(
 
 /* Version info */
 #define SERF_MAJOR_VERSION 0
-#define SERF_MINOR_VERSION 7
-#define SERF_PATCH_VERSION 1
+#define SERF_MINOR_VERSION 8
+#define SERF_PATCH_VERSION 0
 
 /* Version number string */
 #define SERF_VERSION_STRING APR_STRINGIFY(SERF_MAJOR_VERSION) "." \
