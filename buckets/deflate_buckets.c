@@ -60,10 +60,10 @@ typedef struct {
     int bufferSize;
 
     /* How much of the chunk, or the terminator, do we have left to read? */
-    apr_int64_t stream_left;
+    apr_size_t stream_left;
 
     /* How much are we supposed to read? */
-    apr_int64_t stream_size;
+    apr_size_t stream_size;
 
     int stream_status; /* What was the last status we read? */
 
