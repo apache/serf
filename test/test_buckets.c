@@ -340,7 +340,6 @@ static void test_iovec_buckets(CuTest *tc)
     apr_status_t status;
     serf_bucket_t *bkt, *iobkt;
     const char *data;
-    int found;
     apr_size_t len;
     struct iovec vecs[32];
     struct iovec tgt_vecs[32];
