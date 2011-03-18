@@ -89,6 +89,34 @@ serf__kerb_create_sec_context(serf__kerb_context_t **ctx_p,
     return APR_SUCCESS;
 }
 
+static apr_status_t
+get_canonical_hostname(const char **canonname,
+                       const char *hostname,
+                       apr_pool_t *pool)
+{
+    struct addrinfo hints;
+    struct addrinfo *addrinfo;
+    int rv;
+
+    ZeroMemory(&hints, sizeof(hints));
+    hints.ai_flags = AI_CANONNAME;
+
+    rv = getaddrinfo(hostname, NULL, &hints, &addrinfo);
+    if (rv) {
+        return APR_FROM_OS_ERROR(rv);
+    }
+
+    if (addrinfo) {
+        *canonname = apr_pstrdup(pool, addrinfo->ai_canonname);
+    }
+    else {
+        *canonname = apr_pstrdup(pool, hostname);
+    }
+
+    freeaddrinfo(addrinfo);
+    return APR_SUCCESS;
+}
+
 apr_status_t
 serf__kerb_init_sec_context(serf__kerb_context_t *ctx,
                             const char *service,
@@ -106,8 +134,14 @@ serf__kerb_init_sec_context(serf__kerb_context_t *ctx,
     SecBuffer sspi_out_buffer;
     SecBufferDesc sspi_out_buffer_desc;
     char *target_name;
+    apr_status_t apr_status;
+    const char *canonname;
 
-    target_name = apr_pstrcat(scratch_pool, service, "/", hostname, NULL);
+    apr_status = get_canonical_hostname(&canonname, hostname, scratch_pool);
+    if (apr_status) {
+        return apr_status;
+    }
+    target_name = apr_pstrcat(scratch_pool, service, "/", canonname, NULL);
 
     /* Prepare input buffer description. */
     sspi_in_buffer.BufferType = SECBUFFER_TOKEN;
