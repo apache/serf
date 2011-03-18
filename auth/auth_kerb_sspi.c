@@ -96,14 +96,12 @@ get_canonical_hostname(const char **canonname,
 {
     struct addrinfo hints;
     struct addrinfo *addrinfo;
-    int rv;
 
     ZeroMemory(&hints, sizeof(hints));
     hints.ai_flags = AI_CANONNAME;
 
-    rv = getaddrinfo(hostname, NULL, &hints, &addrinfo);
-    if (rv) {
-        return APR_FROM_OS_ERROR(rv);
+    if (getaddrinfo(hostname, NULL, &hints, &addrinfo)) {
+        return apr_get_netos_error();
     }
 
     if (addrinfo) {
