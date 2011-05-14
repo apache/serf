@@ -690,7 +690,8 @@ static apr_status_t write_to_connection(serf_connection_t *conn)
                 return status;
         }
 
-        if (conn->hit_eof &&
+        if (read_status &&
+            conn->hit_eof &&
             conn->vec_len == 0) {
             /* If we hit the end of the request bucket and all of its data has
              * been written, then clear it out to signify that we're done
