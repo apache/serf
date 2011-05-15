@@ -654,7 +654,8 @@ static apr_status_t write_to_connection(serf_connection_t *conn)
                                              &conn->vec_len);
 
         if (!conn->hit_eof) {
-            if (APR_STATUS_IS_EAGAIN(read_status)) {
+            if (APR_STATUS_IS_EAGAIN(read_status) ||
+                read_status == SERF_ERROR_WAIT_CONN) {
                 /* We read some stuff, but should not try to read again. */
                 stop_reading = 1;
 
