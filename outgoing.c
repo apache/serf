@@ -690,9 +690,10 @@ static apr_status_t write_to_connection(serf_connection_t *conn)
                 return status;
         }
 
-        if (read_status &&
-            conn->hit_eof &&
-            conn->vec_len == 0) {
+        if (read_status == SERF_ERROR_WAIT_CONN) {
+            stop_reading = 1;
+        }
+        else if (read_status && conn->hit_eof && conn->vec_len == 0) {
             /* If we hit the end of the request bucket and all of its data has
              * been written, then clear it out to signify that we're done
              * sending the request. On the next iteration through this loop:

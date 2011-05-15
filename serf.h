@@ -69,6 +69,11 @@ typedef struct serf_request_t serf_request_t;
  * could be processed on the other side.
  */
 #define SERF_ERROR_REQUEST_LOST (APR_OS_START_USERERR + SERF_ERROR_RANGE + 2)
+/* This code is for when the connection is blocked - we can not proceed
+ * until something happens - generally due to SSL negotiation-like behavior
+ * where a write() is blocked until a read() is processed.
+ */
+#define SERF_ERROR_WAIT_CONN (APR_OS_START_USERERR + SERF_ERROR_RANGE + 3)
 
 /* General authentication related errors */
 #define SERF_ERROR_AUTHN_FAILED (APR_OS_START_USERERR + SERF_ERROR_RANGE + 90)
@@ -889,7 +894,8 @@ struct serf_bucket_type_t {
  */
 #define SERF_BUCKET_READ_ERROR(status) ((status) \
                                         && !APR_STATUS_IS_EOF(status) \
-                                        && !APR_STATUS_IS_EAGAIN(status))
+                                        && !APR_STATUS_IS_EAGAIN(status) \
+                                        && (SERF_ERROR_WAIT_CONN != status))
 
 
 struct serf_bucket_t {

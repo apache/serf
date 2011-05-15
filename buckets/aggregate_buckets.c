@@ -266,7 +266,7 @@ static apr_status_t read_aggregate(serf_bucket_t *bucket,
             /* If we got SUCCESS (w/bytes) or EAGAIN, we want to return now
              * as it isn't safe to read more without returning to our caller.
              */
-            if (!status || APR_STATUS_IS_EAGAIN(status)) {
+            if (!status || APR_STATUS_IS_EAGAIN(status) || status == SERF_ERROR_WAIT_CONN) {
                 return status;
             }
 
