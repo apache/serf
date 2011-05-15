@@ -202,7 +202,7 @@ void serf_bucket_aggregate_prepend_iovec(
     int i;
 
     /* Add in reverse order. */
-    for (i = vecs_count - 1; i > 0; i--) {
+    for (i = vecs_count - 1; i >= 0; i--) {
         serf_bucket_t *new_bucket;
 
         new_bucket = serf_bucket_simple_create(vecs[i].iov_base,
