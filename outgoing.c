@@ -704,6 +704,7 @@ static apr_status_t write_to_connection(serf_connection_t *conn)
              * ("pipelining").
              */
             conn->hit_eof = 0;
+            serf_bucket_destroy(request->req_bkt);
             request->req_bkt = NULL;
 
             /* If our connection has async responses enabled, we're not
