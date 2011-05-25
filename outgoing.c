@@ -1198,6 +1198,7 @@ serf_request_t *serf_connection_request_create(
     request->respool = NULL;
     request->req_bkt = NULL;
     request->resp_bkt = NULL;
+    request->priority = 0;
     request->written = 0;
     request->next = NULL;
 
@@ -1233,6 +1234,7 @@ serf_request_t *serf_connection_priority_request_create(
     request->respool = NULL;
     request->req_bkt = NULL;
     request->resp_bkt = NULL;
+    request->priority = 1;
     request->written = 0;
     request->next = NULL;
 
@@ -1248,6 +1250,12 @@ serf_request_t *serf_connection_priority_request_create(
 
     /* Find a request that has data which needs to be delivered. */
     while (iter != NULL && iter->req_bkt == NULL && iter->written) {
+        prev = iter;
+        iter = iter->next;
+    }
+
+    /* Advance to next non priority request */
+    while (iter != NULL && iter->priority) {
         prev = iter;
         iter = iter->next;
     }
