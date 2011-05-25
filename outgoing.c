@@ -1013,7 +1013,7 @@ apr_status_t serf__process_connection(serf_connection_t *conn,
          *
          * http://issues.apache.org/bugzilla/show_bug.cgi?id=35292
          */
-        if (!conn->probable_keepalive_limit) {
+        if (conn->completed_requests && !conn->probable_keepalive_limit) {
             return reset_connection(conn, 1);
         }
         return APR_EGENERAL;
