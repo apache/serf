@@ -67,7 +67,7 @@ static apr_status_t serf_iovec_read_iovec(serf_bucket_t *bucket,
                                           int *vecs_used)
 {
     iovec_context_t *ctx = bucket->data;
-    apr_size_t current_size = 0;
+
     *vecs_used = 0;
 
     /* copy the requested amount of buffers to the provided iovec. */
@@ -131,7 +131,6 @@ static apr_status_t serf_iovec_peek(serf_bucket_t *bucket,
                                     apr_size_t *len)
 {
     iovec_context_t *ctx = bucket->data;
-    struct iovec *vec;
 
     if (ctx->current_vec >= ctx->vecs_len) {
         *len = 0;
@@ -159,21 +158,21 @@ static void serf_iovec_destroy(serf_bucket_t *bucket)
 
 static apr_status_t serf_iovec_snapshot(serf_bucket_t *bucket)
 {
-    iovec_context_t *ctx = bucket->data;
+    /* ### shouldn't this have something like "not implemented"?  */
 
     return APR_SUCCESS;
 }
 
 static apr_status_t serf_iovec_restore_snapshot(serf_bucket_t *bucket)
 {
-    iovec_context_t *ctx = bucket->data;
+    /* ### shouldn't this have something like "not implemented"?  */
 
     return APR_SUCCESS;
 }
 
 static int serf_iovec_is_snapshot_set(serf_bucket_t *bucket)
 {
-    iovec_context_t *ctx = bucket->data;
+    /* ### shouldn't this have something like "not implemented"?  */
 
     return APR_SUCCESS;
 }
