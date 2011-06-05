@@ -1164,8 +1164,6 @@ serf_bucket_t *serf_bucket_ssl_decrypt_create(
     }
     ctx->ssl_ctx->decrypt.stream = stream;
     ctx->our_stream = &ctx->ssl_ctx->decrypt.stream;
-    ctx->ssl_ctx->decrypt.pending =
-        serf_bucket_aggregate_create(allocator);
 
     return bkt;
 }
