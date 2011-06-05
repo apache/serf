@@ -232,6 +232,12 @@ apr_status_t serf__open_connections(serf_context_t *ctx)
         if (conn->ctx->authn_info.scheme)
             conn->ctx->authn_info.scheme->init_conn_func(401, conn,
                                                          conn->pool);
+
+        /* Does this connection require a SSL tunnel over the proxy? */
+        if (ctx->proxy_address && strcmp(conn->host_info.scheme, "https") == 0)
+            serf__ssltunnel_connect(conn);
+        else
+            conn->state = SERF_CONN_CONNECTED;
     }
 
     return APR_SUCCESS;
@@ -538,6 +544,53 @@ static apr_status_t do_conn_setup(serf_connection_t *conn)
     return status;
 }
 
+/* Set up the input and output stream buckets.
+   When a tunnel over an http proxy is needed, create a socket bucket and
+   empty aggregate bucket for sending and receiving unencrypted requests
+   over the socket.
+
+   After the tunnel is there, or no tunnel was needed, ask the application
+   to create the input and output buckets, which should take care of the
+   [en/de]cryption.
+*/
+
+static apr_status_t prepare_conn_streams(serf_connection_t *conn,
+                                         serf_bucket_t **istream,
+                                         serf_bucket_t **ostreamt,
+                                         serf_bucket_t **ostreamh)
+{
+    apr_status_t status;
+
+    /* Do we need a SSL tunnel first? */
+    if (conn->state == SERF_CONN_CONNECTED) {
+        /* If the connection does not have an associated bucket, then
+         * call the setup callback to get one.
+         */
+        if (conn->stream == NULL) {
+            status = do_conn_setup(conn);
+            if (status) {
+                return status;
+            }
+        }
+        *ostreamt = conn->ostream_tail;
+        *ostreamh = conn->ostream_head;
+        *istream = conn->stream;
+    } else {
+        /* SSL tunnel needed and not set up yet, get a direct unencrypted
+           stream for this socket */
+        if (conn->stream == NULL) {
+            *istream = serf_bucket_socket_create(conn->skt,
+                                                 conn->allocator);
+        }
+        /* Don't create the ostream bucket chain including the ssl_encrypt
+           bucket yet. This ensure the CONNECT request is sent unencrypted
+           to the proxy. */
+        *ostreamt = *ostreamh = conn->ssltunnel_ostream;
+    }
+
+    return APR_SUCCESS;
+}
+
 /* write data out to the connection */
 static apr_status_t write_to_connection(serf_connection_t *conn)
 {
@@ -567,10 +620,19 @@ static apr_status_t write_to_connection(serf_connection_t *conn)
         int stop_reading = 0;
         apr_status_t status;
         apr_status_t read_status;
+        serf_bucket_t *ostreamt, *ostreamh;
+        int max_outstanding_requests = conn->max_outstanding_requests;
 
-        if (conn->max_outstanding_requests &&
+        /* If we're setting up an ssl tunnel, we can't send real requests
+           at yet, as they need to be encrypted and our encrypt buckets
+           aren't created yet as we still need to read the unencrypted
+           response of the CONNECT request. */
+        if (conn->state != SERF_CONN_CONNECTED)
+            max_outstanding_requests = 1;
+
+        if (max_outstanding_requests &&
             conn->completed_requests -
-                conn->completed_responses >= conn->max_outstanding_requests) {
+                conn->completed_responses >= max_outstanding_requests) {
             /* backoff for now. */
             return APR_SUCCESS;
         }
@@ -610,14 +672,9 @@ static apr_status_t write_to_connection(serf_connection_t *conn)
             return APR_SUCCESS;
         }
 
-        /* If the connection does not have an associated bucket, then
-         * call the setup callback to get one.
-         */
-        if (conn->stream == NULL) {
-            status = do_conn_setup(conn);
-            if (status) {
-                return status;
-            }
+        status = prepare_conn_streams(conn, &conn->stream, &ostreamt, &ostreamh);
+        if (status) {
+            return status;
         }
 
         if (request->req_bkt == NULL) {
@@ -643,11 +700,11 @@ static apr_status_t write_to_connection(serf_connection_t *conn)
             }
 
             request->written = 1;
-            serf_bucket_aggregate_append(conn->ostream_tail, request->req_bkt);
+            serf_bucket_aggregate_append(ostreamt, request->req_bkt);
         }
 
         /* ### optimize at some point by using read_for_sendfile */
-        read_status = serf_bucket_read_iovec(conn->ostream_head,
+        read_status = serf_bucket_read_iovec(ostreamh,
                                              SERF_READ_ALL_AVAIL,
                                              IOV_MAX,
                                              conn->vec,
@@ -817,16 +874,14 @@ static apr_status_t read_from_connection(serf_connection_t *conn)
 
     /* Invoke response handlers until we have no more work. */
     while (1) {
+        serf_bucket_t *dummy1, *dummy2;
+
         apr_pool_clear(tmppool);
 
-        /* If the connection does not have an associated bucket, then
-         * call the setup callback to get one.
-         */
-        if (conn->stream == NULL) {
-            status = do_conn_setup(conn);
-            if (status) {
-                goto error;
-            }
+        /* Only interested in the input stream here. */
+        status = prepare_conn_streams(conn, &conn->stream, &dummy1, &dummy2);
+        if (status) {
+            goto error;
         }
 
         /* We have a different codepath when we can have async responses. */
@@ -1051,6 +1106,7 @@ serf_connection_t *serf_connection_create(
     conn->baton.type = SERF_IO_CONN;
     conn->baton.u.conn = conn;
     conn->hit_eof = 0;
+    conn->state = SERF_CONN_INIT;
 
     /* Create a subpool for our connection. */
     apr_pool_create(&conn->skt_pool, conn->pool);
@@ -1077,10 +1133,6 @@ apr_status_t serf_connection_create2(
     apr_status_t status;
     serf_connection_t *c;
     apr_sockaddr_t *host_address;
-
-    /* Support for HTTPS proxies is not implemented yet. */
-    if (ctx->proxy_address && strcmp(host_info.scheme, "https") == 0)
-        return APR_ENOTIMPL;
 
     /* Parse the url, store the address of the server. */
     status = apr_sockaddr_info_get(&host_address,

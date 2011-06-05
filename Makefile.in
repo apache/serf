@@ -16,7 +16,7 @@ OBJECTS = buckets/aggregate_buckets.lo buckets/request_buckets.lo context.lo \
           buckets/ssl_buckets.lo buckets/barrier_buckets.lo \
           buckets/chunk_buckets.lo buckets/bwtp_buckets.lo \
 	  buckets/iovec_buckets.lo \
-          incoming.lo outgoing.lo \
+          incoming.lo outgoing.lo ssltunnel.lo \
           auth/auth.lo auth/auth_basic.lo auth/auth_digest.lo \
           auth/auth_kerb.lo auth/auth_kerb_gss.lo
 
@@ -60,6 +60,7 @@ all: $(TARGET_LIB) $(PROGRAMS)
 context.lo: context.c $(HEADERS)
 incoming.lo: incoming.c $(HEADERS)
 outgoing.lo: outgoing.c $(HEADERS)
+ssltunnel.lo: ssltunnel.c $(HEADERS)
 buckets/aggregate_buckets.lo: buckets/aggregate_buckets.c $(HEADERS)
 buckets/request_buckets.lo: buckets/request_buckets.c $(HEADERS)
 buckets/buckets.lo: buckets/buckets.c $(HEADERS)

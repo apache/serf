@@ -17,6 +17,7 @@ LIB_FILES = [
   ('.', 'context'),
   ('.', 'incoming'),
   ('.', 'outgoing'),
+  ('.', 'ssltunnel'),
 
   ('buckets', 'aggregate_buckets'),
   ('buckets', 'request_buckets'),

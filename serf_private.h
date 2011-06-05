@@ -136,6 +136,14 @@ struct serf_incoming_t {
     apr_pollfd_t desc;
 };
 
+/* States for the different stages in the lifecyle of a connection. */
+typedef enum {
+    SERF_CONN_INIT,
+    SERF_CONN_SETUP_SSLTUNNEL,
+    SERF_CONN_CONNECTED,
+    SERF_CONN_CLOSING,
+} serf__connection_state_t;
+
 struct serf_connection_t {
     serf_context_t *ctx;
 
@@ -168,6 +176,9 @@ struct serf_connection_t {
     /* keepalive */
     unsigned int probable_keepalive_limit;
 
+    /* Current state of the connection (whether or not it is connected). */
+    serf__connection_state_t state;
+
     /* someone has told us that the connection is closing
      * so, let's start a new socket.
      */
@@ -188,6 +199,9 @@ struct serf_connection_t {
      */
     serf_bucket_t *ostream_head;
     serf_bucket_t *ostream_tail;
+
+    /* Aggregate bucket used to send the CONNECT request. */
+    serf_bucket_t *ssltunnel_ostream;
 
     /* The list of active requests. */
     serf_request_t *requests;
@@ -336,5 +350,8 @@ apr_status_t serf__open_connections(serf_context_t *ctx);
 apr_status_t serf__process_connection(serf_connection_t *conn,
                                        apr_int16_t events);
 apr_status_t serf__conn_update_pollset(serf_connection_t *conn);
+
+/* from ssltunnel.c */
+apr_status_t serf__ssltunnel_connect(serf_connection_t *conn);
 
 #endif

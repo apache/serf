@@ -106,6 +106,7 @@ LIB32_OBJS= \
     "$(INTDIR)\auth_kerb_gss.obj" \
     "$(INTDIR)\auth_kerb_sspi.obj" \
     "$(INTDIR)\context.obj" \
+    "$(INTDIR)\ssltunnel.obj" \
     "$(INTDIR)\allocator.obj" \
     "$(INTDIR)\barrier_buckets.obj" \
     "$(INTDIR)\buckets.obj" \
