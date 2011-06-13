@@ -49,6 +49,7 @@ TEST_DEPS = [
   ('test', 'test_context'),
   ('test', 'test_buckets'),
   ('test', 'test_ssl'),
+  ('test/server', 'test_server'),
   ]
 
 TEST_HDR_FILES = [
