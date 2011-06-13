@@ -24,33 +24,6 @@ typedef struct serv_ctx_t serv_ctx_t;
 #define SERV_PORT 12345
 #define SERV_PORT_STR "12345"
 
-#define CRLF "\r\n"
-
-#define CHUNCKED_REQUEST(len, body)\
-        "GET / HTTP/1.1" CRLF\
-        "Transfer-Encoding: chunked" CRLF\
-        CRLF\
-        #len CRLF\
-        body CRLF\
-        "0" CRLF\
-        CRLF
-
-#define CHUNKED_RESPONSE(len, body)\
-        "HTTP/1.1 200 OK" CRLF\
-        "Transfer-Encoding: chunked" CRLF\
-        CRLF\
-        #len CRLF\
-        body CRLF\
-        "0" CRLF\
-        CRLF
-
-#define CHUNKED_EMPTY_RESPONSE\
-        "HTTP/1.1 200 OK" CRLF\
-        "Transfer-Encoding: chunked" CRLF\
-        CRLF\
-        "0" CRLF\
-        CRLF
-
 typedef struct
 {
     enum {
