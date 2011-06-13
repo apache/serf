@@ -24,6 +24,8 @@ typedef struct serv_ctx_t serv_ctx_t;
 #define SERV_PORT 12345
 #define SERV_PORT_STR "12345"
 
+#define PROXY_PORT 23456
+
 typedef struct
 {
     enum {

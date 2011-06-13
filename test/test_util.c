@@ -27,11 +27,21 @@
 /* Server setup function(s)
  */
 
-static apr_status_t get_server_address(apr_sockaddr_t **address,
-                                       apr_pool_t *pool)
+#define SERV_URL "http://localhost:" SERV_PORT_STR
+
+static apr_status_t default_server_address(apr_sockaddr_t **address,
+                                           apr_pool_t *pool)
 {
     return apr_sockaddr_info_get(address,
-                                 "localhost", APR_INET, SERV_PORT, 0,
+                                 "localhost", APR_UNSPEC, SERV_PORT, 0,
+                                 pool);
+}
+
+static apr_status_t default_proxy_address(apr_sockaddr_t **address,
+                                          apr_pool_t *pool)
+{
+    return apr_sockaddr_info_get(address,
+                                 "localhost", APR_UNSPEC, PROXY_PORT, 0,
                                  pool);
 }
 
@@ -59,74 +69,134 @@ static apr_status_t default_conn_setup(apr_socket_t *skt,
     return APR_SUCCESS;
 }
 
+
+static apr_status_t setup(test_baton_t **tb_p,
+                          serf_connection_setup_t conn_setup,
+                          int use_proxy,
+                          apr_pool_t *pool)
+{
+    apr_status_t status;
+    test_baton_t *tb;
+    apr_uri_t url;
+
+    tb = apr_pcalloc(pool, sizeof(*tb));
+    *tb_p = tb;
+
+    tb->pool = pool;
+    tb->context = serf_context_create(pool);
+    tb->bkt_alloc = serf_bucket_allocator_create(pool, NULL, NULL);
+
+    status = default_server_address(&tb->serv_addr, pool);
+    if (status != APR_SUCCESS)
+        return status;
+
+    if (use_proxy) {
+        status = default_proxy_address(&tb->proxy_addr, pool);
+        if (status != APR_SUCCESS)
+            return status;
+
+        /* Configure serf to use the proxy server */
+        serf_config_proxy(tb->context, tb->proxy_addr);
+    }
+
+    status = apr_uri_parse(pool, SERV_URL, &url);
+    if (status != APR_SUCCESS)
+        return status;
+
+    status = serf_connection_create2(&tb->connection, tb->context,
+                                     url,
+                                     conn_setup ? conn_setup :
+                                         default_conn_setup,
+                                     tb,
+                                     default_closed_connection,
+                                     tb,
+                                     pool);
+
+    return status;
+}
+
+
+
 apr_status_t test_server_setup(test_baton_t **tb_p,
                                test_server_message_t *message_list,
                                apr_size_t message_count,
                                test_server_action_t *action_list,
                                apr_size_t action_count,
                                apr_int32_t options,
-                               const char *host_url,
-                               apr_sockaddr_t *servaddr,
                                serf_connection_setup_t conn_setup,
                                apr_pool_t *pool)
 {
     apr_status_t status;
     test_baton_t *tb;
 
-    tb = apr_pcalloc(pool, sizeof(*tb));
-    *tb_p = tb;
+    status = setup(tb_p,
+                   conn_setup,
+                   FALSE,
+                   pool);
+    if (status != APR_SUCCESS)
+        return status;
 
-    if (!servaddr) {
-        status = get_server_address(&servaddr, pool);
-        if (status != APR_SUCCESS)
-          return status;
-    }
-
-    tb->pool = pool;
-    tb->context = serf_context_create(pool);
-    tb->bkt_alloc = serf_bucket_allocator_create(pool, NULL, NULL);
-    if (host_url) {
-        apr_uri_t url;
-        status = apr_uri_parse(pool, host_url, &url);
-        if (status != APR_SUCCESS)
-            return status;
-
-        status = serf_connection_create2(&tb->connection, tb->context,
-                                         url,
-                                         conn_setup ? conn_setup :
-                                             default_conn_setup,
-                                         tb,
-                                         default_closed_connection,
-                                         tb,
-                                         pool);
-        if (status != APR_SUCCESS)
-          return status;
-    } else {
-        tb->connection = serf_connection_create(tb->context,
-                                                servaddr,
-                                                conn_setup ? conn_setup :
-                                                    default_conn_setup,
-                                                tb,
-                                                default_closed_connection,
-                                                tb,
-                                                pool);
-    }
+    tb = *tb_p;
 
     /* Prepare a server. */
-    status = test_start_server(&tb->servctx, servaddr,
+    status = test_start_server(&tb->serv_ctx, tb->serv_addr,
                                message_list, message_count,
                                action_list, action_count, options, pool);
-    if (status != APR_SUCCESS)
-      return status;
 
-    return APR_SUCCESS;
+    return status;
+}
+
+apr_status_t
+test_server_proxy_setup(test_baton_t **tb_p,
+                        test_server_message_t *serv_message_list,
+                        apr_size_t serv_message_count,
+                        test_server_action_t *serv_action_list,
+                        apr_size_t serv_action_count,
+                        test_server_message_t *proxy_message_list,
+                        apr_size_t proxy_message_count,
+                        test_server_action_t *proxy_action_list,
+                        apr_size_t proxy_action_count,
+                        apr_int32_t options,
+                        serf_connection_setup_t conn_setup,
+                        apr_pool_t *pool)
+{
+    apr_status_t status;
+    test_baton_t *tb;
+
+    status = setup(tb_p,
+                   conn_setup,
+                   TRUE,
+                   pool);
+    if (status != APR_SUCCESS)
+        return status;
+
+    tb = *tb_p;
+
+    /* Prepare the server. */
+    status = test_start_server(&tb->serv_ctx, tb->serv_addr,
+                               serv_message_list, serv_message_count,
+                               serv_action_list, serv_action_count,
+                               options, pool);
+    if (status != APR_SUCCESS)
+        return status;
+
+    /* Prepare the proxy. */
+    status = test_start_server(&tb->proxy_ctx, tb->proxy_addr,
+                               proxy_message_list, proxy_message_count,
+                               proxy_action_list, proxy_action_count,
+                               options, pool);
+
+    return status;
 }
 
 apr_status_t test_server_teardown(test_baton_t *tb, apr_pool_t *pool)
 {
     serf_connection_close(tb->connection);
 
-    test_server_destroy(tb->servctx, pool);
+    if (tb->serv_ctx)
+        test_server_destroy(tb->serv_ctx, pool);
+    if (tb->proxy_ctx)
+        test_server_destroy(tb->proxy_ctx, pool);
 
     return APR_SUCCESS;
 }

@@ -52,6 +52,7 @@ CuSuite *test_ssl(void);
 
 #define CHUNCKED_REQUEST(len, body)\
         "GET / HTTP/1.1" CRLF\
+        "Host: localhost:12345" CRLF\
         "Transfer-Encoding: chunked" CRLF\
         CRLF\
         #len CRLF\
@@ -83,7 +84,11 @@ typedef struct {
     serf_connection_t *connection;
     serf_bucket_alloc_t *bkt_alloc;
 
-    serv_ctx_t *servctx;
+    serv_ctx_t *serv_ctx;
+    apr_sockaddr_t *serv_addr;
+
+    serv_ctx_t *proxy_ctx;
+    apr_sockaddr_t *proxy_addr;
 
     /* An extra baton which can be freely used by tests. */
     void *user_baton;
@@ -96,10 +101,22 @@ apr_status_t test_server_setup(test_baton_t **tb_p,
                                test_server_action_t *action_list,
                                apr_size_t action_count,
                                apr_int32_t options,
-                               const char *host_url,
-                               apr_sockaddr_t *servaddr,
                                serf_connection_setup_t conn_setup,
                                apr_pool_t *pool);
+
+apr_status_t test_server_proxy_setup(
+                 test_baton_t **tb_p,
+                 test_server_message_t *serv_message_list,
+                 apr_size_t serv_message_count,
+                 test_server_action_t *serv_action_list,
+                 apr_size_t serv_action_count,
+                 test_server_message_t *proxy_message_list,
+                 apr_size_t proxy_message_count,
+                 test_server_action_t *proxy_action_list,
+                 apr_size_t proxy_action_count,
+                 apr_int32_t options,
+                 serf_connection_setup_t conn_setup,
+                 apr_pool_t *pool);
 
 apr_status_t test_server_teardown(test_baton_t *tb, apr_pool_t *pool);
 

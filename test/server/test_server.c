@@ -315,9 +315,9 @@ apr_status_t test_start_server(serv_ctx_t **servctx_p,
 
     /* create server socket */
 #if APR_VERSION_AT_LEAST(1, 0, 0)
-    status = apr_socket_create(&serv_sock, APR_INET, SOCK_STREAM, 0, pool);
+    status = apr_socket_create(&serv_sock, APR_UNSPEC, SOCK_STREAM, 0, pool);
 #else
-    status = apr_socket_create(&serv_sock, APR_INET, SOCK_STREAM, pool);
+    status = apr_socket_create(&serv_sock, APR_UNSPEC, SOCK_STREAM, pool);
 #endif
 
     if (status != APR_SUCCESS)
