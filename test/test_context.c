@@ -40,9 +40,6 @@ typedef struct {
     const char *path;
     int done;
 
-    const char *server_root;
-    int use_proxy;
-
     test_baton_t *tb;
 } handler_baton_t;
 
@@ -179,8 +176,6 @@ static void test_serf_connection_request_create(CuTest *tc)
     handler_ctx.accepted_requests = accepted_requests;
     handler_ctx.sent_requests = sent_requests;
     handler_ctx.handled_requests = handled_requests;
-    handler_ctx.use_proxy = FALSE;
-    handler_ctx.server_root = NULL;
 
     request1 = serf_connection_request_create(tb->connection,
                                               setup_request,
@@ -280,8 +275,6 @@ static void test_serf_connection_priority_request_create(CuTest *tc)
     handler_ctx.accepted_requests = accepted_requests;
     handler_ctx.sent_requests = sent_requests;
     handler_ctx.handled_requests = handled_requests;
-    handler_ctx.use_proxy = FALSE;
-    handler_ctx.server_root = NULL;
 
     request1 = serf_connection_request_create(tb->connection,
                                               setup_request,
@@ -424,8 +417,6 @@ static void test_serf_closed_connection(CuTest *tc)
         handler_ctx[i].sent_requests = sent_requests;
         handler_ctx[i].handled_requests = handled_requests;
         handler_ctx[i].tb = tb;
-        handler_ctx[i].use_proxy = FALSE;
-        handler_ctx[i].server_root = NULL;
 
         serf_connection_request_create(tb->connection,
                                        setup_request,
@@ -525,8 +516,6 @@ static void test_serf_setup_proxy(CuTest *tc)
     handler_ctx.accepted_requests = accepted_requests;
     handler_ctx.sent_requests = sent_requests;
     handler_ctx.handled_requests = handled_requests;
-    handler_ctx.use_proxy = TRUE;
-    handler_ctx.server_root = "http://localhost:" SERV_PORT_STR;
 
     request = serf_connection_request_create(tb->connection,
                                              setup_request,
@@ -681,8 +670,6 @@ static void test_keepalive_limit_one_by_one(CuTest *tc)
         handler_ctx[i].sent_requests = sent_requests;
         handler_ctx[i].handled_requests = handled_requests;
         handler_ctx[i].tb = tb;
-        handler_ctx[i].use_proxy = FALSE;
-        handler_ctx[i].server_root = NULL;
 
         serf_connection_request_create(tb->connection,
                                        setup_request,
@@ -837,8 +824,6 @@ static void test_keepalive_limit_one_by_one_and_burst(CuTest *tc)
         handler_ctx[i].sent_requests = sent_requests;
         handler_ctx[i].handled_requests = handled_requests;
         handler_ctx[i].tb = tb;
-        handler_ctx[i].use_proxy = FALSE;
-        handler_ctx[i].server_root = NULL;
 
         serf_connection_request_create(tb->connection,
                                        setup_request,
@@ -966,8 +951,6 @@ static void test_serf_progress_callback(CuTest *tc)
         handler_ctx[i].sent_requests = sent_requests;
         handler_ctx[i].handled_requests = handled_requests;
         handler_ctx[i].tb = tb;
-        handler_ctx[i].use_proxy = FALSE;
-        handler_ctx[i].server_root = NULL;
 
         serf_connection_request_create(tb->connection,
                                        setup_request,
