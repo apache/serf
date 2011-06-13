@@ -247,7 +247,7 @@ static apr_status_t no_more_writes(serf_connection_t *conn,
                                    serf_request_t *request)
 {
     /* Note that we should hold new requests until we open our new socket. */
-    conn->closing = 1;
+    conn->state = SERF_CONN_CLOSING;
 
     /* We can take the *next* request in our list and assume it hasn't
      * been written yet and 'save' it for the new socket.
@@ -400,10 +400,9 @@ static apr_status_t reset_connection(serf_connection_t *conn,
     held_reqs = conn->hold_requests;
     held_reqs_tail = conn->hold_requests_tail;
 
-    if (conn->closing) {
+    if (conn->state == SERF_CONN_CLOSING) {
         conn->hold_requests = NULL;
         conn->hold_requests_tail = NULL;
-        conn->closing = 0;
     }
 
     conn->requests = NULL;
@@ -455,6 +454,7 @@ static apr_status_t reset_connection(serf_connection_t *conn,
 
     conn->dirty_conn = 1;
     conn->ctx->dirty_pollset = 1;
+    conn->state = SERF_CONN_INIT;
 
     conn->status = APR_SUCCESS;
 
@@ -1255,7 +1255,7 @@ serf_request_t *serf_connection_request_create(
     request->next = NULL;
 
     /* Link the request to the end of the request chain. */
-    if (conn->closing) {
+    if (conn->state == SERF_CONN_CLOSING) {
         link_requests(&conn->hold_requests, &conn->hold_requests_tail, request);
     }
     else {
@@ -1292,7 +1292,7 @@ serf_request_t *serf_connection_priority_request_create(
 
     /* Link the new request after the last written request, but before all
        upcoming requests. */
-    if (conn->closing) {
+    if (conn->state == SERF_CONN_CLOSING) {
         iter = conn->hold_requests;
     }
     else {
@@ -1317,7 +1317,7 @@ serf_request_t *serf_connection_priority_request_create(
         prev->next = request;
     } else {
         request->next = iter;
-        if (conn->closing) {
+        if (conn->state == SERF_CONN_CLOSING) {
             conn->hold_requests = request;
         }
         else {
@@ -1325,7 +1325,7 @@ serf_request_t *serf_connection_priority_request_create(
         }
     }
 
-    if (! conn->closing) {
+    if (conn->state != SERF_CONN_CLOSING) {
         /* Ensure our pollset becomes writable in context run */
         conn->ctx->dirty_pollset = 1;
         conn->dirty_conn = 1;

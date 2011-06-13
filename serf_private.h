@@ -138,10 +138,11 @@ struct serf_incoming_t {
 
 /* States for the different stages in the lifecyle of a connection. */
 typedef enum {
-    SERF_CONN_INIT,
-    SERF_CONN_SETUP_SSLTUNNEL,
-    SERF_CONN_CONNECTED,
-    SERF_CONN_CLOSING,
+    SERF_CONN_INIT,             /* no socket created yet */
+    SERF_CONN_SETUP_SSLTUNNEL,  /* ssl tunnel being setup, no requests sent */
+    SERF_CONN_CONNECTED,        /* conn is ready to send requests */
+    SERF_CONN_CLOSING,          /* conn is closing, no more requests,
+                                   start a new socket */
 } serf__connection_state_t;
 
 struct serf_connection_t {
@@ -178,11 +179,6 @@ struct serf_connection_t {
 
     /* Current state of the connection (whether or not it is connected). */
     serf__connection_state_t state;
-
-    /* someone has told us that the connection is closing
-     * so, let's start a new socket.
-     */
-    int closing;
 
     /* This connection may have responses without a request! */
     int async_responses;
