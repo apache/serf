@@ -50,7 +50,7 @@ CuSuite *test_ssl(void);
 
 #define CRLF "\r\n"
 
-#define CHUNCKED_REQUEST(len, body)\
+#define CHUNKED_REQUEST(len, body)\
         "GET / HTTP/1.1" CRLF\
         "Host: localhost:12345" CRLF\
         "Transfer-Encoding: chunked" CRLF\

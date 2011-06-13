@@ -147,8 +147,8 @@ static void test_serf_connection_request_create(CuTest *tc)
     apr_array_header_t *accepted_requests, *handled_requests, *sent_requests;
     int i;
     test_server_message_t message_list[] = {
-        {CHUNCKED_REQUEST(1, "1")},
-        {CHUNCKED_REQUEST(1, "2")},
+        {CHUNKED_REQUEST(1, "1")},
+        {CHUNKED_REQUEST(1, "2")},
     };
 
     test_server_action_t action_list[] = {
@@ -245,9 +245,9 @@ static void test_serf_connection_priority_request_create(CuTest *tc)
     int i;
 
     test_server_message_t message_list[] = {
-        {CHUNCKED_REQUEST(1, "1")},
-        {CHUNCKED_REQUEST(1, "2")},
-        {CHUNCKED_REQUEST(1, "3")},
+        {CHUNKED_REQUEST(1, "1")},
+        {CHUNKED_REQUEST(1, "2")},
+        {CHUNKED_REQUEST(1, "3")},
     };
 
     test_server_action_t action_list[] = {
@@ -354,16 +354,16 @@ static void test_serf_closed_connection(CuTest *tc)
     int done = FALSE, i;
 
     test_server_message_t message_list[] = {
-        {CHUNCKED_REQUEST(1, "1")},
-        {CHUNCKED_REQUEST(1, "2")},
-        {CHUNCKED_REQUEST(1, "3")},
-        {CHUNCKED_REQUEST(1, "4")},
-        {CHUNCKED_REQUEST(1, "5")},
-        {CHUNCKED_REQUEST(1, "6")},
-        {CHUNCKED_REQUEST(1, "7")},
-        {CHUNCKED_REQUEST(1, "8")},
-        {CHUNCKED_REQUEST(1, "9")},
-        {CHUNCKED_REQUEST(2, "10")}
+        {CHUNKED_REQUEST(1, "1")},
+        {CHUNKED_REQUEST(1, "2")},
+        {CHUNKED_REQUEST(1, "3")},
+        {CHUNKED_REQUEST(1, "4")},
+        {CHUNKED_REQUEST(1, "5")},
+        {CHUNKED_REQUEST(1, "6")},
+        {CHUNKED_REQUEST(1, "7")},
+        {CHUNKED_REQUEST(1, "8")},
+        {CHUNKED_REQUEST(1, "9")},
+        {CHUNKED_REQUEST(2, "10")}
         };
 
     test_server_action_t action_list[] = {
@@ -635,13 +635,13 @@ static void test_keepalive_limit_one_by_one(CuTest *tc)
     int done = FALSE, i;
 
     test_server_message_t message_list[] = {
-        {CHUNCKED_REQUEST(1, "1")},
-        {CHUNCKED_REQUEST(1, "1")},
-        {CHUNCKED_REQUEST(1, "1")},
-        {CHUNCKED_REQUEST(1, "2")},
-        {CHUNCKED_REQUEST(1, "3")},
-        {CHUNCKED_REQUEST(1, "4")},
-        {CHUNCKED_REQUEST(1, "5")},
+        {CHUNKED_REQUEST(1, "1")},
+        {CHUNKED_REQUEST(1, "1")},
+        {CHUNKED_REQUEST(1, "1")},
+        {CHUNKED_REQUEST(1, "2")},
+        {CHUNKED_REQUEST(1, "3")},
+        {CHUNKED_REQUEST(1, "4")},
+        {CHUNKED_REQUEST(1, "5")},
     };
 
     test_server_action_t action_list[] = {
@@ -791,13 +791,13 @@ static void test_keepalive_limit_one_by_one_and_burst(CuTest *tc)
     int done = FALSE, i;
 
     test_server_message_t message_list[] = {
-        {CHUNCKED_REQUEST(1, "1")},
-        {CHUNCKED_REQUEST(1, "1")},
-        {CHUNCKED_REQUEST(1, "1")},
-        {CHUNCKED_REQUEST(1, "2")},
-        {CHUNCKED_REQUEST(1, "3")},
-        {CHUNCKED_REQUEST(1, "4")},
-        {CHUNCKED_REQUEST(1, "5")},
+        {CHUNKED_REQUEST(1, "1")},
+        {CHUNKED_REQUEST(1, "1")},
+        {CHUNKED_REQUEST(1, "1")},
+        {CHUNKED_REQUEST(1, "2")},
+        {CHUNKED_REQUEST(1, "3")},
+        {CHUNKED_REQUEST(1, "4")},
+        {CHUNKED_REQUEST(1, "5")},
     };
 
     test_server_action_t action_list[] = {
@@ -919,11 +919,11 @@ static void test_serf_progress_callback(CuTest *tc)
     progress_baton_t *pb;
 
     test_server_message_t message_list[] = {
-        {CHUNCKED_REQUEST(1, "1")},
-        {CHUNCKED_REQUEST(1, "2")},
-        {CHUNCKED_REQUEST(1, "3")},
-        {CHUNCKED_REQUEST(1, "4")},
-        {CHUNCKED_REQUEST(1, "5")},
+        {CHUNKED_REQUEST(1, "1")},
+        {CHUNKED_REQUEST(1, "2")},
+        {CHUNKED_REQUEST(1, "3")},
+        {CHUNKED_REQUEST(1, "4")},
+        {CHUNKED_REQUEST(1, "5")},
     };
 
     test_server_action_t action_list[] = {
