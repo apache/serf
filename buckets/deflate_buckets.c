@@ -344,8 +344,15 @@ static apr_status_t serf_deflate_read(serf_bucket_t *bucket,
                  * we'll iterate one more time.
                  */
                 if (APR_STATUS_IS_EOF(status)) {
-                    return APR_SUCCESS;
-                }
+                    /* No more data to read from the stream, and everything
+                       inflated. If all data was received correctly, state
+                       should have been advanced to STATE_READING_VERIFY or
+                       STATE_FINISH. If not, then the data was incomplete
+                       and we have an error. */
+                    if (ctx->state != STATE_INFLATE)
+                        return APR_SUCCESS;
+                    else
+                        return APR_EGENERAL;                }
             }
             return status;
         case STATE_DONE:
