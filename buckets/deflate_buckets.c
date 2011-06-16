@@ -352,7 +352,8 @@ static apr_status_t serf_deflate_read(serf_bucket_t *bucket,
                     if (ctx->state != STATE_INFLATE)
                         return APR_SUCCESS;
                     else
-                        return APR_EGENERAL;                }
+                        return APR_EGENERAL;
+                }
             }
             return status;
         case STATE_DONE:
