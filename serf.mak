@@ -145,7 +145,7 @@ TEST_OBJS = \
     "$(INTDIR)\test_context.obj" \
     "$(INTDIR)\test_buckets.obj" \
     "$(INTDIR)\test_ssl.obj" \
-    "$(INTDIR)\server\test_server.obj" \
+    "$(INTDIR)\test_server.obj" \
 
 TEST_LIBS = user32.lib advapi32.lib gdi32.lib ws2_32.lib
 
@@ -191,6 +191,11 @@ CHECK: INTDIR TESTS
 <<
 
 {test}.c{$(INTDIR)}.obj: 
+  $(CPP) @<<
+    $(CPP_PROJ) $<
+<<
+
+{test\server}.c{$(INTDIR)}.obj: 
   $(CPP) @<<
     $(CPP_PROJ) $<
 <<
