@@ -550,7 +550,7 @@ static apr_status_t ssl_encrypt(void *baton, apr_size_t bufsize,
     printf("ssl_encrypt: begin %d\n", bufsize);
 #endif
 
-    /* Try to read unread data first. */
+    /* Try to read already encrypted but unread data first. */
     status = serf_bucket_read(ctx->encrypt.pending, bufsize, &data, len);
     if (SERF_BUCKET_READ_ERROR(status)) {
         return status;
@@ -607,6 +607,8 @@ static apr_status_t ssl_encrypt(void *baton, apr_size_t bufsize,
                 int i, cur, vecs_data_len;
                 int ssl_len;
 
+                /* Combine the buffers of the iovec into one buffer, as
+                   that is with SSL_write requires. */
                 vecs_data_len = 0;
                 for (i = 0; i < vecs_read; i++) {
                     vecs_data_len += vecs[i].iov_len;
@@ -678,7 +680,7 @@ static apr_status_t ssl_encrypt(void *baton, apr_size_t bufsize,
             status = ctx->encrypt.status;
         }
 
-    } while (!status && interim_bufsize);
+    } while (!status);
 
     /* Okay, we exhausted our underlying stream. */
     if (!SERF_BUCKET_READ_ERROR(status)) {
