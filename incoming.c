@@ -75,7 +75,7 @@ apr_status_t serf__process_listener(serf_listener_t *l)
         return rv;
     }
 
-    rv = l->accept(l->ctx, l, l->accept_baton, in, p);
+    rv = l->accept_func(l->ctx, l, l->accept_baton, in, p);
 
     if (rv) {
         apr_pool_destroy(p);
@@ -131,7 +131,7 @@ apr_status_t serf_listener_create(
     l->ctx = ctx;
     l->baton.type = SERF_IO_LISTENER;
     l->baton.u.listener = l;
-    l->accept = accept;
+    l->accept_func = accept;
     l->accept_baton = accept_baton;
 
     apr_pool_create(&l->pool, pool);

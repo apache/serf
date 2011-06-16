@@ -124,7 +124,7 @@ struct serf_listener_t {
     apr_pool_t *pool;
     apr_pollfd_t desc;
     void *accept_baton;
-    serf_accept_client_t accept;
+    serf_accept_client_t accept_func;
 };
 
 struct serf_incoming_t {
