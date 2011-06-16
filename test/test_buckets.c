@@ -474,6 +474,45 @@ static void test_iovec_buckets(CuTest *tc)
     CuAssertIntEquals(tc, APR_EOF, status);
     CuAssertIntEquals(tc, 0, len);
 
+    /* Test 4: read 0 bytes from an iovec */
+    bkt = SERF_BUCKET_SIMPLE_STRING("line1" CRLF, alloc);
+    status = serf_bucket_read_iovec(bkt, SERF_READ_ALL_AVAIL, 32, vecs,
+                                    &vecs_used);
+    iobkt = serf_bucket_iovec_create(vecs, vecs_used, alloc);
+    status = serf_bucket_read_iovec(iobkt, 0, 32,
+                                    tgt_vecs, &vecs_used);
+    CuAssertIntEquals(tc, APR_SUCCESS, status);
+    CuAssertIntEquals(tc, 0, vecs_used);
+
+    test_teardown(test_pool);
+}
+
+static void test_aggregate_buckets(CuTest *tc)
+{
+    apr_status_t status;
+    serf_bucket_t *bkt, *aggbkt;
+    const char *data;
+    apr_size_t len;
+    struct iovec vecs[32];
+    struct iovec tgt_vecs[32];
+    int i;
+    int vecs_used;
+
+    apr_pool_t *test_pool = test_setup();
+    serf_bucket_alloc_t *alloc = serf_bucket_allocator_create(test_pool, NULL,
+                                                              NULL);
+
+    /* Test 1: read 0 bytes from an aggregate */
+    aggbkt = serf_bucket_aggregate_create(alloc);
+
+    bkt = SERF_BUCKET_SIMPLE_STRING("line1" CRLF, alloc);
+    serf_bucket_aggregate_append(aggbkt, bkt);
+
+    status = serf_bucket_read_iovec(aggbkt, 0, 32,
+                                    tgt_vecs, &vecs_used);
+    CuAssertIntEquals(tc, APR_SUCCESS, status);
+    CuAssertIntEquals(tc, 0, vecs_used);
+
     test_teardown(test_pool);
 }
 
@@ -489,6 +528,7 @@ CuSuite *test_buckets(void)
     SUITE_ADD_TEST(suite, test_simple_read_restore_snapshot_read);
     SUITE_ADD_TEST(suite, test_aggregate_read_restore_snapshot_read);
     SUITE_ADD_TEST(suite, test_iovec_buckets);
+    SUITE_ADD_TEST(suite, test_aggregate_buckets);
 
     return suite;
 }

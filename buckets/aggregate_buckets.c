@@ -235,6 +235,7 @@ static apr_status_t read_aggregate(serf_bucket_t *bucket,
 {
     aggregate_context_t *ctx = bucket->data;
     int cur_vecs_used;
+    apr_status_t status;
 
     *vecs_used = 0;
 
@@ -247,9 +248,9 @@ static apr_status_t read_aggregate(serf_bucket_t *bucket,
         }
     }
 
-    while (1) {
+    status = APR_SUCCESS;
+    while (requested) {
         serf_bucket_t *head = ctx->list->bucket;
-        apr_status_t status;
 
         status = serf_bucket_read_iovec(head, requested, vecs_size, vecs,
                                         &cur_vecs_used);
@@ -314,7 +315,8 @@ static apr_status_t read_aggregate(serf_bucket_t *bucket,
             }
         }
     }
-    /* NOTREACHED */
+
+    return status;
 }
 
 static apr_status_t serf_aggregate_read(serf_bucket_t *bucket,
