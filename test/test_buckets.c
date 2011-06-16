@@ -491,11 +491,7 @@ static void test_aggregate_buckets(CuTest *tc)
 {
     apr_status_t status;
     serf_bucket_t *bkt, *aggbkt;
-    const char *data;
-    apr_size_t len;
-    struct iovec vecs[32];
     struct iovec tgt_vecs[32];
-    int i;
     int vecs_used;
 
     apr_pool_t *test_pool = test_setup();

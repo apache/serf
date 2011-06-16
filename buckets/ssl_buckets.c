@@ -678,7 +678,7 @@ static apr_status_t ssl_encrypt(void *baton, apr_size_t bufsize,
             status = ctx->encrypt.status;
         }
 
-    } while (!status);
+    } while (!status && interim_bufsize);
 
     /* Okay, we exhausted our underlying stream. */
     if (!SERF_BUCKET_READ_ERROR(status)) {
