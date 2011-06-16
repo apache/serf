@@ -42,8 +42,12 @@ static apr_status_t clean_resp(void *data)
 
     /* This pool just got cleared/destroyed. Don't try to destroy the pool
      * (again) when the request is canceled.
+     * When the pool is destroyed, req_bkt and resp_bkt, both created with
+     * the pool's allocator will be destroyed too.
      */
     req->respool = NULL;
+    req->req_bkt = NULL;
+    req->resp_bkt = NULL;
 
     return APR_SUCCESS;
 }
