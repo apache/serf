@@ -75,6 +75,9 @@ typedef struct serf_request_t serf_request_t;
  */
 #define SERF_ERROR_WAIT_CONN (APR_OS_START_USERERR + SERF_ERROR_RANGE + 3)
 
+#define SERF_ERROR_DECOMPRESSION_FAILED (APR_OS_START_USERERR + \
+                                             SERF_ERROR_RANGE + 4)
+
 /* General authentication related errors */
 #define SERF_ERROR_AUTHN_FAILED (APR_OS_START_USERERR + SERF_ERROR_RANGE + 90)
 
@@ -87,6 +90,10 @@ typedef struct serf_request_t serf_request_t;
 /* Authentication handler initialization related errors */
 #define SERF_ERROR_AUTHN_INITALIZATION_FAILED (APR_OS_START_USERERR +\
     SERF_ERROR_RANGE + 93)
+
+/* This macro groups errors potentially raised when reading a http response.  */
+#define SERF_BAD_RESPONSE_ERROR(status) ((status) \
+             && (SERF_ERROR_DECOMPRESSION_FAILED == (status)))
 
 /**
  * Create a new context for serf operations.

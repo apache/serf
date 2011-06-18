@@ -178,10 +178,10 @@ static apr_status_t serf_deflate_read(serf_bucket_t *bucket,
         case STATE_HEADER:
             if (ctx->hdr_buffer[0] != deflate_magic[0] ||
                 ctx->hdr_buffer[1] != deflate_magic[1]) {
-                return APR_EGENERAL;
+                return SERF_ERROR_DECOMPRESSION_FAILED;
             }
             if (ctx->hdr_buffer[3] != 0) {
-                return APR_EGENERAL;
+                return SERF_ERROR_DECOMPRESSION_FAILED;
             }
             ctx->state++;
             break;
@@ -189,18 +189,18 @@ static apr_status_t serf_deflate_read(serf_bucket_t *bucket,
             /* Do the checksum computation. */
             compCRC = getLong((unsigned char*)ctx->hdr_buffer);
             if (ctx->crc != compCRC) {
-                return APR_EGENERAL;
+                return SERF_ERROR_DECOMPRESSION_FAILED;
             }
             compLen = getLong((unsigned char*)ctx->hdr_buffer + 4);
             if (ctx->zstream.total_out != compLen) {
-                return APR_EGENERAL;
+                return SERF_ERROR_DECOMPRESSION_FAILED;
             }
             ctx->state++;
             break;
         case STATE_INIT:
             zRC = inflateInit2(&ctx->zstream, ctx->windowSize);
             if (zRC != Z_OK) {
-                return APR_EGENERAL;
+                return SERF_ERROR_DECOMPRESSION_FAILED;
             }
             ctx->zstream.next_out = ctx->buffer;
             ctx->zstream.avail_out = ctx->bufferSize;
@@ -331,7 +331,7 @@ static apr_status_t serf_deflate_read(serf_bucket_t *bucket,
                     break;
                 }
                 if (zRC != Z_OK) {
-                    return APR_EGENERAL;
+                    return SERF_ERROR_DECOMPRESSION_FAILED;
                 }
             }
             /* Okay, we've inflated.  Try to read. */
@@ -352,7 +352,7 @@ static apr_status_t serf_deflate_read(serf_bucket_t *bucket,
                     if (ctx->state != STATE_INFLATE)
                         return APR_SUCCESS;
                     else
-                        return APR_EGENERAL;
+                        return SERF_ERROR_DECOMPRESSION_FAILED;
                 }
             }
             return status;
