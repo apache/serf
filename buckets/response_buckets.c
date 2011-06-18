@@ -109,7 +109,7 @@ static apr_status_t parse_status_line(response_context_t *ctx,
     res = apr_date_checkmask(ctx->linebuf.line, "HTTP/#.# ###*");
     if (!res) {
         /* Not an HTTP response?  Well, at least we won't understand it. */
-        return APR_EGENERAL;
+        return SERF_ERROR_BAD_HTTP_RESPONSE;
     }
 
     ctx->sl.version = SERF_HTTP_VERSION(ctx->linebuf.line[5] - '0',
@@ -150,7 +150,7 @@ static apr_status_t fetch_headers(serf_bucket_t *bkt, response_context_t *ctx)
         end_key = c = memchr(ctx->linebuf.line, ':', ctx->linebuf.used);
         if (!c) {
             /* Bad headers? */
-            return APR_EGENERAL;
+            return SERF_ERROR_BAD_HTTP_RESPONSE;
         }
 
         /* Skip over initial ':' */
