@@ -45,7 +45,9 @@ static serf_bucket_t* accept_response(serf_request_t *request,
 {
     serf_bucket_t *c;
     serf_bucket_alloc_t *bkt_alloc;
+#if 0
     req_ctx_t *ctx = acceptor_baton;
+#endif
 
     /* get the per-request bucket allocator */
     bkt_alloc = serf_request_get_alloc(request);
@@ -116,7 +118,6 @@ static apr_status_t setup_request(serf_request_t *request,
                                   void **handler_baton,
                                   apr_pool_t *pool)
 {
-    serf_connection_t *conn = request->conn;
     req_ctx_t *ctx = setup_baton;
 
     *req_bkt =
