@@ -311,3 +311,34 @@ void serf_lib_version(int *major, int *minor, int *patch)
     *minor = SERF_MINOR_VERSION;
     *patch = SERF_PATCH_VERSION;
 }
+
+
+const char *serf_error_string(apr_status_t errcode)
+{
+    switch (errcode)
+    {
+    case SERF_ERROR_CLOSING:
+        return "The connection is closing";
+    case SERF_ERROR_REQUEST_LOST:
+        return "A request has been lost";
+    case SERF_ERROR_WAIT_CONN:
+        return "The connection is blocked, pending further action";
+    case SERF_ERROR_DECOMPRESSION_FAILED:
+        return "An error occurred during decompression";
+    case SERF_ERROR_BAD_HTTP_RESPONSE:
+        return "The server sent an improper HTTP response";
+    case SERF_ERROR_AUTHN_FAILED:
+        return "An error occurred during authentication";
+    case SERF_ERROR_AUTHN_NOT_SUPPORTED:
+        return "The requested authentication type(s) are not supported";
+    case SERF_ERROR_AUTHN_MISSING_ATTRIBUTE:
+        return "An authentication attribute is missing";
+    case SERF_ERROR_AUTHN_INITALIZATION_FAILED:
+        return "Initialization of an authentication type failed";
+
+    default:
+        return NULL;
+    }
+
+    /* NOTREACHED  */
+}

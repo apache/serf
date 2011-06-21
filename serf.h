@@ -102,6 +102,17 @@ typedef struct serf_request_t serf_request_t;
         ||(SERF_ERROR_BAD_HTTP_RESPONSE == (status))))
 
 /**
+ * Return a string that describes the specified error code.
+ *
+ * If the error code is not one of the above Serf error codes, then
+ * NULL will be returned.
+ *
+ * Note regarding lifetime: the string is a statically-allocated constant
+ */
+const char *serf_error_string(apr_status_t errcode);
+
+
+/**
  * Create a new context for serf operations.
  *
  * A serf context defines a control loop which processes multiple
