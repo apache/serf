@@ -38,16 +38,30 @@ static apr_status_t clean_skt(void *data)
 
 static apr_status_t clean_resp(void *data)
 {
-    serf_request_t *req = data;
+    serf_request_t *request = data;
+
+    /* The request's RESPOOL is being cleared.  */
+
+    /* If the response has allocated some buckets, then destroy them (since
+       the bucket may hold resources other than memory in RESPOOL). Also
+       make sure to set their fields to NULL so connection closure does
+       not attempt to free them again.  */
+    if (request->resp_bkt) {
+        serf_bucket_destroy(request->resp_bkt);
+        request->resp_bkt = NULL;
+    }
+    if (request->req_bkt) {
+        serf_bucket_destroy(request->req_bkt);
+        request->req_bkt = NULL;
+    }
+
+    /* ### should we worry about debug stuff, like that performed in
+       ### destroy_request()? should we worry about calling req->handler
+       ### to notify this "cancellation" due to pool clearing?  */
 
     /* This pool just got cleared/destroyed. Don't try to destroy the pool
-     * (again) when the request is canceled.
-     * When the pool is destroyed, req_bkt and resp_bkt, both created with
-     * the pool's allocator will be destroyed too.
-     */
-    req->respool = NULL;
-    req->req_bkt = NULL;
-    req->resp_bkt = NULL;
+       (again) when the request is canceled.  */
+    request->respool = NULL;
 
     return APR_SUCCESS;
 }
@@ -314,14 +328,17 @@ static apr_status_t destroy_request(serf_request_t *request)
     if (request->resp_bkt) {
         serf_debug__closed_conn(request->resp_bkt->allocator);
         serf_bucket_destroy(request->resp_bkt);
+        request->resp_bkt = NULL;
     }
     if (request->req_bkt) {
         serf_debug__closed_conn(request->req_bkt->allocator);
         serf_bucket_destroy(request->req_bkt);
+        request->req_bkt = NULL;
     }
 
     serf_debug__bucket_alloc_check(request->allocator);
     if (request->respool) {
+        /* ### unregister the pool cleanup for self?  */
         apr_pool_destroy(request->respool);
     }
 
@@ -797,7 +814,7 @@ static apr_status_t write_to_connection(serf_connection_t *conn)
 static apr_status_t handle_response(serf_request_t *request,
                                     apr_pool_t *pool)
 {
-    apr_status_t status;
+    apr_status_t status = APR_SUCCESS;
     int consumed_response = 0;
 
     /* Only enable the new authentication framework if the program has
