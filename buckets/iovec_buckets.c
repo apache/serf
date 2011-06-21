@@ -73,7 +73,7 @@ static apr_status_t serf_iovec_read_iovec(serf_bucket_t *bucket,
     /* copy the requested amount of buffers to the provided iovec. */
     for (; ctx->current_vec < ctx->vecs_len; ctx->current_vec++) {
         struct iovec vec = ctx->vecs[ctx->current_vec];
-        int remaining;
+        apr_size_t remaining;
 
         if (requested != SERF_READ_ALL_AVAIL && requested <= 0)
             break;
