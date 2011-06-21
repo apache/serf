@@ -21,12 +21,12 @@
 
 typedef struct {
     serf_bucket_t *stream;
-    apr_size_t remaining;
+    apr_uint64_t remaining;
 } limit_context_t;
 
 
 serf_bucket_t *serf_bucket_limit_create(
-    serf_bucket_t *stream, apr_size_t len, serf_bucket_alloc_t *allocator)
+    serf_bucket_t *stream, apr_uint64_t len, serf_bucket_alloc_t *allocator)
 {
     limit_context_t *ctx;
 
@@ -49,8 +49,13 @@ static apr_status_t serf_limit_read(serf_bucket_t *bucket,
         return APR_EOF;
     }
 
-    if (requested == SERF_READ_ALL_AVAIL || requested > ctx->remaining)
-        requested = ctx->remaining;
+    if (requested == SERF_READ_ALL_AVAIL || requested > ctx->remaining) {
+        if (ctx->remaining <= APR_SIZE_MAX) {
+            requested = (apr_size_t) ctx->remaining;
+        } else {
+            requested = APR_SIZE_MAX;
+        }
+    }
 
     status = serf_bucket_read(ctx->stream, requested, data, len);
 

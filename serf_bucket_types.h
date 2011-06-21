@@ -455,7 +455,7 @@ extern const serf_bucket_type_t serf_bucket_type_limit;
 
 serf_bucket_t *serf_bucket_limit_create(
     serf_bucket_t *stream,
-    apr_size_t limit,
+    apr_uint64_t limit,
     serf_bucket_alloc_t *allocator);
 
 
