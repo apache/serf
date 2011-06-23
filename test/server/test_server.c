@@ -191,12 +191,12 @@ static apr_status_t replay(serv_ctx_t *servctx,
                 servctx->outstanding_responses--;
             }
         }
-    }
-    else if (action->kind == SERVER_KILL_CONNECTION ||
-             action->kind == SERVER_IGNORE_AND_KILL_CONNECTION) {
-        apr_socket_close(servctx->client_sock);
-        servctx->client_sock = NULL;
-        next_action(servctx);
+        else if (action->kind == SERVER_KILL_CONNECTION ||
+                 action->kind == SERVER_IGNORE_AND_KILL_CONNECTION) {
+            apr_socket_close(servctx->client_sock);
+            servctx->client_sock = NULL;
+            next_action(servctx);
+        }
     }
     else if (rtnevents & APR_POLLIN) {
         /* ignore */
