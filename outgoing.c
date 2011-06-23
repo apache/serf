@@ -1079,7 +1079,10 @@ apr_status_t serf__process_connection(serf_connection_t *conn,
         }
     }
     if ((events & APR_POLLHUP) != 0) {
-        return APR_ECONNRESET;
+        /* The connection got reset by the server. On Windows this can happen
+           when all data is read, so just cleanup the connection and open
+           a new one. */
+        return reset_connection(conn, 1);
     }
     if ((events & APR_POLLERR) != 0) {
         /* We might be talking to a buggy HTTP server that doesn't
