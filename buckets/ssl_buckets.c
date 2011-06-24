@@ -1489,9 +1489,6 @@ const serf_bucket_type_t serf_bucket_type_ssl_encrypt = {
     serf_default_read_bucket,
     serf_ssl_peek,
     serf_ssl_encrypt_destroy_and_data,
-    serf_default_snapshot,
-    serf_default_restore_snapshot,
-    serf_default_is_snapshot_set,
 };
 
 const serf_bucket_type_t serf_bucket_type_ssl_decrypt = {
@@ -1503,7 +1500,4 @@ const serf_bucket_type_t serf_bucket_type_ssl_decrypt = {
     serf_default_read_bucket,
     serf_ssl_peek,
     serf_ssl_decrypt_destroy_and_data,
-    serf_default_snapshot,
-    serf_default_restore_snapshot,
-    serf_default_is_snapshot_set,
 };

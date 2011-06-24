@@ -156,26 +156,6 @@ static void serf_iovec_destroy(serf_bucket_t *bucket)
     serf_default_destroy_and_data(bucket);
 }
 
-static apr_status_t serf_iovec_snapshot(serf_bucket_t *bucket)
-{
-    /* ### shouldn't this have something like "not implemented"?  */
-
-    return APR_SUCCESS;
-}
-
-static apr_status_t serf_iovec_restore_snapshot(serf_bucket_t *bucket)
-{
-    /* ### shouldn't this have something like "not implemented"?  */
-
-    return APR_SUCCESS;
-}
-
-static int serf_iovec_is_snapshot_set(serf_bucket_t *bucket)
-{
-    /* ### shouldn't this have something like "not implemented"?  */
-
-    return APR_SUCCESS;
-}
 
 const serf_bucket_type_t serf_bucket_type_iovec = {
     "IOVEC",
@@ -186,7 +166,4 @@ const serf_bucket_type_t serf_bucket_type_iovec = {
     serf_default_read_bucket,
     serf_iovec_peek,
     serf_iovec_destroy,
-    serf_iovec_snapshot,
-    serf_iovec_restore_snapshot,
-    serf_iovec_is_snapshot_set,
 };

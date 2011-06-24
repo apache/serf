@@ -122,25 +122,6 @@ void serf_default_destroy_and_data(serf_bucket_t *bucket)
 }
 
 
-apr_status_t serf_default_snapshot(serf_bucket_t *bucket)
-{
-    /* Not implemented. */
-    return APR_ENOTIMPL;
-}
-
-
-apr_status_t serf_default_restore_snapshot(serf_bucket_t *bucket)
-{
-    /* Not implemented. */
-    return APR_ENOTIMPL;
-}
-
-
-int serf_default_is_snapshot_set(serf_bucket_t *bucket)
-{
-    return 0;  
-}
-
 /* ==================================================================== */
 
 

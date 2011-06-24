@@ -307,9 +307,6 @@ const serf_bucket_type_t serf_bucket_type_bwtp_frame = {
     serf_default_read_bucket,
     serf_bwtp_frame_peek,
     serf_default_destroy_and_data,
-    serf_default_snapshot,
-    serf_default_restore_snapshot,
-    serf_default_is_snapshot_set,
 };
 
 
@@ -596,7 +593,4 @@ const serf_bucket_type_t serf_bucket_type_bwtp_incoming_frame = {
     serf_default_read_bucket,
     bwtp_incoming_peek,
     bwtp_incoming_destroy_and_data,
-    serf_default_snapshot,
-    serf_default_restore_snapshot,
-    serf_default_is_snapshot_set,
 };

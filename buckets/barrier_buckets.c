@@ -94,7 +94,4 @@ const serf_bucket_type_t serf_bucket_type_barrier = {
     serf_default_read_bucket,
     serf_barrier_peek,
     serf_barrier_destroy,
-    serf_default_snapshot,
-    serf_default_restore_snapshot,
-    serf_default_is_snapshot_set,
 };

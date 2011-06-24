@@ -111,7 +111,4 @@ const serf_bucket_type_t serf_bucket_type_socket = {
     serf_default_read_bucket,
     serf_socket_peek,
     serf_default_destroy_and_data,
-    serf_default_snapshot,
-    serf_default_restore_snapshot,
-    serf_default_is_snapshot_set,
 };

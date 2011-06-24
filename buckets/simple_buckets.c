@@ -27,7 +27,6 @@ typedef struct {
     serf_simple_freefunc_t freefunc;
     void *baton;
 
-    apr_size_t original_len;
 } simple_context_t;
 
 
@@ -46,10 +45,8 @@ serf_bucket_t *serf_bucket_simple_create(
     simple_context_t *ctx;
 
     ctx = serf_bucket_mem_alloc(allocator, sizeof(*ctx));
-    ctx->current = data;
+    ctx->original = ctx->current = data;
     ctx->remaining = len;
-    ctx->original = NULL;
-    ctx->original_len = -1;
     ctx->freefunc = freefunc;
     ctx->baton = freefunc_baton;
 
@@ -132,34 +129,6 @@ static void serf_simple_destroy(serf_bucket_t *bucket)
     serf_default_destroy_and_data(bucket);
 }
 
-static apr_status_t serf_simple_snapshot(serf_bucket_t *bucket)
-{
-    simple_context_t *ctx = bucket->data;
-
-    ctx->original = ctx->current;
-    ctx->original_len = ctx->remaining;
-
-    return APR_SUCCESS;
-}
-
-static apr_status_t serf_simple_restore_snapshot(serf_bucket_t *bucket)
-{
-    simple_context_t *ctx = bucket->data;
-
-    ctx->current = ctx->original;
-    ctx->remaining = ctx->original_len;
-    ctx->original = NULL;
-    ctx->original_len = -1;
-
-    return APR_SUCCESS;
-}
-
-static int serf_simple_is_snapshot_set(serf_bucket_t *bucket)
-{
-    simple_context_t *ctx = bucket->data;
-
-    return ctx->original != NULL;  
-}
 
 const serf_bucket_type_t serf_bucket_type_simple = {
     "SIMPLE",
@@ -170,7 +139,4 @@ const serf_bucket_type_t serf_bucket_type_simple = {
     serf_default_read_bucket,
     serf_simple_peek,
     serf_simple_destroy,
-    serf_simple_snapshot,
-    serf_simple_restore_snapshot,
-    serf_simple_is_snapshot_set,
 };

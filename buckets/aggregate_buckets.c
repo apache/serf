@@ -28,10 +28,9 @@ typedef struct {
     bucket_list_t *last; /* last bucket of the list */
     bucket_list_t *done; /* we finished reading this; now pending a destroy */
 
-    /* Marks if a snapshot is set. */
-    int snapshot; 
     serf_bucket_aggregate_eof_t hold_open;
     void *hold_open_baton;
+
     /* Does this bucket own its children? !0 if yes, 0 if not. */
     int bucket_owner;
 } aggregate_context_t;
@@ -41,11 +40,6 @@ static void cleanup_aggregate(aggregate_context_t *ctx,
                               serf_bucket_alloc_t *allocator)
 {
     bucket_list_t *next_list;
-
-    /* If a snapshot is set, don't clear the done list, we might need
-       it later. */
-    if (ctx->snapshot)
-        return;
 
     /* If we finished reading a bucket during the previous read, then
      * we can now toss that bucket.
@@ -79,10 +73,9 @@ static aggregate_context_t *create_aggregate(serf_bucket_alloc_t *allocator)
     ctx->list = NULL;
     ctx->last = NULL;
     ctx->done = NULL;
-    ctx->snapshot = 0;
     ctx->hold_open = NULL;
     ctx->hold_open_baton = NULL;
-	ctx->bucket_owner = 1;
+    ctx->bucket_owner = 1;
 
     return ctx;
 }
@@ -394,67 +387,6 @@ static serf_bucket_t * serf_aggregate_read_bucket(
     return serf_bucket_read_bucket(ctx->list->bucket, type);
 }
 
-static apr_status_t serf_aggregate_snapshot(serf_bucket_t *bucket)
-{
-    bucket_list_t *next_ctx;
-    aggregate_context_t *ctx = bucket->data;
-    apr_status_t status;
-
-    /* Clear all read buckets. */
-    cleanup_aggregate(ctx, bucket->allocator);
-
-    /* Make a snapshot of all the children too. */
-    next_ctx = ctx->list;
-    while (next_ctx) {
-        status = serf_bucket_snapshot(next_ctx->bucket);
-        if (status)
-  	    return status;
-        next_ctx = next_ctx->next;
-    }    
-
-    /* From now on, stop clearing read buckets. */
-    ctx->snapshot = 1;
-
-    return APR_SUCCESS;
-}
-
-static apr_status_t serf_aggregate_restore_snapshot(serf_bucket_t *bucket)
-{
-    bucket_list_t *next_ctx;
-    aggregate_context_t *ctx = bucket->data;
-    apr_status_t status;
-
-    /* Move all the DONE buckets back in the LIST. */
-    if (! ctx->last && ! ctx->list)
-        ctx->last = ctx->done;
-
-    while (ctx->done) {
-        next_ctx = ctx->done->next;
-        ctx->done->next = ctx->list;
-        ctx->list = ctx->done;
-        ctx->done = next_ctx;
-    }
-
-    /* Now restore all the child buckets. If resetting one of those buckets
-       fails, consider this restore operation as failed too. */
-    next_ctx = ctx->list;
-    while (next_ctx) {
-        status = serf_bucket_restore_snapshot(next_ctx->bucket);
-        if (status)
-            return status;
-        next_ctx = next_ctx->next;
-    }    
-    ctx->snapshot = 0;
-
-    return APR_SUCCESS;
-}
-
-static int serf_aggregate_is_snapshot_set(serf_bucket_t *bucket)
-{
-    aggregate_context_t *ctx = bucket->data;
-
-    return ctx->snapshot;
-}
 
 const serf_bucket_type_t serf_bucket_type_aggregate = {
     "AGGREGATE",
@@ -465,7 +397,4 @@ const serf_bucket_type_t serf_bucket_type_aggregate = {
     serf_aggregate_read_bucket,
     serf_aggregate_peek,
     serf_aggregate_destroy_and_data,
-    serf_aggregate_snapshot,
-    serf_aggregate_restore_snapshot,
-    serf_aggregate_is_snapshot_set,
 };
