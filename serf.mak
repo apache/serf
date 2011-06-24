@@ -13,11 +13,11 @@ CFLAGS = /Zi /W3 /EHsc /I "./"
 !IF "$(DEBUG_BUILD)" == ""
 INTDIR = Release
 CFLAGS = /MD /O2 /D "NDEBUG" $(CFLAGS)
-STATIC_LIB = $(INTDIR)\serf.lib
+STATIC_LIB = $(INTDIR)\serf-1.lib
 !ELSE
 INTDIR = Debug
 CFLAGS = /MDd /Od /W3 /Gm /D "_DEBUG" $(CFLAGS)
-STATIC_LIB = $(INTDIR)\serf.lib
+STATIC_LIB = $(INTDIR)\serf-1.lib
 !ENDIF
 
 ########
