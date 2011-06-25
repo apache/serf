@@ -135,7 +135,20 @@ serf_context_t *serf_context_create_ex(
     else {
         /* build the pollset with a (default) number of connections */
         serf_pollset_t *ps = apr_pcalloc(pool, sizeof(*ps));
+#if APR_VERSION_AT_LEAST(1,4,0) && defined(WIN32)
+        /* APR 1.4.x switched to using WSAPoll() on Win32, but it does not
+         * properly handle errors on a non-blocking sockets (such as
+         * connecting to a server where no listener is active).
+         *
+         * So, sadly, we must force using select() on Win32.
+         *
+         * http://mail-archives.apache.org/mod_mbox/apr-dev/201105.mbox/%3CBANLkTin3rBCecCBRvzUA5B-14u-NWxR_Kg@mail.gmail.com%3E
+         */
+        (void) apr_pollset_create_ex(&ps->pollset, MAX_CONN, pool, 0,
+                                     APR_POLLSET_SELECT);
+#else
         (void) apr_pollset_create(&ps->pollset, MAX_CONN, pool, 0);
+#endif
         ctx->pollset_baton = ps;
         ctx->pollset_add = pollset_add;
         ctx->pollset_rm = pollset_rm;
