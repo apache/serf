@@ -514,6 +514,12 @@ apr_status_t serf_ssl_use_default_certificates(
     serf_ssl_context_t *context);
 
 /**
+ * Allow SNI indicators to be sent to the server.
+ */
+apr_status_t serf_ssl_set_hostname(
+    serf_ssl_context_t *context, const char *hostname);
+
+/**
  * Return the depth of the certificate.
  */
 int serf_ssl_cert_depth(

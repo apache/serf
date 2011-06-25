@@ -1103,6 +1103,17 @@ static serf_bucket_t * serf_bucket_ssl_create(
     return serf_bucket_create(type, allocator, ctx);
 }
 
+apr_status_t serf_ssl_set_hostname(serf_ssl_context_t *context,
+                                   const char * hostname)
+{
+#ifdef SSL_set_tlsext_host_name
+    if (SSL_set_tlsext_host_name(context->ssl, hostname) != 1) {
+        ERR_clear_error();
+    }
+#endif
+    return APR_SUCCESS;
+}
+
 apr_status_t serf_ssl_use_default_certificates(serf_ssl_context_t *ssl_ctx)
 {
     X509_STORE *store = SSL_CTX_get_cert_store(ssl_ctx->ctx);

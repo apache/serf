@@ -26,6 +26,7 @@
 #include "serf.h"
 
 typedef struct {
+    const char *hostinfo;
     int using_ssl;
     serf_ssl_context_t *ssl_ctx;
     serf_bucket_alloc_t *bkt_alloc;
@@ -64,6 +65,7 @@ static apr_status_t conn_setup(apr_socket_t *skt,
             ctx->ssl_ctx = serf_bucket_ssl_decrypt_context_get(c);
         }
         serf_ssl_server_cert_callback_set(ctx->ssl_ctx, ignore_all_cert_errors, NULL);
+        serf_ssl_set_hostname(ctx->ssl_ctx, ctx->hostinfo);
 
         *output_bkt = serf_bucket_ssl_encrypt_create(*output_bkt, ctx->ssl_ctx,
                                                     ctx->bkt_alloc);
@@ -345,6 +347,8 @@ int main(int argc, const char **argv)
     else {
         app_ctx.using_ssl = 0;
     }
+
+    app_ctx.hostinfo = url.hostinfo;
 
     context = serf_context_create(pool);
 
