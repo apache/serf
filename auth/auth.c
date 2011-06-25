@@ -206,8 +206,10 @@ static int handle_auth_header(void *baton,
             if (status) {
                 scheme_found = FALSE;
                 scheme = NULL;
-                ab->status = status;
             }
+            /* Let the caller now if the authentication setup was succesful
+               or not. */
+            ab->status = status;
 
             break;
         }
