@@ -49,6 +49,7 @@
 #include <openssl/ssl.h>
 #include <openssl/err.h>
 #include <openssl/pkcs12.h>
+#include <openssl/x509v3.h>
 
 #ifndef APR_VERSION_AT_LEAST /* Introduced in APR 1.3.0 */
 #define APR_VERSION_AT_LEAST(major,minor,patch)                           \
@@ -1331,6 +1332,7 @@ apr_hash_t *serf_ssl_cert_certificate(
     unsigned int md_size, i;
     unsigned char md[EVP_MAX_MD_SIZE];
     BIO *bio;
+    STACK_OF(GENERAL_NAME) *names;
 
     /* sha1 fingerprint */
     if (X509_digest(cert->ssl_cert, EVP_sha1(), md, &md_size)) {
@@ -1373,6 +1375,33 @@ apr_hash_t *serf_ssl_cert_certificate(
         }
     }
     BIO_free(bio);
+
+    /* Get subjectAltNames */
+    names = X509_get_ext_d2i(cert->ssl_cert, NID_subject_alt_name, NULL, NULL);
+    if (names) {
+        int names_count = sk_GENERAL_NAME_num(names);
+
+        apr_array_header_t *san_arr = apr_array_make(pool, names_count,
+                                                     sizeof(char*));
+        apr_hash_set(tgt, "subjectAltName", APR_HASH_KEY_STRING, san_arr);
+        for (i = 0; i < names_count; i++) {
+            char *p = NULL;
+            GENERAL_NAME *nm = sk_GENERAL_NAME_value(names, i);
+
+            switch (nm->type) {
+            case GEN_DNS:
+                p = apr_pstrmemdup(pool, nm->d.ia5->data, nm->d.ia5->length);
+                break;
+            default:
+                /* Don't know what to do - skip. */
+                break;
+            }
+            if (p) {
+                APR_ARRAY_PUSH(san_arr, char*) = p;
+            }
+        }
+        sk_GENERAL_NAME_pop_free(names, GENERAL_NAME_free);
+    }
 
     return tgt;
 }
