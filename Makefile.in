@@ -95,28 +95,28 @@ test/test_context.lo: test/test_context.c $(HEADERS)
 test/test_ssl.lo: test/test_ssl.c $(HEADERS)
 
 $(TARGET_LIB): $(OBJECTS)
-	$(LIBTOOL) $(LTFLAGS) --mode=link $(CC) $(LDFLAGS) -rpath $(libdir) -o $@ $^ $(LIBS)
+	$(LIBTOOL) $(LTFLAGS) --mode=link $(CC) $(LDFLAGS) -rpath $(libdir) -o $@ $(OBJECTS) $(LIBS)
 
 test/serf_get: $(TARGET_LIB) test/serf_get.lo
-	$(LIBTOOL) $(LTFLAGS) --mode=link $(CC) $(LDFLAGS) -static -o $@ $^ $(LIBS)
+	$(LIBTOOL) $(LTFLAGS) --mode=link $(CC) $(LDFLAGS) -static -o $@ $(TARGET_LIB) test/serf_get.lo $(LIBS)
 
 test/serf_response: $(TARGET_LIB) test/serf_response.lo
-	$(LIBTOOL) $(LTFLAGS) --mode=link $(CC) $(LDFLAGS) -static -o $@ $^ $(LIBS)
+	$(LIBTOOL) $(LTFLAGS) --mode=link $(CC) $(LDFLAGS) -static -o $@ $(TARGET_LIB) test/serf_response.lo $(LIBS)
 
 test/serf_request: $(TARGET_LIB) test/serf_request.lo
-	$(LIBTOOL) $(LTFLAGS) --mode=link $(CC) $(LDFLAGS) -static -o $@ $^ $(LIBS)
+	$(LIBTOOL) $(LTFLAGS) --mode=link $(CC) $(LDFLAGS) -static -o $@ $(TARGET_LIB) test/serf_request.lo $(LIBS)
 
 test/serf_server: $(TARGET_LIB) test/serf_server.lo
-	$(LIBTOOL) $(LTFLAGS) --mode=link $(CC) $(LDFLAGS) -static -o $@ $^ $(LIBS)
+	$(LIBTOOL) $(LTFLAGS) --mode=link $(CC) $(LDFLAGS) -static -o $@ $(TARGET_LIB) test/serf_server.lo $(LIBS)
 
 test/serf_spider: $(TARGET_LIB) test/serf_spider.lo
-	$(LIBTOOL) $(LTFLAGS) --mode=link $(CC) $(LDFLAGS) -static -o $@ $^ $(LIBS)
+	$(LIBTOOL) $(LTFLAGS) --mode=link $(CC) $(LDFLAGS) -static -o $@ $(TARGET_LIB) test/serf_spider.lo $(LIBS)
 
 test/serf_bwtp: $(TARGET_LIB) test/serf_bwtp.lo
-	$(LIBTOOL) $(LTFLAGS) --mode=link $(CC) $(LDFLAGS) -static -o $@ $^ $(LIBS)
+	$(LIBTOOL) $(LTFLAGS) --mode=link $(CC) $(LDFLAGS) -static -o $@ $(TARGET_LIB) test/serf_bwtp.lo $(LIBS)
 
 test/test_all: $(TARGET_LIB) $(TEST_SUITE_OBJECTS)
-	$(LIBTOOL) $(LTFLAGS) --mode=link $(CC) $(LDFLAGS) -static -o $@ $^ $(LIBS)
+	$(LIBTOOL) $(LTFLAGS) --mode=link $(CC) $(LDFLAGS) -static -o $@ $(TARGET_LIB) $(TEST_SUITE_OBJECTS) $(LIBS)
 
 check: test/serf_response test/test_all
 	@for i in $(TESTCASES); \
