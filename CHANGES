@@ -1,10 +1,20 @@
+Serf 1.0.0 [2011-..., branch 1.0.x r...]
+  Fixed issue 38: enable builds using non-GNU make
+  Fixed issue 56: allow Subject Alternative Name, and enable SNI
+  Fixed issue 61: include order dependencies
+  Corrected contents of build/serf.def; it now includes bucket types
+  Removed "snapshot" feature from buckets
+
+
 Serf 0.7.2 [2011-03-12, branch 0.7.x r1451]
   Actually disable Nagle when creating a connection (r1441).
   Return error when app asks for HTTPS over proxy connection (r1433).
 
+
 Serf 0.7.1 [2011-01-25, branch 0.7.x r1431]
   Fix memory leak when using SSL (r1408, r1416).
   Fix build for blank apr-util directory (r1421).
+
 
 Serf 0.7.0 [2010-08-25, r1407]
   Fix double free abort when destroying request buckets.
