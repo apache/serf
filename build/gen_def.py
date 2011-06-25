@@ -41,11 +41,22 @@ import sys
 _funcs = re.compile(r'^(?:(?:\w+|\*) )+\*?(serf_[a-z][a-z_0-9]*)\(',
                     re.MULTILINE)
 
-def extract_funcs(fname):
-  funcs = [ ]
-  for name in _funcs.findall(open(fname).read()):
-    funcs.append(name)
-  return funcs
+# This regex parses the bucket type definitions which look like:
+#
+#    extern const serf_bucket_type_t serf_bucket_type_FOO;
+#
+_types = re.compile(r'^extern const serf_bucket_type_t (serf_[a-z_]*);',
+                    re.MULTILINE)
+
+
+def extract_exports(fname):
+  content = open(fname).read()
+  exports = [ ]
+  for name in _funcs.findall(content):
+    exports.append(name)
+  for name in _types.findall(content):
+    exports.append(name)
+  return exports
 
 
 if __name__ == '__main__':
@@ -53,5 +64,5 @@ if __name__ == '__main__':
   import sys
   print("EXPORTS")
   for fname in sys.argv[1:]:
-    for func in extract_funcs(fname):
+    for func in extract_exports(fname):
       print(func)
