@@ -154,4 +154,4 @@ mkdir-vpath:
 	fi;
 
 .c.lo:
-	$(LIBTOOL) $(LTFLAGS) --mode=compile $(CC) $(CFLAGS) $(CPPFLAGS) $(INCLUDES) -c -o $@ $< && touch $@
+	$(LIBTOOL) $(LTFLAGS) --mode=compile $(CC) $(INCLUDES) $(CFLAGS) $(CPPFLAGS) -c -o $@ $< && touch $@
