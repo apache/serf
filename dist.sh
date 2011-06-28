@@ -10,8 +10,16 @@ fi
 version=$1
 srcdir=$2
 
+# provide for examining dist.sh output before creating a tag
+if test "${version}" = "trunk"; then
+  url="${REPOS}/trunk"
+else
+  url="${REPOS}/tags/${version}"
+fi
+
 release="serf-${version}"
 
+# on Mac OS, TMPDIR is scary long. we want an unexpanded form in $short
 work="${TMPDIR-/tmp}/serf-dist.$$"
 short='${TMPDIR}'/serf-dist.$$
 
@@ -21,7 +29,7 @@ mkdir "${work}"
 cd "${work}"
 
 echo "Exporting latest serf ..."
-svn export --quiet "${REPOS}/tags/${version}" "${release}" || exit 1
+svn export --quiet "${url}" "${release}" || exit 1
 echo "`find ${release} -type f | wc -l` files exported"
 
 cd "${release}"
@@ -42,9 +50,9 @@ patch="`sed -n '/SERF_PATCH_VERSION/s/[^0-9]*//p' serf.h`"
 
 actual_version="${major}.${minor}.${patch}"
 
-cd $work
+cd "${work}"
 
-if test "${version}" != "${actual_version}"; then
+if test "${version}" != "trunk" -a "${version}" != "${actual_version}"; then
   echo "ERROR: exported version does not match"
   exit 1
 fi
