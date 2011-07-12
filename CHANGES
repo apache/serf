@@ -1,9 +1,15 @@
 Serf 1.0.0 [2011-..., branch 1.0.x r...]
   Fixed issue 38: enable builds using non-GNU make
+  Fixed issue 49: support SSL tunnels for HTTPS via a proxy
   Fixed issue 56: allow Subject Alternative Name, and enable SNI
   Fixed issue 61: include order dependencies
+  Add a new "iovec" bucket type
   Corrected contents of build/serf.def; it now includes bucket types
   Removed "snapshot" feature from buckets
+  Bug fixes and improvements to SSL buckets and handling
+  Improvements to the test system
+  Disable Nagle
+  Various memory leak fixes
 
 
 Serf 0.7.2 [2011-03-12, branch 0.7.x r1451]
