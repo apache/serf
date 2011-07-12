@@ -8,7 +8,9 @@ if test $# != 2; then
 fi
 
 version=$1
-srcdir=$2
+
+# Convert to absolute path.
+srcdir=`(cd $2 ; pwd)`
 
 # provide for examining dist.sh output before creating a tag
 if test "${version}" = "trunk"; then
@@ -32,6 +34,8 @@ echo "Exporting latest serf ..."
 svn export --quiet "${url}" "${release}" || exit 1
 echo "`find ${release} -type f | wc -l` files exported"
 
+prepare_directory()
+{
 cd "${release}"
 
 echo "Running buildconf ..."
@@ -57,11 +61,32 @@ if test "${version}" != "trunk" -a "${version}" != "${actual_version}"; then
   exit 1
 fi
 
+}
+
+prepare_directory
+
 tarball="${work}/${release}.tar"
 tar -cf "${tarball}" "${release}"
 
-bzip2 --keep "${tarball}"
+bzip2 "${tarball}"
 echo "${short}/${release}.tar.bz2 ready."
 
-gzip -9 "${tarball}"
-echo "${short}/${release}.tar.gz ready."
+# Let's redo everything for a Windows .zip file
+echo "Saving ${release} as ${release}.unix"
+mv "${release}" "${release}.unix"
+
+echo "Exporting latest serf using CRLF ..."
+svn export --native-eol=CRLF --quiet "${url}" "${release}" || exit 1
+echo "`find ${release} -type f | wc -l` files exported"
+
+### generated files have wrong line-ending. is that an issue?
+prepare_directory
+
+if ! diff -brq "${release}.unix" "${release}"; then
+  echo "ERROR: export directories differ."
+  exit 1
+fi
+
+zipfile="${work}/${release}.zip"
+zip -9rq "${zipfile}" "${release}"
+echo "${short}/${release}.zip ready."
