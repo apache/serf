@@ -470,7 +470,6 @@ static void test_serf_setup_proxy(CuTest *tc)
     apr_array_header_t *accepted_requests, *handled_requests, *sent_requests;
     int i;
     int numrequests = 1;
-    apr_sockaddr_t *proxy_address;
 
     test_server_message_t message_list[] = {
         {"GET http://localhost:" SERV_PORT_STR " HTTP/1.1" CRLF\
