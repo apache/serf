@@ -140,8 +140,12 @@ apr_status_t serf_listener_create(
     if (rv)
         return rv;
 
-    rv = apr_socket_create(&l->skt, sa->family, SOCK_STREAM,
-                           APR_PROTO_TCP, l->pool);
+    rv = apr_socket_create(&l->skt, sa->family,
+                           SOCK_STREAM,
+#if APR_MAJOR_VERSION > 0
+                           APR_PROTO_TCP,
+#endif
+                           l->pool);
     if (rv)
         return rv;
 
