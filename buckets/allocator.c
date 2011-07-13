@@ -83,6 +83,7 @@ typedef struct {
 struct serf_bucket_alloc_t {
     apr_pool_t *pool;
     apr_allocator_t *allocator;
+    int own_allocator;
 
     serf_unfreed_func_t unfreed;
     void *unfreed_baton;
@@ -107,6 +108,11 @@ static apr_status_t allocator_cleanup(void *data)
         apr_allocator_free(allocator->allocator, allocator->blocks);
     }
 
+    /* If we allocated our own allocator (?!), destroy it here. */
+    if (allocator->own_allocator) {
+        apr_allocator_destroy(allocator->allocator);
+    }
+
     return APR_SUCCESS;
 }
 
@@ -123,6 +129,7 @@ serf_bucket_alloc_t *serf_bucket_allocator_create(
         /* This most likely means pools are running in debug mode, create our
          * own allocator to deal with memory ourselves */
         apr_allocator_create(&allocator->allocator);
+        allocator->own_allocator = 1;
     }
     allocator->unfreed = unfreed;
     allocator->unfreed_baton = unfreed_baton;
