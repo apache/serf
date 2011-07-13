@@ -154,6 +154,9 @@ mkdir-vpath:
 	@if [ ! -d test ]; then \
 		$(MKDIR) test; \
 	fi;
+	@if [ ! -d test/server ]; then \
+		$(MKDIR) test/server; \
+	fi;
 	@if [ ! -r test/serftestca.pem ]; then \
 		cp -f $(srcdir)/test/serftestca.pem test/; \
 	fi;
