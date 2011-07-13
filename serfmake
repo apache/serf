@@ -343,7 +343,7 @@ Cflags: -I${includedir}
     if not dry_run:
       result = cmd()
       if result:
-        raise BuildError(dep[1], result)
+        raise BuildError(cmd.__doc__, result)
       # FALLTHROUGH
 
     # it's a dry run. pretend we built the target.
@@ -356,12 +356,13 @@ Cflags: -I${includedir}
     # install the target now
     if not dry_run:
 
-      try:
-        os.makedirs(self.libdir)
-        os.makedirs(self.pkgconfigdir)
-        os.makedirs(self.includedir)
-      except:
-        pass
+      for path in (self.libdir, self.pkgconfigdir, self.includedir):
+        if not os.path.exists(path):
+          try:
+            os.makedirs(path)
+          except OSError:
+            raise BuildError('os.makedirs',
+                             'can not create install directories')
 
       for f in self.hdrs:
         print("Installing: %s" % (os.path.basename(f.fname),))
