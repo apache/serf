@@ -9,7 +9,6 @@ Serf 1.0.0 [2011-..., branch 1.0.x r...]
   Corrected contents of build/serf.def; it now includes bucket types
   Removed "snapshot" feature from buckets
   Improvements to the test system
-  Disable Nagle
   Various memory leak fixes
 
 
