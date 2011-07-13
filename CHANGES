@@ -3,12 +3,16 @@ Serf 1.0.0 [2011-..., branch 1.0.x r...]
   Fixed issue 49: support SSL tunnels for HTTPS via a proxy
   Fixed issue 56: allow Subject Alternative Name, and enable SNI
   Fixed issue 61: include order dependencies
-  Major performance improvements and bug fixes for SSL buckets/handling
-  Work around broken WSAPoll() implementation on Win32 introduced in APR 1.4.0.
-  Add a new "iovec" bucket type
-  Corrected contents of build/serf.def; it now includes bucket types
-  Removed "snapshot" feature from buckets
-  Improvements to the test system
+  Fixed issue 71: Handle ECONNREFUSED on Windows.
+  Major performance improvements and bug fixes for SSL buckets/handling (r1462).
+  Add a new "iovec" bucket type (r1434).
+  Minimize network packet writes based on ra_serf analysis (r1467, r1471).
+  Fix out of order issue with multiple priority requests (r1469).
+  Work around broken WSAPoll() impl on Windows introduced in APR 1.4.0 (r1506).
+  Fix 100% CPU usage with many pipelined requests (r1456).
+  Corrected contents of build/serf.def; it now includes bucket types (r1512).
+  Removed "snapshot" feature from buckets (r1503).
+  Various improvements to the test system
   Various memory leak fixes
 
 
