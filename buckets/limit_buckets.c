@@ -18,6 +18,13 @@
 #include "serf.h"
 #include "serf_bucket_util.h"
 
+/* Older versions of APR do not have this macro.  */
+#ifdef APR_SIZE_MAX
+#define REQUESTED_MAX APR_SIZE_MAX
+#else
+#define REQUESTED_MAX (~((apr_size_t)0))
+#endif
+
 
 typedef struct {
     serf_bucket_t *stream;
@@ -50,10 +57,10 @@ static apr_status_t serf_limit_read(serf_bucket_t *bucket,
     }
 
     if (requested == SERF_READ_ALL_AVAIL || requested > ctx->remaining) {
-        if (ctx->remaining <= APR_SIZE_MAX) {
+        if (ctx->remaining <= REQUESTED_MAX) {
             requested = (apr_size_t) ctx->remaining;
         } else {
-            requested = APR_SIZE_MAX;
+            requested = REQUESTED_MAX;
         }
     }
 
