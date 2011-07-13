@@ -42,6 +42,7 @@ prefix=@prefix@
 exec_prefix=@exec_prefix@
 libdir=@libdir@
 includedir=@includedir@
+pkgconfigdir=$(libdir)/pkgconfig
 
 LIBTOOL = @APR_LIBTOOL@
 LTFLAGS = @LTFLAGS@ --tag=CC
@@ -127,11 +128,12 @@ check: test/serf_response test/test_all
 	@./test/test_all
 
 install: $(TARGET_LIB)
-	$(MKDIR) $(DESTDIR)$(libdir) $(DESTDIR)$(includedir)
+	$(MKDIR) $(DESTDIR)$(libdir) $(DESTDIR)$(includedir) $(DESTDIR)$(pkgconfigdir)
 	$(LIBTOOL) $(LTFLAGS) --mode=install $(INSTALL) -m 644 $(TARGET_LIB) $(DESTDIR)$(libdir)
 	for i in $(srcdir)/*.h; do \
 		$(INSTALL) -m 644 $$i $(DESTDIR)$(includedir); \
 	done
+	$(INSTALL) -m 644 serf.pc $(DESTDIR)$(pkgconfigdir)/serf-$(SERF_MAJOR_VERSION).pc
 
 clean:
 	rm -f $(TARGET_LIB) $(OBJECTS) $(OBJECTS:.lo=.o) $(PROGRAMS) $(TEST_OBJECTS) $(TEST_OBJECTS:.lo=.o) $(TEST_SUITE_OBJECTS) $(TEST_SUITE_OBJECTS:.lo=.o)
@@ -140,7 +142,7 @@ clean:
 	done
 
 distclean: clean
-	rm -f Makefile config.log config.status
+	rm -f Makefile serf.pc config.log config.status
 
 .SUFFIXES:
 .SUFFIXES: .c .lo .o
