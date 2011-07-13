@@ -217,6 +217,7 @@ apr_status_t test_server_run(serv_ctx_t *servctx,
     apr_pollset_t *pollset;
     apr_int32_t num;
     const apr_pollfd_t *desc;
+    int client_sock_handled = 0;
 
     /* create a new pollset */
     status = apr_pollset_create(&pollset, 32, pool, 0);
@@ -260,7 +261,14 @@ apr_status_t test_server_run(serv_ctx_t *servctx,
             goto cleanup;
         }
 
-        if (desc->desc.s == servctx->client_sock) {
+        if (desc->desc.s == servctx->client_sock && !client_sock_handled) {
+            /* Note: on some implementations (for example with kqueue),
+               apr_pollset_poll() returns separate events for APR_POLLIN
+               and APR_POLLOUT. client_sock_handled filters the second
+               event.
+            */
+            client_sock_handled = 1;
+
             /* Replay data to socket. */
             status = replay(servctx, desc->rtnevents, pool);
 
