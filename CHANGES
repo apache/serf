@@ -3,42 +3,45 @@ Serf 1.0.0 [2011-..., branch 1.0.x r...]
   Fixed issue 49: support SSL tunnels for HTTPS via a proxy
   Fixed issue 56: allow Subject Alternative Name, and enable SNI
   Fixed issue 61: include order dependencies
-  Fixed issue 71: Handle ECONNREFUSED on Windows.
-  Major performance improvements and bug fixes for SSL buckets/handling (r1462).
-  Add a new "iovec" bucket type (r1434).
-  Minimize network packet writes based on ra_serf analysis (r1467, r1471).
-  Fix out of order issue with multiple priority requests (r1469).
-  Work around broken WSAPoll() impl on Windows introduced in APR 1.4.0 (r1506).
-  Fix 100% CPU usage with many pipelined requests (r1456).
-  Corrected contents of build/serf.def; it now includes bucket types (r1512).
-  Removed "snapshot" feature from buckets (r1503).
+  Fixed issue 66: improved error reporting when creating install dirs
+  Fixed issue 71: handle ECONNREFUSED on Windows
+  Fixed issue 79: destroy the APR allocator, if we create one
+  Fixed issue 81: build failed on APR 0.9.x
+  Major performance improvements and bug fixes for SSL buckets/handling (r1462)
+  Add a new "iovec" bucket type (r1434)
+  Minimize network packet writes based on ra_serf analysis (r1467, r1471)
+  Fix out of order issue with multiple priority requests (r1469)
+  Work around broken WSAPoll() impl on Windows introduced in APR 1.4.0 (r1506)
+  Fix 100% CPU usage with many pipelined requests (r1456)
+  Corrected contents of build/serf.def; it now includes bucket types (r1512)
+  Removed "snapshot" feature from buckets (r1503)
   Various improvements to the test system
   Various memory leak fixes
 
 
 Serf 0.7.2 [2011-03-12, branch 0.7.x r1451]
-  Actually disable Nagle when creating a connection (r1441).
-  Return error when app asks for HTTPS over proxy connection (r1433).
+  Actually disable Nagle when creating a connection (r1441)
+  Return error when app asks for HTTPS over proxy connection (r1433)
 
 
 Serf 0.7.1 [2011-01-25, branch 0.7.x r1431]
-  Fix memory leak when using SSL (r1408, r1416).
-  Fix build for blank apr-util directory (r1421).
+  Fix memory leak when using SSL (r1408, r1416)
+  Fix build for blank apr-util directory (r1421)
 
 
 Serf 0.7.0 [2010-08-25, r1407]
-  Fix double free abort when destroying request buckets.
-  Fix test server in unit test framework to avoid random test failures.
+  Fix double free abort when destroying request buckets
+  Fix test server in unit test framework to avoid random test failures
   Allow older Serf programs which don't use the new authn framework to still
     handle authn without forcing them to switch to the new framework. (r1401)
   Remove the SERF_DECLARE macros, preferring a .DEF file for Windows
-  Barrier buckets now pass read_iovec to their wrapped bucket.
-  Fix HTTP header parsing to allow for empty header values.
+  Barrier buckets now pass read_iovec to their wrapped bucket
+  Fix HTTP header parsing to allow for empty header values
 
 
 Serf 0.6.1 [2010-05-14, r1370]
-  Generally: this release fixes problems with the 0.4.0 packaging.
-  Small compilation fix in outgoing.c for Windows builds.
+  Generally: this release fixes problems with the 0.4.0 packaging
+  Small compilation fix in outgoing.c for Windows builds
 
 
 Serf 0.6.0 [2010-05-14, r1363]
@@ -70,8 +73,8 @@ Serf 0.4.0 [2010-05-13, r1353]
 Serf 0.3.1 [2010-02-14, r1320]
   Fix loss of error on request->setup() callback. (Issue 47)
   Support APR 2.x. (Issue 48)
-  Fixed slowdown in aggregate bucket with millions of child buckets.
-  Avoid hang in apr_pollset_poll() by unclosed connections after fork().
+  Fixed slowdown in aggregate bucket with millions of child buckets
+  Avoid hang in apr_pollset_poll() by unclosed connections after fork()
 
 
 Serf 0.3.0 [2009-01-26, r1216]
@@ -79,43 +82,43 @@ Serf 0.3.0 [2009-01-26, r1216]
   Fix CUTest test harness compilation on Solaris (Issue 43)
   Fix small race condition in OpenSSL initialization (Issue 39)
   Handle content streams larger than 4GB on 32-bit OSes (Issue 41)
-  Fix test_ssl.c compilation with mingw+msys.
-  Fix conn close segfault by explicitly closing conn when pool is destroyed.
-  Expose the depth of the SSL certificate so the validator can use that info.
-  Fix socket address family issue when opening a connection to a proxy.
-  Provide new API to take snapshots of buckets.
-  Implement snapshot API for simple and aggregate buckets.
-  Build with bundled apr and apr-util VPATH builds.
-  Build with bundled OpenSSL builds.
+  Fix test_ssl.c compilation with mingw+msys
+  Fix conn close segfault by explicitly closing conn when pool is destroyed
+  Expose the depth of the SSL certificate so the validator can use that info
+  Fix socket address family issue when opening a connection to a proxy
+  Provide new API to take snapshots of buckets
+  Implement snapshot API for simple and aggregate buckets
+  Build with bundled apr and apr-util VPATH builds
+  Build with bundled OpenSSL builds
 
 
 Serf 0.2.0 [2008-06-06, r1188]
-  Enable use of external event loop: serf_create_context_ex.
-  Enable adding new requests at the beginning of the request queue.
-  Handle 'Connection:close' headers.
-  Enable limiting the number of outstanding requests.
-  Add readline function to simple buckets.
+  Enable use of external event loop: serf_create_context_ex
+  Enable adding new requests at the beginning of the request queue
+  Handle 'Connection:close' headers
+  Enable limiting the number of outstanding requests
+  Add readline function to simple buckets
   Concatenate repeated headers using comma as separator, as per RFC 2616,
-   section 4.2. (Issue 29)
-  Add proxy server support.
+    section 4.2. (Issue 29)
+  Add proxy server support
   Add progress feedback support. (Issue 11)
-  Provide new API to simplify use of proxy and progress feedback support.
+  Provide new API to simplify use of proxy and progress feedback support
   Add callback to validate SSL server certificates. (Issue 31)
-  Add new test framework.
+  Add new test framework
   Send current version string in the test programs (Issue 21)
   Bugfixes:
-     Fix segfault with epoll when removing a NULL socket.
-     Reset OpenSSL thread-safety callbacks when apr_terminate() called.
-     Do not remove the socket from the pollset on pool cleanup.
+     Fix segfault with epoll when removing a NULL socket
+     Reset OpenSSL thread-safety callbacks when apr_terminate() called
+     Do not remove the socket from the pollset on pool cleanup
      Do not issue double close on skt w/second one being close(-1) (Issue 33)
 
 
 Serf 0.1.2 [2007-6-18, r1114]
   Enable thread-safety with OpenSSL (Issue 19)
-  Teach serfmake to install headers into include/serf-0.
-  Be more tolerant when servers close the connection without telling us.
-  Do not open the connection until we have requests to deliver.
-  Fix serfmake to produce the library that corresponds to the minor version.
+  Teach serfmake to install headers into include/serf-0
+  Be more tolerant when servers close the connection without telling us
+  Do not open the connection until we have requests to deliver
+  Fix serfmake to produce the library that corresponds to the minor version
   Fix a memory leak with the socket bucket (Issue 14)
   Fix uninitialized branch in serf_spider (Issue 15)
 
@@ -129,4 +132,4 @@ Serf 0.1.1 [2007-5-12, r1105]
 
 
 Serf 0.1.0 [2006-12-14, r1087]
-  Initial Packaged Release
+  Initial packaged release
