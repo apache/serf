@@ -120,7 +120,7 @@ apr_status_t test_server_proxy_setup(
 
 apr_status_t test_server_teardown(test_baton_t *tb, apr_pool_t *pool);
 
-apr_pool_t *test_setup();
+apr_pool_t *test_setup(void);
 void test_teardown(apr_pool_t *test_pool);
 
 #endif /* TEST_SERF_H */

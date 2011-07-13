@@ -201,7 +201,7 @@ apr_status_t test_server_teardown(test_baton_t *tb, apr_pool_t *pool)
     return APR_SUCCESS;
 }
 
-apr_pool_t *test_setup()
+apr_pool_t *test_setup(void)
 {
     apr_pool_t *test_pool;
     apr_pool_create(&test_pool, NULL);
