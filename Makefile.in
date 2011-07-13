@@ -121,7 +121,7 @@ test/test_all: $(TARGET_LIB) $(TEST_SUITE_OBJECTS)
 check: test/serf_response test/test_all
 	@for i in $(TESTCASES); \
 		 do echo "== Testing $$i =="; \
-		 ./test/serf_response $$i; \
+		 ./test/serf_response $(srcdir)/$$i; \
 	done;
 	@echo "== Running test_all ==";
 	@./test/test_all
@@ -151,6 +151,9 @@ mkdir-vpath:
 	fi;
 	@if [ ! -d test ]; then \
 		$(MKDIR) test; \
+	fi;
+	@if [ ! -r test/serftestca.pem ]; then \
+		cp -f $(srcdir)/test/serftestca.pem test/; \
 	fi;
 
 .c.lo:
