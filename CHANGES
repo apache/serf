@@ -1,4 +1,4 @@
-Serf 1.0.0 [2011-..., branch 1.0.x r...]
+Serf 1.0.0 [2011-07-15, r1540]
   Fixed issue 38: enable builds using non-GNU make
   Fixed issue 49: support SSL tunnels for HTTPS via a proxy
   Fixed issue 56: allow Subject Alternative Name, and enable SNI
@@ -19,12 +19,12 @@ Serf 1.0.0 [2011-..., branch 1.0.x r...]
   Various memory leak fixes
 
 
-Serf 0.7.2 [2011-03-12, branch 0.7.x r1451]
+Serf 0.7.2 [2011-03-12, r1452]
   Actually disable Nagle when creating a connection (r1441)
   Return error when app asks for HTTPS over proxy connection (r1433)
 
 
-Serf 0.7.1 [2011-01-25, branch 0.7.x r1431]
+Serf 0.7.1 [2011-01-25, r1432]
   Fix memory leak when using SSL (r1408, r1416)
   Fix build for blank apr-util directory (r1421)
 
@@ -70,14 +70,14 @@ Serf 0.4.0 [2010-05-13, r1353]
   Added serf_lib_version() for runtime version tests
 
 
-Serf 0.3.1 [2010-02-14, r1320]
+Serf 0.3.1 [2010-02-14, r1321]
   Fix loss of error on request->setup() callback. (Issue 47)
   Support APR 2.x. (Issue 48)
   Fixed slowdown in aggregate bucket with millions of child buckets
   Avoid hang in apr_pollset_poll() by unclosed connections after fork()
 
 
-Serf 0.3.0 [2009-01-26, r1216]
+Serf 0.3.0 [2009-01-26, r1217]
   Support LTFLAGS override as a config-time env. variable (Issue 44)
   Fix CUTest test harness compilation on Solaris (Issue 43)
   Fix small race condition in OpenSSL initialization (Issue 39)
@@ -92,7 +92,7 @@ Serf 0.3.0 [2009-01-26, r1216]
   Build with bundled OpenSSL builds
 
 
-Serf 0.2.0 [2008-06-06, r1188]
+Serf 0.2.0 [2008-06-06, r1189]
   Enable use of external event loop: serf_create_context_ex
   Enable adding new requests at the beginning of the request queue
   Handle 'Connection:close' headers
@@ -113,7 +113,7 @@ Serf 0.2.0 [2008-06-06, r1188]
      Do not issue double close on skt w/second one being close(-1) (Issue 33)
 
 
-Serf 0.1.2 [2007-6-18, r1114]
+Serf 0.1.2 [2007-06-18, r1115]
   Enable thread-safety with OpenSSL (Issue 19)
   Teach serfmake to install headers into include/serf-0
   Be more tolerant when servers close the connection without telling us
@@ -123,7 +123,7 @@ Serf 0.1.2 [2007-6-18, r1114]
   Fix uninitialized branch in serf_spider (Issue 15)
 
 
-Serf 0.1.1 [2007-5-12, r1105]
+Serf 0.1.1 [2007-05-12, r1105]
   Add SSL client certificate support
   Implement optimized iovec reads for header buckets
   Fix up 'make clean' and 'make distclean' (Issues 9, 10)
