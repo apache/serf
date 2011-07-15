@@ -48,16 +48,16 @@ fi
 echo "Removing from release: dist.sh"
 rm dist.sh
 
-major="`sed -n '/SERF_MAJOR_VERSION/s/[^0-9]*//p' serf.h`"
-minor="`sed -n '/SERF_MINOR_VERSION/s/[^0-9]*//p' serf.h`"
-patch="`sed -n '/SERF_PATCH_VERSION/s/[^0-9]*//p' serf.h`"
+major="`sed -n '/SERF_MAJOR_VERSION/s/[^0-9]*//gp' serf.h`"
+minor="`sed -n '/SERF_MINOR_VERSION/s/[^0-9]*//gp' serf.h`"
+patch="`sed -n '/SERF_PATCH_VERSION/s/[^0-9]*//gp' serf.h`"
 
 actual_version="${major}.${minor}.${patch}"
 
 cd "${work}"
 
 if test "${version}" != "trunk" -a "${version}" != "${actual_version}"; then
-  echo "ERROR: exported version does not match"
+  echo "ERROR: exported version '${actual_version}' does not match '${version}'"
   exit 1
 fi
 
@@ -90,3 +90,6 @@ fi
 zipfile="${work}/${release}.zip"
 zip -9rq "${zipfile}" "${release}"
 echo "${short}/${release}.zip ready."
+
+echo "Saving ${release} as ${release}.win"
+mv "${release}" "${release}.win"
