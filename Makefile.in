@@ -130,8 +130,8 @@ check: test/serf_response test/test_all
 install: $(TARGET_LIB)
 	$(MKDIR) $(DESTDIR)$(libdir) $(DESTDIR)$(includedir) $(DESTDIR)$(pkgconfigdir)
 	$(LIBTOOL) $(LTFLAGS) --mode=install $(INSTALL) -m 644 $(TARGET_LIB) $(DESTDIR)$(libdir)
-	for i in $(srcdir)/*.h; do \
-		$(INSTALL) -m 644 $$i $(DESTDIR)$(includedir); \
+	for i in $(HEADERS); do \
+		$(INSTALL) -m 644 $(srcdir)/$$i $(DESTDIR)$(includedir); \
 	done
 	$(INSTALL) -m 644 serf.pc $(DESTDIR)$(pkgconfigdir)/serf-$(SERF_MAJOR_VERSION).pc
 
