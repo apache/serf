@@ -345,7 +345,7 @@ apr_status_t test_start_server(serv_ctx_t **servctx_p,
     servctx->outstanding_responses = 0;
 
     /* listen for clients */
-    apr_socket_listen(serv_sock, SOMAXCONN);
+    status = apr_socket_listen(serv_sock, SOMAXCONN);
     if (status != APR_SUCCESS)
         return status;
 
