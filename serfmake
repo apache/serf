@@ -8,7 +8,7 @@ import stat
 import copy
 
 ### use get_version() ?
-MAJOR = 1
+MAJOR = 2
 
 # Basic defines for our outputs.
 LIBNAME = 'libserf-%d' % (MAJOR,)
