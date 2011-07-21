@@ -148,6 +148,9 @@ distclean: clean
 .SUFFIXES: .c .lo .o
 
 mkdir-vpath:
+	@if [ ! -d auth ]; then \
+		$(MKDIR) auth; \
+	fi;
 	@if [ ! -d buckets ]; then \
 		$(MKDIR) buckets; \
 	fi;
