@@ -29,7 +29,7 @@ env = Environment(variables=opts,
 thisdir = os.getcwd()
 prefix = env['PREFIX']
 libdir = prefix + '/lib'
-incdir = prefix + '/include'
+incdir = '%s/include/serf-%d' % (prefix, MAJOR)
 
 LIBNAME = 'libserf-' + str(MAJOR)
 
