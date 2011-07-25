@@ -3,10 +3,10 @@
 import sys
 import os
 
-INCLUDE_FILES = ['serf.h',
-                 'serf_bucket_types.h',
-                 'serf_bucket_util.h',
-                 ]
+HEADER_FILES = ['serf.h',
+                'serf_bucket_types.h',
+                'serf_bucket_util.h',
+                ]
 
 opts = Variables()
 opts.Add(PathVariable('PREFIX',
@@ -61,7 +61,7 @@ env.Alias('install-lib', [env.Install(libdir, lib_static),
                           env.Install(libdir, lib_shared),
                           ### use 'install_name_tool' on mac
                           ])
-env.Alias('install-inc', env.Install(incdir, INCLUDE_FILES))
+env.Alias('install-inc', env.Install(incdir, HEADER_FILES))
 env.Alias('install', ['install-lib', 'install-inc', ])
 
 
