@@ -43,17 +43,17 @@ MAJOR, MINOR, PATCH = [int(x) for x in match.groups()]
 env = Environment(variables=opts,
                   tools=('default', 'textfile',),
                   CPPPATH=['.', ],
+                  MAJOR=str(MAJOR),
                   )
 
 
 # PLATFORM-SPECIFIC BUILD TWEAKS
 
 thisdir = os.getcwd()
-prefix = env['PREFIX']
-libdir = prefix + '/lib'
-incdir = '%s/include/serf-%d' % (prefix, MAJOR)
+libdir = '$PREFIX/lib'
+incdir = '$PREFIX/include/serf-$MAJOR'
 
-LIBNAME = 'libserf-' + str(MAJOR)
+LIBNAME = 'libserf-${MAJOR}'
 
 linkflags = ['-Wl,-rpath,%s' % (libdir,), ]
 if sys.platform == 'darwin':
@@ -123,7 +123,7 @@ pkgconfig = env.Textfile('serf-%d.pc' % (MAJOR,),
                          env.File('build/serf.pc.in'),
                          SUBST_DICT = {
                            '@MAJOR@': str(MAJOR),
-                           '@PREFIX@': prefix,
+                           '@PREFIX@': '$PREFIX',
                            '@INCLUDE_SUBDIR@': 'serf-%d' % (MAJOR,),
                            '@VERSION@': '%d.%d.%d' % (MAJOR, MINOR, PATCH),
                            '@LIBS@': '%s %s -lz' % (apu_libs, apr_libs),
