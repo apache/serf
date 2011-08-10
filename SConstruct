@@ -9,11 +9,28 @@ HEADER_FILES = ['serf.h',
                 'serf_bucket_util.h',
                 ]
 
-opts = Variables()
-opts.Add(PathVariable('PREFIX',
-                      'Directory to install under',
-                      '/usr/local',
-                      PathVariable.PathIsDir))
+# where we save the configuration variables
+SAVED_CONFIG = '.saved_config'
+
+opts = Variables(files=[SAVED_CONFIG])
+opts.AddVariables(
+  PathVariable('PREFIX',
+               'Directory to install under',
+               '/usr/local',
+               PathVariable.PathIsDir),
+  PathVariable('APR',
+               "Path to apr-1-config, or to APR's install area",
+               '/usr',
+               PathVariable.PathAccept),
+  PathVariable('APU',
+               "Path to apu-1-config, or to APR's install area",
+               '/usr',
+               PathVariable.PathAccept),
+  PathVariable('OPENSSL',
+               "Path to OpenSSL's install area",
+               '/usr',
+               PathVariable.PathIsDir),
+  )
 
 match = re.search('SERF_MAJOR_VERSION ([0-9]+).*'
                   'SERF_MINOR_VERSION ([0-9]+).*'
@@ -22,15 +39,14 @@ match = re.search('SERF_MAJOR_VERSION ([0-9]+).*'
                   re.DOTALL)
 MAJOR, MINOR, PATCH = [int(x) for x in match.groups()]
 
-APR_INCLUDE = '/usr/include/apr-1'
-APU_INCLUDE = '/usr/include/apr-1'
 
 env = Environment(variables=opts,
                   tools=('default', 'textfile',),
-                  CCFLAGS=['-g', '-O2', '-Wall', ],
-                  CPPPATH=['.', APR_INCLUDE, APU_INCLUDE, ],
-                  LIBS=['apr-1', 'aprutil-1', 'ssl', 'crypto', 'z', ],
+                  CPPPATH=['.', ],
                   )
+
+
+# PLATFORM-SPECIFIC BUILD TWEAKS
 
 thisdir = os.getcwd()
 prefix = env['PREFIX']
@@ -44,26 +60,64 @@ if sys.platform == 'darwin':
 #  linkflags.append('-Wl,-install_name,@executable_path/%s.dylib' % (LIBNAME,))
   linkflags.append('-Wl,-install_name,%s/%s.dylib' % (thisdir, LIBNAME,))
   # 'man ld' says positive non-zero for the first number, so we add one.
-  # The interpretation is same as our MINOR version.
+  # Mac's interpretation of compatibility is the same as our MINOR version.
   linkflags.append('-Wl,-compatibility_version,%d' % (MINOR+1,))
   linkflags.append('-Wl,-current_version,%d.%d' % (MINOR+1, PATCH,))
 
+ccflags = [ ]
+if 1:
+  ### gcc only. figure out appropriate test
+  ccflags = ['-g', '-O2', '-Wall', ]
+
+libs = [ ]
+if 1:
+  ### works for Mac OS. probably needs to change
+  libs = ['ssl', 'crypto', 'z', ]
+
 env.Replace(LINKFLAGS=linkflags,
+            CCFLAGS=ccflags,
+            LIBS=libs,
             )
 
+
+# HANDLING OF OPTION VARIABLES
+
+unknown = opts.UnknownVariables()
+if unknown:
+  print 'Unknown variables:', ', '.join(unknown.keys())
+  Exit(1)
+
+apr = str(env['APR'])
+if os.path.isdir(apr):
+  apr = os.path.join(apr, 'bin', 'apr-1-config')
+  env['APR'] = apr
+apu = str(env['APU'])
+if os.path.isdir(apu):
+  apu = os.path.join(apu, 'bin', 'apu-1-config')
+  env['APU'] = apu
 Help(opts.GenerateHelpText(env))
+opts.Save(SAVED_CONFIG, env)
+
+
+# PLAN THE BUILD
 
 SOURCES = Glob('*.c') + Glob('buckets/*.c') + Glob('auth/*.c')
 
 lib_static = env.StaticLibrary(LIBNAME, SOURCES)
 lib_shared = env.SharedLibrary(LIBNAME, SOURCES)
 
-### we need to find the right apu/apr config. maybe based on switch for now.
+# Get apr/apu information into our build
+### we should use --cc, but that is giving some scons error about an implict
+### dependency upon gcc. probably ParseConfig doesn't know what to do with
+### the apr-1-config output
+env.ParseConfig('$APR --cflags --cppflags --ldflags --includes'
+                ' --link-ld --libs')
+env.ParseConfig('$APU --ldflags --includes --link-ld --libs')
+
 ### there is probably a better way to run/capture output.
 ### env.ParseConfig() may be handy for getting this stuff into the build
-DEPENDENT_LIBS = os.popen(env.subst('$PREFIX/bin/apu-1-config --link-libtool --libs')).read().strip()
-DEPENDENT_LIBS += os.popen(env.subst('$PREFIX/bin/apr-1-config --link-libtool --libs')).read().strip()
-DEPENDENT_LIBS += ' -lz'
+apr_libs = os.popen(env.subst('$APR --link-libtool --libs')).read().strip()
+apu_libs = os.popen(env.subst('$APU --link-libtool --libs')).read().strip()
 
 pkgconfig = env.Textfile('serf-%d.pc' % (MAJOR,),
                          env.File('build/serf.pc.in'),
@@ -72,7 +126,7 @@ pkgconfig = env.Textfile('serf-%d.pc' % (MAJOR,),
                            '@PREFIX@': prefix,
                            '@INCLUDE_SUBDIR@': 'serf-%d' % (MAJOR,),
                            '@VERSION@': '%d.%d.%d' % (MAJOR, MINOR, PATCH),
-                           '@LIBS@': DEPENDENT_LIBS,
+                           '@LIBS@': '%s %s -lz' % (apu_libs, apr_libs),
                            })
 
 env.Default(lib_static, lib_shared, pkgconfig)
@@ -84,6 +138,8 @@ if not (env.GetOption('clean') or env.GetOption('help')):
 
   env = conf.Finish()
 
+
+# INSTALLATION STUFF
 
 install_static = env.Install(libdir, lib_static)
 install_shared = env.Install(libdir, lib_shared)
@@ -104,6 +160,9 @@ env.Alias('install-pc', env.Install(os.path.join(libdir, 'pkgconfig'),
                                     pkgconfig))
 env.Alias('install', ['install-lib', 'install-inc', 'install-pc', ])
 
+
+# TESTS
+### make move to a separate scons file in the test/ subdir?
 
 TEST_PROGRAMS = [
 ]
