@@ -64,6 +64,11 @@ if sys.platform == 'darwin':
   linkflags.append('-Wl,-compatibility_version,%d' % (MINOR+1,))
   linkflags.append('-Wl,-current_version,%d.%d' % (MINOR+1, PATCH,))
 
+if sys.platform == 'win32':
+  ### we should create serf.def for Windows DLLs and add it into the link
+  ### step somehow.
+  pass
+
 ccflags = [ ]
 if 1:
   ### gcc only. figure out appropriate test
