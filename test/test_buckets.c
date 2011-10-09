@@ -201,7 +201,7 @@ static void test_bucket_header_set(CuTest *tc)
 
     CuAssertStrEquals(tc, "bar,baz,test", serf_bucket_headers_get(hdrs, "Foo"));
 
-    // headers are case insensitive.
+    /* headers are case insensitive. */
     CuAssertStrEquals(tc, "bar,baz,test", serf_bucket_headers_get(hdrs, "fOo"));
     test_teardown(test_pool);
 }
