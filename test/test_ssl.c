@@ -54,14 +54,28 @@ static void test_ssl_init(CuTest *tc)
     test_teardown(test_pool);
 }
 
+
+static const char * get_ca_file(apr_pool_t *pool, const char * file)
+{
+    char *srcdir = "";
+
+    if (apr_env_get(&srcdir, "srcdir", pool) == APR_SUCCESS) {
+        return apr_pstrcat(pool, srcdir, "/", file, NULL);
+    }
+    else {
+        return file;
+    }
+}
+
+
 /* Test that loading a custom CA certificate file works. */
 static void test_ssl_load_cert_file(CuTest *tc)
 {
     serf_ssl_certificate_t *cert = NULL;
 
     apr_pool_t *test_pool = test_setup();
-    apr_status_t status = serf_ssl_load_cert_file(&cert, "test/serftestca.pem",
-                                                  test_pool);
+    apr_status_t status = serf_ssl_load_cert_file(
+        &cert, get_ca_file(test_pool, "test/serftestca.pem"), test_pool);
 
     CuAssertIntEquals(tc, APR_SUCCESS, status);
     CuAssertPtrNotNull(tc, cert);
@@ -77,7 +91,8 @@ static void test_ssl_cert_subject(CuTest *tc)
 
     apr_pool_t *test_pool = test_setup();
 
-    status = serf_ssl_load_cert_file(&cert, "test/serftestca.pem", test_pool);
+    status = serf_ssl_load_cert_file(
+        &cert, get_ca_file(test_pool, "test/serftestca.pem"), test_pool);
 
     CuAssertIntEquals(tc, APR_SUCCESS, status);
     CuAssertPtrNotNull(tc, cert);
