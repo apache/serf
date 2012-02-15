@@ -1,3 +1,7 @@
+Serf 1.0.1 [2012-02-15, r1559]
+  FreeBSD fixes in the test suite (r1560, r1565)
+  Minor build fixes
+
 Serf 1.0.0 [2011-07-15, r1540]
   Fixed issue 38: enable builds using non-GNU make
   Fixed issue 49: support SSL tunnels for HTTPS via a proxy
