@@ -47,6 +47,12 @@ serf_bucket_t *serf_bucket_request_create(
     serf_bucket_t *body,
     serf_bucket_alloc_t *allocator);
 
+/* Send a Content-Length header with @a len. The @a body bucket should
+   contain precisely that much data.  */
+void serf_bucket_request_set_CL(
+    serf_bucket_t *bucket,
+    apr_int64_t len);
+
 serf_bucket_t *serf_bucket_request_get_headers(
     serf_bucket_t *request);
 
