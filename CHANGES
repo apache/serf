@@ -1,4 +1,4 @@
-Serf 1.0.2 [2012-03-20, r1578]
+Serf 1.0.2 [2012-03-20, r1581]
   Map more OpenSSL errors into SERF_SSL_CERT_UNKNOWNCA (r1573)
 
 Serf 1.0.1 [2012-02-15, r1569]
