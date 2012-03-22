@@ -1469,7 +1469,8 @@ apr_hash_t *serf_ssl_cert_certificate(
 
             switch (nm->type) {
             case GEN_DNS:
-                p = apr_pstrmemdup(pool, nm->d.ia5->data, nm->d.ia5->length);
+                p = apr_pstrmemdup(pool, (const char *)nm->d.ia5->data,
+                                   nm->d.ia5->length);
                 break;
             default:
                 /* Don't know what to do - skip. */
