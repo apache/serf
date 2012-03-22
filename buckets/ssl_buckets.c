@@ -465,8 +465,9 @@ validate_server_certificate(int cert_valid, X509_STORE_CTX *store_ctx)
         (depth == 0 || failures)) {
         apr_status_t status;
         STACK_OF(X509) *chain;
-        serf_ssl_certificate_t **certs;
-        apr_size_t i, certs_len;
+        const serf_ssl_certificate_t **certs;
+        int i;
+        int certs_len;
         apr_pool_t *subpool;
 
         apr_pool_create(&subpool, ctx->pool);
@@ -477,6 +478,7 @@ validate_server_certificate(int cert_valid, X509_STORE_CTX *store_ctx)
         /* If an intermediate certificate is invalid, or if the chain can't 
            be retrieved, just pass the current certificate. */
         if (depth > 0 || !chain) {
+            sk_X509_pop_free(chain, X509_free);  /* NULL is okay  */
             chain = sk_X509_new_null();
             sk_X509_push(chain, X509_dup(server_cert));
         }
@@ -484,20 +486,24 @@ validate_server_certificate(int cert_valid, X509_STORE_CTX *store_ctx)
         certs_len = sk_X509_num(chain);
         certs = apr_pcalloc(subpool, sizeof(*certs) * (certs_len + 1));
         for (i = 0; i < certs_len; ++i) {
-            *(certs+i) = apr_palloc(subpool, sizeof(serf_ssl_certificate_t));
-            (*(certs+i))->ssl_cert = sk_X509_value(chain, i);
-            (*(certs+i))->depth = (int)i;
-        }
-        /* Set the correct depth if we're passing an invalid certificate. */
-        if (certs_len == 1) {
-            (*certs)->depth = depth;
+            serf_ssl_certificate_t *cert = apr_palloc(subpool, sizeof(*cert));
+
+            cert->ssl_cert = sk_X509_value(chain, i);
+
+            /* If we're passing a single certificate, then use the proper
+               depth. Otherwise, use its position in the chain.  */
+            if (certs_len == 1)
+                cert->depth = depth;
+            else
+                cert->depth = i;
+
+            certs[i] = cert;
         }
 
         /* Callback for further verification. */
-        status = ctx->server_cert_chain_callback(
-            ctx->server_cert_userdata, failures, 
-            (const serf_ssl_certificate_t * const *)certs, certs_len);
-
+        status = ctx->server_cert_chain_callback(ctx->server_cert_userdata,
+                                                 failures, 
+                                                 certs, certs_len);
         if (status == APR_SUCCESS) {
             cert_valid = 1;
         } else {
