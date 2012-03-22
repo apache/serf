@@ -171,6 +171,7 @@ struct serf_ssl_context_t {
 
     /* Server cert callbacks */
     serf_ssl_need_server_cert_t server_cert_callback;
+    serf_ssl_server_cert_chain_cb_t server_cert_chain_callback;
     void *server_cert_userdata;
 
     const char *cert_path;
@@ -457,6 +458,54 @@ validate_server_certificate(int cert_valid, X509_STORE_CTX *store_ctx)
         else
             /* Pass the error back to the caller through the context-run. */
             ctx->pending_err = status;
+        apr_pool_destroy(subpool);
+    }
+
+    if (ctx->server_cert_chain_callback && 
+        (depth == 0 || failures)) {
+        apr_status_t status;
+        STACK_OF(X509) *chain;
+        serf_ssl_certificate_t **certs;
+        apr_size_t i, certs_len;
+        apr_pool_t *subpool;
+
+        apr_pool_create(&subpool, ctx->pool);
+
+        /* Get the chain to pass to the callback. */
+        chain = X509_STORE_CTX_get1_chain(store_ctx);
+
+        /* If an intermediate certificate is invalid, or if the chain can't 
+           be retrieved, just pass the current certificate. */
+        if (depth > 0 || !chain) {
+            chain = sk_X509_new_null();
+            sk_X509_push(chain, X509_dup(server_cert));
+        }
+        
+        certs_len = sk_X509_num(chain);
+        certs = apr_pcalloc(subpool, sizeof(*certs) * (certs_len + 1));
+        for (i = 0; i < certs_len; ++i) {
+            *(certs+i) = apr_palloc(subpool, sizeof(serf_ssl_certificate_t));
+            (*(certs+i))->ssl_cert = sk_X509_value(chain, i);
+            (*(certs+i))->depth = (int)i;
+        }
+        /* Set the correct depth if we're passing an invalid certificate. */
+        if (certs_len == 1) {
+            (*certs)->depth = depth;
+        }
+
+        /* Callback for further verification. */
+        status = ctx->server_cert_chain_callback(
+            ctx->server_cert_userdata, failures, 
+            (const serf_ssl_certificate_t * const *)certs, certs_len);
+
+        if (status == APR_SUCCESS) {
+            cert_valid = 1;
+        } else {
+            /* Pass the error back to the caller through the context-run. */
+            ctx->pending_err = status;
+        }
+
+        sk_X509_pop_free(chain, X509_free);
         apr_pool_destroy(subpool);
     }
 
@@ -1012,6 +1061,17 @@ void serf_ssl_server_cert_callback_set(
     context->server_cert_userdata = data;
 }
 
+void serf_ssl_server_cert_chain_callback_set(
+    serf_ssl_context_t *context,
+    serf_ssl_need_server_cert_t cert_callback,
+    serf_ssl_server_cert_chain_cb_t cert_chain_callback,
+    void *data)
+{
+    context->server_cert_callback = cert_callback;
+    context->server_cert_chain_callback = cert_chain_callback;
+    context->server_cert_userdata = data;
+}
+
 static serf_ssl_context_t *ssl_init_context(void)
 {
     serf_ssl_context_t *ssl_ctx;
@@ -1035,6 +1095,11 @@ static serf_ssl_context_t *ssl_init_context(void)
     ssl_ctx->cached_cert = 0;
     ssl_ctx->cached_cert_pw = 0;
     ssl_ctx->pending_err = APR_SUCCESS;
+
+    ssl_ctx->cert_callback = NULL;
+    ssl_ctx->cert_pw_callback = NULL;
+    ssl_ctx->server_cert_callback = NULL;
+    ssl_ctx->server_cert_chain_callback = NULL;
 
     SSL_CTX_set_verify(ssl_ctx->ctx, SSL_VERIFY_PEER,
                        validate_server_certificate);

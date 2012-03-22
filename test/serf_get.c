@@ -42,10 +42,53 @@ static void closed_connection(serf_connection_t *conn,
     }
 }
 
+static void print_ssl_cert_errors(int failures)
+{
+    if (failures) {
+        fprintf(stderr, "INVALID CERTIFICATE:\n");
+        if (failures & SERF_SSL_CERT_NOTYETVALID)
+            fprintf(stderr, "* The certificate is not yet valid.\n");
+        if (failures & SERF_SSL_CERT_EXPIRED)
+            fprintf(stderr, "* The certificate expired.\n");
+        if (failures & SERF_SSL_CERT_SELF_SIGNED)
+            fprintf(stderr, "* The certificate is self-signed.\n");
+        if (failures & SERF_SSL_CERT_UNKNOWNCA)
+            fprintf(stderr, "* The CA is unknown.\n");
+        if (failures & SERF_SSL_CERT_UNKNOWN_FAILURE)
+            fprintf(stderr, "* Unknown failure.\n");
+    }
+}
+
 static apr_status_t ignore_all_cert_errors(void *data, int failures,
                                            const serf_ssl_certificate_t *cert)
 {
-    /* In a real application, you would normally would not want to do this */
+    print_ssl_cert_errors(failures);   
+
+     /* In a real application, you would normally would not want to do this */
+    return APR_SUCCESS;
+}
+
+static apr_status_t print_certs(void *data, int failures,
+                                const serf_ssl_certificate_t * const * certs,
+                                apr_size_t certs_len)
+{
+    apr_pool_t *pool;
+    serf_ssl_certificate_t *current;
+
+    apr_pool_create(&pool, NULL);
+
+    fprintf(stderr, "Received certificate chain with length %ld\n", certs_len);
+    print_ssl_cert_errors(failures);
+
+    while ((current = *certs) != NULL)
+    {   
+        fprintf(stderr, "\n-----BEGIN CERTIFICATE-----\n");
+        fprintf(stderr, "%s\n", serf_ssl_cert_export(current, pool));
+        fprintf(stderr, "-----END CERTIFICATE-----\n");
+        ++certs;
+    }    
+
+    apr_pool_destroy(pool);
     return APR_SUCCESS;
 }
 
@@ -64,7 +107,9 @@ static apr_status_t conn_setup(apr_socket_t *skt,
         if (!ctx->ssl_ctx) {
             ctx->ssl_ctx = serf_bucket_ssl_decrypt_context_get(c);
         }
-        serf_ssl_server_cert_callback_set(ctx->ssl_ctx, ignore_all_cert_errors, NULL);
+        serf_ssl_server_cert_chain_callback_set(ctx->ssl_ctx, 
+                                                ignore_all_cert_errors, 
+                                                print_certs, NULL);
         serf_ssl_set_hostname(ctx->ssl_ctx, ctx->hostinfo);
 
         *output_bkt = serf_bucket_ssl_encrypt_create(*output_bkt, ctx->ssl_ctx,
