@@ -16,6 +16,7 @@
 #include <apr.h>
 #include <apr_pools.h>
 #include <apr_strings.h>
+#include <apr_env.h>
 
 #include "serf.h"
 #include "serf_bucket_types.h"
