@@ -73,7 +73,7 @@ static apr_status_t print_certs(void *data, int failures,
                                 apr_size_t certs_len)
 {
     apr_pool_t *pool;
-    serf_ssl_certificate_t *current;
+    const serf_ssl_certificate_t *current;
 
     apr_pool_create(&pool, NULL);
 
