@@ -492,6 +492,13 @@ typedef apr_status_t (*serf_ssl_need_server_cert_t)(
     int failures,
     const serf_ssl_certificate_t *cert);
 
+typedef apr_status_t (*serf_ssl_server_cert_chain_cb_t)(
+    void *data,
+    int failures,
+    int error_depth,
+    const serf_ssl_certificate_t * const * certs,
+    apr_size_t certs_len);
+
 void serf_ssl_client_cert_provider_set(
     serf_ssl_context_t *context,
     serf_ssl_need_client_cert_t callback,
@@ -511,6 +518,16 @@ void serf_ssl_client_cert_password_set(
 void serf_ssl_server_cert_callback_set(
     serf_ssl_context_t *context,
     serf_ssl_need_server_cert_t callback,
+    void *data);
+
+/**
+ * Set callbacks to override the default SSL server certificate validation 
+ * algorithm for the current certificate or the entire certificate chain. 
+ */
+void serf_ssl_server_cert_chain_callback_set(
+    serf_ssl_context_t *context,
+    serf_ssl_need_server_cert_t cert_callback,
+    serf_ssl_server_cert_chain_cb_t cert_chain_callback,
     void *data);
 
 /**
