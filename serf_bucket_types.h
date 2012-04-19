@@ -495,6 +495,7 @@ typedef apr_status_t (*serf_ssl_need_server_cert_t)(
 typedef apr_status_t (*serf_ssl_server_cert_chain_cb_t)(
     void *data,
     int failures,
+    int error_depth,
     const serf_ssl_certificate_t * const * certs,
     apr_size_t certs_len);
 

@@ -68,7 +68,7 @@ static apr_status_t ignore_all_cert_errors(void *data, int failures,
     return APR_SUCCESS;
 }
 
-static apr_status_t print_certs(void *data, int failures,
+static apr_status_t print_certs(void *data, int failures, int error_depth,
                                 const serf_ssl_certificate_t * const * certs,
                                 apr_size_t certs_len)
 {
@@ -77,8 +77,13 @@ static apr_status_t print_certs(void *data, int failures,
 
     apr_pool_create(&pool, NULL);
 
-    fprintf(stderr, "Received certificate chain with length %ld\n", certs_len);
+    fprintf(stderr, "Received certificate chain with length %d\n",
+            (int)certs_len);
     print_ssl_cert_errors(failures);
+    if (failures)
+        fprintf(stderr, "Error at depth=%d\n", error_depth);
+    else
+        fprintf(stderr, "Chain provided with depth=%d\n", error_depth);
 
     while ((current = *certs) != NULL)
     {   

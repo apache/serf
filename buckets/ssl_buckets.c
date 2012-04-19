@@ -461,48 +461,55 @@ validate_server_certificate(int cert_valid, X509_STORE_CTX *store_ctx)
         apr_pool_destroy(subpool);
     }
 
-    if (ctx->server_cert_chain_callback && 
-        (depth == 0 || failures)) {
+    if (ctx->server_cert_chain_callback
+        && (depth == 0 || failures)) {
         apr_status_t status;
         STACK_OF(X509) *chain;
         const serf_ssl_certificate_t **certs;
-        int i;
         int certs_len;
         apr_pool_t *subpool;
 
         apr_pool_create(&subpool, ctx->pool);
 
-        /* Get the chain to pass to the callback. */
-        chain = X509_STORE_CTX_get1_chain(store_ctx);
+        /* Borrow the chain to pass to the callback. */
+        chain = X509_STORE_CTX_get_chain(store_ctx);
 
-        /* If an intermediate certificate is invalid, or if the chain can't 
-           be retrieved, just pass the current certificate. */
-        if (depth > 0 || !chain) {
-            sk_X509_pop_free(chain, X509_free);  /* NULL is okay  */
-            chain = sk_X509_new_null();
-            sk_X509_push(chain, X509_dup(server_cert));
-        }
-        
-        certs_len = sk_X509_num(chain);
-        certs = apr_pcalloc(subpool, sizeof(*certs) * (certs_len + 1));
-        for (i = 0; i < certs_len; ++i) {
+        /* If the chain can't be retrieved, just pass the current
+           certificate. */
+        /* ### can this actually happen with _get_chain() ?  */
+        if (!chain) {
             serf_ssl_certificate_t *cert = apr_palloc(subpool, sizeof(*cert));
 
-            cert->ssl_cert = sk_X509_value(chain, i);
+            cert->ssl_cert = server_cert;
+            cert->depth = depth;
 
-            /* If we're passing a single certificate, then use the proper
-               depth. Otherwise, use its position in the chain.  */
-            if (certs_len == 1)
-                cert->depth = depth;
-            else
+            /* Room for the server_cert and a trailing NULL.  */
+            certs = apr_palloc(subpool, sizeof(*certs) * 2);
+            certs[0] = cert;
+
+            certs_len = 1;
+        } else {
+            int i;
+        
+            certs_len = sk_X509_num(chain);
+
+            /* Room for all the certs and a trailing NULL.  */
+            certs = apr_palloc(subpool, sizeof(*certs) * (certs_len + 1));
+            for (i = 0; i < certs_len; ++i) {
+                serf_ssl_certificate_t *cert;
+
+                cert = apr_palloc(subpool, sizeof(*cert));
+                cert->ssl_cert = sk_X509_value(chain, i);
                 cert->depth = i;
 
-            certs[i] = cert;
+                certs[i] = cert;
+            }
         }
+        certs[certs_len] = NULL;
 
         /* Callback for further verification. */
         status = ctx->server_cert_chain_callback(ctx->server_cert_userdata,
-                                                 failures, 
+                                                 failures, depth,
                                                  certs, certs_len);
         if (status == APR_SUCCESS) {
             cert_valid = 1;
@@ -511,7 +518,6 @@ validate_server_certificate(int cert_valid, X509_STORE_CTX *store_ctx)
             ctx->pending_err = status;
         }
 
-        sk_X509_pop_free(chain, X509_free);
         apr_pool_destroy(subpool);
     }
 
