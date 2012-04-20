@@ -181,9 +181,11 @@ TEST_PROGRAMS = [
 
 env.AlwaysBuild(env.Alias('check', TEST_PROGRAMS, 'build/check.sh'))
 
-tenv.Replace(LINKFLAGS=None)
+# Find the (dynamic) library in this directory
+linkflags = ['-Wl,-rpath,%s' % (thisdir,), ]
+tenv.Replace(LINKFLAGS=linkflags)
 tenv.Prepend(LIBS=['libserf-2', ],
-             LIBPATH=['.', ])
+             LIBPATH=[thisdir, ])
 
 for proggie in TEST_PROGRAMS:
   if proggie.endswith('test_all'):
