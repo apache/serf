@@ -71,8 +71,12 @@ if sys.platform == 'win32':
 
 ccflags = [ ]
 if 1:
-  ### gcc only. figure out appropriate test
-  ccflags = ['-g', '-O2', '-Wall', ]
+  ### gcc only. figure out appropriate test / better way to check these
+  ### flags, and check for gcc.
+  ### -Wall is not available on Solaris
+  ccflags = ['-g', '-O2', ]
+  if sys.platform != 'sunos5':
+    ccflags.append('-Wall')
 
 libs = [ ]
 if 1:
@@ -102,6 +106,9 @@ if os.path.isdir(apu):
   env['APU'] = apu
 Help(opts.GenerateHelpText(env))
 opts.Save(SAVED_CONFIG, env)
+
+env.Append(CPPPATH='$OPENSSL/include')
+env.Append(LIBPATH='$OPENSSL/lib')
 
 
 # PLAN THE BUILD
