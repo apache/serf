@@ -60,7 +60,8 @@ serf_bucket_t *serf_bucket_socket_create(
     ctx->databuf.read = socket_reader;
     ctx->databuf.read_baton = ctx;
 
-    ctx->progress_func = ctx->progress_baton = NULL;
+    ctx->progress_func = NULL;
+    ctx->progress_baton = NULL;
     return serf_bucket_create(&serf_bucket_type_socket, allocator, ctx);
 }
 
