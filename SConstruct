@@ -140,6 +140,14 @@ env.ParseConfig('$APU --ldflags --includes --link-ld --libs')
 apr_libs = os.popen(env.subst('$APR --link-libtool --libs')).read().strip()
 apu_libs = os.popen(env.subst('$APU --link-libtool --libs')).read().strip()
 
+# On Solaris, the -R values that APR describes never make it into actual
+# RPATH flags. We'll manually map all directories in LIBPATH into new
+# flags to set RPATH values.
+if sys.platform == 'sunos5':
+  for d in env['LIBPATH']:
+    env.Append(LINKFLAGS=link_rpath(d))
+
+# Set up the construction of serf-*.pc
 pkgconfig = env.Textfile('serf-%d.pc' % (MAJOR,),
                          env.File('build/serf.pc.in'),
                          SUBST_DICT = {
