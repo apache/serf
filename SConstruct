@@ -197,4 +197,4 @@ for proggie in TEST_PROGRAMS:
         'test/server/test_server.c',
         ])
   else:
-    tenv.Program(proggie)
+    tenv.Program(proggie, [proggie + '.c'])
