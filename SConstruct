@@ -169,11 +169,32 @@ env.Alias('install', ['install-lib', 'install-inc', 'install-pc', ])
 # TESTS
 ### make move to a separate scons file in the test/ subdir?
 
+tenv = env.Clone()
+
 TEST_PROGRAMS = [
+  'test/serf_get',
+  'test/serf_response',
+  'test/serf_request',
+  'test/serf_spider',
+  'test/test_all',
 ]
 
-#env.Prepend(LIBS=['libserf-2', ],
-#            LIBPATH=['.', ])
+env.AlwaysBuild(env.Alias('check', TEST_PROGRAMS, 'build/check.sh'))
+
+tenv.Replace(LINKFLAGS=None)
+tenv.Prepend(LIBS=['libserf-2', ],
+             LIBPATH=['.', ])
 
 for proggie in TEST_PROGRAMS:
-  env.Program(proggie)
+  if proggie.endswith('test_all'):
+    tenv.Program('test/test_all', [
+        'test/test_all.c',
+        'test/CuTest.c',
+        'test/test_util.c',
+        'test/test_context.c',
+        'test/test_buckets.c',
+        'test/test_ssl.c',
+        'test/server/test_server.c',
+        ])
+  else:
+    tenv.Program(proggie)
