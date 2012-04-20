@@ -49,13 +49,19 @@ env = Environment(variables=opts,
 
 # PLATFORM-SPECIFIC BUILD TWEAKS
 
+def link_rpath(d):
+  if sys.platform == 'sunos5':
+    return '-Wl,-R,%s' % (d,)
+  return '-Wl,-rpath,%s' % (d,)
+
+
 thisdir = os.getcwd()
 libdir = '$PREFIX/lib'
 incdir = '$PREFIX/include/serf-$MAJOR'
 
 LIBNAME = 'libserf-${MAJOR}'
 
-linkflags = ['-Wl,-rpath,%s' % (libdir,), ]
+linkflags = [link_rpath(libdir,), ]
 if sys.platform == 'darwin':
 #  linkflags.append('-Wl,-install_name,@executable_path/%s.dylib' % (LIBNAME,))
   linkflags.append('-Wl,-install_name,%s/%s.dylib' % (thisdir, LIBNAME,))
@@ -82,6 +88,9 @@ libs = [ ]
 if 1:
   ### works for Mac OS. probably needs to change
   libs = ['ssl', 'crypto', 'z', ]
+
+  if sys.platform == 'sunos5':
+    libs.append('m')
 
 env.Replace(LINKFLAGS=linkflags,
             CCFLAGS=ccflags,
@@ -189,7 +198,7 @@ TEST_PROGRAMS = [
 env.AlwaysBuild(env.Alias('check', TEST_PROGRAMS, 'build/check.sh'))
 
 # Find the (dynamic) library in this directory
-linkflags = ['-Wl,-rpath,%s' % (thisdir,), ]
+linkflags = [link_rpath(thisdir,), ]
 tenv.Replace(LINKFLAGS=linkflags)
 tenv.Prepend(LIBS=['libserf-2', ],
              LIBPATH=[thisdir, ])
