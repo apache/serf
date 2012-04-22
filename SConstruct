@@ -239,3 +239,11 @@ for proggie in TEST_PROGRAMS:
         ])
   else:
     tenv.Program(proggie, [proggie + '.c'])
+
+
+# HANDLE CLEANING
+
+if env.GetOption('clean'):
+  # When we're cleaning, we want the dependency tree to include "everything"
+  # that could be built. Thus, include all of the tests.
+  env.Default('check')
