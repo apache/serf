@@ -20,7 +20,7 @@ kept to a minimum to provide high performance operation.
 
 serf uses SCons 2.x for its build system. If it is not installed on
 your system, then you can install it onto your system. If you do not
-have permissiong, then you can download and install the "local"
+have permissions, then you can download and install the "local"
 version into your home directory. When installed privately, simply
 create a symlink for 'scons' in your PATH to /path/to/scons/scons.py.
 
