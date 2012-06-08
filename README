@@ -32,11 +32,15 @@ Fetch the scons-local package:
 
 To build serf:
 
-$ scons APR=/path/to/apr APU=/path/to/apu OPENSSL=/openssl/base
+$ scons APR=/path/to/apr APU=/path/to/apu OPENSSL=/openssl/base PREFIX=/path/to/prefix
 
 The switches are recorded into .saved_config, so they only need to be
-specified the first time scons is run. The default for these three
-switches is /usr.
+specified the first time scons is run.
+
+PREFIX should specify where serf should be installed.  PREFIX defaults to
+/usr/local.
+
+The default for the other three switches (APR, APU, OPENSSL) is /usr.
 
 The build system looks for apr-1-config at $APR/bin/apr-1-config, or
 the path should indicate apr-1-config itself. Similarly for the path
