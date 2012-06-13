@@ -421,10 +421,8 @@ static apr_status_t reset_connection(serf_connection_t *conn,
     held_reqs = conn->hold_requests;
     held_reqs_tail = conn->hold_requests_tail;
 
-    if (conn->state == SERF_CONN_CLOSING) {
-        conn->hold_requests = NULL;
-        conn->hold_requests_tail = NULL;
-    }
+    conn->hold_requests = NULL;
+    conn->hold_requests_tail = NULL;
 
     conn->requests = NULL;
     conn->requests_tail = NULL;
