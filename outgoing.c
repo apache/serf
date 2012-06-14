@@ -256,6 +256,18 @@ apr_status_t serf__open_connections(serf_context_t *ctx)
             serf__ssltunnel_connect(conn);
         else
             conn->state = SERF_CONN_CONNECTED;
+
+        /* Release the held requests now that we are (re)connected. */
+        if (conn->hold_requests) {
+            if (conn->requests_tail) {
+                conn->requests_tail->next = conn->hold_requests;
+            } else {
+                conn->requests = conn->hold_requests;
+            }
+            conn->requests_tail = conn->hold_requests_tail;
+            conn->hold_requests = NULL;
+            conn->hold_requests_tail = NULL;
+        }
     }
 
     return APR_SUCCESS;
@@ -421,10 +433,8 @@ static apr_status_t reset_connection(serf_connection_t *conn,
     held_reqs = conn->hold_requests;
     held_reqs_tail = conn->hold_requests_tail;
 
-    if (conn->state == SERF_CONN_CLOSING) {
-        conn->hold_requests = NULL;
-        conn->hold_requests_tail = NULL;
-    }
+    conn->hold_requests = NULL;
+    conn->hold_requests_tail = NULL;
 
     conn->requests = NULL;
     conn->requests_tail = NULL;
