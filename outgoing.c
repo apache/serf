@@ -1223,6 +1223,8 @@ apr_status_t serf_connection_close(
                 conn->stream = NULL;
             }
 
+            destroy_ostream(conn);
+
             /* Remove the connection from the context. We don't want to
              * deal with it any more.
              */
