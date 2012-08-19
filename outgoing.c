@@ -439,9 +439,11 @@ static apr_status_t reset_connection(serf_connection_t *conn,
     conn->requests = NULL;
     conn->requests_tail = NULL;
 
+    /* Handle all outstanding requests. These have either not been written yet,
+       or have been written but the expected reply wasn't received yet. */
     while (old_reqs) {
         /* If we haven't started to write the connection, bring it over
-         * unchanged to our new socket.  Otherwise, call the cancel function.
+         * unchanged to our new socket.
          */
         if (requeue_requests && !old_reqs->written) {
             serf_request_t *req = old_reqs;
@@ -450,6 +452,9 @@ static apr_status_t reset_connection(serf_connection_t *conn,
             link_requests(&conn->requests, &conn->requests_tail, req);
         }
         else {
+            /* Request has been consumed, or we don't want to requeue the
+               request. Either way, inform the application that the request
+               is cancelled. */
             cancel_request(old_reqs, &old_reqs, requeue_requests);
         }
     }
@@ -464,6 +469,7 @@ static apr_status_t reset_connection(serf_connection_t *conn,
         conn->requests_tail = held_reqs_tail;
     }
 
+    /* Requests queue has been prepared for a new socket, close the old one. */
     if (conn->skt != NULL) {
         remove_connection(ctx, conn);
         status = apr_socket_close(conn->skt);
