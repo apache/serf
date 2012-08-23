@@ -625,15 +625,30 @@ static apr_status_t ssl_decrypt(void *baton, apr_size_t bufsize,
                 status = APR_EGENERAL;
                 break;
             }
-        }
-        else if (ssl_len == 0 && status == 0) {
-                 /* The server shut down the connection. */
-                 *len = 0;
+        } else if (ssl_len == 0 && status == 0) {
+            /* The server shut down the connection. */
+            int ssl_err, shutdown;
+            *len = 0;
+
+            /* Check for SSL_RECEIVED_SHUTDOWN */
+            shutdown = SSL_get_shutdown(ctx->ssl);
+            /* Check for SSL_ERROR_ZERO_RETURN */
+            ssl_err = SSL_get_error(ctx->ssl, ssl_len);
+
+            if (shutdown != 0 || ssl_err == SSL_ERROR_ZERO_RETURN) {
+                /* The server closed the SSL session. While this doesn't
+                necessary mean the connection is closed, let's close
+                it here anyway.
+                We can optimize this later. */
 #ifdef SSL_VERBOSE
-                 printf("ssl_decrypt: SSL read error: server shut down"\
-                        "connection!\n");
+                printf("ssl_decrypt: SSL read error: server shut down"\
+                       "connection!\n");
 #endif
                 status = APR_EOF;
+            } else {
+                /* An error occurred. */
+                status = APR_EGENERAL;
+            }
         } else {
             *len = ssl_len;
 #ifdef SSL_VERBOSE
