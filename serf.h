@@ -83,6 +83,12 @@ typedef struct serf_request_t serf_request_t;
 #define SERF_ERROR_BAD_HTTP_RESPONSE (APR_OS_START_USERERR + \
                                              SERF_ERROR_RANGE + 5)
 
+/* SSL certificates related errors */
+#define SERF_ERROR_SSL_CERT_FAILED (APR_OS_START_USERERR + SERF_ERROR_RANGE + 70)
+
+/* SSL communications related errors */
+#define SERF_ERROR_SSL_COMM_FAILED (APR_OS_START_USERERR + SERF_ERROR_RANGE + 71)
+
 /* General authentication related errors */
 #define SERF_ERROR_AUTHN_FAILED (APR_OS_START_USERERR + SERF_ERROR_RANGE + 90)
 
