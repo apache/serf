@@ -653,7 +653,9 @@ static apr_status_t write_to_connection(serf_connection_t *conn)
              */
             if (APR_STATUS_IS_EAGAIN(status))
                 return APR_SUCCESS;
-            if (APR_STATUS_IS_EPIPE(status))
+            if (APR_STATUS_IS_EPIPE(status) ||
+                APR_STATUS_IS_ECONNRESET(status) ||
+                APR_STATUS_IS_ECONNABORTED(status))
                 return no_more_writes(conn, request);
             if (status)
                 return status;
@@ -748,7 +750,8 @@ static apr_status_t write_to_connection(serf_connection_t *conn)
                 return APR_SUCCESS;
             if (APR_STATUS_IS_EPIPE(status))
                 return no_more_writes(conn, request);
-            if (APR_STATUS_IS_ECONNRESET(status)) {
+            if (APR_STATUS_IS_ECONNRESET(status) ||
+                APR_STATUS_IS_ECONNABORTED(status)) {
                 return no_more_writes(conn, request);
             }
             if (status)
@@ -957,9 +960,10 @@ static apr_status_t read_from_connection(serf_connection_t *conn)
         status = handle_response(request, tmppool);
 
         /* Some systems will not generate a HUP poll event so we have to
-         * handle the ECONNRESET issue here.
+         * handle the ECONNRESET issue and ECONNABORT here.
          */
         if (APR_STATUS_IS_ECONNRESET(status) ||
+            APR_STATUS_IS_ECONNABORTED(status) ||
             status == SERF_ERROR_REQUEST_LOST) {
             reset_connection(conn, 1);
             status = APR_SUCCESS;
