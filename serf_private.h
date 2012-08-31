@@ -203,12 +203,6 @@ struct serf_connection_t {
     serf_request_t *requests;
     serf_request_t *requests_tail;
 
-    /* The list of requests we're holding on to because we're going to
-     * reset the connection soon.
-     */
-    serf_request_t *hold_requests;
-    serf_request_t *hold_requests_tail;
-
     struct iovec vec[IOV_MAX];
     int vec_len;
 
