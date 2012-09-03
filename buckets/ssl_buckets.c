@@ -202,12 +202,12 @@ struct serf_ssl_certificate_t {
     int depth;
 };
 
-void log(char *fmt, ...)
+static void log(char *fmt, ...)
 {
     va_list argp;
 
 #ifdef SSL_VERBOSE
-    fprintf(stderr, "ssl_buckets.c");
+    fprintf(stderr, "ssl_buckets.c: ");
     va_start(argp, fmt);
     vfprintf(stderr, fmt, argp);
     va_end(argp);
