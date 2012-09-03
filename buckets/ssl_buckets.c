@@ -645,7 +645,7 @@ static apr_status_t ssl_decrypt(void *baton, apr_size_t bufsize,
             /* Check for SSL_ERROR_ZERO_RETURN */
             ssl_err = SSL_get_error(ctx->ssl, ssl_len);
 
-            if (shutdown == SSL_get_shutdown &&
+            if (shutdown == SSL_RECEIVED_SHUTDOWN &&
                 ssl_err == SSL_ERROR_ZERO_RETURN) {
                 /* The server closed the SSL session. While this doesn't
                 necessary mean the connection is closed, let's close
