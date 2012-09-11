@@ -592,12 +592,12 @@ static apr_status_t ssl_decrypt(void *baton, apr_size_t bufsize,
                     status = ctx->pending_err;
                     ctx->pending_err = 0;
                 } else {
-                    ctx->fatal_err = status = APR_EGENERAL;
+                    ctx->fatal_err = status = SERF_ERROR_SSL_COMM_FAILED;
                 }
                 break;
             default:
                 *len = 0;
-                ctx->fatal_err = status = APR_EGENERAL;
+                ctx->fatal_err = status = SERF_ERROR_SSL_COMM_FAILED;
                 break;
             }
         } else if (ssl_len == 0) {
@@ -623,7 +623,7 @@ static apr_status_t ssl_decrypt(void *baton, apr_size_t bufsize,
                 status = APR_EOF;
             } else {
                 /* A fatal error occurred. */
-                ctx->fatal_err = status = APR_EGENERAL;
+                ctx->fatal_err = status = SERF_ERROR_SSL_COMM_FAILED;
             }
         } else {
             *len = ssl_len;
@@ -773,7 +773,7 @@ static apr_status_t ssl_encrypt(void *baton, apr_size_t bufsize,
                             status = SERF_ERROR_WAIT_CONN;
                         }
                         else {
-                            ctx->fatal_err = status = APR_EGENERAL;
+                            ctx->fatal_err = status = SERF_ERROR_SSL_COMM_FAILED;
                         }
                     }
 #ifdef SSL_VERBOSE
@@ -1245,7 +1245,7 @@ apr_status_t serf_ssl_use_default_certificates(serf_ssl_context_t *ssl_ctx)
 
     int result = X509_STORE_set_default_paths(store);
 
-    return result ? APR_SUCCESS : APR_EGENERAL;
+    return result ? APR_SUCCESS : SERF_ERROR_SSL_CERT_FAILED;
 }
 
 apr_status_t serf_ssl_load_cert_file(
@@ -1267,7 +1267,7 @@ apr_status_t serf_ssl_load_cert_file(
         }
     }
 
-    return APR_EGENERAL;
+    return SERF_ERROR_SSL_CERT_FAILED;
 }
 
 
@@ -1279,7 +1279,7 @@ apr_status_t serf_ssl_trust_cert(
 
     int result = X509_STORE_add_cert(store, cert->ssl_cert);
 
-    return result ? APR_SUCCESS : APR_EGENERAL;
+    return result ? APR_SUCCESS : SERF_ERROR_SSL_CERT_FAILED;
 }
 
 
