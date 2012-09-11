@@ -103,15 +103,19 @@ apr_status_t serf__conn_update_pollset(serf_connection_t *conn)
 
     /* Now put it back in with the correct read/write values. */
     desc.reqevents = APR_POLLHUP | APR_POLLERR;
-    if (conn->requests) {
+    if (conn->requests &&
+        conn->state != SERF_CONN_INIT) {
         /* If there are any outstanding events, then we want to read. */
         /* ### not true. we only want to read IF we have sent some data */
         desc.reqevents |= APR_POLLIN;
 
-        /* If the connection has unwritten data, or there are any requests
-         * that still have buckets to write out, then we want to write.
+        /* If the connection is not closing down and
+         *   has unwritten data or
+         *   there are any requests that still have buckets to write out,
+         *     then we want to write.
          */
-        if (conn->vec_len)
+        if (conn->vec_len &&
+            conn->state != SERF_CONN_CLOSING)
             desc.reqevents |= APR_POLLOUT;
         else {
             serf_request_t *request = conn->requests;
@@ -257,17 +261,6 @@ apr_status_t serf__open_connections(serf_context_t *ctx)
         else
             conn->state = SERF_CONN_CONNECTED;
 
-        /* Release the held requests now that we are (re)connected. */
-        if (conn->hold_requests) {
-            if (conn->requests_tail) {
-                conn->requests_tail->next = conn->hold_requests;
-            } else {
-                conn->requests = conn->hold_requests;
-            }
-            conn->requests_tail = conn->hold_requests_tail;
-            conn->hold_requests = NULL;
-            conn->hold_requests_tail = NULL;
-        }
     }
 
     return APR_SUCCESS;
@@ -278,14 +271,6 @@ static apr_status_t no_more_writes(serf_connection_t *conn,
 {
     /* Note that we should hold new requests until we open our new socket. */
     conn->state = SERF_CONN_CLOSING;
-
-    /* We can take the *next* request in our list and assume it hasn't
-     * been written yet and 'save' it for the new socket.
-     */
-    conn->hold_requests = request->next;
-    conn->hold_requests_tail = conn->requests_tail;
-    request->next = NULL;
-    conn->requests_tail = request;
 
     /* Clear our iovec. */
     conn->vec_len = 0;
@@ -423,18 +408,13 @@ static apr_status_t reset_connection(serf_connection_t *conn,
 {
     serf_context_t *ctx = conn->ctx;
     apr_status_t status;
-    serf_request_t *old_reqs, *held_reqs, *held_reqs_tail;
+    serf_request_t *old_reqs;
 
     conn->probable_keepalive_limit = conn->completed_responses;
     conn->completed_requests = 0;
     conn->completed_responses = 0;
 
     old_reqs = conn->requests;
-    held_reqs = conn->hold_requests;
-    held_reqs_tail = conn->hold_requests_tail;
-
-    conn->hold_requests = NULL;
-    conn->hold_requests_tail = NULL;
 
     conn->requests = NULL;
     conn->requests_tail = NULL;
@@ -452,16 +432,6 @@ static apr_status_t reset_connection(serf_connection_t *conn,
         else {
             cancel_request(old_reqs, &old_reqs, requeue_requests);
         }
-    }
-
-    if (conn->requests_tail) {
-        conn->requests_tail->next = held_reqs;
-    }
-    else {
-        conn->requests = held_reqs;
-    }
-    if (held_reqs_tail) {
-        conn->requests_tail = held_reqs_tail;
     }
 
     if (conn->skt != NULL) {
@@ -1293,16 +1263,11 @@ serf_request_t *serf_connection_request_create(
     request->next = NULL;
 
     /* Link the request to the end of the request chain. */
-    if (conn->state == SERF_CONN_CLOSING) {
-        link_requests(&conn->hold_requests, &conn->hold_requests_tail, request);
-    }
-    else {
-        link_requests(&conn->requests, &conn->requests_tail, request);
-
-        /* Ensure our pollset becomes writable in context run */
-        conn->ctx->dirty_pollset = 1;
-        conn->dirty_conn = 1;
-    }
+    link_requests(&conn->requests, &conn->requests_tail, request);
+    
+    /* Ensure our pollset becomes writable in context run */
+    conn->ctx->dirty_pollset = 1;
+    conn->dirty_conn = 1;
 
     return request;
 }
@@ -1328,14 +1293,8 @@ serf_request_t *serf_connection_priority_request_create(
     request->written = 0;
     request->next = NULL;
 
-    /* Link the new request after the last written request, but before all
-       upcoming requests. */
-    if (conn->state == SERF_CONN_CLOSING) {
-        iter = conn->hold_requests;
-    }
-    else {
-        iter = conn->requests;
-    }
+    /* Link the new request after the last written request. */
+    iter = conn->requests;
     prev = NULL;
 
     /* Find a request that has data which needs to be delivered. */
@@ -1355,19 +1314,12 @@ serf_request_t *serf_connection_priority_request_create(
         prev->next = request;
     } else {
         request->next = iter;
-        if (conn->state == SERF_CONN_CLOSING) {
-            conn->hold_requests = request;
-        }
-        else {
-            conn->requests = request;
-        }
+        conn->requests = request;
     }
 
-    if (conn->state != SERF_CONN_CLOSING) {
-        /* Ensure our pollset becomes writable in context run */
-        conn->ctx->dirty_pollset = 1;
-        conn->dirty_conn = 1;
-    }
+    /* Ensure our pollset becomes writable in context run */
+    conn->ctx->dirty_pollset = 1;
+    conn->dirty_conn = 1;
 
     return request;
 }
