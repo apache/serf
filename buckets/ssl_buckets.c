@@ -180,6 +180,10 @@ struct serf_ssl_context_t {
     EVP_PKEY *cached_cert_pw;
 
     apr_status_t pending_err;
+
+    /* Status of a fatal error, returned on subsequent encrypt or decrypt
+       requests. */
+    apr_status_t fatal_err;
 };
 
 typedef struct {
@@ -534,6 +538,9 @@ static apr_status_t ssl_decrypt(void *baton, apr_size_t bufsize,
     const char *data;
     int ssl_len;
 
+    if (ctx->fatal_err)
+        return ctx->fatal_err;
+
 #ifdef SSL_VERBOSE
     printf("ssl_decrypt: begin %d\n", bufsize);
 #endif
@@ -581,16 +588,44 @@ static apr_status_t ssl_decrypt(void *baton, apr_size_t bufsize,
                 break;
             case SSL_ERROR_SSL:
                 *len = 0;
-                status = ctx->pending_err ? ctx->pending_err : APR_EGENERAL;
-                ctx->pending_err = 0;
+                if (ctx->pending_err) {
+                    status = ctx->pending_err;
+                    ctx->pending_err = 0;
+                } else {
+                    ctx->fatal_err = status = APR_EGENERAL;
+                }
                 break;
             default:
                 *len = 0;
-                status = APR_EGENERAL;
+                ctx->fatal_err = status = APR_EGENERAL;
                 break;
             }
-        }
-        else {
+        } else if (ssl_len == 0) {
+            /* The server shut down the connection. */
+            int ssl_err, shutdown;
+            *len = 0;
+
+            /* Check for SSL_RECEIVED_SHUTDOWN */
+            shutdown = SSL_get_shutdown(ctx->ssl);
+            /* Check for SSL_ERROR_ZERO_RETURN */
+            ssl_err = SSL_get_error(ctx->ssl, ssl_len);
+
+            if (shutdown == SSL_RECEIVED_SHUTDOWN &&
+                ssl_err == SSL_ERROR_ZERO_RETURN) {
+                /* The server closed the SSL session. While this doesn't
+                necessary mean the connection is closed, let's close
+                it here anyway.
+                We can optimize this later. */
+#ifdef SSL_VERBOSE
+                printf("ssl_decrypt: SSL read error: server shut down"\
+                       "connection!\n");
+#endif
+                status = APR_EOF;
+            } else {
+                /* A fatal error occurred. */
+                ctx->fatal_err = status = APR_EGENERAL;
+            }
+        } else {
             *len = ssl_len;
 #ifdef SSL_VERBOSE
             printf("---\n%s\n-(%d)-\n", buf, *len);
@@ -615,6 +650,9 @@ static apr_status_t ssl_encrypt(void *baton, apr_size_t bufsize,
     apr_size_t interim_bufsize;
     serf_ssl_context_t *ctx = baton;
     apr_status_t status;
+
+    if (ctx->fatal_err)
+        return ctx->fatal_err;
 
 #ifdef SSL_VERBOSE
     printf("ssl_encrypt: begin %d\n", bufsize);
@@ -735,7 +773,7 @@ static apr_status_t ssl_encrypt(void *baton, apr_size_t bufsize,
                             status = SERF_ERROR_WAIT_CONN;
                         }
                         else {
-                            status = APR_EGENERAL;
+                            ctx->fatal_err = status = APR_EGENERAL;
                         }
                     }
 #ifdef SSL_VERBOSE
@@ -1107,6 +1145,7 @@ static serf_ssl_context_t *ssl_init_context(void)
     ssl_ctx->cached_cert = 0;
     ssl_ctx->cached_cert_pw = 0;
     ssl_ctx->pending_err = APR_SUCCESS;
+    ssl_ctx->fatal_err = APR_SUCCESS;
 
     ssl_ctx->cert_callback = NULL;
     ssl_ctx->cert_pw_callback = NULL;

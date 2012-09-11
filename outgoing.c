@@ -939,10 +939,12 @@ static apr_status_t read_from_connection(serf_connection_t *conn)
          * 2) Doing the initial SSL handshake - we'll get EAGAIN
          *    as the SSL buckets will hide the handshake from us
          *    but not return any data.
+         * 3) When the server sends us an SSL alert.
          *
          * In these cases, we should not receive any actual user data.
          *
-         * If we see an EOF (due to an expired timeout), we'll reset the
+         * If we see an EOF (due to either an expired timeout or the serer
+         * sending the SSL 'close notify' shutdown alert), we'll reset the
          * connection and open a new one.
          */
         if (request->req_bkt || !request->written) {
