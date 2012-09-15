@@ -540,12 +540,13 @@ apr_status_t serf_linebuf_fetch(
 /* Logging function.
    Use with one of the [COMP]_VERBOSE defines so that the compiler knows to
    optimize this code out when no logging is needed. */
-void serf__log(int verbose_flag, char *fmt, ...)
+void serf__log(int verbose_flag, const char *filename, const char *fmt, ...)
 {
     va_list argp;
     
     if (verbose_flag) {
-        fprintf(stderr, "ssl_buckets.c: ");
+        if (filename)
+	        fprintf(stderr, "%s: ", filename);
         va_start(argp, fmt);
         vfprintf(stderr, fmt, argp);
         va_end(argp);

@@ -30,6 +30,8 @@ static apr_status_t clean_skt(void *data)
 
     if (conn->skt) {
         status = apr_socket_close(conn->skt);
+        serf__log(SOCK_VERBOSE, __FILE__, "closed socket 0x%x, status %d\n",
+                  conn->skt, status);
         conn->skt = NULL;
     }
 
@@ -209,12 +211,15 @@ apr_status_t serf__open_connections(serf_context_t *ctx)
         else
             serv_addr = conn->address;
 
-        if ((status = apr_socket_create(&skt, serv_addr->family,
-                                        SOCK_STREAM,
+        status = apr_socket_create(&skt, serv_addr->family,
+                                   SOCK_STREAM,
 #if APR_MAJOR_VERSION > 0
-                                        APR_PROTO_TCP,
+                                   APR_PROTO_TCP,
 #endif
-                                        conn->skt_pool)) != APR_SUCCESS)
+                                   conn->skt_pool);
+        serf__log(SOCK_VERBOSE, __FILE__, "created socket 0x%x, status\n", skt,
+                  status);
+        if (status != APR_SUCCESS)
             return status;
 
         /* Set the socket to be non-blocking */
@@ -232,8 +237,10 @@ apr_status_t serf__open_connections(serf_context_t *ctx)
         /* Now that the socket is set up, let's connect it. This should
          * return immediately.
          */
-        if ((status = apr_socket_connect(skt,
-                                         serv_addr)) != APR_SUCCESS) {
+        status = apr_socket_connect(skt, serv_addr);
+        serf__log(SOCK_VERBOSE, __FILE__, "connected socket 0x%x, status %d\n",
+                  skt, status);
+		if (status != APR_SUCCESS) {
             if (!APR_STATUS_IS_EINPROGRESS(status))
                 return status;
         }
@@ -443,6 +450,8 @@ static apr_status_t reset_connection(serf_connection_t *conn,
     if (conn->skt != NULL) {
         remove_connection(ctx, conn);
         status = apr_socket_close(conn->skt);
+        serf__log(SOCK_VERBOSE, __FILE__, "closed socket 0x%x, status %d\n",
+                  conn->skt, status);
         if (conn->closed != NULL) {
             handle_conn_closed(conn, status);
         }
@@ -479,15 +488,24 @@ static apr_status_t socket_writev(serf_connection_t *conn)
 
     status = apr_socket_sendv(conn->skt, conn->vec,
                               conn->vec_len, &written);
+	if (status && !APR_STATUS_IS_EAGAIN(status))
+        serf__log(SOCK_VERBOSE, __FILE__, "socket_sendv 0x%x error %d\n",
+                  conn->skt, status);
 
     /* did we write everything? */
     if (written) {
         apr_size_t len = 0;
         int i;
 
+        serf__log(SOCK_MSG_VERBOSE, __FILE__, "--- socket_sendv 0x%x:\n",
+                  conn->skt);
+
         for (i = 0; i < conn->vec_len; i++) {
             len += conn->vec[i].iov_len;
             if (written < len) {
+                serf__log(SOCK_MSG_VERBOSE, 0l, "%.*s",
+                          conn->vec[i].iov_len - (len - written),
+                          conn->vec[i].iov_base);
                 if (i) {
                     memmove(conn->vec, &conn->vec[i],
                             sizeof(struct iovec) * (conn->vec_len - i));
@@ -496,11 +514,15 @@ static apr_status_t socket_writev(serf_connection_t *conn)
                 conn->vec[0].iov_base = (char *)conn->vec[0].iov_base + (conn->vec[0].iov_len - (len - written));
                 conn->vec[0].iov_len = len - written;
                 break;
+            } else {
+                serf__log(SOCK_MSG_VERBOSE, 0l, "%.*s",
+                          conn->vec[i].iov_len, conn->vec[i].iov_base);
             }
         }
         if (len == written) {
             conn->vec_len = 0;
         }
+        serf__log(SOCK_MSG_VERBOSE, 0l, "-(%d)-\n", written);
 
         /* Log progress information */
         serf__context_progress_delta(conn->ctx, 0, written);
@@ -1195,6 +1217,9 @@ apr_status_t serf_connection_close(
             if (conn->skt != NULL) {
                 remove_connection(ctx, conn);
                 status = apr_socket_close(conn->skt);
+                serf__log(SOCK_VERBOSE, __FILE__,
+                          "closed socket 0x%x, status %d\n", conn->skt,
+                          status);
                 if (conn->closed != NULL) {
                     handle_conn_closed(conn, status);
                 }
