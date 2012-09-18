@@ -1172,6 +1172,11 @@ apr_status_t serf_connection_create2(
     serf_connection_t *c;
     apr_sockaddr_t *host_address;
 
+    /* Set the port number explicitly, needed to create the socket later. */
+    if (!host_info.port) {
+        host_info.port = apr_uri_port_of_scheme(host_info.scheme);
+    }
+
     /* Parse the url, store the address of the server. */
     status = apr_sockaddr_info_get(&host_address,
                                    host_info.hostname,
