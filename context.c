@@ -149,6 +149,12 @@ serf_context_t *serf_context_create_ex(
     else {
         /* build the pollset with a (default) number of connections */
         serf_pollset_t *ps = apr_pcalloc(pool, sizeof(*ps));
+
+        /* ### TODO: As of APR 1.4.x apr_pollset_create_ex can return a status
+           ### other than APR_SUCCESS, so we should handle it.
+           ### Probably move creation of the pollset to later when we have
+           ### the possibility of returning status to the caller.
+         */
 #ifdef BROKEN_WSAPOLL
         /* APR 1.4.x switched to using WSAPoll() on Win32, but it does not
          * properly handle errors on a non-blocking sockets (such as
