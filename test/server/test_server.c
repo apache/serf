@@ -220,10 +220,10 @@ apr_status_t test_server_run(serv_ctx_t *servctx,
 
     /* create a new pollset */
 #ifdef BROKEN_WSAPOLL
-    (void) apr_pollset_create_ex(&pollset, 32, pool, 0,
+    status = apr_pollset_create_ex(&pollset, 32, pool, 0,
                                  APR_POLLSET_SELECT);
 #else
-    (void) apr_pollset_create(&pollset, 32, pool, 0);
+    status = apr_pollset_create(&pollset, 32, pool, 0);
 #endif
 
     if (status != APR_SUCCESS)
