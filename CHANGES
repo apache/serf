@@ -1,3 +1,14 @@
+Serf 1.1.1 [to be planned]
+  Fixed issue 86: ensure requeued requests are correctly handled. This fixes:
+    - infinite loop with multiple connection resets or SIGPIPE errors
+    - "connection" hang where we would not re-queue requests that are held after
+      we re-connect
+  Fixed issue 74: test_all goes in an endless loop
+  Fix memory leak when conn. is closed explicitly/due to pool cleanups (r1623)
+  Fix for https on Windows: handle connection aborts (r1628..-30,-33,-34,-37)
+  Add new error codes for the SSL bucket
+
+
 Serf 1.1.0 [2012-06-07, from /tags/1.1.0]
   New: serf_bucket_request_set_CL() for C-L based, non-chunked requests
   New: serf_ssl_server_cert_chain_callback_set() for full-chain validation
