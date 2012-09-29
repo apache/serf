@@ -219,7 +219,13 @@ apr_status_t test_server_run(serv_ctx_t *servctx,
     const apr_pollfd_t *desc;
 
     /* create a new pollset */
+#ifdef BROKEN_WSAPOLL
+    status = apr_pollset_create_ex(&pollset, 32, pool, 0,
+                                 APR_POLLSET_SELECT);
+#else
     status = apr_pollset_create(&pollset, 32, pool, 0);
+#endif
+
     if (status != APR_SUCCESS)
         return status;
 
