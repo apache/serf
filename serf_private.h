@@ -36,6 +36,7 @@
 #define SSL_MSG_VERBOSE 0  /* logs decrypted requests and responses. */
 #define SOCK_VERBOSE 0
 #define SOCK_MSG_VERBOSE 0 /* logs bytes received from or written to a socket. */
+#define CONN_VERBOSE 0
 
 
 typedef struct serf__authn_scheme_t serf__authn_scheme_t;

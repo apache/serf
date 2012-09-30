@@ -105,6 +105,10 @@ static apr_status_t handle_response(serf_request_t *request,
         request->conn->stream = NULL;
         ctx = NULL;
 
+        serf__log(CONN_VERBOSE, __FILE__,
+                  "successfully set up ssl tunnel on connection 0x%x\n",
+                  request->conn);
+
         return APR_EOF;
     }
 
@@ -168,6 +172,8 @@ apr_status_t serf__ssltunnel_connect(serf_connection_t *conn)
                                             ctx);
 
     conn->state = SERF_CONN_SETUP_SSLTUNNEL;
+    serf__log(CONN_VERBOSE, __FILE__,
+              "setting up ssl tunnel on connection 0x%x\n", conn);
 
     return APR_SUCCESS;
 }
