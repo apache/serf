@@ -939,6 +939,20 @@ static void init_ssl_libraries(void)
 #if APR_HAS_THREADS
         int i, numlocks;
 #endif
+
+#ifdef SSL_VERBOSE
+        /* Warn when compile-time and run-time version of OpenSSL differ in
+           major/minor version number. */
+        long libver = SSLeay();
+
+        if ((libver ^ OPENSSL_VERSION_NUMBER) & 0xFFF00000) {
+            serf__log(SSL_VERBOSE, __FILE__,
+                      "Warning: OpenSSL library version mismatch, compile-time "
+                      "was %lx, runtime is %lx.\n",
+                      OPENSSL_VERSION_NUMBER, libver);
+        }
+#endif
+
         CRYPTO_malloc_init();
         ERR_load_crypto_strings();
         SSL_load_error_strings();
