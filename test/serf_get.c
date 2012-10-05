@@ -68,6 +68,18 @@ static apr_status_t ignore_all_cert_errors(void *data, int failures,
     return APR_SUCCESS;
 }
 
+static char *
+convert_organisation_to_str(apr_hash_t *org, apr_pool_t *pool)
+{
+    return apr_psprintf(pool, "%s, %s, %s, %s, %s (%s)",
+                        (char*)apr_hash_get(org, "OU", APR_HASH_KEY_STRING),
+                        (char*)apr_hash_get(org, "O", APR_HASH_KEY_STRING),
+                        (char*)apr_hash_get(org, "L", APR_HASH_KEY_STRING),
+                        (char*)apr_hash_get(org, "ST", APR_HASH_KEY_STRING),
+                        (char*)apr_hash_get(org, "C", APR_HASH_KEY_STRING),
+                        (char*)apr_hash_get(org, "E", APR_HASH_KEY_STRING));
+}
+
 static apr_status_t print_certs(void *data, int failures, int error_depth,
                                 const serf_ssl_certificate_t * const * certs,
                                 apr_size_t certs_len)
@@ -86,8 +98,34 @@ static apr_status_t print_certs(void *data, int failures, int error_depth,
         fprintf(stderr, "Chain provided with depth=%d\n", error_depth);
 
     while ((current = *certs) != NULL)
-    {   
+    {
+        apr_hash_t *issuer, *subject, *serf_cert;
+        apr_array_header_t *san;
+
+        subject = serf_ssl_cert_subject(current, pool);
+        issuer = serf_ssl_cert_issuer(current, pool);
+        serf_cert = serf_ssl_cert_certificate(current, pool);
+        
         fprintf(stderr, "\n-----BEGIN CERTIFICATE-----\n");
+        fprintf(stderr, "Hostname: %s\n",
+                (const char *)apr_hash_get(subject, "CN", APR_HASH_KEY_STRING));
+        fprintf(stderr, "Sha1: %s\n",
+                (const char *)apr_hash_get(serf_cert, "sha1", APR_HASH_KEY_STRING));
+        fprintf(stderr, "Valid from: %s\n",
+                (const char *)apr_hash_get(serf_cert, "notBefore", APR_HASH_KEY_STRING));
+        fprintf(stderr, "Valid until: %s\n",
+                (const char *)apr_hash_get(serf_cert, "notAfter", APR_HASH_KEY_STRING));
+        fprintf(stderr, "Issuer: %s\n", convert_organisation_to_str(issuer, pool));
+
+        san = apr_hash_get(serf_cert, "subjectAltName", APR_HASH_KEY_STRING);
+        if (san) {
+            int i;
+            for (i = 0; i < san->nelts; i++) {
+                char *s = APR_ARRAY_IDX(san, i, char*);
+                fprintf(stderr, "SubjectAltName: %s\n", s);
+            }
+        }
+
         fprintf(stderr, "%s\n", serf_ssl_cert_export(current, pool));
         fprintf(stderr, "-----END CERTIFICATE-----\n");
         ++certs;
