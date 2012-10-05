@@ -462,6 +462,9 @@ validate_server_certificate(int cert_valid, X509_STORE_CTX *store_ctx)
             case X509_V_ERR_INVALID_CA:
                     failures |= SERF_SSL_CERT_UNKNOWNCA;
                     break;
+            case X509_V_ERR_CERT_REVOKED:
+                    failures |= SERF_SSL_CERT_REVOKED;
+                    break;
             default:
                     failures |= SERF_SSL_CERT_UNKNOWN_FAILURE;
                     break;

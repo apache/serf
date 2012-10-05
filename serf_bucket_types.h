@@ -471,6 +471,7 @@ serf_bucket_t *serf_bucket_limit_create(
 #define SERF_SSL_CERT_UNKNOWNCA         4
 #define SERF_SSL_CERT_SELF_SIGNED       8
 #define SERF_SSL_CERT_UNKNOWN_FAILURE  16
+#define SERF_SSL_CERT_REVOKED          32
 
 extern const serf_bucket_type_t serf_bucket_type_ssl_encrypt;
 #define SERF_BUCKET_IS_SSL_ENCRYPT(b) SERF_BUCKET_CHECK((b), ssl_encrypt)
