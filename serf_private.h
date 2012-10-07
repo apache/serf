@@ -32,7 +32,7 @@
 
 /* Internal logging facilities, set flag to 1 to enable console logging for
    the selected component. */
-#define SSL_VERBOSE 0	
+#define SSL_VERBOSE 0
 #define SSL_MSG_VERBOSE 0  /* logs decrypted requests and responses. */
 #define SOCK_VERBOSE 0
 #define SOCK_MSG_VERBOSE 0 /* logs bytes received from or written to a socket. */
@@ -353,8 +353,20 @@ apr_status_t serf__conn_update_pollset(serf_connection_t *conn);
 /* from ssltunnel.c */
 apr_status_t serf__ssltunnel_connect(serf_connection_t *conn);
 
-/* Logging funcion. Use one of the [COMP]_VERBOSE flags to enable specific
-   logging. */
+
+/** Logging functions. Use one of the [COMP]_VERBOSE flags to enable specific
+    logging. 
+ **/
+
+/* Logs a standard event, with filename & timestamp header */
 void serf__log(int verbose_flag, const char *filename, const char *fmt, ...);
+
+/* Logs a standard event, but without prefix. This is useful to build up
+ log lines in parts. */
+void serf__log_nopref(int verbose_flag, const char *fmt, ...);
+
+/* Logs a socket event, add local and remote ip address:port */
+void serf__log_skt(int verbose_flag, const char *filename, apr_socket_t *skt,
+                   const char *fmt, ...);
 
 #endif
