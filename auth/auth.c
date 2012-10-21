@@ -163,12 +163,18 @@ static int handle_auth_header(void *baton,
        Note that we don't reuse the auth scheme stored in the context,
        as that may have changed. (ex. fallback from ntlm to basic.) */
     for (scheme = serf_authn_schemes; scheme->code != 0; ++scheme) {
-        if (ab->code == scheme->code &&
-            strcmp(auth_name, scheme->name) == 0 &&
-            ctx->authn_types & scheme->type) {
+        if (! (ab->code == scheme->code &&
+               ctx->authn_types & scheme->type))
+            continue;
+
+        serf__log_skt(AUTH_VERBOSE, __FILE__, conn->skt,
+                      "Client supports: %s\n", scheme->name);
+        if (strcmp(auth_name, scheme->name) == 0) {
             serf__auth_handler_func_t handler = scheme->handle_func;
             apr_status_t status = 0;
 
+            serf__log_skt(AUTH_VERBOSE, __FILE__, conn->skt,
+                          "... matched: %s\n", scheme->name);
             /* If this is the first time we use this scheme on this connection,
                make sure to initialize the authentication handler first. */
             if (ab->code == 401 && ctx->authn_info.scheme != scheme) {
@@ -254,6 +260,9 @@ static apr_status_t dispatch_auth(int code,
         if (!auth_hdr) {
             return SERF_ERROR_AUTHN_FAILED;
         }
+        serf__log_skt(AUTH_VERBOSE, __FILE__, request->conn->skt,
+                      "%s authz required. Response header(s): %s\n",
+                      code == 401 ? "Server" : "Proxy", auth_hdr);
 
         /* Iterate over all headers. Try to find a matching authentication scheme
            handler.

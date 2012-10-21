@@ -1277,6 +1277,13 @@ void serf_connection_set_max_outstanding_requests(
     serf_connection_t *conn,
     unsigned int max_requests)
 {
+    if (max_requests == 0)
+        serf__log_skt(CONN_VERBOSE, __FILE__, conn->skt,
+                      "Set max. nr of requests for this connection to unlimited.\n");
+    else
+        serf__log_skt(CONN_VERBOSE, __FILE__, conn->skt,
+                      "Limit max. nr of requests for this connection to %u.\n", max_requests);
+
     conn->max_outstanding_requests = max_requests;
 }
 

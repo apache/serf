@@ -13,6 +13,8 @@
  * limitations under the License.
  */
 
+#include "serf.h"
+#include "serf_private.h"
 #include "auth_kerb.h"
 
 #ifdef SERF_USE_GSSAPI
@@ -27,6 +29,40 @@ struct serf__kerb_context_t
     /* Mechanism used to authenticate, should be Kerberos. */
     gss_OID gss_mech;
 };
+
+static void
+log_error(int verbose_flag, const char *filename,
+          serf__kerb_context_t *ctx,
+          OM_uint32 err_maj_stat,
+          OM_uint32 err_min_stat,
+          const char *msg)
+{
+    OM_uint32 maj_stat, min_stat;
+    gss_buffer_desc stat_buff;
+    OM_uint32 msg_ctx = 0;
+
+    if (verbose_flag) {
+        maj_stat = gss_display_status(&min_stat,
+                                      err_maj_stat,
+                                      GSS_C_GSS_CODE,
+                                      ctx->gss_mech,
+                                      &msg_ctx,
+                                      &stat_buff);
+        if (maj_stat == GSS_S_COMPLETE ||
+            maj_stat == GSS_S_FAILURE) {
+            maj_stat = gss_display_status(&min_stat,
+                                          err_min_stat,
+                                          GSS_C_MECH_CODE,
+                                          ctx->gss_mech,
+                                          &msg_ctx,
+                                          &stat_buff);
+        }
+
+        serf__log(verbose_flag, filename,
+                  "%s (%x,%d): %s\n", msg,
+                  err_maj_stat, err_min_stat, stat_buff.value);
+    }
+}
 
 /* Cleans the GSS context object, when the pool used to create it gets
    cleared or destroyed. */
@@ -96,7 +132,9 @@ serf__kerb_init_sec_context(serf__kerb_context_t *ctx,
     /* Get the name for the HTTP service at the target host. */
     bufdesc.value = apr_pstrcat(scratch_pool, service, "@", hostname, NULL);
     bufdesc.length = strlen(bufdesc.value);
-    gss_maj_stat = gss_import_name (&gss_min_stat, &bufdesc, GSS_C_NT_HOSTBASED_SERVICE,
+    serf__log(AUTH_VERBOSE, __FILE__, "Get principal for %s\n", bufdesc.value);
+    gss_maj_stat = gss_import_name (&gss_min_stat, &bufdesc,
+                                    GSS_C_NT_HOSTBASED_SERVICE,
                                     &host_gss_name);
     if(GSS_ERROR(gss_maj_stat)) {
         return APR_EGENERAL;
@@ -139,6 +177,9 @@ serf__kerb_init_sec_context(serf__kerb_context_t *ctx,
     case GSS_S_CONTINUE_NEEDED:
         return APR_EAGAIN;
     default:
+        log_error(AUTH_VERBOSE, __FILE__, ctx,
+                  gss_maj_stat, gss_min_stat,
+                  "Error during Kerberos handshake");
         return APR_EGENERAL;
     }
 }

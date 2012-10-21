@@ -225,8 +225,11 @@ do_auth(int code,
 
     /* If the handshake is finished tell serf it can send as much requests as it
        likes. */
-    if (gss_info->state == gss_api_auth_completed)
+    if (gss_info->state == gss_api_auth_completed) {
+        serf__log_skt(AUTH_VERBOSE, __FILE__, conn->skt,
+                      "Kerberos authz completed.\n");
         serf_connection_set_max_outstanding_requests(conn, 0);
+    }
 
     return APR_SUCCESS;
 }
@@ -267,6 +270,9 @@ serf__init_kerb_connection(int code,
 
     /* Make serf send the initial requests one by one */
     serf_connection_set_max_outstanding_requests(conn, 1);
+
+    serf__log_skt(AUTH_VERBOSE, __FILE__, conn->skt,
+                  "Initialized Kerberos context for this connection.\n");
 
     return APR_SUCCESS;
 }
