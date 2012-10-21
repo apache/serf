@@ -45,10 +45,6 @@ opts.AddVariables(
                "Path to OpenSSL's install area",
                '/usr',
                PathVariable.PathIsDir),
-  PathVariable('GSSAPI',
-               "Path to GSSAPI's install area",
-               None,
-               None),
   )
 
 match = re.search('SERF_MAJOR_VERSION ([0-9]+).*'
@@ -132,11 +128,6 @@ apu = str(env['APU'])
 if os.path.isdir(apu):
   apu = os.path.join(apu, 'bin', 'apu-1-config')
   env['APU'] = apu
-gssapi = env.get('GSSAPI', None)
-if gssapi and os.path.isdir(str(gssapi)):
-  gssapi = os.path.join(gssapi, 'bin', 'krb5-config')
-  env['GSSAPI'] = gssapi
-
 Help(opts.GenerateHelpText(env))
 opts.Save(SAVED_CONFIG, env)
 
@@ -159,11 +150,6 @@ env.ParseConfig('$APR --cflags --cppflags --ldflags --includes'
                 ' --link-ld --libs')
 env.ParseConfig('$APU --ldflags --includes --link-ld --libs')
 
-# If build with gssapi, get its information and define SERF_HAVE_GSSAPI
-if gssapi:
-    env.ParseConfig('$GSSAPI --libs gssapi')
-    env.Append(CFLAGS='-DSERF_HAVE_GSSAPI')
-
 ### there is probably a better way to run/capture output.
 ### env.ParseConfig() may be handy for getting this stuff into the build
 apr_libs = os.popen(env.subst('$APR --link-libtool --libs')).read().strip()
@@ -177,7 +163,6 @@ if sys.platform == 'sunos5':
     env.Append(LINKFLAGS=link_rpath(d))
 
 # Set up the construction of serf-*.pc
-# TODO: add gssapi libs
 pkgconfig = env.Textfile('serf-%d.pc' % (MAJOR,),
                          env.File('build/serf.pc.in'),
                          SUBST_DICT = {
