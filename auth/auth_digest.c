@@ -458,6 +458,9 @@ serf__validate_response_digest_auth(int code,
         const char *ha2, *tmp, *resp_hdr_hex;
         unsigned char resp_hdr[APR_MD5_DIGESTSIZE];
 
+        /* ### TODO: conn->host_info.path can be NULL, and is definitely not
+           ### filled in.
+         */
         ha2 = build_digest_ha2(conn->host_info.path, "", qop, pool);
         tmp = apr_psprintf(pool, "%s:%s:%s:%s:%s:%s",
                            digest_info->ha1, digest_info->nonce, nc_str,

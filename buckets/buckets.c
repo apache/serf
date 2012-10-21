@@ -556,7 +556,7 @@ void serf__log(int verbose_flag, const char *filename, const char *fmt, ...)
     va_list argp;
 
     if (verbose_flag) {
-        log_time(filename);
+        log_time();
 
         if (filename)
             fprintf(stderr, "%s: ", filename);
@@ -585,7 +585,7 @@ void serf__log_skt(int verbose_flag, const char *filename, apr_socket_t *skt,
 
     if (verbose_flag) {
         apr_sockaddr_t *sa;
-        log_time(filename);
+        log_time();
 
         /* Log local and remote ip address:port */
         fprintf(stderr, "[l:");
