@@ -211,9 +211,17 @@ do_auth(int code,
     if (!token && gss_info->state != gss_api_auth_not_started)
         return APR_SUCCESS;
 
-    status = gss_api_get_credentials(token, token_len, conn->host_info.hostname,
-                                     &tmp, &tmp_len,
-                                     gss_info);
+    if (code == 401) {
+        status = gss_api_get_credentials(token, token_len, conn->host_info.hostname,
+                                         &tmp, &tmp_len,
+                                         gss_info);
+    } else {
+        char *proxy_host;
+        apr_getnameinfo(&proxy_host, conn->ctx->proxy_address, 0);
+        status = gss_api_get_credentials(token, token_len, proxy_host,
+                                         &tmp, &tmp_len,
+                                         gss_info);
+    }
     if (status)
         return status;
 
