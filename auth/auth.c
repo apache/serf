@@ -364,20 +364,28 @@ apr_status_t serf__handle_auth_response(int *consumed_response,
         serf__validate_response_func_t validate_resp;
         serf_connection_t *conn = request->conn;
         serf_context_t *ctx = conn->ctx;
-
+        apr_status_t resp_status = APR_SUCCESS;
+        
         if (ctx->authn_info.scheme) {
             validate_resp = ctx->authn_info.scheme->validate_response_func;
-            status = validate_resp(HOST, sl.code, conn, request, response,
-                                   pool);
-            if (status)
-                return status;
+            resp_status = validate_resp(HOST, sl.code, conn, request, response,
+                                        pool);
         }
-        if (ctx->proxy_authn_info.scheme) {
+        if (!status && ctx->proxy_authn_info.scheme) {
             validate_resp = ctx->proxy_authn_info.scheme->validate_response_func;
-            status = validate_resp(PROXY, sl.code, conn, request, response,
-                                   pool);
-            if (status)
+            resp_status = validate_resp(PROXY, sl.code, conn, request, response,
+                                        pool);
+        }
+        if (resp_status) {
+            /* If there was an error in the final step of the authentication,
+               consider the reponse body as invalid and discard it. */
+            status = discard_body(response);
+            *consumed_response = 1;
+            if (!APR_STATUS_IS_EOF(status)) {
                 return status;
+            }
+            /* The whole body was discarded, now return our error. */
+            return resp_status;
         }
     }
 
