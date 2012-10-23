@@ -172,14 +172,14 @@ gss_api_get_credentials(char *token, apr_size_t token_len,
    code and use the resulting Server Ticket  on the next request to the
    server. */
 static apr_status_t
-do_auth(int code,
+do_auth(peer_t peer,
         gss_authn_info_t *gss_info,
         serf_connection_t *conn,
         const char *auth_hdr,
         apr_pool_t *pool)
 {
     serf_context_t *ctx = conn->ctx;
-    serf__authn_info_t *authn_info = (code == 401) ? &ctx->authn_info :
+    serf__authn_info_t *authn_info = (peer == HOST) ? &ctx->authn_info :
         &ctx->proxy_authn_info;
     const char *tmp = NULL;
     char *token = NULL;
@@ -211,8 +211,9 @@ do_auth(int code,
     if (!token && gss_info->state != gss_api_auth_not_started)
         return APR_SUCCESS;
 
-    if (code == 401) {
-        status = gss_api_get_credentials(token, token_len, conn->host_info.hostname,
+    if (peer == HOST) {
+        status = gss_api_get_credentials(token, token_len,
+                                         conn->host_info.hostname,
                                          &tmp, &tmp_len,
                                          gss_info);
     } else {
@@ -225,11 +226,15 @@ do_auth(int code,
     if (status)
         return status;
 
-    serf__encode_auth_header(&gss_info->value, authn_info->scheme->name,
-                             tmp,
-                             tmp_len,
-                             pool);
-    gss_info->header = (code == 401) ? "Authorization" : "Proxy-Authorization";
+    /* On the next request, add an Authorization header. */
+    if (tmp_len) {
+        serf__encode_auth_header(&gss_info->value, authn_info->scheme->name,
+                                 tmp,
+                                 tmp_len,
+                                 pool);
+        gss_info->header = (peer == HOST) ?
+            "Authorization" : "Proxy-Authorization";
+    }
 
     /* If the handshake is finished tell serf it can send as much requests as it
        likes. */
@@ -299,7 +304,7 @@ serf__handle_kerb_auth(int code,
     gss_authn_info_t *gss_info = (code == 401) ? conn->authn_baton :
         conn->proxy_authn_baton;
 
-    return do_auth(code,
+    return do_auth(code == 401 ? HOST : PROXY,
                    gss_info,
                    request->conn,
                    auth_hdr,
@@ -336,22 +341,27 @@ serf__setup_request_kerb_auth(int code,
  * data which should be validated by the client (mutual authentication).
  */
 apr_status_t
-serf__validate_response_kerb_auth(int code,
-                                    serf_connection_t *conn,
-                                    serf_request_t *request,
-                                    serf_bucket_t *response,
-                                    apr_pool_t *pool)
+serf__validate_response_kerb_auth(peer_t peer,
+                                  int code,
+                                  serf_connection_t *conn,
+                                  serf_request_t *request,
+                                  serf_bucket_t *response,
+                                  apr_pool_t *pool)
 {
-    gss_authn_info_t *gss_info = (code == 401) ? conn->authn_baton :
-        conn->proxy_authn_baton;
+    gss_authn_info_t *gss_info;
     serf_bucket_t *hdrs;
     const char *auth_hdr;
 
     hdrs = serf_bucket_response_get_headers(response);
-    auth_hdr = serf_bucket_headers_get(hdrs, "WWW-Authenticate");
-
+    if (peer == HOST) {
+        gss_info = conn->authn_baton;
+        auth_hdr = serf_bucket_headers_get(hdrs, "WWW-Authenticate");
+    } else {
+        gss_info = conn->proxy_authn_baton;
+        auth_hdr = serf_bucket_headers_get(hdrs, "Proxy-Authenticate");
+    }
     if (gss_info->state != gss_api_auth_completed) {
-        return do_auth(code,
+        return do_auth(peer,
                        gss_info,
                        conn,
                        auth_hdr,

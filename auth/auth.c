@@ -22,7 +22,8 @@
 #include <apr_strings.h>
 
 static apr_status_t
-default_auth_response_handler(int code,
+default_auth_response_handler(peer_t peer,
+                              int code,
                               serf_connection_t *conn,
                               serf_request_t *request,
                               serf_bucket_t *response,
@@ -91,6 +92,7 @@ static const serf__authn_scheme_t serf_authn_schemes[] = {
         serf__init_kerb_connection,
         serf__handle_kerb_auth,
         serf__setup_request_kerb_auth,
+        serf__validate_response_kerb_auth,
     },
 #endif
     /* ADD NEW AUTHENTICATION IMPLEMENTATIONS HERE (as they're written) */
@@ -292,9 +294,6 @@ static apr_status_t dispatch_auth(int code,
             /* No matching authentication found. */
             return SERF_ERROR_AUTHN_NOT_SUPPORTED;
         }
-    } else {
-        /* Validate the response authn headers if needed. */
-
     }
 
     return APR_SUCCESS;
@@ -360,6 +359,26 @@ apr_status_t serf__handle_auth_response(int *consumed_response,
                                                 request->setup_baton);
 
         return APR_EOF;
+    } else {
+        /* Validate the response authn headers if needed. */
+        serf__validate_response_func_t validate_resp;
+        serf_connection_t *conn = request->conn;
+        serf_context_t *ctx = conn->ctx;
+
+        if (ctx->authn_info.scheme) {
+            validate_resp = ctx->authn_info.scheme->validate_response_func;
+            status = validate_resp(HOST, sl.code, conn, request, response,
+                                   pool);
+            if (status)
+                return status;
+        }
+        if (ctx->proxy_authn_info.scheme) {
+            validate_resp = ctx->proxy_authn_info.scheme->validate_response_func;
+            status = validate_resp(PROXY, sl.code, conn, request, response,
+                                   pool);
+            if (status)
+                return status;
+        }
     }
 
     return APR_SUCCESS;

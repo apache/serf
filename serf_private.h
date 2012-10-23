@@ -236,6 +236,8 @@ struct serf_connection_t {
 
 /*** Authentication handler declarations ***/
 
+typedef enum { PROXY, HOST } peer_t;
+
 /**
  * For each authentication scheme we need a handler function of type
  * serf__auth_handler_func_t. This function will be called when an
@@ -289,7 +291,8 @@ typedef apr_status_t
  * (if needed).
  */
 typedef apr_status_t
-(*serf__validate_response_func_t)(int code,
+(*serf__validate_response_func_t)(peer_t peer,
+                                  int code,
                                   serf_connection_t *conn,
                                   serf_request_t *request,
                                   serf_bucket_t *response,

@@ -390,7 +390,8 @@ serf__setup_request_digest_auth(int code,
 }
 
 apr_status_t
-serf__validate_response_digest_auth(int code,
+serf__validate_response_digest_auth(peer_t peer,
+                                    int code,
                                     serf_connection_t *conn,
                                     serf_request_t *request,
                                     serf_bucket_t *response,
@@ -403,13 +404,13 @@ serf__validate_response_digest_auth(int code,
     const char *qop = NULL;
     const char *nc_str = NULL;
     serf_bucket_t *hdrs;
-    digest_authn_info_t *digest_info = (code == 401) ? conn->authn_baton :
+    digest_authn_info_t *digest_info = (peer == HOST) ? conn->authn_baton :
         conn->proxy_authn_baton;
 
     hdrs = serf_bucket_response_get_headers(response);
 
     /* Need a copy cuz we're going to write NUL characters into the string.  */
-    if (code == 401)
+    if (peer == HOST)
         auth_attr = apr_pstrdup(pool,
             serf_bucket_headers_get(hdrs, "Authentication-Info"));
     else
