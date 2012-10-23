@@ -21,12 +21,24 @@
 #include <apr_strings.h>
 #include <gssapi/gssapi.h>
 
+
+/* This module can support all authentication mechanisms as provided by
+   the GSS-API implementation, but for now it only supports SPNEGO for
+   Negotiate.
+   SPNEGO can delegate authentication to Kerberos if supported by the
+   host. */
+
+#ifndef GSS_SPNEGO_MECHANISM
+static gss_OID_desc spnego_mech_oid = { 6, "\x2b\x06\x01\x05\x05\x02" };
+#define GSS_SPNEGO_MECHANISM &spnego_mech_oid
+#endif
+
 struct serf__kerb_context_t
 {
     /* GSSAPI context */
     gss_ctx_id_t gss_ctx;
 
-    /* Mechanism used to authenticate, should be Kerberos. */
+    /* Mechanism used to authenticate. */
     gss_OID gss_mech;
 };
 
@@ -102,7 +114,7 @@ serf__kerb_create_sec_context(serf__kerb_context_t **ctx_p,
     ctx = apr_pcalloc(result_pool, sizeof(*ctx));
 
     ctx->gss_ctx = GSS_C_NO_CONTEXT;
-    ctx->gss_mech = GSS_C_NO_OID;
+    ctx->gss_mech = GSS_SPNEGO_MECHANISM;
 
     apr_pool_cleanup_register(result_pool, ctx,
                               cleanup_ctx,
@@ -128,6 +140,7 @@ serf__kerb_init_sec_context(serf__kerb_context_t *ctx,
     OM_uint32 gss_min_stat, gss_maj_stat;
     gss_name_t host_gss_name;
     gss_buffer_desc bufdesc;
+    gss_OID dummy; /* unused */
 
     /* Get the name for the HTTP service at the target host. */
     bufdesc.value = apr_pstrcat(scratch_pool, service, "@", hostname, NULL);
@@ -158,7 +171,7 @@ serf__kerb_init_sec_context(serf__kerb_context_t *ctx,
          0,                         /* default validity period */
          GSS_C_NO_CHANNEL_BINDINGS, /* do not use channel bindings */
          &gss_input_buf,            /* server token, initially empty */
-         &ctx->gss_mech,            /* actual mech type */
+         &dummy,                    /* actual mech type */
          gss_output_buf_p,           /* output_token */
          NULL,                      /* ret_flags */
          NULL                       /* not interested in remaining validity */
