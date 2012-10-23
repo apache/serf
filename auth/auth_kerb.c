@@ -208,8 +208,12 @@ do_auth(peer_t peer,
 
        Note: as we set the max. transfer rate to one message at a time until the
        authentication cycle is finished, this check shouldn't be needed. */
-    if (!token && gss_info->state != gss_api_auth_not_started)
+    if (!token && gss_info->state != gss_api_auth_not_started) {
+        serf__log_skt(AUTH_VERBOSE, __FILE__, conn->skt,
+                      "We already started the Kerberos handshake, ignoring "\
+                      "response with initial authz header.\n");
         return APR_SUCCESS;
+    }
 
     if (peer == HOST) {
         status = gss_api_get_credentials(token, token_len,
