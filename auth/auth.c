@@ -371,7 +371,7 @@ apr_status_t serf__handle_auth_response(int *consumed_response,
             resp_status = validate_resp(HOST, sl.code, conn, request, response,
                                         pool);
         }
-        if (!status && ctx->proxy_authn_info.scheme) {
+        if (!resp_status && ctx->proxy_authn_info.scheme) {
             validate_resp = ctx->proxy_authn_info.scheme->validate_response_func;
             resp_status = validate_resp(PROXY, sl.code, conn, request, response,
                                         pool);
