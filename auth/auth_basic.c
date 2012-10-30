@@ -130,7 +130,8 @@ serf__init_basic_connection(int code,
 }
 
 apr_status_t
-serf__setup_request_basic_auth(int code,
+serf__setup_request_basic_auth(peer_t peer,
+                               int code,
                                serf_connection_t *conn,
                                const char *method,
                                const char *uri,
@@ -139,7 +140,7 @@ serf__setup_request_basic_auth(int code,
     serf_context_t *ctx = conn->ctx;
     basic_authn_info_t *authn_info;
 
-    if (code == 401) {
+    if (peer == HOST) {
         authn_info = ctx->authn_info.baton;
     } else {
         authn_info = ctx->proxy_authn_info.baton;

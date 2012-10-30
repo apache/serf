@@ -317,13 +317,14 @@ serf__handle_kerb_auth(int code,
 
 /* Setup the authn headers on this request message. */
 apr_status_t
-serf__setup_request_kerb_auth(int code,
+serf__setup_request_kerb_auth(peer_t peer,
+                              int code,
                               serf_connection_t *conn,
                               const char *method,
                               const char *uri,
                               serf_bucket_t *hdrs_bkt)
 {
-    gss_authn_info_t *gss_info = (code == 401) ? conn->authn_baton :
+    gss_authn_info_t *gss_info = (peer == HOST) ? conn->authn_baton :
         conn->proxy_authn_baton;
 
     if (gss_info && gss_info->header && gss_info->value) {

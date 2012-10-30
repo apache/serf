@@ -279,7 +279,8 @@ typedef apr_status_t
  * authentication headers (if needed).
  */
 typedef apr_status_t
-(*serf__setup_request_func_t)(int code,
+(*serf__setup_request_func_t)(peer_t peer,
+                              int code,
                               serf_connection_t *conn,
                               const char *method,
                               const char *uri,

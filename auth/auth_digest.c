@@ -358,13 +358,14 @@ serf__init_digest_connection(int code,
 }
 
 apr_status_t
-serf__setup_request_digest_auth(int code,
+serf__setup_request_digest_auth(peer_t peer,
+                                int code,
                                 serf_connection_t *conn,
                                 const char *method,
                                 const char *uri,
                                 serf_bucket_t *hdrs_bkt)
 {
-    digest_authn_info_t *digest_info = (code == 401) ? conn->authn_baton :
+    digest_authn_info_t *digest_info = (peer == HOST) ? conn->authn_baton :
         conn->proxy_authn_baton;
     apr_status_t status = APR_SUCCESS;
 
@@ -376,7 +377,7 @@ serf__setup_request_digest_auth(int code,
         status = apr_uri_parse(conn->pool, uri, &parsed_uri);
 
         /* Build a new Authorization header. */
-        digest_info->header = (code == 401) ? "Authorization" :
+        digest_info->header = (peer == HOST) ? "Authorization" :
             "Proxy-Authorization";
         value = build_auth_header(digest_info, parsed_uri.path, method,
                                   conn->pool);
