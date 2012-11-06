@@ -587,20 +587,22 @@ void serf__log_skt(int verbose_flag, const char *filename, apr_socket_t *skt,
         apr_sockaddr_t *sa;
         log_time();
 
-        /* Log local and remote ip address:port */
-        fprintf(stderr, "[l:");
-        if (apr_socket_addr_get(&sa, APR_LOCAL, skt) == APR_SUCCESS) {
-            char buf[32];
-            apr_sockaddr_ip_getbuf(buf, 32, sa);
-            fprintf(stderr, "%s:%d", buf, sa->port);
+        if (skt) {
+            /* Log local and remote ip address:port */
+            fprintf(stderr, "[l:");
+            if (apr_socket_addr_get(&sa, APR_LOCAL, skt) == APR_SUCCESS) {
+                char buf[32];
+                apr_sockaddr_ip_getbuf(buf, 32, sa);
+                fprintf(stderr, "%s:%d", buf, sa->port);
+            }
+            fprintf(stderr, " r:");
+            if (apr_socket_addr_get(&sa, APR_REMOTE, skt) == APR_SUCCESS) {
+                char buf[32];
+                apr_sockaddr_ip_getbuf(buf, 32, sa);
+                fprintf(stderr, "%s:%d", buf, sa->port);
+            }
+            fprintf(stderr, "] ");
         }
-        fprintf(stderr, " r:");
-        if (apr_socket_addr_get(&sa, APR_REMOTE, skt) == APR_SUCCESS) {
-            char buf[32];
-            apr_sockaddr_ip_getbuf(buf, 32, sa);
-            fprintf(stderr, "%s:%d", buf, sa->port);
-        }
-        fprintf(stderr, "] ");
 
         if (filename)
             fprintf(stderr, "%s: ", filename);
