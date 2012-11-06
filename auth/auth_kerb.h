@@ -94,6 +94,15 @@ serf__kerb_init_sec_context(serf__kerb_context_t *ctx,
                             apr_pool_t *result_pool
                             );
 
+/*
+ * Reset a previously created security context so we can start with a new one.
+ *
+ * This is triggered when the server requires per-request authentication,
+ * where each request requires a new security context.
+ */
+apr_status_t
+serf__kerb_reset_sec_context(serf__kerb_context_t *ctx);
+    
 #ifdef __cplusplus
 }
 #endif

@@ -126,6 +126,19 @@ serf__kerb_create_sec_context(serf__kerb_context_t **ctx_p,
 }
 
 apr_status_t
+serf__kerb_reset_sec_context(serf__kerb_context_t *ctx)
+{
+    OM_uint32 dummy_stat;
+
+    if (ctx->gss_ctx)
+        (void)gss_delete_sec_context(&dummy_stat, &ctx->gss_ctx,
+                                     GSS_C_NO_BUFFER);
+    ctx->gss_ctx = GSS_C_NO_CONTEXT;
+
+    return APR_SUCCESS;
+}
+
+apr_status_t
 serf__kerb_init_sec_context(serf__kerb_context_t *ctx,
                             const char *service,
                             const char *hostname,
@@ -143,6 +156,7 @@ serf__kerb_init_sec_context(serf__kerb_context_t *ctx,
     gss_OID dummy; /* unused */
 
     /* Get the name for the HTTP service at the target host. */
+    /* TODO: should be shared between multiple requests. */
     bufdesc.value = apr_pstrcat(scratch_pool, service, "@", hostname, NULL);
     bufdesc.length = strlen(bufdesc.value);
     serf__log(AUTH_VERBOSE, __FILE__, "Get principal for %s\n", bufdesc.value);
@@ -166,7 +180,7 @@ serf__kerb_init_sec_context(serf__kerb_context_t *ctx,
          GSS_C_NO_CREDENTIAL,       /* XXXXX claimant_cred_handle */
          &ctx->gss_ctx,              /* gssapi context handle */
          host_gss_name,             /* HTTP@server name */
-         ctx->gss_mech,             /* mech_type (0 ininitially */
+         ctx->gss_mech,             /* mech_type (SPNEGO) */
          GSS_C_MUTUAL_FLAG,         /* ensure the peer authenticates itself */
          0,                         /* default validity period */
          GSS_C_NO_CHANNEL_BINDINGS, /* do not use channel bindings */

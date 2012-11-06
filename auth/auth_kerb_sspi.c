@@ -116,6 +116,13 @@ get_canonical_hostname(const char **canonname,
 }
 
 apr_status_t
+serf__kerb_reset_sec_context(serf__kerb_context_t *ctx)
+{
+    /* TODO: implement! */
+    return APR_SUCCESS;
+}
+
+apr_status_t
 serf__kerb_init_sec_context(serf__kerb_context_t *ctx,
                             const char *service,
                             const char *hostname,
