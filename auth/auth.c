@@ -312,6 +312,8 @@ apr_status_t serf__handle_auth_response(int *consumed_response,
 
     *consumed_response = 0;
 
+    /* TODO: the response bucket was created by the application, not at all
+       guaranteed that this is of type response_bucket!! */
     status = serf_bucket_response_status(response, &sl);
     if (SERF_BUCKET_READ_ERROR(status)) {
         return status;
