@@ -82,6 +82,9 @@ typedef struct serf_request_t serf_request_t;
  * http-compliant syntax. */
 #define SERF_ERROR_BAD_HTTP_RESPONSE (APR_OS_START_USERERR + \
                                              SERF_ERROR_RANGE + 5)
+/* The server send less data than what was announced. */
+#define SERF_ERROR_TRUNCATED_HTTP_RESPONSE (APR_OS_START_USERERR + \
+                                             SERF_ERROR_RANGE + 6)
 
 /* SSL certificates related errors */
 #define SERF_ERROR_SSL_CERT_FAILED (APR_OS_START_USERERR + SERF_ERROR_RANGE + 70)
@@ -105,7 +108,8 @@ typedef struct serf_request_t serf_request_t;
 /* This macro groups errors potentially raised when reading a http response.  */
 #define SERF_BAD_RESPONSE_ERROR(status) ((status) \
     && ((SERF_ERROR_DECOMPRESSION_FAILED == (status)) \
-        ||(SERF_ERROR_BAD_HTTP_RESPONSE == (status))))
+        ||(SERF_ERROR_BAD_HTTP_RESPONSE == (status)) \
+        ||(SERF_ERROR_TRUNCATED_HTTP_RESPONSE == (status))))
 
 /**
  * Return a string that describes the specified error code.

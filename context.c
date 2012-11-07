@@ -360,6 +360,8 @@ const char *serf_error_string(apr_status_t errcode)
         return "An error occurred during decompression";
     case SERF_ERROR_BAD_HTTP_RESPONSE:
         return "The server sent an improper HTTP response";
+    case SERF_ERROR_TRUNCATED_HTTP_RESPONSE:
+        return "The server sent a truncated HTTP response body.";
     case SERF_ERROR_SSL_COMM_FAILED:
         return "An error occurred during SSL communication";
     case SERF_ERROR_SSL_CERT_FAILED:

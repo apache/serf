@@ -409,6 +409,47 @@ static void test_aggregate_buckets(CuTest *tc)
     test_teardown(test_pool);
 }
 
+/* Test for issue: the server aborts the connection in the middle of
+   streaming the response. Test that we get a decent error code from the
+   response bucket instead of APR_EOF. */
+static void test_response_bucket_too_small(CuTest *tc)
+{
+    serf_bucket_t *bkt, *tmp;
+    apr_pool_t *test_pool = test_setup();
+    serf_bucket_alloc_t *alloc = serf_bucket_allocator_create(test_pool, NULL,
+                                                              NULL);
+
+    /* Make a response of 60 bytes, but set the Content-Length to 100. */
+#define BODY "12345678901234567890"\
+             "12345678901234567890"\
+             "12345678901234567890"
+
+    tmp = SERF_BUCKET_SIMPLE_STRING("HTTP/1.1 200 OK" CRLF
+                                    "Content-Type: text/plain" CRLF
+                                    "Content-Length: 100" CRLF
+                                    CRLF
+                                    BODY,
+                                    alloc);
+    
+    bkt = serf_bucket_response_create(tmp, alloc);
+
+    {
+        const char *data;
+        apr_size_t len;
+        apr_status_t status;
+
+        status = serf_bucket_read(bkt, SERF_READ_ALL_AVAIL, &data, &len);
+
+        CuAssert(tc, "Read more data than expected.",
+                 strlen(BODY) >= len);
+        CuAssert(tc, "Read data is not equal to expected.",
+                 strncmp(BODY, data, len) == 0);
+        CuAssert(tc, "Error expected due to response body too short!",
+                 SERF_BUCKET_READ_ERROR(status));
+        CuAssertIntEquals(tc, SERF_ERROR_TRUNCATED_HTTP_RESPONSE, status);
+    }
+}
+
 CuSuite *test_buckets(void)
 {
     CuSuite *suite = CuSuiteNew();
@@ -420,6 +461,7 @@ CuSuite *test_buckets(void)
     SUITE_ADD_TEST(suite, test_bucket_header_set);
     SUITE_ADD_TEST(suite, test_iovec_buckets);
     SUITE_ADD_TEST(suite, test_aggregate_buckets);
+    SUITE_ADD_TEST(suite, test_response_bucket_too_small);
 
     return suite;
 }
