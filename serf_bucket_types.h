@@ -85,6 +85,8 @@ serf_bucket_t *serf_bucket_response_create(
 #define SERF_HTTP_VERSION(major, minor)  ((major) * 1000 + (minor))
 #define SERF_HTTP_11 SERF_HTTP_VERSION(1, 1)
 #define SERF_HTTP_10 SERF_HTTP_VERSION(1, 0)
+#define SERF_HTTP_VERSION_MAJOR(shv) ((int)shv / 1000)
+#define SERF_HTTP_VERSION_MINOR(shv) ((int)shv % 1000)
 
 typedef struct {
     int version;
