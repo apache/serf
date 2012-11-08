@@ -133,6 +133,10 @@ static apr_status_t serf_dechunk_read(serf_bucket_t *bucket,
             if (!ctx->body_left) {
                 ctx->state = STATE_TERM;
                 ctx->body_left = 2;     /* CRLF */
+            } else {
+                /* We need more data but there is no more available. */
+                if (APR_STATUS_IS_EOF(status))
+                    return SERF_ERROR_TRUNCATED_HTTP_RESPONSE;
             }
 
             /* Return the data we just read. */
