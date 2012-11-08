@@ -234,6 +234,18 @@ struct serf_connection_t {
     void *proxy_authn_baton;
 };
 
+/*** Internal bucket functions ***/
+
+/** Transform a response_bucket in-place into an aggregate bucket. Restore the
+    status line and all headers, not just the body.
+ 
+    This can only be used when we haven't started reading the body of the
+    response yet.
+ 
+    Keep internal for now, probably only useful within serf.
+ */
+apr_status_t serf_response_full_become_aggregate(serf_bucket_t *bucket);
+
 /*** Authentication handler declarations ***/
 
 typedef enum { PROXY, HOST } peer_t;

@@ -435,6 +435,39 @@ static apr_status_t serf_response_readline(serf_bucket_t *bucket,
     return serf_bucket_readline(ctx->body, acceptable, found, data, len);
 }
 
+apr_status_t serf_response_full_become_aggregate(serf_bucket_t *bucket)
+{
+    response_context_t *ctx = bucket->data;
+    serf_bucket_t *bkt;
+    char buf[256];
+    int size;
+
+    serf_bucket_aggregate_become(bucket);
+
+    /* Add reconstructed status line. */
+    size = snprintf(buf, 256, "HTTP/%d.%d %d ",
+                    SERF_HTTP_VERSION_MAJOR(ctx->sl.version),
+                    SERF_HTTP_VERSION_MINOR(ctx->sl.version),
+                    ctx->sl.code);
+    bkt = serf_bucket_simple_copy_create(buf, size,
+                                         bucket->allocator);
+    serf_bucket_aggregate_append(bucket, bkt);
+    bkt = serf_bucket_simple_copy_create(ctx->sl.reason, strlen(ctx->sl.reason),
+                                         bucket->allocator);
+    serf_bucket_aggregate_append(bucket, bkt);
+    bkt = SERF_BUCKET_SIMPLE_STRING_LEN("\r\n", 2,
+                                        bucket->allocator);
+    serf_bucket_aggregate_append(bucket, bkt);
+
+    /* Add headers and stream buckets in order. */
+    serf_bucket_aggregate_append(bucket, ctx->headers);
+    serf_bucket_aggregate_append(bucket, ctx->stream);
+
+    serf_bucket_mem_free(bucket->allocator, ctx);
+
+    return APR_SUCCESS;
+}
+
 /* ### need to implement */
 #define serf_response_peek NULL
 

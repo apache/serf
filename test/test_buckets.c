@@ -384,6 +384,44 @@ static void test_iovec_buckets(CuTest *tc)
     test_teardown(test_pool);
 }
 
+/* Construct a header bucket with some headers, and then read from it. */
+static void test_header_buckets(CuTest *tc)
+{
+    apr_status_t status;
+    apr_pool_t *test_pool = test_setup();
+    serf_bucket_alloc_t *alloc = serf_bucket_allocator_create(test_pool, NULL,
+                                                              NULL);
+    const char *cur;
+
+    serf_bucket_t *hdrs = serf_bucket_headers_create(alloc);
+    CuAssertTrue(tc, hdrs != NULL);
+
+    serf_bucket_headers_set(hdrs, "Content-Type", "text/plain");
+    serf_bucket_headers_set(hdrs, "Content-Length", "100");
+
+    /* Note: order not guaranteed, assume here that it's fifo. */
+    cur = "Content-Type: text/plain" CRLF
+          "Content-Length: 100" CRLF
+          CRLF
+          CRLF;
+    while (1) {
+        const char *data;
+        apr_size_t len;
+
+        status = serf_bucket_read(hdrs, SERF_READ_ALL_AVAIL, &data, &len);
+        CuAssert(tc, "Unexpected error when waiting for response headers",
+                 !SERF_BUCKET_READ_ERROR(status));
+        if (SERF_BUCKET_READ_ERROR(status) ||
+            APR_STATUS_IS_EOF(status))
+            break;
+
+        /* Check that the bytes read match with expected at current position. */
+        CuAssertStrnEquals(tc, cur, len, data);
+        cur += len;
+    }
+    CuAssertIntEquals(tc, APR_EOF, status);
+}
+
 static void test_aggregate_buckets(CuTest *tc)
 {
     apr_status_t status;
@@ -450,6 +488,74 @@ static void test_response_bucket_too_small(CuTest *tc)
     }
 }
 
+static void test_response_bucket_peek_at_headers(CuTest *tc)
+{
+    apr_pool_t *test_pool = test_setup();
+    serf_bucket_t *resp_bkt1, *resp_bkt2, *tmp, *hdrs;
+    serf_status_line sl;
+    serf_bucket_alloc_t *alloc = serf_bucket_allocator_create(test_pool, NULL,
+                                                              NULL);
+    const char *hdr_val, *cur;
+    apr_status_t status;
+
+#define EXP_RESPONSE "HTTP/1.1 200 OK" CRLF\
+                     "Content-Type: text/plain" CRLF\
+                     "Content-Length: 100" CRLF\
+                     CRLF\
+                     "12345678901234567890"\
+                     "12345678901234567890"\
+                     "12345678901234567890"
+
+    tmp = SERF_BUCKET_SIMPLE_STRING(EXP_RESPONSE,
+                                    alloc);
+
+    resp_bkt1 = serf_bucket_response_create(tmp, alloc);
+
+    status = serf_bucket_response_status(resp_bkt1, &sl);
+    CuAssertIntEquals(tc, 200, sl.code);
+    CuAssertStrEquals(tc, "OK", sl.reason);
+    CuAssertIntEquals(tc, SERF_HTTP_11, sl.version);
+    
+    /* Ensure that the status line & headers are read in the response_bucket. */
+    status = serf_bucket_response_wait_for_headers(resp_bkt1);
+    CuAssert(tc, "Unexpected error when waiting for response headers",
+             !SERF_BUCKET_READ_ERROR(status));
+
+    hdrs = serf_bucket_response_get_headers(resp_bkt1);
+    CuAssertPtrNotNull(tc, hdrs);
+
+    hdr_val = serf_bucket_headers_get(hdrs, "Content-Type");
+    CuAssertStrEquals(tc, "text/plain", hdr_val);
+    hdr_val = serf_bucket_headers_get(hdrs, "Content-Length");
+    CuAssertStrEquals(tc, "100", hdr_val);
+
+    /* Create a new bucket for the response which still has the original
+       status line & headers. */
+
+    status = serf_response_full_become_aggregate(resp_bkt1);
+    CuAssertIntEquals(tc, APR_SUCCESS, status);
+    cur = EXP_RESPONSE;
+
+    while (1) {
+        const char *data;
+        apr_size_t len;
+        apr_status_t status;
+
+        status = serf_bucket_read(resp_bkt1, SERF_READ_ALL_AVAIL, &data, &len);
+        CuAssert(tc, "Unexpected error when waiting for response headers",
+                 !SERF_BUCKET_READ_ERROR(status));
+        if (SERF_BUCKET_READ_ERROR(status) ||
+            APR_STATUS_IS_EOF(status))
+            break;
+
+        /* Check that the bytes read match with expected at current position. */
+        CuAssertStrnEquals(tc, cur, len, data);
+        cur += len;
+    }
+
+}
+
+
 CuSuite *test_buckets(void)
 {
     CuSuite *suite = CuSuiteNew();
@@ -458,10 +564,12 @@ CuSuite *test_buckets(void)
     SUITE_ADD_TEST(suite, test_response_bucket_read);
     SUITE_ADD_TEST(suite, test_response_bucket_headers);
     SUITE_ADD_TEST(suite, test_response_bucket_chunked_read);
+    SUITE_ADD_TEST(suite, test_response_bucket_too_small);
+    SUITE_ADD_TEST(suite, test_response_bucket_peek_at_headers);
     SUITE_ADD_TEST(suite, test_bucket_header_set);
     SUITE_ADD_TEST(suite, test_iovec_buckets);
     SUITE_ADD_TEST(suite, test_aggregate_buckets);
-    SUITE_ADD_TEST(suite, test_response_bucket_too_small);
+    SUITE_ADD_TEST(suite, test_header_buckets);
 
     return suite;
 }
