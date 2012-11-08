@@ -44,8 +44,8 @@ typedef struct {
 
     int check_length;           /* Indicates we need calculate # of bytes in the
                                    body and return error if it's too short. */
-    apr_size_t exp_body_len;    /* expected size of body, 0 if not known. */
-    apr_size_t actual_body_len; /* Keep track of actual bytes read from the body
+    apr_int64_t exp_body_len;    /* expected size of body, 0 if not known. */
+    apr_int64_t actual_body_len; /* Keep track of actual bytes read from the body
                                    to see if we received the full response. */
 } response_context_t;
 
