@@ -20,6 +20,9 @@
 #include "serf.h"
 #include "test_serf.h"
 
+/* test case has access to internal functions. */
+#include "serf_private.h"
+
 #define CRLF "\r\n"
 
 static void test_simple_bucket_readline(CuTest *tc)
@@ -450,7 +453,7 @@ static void test_aggregate_buckets(CuTest *tc)
 /* Test for issue: the server aborts the connection in the middle of
    streaming the response. Test that we get a decent error code from the
    response bucket instead of APR_EOF. */
-static void test_response_bucket_too_small(CuTest *tc)
+static void test_response_body_too_small_cl(CuTest *tc)
 {
     serf_bucket_t *bkt, *tmp;
     apr_pool_t *test_pool = test_setup();
@@ -487,11 +490,12 @@ static void test_response_bucket_too_small(CuTest *tc)
         CuAssertIntEquals(tc, SERF_ERROR_TRUNCATED_HTTP_RESPONSE, status);
     }
 }
+#undef BODY
 
 static void test_response_bucket_peek_at_headers(CuTest *tc)
 {
     apr_pool_t *test_pool = test_setup();
-    serf_bucket_t *resp_bkt1, *resp_bkt2, *tmp, *hdrs;
+    serf_bucket_t *resp_bkt1, *tmp, *hdrs;
     serf_status_line sl;
     serf_bucket_alloc_t *alloc = serf_bucket_allocator_create(test_pool, NULL,
                                                               NULL);
@@ -554,7 +558,7 @@ static void test_response_bucket_peek_at_headers(CuTest *tc)
     }
 
 }
-
+#undef EXP_RESPONSE
 
 CuSuite *test_buckets(void)
 {
@@ -564,7 +568,7 @@ CuSuite *test_buckets(void)
     SUITE_ADD_TEST(suite, test_response_bucket_read);
     SUITE_ADD_TEST(suite, test_response_bucket_headers);
     SUITE_ADD_TEST(suite, test_response_bucket_chunked_read);
-    SUITE_ADD_TEST(suite, test_response_bucket_too_small);
+    SUITE_ADD_TEST(suite, test_response_body_too_small_cl);
     SUITE_ADD_TEST(suite, test_response_bucket_peek_at_headers);
     SUITE_ADD_TEST(suite, test_bucket_header_set);
     SUITE_ADD_TEST(suite, test_iovec_buckets);
