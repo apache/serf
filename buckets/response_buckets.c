@@ -445,10 +445,10 @@ apr_status_t serf_response_full_become_aggregate(serf_bucket_t *bucket)
     serf_bucket_aggregate_become(bucket);
 
     /* Add reconstructed status line. */
-    size = snprintf(buf, 256, "HTTP/%d.%d %d ",
-                    SERF_HTTP_VERSION_MAJOR(ctx->sl.version),
-                    SERF_HTTP_VERSION_MINOR(ctx->sl.version),
-                    ctx->sl.code);
+    size = apr_snprintf(buf, 256, "HTTP/%d.%d %d ",
+                        SERF_HTTP_VERSION_MAJOR(ctx->sl.version),
+                        SERF_HTTP_VERSION_MINOR(ctx->sl.version),
+                        ctx->sl.code);
     bkt = serf_bucket_simple_copy_create(buf, size,
                                          bucket->allocator);
     serf_bucket_aggregate_append(bucket, bkt);
