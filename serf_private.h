@@ -232,6 +232,12 @@ struct serf_connection_t {
     /* connection and authentication scheme specific information */ 
     void *authn_baton;
     void *proxy_authn_baton;
+
+    /* Time marker when connection begins. */
+    apr_time_t connect_time;
+
+    /* Calculated connection latency. Negative value if latency is unknown. */
+    apr_interval_time_t latency;
 };
 
 /*** Internal bucket functions ***/

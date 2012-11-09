@@ -236,6 +236,10 @@ apr_status_t serf__open_connections(serf_context_t *ctx)
         /* Configured. Store it into the connection now. */
         conn->skt = skt;
 
+        /* Remember time when we started connecting to server to calculate
+           network latency. */
+        conn->connect_time = apr_time_now();
+
         /* Now that the socket is set up, let's connect it. This should
          * return immediately.
          */
@@ -596,6 +600,10 @@ static apr_status_t prepare_conn_streams(serf_connection_t *conn,
                                          serf_bucket_t **ostreamh)
 {
     apr_status_t status;
+
+    if (conn->stream == NULL) {
+        conn->latency = apr_time_now() - conn->connect_time;
+    }
 
     /* Do we need a SSL tunnel first? */
     if (conn->state == SERF_CONN_CONNECTED) {
@@ -1152,6 +1160,7 @@ serf_connection_t *serf_connection_create(
     conn->baton.u.conn = conn;
     conn->hit_eof = 0;
     conn->state = SERF_CONN_INIT;
+    conn->latency = -1; /* unknown */
 
     /* Create a subpool for our connection. */
     apr_pool_create(&conn->skt_pool, conn->pool);
@@ -1456,4 +1465,15 @@ serf_bucket_t *serf_request_bucket_request_create(
                                                          method, uri, hdrs_bkt);
 
     return req_bkt;
+}
+
+apr_interval_time_t serf_connection_get_latency(serf_connection_t *conn)
+{
+    if (conn->ctx->proxy_address) {
+        /* Detecting network latency for proxied connection is not implemented
+           yet. */
+        return -1;
+    }
+
+    return conn->latency;
 }

@@ -566,6 +566,12 @@ serf_request_t *serf_connection_priority_request_create(
     serf_request_setup_t setup,
     void *setup_baton);
 
+
+/** Returns detected network latency for the @a conn connection. Negative
+ *  value means that latency is unknwon.
+ */
+apr_interval_time_t serf_connection_get_latency(serf_connection_t *conn);
+
 /**
  * Cancel the request specified by the @a request object.
  *
