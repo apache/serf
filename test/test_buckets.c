@@ -634,6 +634,36 @@ static void test_response_body_chunked_incomplete_crlf(CuTest *tc)
     test_teardown(test_pool);
 }
 
+static void test_response_body_chunked_gzip_small(CuTest *tc)
+{
+    serf_bucket_t *bkt, *tmp;
+    apr_pool_t *test_pool = test_setup();
+    serf_bucket_alloc_t *alloc = serf_bucket_allocator_create(test_pool, NULL,
+                                                              NULL);
+
+    tmp = SERF_BUCKET_SIMPLE_STRING("HTTP/1.1 200 OK" CRLF
+                                    "Content-Type: text/plain" CRLF
+                                    "Transfer-Encoding: chunked" CRLF
+                                    "Content-Encoding: gzip" CRLF
+                                    CRLF
+                                    "2" CRLF
+                                    "A",
+                                    alloc);
+
+    bkt = serf_bucket_response_create(tmp, alloc);
+
+    {
+        char buf[1024];
+        apr_size_t len;
+        apr_status_t status;
+
+        status = read_all(bkt, buf, sizeof(buf), &len);
+
+        CuAssertIntEquals(tc, SERF_ERROR_TRUNCATED_HTTP_RESPONSE, status);
+    }
+    test_teardown(test_pool);
+}
+
 static void test_response_bucket_peek_at_headers(CuTest *tc)
 {
     apr_pool_t *test_pool = test_setup();
@@ -714,6 +744,7 @@ CuSuite *test_buckets(void)
     SUITE_ADD_TEST(suite, test_response_body_too_small_chunked);
     SUITE_ADD_TEST(suite, test_response_body_chunked_no_crlf);
     SUITE_ADD_TEST(suite, test_response_body_chunked_incomplete_crlf);
+    SUITE_ADD_TEST(suite, test_response_body_chunked_gzip_small);
     SUITE_ADD_TEST(suite, test_response_bucket_peek_at_headers);
     SUITE_ADD_TEST(suite, test_bucket_header_set);
     SUITE_ADD_TEST(suite, test_iovec_buckets);

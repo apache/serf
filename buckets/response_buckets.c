@@ -41,12 +41,6 @@ typedef struct {
 
     int chunked;                /* Do we need to read trailers? */
     int head_req;               /* Was this a HEAD request? */
-
-    int check_length;           /* Indicates we need calculate # of bytes in the
-                                   body and return error if it's too short. */
-    apr_int64_t exp_body_len;    /* expected size of body, 0 if not known. */
-    apr_int64_t actual_body_len; /* Keep track of actual bytes read from the body
-                                   to see if we received the full response. */
 } response_context_t;
 
 
@@ -63,9 +57,6 @@ serf_bucket_t *serf_bucket_response_create(
     ctx->state = STATE_STATUS_LINE;
     ctx->chunked = 0;
     ctx->head_req = 0;
-    ctx->check_length = 0;
-    ctx->exp_body_len = 0;
-    ctx->actual_body_len = 0;
 
     serf_linebuf_init(&ctx->linebuf);
 
@@ -258,10 +249,8 @@ static apr_status_t run_machine(serf_bucket_t *bkt, response_context_t *ctx)
                 if (errno == ERANGE) {
                     return APR_FROM_OS_ERROR(ERANGE);
                 }
-                ctx->body = serf_bucket_limit_create(ctx->body, length,
-                                                     bkt->allocator);
-                ctx->check_length = 1;
-                ctx->exp_body_len = length;
+                ctx->body = serf_bucket_response_body_create(
+                              ctx->body, length, bkt->allocator);
             }
             else {
                 v = serf_bucket_headers_get(ctx->headers, "Transfer-Encoding");
@@ -279,8 +268,6 @@ static apr_status_t run_machine(serf_bucket_t *bkt, response_context_t *ctx)
             }
             v = serf_bucket_headers_get(ctx->headers, "Content-Encoding");
             if (v) {
-                ctx->check_length = 0; /* deflate bucket will check this. */
-
                 /* Need to handle multiple content-encoding. */
                 if (v && strcasecmp("gzip", v) == 0) {
                     ctx->body =
@@ -401,18 +388,12 @@ static apr_status_t serf_response_read(serf_bucket_t *bucket,
     if (SERF_BUCKET_READ_ERROR(rv))
         return rv;
 
-    if (ctx->check_length)
-        ctx->actual_body_len += *len;
-
     if (APR_STATUS_IS_EOF(rv)) {
         if (ctx->chunked) {
             ctx->state = STATE_TRAILERS;
             /* Mask the result. */
             rv = APR_SUCCESS;
         } else {
-            /* The server sent less data than announced via Content-Length. */
-            if (ctx->check_length && ctx->actual_body_len < ctx->exp_body_len)
-                return SERF_ERROR_TRUNCATED_HTTP_RESPONSE;
             ctx->state = STATE_DONE;
         }
     }

@@ -131,6 +131,16 @@ void serf_bucket_response_set_head(
 
 /* ==================================================================== */
 
+extern const serf_bucket_type_t serf_bucket_type_response_body;
+#define SERF_BUCKET_IS_RESPONSE_BODY(b) SERF_BUCKET_CHECK((b), response_body)
+
+serf_bucket_t *serf_bucket_response_body_create(
+    serf_bucket_t *stream,
+    apr_uint64_t limit,
+    serf_bucket_alloc_t *allocator);
+
+/* ==================================================================== */
+
 extern const serf_bucket_type_t serf_bucket_type_bwtp_frame;
 #define SERF_BUCKET_IS_BWTP_FRAME(b) SERF_BUCKET_CHECK((b), bwtp_frame)
 
