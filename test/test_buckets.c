@@ -25,6 +25,39 @@
 
 #define CRLF "\r\n"
 
+static apr_status_t read_all(serf_bucket_t *bkt,
+                             char *buf,
+                             apr_size_t buf_len,
+                             apr_size_t *read_len)
+{
+    const char *data;
+    apr_size_t data_len;
+    apr_status_t status;
+    apr_size_t read;
+
+    read = 0;
+
+    do
+    {
+        status = serf_bucket_read(bkt, SERF_READ_ALL_AVAIL, &data, &data_len);
+
+        if (!SERF_BUCKET_READ_ERROR(status))
+        {
+            if (data_len > buf_len - read)
+            {
+                /* Buffer is not large enough to read all data */
+                data_len = buf_len - read;
+                status = APR_EGENERAL;
+            }
+            memcpy(buf + read, data, data_len);
+            read += data_len;
+        }
+    } while(status == APR_SUCCESS);
+
+    *read_len = read;
+    return status;
+}
+
 static void test_simple_bucket_readline(CuTest *tc)
 {
     apr_status_t status;
@@ -536,6 +569,71 @@ static void test_response_body_too_small_chunked(CuTest *tc)
 }
 #undef BODY
 
+/* Test for issue: the server aborts the connection in the middle of
+   streaming trailing CRLF after body chunk. Test that we get
+   a decent error code from the response bucket instead of APR_EOF. */
+static void test_response_body_chunked_no_crlf(CuTest *tc)
+{
+    serf_bucket_t *bkt, *tmp;
+    apr_pool_t *test_pool = test_setup();
+    serf_bucket_alloc_t *alloc = serf_bucket_allocator_create(test_pool, NULL,
+                                                              NULL);
+
+    tmp = SERF_BUCKET_SIMPLE_STRING("HTTP/1.1 200 OK" CRLF
+                                    "Content-Type: text/plain" CRLF
+                                    "Transfer-Encoding: chunked" CRLF
+                                    CRLF
+                                    "2" CRLF
+                                    "AB",
+                                    alloc);
+
+    bkt = serf_bucket_response_create(tmp, alloc);
+
+    {
+        char buf[1024];
+        apr_size_t len;
+        apr_status_t status;
+
+        status = read_all(bkt, buf, sizeof(buf), &len);
+
+        CuAssertIntEquals(tc, SERF_ERROR_TRUNCATED_HTTP_RESPONSE, status);
+    }
+    test_teardown(test_pool);
+}
+
+/* Test for issue: the server aborts the connection in the middle of
+   streaming trailing CRLF after body chunk. Test that we get
+   a decent error code from the response bucket instead of APR_EOF. */
+static void test_response_body_chunked_incomplete_crlf(CuTest *tc)
+{
+    serf_bucket_t *bkt, *tmp;
+    apr_pool_t *test_pool = test_setup();
+    serf_bucket_alloc_t *alloc = serf_bucket_allocator_create(test_pool, NULL,
+                                                              NULL);
+
+    tmp = SERF_BUCKET_SIMPLE_STRING("HTTP/1.1 200 OK" CRLF
+                                    "Content-Type: text/plain" CRLF
+                                    "Transfer-Encoding: chunked" CRLF
+                                    CRLF
+                                    "2" CRLF
+                                    "AB"
+                                    "\r",
+                                    alloc);
+
+    bkt = serf_bucket_response_create(tmp, alloc);
+
+    {
+        char buf[1024];
+        apr_size_t len;
+        apr_status_t status;
+
+        status = read_all(bkt, buf, sizeof(buf), &len);
+
+        CuAssertIntEquals(tc, SERF_ERROR_TRUNCATED_HTTP_RESPONSE, status);
+    }
+    test_teardown(test_pool);
+}
+
 static void test_response_bucket_peek_at_headers(CuTest *tc)
 {
     apr_pool_t *test_pool = test_setup();
@@ -614,6 +712,8 @@ CuSuite *test_buckets(void)
     SUITE_ADD_TEST(suite, test_response_bucket_chunked_read);
     SUITE_ADD_TEST(suite, test_response_body_too_small_cl);
     SUITE_ADD_TEST(suite, test_response_body_too_small_chunked);
+    SUITE_ADD_TEST(suite, test_response_body_chunked_no_crlf);
+    SUITE_ADD_TEST(suite, test_response_body_chunked_incomplete_crlf);
     SUITE_ADD_TEST(suite, test_response_bucket_peek_at_headers);
     SUITE_ADD_TEST(suite, test_bucket_header_set);
     SUITE_ADD_TEST(suite, test_iovec_buckets);

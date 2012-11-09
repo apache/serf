@@ -133,10 +133,11 @@ static apr_status_t serf_dechunk_read(serf_bucket_t *bucket,
             if (!ctx->body_left) {
                 ctx->state = STATE_TERM;
                 ctx->body_left = 2;     /* CRLF */
-            } else {
-                /* We need more data but there is no more available. */
-                if (APR_STATUS_IS_EOF(status))
-                    return SERF_ERROR_TRUNCATED_HTTP_RESPONSE;
+            }
+
+            /* We need more data but there is no more available. */
+            if (ctx->body_left && APR_STATUS_IS_EOF(status)) {
+                return SERF_ERROR_TRUNCATED_HTTP_RESPONSE;
             }
 
             /* Return the data we just read. */
@@ -152,6 +153,11 @@ static apr_status_t serf_dechunk_read(serf_bucket_t *bucket,
              * if we're done reading the chunk terminator.
              */
             ctx->body_left -= *len;
+
+            /* We need more data but there is no more available. */
+            if (ctx->body_left && APR_STATUS_IS_EOF(status))
+                return SERF_ERROR_TRUNCATED_HTTP_RESPONSE;
+
             if (!ctx->body_left) {
                 ctx->state = STATE_SIZE;
             }
