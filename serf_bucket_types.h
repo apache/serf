@@ -612,6 +612,15 @@ apr_status_t serf_ssl_trust_cert(
     serf_ssl_context_t *ssl_ctx,
     serf_ssl_certificate_t *cert);
 
+/**
+ * Enable or disable SSL compression on a SSL session.
+ * @a enabled = 1 to enable compression, 0 to disable compression.
+ * Default = disabled.
+ */
+apr_status_t serf_ssl_use_compression(
+    serf_ssl_context_t *ssl_ctx,
+    int enabled);
+
 serf_bucket_t *serf_bucket_ssl_encrypt_create(
     serf_bucket_t *stream,
     serf_ssl_context_t *ssl_context,

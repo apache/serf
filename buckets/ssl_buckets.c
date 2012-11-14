@@ -201,6 +201,7 @@ struct serf_ssl_certificate_t {
     int depth;
 };
 
+static void disable_compression(serf_ssl_context_t *ssl_ctx);
 
 #if SSL_VERBOSE
 /* Log all ssl alerts that we receive from the server. */
@@ -1200,6 +1201,8 @@ static serf_ssl_context_t *ssl_init_context(void)
     SSL_CTX_set_verify(ssl_ctx->ctx, SSL_VERIFY_PEER,
                        validate_server_certificate);
     SSL_CTX_set_options(ssl_ctx->ctx, SSL_OP_ALL);
+    /* Disable SSL compression by default. */
+    disable_compression(ssl_ctx);
 
     ssl_ctx->ssl = SSL_new(ssl_ctx->ctx);
     ssl_ctx->bio = BIO_new(&bio_bucket_method);
@@ -1607,6 +1610,33 @@ const char *serf_ssl_cert_export(
     apr_base64_encode(encoded_cert, binary_cert, len);
     
     return encoded_cert;
+}
+
+/* Disables compression for all SSL sessions. */
+static void disable_compression(serf_ssl_context_t *ssl_ctx)
+{
+#ifdef SSL_OP_NO_COMPRESSION
+    SSL_CTX_set_options(ssl_ctx->ctx, SSL_OP_NO_COMPRESSION);
+#endif
+}
+
+apr_status_t serf_ssl_use_compression(serf_ssl_context_t *ssl_ctx, int enabled)
+{
+    SSL_get_options(ssl_ctx->ssl);
+
+    if (enabled) {
+#ifdef SSL_OP_NO_COMPRESSION
+        SSL_clear_options(ssl_ctx->ssl, SSL_OP_NO_COMPRESSION);
+        return APR_SUCCESS;
+#endif
+    } else {
+#ifdef SSL_OP_NO_COMPRESSION
+        SSL_set_options(ssl_ctx->ssl, SSL_OP_NO_COMPRESSION);
+        return APR_SUCCESS;
+#endif
+    }
+
+    return APR_EGENERAL;
 }
 
 static void serf_ssl_destroy_and_data(serf_bucket_t *bucket)
