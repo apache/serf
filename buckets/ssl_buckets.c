@@ -1622,8 +1622,6 @@ static void disable_compression(serf_ssl_context_t *ssl_ctx)
 
 apr_status_t serf_ssl_use_compression(serf_ssl_context_t *ssl_ctx, int enabled)
 {
-    SSL_get_options(ssl_ctx->ssl);
-
     if (enabled) {
 #ifdef SSL_OP_NO_COMPRESSION
         SSL_clear_options(ssl_ctx->ssl, SSL_OP_NO_COMPRESSION);
