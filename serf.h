@@ -572,6 +572,14 @@ serf_request_t *serf_connection_priority_request_create(
  */
 apr_interval_time_t serf_connection_get_latency(serf_connection_t *conn);
 
+/** Check if a @a request has been completely written.
+ *
+ * Returns APR_SUCCESS if the request was written completely on the connection.
+ * Returns APR_EBUSY if the request is not yet or partially written.
+ */
+apr_status_t serf_request_is_written(
+    serf_request_t *request);
+
 /**
  * Cancel the request specified by the @a request object.
  *

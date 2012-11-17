@@ -959,6 +959,9 @@ static apr_status_t read_from_connection(serf_connection_t *conn)
          *
          * In these cases, we should not receive any actual user data.
          *
+         * 4) When the server sends a error response, like 408 Request timeout.
+         *    This response should be passed to the application.
+         *
          * If we see an EOF (due to either an expired timeout or the serer
          * sending the SSL 'close notify' shutdown alert), we'll reset the
          * connection and open a new one.
@@ -967,21 +970,18 @@ static apr_status_t read_from_connection(serf_connection_t *conn)
             const char *data;
             apr_size_t len;
 
-            status = serf_bucket_read(conn->stream, SERF_READ_ALL_AVAIL,
-                                      &data, &len);
+            status = serf_bucket_peek(conn->stream, &data, &len);
 
-            if (!status && len) {
-                status = APR_EGENERAL;
-            }
-            else if (APR_STATUS_IS_EOF(status)) {
+            if (APR_STATUS_IS_EOF(status)) {
                 reset_connection(conn, 1);
                 status = APR_SUCCESS;
+                goto error;
             }
-            else if (APR_STATUS_IS_EAGAIN(status)) {
+            else if (!len ||
+                     APR_STATUS_IS_EAGAIN(status)) {
                 status = APR_SUCCESS;
+                goto error;
             }
-
-            goto error;
         }
 
         /* If the request doesn't have a response bucket, then call the
@@ -1030,9 +1030,11 @@ static apr_status_t read_from_connection(serf_connection_t *conn)
             goto error;
         }
 
-        /* The request has been fully-delivered, and the response has
-         * been fully-read. Remove it from our queue and loop to read
-         * another response.
+        /* The response has been fully-read, so that means the request has
+         * either been fully-delivered (most likely), or that we don't need to
+         * write the rest of it anymore, e.g. when a 408 Request timeout was
+         $ received.
+         * Remove it from our queue and loop to read another response.
          */
         conn->requests = request->next;
 
@@ -1401,6 +1403,13 @@ apr_status_t serf_request_cancel(serf_request_t *request)
     return cancel_request(request, &request->conn->requests, 0);
 }
 
+apr_status_t serf_request_is_written(serf_request_t *request)
+{
+    if (request->written && !request->req_bkt)
+        return APR_SUCCESS;
+
+    return APR_EBUSY;
+}
 
 apr_pool_t *serf_request_get_pool(const serf_request_t *request)
 {

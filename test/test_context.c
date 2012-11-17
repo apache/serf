@@ -995,6 +995,215 @@ static void test_serf_progress_callback(CuTest *tc)
 }
 #undef NUM_REQUESTS
 
+
+/*****************************************************************************
+ * Issue #91: test that serf correctly handle an incoming 4xx reponse while
+ * the outgoing request wasn't written completely yet.
+ *****************************************************************************/
+
+#define REQUEST_PART1 "PROPFIND / HTTP/1.1" CRLF\
+"Host: lgo-ubuntu.local" CRLF\
+"User-Agent: SVN/1.8.0-dev (x86_64-apple-darwin11.4.2) serf/2.0.0" CRLF\
+"Content-Type: text/xml" CRLF\
+"Transfer-Encoding: chunked" CRLF \
+CRLF\
+"12d" CRLF\
+"<?xml version=""1.0"" encoding=""utf-8""?><propfind xmlns=""DAV:""><prop>"
+
+#define REQUEST_PART2 \
+"<resourcetype xmlns=""DAV:""/><getcontentlength xmlns=""DAV:""/>"\
+"<deadprop-count xmlns=""http://subversion.tigris.org/xmlns/dav/""/>"\
+"<version-name xmlns=""DAV:""/><creationdate xmlns=""DAV:""/>"\
+"<creator-displayname xmlns=""DAV:""/></prop></propfind>" CRLF\
+"0" CRLF \
+CRLF
+
+#define RESPONSE_408 "HTTP/1.1 408 Request Time-out" CRLF\
+"Date: Wed, 14 Nov 2012 19:50:35 GMT" CRLF\
+"Server: Apache/2.2.17 (Ubuntu)" CRLF\
+"Vary: Accept-Encoding" CRLF\
+"Content-Length: 305" CRLF\
+"Connection: close" CRLF\
+"Content-Type: text/html; charset=iso-8859-1" CRLF \
+CRLF\
+"<!DOCTYPE HTML PUBLIC ""-//IETF//DTD HTML 2.0//EN""><html><head>"\
+"<title>408 Request Time-out</title></head><body><h1>Request Time-out</h1>"\
+"<p>Server timeout waiting for the HTTP request from the client.</p><hr>"\
+"<address>Apache/2.2.17 (Ubuntu) Server at lgo-ubuntu.local Port 80</address>"\
+"</body></html>"
+
+
+static apr_status_t detect_eof(void *baton, serf_bucket_t *aggregate_bucket)
+{
+    serf_bucket_t *body_bkt;
+    handler_baton_t *ctx = baton;
+
+    if (ctx->done) {
+        body_bkt = serf_bucket_simple_create(REQUEST_PART1, strlen(REQUEST_PART2),
+                                             NULL, NULL,
+                                             ctx->tb->bkt_alloc);
+        serf_bucket_aggregate_append(aggregate_bucket, body_bkt);
+    }
+
+    return APR_EAGAIN;
+}
+
+static apr_status_t setup_request_timeout(
+                                  serf_request_t *request,
+                                  void *setup_baton,
+                                  serf_bucket_t **req_bkt,
+                                  serf_response_acceptor_t *acceptor,
+                                  void **acceptor_baton,
+                                  serf_response_handler_t *handler,
+                                  void **handler_baton,
+                                  apr_pool_t *pool)
+{
+    handler_baton_t *ctx = setup_baton;
+    serf_bucket_t *body_bkt;
+
+    *req_bkt = serf__bucket_stream_create(serf_request_get_alloc(request),
+                                          detect_eof,
+                                          ctx);
+
+    /* create a simple body text */
+    body_bkt = serf_bucket_simple_create(REQUEST_PART1, strlen(REQUEST_PART1),
+                                         NULL, NULL,
+                                         serf_request_get_alloc(request));
+    serf_bucket_aggregate_append(*req_bkt, body_bkt);
+
+    APR_ARRAY_PUSH(ctx->sent_requests, int) = ctx->req_id;
+
+    *acceptor = ctx->acceptor;
+    *acceptor_baton = ctx;
+    *handler = ctx->handler;
+    *handler_baton = ctx;
+
+    return APR_SUCCESS;
+}
+
+static apr_status_t handle_response_timeout(
+                                    serf_request_t *request,
+                                    serf_bucket_t *response,
+                                    void *handler_baton,
+                                    apr_pool_t *pool)
+{
+    handler_baton_t *ctx = handler_baton;
+    serf_status_line sl;
+    apr_status_t status;
+
+    if (! response) {
+        serf_connection_request_create(ctx->tb->connection,
+                                       setup_request,
+                                       ctx);
+        return APR_SUCCESS;
+    }
+
+    if (serf_request_is_written(request) != APR_EBUSY) {
+        return APR_EGENERAL;
+    }
+
+
+    status = serf_bucket_response_status(response, &sl);
+    if (SERF_BUCKET_READ_ERROR(status)) {
+        return status;
+    }
+    if (!sl.version && (APR_STATUS_IS_EOF(status) ||
+                        APR_STATUS_IS_EAGAIN(status))) {
+        return status;
+    }
+    if (sl.code == 408) {
+        APR_ARRAY_PUSH(ctx->handled_requests, int) = ctx->req_id;
+        ctx->done = TRUE;
+    }
+
+    /* discard the rest of the body */
+    while (1) {
+        const char *data;
+        apr_size_t len;
+
+        status = serf_bucket_read(response, 2048, &data, &len);
+        if (SERF_BUCKET_READ_ERROR(status) ||
+            APR_STATUS_IS_EAGAIN(status) ||
+            APR_STATUS_IS_EOF(status))
+            return status;
+    }
+
+    return APR_SUCCESS;
+}
+
+#define NUM_REQUESTS 1
+static void test_serf_request_timeout(CuTest *tc)
+{
+    test_baton_t *tb;
+    apr_array_header_t *accepted_requests, *handled_requests, *sent_requests;
+    apr_status_t status;
+    handler_baton_t handler_ctx[NUM_REQUESTS];
+
+    test_server_message_t message_list[] = {
+        {REQUEST_PART1},
+        {REQUEST_PART2},
+    };
+
+    test_server_action_t action_list[] = {
+        {SERVER_RESPOND, RESPONSE_408},
+    };
+
+    apr_pool_t *test_pool = test_setup();
+
+    accepted_requests = apr_array_make(test_pool, NUM_REQUESTS, sizeof(int));
+    sent_requests = apr_array_make(test_pool, NUM_REQUESTS, sizeof(int));
+    handled_requests = apr_array_make(test_pool, NUM_REQUESTS, sizeof(int));
+
+    /* Set up a test context with a server. */
+    status = test_server_setup(&tb,
+                               message_list, 2,
+                               action_list, 1, 0,
+                               NULL, test_pool);
+    CuAssertIntEquals(tc, APR_SUCCESS, status);
+
+    /* Send some requests on the connection */
+    handler_ctx[0].method = "PROPFIND";
+    handler_ctx[0].path = "/";
+    handler_ctx[0].done = FALSE;
+
+    handler_ctx[0].acceptor = accept_response;
+    handler_ctx[0].acceptor_baton = NULL;
+    handler_ctx[0].handler = handle_response_timeout;
+    handler_ctx[0].req_id = 1;
+    handler_ctx[0].accepted_requests = accepted_requests;
+    handler_ctx[0].sent_requests = sent_requests;
+    handler_ctx[0].handled_requests = handled_requests;
+    handler_ctx[0].tb = tb;
+
+    serf_connection_request_create(tb->connection,
+                                   setup_request_timeout,
+                                   &handler_ctx[0]);
+
+    while (1) {
+        status = test_server_run(tb->serv_ctx, 0, test_pool);
+        if (APR_STATUS_IS_TIMEUP(status))
+            status = APR_SUCCESS;
+        CuAssertIntEquals(tc, APR_SUCCESS, status);
+
+        status = serf_context_run(tb->context, 0, test_pool);
+        if (APR_STATUS_IS_TIMEUP(status))
+            status = APR_SUCCESS;
+        CuAssertIntEquals(tc, APR_SUCCESS, status);
+
+        if (handler_ctx[0].done) {
+            break;
+        }
+    }
+    /* Check that all requests were received */
+    CuAssertTrue(tc, sent_requests->nelts >= NUM_REQUESTS);
+    CuAssertIntEquals(tc, NUM_REQUESTS, accepted_requests->nelts);
+    CuAssertIntEquals(tc, NUM_REQUESTS, handled_requests->nelts);
+
+    /* Cleanup */
+    test_server_teardown(tb, test_pool);
+    test_teardown(test_pool);
+}
+
 CuSuite *test_context(void)
 {
     CuSuite *suite = CuSuiteNew();
@@ -1006,6 +1215,7 @@ CuSuite *test_context(void)
     SUITE_ADD_TEST(suite, test_keepalive_limit_one_by_one);
     SUITE_ADD_TEST(suite, test_keepalive_limit_one_by_one_and_burst);
     SUITE_ADD_TEST(suite, test_serf_progress_callback);
+    SUITE_ADD_TEST(suite, test_serf_request_timeout);
 
     return suite;
 }
