@@ -163,11 +163,11 @@ const char *serf_bucket_headers_get(
                    be comma-separated, that is clearly the correct behavior;
                    for others, the correct behavior is undefined anyway. */
 
-                /* The "+1" is for the comma; serf_bstrmemdup() will also add
-                   one slot for the terminating '\0'. */
+                /* The "+1" is for the comma; the +1 in the alloc
+                   call is for the terminating '\0' */
                 apr_size_t new_size = found->value_size + value_size + 1;
                 char *new_val = serf_bucket_mem_alloc(headers_bucket->allocator,
-                                                      new_size);
+                                                      new_size + 1);
                 memcpy(new_val, val, value_size);
                 new_val[value_size] = ',';
                 memcpy(new_val + value_size + 1, found->value,
