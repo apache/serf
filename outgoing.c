@@ -962,7 +962,7 @@ static apr_status_t read_from_connection(serf_connection_t *conn)
          * 4) When the server sends a error response, like 408 Request timeout.
          *    This response should be passed to the application.
          *
-         * If we see an EOF (due to either an expired timeout or the serer
+         * If we see an EOF (due to either an expired timeout or the server
          * sending the SSL 'close notify' shutdown alert), we'll reset the
          * connection and open a new one.
          */
@@ -977,11 +977,16 @@ static apr_status_t read_from_connection(serf_connection_t *conn)
                 status = APR_SUCCESS;
                 goto error;
             }
-            else if (!len ||
-                     APR_STATUS_IS_EAGAIN(status)) {
+            else if (APR_STATUS_IS_EAGAIN(status) && !len) {
                 status = APR_SUCCESS;
                 goto error;
+            } else if (status && !APR_STATUS_IS_EAGAIN(status)) {
+                /* Read error */
+                goto error;
             }
+
+            /* Unexpected response from the server */
+
         }
 
         /* If the request doesn't have a response bucket, then call the
