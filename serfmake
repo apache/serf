@@ -36,6 +36,7 @@ LIB_FILES = [
   ('buckets', 'mmap_buckets'),
   ('buckets', 'socket_buckets'),
   ('buckets', 'response_buckets'),
+  ('buckets', 'response_body_buckets'),
   ('buckets', 'headers_buckets'),
   ('buckets', 'allocator'),
   ('buckets', 'dechunk_buckets'),
