@@ -125,9 +125,12 @@ def usage():
   print('\tinstall\tInstalls serf into PREFIX')
   print('\tclean\tCleans')
   print('Options:')
-  print('\t--with-apr=PATH\tprefix for installed APR and APR-util')
-  print('\t\t\t(needs apr-1-config and apu-1-config; will look in PATH)')
-  print('\t--prefix=PATH\tinstall serf into PATH (default: /usr/local)')
+  print('\t--with-apr=PATH\t\tprefix for installed APR and APR-util')
+  print('\t\t\t\t(needs apr-1-config and apu-1-config; will look in PATH)')
+  print('\t--with-gssapi=PATH\tbuild serf with GSSAPI support')
+  print('\t\t\t\t(needs krb5-config; will look in PATH/bin)')
+
+  print('\t--prefix=PATH\t\tinstall serf into PATH (default: /usr/local)')
   print('Quick guide:')
   print('\tserfmake --prefix=/usr/local/serf --with-apr=/usr/local/apr install')
   sys.exit(1)
@@ -187,12 +190,19 @@ def cmd_clean(param):
 
 class Builder(object):
   def __init__(self, params):
+    # use apr option if set
     if 'apr' in params:
       self.apr = APRConfig(params['apr'])
       self.apu = APUConfig(params['apr'])
     else:
       self.apr = APRConfig(None)
       self.apu = APUConfig(None)
+
+    # build with gssapi if option is set
+    if 'gssapi' in params:
+      self.gssapi = GSSAPIConfig(params['gssapi'])
+    else:
+      self.gssapi = None
 
     try:
       self.prefix = params['prefix']
@@ -229,6 +239,10 @@ class Builder(object):
                 + ' ' + self.apr.get_value(None, '--libs') \
                 + ' -lz'
     self.SSL_LIBS = '-lssl -lcrypto'
+    if self.gssapi:
+        self.LIBS += ' ' + self.gssapi.get_value(None, '--libs gssapi')
+        self.CFLAGS += ' ' + self.gssapi.get_value('CFLAGS', '--cflags gssapi')\
+                       + ' -DSERF_HAVE_GSSAPI -g'
 
     self.MODE = 644
 
@@ -419,6 +433,10 @@ class APRConfig(ConfigScript):
 
 class APUConfig(ConfigScript):
   script_name = 'apu-1-config'
+
+
+class GSSAPIConfig(ConfigScript):
+  script_name = 'krb5-config'
 
 
 class CommandLine(object):
