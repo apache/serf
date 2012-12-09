@@ -85,6 +85,9 @@ typedef struct serf_request_t serf_request_t;
 /* The server sent less data than what was announced. */
 #define SERF_ERROR_TRUNCATED_HTTP_RESPONSE (APR_OS_START_USERERR + \
                                             SERF_ERROR_RANGE + 6)
+/* The proxy server returned an error while setting up the SSL tunnel. */
+#define SERF_ERROR_SSLTUNNEL_SETUP_FAILED (APR_OS_START_USERERR + \
+                                           SERF_ERROR_RANGE + 7)
 
 /* SSL certificates related errors */
 #define SERF_ERROR_SSL_CERT_FAILED (APR_OS_START_USERERR + SERF_ERROR_RANGE + 70)

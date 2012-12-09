@@ -114,7 +114,7 @@ static apr_status_t handle_response(serf_request_t *request,
 
     /* Authentication failure and 2xx Ok are handled at this point,
        the rest are errors. */
-    return APR_EGENERAL; /* TODO: better error code */
+    return SERF_ERROR_SSLTUNNEL_SETUP_FAILED;
 }
 
 /* Prepare the CONNECT request. */
