@@ -85,6 +85,9 @@ typedef struct serf_request_t serf_request_t;
 /* The server sent less data than what was announced. */
 #define SERF_ERROR_TRUNCATED_HTTP_RESPONSE (APR_OS_START_USERERR + \
                                             SERF_ERROR_RANGE + 6)
+/* The proxy server returned an error while setting up the SSL tunnel. */
+#define SERF_ERROR_SSLTUNNEL_SETUP_FAILED (APR_OS_START_USERERR + \
+                                           SERF_ERROR_RANGE + 7)
 
 /* SSL certificates related errors */
 #define SERF_ERROR_SSL_CERT_FAILED (APR_OS_START_USERERR + SERF_ERROR_RANGE + 70)
@@ -1053,8 +1056,8 @@ void serf_debug__bucket_alloc_check(
     serf_bucket_alloc_t *allocator);
 
 /* Version info */
-#define SERF_MAJOR_VERSION 2
-#define SERF_MINOR_VERSION 0
+#define SERF_MAJOR_VERSION 1
+#define SERF_MINOR_VERSION 2
 #define SERF_PATCH_VERSION 0
 
 /* Version number string */
