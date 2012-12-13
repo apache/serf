@@ -10,7 +10,8 @@ SERF_DOTTED_VERSION=@SERF_DOTTED_VERSION@
 OBJECTS = buckets/aggregate_buckets.lo buckets/request_buckets.lo context.lo \
           buckets/buckets.lo buckets/simple_buckets.lo buckets/file_buckets.lo \
           buckets/mmap_buckets.lo buckets/socket_buckets.lo \
-          buckets/response_buckets.lo buckets/headers_buckets.lo \
+          buckets/response_body_buckets.lo buckets/response_buckets.lo \
+          buckets/headers_buckets.lo \
           buckets/allocator.lo buckets/dechunk_buckets.lo \
           buckets/deflate_buckets.lo buckets/limit_buckets.lo \
           buckets/ssl_buckets.lo buckets/barrier_buckets.lo \
@@ -69,6 +70,7 @@ buckets/simple_buckets.lo: buckets/simple_buckets.c $(HEADERS)
 buckets/file_buckets.lo: buckets/file_buckets.c $(HEADERS)
 buckets/mmap_buckets.lo: buckets/mmap_buckets.c $(HEADERS)
 buckets/socket_buckets.lo: buckets/socket_buckets.c $(HEADERS)
+buckets/response_body_buckets.lo: buckets/response_body_buckets.c $(HEADERS)
 buckets/response_buckets.lo: buckets/response_buckets.c $(HEADERS)
 buckets/headers_buckets.lo: buckets/headers_buckets.c $(HEADERS)
 buckets/allocator.lo: buckets/allocator.c $(HEADERS)
