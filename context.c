@@ -289,6 +289,11 @@ apr_status_t serf_context_run(
 
     if ((status = apr_pollset_poll(ps->pollset, duration, &num,
                                    &desc)) != APR_SUCCESS) {
+        /* EINTR indicates a handled signal happened during the poll call,
+           ignore, the application can safely retry. */
+        if (APR_STATUS_IS_EINTR(status))
+            return APR_SUCCESS;
+
         /* ### do we still need to dispatch stuff here?
            ### look at the potential return codes. map to our defined
            ### return values? ...
