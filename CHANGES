@@ -1,3 +1,7 @@
+Serf 1.1.2 [in-progress]
+  Enable Negotiate/Kerberos support for proxy servers
+
+
 Serf 1.1.1 [2012-10-04, from /tags/1.1.1]
   Fixed issue 86: ensure requeued requests are correctly handled. This fixes:
     - infinite loop with multiple connection resets or SIGPIPE errors
