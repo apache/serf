@@ -1,3 +1,22 @@
+Serf 1.2.0 [not yet released, on branch /branches/1.2.x]
+  Fixed issue 91: Serf doesn't handle an incoming 408 Timeout Request
+  Fixed issue 80: Serf is not handling Negotiate authentication correctly
+  Fixed issue 77: Endless loop if server doesn't accept Negotiate authentication
+  Fixed most of issue 89: Support REAL SPNEGO authentication
+  Enable Negotiate/Kerberos support for proxy servers.
+
+  Return error when C-L, chunked, gzip encoded response bodies where truncated
+    (due to aborted connection) (r1688)
+  Add a logging mechanism that can be enabled at compile-time.
+  Don't lookup server address if a proxy was configured. (r1706)
+  Fix an off-by-one in buffer sizing (1695)
+  Disable SSL compression by default + API to enable it (1692)
+  New API serf_connection_get_latency() for estimated network latency (1689)
+  New error code and RFC compliance for the HTTPS tunnel (r1701, 1644)
+  Handle EINTR when a user suspends and then backgrounds the application (r1708)
+  Minor fixes and test suite improvements.
+
+
 Serf 1.1.1 [2012-10-04, from /tags/1.1.1]
   Fixed issue 86: ensure requeued requests are correctly handled. This fixes:
     - infinite loop with multiple connection resets or SIGPIPE errors
