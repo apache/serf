@@ -188,7 +188,6 @@ apr_status_t serf__open_connections(serf_context_t *ctx)
         serf_connection_t *conn = GET_CONN(ctx, i);
         apr_status_t status;
         apr_socket_t *skt;
-        apr_sockaddr_t *serv_addr;
 
         conn->seen_in_pollset = 0;
 
@@ -207,13 +206,7 @@ apr_status_t serf__open_connections(serf_context_t *ctx)
         apr_pool_clear(conn->skt_pool);
         apr_pool_cleanup_register(conn->skt_pool, conn, clean_skt, clean_skt);
 
-        /* Do we have to connect to a proxy server? */
-        if (ctx->proxy_address)
-            serv_addr = ctx->proxy_address;
-        else
-            serv_addr = conn->address;
-
-        status = apr_socket_create(&skt, serv_addr->family,
+        status = apr_socket_create(&skt, conn->address->family,
                                    SOCK_STREAM,
 #if APR_MAJOR_VERSION > 0
                                    APR_PROTO_TCP,
@@ -243,7 +236,7 @@ apr_status_t serf__open_connections(serf_context_t *ctx)
         /* Now that the socket is set up, let's connect it. This should
          * return immediately.
          */
-        status = apr_socket_connect(skt, serv_addr);
+        status = apr_socket_connect(skt, conn->address);
         serf__log_skt(SOCK_VERBOSE, __FILE__, skt,
                       "connected socket for conn 0x%x, status %d\n",
                       conn, status);
@@ -1153,7 +1146,8 @@ serf_connection_t *serf_connection_create(
 
     conn->ctx = ctx;
     conn->status = APR_SUCCESS;
-    conn->address = address;
+    /* Ignore server address if proxy was specified. */
+    conn->address = ctx->proxy_address ? ctx->proxy_address : address;
     conn->setup = setup;
     conn->setup_baton = setup_baton;
     conn->closed = closed;
@@ -1194,21 +1188,24 @@ apr_status_t serf_connection_create2(
     void *closed_baton,
     apr_pool_t *pool)
 {
-    apr_status_t status;
+    apr_status_t status = APR_SUCCESS;
     serf_connection_t *c;
-    apr_sockaddr_t *host_address;
+    apr_sockaddr_t *host_address = NULL;
 
     /* Set the port number explicitly, needed to create the socket later. */
     if (!host_info.port) {
         host_info.port = apr_uri_port_of_scheme(host_info.scheme);
     }
 
-    /* Parse the url, store the address of the server. */
-    status = apr_sockaddr_info_get(&host_address,
-                                   host_info.hostname,
-                                   APR_UNSPEC, host_info.port, 0, pool);
-    if (status)
-        return status;
+    /* Only lookup the address of the server if no proxy server was
+       configured. */
+    if (!ctx->proxy_address) {
+        status = apr_sockaddr_info_get(&host_address,
+                                       host_info.hostname,
+                                       APR_UNSPEC, host_info.port, 0, pool);
+        if (status)
+            return status;
+    }
 
     c = serf_connection_create(ctx, host_address, setup, setup_baton,
                                closed, closed_baton, pool);

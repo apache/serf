@@ -379,9 +379,10 @@ typedef apr_status_t (*serf_credentials_callback_t)(
 /**
  * Create a new connection associated with the @a ctx serf context.
  *
- * A connection will be created to (eventually) connect to the address
- * specified by @a address. The address must live at least as long as
- * @a pool (thus, as long as the connection object).
+ * If no proxy server is configured, a connection will be created to
+ * (eventually) connect to the address specified by @a address. The address must
+ * live at least as long as @a pool (thus, as long as the connection object).
+ * If a proxy server is configured, @address will be ignored.
  *
  * The connection object will be allocated within @a pool. Clearing or
  * destroying this pool will close the connection, and terminate any
