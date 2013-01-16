@@ -144,14 +144,14 @@ serf_bucket_alloc_t *serf_bucket_allocator_create(
     }
 #endif
 
-    /* ### this implies buckets cannot cross a fork/exec. desirable?
-     *
-     * ### hmm. it probably also means that buckets cannot be AROUND
-     * ### during a fork/exec. the new process will try to clean them
-     * ### up and figure out there are unfreed blocks...
-     */
+    /* NOTE: On a fork/exec, the child won't bother cleaning up memory.
+             This is just fine... the memory will go away at exec.
+
+       NOTE: If the child will NOT perform an exec, then the parent or
+             the child will need to decide who to clean up any
+             outstanding connection/buckets (as appropriate).  */
     apr_pool_cleanup_register(pool, allocator,
-                              allocator_cleanup, allocator_cleanup);
+                              allocator_cleanup, apr_pool_cleanup_null);
 
     return allocator;
 }
