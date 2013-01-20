@@ -1,4 +1,5 @@
 Serf 1.2.0 [2013-??-??, from /tags/1.2.0]
+  Fixed issue 94: Serf can enter an infinite loop when server aborts conn.
   Fixed issue 91: Serf doesn't handle an incoming 408 Timeout Request
   Fixed issue 80: Serf is not handling Negotiate authentication correctly
   Fixed issue 77: Endless loop if server doesn't accept Negotiate authn
