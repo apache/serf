@@ -1000,8 +1000,16 @@ static apr_status_t read_from_connection(serf_connection_t *conn)
         if (APR_STATUS_IS_ECONNRESET(status) ||
             APR_STATUS_IS_ECONNABORTED(status) ||
             status == SERF_ERROR_REQUEST_LOST) {
-            reset_connection(conn, 1);
-            status = APR_SUCCESS;
+            /* If the connection had ever been good, be optimistic & try again.
+             * If it has never tried again (incl. a retry), fail.
+             */
+            if (conn->completed_responses) {
+                reset_connection(conn, 1);
+                status = APR_SUCCESS;
+            }
+            else if (status == SERF_ERROR_REQUEST_LOST) {
+                status = SERF_ERROR_ABORTED_CONNECTION;
+            }
             goto error;
         }
 
@@ -1102,14 +1110,9 @@ apr_status_t serf__process_connection(serf_connection_t *conn,
 
         /* If we decided to reset our connection, return now as we don't
          * want to write.
-         * If we haven't had any successful responses on this connection,
-         * then error out as it is likely a server issue.
          */
         if ((conn->seen_in_pollset & APR_POLLHUP) != 0) {
-            if (conn->completed_responses) {
-                return APR_SUCCESS;
-            }
-            return SERF_ERROR_ABORTED_CONNECTION;
+            return APR_SUCCESS;
         }
     }
     if ((events & APR_POLLHUP) != 0) {
