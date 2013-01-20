@@ -367,6 +367,8 @@ const char *serf_error_string(apr_status_t errcode)
         return "The server sent an improper HTTP response";
     case SERF_ERROR_TRUNCATED_HTTP_RESPONSE:
         return "The server sent a truncated HTTP response body.";
+    case SERF_ERROR_ABORTED_CONNECTION:
+        return "The server unexpectedly closed the connection.";
     case SERF_ERROR_SSL_COMM_FAILED:
         return "An error occurred during SSL communication";
     case SERF_ERROR_SSL_CERT_FAILED:

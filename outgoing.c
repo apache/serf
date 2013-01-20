@@ -1102,16 +1102,26 @@ apr_status_t serf__process_connection(serf_connection_t *conn,
 
         /* If we decided to reset our connection, return now as we don't
          * want to write.
+         * If we haven't had any successful responses on this connection,
+         * then error out as it is likely a server issue.
          */
         if ((conn->seen_in_pollset & APR_POLLHUP) != 0) {
-            return APR_SUCCESS;
+            if (conn->completed_responses) {
+                return APR_SUCCESS;
+            }
+            return SERF_ERROR_ABORTED_CONNECTION;
         }
     }
     if ((events & APR_POLLHUP) != 0) {
         /* The connection got reset by the server. On Windows this can happen
            when all data is read, so just cleanup the connection and open
-           a new one. */
-        return reset_connection(conn, 1);
+           a new one.
+           If we haven't had any successful responses on this connection,
+           then error out as it is likely a server issue. */
+        if (conn->completed_responses) {
+            return reset_connection(conn, 1);
+        }
+        return SERF_ERROR_ABORTED_CONNECTION;
     }
     if ((events & APR_POLLERR) != 0) {
         /* We might be talking to a buggy HTTP server that doesn't
