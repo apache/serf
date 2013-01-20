@@ -88,6 +88,9 @@ typedef struct serf_request_t serf_request_t;
 /* The proxy server returned an error while setting up the SSL tunnel. */
 #define SERF_ERROR_SSLTUNNEL_SETUP_FAILED (APR_OS_START_USERERR + \
                                            SERF_ERROR_RANGE + 7)
+/* The server unexpectedly closed the connection prematurely. */
+#define SERF_ERROR_ABORTED_CONNECTION (APR_OS_START_USERERR + \
+                                            SERF_ERROR_RANGE + 8)
 
 /* SSL certificates related errors */
 #define SERF_ERROR_SSL_CERT_FAILED (APR_OS_START_USERERR + SERF_ERROR_RANGE + 70)
