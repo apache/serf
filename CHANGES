@@ -6,7 +6,7 @@ Serf 1.2.0 [2013-02-22, from /tags/1.2.0]
   Fixed issue 93: cleanup-after-fork interferes with parent (r1714)
   Fixed most of issue 89: Support REAL SPNEGO authentication
   Enable Negotiate/Kerberos support for proxy servers.
-  Return error when C-L, chunked, gzip encoded response bodies where
+  Return error when C-L, chunked, gzip encoded response bodies were
     truncated (due to aborted connection) (r1688)
   Add a logging mechanism that can be enabled at compile-time.
   Don't lookup server address if a proxy was configured. (r1706)
