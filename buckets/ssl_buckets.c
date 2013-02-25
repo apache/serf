@@ -211,14 +211,14 @@ apps_ssl_info_callback(const SSL *s, int where, int ret)
     const char *str;
     int w;
     w = where & ~SSL_ST_MASK;
-    
+
     if (w & SSL_ST_CONNECT)
         str = "SSL_connect";
     else if (w & SSL_ST_ACCEPT)
         str = "SSL_accept";
     else
         str = "undefined";
-    
+
     if (where & SSL_CB_LOOP) {
         serf__log(SSL_VERBOSE, __FILE__, "%s:%s\n", str,
                   SSL_state_string_long(s));
@@ -255,7 +255,8 @@ static int bio_bucket_read(BIO *bio, char *in, int inlen)
 
     if (ctx->encrypt.status == SERF_ERROR_WAIT_CONN
         && BIO_should_read(ctx->bio)) {
-        serf__log(SSL_VERBOSE, __FILE__, "bio_bucket_read waiting: (%d %d %d)\n",
+        serf__log(SSL_VERBOSE, __FILE__,
+                  "bio_bucket_read waiting: (%d %d %d)\n",
            BIO_should_retry(ctx->bio), BIO_should_read(ctx->bio),
            BIO_get_retry_flags(ctx->bio));
         /* Falling back... */
@@ -296,7 +297,8 @@ static int bio_bucket_write(BIO *bio, const char *in, int inl)
 
     if (ctx->encrypt.status == SERF_ERROR_WAIT_CONN
         && !BIO_should_read(ctx->bio)) {
-        serf__log(SSL_VERBOSE, __FILE__, "bio_bucket_write waiting: (%d %d %d)\n",
+        serf__log(SSL_VERBOSE, __FILE__,
+                  "bio_bucket_write waiting: (%d %d %d)\n",
            BIO_should_retry(ctx->bio), BIO_should_read(ctx->bio),
            BIO_get_retry_flags(ctx->bio));
         /* Falling back... */
@@ -805,7 +807,8 @@ static apr_status_t ssl_encrypt(void *baton, apr_size_t bufsize,
                             status = SERF_ERROR_WAIT_CONN;
                         }
                         else {
-                            ctx->fatal_err = status = SERF_ERROR_SSL_COMM_FAILED;
+                            ctx->fatal_err = status =
+                                SERF_ERROR_SSL_COMM_FAILED;
                         }
                     }
 
@@ -1017,7 +1020,7 @@ static int ssl_need_client_cert(SSL *ssl, X509 **cert, EVP_PKEY **pkey)
         }
 
         if (status || !cert_path) {
-          break;
+            break;
         }
 
         /* Load the x.509 cert file stored in PKCS12 */
@@ -1306,7 +1309,7 @@ apr_status_t serf_ssl_load_cert_file(
     apr_pool_t *pool)
 {
     FILE *fp = fopen(file_path, "r");
-        
+
     if (fp) {
         X509 *ssl_cert = PEM_read_X509(fp, NULL, NULL, NULL);
         fclose(fp);
