@@ -51,20 +51,18 @@ opts.AddVariables(
                None),
   )
 
-match = re.search('SERF_MAJOR_VERSION ([0-9]+).*'
-                  'SERF_MINOR_VERSION ([0-9]+).*'
-                  'SERF_PATCH_VERSION ([0-9]+)',
-                  open('serf.h').read(),
-                  re.DOTALL)
-MAJOR, MINOR, PATCH = [int(x) for x in match.groups()]
-
-
 env = Environment(variables=opts,
                   tools=('default', 'textfile',),
                   CPPPATH=['.', ],
-                  MAJOR=str(MAJOR),
                   )
 
+match = re.search('SERF_MAJOR_VERSION ([0-9]+).*'
+                  'SERF_MINOR_VERSION ([0-9]+).*'
+                  'SERF_PATCH_VERSION ([0-9]+)',
+                  env.File('serf.h').get_contents(),
+                  re.DOTALL)
+MAJOR, MINOR, PATCH = [int(x) for x in match.groups()]
+env.Append(MAJOR=str(MAJOR))
 
 # PLATFORM-SPECIFIC BUILD TWEAKS
 
