@@ -497,6 +497,8 @@ apr_status_t serf_connection_close(
  * connection @a conn. Setting max_requests to 0 means unlimited (the default).
  * Ex.: setting max_requests to 1 means a request is sent when a response on the
  * previous request was received and handled.
+ *
+ * In general, serf tends to take around 16KB per outstanding request.
  */
 void serf_connection_set_max_outstanding_requests(
     serf_connection_t *conn,
