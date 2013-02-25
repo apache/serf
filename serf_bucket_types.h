@@ -307,6 +307,16 @@ serf_bucket_t *serf_bucket_simple_copy_create(
     apr_size_t len,
     serf_bucket_alloc_t *allocator);
 
+/**
+ * Equivalent to serf_bucket_simple_create, except that the bucket assumes
+ * responsibility for freeing the data on this allocator without making
+ * a copy.  It is assumed that data was created by a call from allocator.
+ */
+serf_bucket_t *serf_bucket_simple_own_create(
+    const char *data,
+    apr_size_t len,
+    serf_bucket_alloc_t *allocator);
+
 #define SERF_BUCKET_SIMPLE_STRING(s,a) \
     serf_bucket_simple_create(s, strlen(s), NULL, NULL, a);
 

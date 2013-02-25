@@ -155,6 +155,35 @@ char *serf_bstrdup(serf_bucket_alloc_t *allocator,
     return newstr;
 }
 
+char *serf_bstrcatv(serf_bucket_alloc_t *allocator, struct iovec *vec,
+                    int vecs, apr_size_t *bytes_written)
+{
+    int i;
+    apr_size_t new_len = 0;
+    char *c, *newstr;
+
+    for (i = 0; i < vecs; i++) {
+        new_len = vec[i].iov_len;
+    }
+
+    /* include NULL term */
+    new_len++;
+
+    /* It's up to the caller to free this memory later. */
+    newstr = serf_bucket_mem_alloc(allocator, new_len);
+
+    c = newstr;
+    for (i = 0; i < vecs; i++) {
+        memcpy(c, vec[i].iov_base, vec[i].iov_len);
+        c += vec[i].iov_len;
+    }
+
+    if (bytes_written) {
+        *bytes_written = c - newstr;
+    }
+
+    return newstr;
+}
 
 /* ==================================================================== */
 
