@@ -163,11 +163,8 @@ char *serf_bstrcatv(serf_bucket_alloc_t *allocator, struct iovec *vec,
     char *c, *newstr;
 
     for (i = 0; i < vecs; i++) {
-        new_len = vec[i].iov_len;
+        new_len += vec[i].iov_len;
     }
-
-    /* include NULL term */
-    new_len++;
 
     /* It's up to the caller to free this memory later. */
     newstr = serf_bucket_mem_alloc(allocator, new_len);
