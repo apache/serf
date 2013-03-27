@@ -18,17 +18,6 @@
 #include "serf_bucket_util.h"
 #include "bucket_private.h"
 
-typedef struct {
-    /* The bucket-independent ssl context that this bucket is associated with */
-    serf_ssl_context_t *ssl_ctx;
-
-    /* Pointer to the 'right' databuf. */
-    serf_databuf_t *databuf;
-
-    /* Pointer to our stream, so we can find it later. */
-    serf_bucket_t **our_stream;
-} ssl_context_t;
-
 void serf_ssl_client_cert_provider_set(
     serf_ssl_context_t *context,
     serf_ssl_need_client_cert_t callback,
