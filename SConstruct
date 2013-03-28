@@ -41,15 +41,24 @@ opts.AddVariables(
                "Path to apu-1-config, or to APR's install area",
                '/usr',
                PathVariable.PathAccept),
-  PathVariable('OPENSSL',
-               "Path to OpenSSL's install area",
-               '/usr',
-               PathVariable.PathIsDir),
   PathVariable('GSSAPI',
                "Path to GSSAPI's install area",
                None,
                None),
   )
+
+if sys.platform == 'darwin':
+  opts.AddVariables(
+    PathVariable('OPENSSL',
+                 "Path to OpenSSL's install area",
+                 None,
+                 None))
+else:
+  opts.AddVariables(
+    PathVariable('OPENSSL',
+                 "Path to OpenSSL's install area",
+                 '/usr',
+                 PathVariable.PathIsDir))
 
 env = Environment(variables=opts,
                   tools=('default', 'textfile',),
@@ -86,6 +95,9 @@ if sys.platform == 'darwin':
   # Mac's interpretation of compatibility is the same as our MINOR version.
   linkflags.append('-Wl,-compatibility_version,%d' % (MINOR+1,))
   linkflags.append('-Wl,-current_version,%d.%d' % (MINOR+1, PATCH,))
+
+  # add Secure Transport library for ssl/tls on Mac OS X
+  env.Append(FRAMEWORKS='Security')
 
 if sys.platform == 'win32':
   ### we should create serf.def for Windows DLLs and add it into the link
@@ -134,12 +146,15 @@ gssapi = env.get('GSSAPI', None)
 if gssapi and os.path.isdir(str(gssapi)):
   gssapi = os.path.join(gssapi, 'bin', 'krb5-config')
   env['GSSAPI'] = gssapi
+openssl = env.get('OPENSSL', None)
+if openssl and os.path.isdir(str(openssl)):
+  env.Append(CPPPATH='$OPENSSL/include')
+  env.Append(LIBPATH='$OPENSSL/lib')
+  env.Append(CFLAGS='-DSERF_HAVE_OPENSSL')
 
 Help(opts.GenerateHelpText(env))
 opts.Save(SAVED_CONFIG, env)
 
-env.Append(CPPPATH='$OPENSSL/include')
-env.Append(LIBPATH='$OPENSSL/lib')
 
 
 # PLAN THE BUILD
