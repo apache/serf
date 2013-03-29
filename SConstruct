@@ -98,6 +98,7 @@ if sys.platform == 'darwin':
 
   # add Secure Transport library for ssl/tls on Mac OS X
   env.Append(FRAMEWORKS='Security')
+  env.Append(CFLAGS='-DSERF_HAVE_SECURETRANSPORT')
 
 if sys.platform == 'win32':
   ### we should create serf.def for Windows DLLs and add it into the link
