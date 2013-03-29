@@ -631,6 +631,8 @@ apr_status_t serf_ssl_use_compression(
     serf_ssl_context_t *ssl_ctx,
     int enabled);
 
+void serf_bucket_ssl_destroy_and_data(serf_bucket_t *bucket);
+
 serf_bucket_t *serf_bucket_ssl_encrypt_create(
     serf_bucket_t *stream,
     serf_ssl_context_t *ssl_context,

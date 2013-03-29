@@ -34,6 +34,8 @@
  * Originally developed by Aaron Bannert and Justin Erenkrantz, eBuilt.
  */
 
+#ifdef SERF_HAVE_OPENSSL
+
 #include <apr_pools.h>
 #include <apr_network_io.h>
 #include <apr_portable.h>
@@ -139,7 +141,7 @@ typedef struct {
     serf_bucket_t *pending;
 } serf_ssl_stream_t;
 
-struct serf_ssl_context_t {
+typedef struct openssl_context_t {
     /* How many open buckets refer to this context. */
     int refcount;
 
@@ -184,11 +186,11 @@ struct serf_ssl_context_t {
     /* Status of a fatal error, returned on subsequent encrypt or decrypt
        requests. */
     apr_status_t fatal_err;
-};
+} openssl_context_t;
 
 typedef struct {
     /* The bucket-independent ssl context that this bucket is associated with */
-    serf_ssl_context_t *ssl_ctx;
+    openssl_context_t *ssl_ctx;
 
     /* Pointer to the 'right' databuf. */
     serf_databuf_t *databuf;
@@ -202,7 +204,7 @@ struct serf_ssl_certificate_t {
     int depth;
 };
 
-static void disable_compression(serf_ssl_context_t *ssl_ctx);
+static void disable_compression(openssl_context_t *ssl_ctx);
 
 #if SSL_VERBOSE
 /* Log all ssl alerts that we receive from the server. */
@@ -246,7 +248,7 @@ apps_ssl_info_callback(const SSL *s, int where, int ret)
 /* Returns the amount read. */
 static int bio_bucket_read(BIO *bio, char *in, int inlen)
 {
-    serf_ssl_context_t *ctx = bio->ptr;
+    openssl_context_t *ctx = bio->ptr;
     const char *data;
     apr_status_t status;
     apr_size_t len;
@@ -290,7 +292,7 @@ static int bio_bucket_read(BIO *bio, char *in, int inlen)
 /* Returns the amount written. */
 static int bio_bucket_write(BIO *bio, const char *in, int inl)
 {
-    serf_ssl_context_t *ctx = bio->ptr;
+    openssl_context_t *ctx = bio->ptr;
     serf_bucket_t *tmp;
 
     serf__log(SSL_VERBOSE, __FILE__, "bio_bucket_write called for %d bytes\n",
@@ -432,7 +434,7 @@ static int
 validate_server_certificate(int cert_valid, X509_STORE_CTX *store_ctx)
 {
     SSL *ssl;
-    serf_ssl_context_t *ctx;
+    openssl_context_t *ctx;
     X509 *server_cert;
     int err, depth;
     int failures = 0;
@@ -573,7 +575,7 @@ validate_server_certificate(int cert_valid, X509_STORE_CTX *store_ctx)
 static apr_status_t ssl_decrypt(void *baton, apr_size_t bufsize,
                                 char *buf, apr_size_t *len)
 {
-    serf_ssl_context_t *ctx = baton;
+    openssl_context_t *ctx = baton;
     apr_size_t priv_len;
     apr_status_t status;
     const char *data;
@@ -683,7 +685,7 @@ static apr_status_t ssl_encrypt(void *baton, apr_size_t bufsize,
 {
     const char *data;
     apr_size_t interim_bufsize;
-    serf_ssl_context_t *ctx = baton;
+    openssl_context_t *ctx = baton;
     apr_status_t status;
 
     if (ctx->fatal_err)
@@ -1000,7 +1002,7 @@ static void init_ssl_libraries(void)
 
 static int ssl_need_client_cert(SSL *ssl, X509 **cert, EVP_PKEY **pkey)
 {
-    serf_ssl_context_t *ctx = SSL_get_app_data(ssl);
+    openssl_context_t *ctx = SSL_get_app_data(ssl);
     apr_status_t status;
 
     if (ctx->cached_cert) {
@@ -1127,60 +1129,68 @@ static int ssl_need_client_cert(SSL *ssl, X509 **cert, EVP_PKEY **pkey)
 
 
 void serf__openssl_client_cert_provider_set(
-    serf_ssl_context_t *context,
+    void *impl_ctx,
     serf_ssl_need_client_cert_t callback,
     void *data,
     void *cache_pool)
 {
-    context->cert_callback = callback;
-    context->cert_userdata = data;
-    context->cert_cache_pool = cache_pool;
-    if (context->cert_cache_pool) {
-        apr_pool_userdata_get((void**)&context->cert_file_success,
+    openssl_context_t *ssl_ctx = impl_ctx;
+
+    ssl_ctx->cert_callback = callback;
+    ssl_ctx->cert_userdata = data;
+    ssl_ctx->cert_cache_pool = cache_pool;
+    if (ssl_ctx->cert_cache_pool) {
+        apr_pool_userdata_get((void**)&ssl_ctx->cert_file_success,
                               "serf:ssl:cert", cache_pool);
     }
 }
 
 
 void serf__openssl_client_cert_password_set(
-    serf_ssl_context_t *context,
+    void *impl_ctx,
     serf_ssl_need_cert_password_t callback,
     void *data,
     void *cache_pool)
 {
-    context->cert_pw_callback = callback;
-    context->cert_pw_userdata = data;
-    context->cert_pw_cache_pool = cache_pool;
-    if (context->cert_pw_cache_pool) {
-        apr_pool_userdata_get((void**)&context->cert_pw_success,
+    openssl_context_t *ssl_ctx = impl_ctx;
+
+    ssl_ctx->cert_pw_callback = callback;
+    ssl_ctx->cert_pw_userdata = data;
+    ssl_ctx->cert_pw_cache_pool = cache_pool;
+    if (ssl_ctx->cert_pw_cache_pool) {
+        apr_pool_userdata_get((void**)&ssl_ctx->cert_pw_success,
                               "serf:ssl:certpw", cache_pool);
     }
 }
 
 
 void serf__openssl_server_cert_callback_set(
-    serf_ssl_context_t *context,
+    void *impl_ctx,
     serf_ssl_need_server_cert_t callback,
     void *data)
 {
-    context->server_cert_callback = callback;
-    context->server_cert_userdata = data;
+    openssl_context_t *ssl_ctx = impl_ctx;
+
+    ssl_ctx->server_cert_callback = callback;
+    ssl_ctx->server_cert_userdata = data;
 }
 
 void serf__openssl_server_cert_chain_callback_set(
-    serf_ssl_context_t *context,
+    void *impl_ctx,
     serf_ssl_need_server_cert_t cert_callback,
     serf_ssl_server_cert_chain_cb_t cert_chain_callback,
     void *data)
 {
-    context->server_cert_callback = cert_callback;
-    context->server_cert_chain_callback = cert_chain_callback;
-    context->server_cert_userdata = data;
+    openssl_context_t *ssl_ctx = impl_ctx;
+
+    ssl_ctx->server_cert_callback = cert_callback;
+    ssl_ctx->server_cert_chain_callback = cert_chain_callback;
+    ssl_ctx->server_cert_userdata = data;
 }
 
-static serf_ssl_context_t *ssl_init_context(void)
+static openssl_context_t *ssl_init_context(void)
 {
-    serf_ssl_context_t *ssl_ctx;
+    openssl_context_t *ssl_ctx;
     apr_pool_t *pool;
     serf_bucket_alloc_t *allocator;
 
@@ -1246,8 +1256,7 @@ static serf_ssl_context_t *ssl_init_context(void)
     return ssl_ctx;
 }
 
-static apr_status_t ssl_free_context(
-    serf_ssl_context_t *ssl_ctx)
+static apr_status_t ssl_free_context(openssl_context_t *ssl_ctx)
 {
     apr_pool_t *p;
 
@@ -1271,38 +1280,44 @@ static apr_status_t ssl_free_context(
     return APR_SUCCESS;
 }
 
-static serf_bucket_t * bucket_create(
-    serf_ssl_context_t *ssl_ctx,
+static void bucket_create(
+    serf_bucket_t *bucket,
+    void *impl_ctx,
     serf_bucket_alloc_t *allocator,
     const serf_bucket_type_t *type)
 {
     ssl_context_t *ctx;
 
     ctx = serf_bucket_mem_alloc(allocator, sizeof(*ctx));
-    if (!ssl_ctx) {
+    if (!impl_ctx) {
         ctx->ssl_ctx = ssl_init_context();
     }
     else {
-        ctx->ssl_ctx = ssl_ctx;
+        ctx->ssl_ctx = impl_ctx;
     }
     ctx->ssl_ctx->refcount++;
 
-    return serf_bucket_create(type, allocator, ctx);
+    bucket->data = ctx;
+    bucket->type = type;
+    bucket->allocator = allocator;
 }
 
-apr_status_t serf__openssl_set_hostname(serf_ssl_context_t *context,
+apr_status_t serf__openssl_set_hostname(void *impl_ctx,
                                         const char * hostname)
 {
+    openssl_context_t *ssl_ctx = impl_ctx;
+
 #ifdef SSL_set_tlsext_host_name
-    if (SSL_set_tlsext_host_name(context->ssl, hostname) != 1) {
+    if (SSL_set_tlsext_host_name(ssl_ctx->ssl, hostname) != 1) {
         ERR_clear_error();
     }
 #endif
     return APR_SUCCESS;
 }
 
-apr_status_t serf__openssl_use_default_certificates(serf_ssl_context_t *ssl_ctx)
+apr_status_t serf__openssl_use_default_certificates(void *impl_ctx)
 {
+    openssl_context_t *ssl_ctx = impl_ctx;
     X509_STORE *store = SSL_CTX_get_cert_store(ssl_ctx->ctx);
 
     int result = X509_STORE_set_default_paths(store);
@@ -1334,9 +1349,10 @@ apr_status_t serf__openssl_load_cert_file(
 
 
 apr_status_t serf__openssl_trust_cert(
-    serf_ssl_context_t *ssl_ctx,
+    void *impl_ctx,
     serf_ssl_certificate_t *cert)
 {
+    openssl_context_t *ssl_ctx = impl_ctx;
     X509_STORE *store = SSL_CTX_get_cert_store(ssl_ctx->ctx);
 
     int result = X509_STORE_add_cert(store, cert->ssl_cert);
@@ -1345,17 +1361,18 @@ apr_status_t serf__openssl_trust_cert(
 }
 
 
-serf_bucket_t *serf_bucket__openssl_decrypt_create(
-    serf_bucket_t *stream,
-    serf_ssl_context_t *ssl_ctx,
-    serf_bucket_alloc_t *allocator)
+static void *
+serf_bucket__openssl_decrypt_create(serf_bucket_t *bucket,
+                                    serf_bucket_t *stream,
+                                    void *impl_ctx,
+                                    serf_bucket_alloc_t *allocator)
 {
-    serf_bucket_t *bkt;
     ssl_context_t *ctx;
 
-    bkt = bucket_create(ssl_ctx, allocator, &serf_bucket_type_openssl_decrypt);
+    bucket_create(bucket, impl_ctx, allocator,
+                  &serf_bucket_type_openssl_decrypt);
 
-    ctx = bkt->data;
+    ctx = bucket->data;
 
     ctx->databuf = &ctx->ssl_ctx->decrypt.databuf;
     if (ctx->ssl_ctx->decrypt.stream != NULL) {
@@ -1364,29 +1381,29 @@ serf_bucket_t *serf_bucket__openssl_decrypt_create(
     ctx->ssl_ctx->decrypt.stream = stream;
     ctx->our_stream = &ctx->ssl_ctx->decrypt.stream;
 
-    return bkt;
+    return ctx->ssl_ctx;
 }
 
 
-serf_ssl_context_t *serf_bucket__openssl_decrypt_context_get(
+void *serf_bucket__openssl_decrypt_context_get(
      serf_bucket_t *bucket)
 {
     ssl_context_t *ctx = bucket->data;
     return ctx->ssl_ctx;
 }
 
-
-serf_bucket_t *serf_bucket__openssl_encrypt_create(
-    serf_bucket_t *stream,
-    serf_ssl_context_t *ssl_ctx,
-    serf_bucket_alloc_t *allocator)
+static void *
+serf_bucket__openssl_encrypt_create(serf_bucket_t *bucket,
+                                    serf_bucket_t *stream,
+                                    void *impl_ctx,
+                                    serf_bucket_alloc_t *allocator)
 {
-    serf_bucket_t *bkt;
     ssl_context_t *ctx;
 
-    bkt = bucket_create(ssl_ctx, allocator, &serf_bucket_type_openssl_encrypt);
+    bucket_create(bucket, impl_ctx, allocator,
+                  &serf_bucket_type_openssl_encrypt);
 
-    ctx = bkt->data;
+    ctx = bucket->data;
 
     ctx->databuf = &ctx->ssl_ctx->encrypt.databuf;
     ctx->our_stream = &ctx->ssl_ctx->encrypt.stream;
@@ -1414,11 +1431,11 @@ serf_bucket_t *serf_bucket__openssl_encrypt_create(
         }
     }
 
-    return bkt;
+    return ctx->ssl_ctx;
 }
 
 
-serf_ssl_context_t *serf_bucket__openssl_encrypt_context_get(
+void *serf_bucket__openssl_encrypt_context_get(
      serf_bucket_t *bucket)
 {
     ssl_context_t *ctx = bucket->data;
@@ -1621,7 +1638,7 @@ const char *serf__openssl_cert_export(
 }
 
 /* Disables compression for all SSL sessions. */
-static void disable_compression(serf_ssl_context_t *ssl_ctx)
+static void disable_compression(openssl_context_t *ssl_ctx)
 {
 #ifdef SSL_OP_NO_COMPRESSION
     SSL_CTX_set_options(ssl_ctx->ctx, SSL_OP_NO_COMPRESSION);
@@ -1629,8 +1646,10 @@ static void disable_compression(serf_ssl_context_t *ssl_ctx)
 }
 
 apr_status_t
-serf__openssl_use_compression(serf_ssl_context_t *ssl_ctx, int enabled)
+serf__openssl_use_compression(void *impl_ctx, int enabled)
 {
+    openssl_context_t *ssl_ctx = impl_ctx;
+
     if (enabled) {
 #ifdef SSL_OP_NO_COMPRESSION
         SSL_clear_options(ssl_ctx->ssl, SSL_OP_NO_COMPRESSION);
@@ -1669,7 +1688,7 @@ static void serf_openssl_decrypt_destroy_and_data(serf_bucket_t *bucket)
 static void serf_openssl_encrypt_destroy_and_data(serf_bucket_t *bucket)
 {
     ssl_context_t *ctx = bucket->data;
-    serf_ssl_context_t *ssl_ctx = ctx->ssl_ctx;
+    openssl_context_t *ssl_ctx = ctx->ssl_ctx;
 
     if (ssl_ctx->encrypt.stream == *ctx->our_stream) {
         serf_bucket_destroy(*ctx->our_stream);
@@ -1752,3 +1771,21 @@ const serf_bucket_type_t serf_bucket_type_openssl_decrypt = {
     serf_openssl_peek,
     serf_openssl_decrypt_destroy_and_data,
 };
+
+const serf_ssl_bucket_type_t serf_ssl_bucket_type_openssl = {
+    serf_bucket__openssl_decrypt_create,
+    serf_bucket__openssl_decrypt_context_get,
+    serf_bucket__openssl_encrypt_create,
+    serf_bucket__openssl_encrypt_context_get,
+    serf__openssl_set_hostname,
+    serf__openssl_client_cert_provider_set,
+    serf__openssl_client_cert_password_set,
+    serf__openssl_server_cert_callback_set,
+    serf__openssl_server_cert_chain_callback_set,
+    serf__openssl_use_default_certificates,
+    serf__openssl_load_cert_file,
+    serf__openssl_trust_cert,
+    serf__openssl_use_compression,
+};
+
+#endif /* SERF_HAVE_OPENSSL */
