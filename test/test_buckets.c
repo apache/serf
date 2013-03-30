@@ -242,31 +242,6 @@ static void test_bucket_header_set(CuTest *tc)
     test_teardown(test_pool);
 }
 
-static apr_status_t read_requested_bytes(serf_bucket_t *bkt,
-                                         apr_size_t requested,
-                                         const char **buf,
-                                         apr_size_t *len,
-                                         apr_pool_t *pool)
-{
-    apr_size_t current = 0;
-    const char *tmp;
-    const char *data;
-    apr_status_t status = APR_SUCCESS;
-
-    tmp = apr_pcalloc(pool, requested);
-    while (current < requested) {
-        status = serf_bucket_read(bkt, requested, &data, len);
-        memcpy((void*)(tmp + current), (void*)data, *len);
-        current += *len;
-        if (APR_STATUS_IS_EOF(status))
-            break;
-    }
-
-    *buf = tmp;
-    *len = current;
-    return status;
-}
-
 
 static void test_iovec_buckets(CuTest *tc)
 {
