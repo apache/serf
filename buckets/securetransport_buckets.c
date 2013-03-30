@@ -149,27 +149,29 @@ sectrans_read_cb(SSLConnectionRef connection,
     apr_status_t status = 0;
     const char *buf;
     char *outbuf = data;
-    size_t requested = *dataLength;
+    size_t requested = *dataLength, buflen = 0;
 
     serf__log(SSL_VERBOSE, __FILE__, "sectrans_read_cb called for "
               "%d bytes\n", requested);
 
+    *dataLength = 0;
     while (!status && requested) {
         status = serf_bucket_read(ctx->decrypt.stream, requested,
-                                  &buf, dataLength);
+                                  &buf, &buflen);
 
         if (SERF_BUCKET_READ_ERROR(status))
             return -1;
 
-        if (*dataLength)
+        if (buflen)
         {
             serf__log(SSL_VERBOSE, __FILE__, "sectrans_read_cb read %d bytes "
                       "with status %d\n", *dataLength, status);
 
             /* Copy the data in the buffer provided by the caller. */
-            memcpy(outbuf, buf, *dataLength);
-            outbuf += *dataLength;
-            requested -= *dataLength;
+            memcpy(outbuf, buf, buflen);
+            outbuf += buflen;
+            requested -= buflen;
+            (*dataLength) += buflen;
         }
     }
 
@@ -370,6 +372,7 @@ serf_sectrans_encrypt_read(serf_bucket_t *bucket,
     serf__log(SSL_VERBOSE, __FILE__, "serf_sectrans_encrypt_read called for "
               "%d bytes.\n", requested);
 
+    /* Pending handshake? */
     if (ctx->state == SERF_SECTRANS_INIT ||
         ctx->state == SERF_SECTRANS_HANDSHAKE)
     {
@@ -378,19 +381,22 @@ serf_sectrans_encrypt_read(serf_bucket_t *bucket,
         ctx->state = SERF_SECTRANS_HANDSHAKE;
         status = do_handshake(ctx);
 
+        if (SERF_BUCKET_READ_ERROR(status))
+            return status;
+
         if (!status)
         {
             serf__log(SSL_VERBOSE, __FILE__, "ssl/tls handshake successful.\n");
             ctx->state = SERF_SECTRANS_CONNECTED;
-            return APR_SUCCESS;
+        } else {
+            /* Maybe the handshake algorithm put some data in the pending
+               outgoing bucket? */
+            return serf_bucket_read(ctx->encrypt.pending, requested, data, len);
         }
-        if (SERF_BUCKET_READ_ERROR(status))
-            return status;
     }
 
-    /* Maybe the handshake algorithm put some data in the pending outgoing
-       bucket */
-    return serf_bucket_read(ctx->encrypt.pending, requested, data, len);
+    /* Handshake finished, */
+    /* TODO: write data */
 }
 
 static apr_status_t
