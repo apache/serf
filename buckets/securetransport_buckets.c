@@ -147,7 +147,8 @@ sectrans_read_cb(SSLConnectionRef connection,
 {
     const sectrans_context_t *ctx = connection;
     apr_status_t status = 0;
-    const char *buf, *outbuf = data;
+    const char *buf;
+    char *outbuf = data;
     size_t requested = *dataLength;
 
     serf__log(SSL_VERBOSE, __FILE__, "sectrans_read_cb called for "
@@ -162,8 +163,8 @@ sectrans_read_cb(SSLConnectionRef connection,
 
         if (*dataLength)
         {
-            serf__log(SSL_VERBOSE, __FILE__, "sectrans_read_cb read %d bytes with "
-                      "status %d\n", *dataLength, status);
+            serf__log(SSL_VERBOSE, __FILE__, "sectrans_read_cb read %d bytes "
+                      "with status %d\n", *dataLength, status);
 
             /* Copy the data in the buffer provided by the caller. */
             memcpy(outbuf, buf, *dataLength);
