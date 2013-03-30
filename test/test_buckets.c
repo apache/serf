@@ -464,21 +464,42 @@ static void test_aggregate_buckets(CuTest *tc)
     serf_bucket_t *bkt, *aggbkt;
     struct iovec tgt_vecs[32];
     int vecs_used;
+    apr_size_t len;
+    const char *data;
 
     apr_pool_t *test_pool = test_setup();
     serf_bucket_alloc_t *alloc = serf_bucket_allocator_create(test_pool, NULL,
                                                               NULL);
 
+#define BODY "12345678901234567890"\
+             "12345678901234567890"\
+             "12345678901234567890"\
+             CRLF
+
     /* Test 1: read 0 bytes from an aggregate */
     aggbkt = serf_bucket_aggregate_create(alloc);
 
-    bkt = SERF_BUCKET_SIMPLE_STRING("line1" CRLF, alloc);
+    bkt = SERF_BUCKET_SIMPLE_STRING(BODY, alloc);
     serf_bucket_aggregate_append(aggbkt, bkt);
 
     status = serf_bucket_read_iovec(aggbkt, 0, 32,
                                     tgt_vecs, &vecs_used);
     CuAssertIntEquals(tc, APR_SUCCESS, status);
     CuAssertIntEquals(tc, 0, vecs_used);
+
+
+    /* Test 2: peek the available bytes, should be non-0 */
+    len = SERF_READ_ALL_AVAIL;
+    status = serf_bucket_peek(aggbkt, &data, &len);
+
+    /* status should be either APR_SUCCESS or APR_EOF */
+    if (status == APR_SUCCESS)
+        CuAssertTrue(tc, len > 0 && len < strlen(BODY));
+    else if (status == APR_EOF)
+        CuAssertIntEquals(tc, strlen(BODY), len);
+    else
+        CuAssertIntEquals(tc, APR_SUCCESS, status);
+#undef BODY
 
     test_teardown(test_pool);
 }
