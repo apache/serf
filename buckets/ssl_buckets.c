@@ -108,27 +108,6 @@ serf_ssl_use_compression(serf_ssl_context_t *ssl_ctx, int enabled)
     return ssl_ctx->type->use_compression(ssl_ctx->impl_ctx, enabled);
 }
 
-apr_status_t serf_ssl_use_default_certificates(serf_ssl_context_t *ssl_ctx)
-{
-    return ssl_ctx->type->use_default_certificates(ssl_ctx->impl_ctx);
-}
-
-apr_status_t serf_ssl_load_cert_file(
-    serf_ssl_certificate_t **cert,
-    const char *file_path,
-    apr_pool_t *pool)
-{
-    return APR_ENOTIMPL;
-}
-
-
-apr_status_t serf_ssl_trust_cert(
-    serf_ssl_context_t *ssl_ctx,
-    serf_ssl_certificate_t *cert)
-{
-    return ssl_ctx->type->trust_cert(ssl_ctx->impl_ctx, cert);
-}
-
 
 serf_bucket_t *serf_bucket_ssl_decrypt_create(
     serf_bucket_t *stream,
@@ -216,11 +195,39 @@ serf_bucket_ssl_destroy_and_data(serf_bucket_t *bucket)
     }
 }
 
-/** TODO: what to do with these? **/
- 
+apr_status_t serf_ssl_use_default_certificates(serf_ssl_context_t *ssl_ctx)
+{
+    return ssl_ctx->type->use_default_certificates(ssl_ctx->impl_ctx);
+}
+
+
+
+apr_status_t serf_ssl_trust_cert(
+                                 serf_ssl_context_t *ssl_ctx,
+                                 serf_ssl_certificate_t *cert)
+{
+    return ssl_ctx->type->trust_cert(ssl_ctx->impl_ctx, cert);
+}
+
+
+/* TODO: what to do with these? */
+apr_status_t serf_ssl_load_cert_file(
+                                     serf_ssl_certificate_t **cert,
+                                     const char *file_path,
+                                     apr_pool_t *pool)
+{
+    serf__log(SSL_VERBOSE, __FILE__,
+              "TODO: function serf_ssl_load_cert_file not implemented.\n");
+
+    return APR_ENOTIMPL;
+}
+
 /* Functions to read a serf_ssl_certificate structure. */
 int serf_ssl_cert_depth(const serf_ssl_certificate_t *cert)
 {
+    serf__log(SSL_VERBOSE, __FILE__,
+              "TODO: function serf_ssl_cert_depth not implemented.\n");
+
     return 0;
 }
 
@@ -229,6 +236,9 @@ apr_hash_t *serf_ssl_cert_issuer(
     const serf_ssl_certificate_t *cert,
     apr_pool_t *pool)
 {
+    serf__log(SSL_VERBOSE, __FILE__,
+              "TODO: function serf_ssl_cert_issuer not implemented.\n");
+
     return 0l;
 }
 
@@ -236,6 +246,9 @@ apr_hash_t *serf_ssl_cert_subject(
     const serf_ssl_certificate_t *cert,
     apr_pool_t *pool)
 {
+    serf__log(SSL_VERBOSE, __FILE__,
+              "TODO: function serf_ssl_cert_subject not implemented.\n");
+
     return 0l;
 }
 
@@ -244,6 +257,9 @@ apr_hash_t *serf_ssl_cert_certificate(
     const serf_ssl_certificate_t *cert,
     apr_pool_t *pool)
 {
+    serf__log(SSL_VERBOSE, __FILE__,
+              "TODO: function serf_ssl_cert_certificate not implemented.\n");
+
     return 0l;
 }
 
@@ -252,5 +268,8 @@ const char *serf_ssl_cert_export(
     const serf_ssl_certificate_t *cert,
     apr_pool_t *pool)
 {
+    serf__log(SSL_VERBOSE, __FILE__,
+              "TODO: function serf_ssl_cert_export not implemented.\n");
+
     return 0l;
 }
