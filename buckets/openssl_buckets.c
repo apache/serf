@@ -71,16 +71,17 @@
 /*
  * Here's an overview of the SSL bucket's relationship to OpenSSL and serf.
  *
- * HTTP request:  SSLENCRYPT(REQUEST)
- *   [context.c reads from SSLENCRYPT and writes out to the socket]
- * HTTP response: RESPONSE(SSLDECRYPT(SOCKET))
- *   [handler function reads from RESPONSE which in turn reads from SSLDECRYPT]
+ * HTTP request:  OPENSSLENCRYPT(REQUEST)
+ *   [context.c reads from OPENSSLENCRYPT and writes out to the socket]
+ * HTTP response: RESPONSE(OPENSSLDECRYPT(SOCKET))
+ *   [handler function reads from RESPONSE which in turn reads from
+ *    OPENSSLDECRYPT]
  *
  * HTTP request read call path:
  *
  * write_to_connection
- *  |- serf_bucket_read on SSLENCRYPT
- *    |- serf_ssl_read
+ *  |- serf_bucket_read on OPENSSLENCRYPT
+ *    |- serf_openssl_read
  *      |- serf_databuf_read
  *        |- common_databuf_prep
  *          |- ssl_encrypt
@@ -100,8 +101,8 @@
  *  |- acceptor
  *  |- handler
  *    |- ...
- *      |- serf_bucket_read(SSLDECRYPT)
- *        |- serf_ssl_read
+ *      |- serf_bucket_read on OPENSSLDECRYPT
+ *        |- serf_openssl_read
  *          |- serf_databuf_read
  *            |- ssl_decrypt
  *              |- 1. SSL_read() for pending decrypted data; if any, return.
