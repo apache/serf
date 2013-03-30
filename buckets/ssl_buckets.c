@@ -145,6 +145,7 @@ serf_bucket_t *serf_bucket_ssl_decrypt_create(
         ssl_ctx = serf_bucket_mem_alloc(allocator, sizeof(*ssl_ctx));
         ssl_ctx->type = type;
         ssl_ctx->refcount = 0;
+        ssl_ctx->impl_ctx = 0l;
     }
 
     ssl_ctx->impl_ctx = ssl_bkt->type->decrypt_create(&ssl_bkt->bucket,
@@ -182,6 +183,7 @@ serf_bucket_t *serf_bucket_ssl_encrypt_create(
         ssl_ctx = serf_bucket_mem_alloc(allocator, sizeof(*ssl_ctx));
         ssl_ctx->type = type;
         ssl_ctx->refcount = 0;
+        ssl_ctx->impl_ctx = 0l;
     }
 
     ssl_ctx->impl_ctx = ssl_bkt->type->encrypt_create(&ssl_bkt->bucket,
