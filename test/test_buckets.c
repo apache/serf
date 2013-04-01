@@ -24,6 +24,8 @@
 #include "serf_private.h"
 
 #define CRLF "\r\n"
+#define CR "\r"
+#define LF "\n"
 
 static apr_status_t read_all(serf_bucket_t *bkt,
                              char *buf,
@@ -58,45 +60,6 @@ static apr_status_t read_all(serf_bucket_t *bkt,
     return status;
 }
 
-static void test_simple_bucket_readline(CuTest *tc)
-{
-    apr_status_t status;
-    serf_bucket_t *bkt;
-    const char *data;
-    int found;
-    apr_size_t len;
-
-    apr_pool_t *test_pool = test_setup();
-    serf_bucket_alloc_t *alloc = serf_bucket_allocator_create(test_pool, NULL,
-                                                              NULL);
-
-    bkt = SERF_BUCKET_SIMPLE_STRING(
-        "line1" CRLF
-        "line2",
-        alloc);
-
-    /* Initialize parameters to check that they will be initialized. */
-    len = 0x112233;
-    data = 0;
-    status = serf_bucket_readline(bkt, SERF_NEWLINE_CRLF, &found, &data, &len);
-
-    CuAssertIntEquals(tc, APR_SUCCESS, status);
-    CuAssertIntEquals(tc, SERF_NEWLINE_CRLF, found);
-    CuAssertIntEquals(tc, 7, len);
-    CuAssert(tc, data, strncmp("line1" CRLF, data, len) == 0);
-
-    /* Initialize parameters to check that they will be initialized. */
-    len = 0x112233;
-    data = 0;
-    status = serf_bucket_readline(bkt, SERF_NEWLINE_CRLF, &found, &data, &len);
-
-    CuAssertIntEquals(tc, APR_EOF, status);
-    CuAssertIntEquals(tc, SERF_NEWLINE_NONE, found);
-    CuAssertIntEquals(tc, 5, len);
-    CuAssert(tc, data, strncmp("line2", data, len) == 0);
-    test_teardown(test_pool);
-}
-
 /* Reads bucket until EOF found and compares read data with zero terminated
    string expected. Report all failures using CuTest. */
 static void read_and_check_bucket(CuTest *tc, serf_bucket_t *bkt,
@@ -120,6 +83,130 @@ static void read_and_check_bucket(CuTest *tc, serf_bucket_t *bkt,
     } while(!APR_STATUS_IS_EOF(status));
 
     CuAssert(tc, "Read less data than expected.", strlen(expected) == 0);
+}
+
+/* Reads bucket with serf_bucket_readline until EOF found and compares:
+   - actual line endings with expected line endings
+   - actual data with zero terminated string expected.
+   Reports all failures using CuTest. */
+static void readline_and_check_bucket(CuTest *tc, serf_bucket_t *bkt,
+                                      int acceptable,
+                                      const char *expected)
+{
+    apr_status_t status;
+    do
+    {
+        const char *data;
+        apr_size_t len;
+        int found;
+
+        status = serf_bucket_readline(bkt, acceptable, &found,
+                                      &data, &len);
+        CuAssert(tc, "Got error during bucket reading.",
+                 !SERF_BUCKET_READ_ERROR(status));
+        CuAssert(tc, "Read more data than expected.",
+                 strlen(expected) >= len);
+        CuAssert(tc, "Read data is not equal to expected.",
+                 strncmp(expected, data, len) == 0);
+        if (found != SERF_NEWLINE_NONE)
+        {
+            CuAssert(tc, "Unexpected line ending type!",
+                     found & acceptable);
+            if (found & SERF_NEWLINE_CR)
+                CuAssert(tc, "CR Line ending was reported but not in data!",
+                         strncmp(data + len - 1, "\r", 1) == 0);
+            if (found & SERF_NEWLINE_LF)
+                CuAssert(tc, "LF Line ending was reported but not in data!",
+                         strncmp(data + len - 1, "\n", 1) == 0);
+            if (found & SERF_NEWLINE_CRLF)
+                CuAssert(tc, "CRLF Line ending was reported but not in data!",
+                         strncmp(data + len - 2, "\r\n", 2) == 0);
+        } else
+        {
+            if (acceptable & SERF_NEWLINE_CR)
+                CuAssert(tc, "CR Line ending was not reported but in data!",
+                         strncmp(data + len - 1, "\r", 1) != 0);
+            if (acceptable & SERF_NEWLINE_LF)
+                CuAssert(tc, "LF Line ending was not reported but in data!",
+                         strncmp(data + len - 1, "\n", 1) != 0);
+            if (acceptable & SERF_NEWLINE_CRLF)
+                CuAssert(tc, "CRLF Line ending was not reported but in data!",
+                         strncmp(data + len - 2, "\r\n", 2) != 0);
+        }
+        
+        expected += len;
+    } while(!APR_STATUS_IS_EOF(status));
+
+    CuAssert(tc, "Read less data than expected.", strlen(expected) == 0);
+}
+
+
+/******************************** TEST CASES **********************************/
+
+static void test_simple_bucket_readline(CuTest *tc)
+{
+    apr_status_t status;
+    serf_bucket_t *bkt;
+    const char *data;
+    int found;
+    apr_size_t len;
+
+    apr_pool_t *test_pool = test_setup();
+    serf_bucket_alloc_t *alloc = serf_bucket_allocator_create(test_pool, NULL,
+                                                              NULL);
+
+    bkt = SERF_BUCKET_SIMPLE_STRING(
+                                    "line1" CRLF
+                                    "line2",
+                                    alloc);
+
+    /* Initialize parameters to check that they will be initialized. */
+    len = 0x112233;
+    data = 0;
+    status = serf_bucket_readline(bkt, SERF_NEWLINE_CRLF, &found, &data, &len);
+
+    CuAssertIntEquals(tc, APR_SUCCESS, status);
+    CuAssertIntEquals(tc, SERF_NEWLINE_CRLF, found);
+    CuAssertIntEquals(tc, 7, len);
+    CuAssert(tc, data, strncmp("line1" CRLF, data, len) == 0);
+
+    /* Initialize parameters to check that they will be initialized. */
+    len = 0x112233;
+    data = 0;
+    status = serf_bucket_readline(bkt, SERF_NEWLINE_CRLF, &found, &data, &len);
+
+    CuAssertIntEquals(tc, APR_EOF, status);
+    CuAssertIntEquals(tc, SERF_NEWLINE_NONE, found);
+    CuAssertIntEquals(tc, 5, len);
+    CuAssert(tc, data, strncmp("line2", data, len) == 0);
+    test_teardown(test_pool);
+
+    /* acceptable line types should be reported */
+    bkt = SERF_BUCKET_SIMPLE_STRING("line1" CRLF, alloc);
+    readline_and_check_bucket(tc, bkt, SERF_NEWLINE_CRLF, "line1" CRLF);
+    bkt = SERF_BUCKET_SIMPLE_STRING("line1" LF, alloc);
+    readline_and_check_bucket(tc, bkt, SERF_NEWLINE_LF, "line1" LF);
+    bkt = SERF_BUCKET_SIMPLE_STRING("line1" LF, alloc);
+    readline_and_check_bucket(tc, bkt, SERF_NEWLINE_LF, "line1" LF);
+
+    /* Unacceptable line types should not be reported */
+    bkt = SERF_BUCKET_SIMPLE_STRING("line1" CRLF, alloc);
+    readline_and_check_bucket(tc, bkt, SERF_NEWLINE_CR, "line1" CRLF);
+    bkt = SERF_BUCKET_SIMPLE_STRING("line1" CRLF, alloc);
+    readline_and_check_bucket(tc, bkt, SERF_NEWLINE_LF, "line1" CRLF);
+    bkt = SERF_BUCKET_SIMPLE_STRING("line1" LF, alloc);
+    readline_and_check_bucket(tc, bkt, SERF_NEWLINE_CR, "line1" LF);
+    bkt = SERF_BUCKET_SIMPLE_STRING("line1" LF, alloc);
+    readline_and_check_bucket(tc, bkt, SERF_NEWLINE_CRLF, "line1" LF);
+    bkt = SERF_BUCKET_SIMPLE_STRING("line1" CR, alloc);
+    readline_and_check_bucket(tc, bkt, SERF_NEWLINE_LF, "line1" CR);
+#if 0
+    /* TODO: looks like a bug, CRLF acceptable on buffer with CR returns
+       SERF_NEWLINE_CRLF_SPLIT, but here that CR comes at the end of the 
+       buffer (APR_EOF), so should have been SERF_NEWLINE_NONE! */
+    bkt = SERF_BUCKET_SIMPLE_STRING("line1" CR, alloc);
+    readline_and_check_bucket(tc, bkt, SERF_NEWLINE_CRLF, "line1" CR);
+#endif
 }
 
 static void test_response_bucket_read(CuTest *tc)
@@ -487,7 +574,7 @@ static void test_aggregate_buckets(CuTest *tc)
 
     read_and_check_bucket(tc, aggbkt, BODY);
 
-    /* Test 4: multiple child buckets prepended. */
+    /* Test 5: multiple child buckets prepended. */
     aggbkt = serf_bucket_aggregate_create(alloc);
 
     bkt = SERF_BUCKET_SIMPLE_STRING_LEN(BODY+15, strlen(BODY)-15, alloc);
