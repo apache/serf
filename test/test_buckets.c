@@ -445,11 +445,10 @@ static void test_aggregate_buckets(CuTest *tc)
     apr_pool_t *test_pool = test_setup();
     serf_bucket_alloc_t *alloc = serf_bucket_allocator_create(test_pool, NULL,
                                                               NULL);
-
-#define BODY "12345678901234567890"\
-             "12345678901234567890"\
-             "12345678901234567890"\
-             CRLF
+    const char *BODY = "12345678901234567890"\
+                       "12345678901234567890"\
+                       "12345678901234567890"\
+                       CRLF;
 
     /* Test 1: read 0 bytes from an aggregate */
     aggbkt = serf_bucket_aggregate_create(alloc);
@@ -474,7 +473,29 @@ static void test_aggregate_buckets(CuTest *tc)
         CuAssertIntEquals(tc, strlen(BODY), len);
     else
         CuAssertIntEquals(tc, APR_SUCCESS, status);
-#undef BODY
+
+    /* Test 3: read the data from the bucket. */
+    read_and_check_bucket(tc, aggbkt, BODY);
+
+    /* Test 4: multiple child buckets appended. */
+    aggbkt = serf_bucket_aggregate_create(alloc);
+
+    bkt = SERF_BUCKET_SIMPLE_STRING_LEN(BODY, 15, alloc);
+    serf_bucket_aggregate_append(aggbkt, bkt);
+    bkt = SERF_BUCKET_SIMPLE_STRING_LEN(BODY+15, strlen(BODY)-15, alloc);
+    serf_bucket_aggregate_append(aggbkt, bkt);
+
+    read_and_check_bucket(tc, aggbkt, BODY);
+
+    /* Test 4: multiple child buckets prepended. */
+    aggbkt = serf_bucket_aggregate_create(alloc);
+
+    bkt = SERF_BUCKET_SIMPLE_STRING_LEN(BODY+15, strlen(BODY)-15, alloc);
+    serf_bucket_aggregate_prepend(aggbkt, bkt);
+    bkt = SERF_BUCKET_SIMPLE_STRING_LEN(BODY, 15, alloc);
+    serf_bucket_aggregate_prepend(aggbkt, bkt);
+
+    read_and_check_bucket(tc, aggbkt, BODY);
 
     test_teardown(test_pool);
 }
