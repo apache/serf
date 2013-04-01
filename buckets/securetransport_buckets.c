@@ -242,6 +242,10 @@ get_hostname(sectrans_context_t *ssl_ctx)
     return str;
 }
 
+/* Validate a server certificate. Call back to the application if needed.
+   Returns APR_SUCCESS if the server certificate is accepted.
+   Otherwise returns an error.
+ */
 static int
 validate_server_certificate(sectrans_context_t *ssl_ctx)
 {
@@ -355,7 +359,7 @@ validate_server_certificate(sectrans_context_t *ssl_ctx)
     CFRelease(certs);
     CFRelease(trust);
 
-    return APR_EAGAIN;
+    return APR_SUCCESS;
 }
 
 static apr_status_t do_handshake(sectrans_context_t *ssl_ctx)
@@ -369,9 +373,11 @@ static apr_status_t do_handshake(sectrans_context_t *ssl_ctx)
 
     switch(sectrans_status) {
         case errSSLServerAuthCompleted:
-            return validate_server_certificate(ssl_ctx);
+            status = validate_server_certificate(ssl_ctx);
+            if (!status)
+                return APR_EAGAIN;
         case errSSLClientCertRequested:
-            
+            return APR_ENOTIMPL;
         default:
             status = translate_sectrans_status(sectrans_status);
             break;
@@ -569,7 +575,7 @@ apr_hash_t *cert_certificate(const serf_ssl_certificate_t *cert,
     return NULL;
 }
 
-apr_hash_t *cert_export(const serf_ssl_certificate_t *cert,
+const char *cert_export(const serf_ssl_certificate_t *cert,
                         apr_pool_t *pool)
 {
     serf__log(SSL_VERBOSE, __FILE__,
