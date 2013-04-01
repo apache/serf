@@ -200,11 +200,6 @@ typedef struct {
     serf_bucket_t **our_stream;
 } ssl_context_t;
 
-struct serf_ssl_certificate_t {
-    X509 *ssl_cert;
-    int depth;
-};
-
 static void disable_compression(openssl_context_t *ssl_ctx);
 
 #if SSL_VERBOSE
@@ -490,13 +485,11 @@ validate_server_certificate(int cert_valid, X509_STORE_CTX *store_ctx)
         (depth == 0 || failures)) {
         apr_status_t status;
         serf_ssl_certificate_t *cert;
-        apr_pool_t *subpool;
 
-        apr_pool_create(&subpool, ctx->pool);
-
-        cert = apr_palloc(subpool, sizeof(serf_ssl_certificate_t));
-        cert->ssl_cert = server_cert;
-        cert->depth = depth;
+        cert = serf__create_certificate(ctx->allocator,
+                                        &serf_ssl_bucket_type_openssl,
+                                        server_cert,
+                                        depth);
 
         /* Callback for further verification. */
         status = ctx->server_cert_callback(ctx->server_cert_userdata,
@@ -506,7 +499,6 @@ validate_server_certificate(int cert_valid, X509_STORE_CTX *store_ctx)
         else
             /* Pass the error back to the caller through the context-run. */
             ctx->pending_err = status;
-        apr_pool_destroy(subpool);
     }
 
     if (ctx->server_cert_chain_callback
@@ -516,8 +508,10 @@ validate_server_certificate(int cert_valid, X509_STORE_CTX *store_ctx)
         const serf_ssl_certificate_t **certs;
         int certs_len;
         apr_pool_t *subpool;
+        serf_bucket_alloc_t *allocator;
 
         apr_pool_create(&subpool, ctx->pool);
+        allocator = serf_bucket_allocator_create(subpool, NULL, NULL);
 
         /* Borrow the chain to pass to the callback. */
         chain = X509_STORE_CTX_get_chain(store_ctx);
@@ -526,10 +520,12 @@ validate_server_certificate(int cert_valid, X509_STORE_CTX *store_ctx)
            certificate. */
         /* ### can this actually happen with _get_chain() ?  */
         if (!chain) {
-            serf_ssl_certificate_t *cert = apr_palloc(subpool, sizeof(*cert));
+            serf_ssl_certificate_t *cert;
 
-            cert->ssl_cert = server_cert;
-            cert->depth = depth;
+            cert = serf__create_certificate(allocator,
+                                            &serf_ssl_bucket_type_openssl,
+                                            server_cert,
+                                            depth);
 
             /* Room for the server_cert and a trailing NULL.  */
             certs = apr_palloc(subpool, sizeof(*certs) * 2);
@@ -546,9 +542,10 @@ validate_server_certificate(int cert_valid, X509_STORE_CTX *store_ctx)
             for (i = 0; i < certs_len; ++i) {
                 serf_ssl_certificate_t *cert;
 
-                cert = apr_palloc(subpool, sizeof(*cert));
-                cert->ssl_cert = sk_X509_value(chain, i);
-                cert->depth = i;
+                cert = serf__create_certificate(allocator,
+                                                &serf_ssl_bucket_type_openssl,
+                                                sk_X509_value(chain, i),
+                                                i);
 
                 certs[i] = cert;
             }
@@ -1338,9 +1335,14 @@ apr_status_t serf__openssl_load_cert_file(
         fclose(fp);
 
         if (ssl_cert) {
-            *cert = apr_palloc(pool, sizeof(serf_ssl_certificate_t));
-            (*cert)->ssl_cert = ssl_cert;
+            serf_ssl_certificate_t *cert;
+            serf_bucket_alloc_t *allocator =
+                serf_bucket_allocator_create(pool, NULL, NULL);
 
+            cert = serf__create_certificate(allocator,
+                                            &serf_ssl_bucket_type_openssl,
+                                            ssl_cert,
+                                            0);
             return APR_SUCCESS;
         }
     }
@@ -1356,7 +1358,7 @@ apr_status_t serf__openssl_trust_cert(
     openssl_context_t *ssl_ctx = impl_ctx;
     X509_STORE *store = SSL_CTX_get_cert_store(ssl_ctx->ctx);
 
-    int result = X509_STORE_add_cert(store, cert->ssl_cert);
+    int result = X509_STORE_add_cert(store, cert->impl_cert);
 
     return result ? APR_SUCCESS : SERF_ERROR_SSL_CERT_FAILED;
 }
@@ -1496,7 +1498,7 @@ convert_X509_NAME_to_table(X509_NAME *org, apr_pool_t *pool)
 
 int serf__openssl_cert_depth(const serf_ssl_certificate_t *cert)
 {
-    return cert->depth;
+    return cert->depth_of_error;
 }
 
 
@@ -1504,7 +1506,7 @@ apr_hash_t *serf__openssl_cert_issuer(
     const serf_ssl_certificate_t *cert,
     apr_pool_t *pool)
 {
-    X509_NAME *issuer = X509_get_issuer_name(cert->ssl_cert);
+    X509_NAME *issuer = X509_get_issuer_name(cert->impl_cert);
 
     if (!issuer)
         return NULL;
@@ -1517,7 +1519,7 @@ apr_hash_t *serf__openssl_cert_subject(
     const serf_ssl_certificate_t *cert,
     apr_pool_t *pool)
 {
-    X509_NAME *subject = X509_get_subject_name(cert->ssl_cert);
+    X509_NAME *subject = X509_get_subject_name(cert->impl_cert);
 
     if (!subject)
         return NULL;
@@ -1535,9 +1537,10 @@ apr_hash_t *serf__openssl_cert_certificate(
     unsigned char md[EVP_MAX_MD_SIZE];
     BIO *bio;
     STACK_OF(GENERAL_NAME) *names;
+    X509 *ssl_cert = cert->impl_cert;
 
     /* sha1 fingerprint */
-    if (X509_digest(cert->ssl_cert, EVP_sha1(), md, &md_size)) {
+    if (X509_digest(ssl_cert, EVP_sha1(), md, &md_size)) {
         const char hex[] = "0123456789ABCDEF";
         char fingerprint[EVP_MAX_MD_SIZE * 3];
 
@@ -1562,14 +1565,14 @@ apr_hash_t *serf__openssl_cert_certificate(
         char buf[256];
 
         memset (buf, 0, sizeof (buf));
-        notBefore = X509_get_notBefore(cert->ssl_cert);
+        notBefore = X509_get_notBefore(ssl_cert);
         if (ASN1_TIME_print(bio, notBefore)) {
             BIO_read(bio, buf, 255);
             apr_hash_set(tgt, "notBefore", APR_HASH_KEY_STRING,
                          apr_pstrdup(pool, buf));
         }
         memset (buf, 0, sizeof (buf));
-        notAfter = X509_get_notAfter(cert->ssl_cert);
+        notAfter = X509_get_notAfter(ssl_cert);
         if (ASN1_TIME_print(bio, notAfter)) {
             BIO_read(bio, buf, 255);
             apr_hash_set(tgt, "notAfter", APR_HASH_KEY_STRING,
@@ -1579,7 +1582,7 @@ apr_hash_t *serf__openssl_cert_certificate(
     BIO_free(bio);
 
     /* Get subjectAltNames */
-    names = X509_get_ext_d2i(cert->ssl_cert, NID_subject_alt_name, NULL, NULL);
+    names = X509_get_ext_d2i(ssl_cert, NID_subject_alt_name, NULL, NULL);
     if (names) {
         int names_count = sk_GENERAL_NAME_num(names);
 
@@ -1620,14 +1623,14 @@ const char *serf__openssl_cert_export(
     unsigned char *unused;
 
     /* find the length of the DER encoding. */
-    len = i2d_X509(cert->ssl_cert, NULL);
+    len = i2d_X509(cert->impl_cert, NULL);
     if (len < 0) {
         return NULL;
     }
 
     binary_cert = apr_palloc(pool, len);
     unused = (unsigned char *)binary_cert;
-    len = i2d_X509(cert->ssl_cert, &unused);  /* unused is incremented  */
+    len = i2d_X509(cert->impl_cert, &unused);  /* unused is incremented  */
     if (len < 0) {
         return NULL;
     }
@@ -1786,6 +1789,10 @@ const serf_ssl_bucket_type_t serf_ssl_bucket_type_openssl = {
     serf__openssl_use_default_certificates,
     serf__openssl_load_cert_file,
     serf__openssl_trust_cert,
+    serf__openssl_cert_issuer,
+    serf__openssl_cert_subject,
+    serf__openssl_cert_certificate,
+    serf__openssl_cert_export,
     serf__openssl_use_compression,
 };
 

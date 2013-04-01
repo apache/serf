@@ -85,6 +85,33 @@ struct serf_ssl_bucket_type_t {
                                serf_ssl_certificate_t *cert);
 
     /**
+     * Extract the fields of the issuer in a table with keys (E, CN, OU, O, L,
+     * ST and C). The returned table will be allocated in @a pool.
+     */
+    apr_hash_t * (*cert_issuer)(const serf_ssl_certificate_t *cert,
+                                apr_pool_t *pool);
+
+    /**
+     * Extract the fields of the subject in a table with keys (E, CN, OU, O, L,
+     * ST and C). The returned table will be allocated in @a pool.
+     */
+    apr_hash_t * (*cert_subject)(const serf_ssl_certificate_t *cert,
+                                 apr_pool_t *pool);
+
+    /**
+     * Extract the fields of the certificate in a table with keys (sha1, notBefore,
+     * notAfter). The returned table will be allocated in @a pool.
+     */
+    apr_hash_t * (*cert_certificate)(const serf_ssl_certificate_t *cert,
+                                     apr_pool_t *pool);
+    
+    /**
+     * Export a certificate to base64-encoded, zero-terminated string.
+     * The returned string is allocated in @a pool. Returns NULL on failure.
+     */
+    const char * (*cert_export)(const serf_ssl_certificate_t *cert,
+                                apr_pool_t *pool);
+    /**
      * Enable or disable SSL compression on a SSL session.
      * @a enabled = 1 to enable compression, 0 to disable compression.
      * Default = disabled.
@@ -92,6 +119,26 @@ struct serf_ssl_bucket_type_t {
     apr_status_t (*use_compression)(void *impl_ctx,
                                     int enabled);
 };
+
+/* Implementation independent certificate object. */
+struct serf_ssl_certificate_t {
+    /** bucket implementation that can parse this certificate. */
+    const serf_ssl_bucket_type_t *type;
+
+    /** implementation specific certificate data */
+    /* Note: non-const, as required by OpenSSL. */
+    void *impl_cert;
+
+    /** Depth in the chain where an error was found. */
+    int depth_of_error;
+};
+
+/* Creates a serf_ssl_certificate_t object, caller takes ownership. */
+serf_ssl_certificate_t *
+serf__create_certificate(serf_bucket_alloc_t *allocator,
+                         const serf_ssl_bucket_type_t *type,
+                         void *impl_cert,
+                         int depth);
 
 /* ==================================================================== */
 

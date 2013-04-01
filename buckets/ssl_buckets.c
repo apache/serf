@@ -202,17 +202,67 @@ apr_status_t serf_ssl_use_default_certificates(serf_ssl_context_t *ssl_ctx)
 
 
 
-apr_status_t serf_ssl_trust_cert(
-                                 serf_ssl_context_t *ssl_ctx,
+apr_status_t serf_ssl_trust_cert(serf_ssl_context_t *ssl_ctx,
                                  serf_ssl_certificate_t *cert)
 {
     return ssl_ctx->type->trust_cert(ssl_ctx->impl_ctx, cert);
 }
 
+/* Create a implementation-independent serf_ssl_certificate_t object */
+serf_ssl_certificate_t *
+serf__create_certificate(serf_bucket_alloc_t *allocator,
+                         const serf_ssl_bucket_type_t *type,
+                         void *impl_cert,
+                         int depth_of_error)
+{
+    serf_ssl_certificate_t *cert;
 
-/* TODO: what to do with these? */
-apr_status_t serf_ssl_load_cert_file(
-                                     serf_ssl_certificate_t **cert,
+    cert = serf_bucket_mem_alloc(allocator,
+                                 sizeof(serf_ssl_certificate_t));
+    cert->impl_cert = impl_cert;
+    cert->type = type;
+    cert->depth_of_error = depth_of_error;
+
+    return cert;
+}
+
+/* Functions to read a serf_ssl_certificate structure. */
+int serf_ssl_cert_depth(const serf_ssl_certificate_t *cert)
+{
+    return cert->depth_of_error;
+}
+
+apr_hash_t *serf_ssl_cert_issuer(
+    const serf_ssl_certificate_t *cert,
+    apr_pool_t *pool)
+{
+    return cert->type->cert_issuer(cert, pool);
+}
+
+apr_hash_t *serf_ssl_cert_subject(
+    const serf_ssl_certificate_t *cert,
+    apr_pool_t *pool)
+{
+    return cert->type->cert_subject(cert, pool);
+}
+
+apr_hash_t *serf_ssl_cert_certificate(
+    const serf_ssl_certificate_t *cert,
+    apr_pool_t *pool)
+{
+    return cert->type->cert_certificate(cert, pool);
+}
+
+const char *serf_ssl_cert_export(
+    const serf_ssl_certificate_t *cert,
+    apr_pool_t *pool)
+{
+    return cert->type->cert_export(cert, pool);
+}
+
+
+/* TODO: what to do with this? */
+apr_status_t serf_ssl_load_cert_file(serf_ssl_certificate_t **cert,
                                      const char *file_path,
                                      apr_pool_t *pool)
 {
@@ -220,56 +270,4 @@ apr_status_t serf_ssl_load_cert_file(
               "TODO: function serf_ssl_load_cert_file not implemented.\n");
 
     return APR_ENOTIMPL;
-}
-
-/* Functions to read a serf_ssl_certificate structure. */
-int serf_ssl_cert_depth(const serf_ssl_certificate_t *cert)
-{
-    serf__log(SSL_VERBOSE, __FILE__,
-              "TODO: function serf_ssl_cert_depth not implemented.\n");
-
-    return 0;
-}
-
-
-apr_hash_t *serf_ssl_cert_issuer(
-    const serf_ssl_certificate_t *cert,
-    apr_pool_t *pool)
-{
-    serf__log(SSL_VERBOSE, __FILE__,
-              "TODO: function serf_ssl_cert_issuer not implemented.\n");
-
-    return NULL;
-}
-
-apr_hash_t *serf_ssl_cert_subject(
-    const serf_ssl_certificate_t *cert,
-    apr_pool_t *pool)
-{
-    serf__log(SSL_VERBOSE, __FILE__,
-              "TODO: function serf_ssl_cert_subject not implemented.\n");
-
-    return NULL;
-}
-
-
-apr_hash_t *serf_ssl_cert_certificate(
-    const serf_ssl_certificate_t *cert,
-    apr_pool_t *pool)
-{
-    serf__log(SSL_VERBOSE, __FILE__,
-              "TODO: function serf_ssl_cert_certificate not implemented.\n");
-
-    return NULL;
-}
-
-
-const char *serf_ssl_cert_export(
-    const serf_ssl_certificate_t *cert,
-    apr_pool_t *pool)
-{
-    serf__log(SSL_VERBOSE, __FILE__,
-              "TODO: function serf_ssl_cert_export not implemented.\n");
-
-    return NULL;
 }
