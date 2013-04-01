@@ -89,11 +89,14 @@ static void read_and_check_bucket(CuTest *tc, serf_bucket_t *bkt,
    - actual line endings with expected line endings
    - actual data with zero terminated string expected.
    Reports all failures using CuTest. */
-static void readline_and_check_bucket(CuTest *tc, serf_bucket_t *bkt,
-                                      int acceptable,
-                                      const char *expected)
+static void readlines_and_check_bucket(CuTest *tc, serf_bucket_t *bkt,
+                                       int acceptable,
+                                       const char *expected,
+                                       int expected_nr_of_lines)
 {
     apr_status_t status;
+    int actual_nr_of_lines = 0;
+
     do
     {
         const char *data;
@@ -110,6 +113,8 @@ static void readline_and_check_bucket(CuTest *tc, serf_bucket_t *bkt,
                  strncmp(expected, data, len) == 0);
         if (found != SERF_NEWLINE_NONE)
         {
+            actual_nr_of_lines++;
+
             CuAssert(tc, "Unexpected line ending type!",
                      found & acceptable);
             if (found & SERF_NEWLINE_CR)
@@ -123,6 +128,9 @@ static void readline_and_check_bucket(CuTest *tc, serf_bucket_t *bkt,
                          strncmp(data + len - 2, "\r\n", 2) == 0);
         } else
         {
+            if (status == APR_EOF && len)
+                actual_nr_of_lines++;
+
             if (acceptable & SERF_NEWLINE_CR)
                 CuAssert(tc, "CR Line ending was not reported but in data!",
                          strncmp(data + len - 1, "\r", 1) != 0);
@@ -137,6 +145,7 @@ static void readline_and_check_bucket(CuTest *tc, serf_bucket_t *bkt,
         expected += len;
     } while(!APR_STATUS_IS_EOF(status));
 
+    CuAssertIntEquals(tc, expected_nr_of_lines, actual_nr_of_lines);
     CuAssert(tc, "Read less data than expected.", strlen(expected) == 0);
 }
 
@@ -150,7 +159,8 @@ static void test_simple_bucket_readline(CuTest *tc)
     const char *data;
     int found;
     apr_size_t len;
-
+    const char *body;
+    
     apr_pool_t *test_pool = test_setup();
     serf_bucket_alloc_t *alloc = serf_bucket_allocator_create(test_pool, NULL,
                                                               NULL);
@@ -183,30 +193,37 @@ static void test_simple_bucket_readline(CuTest *tc)
 
     /* acceptable line types should be reported */
     bkt = SERF_BUCKET_SIMPLE_STRING("line1" CRLF, alloc);
-    readline_and_check_bucket(tc, bkt, SERF_NEWLINE_CRLF, "line1" CRLF);
+    readlines_and_check_bucket(tc, bkt, SERF_NEWLINE_CRLF, "line1" CRLF, 1);
     bkt = SERF_BUCKET_SIMPLE_STRING("line1" LF, alloc);
-    readline_and_check_bucket(tc, bkt, SERF_NEWLINE_LF, "line1" LF);
+    readlines_and_check_bucket(tc, bkt, SERF_NEWLINE_LF, "line1" LF, 1);
     bkt = SERF_BUCKET_SIMPLE_STRING("line1" LF, alloc);
-    readline_and_check_bucket(tc, bkt, SERF_NEWLINE_LF, "line1" LF);
+    readlines_and_check_bucket(tc, bkt, SERF_NEWLINE_LF, "line1" LF, 1);
+    /* special cases, but acceptable */
+    bkt = SERF_BUCKET_SIMPLE_STRING("line1" CRLF, alloc);
+    readlines_and_check_bucket(tc, bkt, SERF_NEWLINE_CR, "line1" CRLF, 2);
+    bkt = SERF_BUCKET_SIMPLE_STRING("line1" CRLF, alloc);
+    readlines_and_check_bucket(tc, bkt, SERF_NEWLINE_LF, "line1" CRLF, 1);
 
     /* Unacceptable line types should not be reported */
-    bkt = SERF_BUCKET_SIMPLE_STRING("line1" CRLF, alloc);
-    readline_and_check_bucket(tc, bkt, SERF_NEWLINE_CR, "line1" CRLF);
-    bkt = SERF_BUCKET_SIMPLE_STRING("line1" CRLF, alloc);
-    readline_and_check_bucket(tc, bkt, SERF_NEWLINE_LF, "line1" CRLF);
     bkt = SERF_BUCKET_SIMPLE_STRING("line1" LF, alloc);
-    readline_and_check_bucket(tc, bkt, SERF_NEWLINE_CR, "line1" LF);
+    readlines_and_check_bucket(tc, bkt, SERF_NEWLINE_CR, "line1" LF, 1);
     bkt = SERF_BUCKET_SIMPLE_STRING("line1" LF, alloc);
-    readline_and_check_bucket(tc, bkt, SERF_NEWLINE_CRLF, "line1" LF);
+    readlines_and_check_bucket(tc, bkt, SERF_NEWLINE_CRLF, "line1" LF, 1);
     bkt = SERF_BUCKET_SIMPLE_STRING("line1" CR, alloc);
-    readline_and_check_bucket(tc, bkt, SERF_NEWLINE_LF, "line1" CR);
+    readlines_and_check_bucket(tc, bkt, SERF_NEWLINE_LF, "line1" CR, 1);
 #if 0
     /* TODO: looks like a bug, CRLF acceptable on buffer with CR returns
        SERF_NEWLINE_CRLF_SPLIT, but here that CR comes at the end of the 
        buffer (APR_EOF), so should have been SERF_NEWLINE_NONE! */
     bkt = SERF_BUCKET_SIMPLE_STRING("line1" CR, alloc);
-    readline_and_check_bucket(tc, bkt, SERF_NEWLINE_CRLF, "line1" CR);
+    readlines_and_check_bucket(tc, bkt, SERF_NEWLINE_CRLF, "line1" CR, 1);
 #endif
+
+    body = "12345678901234567890" CRLF
+           "12345678901234567890" CRLF
+           "12345678901234567890" CRLF;
+    bkt = SERF_BUCKET_SIMPLE_STRING(body, alloc);
+    readlines_and_check_bucket(tc, bkt, SERF_NEWLINE_LF, body, 3);
 }
 
 static void test_response_bucket_read(CuTest *tc)
@@ -587,6 +604,42 @@ static void test_aggregate_buckets(CuTest *tc)
     test_teardown(test_pool);
 }
 
+static void test_aggregate_bucket_readline(CuTest *tc)
+{
+    serf_bucket_t *bkt, *aggbkt;
+    apr_pool_t *test_pool = test_setup();
+
+    serf_bucket_alloc_t *alloc = serf_bucket_allocator_create(test_pool, NULL,
+                                                              NULL);
+    const char *BODY = "12345678901234567890" CRLF
+                       "12345678901234567890" CRLF
+                       "12345678901234567890" CRLF;
+
+    /* Test 1: read lines from an aggregate bucket */
+    aggbkt = serf_bucket_aggregate_create(alloc);
+
+    bkt = SERF_BUCKET_SIMPLE_STRING_LEN(BODY, 22, alloc);
+    serf_bucket_aggregate_append(aggbkt, bkt); /* 1st line */
+    bkt = SERF_BUCKET_SIMPLE_STRING_LEN(BODY+22, strlen(BODY)-22, alloc);
+    serf_bucket_aggregate_append(aggbkt, bkt); /* 2nd and 3rd line */
+
+    bkt = SERF_BUCKET_SIMPLE_STRING(BODY, alloc);
+    readlines_and_check_bucket(tc, aggbkt, SERF_NEWLINE_CRLF, BODY, 3);
+
+    /* Test 2: start with empty bucket */
+    aggbkt = serf_bucket_aggregate_create(alloc);
+
+    bkt = SERF_BUCKET_SIMPLE_STRING_LEN("", 0, alloc);
+    serf_bucket_aggregate_append(aggbkt, bkt); /* empty bucket */
+    bkt = SERF_BUCKET_SIMPLE_STRING_LEN(BODY, 22, alloc);
+    serf_bucket_aggregate_append(aggbkt, bkt); /* 1st line */
+    bkt = SERF_BUCKET_SIMPLE_STRING_LEN(BODY+22, strlen(BODY)-22, alloc);
+    serf_bucket_aggregate_append(aggbkt, bkt); /* 2nd and 3rd line */
+
+    bkt = SERF_BUCKET_SIMPLE_STRING(BODY, alloc);
+    readlines_and_check_bucket(tc, aggbkt, SERF_NEWLINE_CRLF, BODY, 3);
+}
+
 /* Test for issue: the server aborts the connection in the middle of
    streaming the body of the response, where the length was set with the
    Content-Length header. Test that we get a decent error code from the
@@ -853,6 +906,7 @@ CuSuite *test_buckets(void)
     SUITE_ADD_TEST(suite, test_bucket_header_set);
     SUITE_ADD_TEST(suite, test_iovec_buckets);
     SUITE_ADD_TEST(suite, test_aggregate_buckets);
+    SUITE_ADD_TEST(suite, test_aggregate_bucket_readline);
     SUITE_ADD_TEST(suite, test_header_buckets);
 
     return suite;
