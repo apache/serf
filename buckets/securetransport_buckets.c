@@ -23,6 +23,8 @@
 #include <Security/SecureTransport.h>
 #include <Security/SecPolicy.h>
 
+#define SECURE_TRANSPORT_READ_BUFSIZE 8000
+
 static OSStatus
 sectrans_read_cb(SSLConnectionRef connection, void *data, size_t *dataLength);
 static OSStatus
@@ -86,10 +88,14 @@ translate_sectrans_status(OSStatus status)
     }
 }
 
+/* Callback function for the encrypt.pending and decrypt.pending stream-type
+   aggregate buckets.
+ */
 apr_status_t pending_stream_eof(void *baton,
                                 serf_bucket_t *pending)
 {
-    /* TODO: peek stream bucket for status */
+    /* Both pending streams have to stay open so that the Secure Transport
+       library can keep appending data buckets. */
     return APR_EAGAIN;
 }
 
@@ -104,10 +110,10 @@ sectrans_init_context(serf_bucket_alloc_t *allocator)
     /* Set up the stream objects. */
     ssl_ctx->encrypt.pending = serf__bucket_stream_create(allocator,
                                                           pending_stream_eof,
-                                                          ssl_ctx->encrypt.stream);
+                                                          NULL);
     ssl_ctx->decrypt.pending = serf__bucket_stream_create(allocator,
                                                           pending_stream_eof,
-                                                          ssl_ctx->decrypt.stream);
+                                                          NULL);
 
     /* Set up a Secure Transport session. */
     ssl_ctx->state = SERF_SECTRANS_INIT;
@@ -345,7 +351,7 @@ validate_server_certificate(sectrans_context_t *ssl_ctx)
         if (status == APR_SUCCESS)
         {
             serf__log(SSL_VERBOSE, __FILE__, "don't know how to handle this yet.\n");
-            abort();
+            return APR_ENOTIMPL;
         }
         else
             return status;
@@ -600,7 +606,7 @@ serf_sectrans_encrypt_read(serf_bucket_t *bucket,
                            const char **data, apr_size_t *len)
 {
     sectrans_context_t *ssl_ctx = bucket->data;
-    apr_status_t status;
+    apr_status_t status, status_unenc_stream;
     const char *unenc_data;
     size_t unenc_len;
     
@@ -635,29 +641,53 @@ serf_sectrans_encrypt_read(serf_bucket_t *bucket,
     if (SERF_BUCKET_READ_ERROR(status))
         return status;
 
-    if (*len)
-        return status;
+    if (*len) {
+        /* status can be either APR_EAGAIN or APR_SUCCESS. In both cases,
+           we want the caller to try again as there's probably more data
+           to be encrypted. */
+        return APR_SUCCESS;
+    }
 
     /* Encrypt more data. */
-    status = serf_bucket_read(ssl_ctx->encrypt.stream, requested, &unenc_data,
-                              &unenc_len);
-    if (SERF_BUCKET_READ_ERROR(status))
-        return status;
+    status_unenc_stream = serf_bucket_read(ssl_ctx->encrypt.stream, requested,
+                                           &unenc_data, &unenc_len);
+    if (SERF_BUCKET_READ_ERROR(status_unenc_stream))
+        return status_unenc_stream;
 
+    serf__log(SSL_MSG_VERBOSE, __FILE__, " %d bytes with status %d ready\n",
+              unenc_len, status_unenc_stream);
     if (unenc_len)
     {
         OSStatus sectrans_status;
         size_t written;
 
+        /* TODO: we now feed each individual chunk of data one by one to 
+           SSLWrite. This seems to add a record header etc. per call, 
+           so 2 bytes of data in results in 37 bytes of data out.
+           Need to add a real buffer and feed this function chunks of
+           e.g. 8KB. */
         sectrans_status = SSLWrite(ssl_ctx->st_ctxr, unenc_data, unenc_len,
                                    &written);
-        /* TODO: check status */
+        status = translate_sectrans_status(sectrans_status);
+        if (SERF_BUCKET_READ_ERROR(status))
+            return status;
 
-        status = serf_bucket_read(ssl_ctx->encrypt.pending, requested, data, len);
+        serf__log(SSL_MSG_VERBOSE, __FILE__, "encrypted and wrote data:"
+                  "---\n%.*s\n-(%d)-\n", written, unenc_data, written);
+
+        status = serf_bucket_read(ssl_ctx->encrypt.pending, requested,
+                                  data, len);
+        if (SERF_BUCKET_READ_ERROR(status))
+            return status;
+
+        /* Tell the caller there's more data readily available. */
+        if (status == APR_SUCCESS)
+            return status;
     }
 
-    return status;
-    /* TODO: write data */
+    /* All encrypted data was returned, if there's more available depends
+       on what's pending on the to-be-encrypted stream. */
+    return status_unenc_stream;
 }
 
 static apr_status_t
@@ -706,25 +736,123 @@ serf_sectrans_decrypt_peek(serf_bucket_t *bucket,
     return serf_bucket_peek(ssl_ctx->decrypt.pending, data, len);
 }
 
+/* Ask Secure Transport to decrypt some more data. If anything was received,
+   add it to the to decrypt.pending buffer.
+ */
+static apr_status_t
+decrypt_more_data(sectrans_context_t *ssl_ctx)
+{
+    /* Decrypt more data. */
+    serf_bucket_t *tmp;
+    char *dec_data;
+    size_t dec_len;
+    OSStatus sectrans_status;
+    apr_status_t status;
+
+    serf__log(SSL_VERBOSE, __FILE__,
+              "decrypt_more_data called.\n");
+
+    /* We have to provide ST with the buffer for the decrypted data. */
+    dec_data = serf_bucket_mem_alloc(ssl_ctx->decrypt.pending->allocator,
+                                     SECURE_TRANSPORT_READ_BUFSIZE);
+
+    sectrans_status = SSLRead(ssl_ctx->st_ctxr, dec_data,
+                              SECURE_TRANSPORT_READ_BUFSIZE,
+                              &dec_len);
+    status = translate_sectrans_status(sectrans_status);
+    if (SERF_BUCKET_READ_ERROR(status))
+        return status;
+
+    /* Successfully received and decrypted some data, add to pending. */
+    serf__log(SSL_MSG_VERBOSE, __FILE__, " received and decrypted data:"
+              "---\n%.*s\n-(%d)-\n", dec_len, dec_data, dec_len);
+
+    tmp = SERF_BUCKET_SIMPLE_STRING_LEN(dec_data, dec_len,
+                                        ssl_ctx->decrypt.pending->allocator);
+    serf_bucket_aggregate_append(ssl_ctx->decrypt.pending, tmp);
+
+    return status;
+}
+
 static apr_status_t
 serf_sectrans_decrypt_read(serf_bucket_t *bucket,
                            apr_size_t requested,
                            const char **data, apr_size_t *len)
 {
+    sectrans_context_t *ssl_ctx = bucket->data;
+    apr_status_t status;
+
     serf__log(SSL_VERBOSE, __FILE__,
-              "function serf_sectrans_decrypt_read not implemented.\n");
-    return APR_ENOTIMPL;
+              "serf_sectrans_decrypt_read called for %d bytes.\n", requested);
+
+    /* First use any pending encrypted data. */
+    status = serf_bucket_read(ssl_ctx->decrypt.pending,
+                              requested, data, len);
+    if (SERF_BUCKET_READ_ERROR(status))
+        return status;
+
+    if (*len)
+        return status;
+
+    /* TODO: integrate this loop in decrypt_more_data so we can be more 
+       efficient with memory. */
+    do {
+        /* Pending buffer empty, decrypt more. */
+        status = decrypt_more_data(ssl_ctx);
+        if (SERF_BUCKET_READ_ERROR(status))
+            return status;
+    } while (status == APR_SUCCESS);
+
+    /* We should now have more decrypted data in the pending buffer. */
+    return serf_bucket_read(ssl_ctx->decrypt.pending, requested, data,
+                            len);
 }
 
+/* TODO: remove some logging to make the function easier to read. */
 static apr_status_t
 serf_sectrans_decrypt_readline(serf_bucket_t *bucket,
                                int acceptable, int *found,
                                const char **data,
                                apr_size_t *len)
 {
+    sectrans_context_t *ssl_ctx = bucket->data;
+    apr_status_t status;
+
     serf__log(SSL_VERBOSE, __FILE__,
-              "function serf_sectrans_decrypt_readline not implemented.\n");
-    return APR_ENOTIMPL;
+              "serf_sectrans_decrypt_readline called.\n");
+
+    /* First use any pending encrypted data. */
+    status = serf_bucket_readline(ssl_ctx->decrypt.pending, acceptable, found,
+                                  data, len);
+    if (SERF_BUCKET_READ_ERROR(status))
+        goto error;
+
+    if (*len) {
+        serf__log(SSL_VERBOSE, __FILE__, "  read one %s line.\n",
+                  *found ? "complete" : "partial");
+        return status;
+    }
+
+    do {
+        /* Pending buffer empty, decrypt more. */
+        status = decrypt_more_data(ssl_ctx);
+        if (SERF_BUCKET_READ_ERROR(status))
+            return status;
+    } while (status == APR_SUCCESS);
+
+    /* We have more decrypted data in the pending buffer. */
+    status = serf_bucket_readline(ssl_ctx->decrypt.pending, acceptable, found,
+                                  data, len);
+    if (SERF_BUCKET_READ_ERROR(status))
+        goto error;
+
+    serf__log(SSL_VERBOSE, __FILE__, "  read one %s line.\n",
+              *found ? "complete" : "partial");
+    return status;
+
+error:
+    serf__log(SSL_VERBOSE, __FILE__, "  return with status %d.\n", status);
+    return status;
 }
 
 static void
