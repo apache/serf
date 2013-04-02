@@ -590,12 +590,17 @@ const char *cert_export(const serf_ssl_certificate_t *cert,
     return NULL;
 }
 
-static apr_status_t use_compression(void *impl_ctx, int enabled)
+static apr_status_t
+use_compression(void *impl_ctx, int enabled)
 {
-    serf__log(SSL_VERBOSE, __FILE__,
-              "function use_compression not implemented.\n");
-
-    return APR_ENOTIMPL;
+    if (enabled) {
+        serf__log(SSL_VERBOSE, __FILE__,
+                  "Secure Transport does not support any type of "
+                  "SSL compression.\n");
+        return APR_ENOTIMPL;
+    } else {
+        return APR_SUCCESS;
+    }
 }
 
 /**** ENCRYPTION BUCKET API *****/
