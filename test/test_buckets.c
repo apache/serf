@@ -602,6 +602,22 @@ static void test_aggregate_buckets(CuTest *tc)
 
     read_and_check_bucket(tc, aggbkt, BODY);
 
+    /* Test 6: ensure peek doesn't return APR_EAGAIN, or APR_EOF incorrectly. */
+    aggbkt = serf_bucket_aggregate_create(alloc);
+
+    bkt = SERF_BUCKET_SIMPLE_STRING_LEN(BODY, 15, alloc);
+    serf_bucket_aggregate_append(aggbkt, bkt);
+    bkt = SERF_BUCKET_SIMPLE_STRING_LEN(BODY+15, strlen(BODY)-15, alloc);
+    serf_bucket_aggregate_append(aggbkt, bkt);
+
+    len = 1234;
+    status = serf_bucket_peek(aggbkt, &data, &len);
+    CuAssertIntEquals(tc, APR_SUCCESS, status);
+    CuAssert(tc, "Length should be positive.",
+             len > 0 && len <= strlen(BODY) );
+    CuAssert(tc, "Data should match first part of body.",
+             strncmp(BODY, data, len) == 0);
+
     test_teardown(test_pool);
 }
 

@@ -415,14 +415,18 @@ static apr_status_t serf_aggregate_peek(serf_bucket_t *bucket,
 {
     aggregate_context_t *ctx = bucket->data;
     serf_bucket_t *head;
-    
+    apr_status_t status;
+
     cleanup_aggregate(ctx, bucket->allocator);
 
     /* Peek the first bucket in the list, if any. */
     if (!ctx->list) {
         *len = 0;
         if (ctx->hold_open) {
-            return ctx->hold_open(ctx->hold_open_baton, bucket);
+            status = ctx->hold_open(ctx->hold_open_baton, bucket);
+            if (status == APR_EAGAIN)
+                status = APR_SUCCESS;
+            return status;
         }
         else {
             return APR_EOF;
@@ -431,7 +435,22 @@ static apr_status_t serf_aggregate_peek(serf_bucket_t *bucket,
 
     head = ctx->list->bucket;
 
-    return serf_bucket_peek(head, data, len);
+    status = serf_bucket_peek(head, data, len);
+
+    if (status == APR_EOF) {
+        if (ctx->list->next) {
+            status = APR_SUCCESS;
+        } else {
+            if (ctx->hold_open) {
+                status = ctx->hold_open(ctx->hold_open_baton, bucket);
+                if (status == APR_EAGAIN)
+                    status = APR_SUCCESS;
+                return status;
+            }
+        }
+    }
+
+    return status;
 }
 
 static serf_bucket_t * serf_aggregate_read_bucket(

@@ -214,8 +214,6 @@ static apr_status_t handle_response(serf_request_t *request,
                                     void *handler_baton,
                                     apr_pool_t *pool)
 {
-    const char *data;
-    apr_size_t len;
     serf_status_line sl;
     apr_status_t status;
     handler_baton_t *ctx = handler_baton;
