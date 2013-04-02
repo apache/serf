@@ -22,6 +22,7 @@
 
 /* test case has access to internal functions. */
 #include "serf_private.h"
+#include "serf_bucket_util.h"
 
 #define CRLF "\r\n"
 #define CR "\r"
@@ -889,6 +890,42 @@ static void test_response_bucket_peek_at_headers(CuTest *tc)
 }
 #undef EXP_RESPONSE
 
+/* Test that the internal function serf_default_read_iovec, used by many
+   bucket types, groups multiple buffers in one iovec. */
+static void test_serf_default_read_iovec(CuTest *tc)
+{
+    apr_status_t status;
+    serf_bucket_t *bkt, *aggbkt;
+    struct iovec tgt_vecs[32];
+    int vecs_used, i;
+    apr_size_t actual_len = 0;
+
+    apr_pool_t *test_pool = test_setup();
+    serf_bucket_alloc_t *alloc = serf_bucket_allocator_create(test_pool, NULL,
+                                                              NULL);
+    const char *BODY = "12345678901234567890"\
+                       "12345678901234567890"\
+                       "12345678901234567890"\
+                       CRLF;
+
+    /* Test 1: multiple children, should be read in one iovec. */
+    aggbkt = serf_bucket_aggregate_create(alloc);
+
+    bkt = SERF_BUCKET_SIMPLE_STRING_LEN(BODY, 20, alloc);
+    serf_bucket_aggregate_append(aggbkt, bkt);
+    bkt = SERF_BUCKET_SIMPLE_STRING_LEN(BODY+20, 20, alloc);
+    serf_bucket_aggregate_append(aggbkt, bkt);
+    bkt = SERF_BUCKET_SIMPLE_STRING_LEN(BODY+40, strlen(BODY)-40, alloc);
+    serf_bucket_aggregate_append(aggbkt, bkt);
+
+    status = serf_default_read_iovec(aggbkt, SERF_READ_ALL_AVAIL, 32, tgt_vecs,
+                                     &vecs_used);
+    CuAssertIntEquals(tc, APR_EOF, status);
+    for (i = 0; i < vecs_used; i++)
+        actual_len += tgt_vecs[i].iov_len;
+    CuAssertIntEquals(tc, strlen(BODY), actual_len);
+}
+
 CuSuite *test_buckets(void)
 {
     CuSuite *suite = CuSuiteNew();
@@ -908,6 +945,7 @@ CuSuite *test_buckets(void)
     SUITE_ADD_TEST(suite, test_aggregate_buckets);
     SUITE_ADD_TEST(suite, test_aggregate_bucket_readline);
     SUITE_ADD_TEST(suite, test_header_buckets);
+    SUITE_ADD_TEST(suite, test_serf_default_read_iovec);
 
     return suite;
 }
