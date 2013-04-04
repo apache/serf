@@ -98,6 +98,7 @@ if sys.platform == 'darwin':
 
   # add Secure Transport library for ssl/tls on Mac OS X
   env.Append(FRAMEWORKS='Security')
+  env.Append(FRAMEWORKS='SecurityInterface')
   env.Append(FRAMEWORKS='CoreFoundation')
   env.Append(CFLAGS='-DSERF_HAVE_SECURETRANSPORT')
 
@@ -119,6 +120,9 @@ libs = [ ]
 if 1:
   ### works for Mac OS. probably needs to change
   libs = ['ssl', 'crypto', 'z', ]
+
+  if sys.platform == 'darwin':
+    libs.append('objc')    # TODO: Required by Secure Transport only.
 
   if sys.platform == 'sunos5':
     libs.append('m')

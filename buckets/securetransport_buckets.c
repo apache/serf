@@ -22,6 +22,9 @@
 
 #include <Security/SecureTransport.h>
 #include <Security/SecPolicy.h>
+#include <Security/SecCertificate.h>
+#include <objc/runtime.h>
+#include <objc/message.h>
 
 #define SECURE_TRANSPORT_READ_BUFSIZE 8000
 
@@ -64,6 +67,9 @@ typedef struct sectrans_context_t {
     sectrans_ssl_stream_t decrypt;
 
     sectrans_session_state_t state;
+
+    /* name of the peer, used with TLS's Server Name Indication extension. */
+    char *hostname;
 
     /* Server cert callbacks */
     serf_ssl_need_server_cert_t server_cert_callback;
@@ -177,20 +183,21 @@ sectrans_read_cb(SSLConnectionRef connection,
     size_t requested = *dataLength, buflen = 0;
 
     serf__log(SSL_VERBOSE, __FILE__, "sectrans_read_cb called for "
-              "%d bytes\n", requested);
+              "%d bytes.\n", requested);
 
     *dataLength = 0;
     while (!status && requested) {
         status = serf_bucket_read(ssl_ctx->decrypt.stream, requested,
                                   &buf, &buflen);
 
-        if (SERF_BUCKET_READ_ERROR(status))
+        if (SERF_BUCKET_READ_ERROR(status)) {
+            serf__log(SSL_VERBOSE, __FILE__, "Returned status %d.\n", status);
             return -1;
+        }
 
-        if (buflen)
-        {
-            serf__log(SSL_VERBOSE, __FILE__, "sectrans_read_cb read %d bytes "
-                      "with status %d\n", buflen, status);
+        if (buflen) {
+            serf__log(SSL_VERBOSE, __FILE__, "Read %d bytes with status %d.\n",
+                      buflen, status);
 
             /* Copy the data in the buffer provided by the caller. */
             memcpy(outbuf, buf, buflen);
@@ -231,21 +238,51 @@ sectrans_write_cb(SSLConnectionRef connection,
     return noErr;
 }
 
-/* Get the hostname back from the Secure Transport layer.
-   Uses ssl_ctx->allocator to allocate a sufficiently large buffer, caller is
-   responsible to free the buffer. */
-static char*
-get_hostname(sectrans_context_t *ssl_ctx)
+/* Show a SFCertificateTrustPanel. This is the Mac OS X default dialog to
+   ask the user to confirm or deny the use of the certificate. This panel
+   also gives the option to store the user's decision for this certificate
+   permantly in the Keychain (requires password).
+ */
+
+/* TODO: serf or application? If serf, let appl. customize labels. If 
+   application, how to get SecTrustRef object back to app? */
+static apr_status_t
+ask_approval_gui(sectrans_context_t *ssl_ctx, SecTrustRef trust)
 {
-    size_t strlen;
-    char *str;
+    const CFStringRef OkButtonLbl = CFSTR("Accept");
+    const CFStringRef CancelButtonLbl = CFSTR("Cancel");
+    const CFStringRef Message = CFSTR("The server certificate requires validation.");
 
-    (void)SSLGetPeerDomainNameLength(ssl_ctx->st_ctxr, &strlen);
-    str = serf_bucket_mem_alloc(ssl_ctx->allocator, strlen);
+    /* Creates an NSApplication object (enables GUI for cocoa apps) if one
+       doesn't exist already. */
+    void *nsapp_cls = objc_getClass("NSApplication");
+    (void) objc_msgSend(nsapp_cls,sel_registerName("sharedApplication"));
 
-    (void)SSLGetPeerDomainName(ssl_ctx->st_ctxr, str, &strlen);
+    void *stp_cls = objc_getClass("SFCertificateTrustPanel");
+    void *stp = objc_msgSend(stp_cls, sel_registerName("alloc"));
+    stp = objc_msgSend(stp, sel_registerName("init"));
 
-    return str;
+    /* TODO: find a way to get the panel in front of all other windows. */
+
+    /* Don't use these methods as is, they create a small application window
+       and have no effect on the z-order of the modal dialog. */
+//    objc_msgSend(obj, sel_getUid("orderFrontRegardless"));
+//    objc_msgSend (obj, sel_getUid ("makeKeyAndOrderFront:"), app);
+
+    /* Setting name of the cancel button also makes it visible on the panel. */
+    objc_msgSend(stp, sel_getUid("setDefaultButtonTitle:"), OkButtonLbl);
+    objc_msgSend(stp, sel_getUid("setAlternateButtonTitle:"), CancelButtonLbl);
+    
+    long result = (long)objc_msgSend(stp,
+                                     sel_getUid("runModalForTrust:message:"),
+                                     trust, Message);
+    serf__log(SSL_VERBOSE, __FILE__, "User clicked %s button.\n",
+              result ? "Accept" : "Cancel");
+
+    if (result) /* NSOKButton = 1 */
+        return APR_SUCCESS;
+    else        /* NSCancelButton = 0 */
+        return APR_EGENERAL;
 }
 
 /* Validate a server certificate. Call back to the application if needed.
@@ -259,115 +296,118 @@ validate_server_certificate(sectrans_context_t *ssl_ctx)
     CFArrayRef certs;
     SecTrustRef trust;
     SecTrustResultType result;
-    SecPolicyRef policy;
-    CFStringRef hostname;
-    char *str;
     int failures = 0;
-    size_t depth;
+    size_t depth_of_error;
+    apr_status_t status;
 
     serf__log(SSL_VERBOSE, __FILE__, "validate_server_certificate called.\n");
+
     /* Get the server certificate chain. */
     sectrans_status = SSLCopyPeerCertificates(ssl_ctx->st_ctxr, &certs);
     if (sectrans_status != noErr)
         return translate_sectrans_status(sectrans_status);
-    depth = (size_t)CFArrayGetCount(certs);
-    
-    /* Use Certificate, Key and Trust services to validate the server
-       certificate chain. */
+    /* TODO: 0, oh really? How can we know where the error occurred? */
+    depth_of_error = 0;
 
-    /* Get a policy for evaluation of SSL certificate chains.
-       Note: requires Mac OS X v10.6 or later */
-    str = get_hostname(ssl_ctx);
-    hostname = CFStringCreateWithCStringNoCopy(NULL, str,
-                                               kCFStringEncodingMacRoman,
-                                               kCFAllocatorNull);
-    policy = SecPolicyCreateSSL (false, hostname);
-
-    /* Evaluate the certificate chain against the SSL policy */
-    sectrans_status = SecTrustCreateWithCertificates(certs, policy, &trust);
-    if (sectrans_status != noErr)
-        return translate_sectrans_status(sectrans_status);
+    sectrans_status = SSLCopyPeerTrust(ssl_ctx->st_ctxr, &trust);
+    if (sectrans_status != noErr) {
+        status = translate_sectrans_status(sectrans_status);
+        goto cleanup;
+    }
 
     /* TODO: SecTrustEvaluateAsync */
     sectrans_status = SecTrustEvaluate(trust, &result);
-    if (sectrans_status != noErr)
-        return translate_sectrans_status(sectrans_status);
+    if (sectrans_status != noErr) {
+        status = translate_sectrans_status(sectrans_status);
+        goto cleanup;
+    }
 
-    /* TODO: Decide per case how to handle. */
+    /* Based on the contents of the user's Keychain, Secure Transport will make
+       a first validation of this certificate chain. */
     switch (result)
     {
-        case kSecTrustResultInvalid:
-            failures = 1;
-            serf__log(SSL_VERBOSE, __FILE__, "kSecTrustResultInvalid.\n");
-            break;
+        case kSecTrustResultUnspecified:
         case kSecTrustResultProceed:
-            failures = 0;
-            serf__log(SSL_VERBOSE, __FILE__, "kSecTrustResultProceed.\n");
+            failures = SERF_SSL_CERT_ALL_OK;
+            serf__log(SSL_VERBOSE, __FILE__,
+                      "kSecTrustResultProceed/Unspecified.\n");
+            status = APR_EAGAIN;
             break;
         case kSecTrustResultConfirm:
-            failures = 1;
             serf__log(SSL_VERBOSE, __FILE__, "kSecTrustResultConfirm.\n");
-            break;
-        case kSecTrustResultDeny:
-            failures = 1;
-            serf__log(SSL_VERBOSE, __FILE__, "kSecTrustResultDeny.\n");
-            break;
-        case kSecTrustResultUnspecified:
-            failures = 0;
-            serf__log(SSL_VERBOSE, __FILE__, "kSecTrustResultUnspecified.\n");
+            failures = SERF_SSL_CERT_CONFIRM_NEEDED &
+                       SERF_SSL_CERT_RECOVERABLE;
+            status = ask_approval_gui(ssl_ctx, trust);
             break;
         case kSecTrustResultRecoverableTrustFailure:
-            failures = 1;
-            serf__log(SSL_VERBOSE, __FILE__, "kSecTrustResultRecoverableTrustFailure.\n");
+        {
+            serf__log(SSL_VERBOSE, __FILE__,
+                      "kSecTrustResultRecoverableTrustFailure.\n");
+            failures = SERF_SSL_CERT_RECOVERABLE &
+                       SERF_SSL_CERT_UNKNOWN_FAILURE;
+            status = ask_approval_gui(ssl_ctx, trust);
+            break;
+        }
+        /* Fatal errors */
+        case kSecTrustResultInvalid:
+            failures = SERF_SSL_CERT_FATAL;
+            serf__log(SSL_VERBOSE, __FILE__, "kSecTrustResultInvalid.\n");
+            break;
+        case kSecTrustResultDeny:
+            failures = SERF_SSL_CERT_FATAL;
+            serf__log(SSL_VERBOSE, __FILE__, "kSecTrustResultDeny.\n");
             break;
         case kSecTrustResultFatalTrustFailure:
-            failures = 1;
+            failures = SERF_SSL_CERT_FATAL;
             serf__log(SSL_VERBOSE, __FILE__, "kSecTrustResultFatalTrustFailure.\n");
             break;
         case kSecTrustResultOtherError:
-            failures = 1;
+            failures = SERF_SSL_CERT_FATAL;
             serf__log(SSL_VERBOSE, __FILE__, "kSecTrustResultOtherError.\n");
             break;
         default:
-            failures = 1;
+            failures = SERF_SSL_CERT_FATAL;
             serf__log(SSL_VERBOSE, __FILE__, "unknown.\n");
             break;
-
     }
 
+#if 0
+    /* First implement certificate accessor methods, otherwise this will only
+       result in crashes. */
     if (ssl_ctx->server_cert_callback &&
-        (depth == 0 || failures)) {
+        (depth_of_error == 0 || failures)) {
         apr_status_t status;
         serf_ssl_certificate_t *cert;
 
         cert = serf__create_certificate(ssl_ctx->allocator,
                                         &serf_ssl_bucket_type_securetransport,
                                         (void *)CFArrayGetValueAtIndex(certs, 0),
-                                        depth);
+                                        depth_of_error);
 
         /* Callback for further verification. */
         status = ssl_ctx->server_cert_callback(ssl_ctx->server_cert_userdata,
                                                failures, cert);
         if (status == APR_SUCCESS)
         {
-            serf__log(SSL_VERBOSE, __FILE__, "don't know how to handle this yet.\n");
-            return APR_ENOTIMPL;
+            if (!(failures & SERF_SSL_CERT_RECOVERABLE)) {
+                serf__log(SSL_VERBOSE, __FILE__,
+                          "don't know how to handle this yet.\n");
+                status = APR_ENOTIMPL;
+            }
         }
-        else
-            return status;
-
         serf_bucket_mem_free(ssl_ctx->allocator, cert);
+        goto cleanup;
     }
+#endif
 
-    CFRelease(hostname);
-    serf_bucket_mem_free(ssl_ctx->allocator, str);
-    CFRelease(policy);
+cleanup:
     CFRelease(certs);
     CFRelease(trust);
 
-    return APR_SUCCESS;
+    return status;
 }
 
+/* Run the SSL handshake. */
 static apr_status_t do_handshake(sectrans_context_t *ssl_ctx)
 {
     OSStatus sectrans_status;
@@ -376,12 +416,22 @@ static apr_status_t do_handshake(sectrans_context_t *ssl_ctx)
     serf__log(SSL_VERBOSE, __FILE__, "do_handshake called.\n");
 
     sectrans_status = SSLHandshake(ssl_ctx->st_ctxr);
+    if (sectrans_status)
+        serf__log(SSL_VERBOSE, __FILE__, "do_handshake returned err %d.\n",
+                  sectrans_status);
 
     switch(sectrans_status) {
+        case noErr:
+            status = APR_SUCCESS;
+            break;
         case errSSLServerAuthCompleted:
+            /* Server's cert chain is valid, or was ignored if cert verification
+               was disabled via SSLSetEnableCertVerify.
+             */
             status = validate_server_certificate(ssl_ctx);
             if (!status)
                 return APR_EAGAIN;
+            break;
         case errSSLClientCertRequested:
             return APR_ENOTIMPL;
         default:
@@ -501,8 +551,9 @@ set_hostname(void *impl_ctx, const char * hostname)
 {
     sectrans_context_t *ssl_ctx = impl_ctx;
 
+    ssl_ctx->hostname = serf_bstrdup(ssl_ctx->allocator, hostname);
     OSStatus status = SSLSetPeerDomainName(ssl_ctx->st_ctxr,
-                                           hostname,
+                                           ssl_ctx->hostname,
                                            strlen(hostname));
     return status;
 }
@@ -659,8 +710,6 @@ serf_sectrans_encrypt_read(serf_bucket_t *bucket,
     if (SERF_BUCKET_READ_ERROR(status_unenc_stream))
         return status_unenc_stream;
 
-    serf__log(SSL_MSG_VERBOSE, __FILE__, " %d bytes with status %d ready\n",
-              unenc_len, status_unenc_stream);
     if (unenc_len)
     {
         OSStatus sectrans_status;
@@ -677,8 +726,8 @@ serf_sectrans_encrypt_read(serf_bucket_t *bucket,
         if (SERF_BUCKET_READ_ERROR(status))
             return status;
 
-        serf__log(SSL_MSG_VERBOSE, __FILE__, "encrypted and wrote data:"
-                  "---\n%.*s\n-(%d)-\n", written, unenc_data, written);
+        serf__log(SSL_MSG_VERBOSE, __FILE__, "%dB ready with status %d, %d encrypted and written:\n"
+                  "---%.*s-(%d)-\n", unenc_len, status_unenc_stream, written, written, unenc_data, written);
 
         status = serf_bucket_read(ssl_ctx->encrypt.pending, requested,
                                   data, len);
