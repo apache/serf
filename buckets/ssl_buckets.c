@@ -226,6 +226,14 @@ serf__create_certificate(serf_bucket_alloc_t *allocator,
     return cert;
 }
 
+int
+serf_ssl_set_allowed_cert_validation_modes(serf_ssl_context_t *ssl_ctx,
+                                           int modes)
+{
+    return ssl_ctx->type->set_allowed_cert_validation_modes(ssl_ctx->impl_ctx,
+                                                         modes);
+}
+
 /* Functions to read a serf_ssl_certificate structure. */
 int serf_ssl_cert_depth(const serf_ssl_certificate_t *cert)
 {

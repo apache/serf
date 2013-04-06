@@ -92,11 +92,21 @@ typedef struct serf_request_t serf_request_t;
 #define SERF_ERROR_ABORTED_CONNECTION (APR_OS_START_USERERR + \
                                             SERF_ERROR_RANGE + 8)
 
-/* SSL certificates related errors */
+/* General SSL certificate related errors */
 #define SERF_ERROR_SSL_CERT_FAILED (APR_OS_START_USERERR + SERF_ERROR_RANGE + 70)
 
-/* SSL communications related errors */
+    /*General SSL communications related errors */
 #define SERF_ERROR_SSL_COMM_FAILED (APR_OS_START_USERERR + SERF_ERROR_RANGE + 71)
+
+/* Certificate should be confirmed by user, but we are not allowed to interact
+   with the user. */
+#define SERF_ERROR_SSL_CANT_CONFIRM_CERT (APR_OS_START_USERERR + \
+                                             SERF_ERROR_RANGE + 72)
+
+/* User denied the use of the certificate, either via GUI or via the certificate
+   store. */
+#define SERF_ERROR_SSL_USER_DENIED_CERT (APR_OS_START_USERERR + \
+                                             SERF_ERROR_RANGE + 73)
 
 /* General authentication related errors */
 #define SERF_ERROR_AUTHN_FAILED (APR_OS_START_USERERR + SERF_ERROR_RANGE + 90)

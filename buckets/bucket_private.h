@@ -118,6 +118,9 @@ struct serf_ssl_bucket_type_t {
      */
     apr_status_t (*use_compression)(void *impl_ctx,
                                     int enabled);
+
+    int (*set_allowed_cert_validation_modes)(void *impl_ctx,
+                                             int modes);
 };
 
 /* Implementation independent certificate object. */

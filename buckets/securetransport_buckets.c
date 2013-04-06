@@ -71,6 +71,10 @@ typedef struct sectrans_context_t {
     /* name of the peer, used with TLS's Server Name Indication extension. */
     char *hostname;
 
+    /* allowed modes for certification validation, see enum
+       serf_ssl_cert_validation_mode_t for more info. */
+    int modes;
+
     /* Server cert callbacks */
     serf_ssl_need_server_cert_t server_cert_callback;
     serf_ssl_server_cert_chain_cb_t server_cert_chain_callback;
@@ -112,6 +116,10 @@ sectrans_init_context(serf_bucket_alloc_t *allocator)
 
     ssl_ctx = serf_bucket_mem_alloc(allocator, sizeof(*ssl_ctx));
     ssl_ctx->refcount = 0;
+
+    /* Default mode: validate certificates against KeyChain without GUI.
+       If a certificate needs to be confirmed by the user, error out. */
+    ssl_ctx->modes = serf_ssl_val_mode_serf_managed_no_gui;
 
     /* Set up the stream objects. */
     ssl_ctx->encrypt.pending = serf__bucket_stream_create(allocator,
@@ -282,7 +290,7 @@ ask_approval_gui(sectrans_context_t *ssl_ctx, SecTrustRef trust)
     if (result) /* NSOKButton = 1 */
         return APR_SUCCESS;
     else        /* NSCancelButton = 0 */
-        return APR_EGENERAL;
+        return SERF_ERROR_SSL_USER_DENIED_CERT;
 }
 
 /* Validate a server certificate. Call back to the application if needed.
@@ -323,60 +331,72 @@ validate_server_certificate(sectrans_context_t *ssl_ctx)
     }
 
     /* Based on the contents of the user's Keychain, Secure Transport will make
-       a first validation of this certificate chain. */
+       a first validation of this certificate chain.
+       The status set here is temporary, as it can be overridden by the
+       application. */
     switch (result)
     {
         case kSecTrustResultUnspecified:
         case kSecTrustResultProceed:
-            failures = SERF_SSL_CERT_ALL_OK;
             serf__log(SSL_VERBOSE, __FILE__,
                       "kSecTrustResultProceed/Unspecified.\n");
+            failures = SERF_SSL_CERT_ALL_OK;
             status = APR_EAGAIN;
             break;
         case kSecTrustResultConfirm:
             serf__log(SSL_VERBOSE, __FILE__, "kSecTrustResultConfirm.\n");
             failures = SERF_SSL_CERT_CONFIRM_NEEDED &
                        SERF_SSL_CERT_RECOVERABLE;
-            status = ask_approval_gui(ssl_ctx, trust);
+            if (ssl_ctx->modes & serf_ssl_val_mode_serf_managed_with_gui) {
+                status = ask_approval_gui(ssl_ctx, trust);
+            } else {
+                status = SERF_ERROR_SSL_CANT_CONFIRM_CERT;
+            }
             break;
         case kSecTrustResultRecoverableTrustFailure:
-        {
             serf__log(SSL_VERBOSE, __FILE__,
                       "kSecTrustResultRecoverableTrustFailure.\n");
             failures = SERF_SSL_CERT_RECOVERABLE &
                        SERF_SSL_CERT_UNKNOWN_FAILURE;
-            status = ask_approval_gui(ssl_ctx, trust);
+            if (ssl_ctx->modes & serf_ssl_val_mode_serf_managed_with_gui) {
+                status = ask_approval_gui(ssl_ctx, trust);
+            } else {
+                status = SERF_ERROR_SSL_CANT_CONFIRM_CERT;
+            }
             break;
-        }
+
         /* Fatal errors */
         case kSecTrustResultInvalid:
-            failures = SERF_SSL_CERT_FATAL;
             serf__log(SSL_VERBOSE, __FILE__, "kSecTrustResultInvalid.\n");
+            failures = SERF_SSL_CERT_FATAL;
+            status = SERF_ERROR_SSL_CERT_FAILED;
             break;
         case kSecTrustResultDeny:
-            failures = SERF_SSL_CERT_FATAL;
             serf__log(SSL_VERBOSE, __FILE__, "kSecTrustResultDeny.\n");
+            failures = SERF_SSL_CERT_FATAL;
+            status = SERF_ERROR_SSL_USER_DENIED_CERT;
             break;
         case kSecTrustResultFatalTrustFailure:
-            failures = SERF_SSL_CERT_FATAL;
             serf__log(SSL_VERBOSE, __FILE__, "kSecTrustResultFatalTrustFailure.\n");
+            failures = SERF_SSL_CERT_FATAL;
+            status = SERF_ERROR_SSL_CERT_FAILED;
             break;
         case kSecTrustResultOtherError:
-            failures = SERF_SSL_CERT_FATAL;
             serf__log(SSL_VERBOSE, __FILE__, "kSecTrustResultOtherError.\n");
+            failures = SERF_SSL_CERT_FATAL;
+            status = SERF_ERROR_SSL_CERT_FAILED;
             break;
         default:
-            failures = SERF_SSL_CERT_FATAL;
             serf__log(SSL_VERBOSE, __FILE__, "unknown.\n");
+            failures = SERF_SSL_CERT_FATAL;
+            status = SERF_ERROR_SSL_CERT_FAILED;
             break;
     }
 
-#if 0
-    /* First implement certificate accessor methods, otherwise this will only
-       result in crashes. */
-    if (ssl_ctx->server_cert_callback &&
-        (depth_of_error == 0 || failures)) {
-        apr_status_t status;
+    /* TODO: First implement certificate accessor methods, otherwise this will
+       only result in crashes. */
+    if ((ssl_ctx->modes & serf_ssl_val_mode_application_managed) &&
+        (ssl_ctx->server_cert_callback && failures)) {
         serf_ssl_certificate_t *cert;
 
         cert = serf__create_certificate(ssl_ctx->allocator,
@@ -391,14 +411,15 @@ validate_server_certificate(sectrans_context_t *ssl_ctx)
         {
             if (!(failures & SERF_SSL_CERT_RECOVERABLE)) {
                 serf__log(SSL_VERBOSE, __FILE__,
-                          "don't know how to handle this yet.\n");
+                          "Secure Transport/Keychain reported an unrecoverable "
+                          "problem, but the application wants us to go on "
+                          "anyway. Don't know how to handle this yet.\n");
                 status = APR_ENOTIMPL;
             }
         }
         serf_bucket_mem_free(ssl_ctx->allocator, cert);
         goto cleanup;
     }
-#endif
 
 cleanup:
     CFRelease(certs);
@@ -425,9 +446,8 @@ static apr_status_t do_handshake(sectrans_context_t *ssl_ctx)
             status = APR_SUCCESS;
             break;
         case errSSLServerAuthCompleted:
-            /* Server's cert chain is valid, or was ignored if cert verification
-               was disabled via SSLSetEnableCertVerify.
-             */
+            /* Server's cert validation was disabled, so we can to do this
+               here. */
             status = validate_server_certificate(ssl_ctx);
             if (!status)
                 return APR_EAGAIN;
@@ -520,6 +540,10 @@ client_cert_password_set(void *impl_ctx,
                          void *data,
                          void *cache_pool)
 {
+    sectrans_context_t *ssl_ctx = impl_ctx;
+
+    ssl_ctx->modes |= serf_ssl_val_mode_application_managed;
+    
     return;
 }
 
@@ -529,6 +553,8 @@ void server_cert_callback_set(void *impl_ctx,
                               void *data)
 {
     sectrans_context_t *ssl_ctx = impl_ctx;
+
+    ssl_ctx->modes |= serf_ssl_val_mode_application_managed;
 
     ssl_ctx->server_cert_callback = callback;
     ssl_ctx->server_cert_userdata = data;
@@ -540,7 +566,9 @@ void server_cert_chain_callback_set(void *impl_ctx,
                                     void *data)
 {
     sectrans_context_t *ssl_ctx = impl_ctx;
-    
+
+    ssl_ctx->modes |= serf_ssl_val_mode_application_managed;
+
     ssl_ctx->server_cert_callback = cert_callback;
     ssl_ctx->server_cert_chain_callback = cert_chain_callback;
     ssl_ctx->server_cert_userdata = data;
@@ -608,27 +636,20 @@ apr_hash_t *cert_issuer(const serf_ssl_certificate_t *cert,
 apr_hash_t *cert_subject(const serf_ssl_certificate_t *cert,
                          apr_pool_t *pool)
 {
-#if 0
-    SecCertificateRef cr = cert->impl_cert;
-    CFStringRef commonName;
-    
-    SecCertificateCopyCommonName(cr, &commonName);
-
-
-    CFRelease(commonName);
-#endif
     serf__log(SSL_VERBOSE, __FILE__,
               "TODO: function cert_subject not implemented.\n");
 
     return NULL;
 }
 
+/* Extract the fields of the certificate in a table with keys (sha1, notBefore,
+ * notAfter) */
 apr_hash_t *cert_certificate(const serf_ssl_certificate_t *cert,
                              apr_pool_t *pool)
 {
     serf__log(SSL_VERBOSE, __FILE__,
               "TODO: function cert_certificate not implemented.\n");
-    
+
     return NULL;
 }
 
@@ -652,6 +673,22 @@ use_compression(void *impl_ctx, int enabled)
     } else {
         return APR_SUCCESS;
     }
+}
+
+int set_allowed_cert_validation_modes(void *impl_ctx,
+                                      int modes)
+{
+    sectrans_context_t *ssl_ctx = impl_ctx;
+
+    ssl_ctx->modes = 0;
+
+    if (modes & serf_ssl_val_mode_serf_managed_with_gui)
+        ssl_ctx->modes |= serf_ssl_val_mode_serf_managed_with_gui;
+    if (modes & serf_ssl_val_mode_serf_managed_no_gui)
+        ssl_ctx->modes |= serf_ssl_val_mode_serf_managed_no_gui;
+    /* serf_ssl_val_mode_application_managed is not supported */
+
+    return ssl_ctx->modes;
 }
 
 /**** ENCRYPTION BUCKET API *****/
@@ -961,6 +998,7 @@ const serf_ssl_bucket_type_t serf_ssl_bucket_type_securetransport = {
     cert_certificate,
     cert_export,
     use_compression,
+    set_allowed_cert_validation_modes,
 };
 
 #endif /* SERF_HAVE_SECURETRANSPORT */

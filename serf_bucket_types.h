@@ -637,6 +637,16 @@ apr_status_t serf_ssl_use_compression(
     serf_ssl_context_t *ssl_ctx,
     int enabled);
 
+typedef enum {
+    serf_ssl_val_mode_serf_managed_with_gui = 0x1,
+    serf_ssl_val_mode_serf_managed_no_gui =   0x2,
+    serf_ssl_val_mode_application_managed =   0x4,
+} serf_ssl_cert_validation_mode_t;
+
+int
+serf_ssl_set_allowed_cert_validation_modes(serf_ssl_context_t *ssl_ctx,
+                                           int modes);
+
 void serf_bucket_ssl_destroy_and_data(serf_bucket_t *bucket);
 
 serf_bucket_t *serf_bucket_ssl_encrypt_create(

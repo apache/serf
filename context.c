@@ -373,6 +373,11 @@ const char *serf_error_string(apr_status_t errcode)
         return "An error occurred during SSL communication";
     case SERF_ERROR_SSL_CERT_FAILED:
         return "An SSL certificate related error occurred ";
+    case SERF_ERROR_SSL_USER_DENIED_CERT:
+         return "The user denied the use of the SSL server certificate.";
+    case SERF_ERROR_SSL_CANT_CONFIRM_CERT:
+         return "The use of the SSL server certificate needs confirmation but "\
+                "user interaction is disabled.";
     case SERF_ERROR_AUTHN_FAILED:
         return "An error occurred during authentication";
     case SERF_ERROR_AUTHN_NOT_SUPPORTED:
