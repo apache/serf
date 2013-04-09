@@ -20,9 +20,12 @@
 #include "serf_bucket_util.h"
 #include "bucket_private.h"
 
+#include <apr_strings.h>
+
 #include <Security/SecureTransport.h>
 #include <Security/SecPolicy.h>
 #include <Security/SecCertificate.h>
+#include <Security/SecImportExport.h>
 #include <objc/runtime.h>
 #include <objc/message.h>
 
@@ -594,15 +597,131 @@ use_default_certificates(void *impl_ctx)
     return APR_SUCCESS;
 }
 
-static apr_status_t
-load_cert_file(serf_ssl_certificate_t **cert,
-               const char *file_path,
-               apr_pool_t *pool)
+/* Find the file extension, if any.
+   Copied the original code & comments from the Apache Subversion project. */
+const char * splitext(const char *path)
 {
-    serf__log(SSL_VERBOSE, __FILE__,
-              "function load_cert_file not implemented.\n");
+    const char *last_dot, *last_slash;
 
-    return APR_ENOTIMPL;
+    /* Do we even have a period in this thing?  And if so, is there
+       anything after it?  We look for the "rightmost" period in the
+       string. */
+    last_dot = strrchr(path, '.');
+    if (last_dot && (last_dot + 1 != '\0')) {
+        /* If we have a period, we need to make sure it occurs in the
+           final path component -- that there's no path separator
+           between the last period and the end of the PATH -- otherwise,
+           it doesn't count.  Also, we want to make sure that our period
+           isn't the first character of the last component. */
+        last_slash = strrchr(path, '/');
+        if ((last_slash && (last_dot > (last_slash + 1)))
+            || ((! last_slash) && (last_dot > path))) {
+            return last_dot + 1;
+        }
+    }
+
+    return "";
+}
+
+/* Copies the unicode string from a CFStringRef to a new buffer allocated
+   from pool. */
+static const char *
+CFStringToChar(CFStringRef str, apr_pool_t *pool)
+{
+    const char *ptr = CFStringGetCStringPtr(str, kCFStringEncodingMacRoman);
+
+    if (ptr == NULL) {
+        const int strlen = CFStringGetLength(str) * 2;
+        char *buf = apr_pcalloc(pool, strlen);
+        if (CFStringGetCString(str, buf, strlen, kCFStringEncodingMacRoman))
+            return buf;
+    } else {
+        return apr_pstrdup(pool, ptr);
+    }
+
+    return NULL;
+}
+
+static apr_status_t
+load_CA_cert_from_file(serf_ssl_certificate_t **cert,
+                       const char *file_path,
+                       apr_pool_t *pool)
+{
+    apr_file_t *fp;
+    apr_status_t status;
+
+    status = apr_file_open(&fp, file_path,
+                           APR_FOPEN_READ | APR_FOPEN_BINARY,
+                           APR_FPROT_OS_DEFAULT, pool);
+    if (!status) {
+        const char *ext;
+        OSStatus osstatus;
+        apr_finfo_t file_info;
+        char *buf;
+        apr_size_t len;
+        CFDataRef databuf;
+        CFArrayRef items;
+        CFStringRef extref;
+        SecExternalItemType itemType;
+
+        /* Read the file in memory */
+        apr_file_info_get(&file_info, APR_FINFO_SIZE, fp);
+        buf = apr_palloc(pool, file_info.size);
+
+        status = apr_file_read_full(fp, buf, file_info.size, &len);
+        if (status)
+            return status;
+
+        ext = splitext(file_path);
+        extref = CFStringCreateWithBytesNoCopy(kCFAllocatorDefault,
+                                               (unsigned char *)ext,
+                                               strlen(ext),
+                                               kCFStringEncodingMacRoman,
+                                               false,
+                                               kCFAllocatorNull);
+
+        itemType = kSecItemTypeUnknown;
+        databuf = CFDataCreateWithBytesNoCopy(kCFAllocatorDefault,
+                                              (unsigned char *)buf,
+                                              file_info.size,
+                                              kCFAllocatorNull);
+
+        osstatus = SecItemImport(databuf, extref,
+                                 kSecFormatUnknown,
+                                 &itemType,
+                                 0,    /* SecItemImportExportFlags */
+                                 NULL, /* SecItemImportExportKeyParameters */
+                                 NULL, /* SecKeychainRef */
+                                 &items);
+
+        if (osstatus != errSecSuccess) {
+#if SSL_VERBOSE
+            CFStringRef errref = SecCopyErrorMessageString(osstatus, NULL);
+            const char *errstr = CFStringToChar(errref, pool);
+
+            serf__log(SSL_VERBOSE, __FILE__, "Error loading certificate: %s.\n",
+                      errstr);
+#endif
+            return SERF_ERROR_SSL_CERT_FAILED;
+        }
+
+        if (itemType == kSecItemTypeCertificate && CFArrayGetCount(items) > 0) {
+            SecCertificateRef ssl_cert = (SecCertificateRef)CFArrayGetValueAtIndex(items, 0);
+
+            if (ssl_cert) {
+                serf_bucket_alloc_t *allocator =
+                serf_bucket_allocator_create(pool, NULL, NULL);
+
+                *cert = serf__create_certificate(allocator,
+                                                 &serf_ssl_bucket_type_securetransport,
+                                                 (void *)CFArrayGetValueAtIndex(items, 0),
+                                                 0);
+                return APR_SUCCESS;
+            }
+        }
+    }
+
+    return SERF_ERROR_SSL_CERT_FAILED;
 }
 
 
@@ -991,7 +1110,7 @@ const serf_ssl_bucket_type_t serf_ssl_bucket_type_securetransport = {
     server_cert_callback_set,
     server_cert_chain_callback_set,
     use_default_certificates,
-    load_cert_file,
+    load_CA_cert_from_file,
     trust_cert,
     cert_issuer,
     cert_subject,

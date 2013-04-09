@@ -268,6 +268,16 @@ const char *serf_ssl_cert_export(
     return cert->type->cert_export(cert, pool);
 }
 
+apr_status_t serf_ssl_load_CA_cert_from_file(serf_ssl_context_t *ssl_ctx,
+                                             serf_ssl_certificate_t **cert,
+                                             const char *file_path,
+                                             apr_pool_t *pool)
+{
+    /* The ssl_ctx is not needed to load the certificate, only to determine
+       which SSL library we're using. */
+    return ssl_ctx->type->load_CA_cert_from_file(cert, file_path, pool);
+}
+
 
 /* TODO: what to do with this? */
 apr_status_t serf_ssl_load_cert_file(serf_ssl_certificate_t **cert,

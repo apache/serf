@@ -1336,7 +1336,7 @@ apr_status_t serf__openssl_use_default_certificates(void *impl_ctx)
     return result ? APR_SUCCESS : SERF_ERROR_SSL_CERT_FAILED;
 }
 
-apr_status_t serf__openssl_load_cert_file(
+apr_status_t serf__openssl_load_CA_cert_from_file(
     serf_ssl_certificate_t **cert,
     const char *file_path,
     apr_pool_t *pool)
@@ -1819,7 +1819,7 @@ const serf_ssl_bucket_type_t serf_ssl_bucket_type_openssl = {
     serf__openssl_server_cert_callback_set,
     serf__openssl_server_cert_chain_callback_set,
     serf__openssl_use_default_certificates,
-    serf__openssl_load_cert_file,
+    serf__openssl_load_CA_cert_from_file,
     serf__openssl_trust_cert,
     serf__openssl_cert_issuer,
     serf__openssl_cert_subject,

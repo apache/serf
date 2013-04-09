@@ -612,12 +612,26 @@ const char *serf_ssl_cert_export(
 /**
  * Load a CA certificate file from a path @a file_path. If the file was loaded
  * and parsed correctly, a certificate @a cert will be created and returned.
- * This certificate object will be alloced in @a pool.
+ * This certificate object will be allocated in @a pool.
+ *
+ * @deprecated: use serf_ssl_load_CA_cert_from_file instead.
  */
 apr_status_t serf_ssl_load_cert_file(
     serf_ssl_certificate_t **cert,
     const char *file_path,
     apr_pool_t *pool);
+
+/**
+ * Load a CA certificate file from a path @a file_path. If the file was loaded
+ * and parsed correctly, a certificate @a cert will be created and returned.
+ * This certificate object will be allocated in @a pool.
+ * 
+ * The certificate can be reused in ssl_context's.
+ */
+apr_status_t serf_ssl_load_CA_cert_from_file(serf_ssl_context_t *ssl_ctx,
+                                             serf_ssl_certificate_t **cert,
+                                             const char *file_path,
+                                             apr_pool_t *pool);
 
 /**
  * Adds the certificate @a cert to the list of trusted certificates in 

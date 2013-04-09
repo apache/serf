@@ -68,13 +68,14 @@ struct serf_ssl_bucket_type_t {
     apr_status_t (*use_default_certificates)(void *impl_ctx);
     
     /**
-     * Load a CA certificate file from a path @a file_path. If the file was loaded
-     * and parsed correctly, a certificate @a cert will be created and returned.
+     * Load a CA certificate file from a path @a file_path. If the file was
+     * loaded and parsed correctly, a certificate @a cert will be created and
+     * returned.
      * This certificate object will be alloced in @a pool.
      */
-    apr_status_t (*load_cert_file)(serf_ssl_certificate_t **cert,
-                                   const char *file_path,
-                                   apr_pool_t *pool);
+    apr_status_t (*load_CA_cert_from_file)(serf_ssl_certificate_t **cert,
+                                           const char *file_path,
+                                           apr_pool_t *pool);
 
     /**
      * Adds the certificate @a cert to the list of trusted certificates in
