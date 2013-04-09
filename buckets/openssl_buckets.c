@@ -1686,7 +1686,7 @@ static int
 serf__openssl_set_allowed_cert_validation_modes(void *impl_ctx,
                                                 int modes)
 {
-    sectrans_context_t *ssl_ctx = impl_ctx;
+    openssl_context_t *ssl_ctx = impl_ctx;
 
     ssl_ctx->modes = 0;
 
