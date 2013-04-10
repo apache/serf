@@ -111,6 +111,8 @@ static void test_ssl_cert_subject(CuTest *tc)
     subject = serf_ssl_cert_subject(cert, test_pool);
     CuAssertPtrNotNull(tc, subject);
 
+    CuAssertStrEquals(tc, "Serf",
+                      apr_hash_get(subject, "CN", APR_HASH_KEY_STRING));
     CuAssertStrEquals(tc, "Test Suite",
                       apr_hash_get(subject, "OU", APR_HASH_KEY_STRING));
     CuAssertStrEquals(tc, "In Serf we trust, Inc.", 
