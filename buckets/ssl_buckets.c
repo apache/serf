@@ -21,10 +21,8 @@
 typedef struct serf_ssl_bucket_t {
     serf_bucket_t bucket;
     
-    /** the implementation of this ssl bucket */
-    const serf_ssl_bucket_type_t *type;
-
-    /* context shared between encrypt and decrypt ssl_bucket */
+    /* context (including the type of this bucket) shared between encrypt and
+       decrypt ssl_bucket */
     serf_ssl_context_t *ssl_ctx;
 
     /** the allocator used for this context (needed at destroy time) */
@@ -36,6 +34,7 @@ struct serf_ssl_context_t
     /* How many open buckets refer to this context. */
     int refcount;
 
+    /* Which SSL implementation is used for this context. */
     const serf_ssl_bucket_type_t *type;
 
     /** implementation specific context */
@@ -117,7 +116,6 @@ serf_bucket_t *serf_bucket_ssl_decrypt_create(
     const serf_ssl_bucket_type_t *type = decide_ssl_bucket_type();
     serf_ssl_bucket_t *ssl_bkt = serf_bucket_mem_alloc(allocator,
                                                        sizeof(*ssl_bkt));
-    ssl_bkt->type = type;
     ssl_bkt->allocator = allocator;
 
     if (!ssl_ctx) {
@@ -127,10 +125,10 @@ serf_bucket_t *serf_bucket_ssl_decrypt_create(
         ssl_ctx->impl_ctx = NULL;
     }
 
-    ssl_ctx->impl_ctx = ssl_bkt->type->decrypt_create(&ssl_bkt->bucket,
-                                                      stream,
-                                                      ssl_ctx->impl_ctx,
-                                                      allocator);
+    ssl_ctx->impl_ctx = type->decrypt_create(&ssl_bkt->bucket,
+                                             stream,
+                                             ssl_ctx->impl_ctx,
+                                             allocator);
     ssl_ctx->refcount++;
     ssl_bkt->ssl_ctx = ssl_ctx;
 
@@ -155,7 +153,6 @@ serf_bucket_t *serf_bucket_ssl_encrypt_create(
     const serf_ssl_bucket_type_t *type = decide_ssl_bucket_type();
     serf_ssl_bucket_t *ssl_bkt = serf_bucket_mem_alloc(allocator,
                                                        sizeof(*ssl_bkt));
-    ssl_bkt->type = type;
     ssl_bkt->allocator = allocator;
 
     if (!ssl_ctx) {
@@ -165,10 +162,10 @@ serf_bucket_t *serf_bucket_ssl_encrypt_create(
         ssl_ctx->impl_ctx = NULL;
     }
 
-    ssl_ctx->impl_ctx = ssl_bkt->type->encrypt_create(&ssl_bkt->bucket,
-                                                      stream,
-                                                      ssl_ctx->impl_ctx,
-                                                      allocator);
+    ssl_ctx->impl_ctx = type->encrypt_create(&ssl_bkt->bucket,
+                                             stream,
+                                             ssl_ctx->impl_ctx,
+                                             allocator);
     ssl_ctx->refcount++;
     ssl_bkt->ssl_ctx = ssl_ctx;
 
