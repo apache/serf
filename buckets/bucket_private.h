@@ -64,6 +64,7 @@ struct serf_ssl_bucket_type_t {
                                            void *data);
     /**
      * Use the default root CA certificates as included with the OpenSSL library.
+     * TODO: fix comment!
      */
     apr_status_t (*use_default_certificates)(void *impl_ctx);
     
@@ -100,8 +101,9 @@ struct serf_ssl_bucket_type_t {
                                  apr_pool_t *pool);
 
     /**
-     * Extract the fields of the certificate in a table with keys (sha1, notBefore,
-     * notAfter). The returned table will be allocated in @a pool.
+     * Extract the fields of the certificate in a table with keys (sha1,
+     * notBefore, notAfter, array of subjectAltName's). The returned table will
+     * be allocated in @a pool.
      */
     apr_hash_t * (*cert_certificate)(const serf_ssl_certificate_t *cert,
                                      apr_pool_t *pool);
@@ -143,6 +145,27 @@ serf__create_certificate(serf_bucket_alloc_t *allocator,
                          const serf_ssl_bucket_type_t *type,
                          void *impl_cert,
                          int depth);
+
+/* sectrans_bucket internal functions */
+#ifdef SERF_HAVE_SECURETRANSPORT
+
+#include <Security/SecCertificate.h>
+
+/* sectrans_bucket private certificate structure. Wrapper around the 
+   SecCertificateRef ptr, with content the cached parsed information from the
+   certificate. */
+typedef struct sectrans_certificate_t {
+    SecCertificateRef certref;
+
+    apr_hash_t *content;
+} sectrans_certificate_t;
+
+apr_status_t
+serf__sectrans_read_X509_DER_certificate(apr_hash_t **o,
+                                         const sectrans_certificate_t *cert,
+                                         apr_pool_t *pool);
+
+#endif
 
 /* ==================================================================== */
 

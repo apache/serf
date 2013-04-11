@@ -24,7 +24,6 @@
 
 #include <Security/SecureTransport.h>
 #include <Security/SecPolicy.h>
-#include <Security/SecCertificate.h>
 #include <Security/SecImportExport.h>
 #include <objc/runtime.h>
 #include <objc/message.h>
@@ -280,6 +279,9 @@ ask_approval_gui(sectrans_context_t *ssl_ctx, SecTrustRef trust)
 //    objc_msgSend(obj, sel_getUid("orderFrontRegardless"));
 //    objc_msgSend (obj, sel_getUid ("makeKeyAndOrderFront:"), app);
 
+//    objc_msgSend (nsapp, sel_getUid ("activateIgnoringOtherApps:"), 1);
+//    objc_msgSend (stp, sel_getUid ("makeKeyWindow"));
+
     /* Setting name of the cancel button also makes it visible on the panel. */
     objc_msgSend(stp, sel_getUid("setDefaultButtonTitle:"), OkButtonLbl);
     objc_msgSend(stp, sel_getUid("setAlternateButtonTitle:"), CancelButtonLbl);
@@ -348,7 +350,7 @@ validate_server_certificate(sectrans_context_t *ssl_ctx)
             break;
         case kSecTrustResultConfirm:
             serf__log(SSL_VERBOSE, __FILE__, "kSecTrustResultConfirm.\n");
-            failures = SERF_SSL_CERT_CONFIRM_NEEDED &
+            failures = SERF_SSL_CERT_CONFIRM_NEEDED |
                        SERF_SSL_CERT_RECOVERABLE;
             if (ssl_ctx->modes & serf_ssl_val_mode_serf_managed_with_gui) {
                 status = ask_approval_gui(ssl_ctx, trust);
@@ -359,7 +361,7 @@ validate_server_certificate(sectrans_context_t *ssl_ctx)
         case kSecTrustResultRecoverableTrustFailure:
             serf__log(SSL_VERBOSE, __FILE__,
                       "kSecTrustResultRecoverableTrustFailure.\n");
-            failures = SERF_SSL_CERT_RECOVERABLE &
+            failures = SERF_SSL_CERT_RECOVERABLE |
                        SERF_SSL_CERT_UNKNOWN_FAILURE;
             if (ssl_ctx->modes & serf_ssl_val_mode_serf_managed_with_gui) {
                 status = ask_approval_gui(ssl_ctx, trust);
@@ -401,10 +403,16 @@ validate_server_certificate(sectrans_context_t *ssl_ctx)
     if ((ssl_ctx->modes & serf_ssl_val_mode_application_managed) &&
         (ssl_ctx->server_cert_callback && failures)) {
         serf_ssl_certificate_t *cert;
+        sectrans_certificate_t *sectrans_cert;
+
+        sectrans_cert = serf_bucket_mem_alloc(ssl_ctx->allocator,
+                                          sizeof(sectrans_certificate_t));
+        sectrans_cert->content = NULL;
+        sectrans_cert->certref = (SecCertificateRef)CFArrayGetValueAtIndex(certs, 0);
 
         cert = serf__create_certificate(ssl_ctx->allocator,
                                         &serf_ssl_bucket_type_securetransport,
-                                        (void *)CFArrayGetValueAtIndex(certs, 0),
+                                        sectrans_cert,
                                         depth_of_error);
 
         /* Callback for further verification. */
@@ -616,7 +624,7 @@ const char * splitext(const char *path)
         last_slash = strrchr(path, '/');
         if ((last_slash && (last_dot > (last_slash + 1)))
             || ((! last_slash) && (last_dot > path))) {
-            return last_dot + 1;
+                return last_dot + 1;
         }
     }
 
@@ -709,13 +717,20 @@ load_CA_cert_from_file(serf_ssl_certificate_t **cert,
             SecCertificateRef ssl_cert = (SecCertificateRef)CFArrayGetValueAtIndex(items, 0);
 
             if (ssl_cert) {
+                sectrans_certificate_t *sectrans_cert;
                 serf_bucket_alloc_t *allocator =
-                serf_bucket_allocator_create(pool, NULL, NULL);
+                    serf_bucket_allocator_create(pool, NULL, NULL);
+
+                sectrans_cert = serf_bucket_mem_alloc(allocator,
+                                    sizeof(sectrans_certificate_t));
+                sectrans_cert->content = NULL;
+                sectrans_cert->certref = ssl_cert;
 
                 *cert = serf__create_certificate(allocator,
                                                  &serf_ssl_bucket_type_securetransport,
-                                                 (void *)CFArrayGetValueAtIndex(items, 0),
+                                                 sectrans_cert,
                                                  0);
+
                 return APR_SUCCESS;
             }
         }
@@ -734,6 +749,41 @@ static apr_status_t trust_cert(void *impl_ctx,
     return APR_ENOTIMPL;
 }
 
+apr_hash_t *cert_certificate(const serf_ssl_certificate_t *cert,
+                             apr_pool_t *pool)
+{
+    apr_hash_t *tgt;
+    const char *date_str, *sha1;
+
+    sectrans_certificate_t *sectrans_cert = cert->impl_cert;
+
+    if (!sectrans_cert->content) {
+        apr_status_t status;
+        status = serf__sectrans_read_X509_DER_certificate(&sectrans_cert->content,
+                                                          sectrans_cert,
+                                                          pool);
+        if (status)
+            return NULL;
+    }
+
+    tgt = apr_hash_make(pool);
+
+    date_str = apr_hash_get(sectrans_cert->content, "notBefore", APR_HASH_KEY_STRING);
+    apr_hash_set(tgt, "notBefore", APR_HASH_KEY_STRING, date_str);
+
+    date_str = apr_hash_get(sectrans_cert->content, "notAfter", APR_HASH_KEY_STRING);
+    apr_hash_set(tgt, "notAfter", APR_HASH_KEY_STRING, date_str);
+
+    sha1 = apr_hash_get(sectrans_cert->content, "sha1", APR_HASH_KEY_STRING);
+    apr_hash_set(tgt, "sha1", APR_HASH_KEY_STRING, sha1);
+    serf__log(SSL_VERBOSE, __FILE__, "SHA1 fingerprint:%s.\n", sha1);
+
+    /* TODO: array of subjectAltName's */
+
+    return tgt;
+}
+
+
 /* Functions to read a serf_ssl_certificate structure. */
 int cert_depth(const serf_ssl_certificate_t *cert)
 {
@@ -746,30 +796,37 @@ int cert_depth(const serf_ssl_certificate_t *cert)
 apr_hash_t *cert_issuer(const serf_ssl_certificate_t *cert,
                         apr_pool_t *pool)
 {
-    serf__log(SSL_VERBOSE, __FILE__,
-              "TODO: function cert_issuer not implemented.\n");
+    sectrans_certificate_t *sectrans_cert = cert->impl_cert;
 
-    return NULL;
+    if (!sectrans_cert->content) {
+        apr_status_t status;
+        status = serf__sectrans_read_X509_DER_certificate(&sectrans_cert->content,
+                                                          sectrans_cert,
+                                                          pool);
+        if (status)
+            return NULL;
+    }
+
+    return (apr_hash_t *)apr_hash_get(sectrans_cert->content,
+                                      "issuer", APR_HASH_KEY_STRING);
 }
 
 apr_hash_t *cert_subject(const serf_ssl_certificate_t *cert,
                          apr_pool_t *pool)
 {
-    serf__log(SSL_VERBOSE, __FILE__,
-              "TODO: function cert_subject not implemented.\n");
+    sectrans_certificate_t *sectrans_cert = cert->impl_cert;
 
-    return NULL;
-}
+    if (!sectrans_cert->content) {
+        apr_status_t status;
+        status = serf__sectrans_read_X509_DER_certificate(&sectrans_cert->content,
+                                                 sectrans_cert,
+                                                 pool);
+        if (status)
+            return NULL;
+    }
 
-/* Extract the fields of the certificate in a table with keys (sha1, notBefore,
- * notAfter) */
-apr_hash_t *cert_certificate(const serf_ssl_certificate_t *cert,
-                             apr_pool_t *pool)
-{
-    serf__log(SSL_VERBOSE, __FILE__,
-              "TODO: function cert_certificate not implemented.\n");
-
-    return NULL;
+    return (apr_hash_t *)apr_hash_get(sectrans_cert->content,
+                                      "subject", APR_HASH_KEY_STRING);
 }
 
 const char *cert_export(const serf_ssl_certificate_t *cert,
@@ -805,7 +862,8 @@ int set_allowed_cert_validation_modes(void *impl_ctx,
         ssl_ctx->modes |= serf_ssl_val_mode_serf_managed_with_gui;
     if (modes & serf_ssl_val_mode_serf_managed_no_gui)
         ssl_ctx->modes |= serf_ssl_val_mode_serf_managed_no_gui;
-    /* serf_ssl_val_mode_application_managed is not supported */
+    if (modes & serf_ssl_val_mode_application_managed)
+        ssl_ctx->modes |= serf_ssl_val_mode_application_managed;
 
     return ssl_ctx->modes;
 }
