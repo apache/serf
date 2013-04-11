@@ -1348,14 +1348,13 @@ apr_status_t serf__openssl_load_CA_cert_from_file(
         fclose(fp);
 
         if (ssl_cert) {
-            serf_ssl_certificate_t *cert;
             serf_bucket_alloc_t *allocator =
                 serf_bucket_allocator_create(pool, NULL, NULL);
 
-            cert = serf__create_certificate(allocator,
-                                            &serf_ssl_bucket_type_openssl,
-                                            ssl_cert,
-                                            0);
+            *cert = serf__create_certificate(allocator,
+                                             &serf_ssl_bucket_type_openssl,
+                                             ssl_cert,
+                                             0);
             return APR_SUCCESS;
         }
     }
