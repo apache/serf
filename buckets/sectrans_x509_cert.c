@@ -28,7 +28,7 @@
 #include <Security/SecCertificate.h>
 #include <Security/SecCertificateOIDs.h>
 
-#define ST_DEBUG 1
+#define ST_DEBUG 0
 
 /* This code reads all items DER-encoded certificate in X.509 format, as
    provided by the Keychain services API. */
@@ -256,7 +256,7 @@ skip_DER_TLV(const unsigned char *ptr, unsigned char *tag, long *consumed)
 }
 
 #define SERF_ERR(x) status = (x);\
-                    goto cleanup;
+                    if (status) goto cleanup;
 
 /* Reads an issuer or subject structure from PTR, which should point to the
  value of tag type 0x30 grouping either issuer or subject. */
