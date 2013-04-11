@@ -83,7 +83,7 @@ static void test_ssl_load_cert_file(CuTest *tc)
     test_teardown(test_pool);
 }
 
-/* Test that reading a custom CA certificate file works. */
+/* Test that reading the subject from a custom CA certificate file works. */
 static void test_ssl_cert_subject(CuTest *tc)
 {
     apr_hash_t *subject;
@@ -129,6 +129,97 @@ static void test_ssl_cert_subject(CuTest *tc)
     test_teardown(test_pool);
 }
 
+/* Test that reading the issuer from a custom CA certificate file works. */
+static void test_ssl_cert_issuer(CuTest *tc)
+{
+    apr_hash_t *issuer;
+    serf_ssl_certificate_t *cert = NULL;
+    serf_bucket_t *bkt, *stream;
+    serf_ssl_context_t *ssl_context;
+    apr_status_t status;
+
+    apr_pool_t *test_pool = test_setup();
+    serf_bucket_alloc_t *alloc = serf_bucket_allocator_create(test_pool, NULL,
+                                                              NULL);
+
+    stream = SERF_BUCKET_SIMPLE_STRING("", alloc);
+    bkt = serf_bucket_ssl_decrypt_create(stream, NULL, alloc);
+    ssl_context = serf_bucket_ssl_decrypt_context_get(bkt);
+
+    status = serf_ssl_load_CA_cert_from_file(ssl_context,
+                                             &cert,
+                                             get_ca_file(test_pool, "test/serftestca.pem"),
+                                             test_pool);
+
+    CuAssertIntEquals(tc, APR_SUCCESS, status);
+    CuAssertPtrNotNull(tc, cert);
+
+    issuer = serf_ssl_cert_issuer(cert, test_pool);
+    CuAssertPtrNotNull(tc, issuer);
+
+    /* TODO: create a new test certificate with different issuer and subject. */
+    CuAssertStrEquals(tc, "Serf",
+                      apr_hash_get(issuer, "CN", APR_HASH_KEY_STRING));
+    CuAssertStrEquals(tc, "Test Suite",
+                      apr_hash_get(issuer, "OU", APR_HASH_KEY_STRING));
+    CuAssertStrEquals(tc, "In Serf we trust, Inc.",
+                      apr_hash_get(issuer, "O", APR_HASH_KEY_STRING));
+    CuAssertStrEquals(tc, "Mechelen",
+                      apr_hash_get(issuer, "L", APR_HASH_KEY_STRING));
+    CuAssertStrEquals(tc, "Antwerp",
+                      apr_hash_get(issuer, "ST", APR_HASH_KEY_STRING));
+    CuAssertStrEquals(tc, "BE",
+                      apr_hash_get(issuer, "C", APR_HASH_KEY_STRING));
+    CuAssertStrEquals(tc, "serf@example.com",
+                      apr_hash_get(issuer, "E", APR_HASH_KEY_STRING));
+
+    test_teardown(test_pool);
+}
+
+/* Test that reading the notBefore,notAfter,sha1 fingerprint and subjectAltNames
+   from a custom CA certificate file works. */
+static void test_ssl_cert_certificate(CuTest *tc)
+{
+    apr_hash_t *kv;
+    serf_ssl_certificate_t *cert = NULL;
+    serf_bucket_t *bkt, *stream;
+    serf_ssl_context_t *ssl_context;
+    apr_status_t status;
+    apr_array_header_t *san_arr;
+
+    apr_pool_t *test_pool = test_setup();
+    serf_bucket_alloc_t *alloc = serf_bucket_allocator_create(test_pool, NULL,
+                                                              NULL);
+
+    stream = SERF_BUCKET_SIMPLE_STRING("", alloc);
+    bkt = serf_bucket_ssl_decrypt_create(stream, NULL, alloc);
+    ssl_context = serf_bucket_ssl_decrypt_context_get(bkt);
+
+    status = serf_ssl_load_CA_cert_from_file(ssl_context,
+                                             &cert,
+                                             get_ca_file(test_pool, "test/serftestca.pem"),
+                                             test_pool);
+
+    CuAssertIntEquals(tc, APR_SUCCESS, status);
+    CuAssertPtrNotNull(tc, cert);
+
+    kv = serf_ssl_cert_certificate(cert, test_pool);
+    CuAssertPtrNotNull(tc, kv);
+
+    CuAssertStrEquals(tc, "8A:4C:19:D5:F2:52:4E:35:49:5E:7A:14:80:B2:02:BD:B4:4D:22:18",
+                      apr_hash_get(kv, "sha1", APR_HASH_KEY_STRING));
+    CuAssertStrEquals(tc, "Mar 21 13:18:17 2008 GMT",
+                      apr_hash_get(kv, "notBefore", APR_HASH_KEY_STRING));
+    CuAssertStrEquals(tc, "Mar 21 13:18:17 2011 GMT",
+                      apr_hash_get(kv, "notAfter", APR_HASH_KEY_STRING));
+
+    /* TODO: create a new test certificate with a/some sAN's. */
+    san_arr = apr_hash_get(kv, "subjectAltName", APR_HASH_KEY_STRING);
+    CuAssertTrue(tc, san_arr == NULL);
+
+    test_teardown(test_pool);
+}
+
 static void test_ssl_load_CA_cert_from_file(CuTest *tc)
 {
     serf_ssl_certificate_t *cert = NULL;
@@ -161,6 +252,8 @@ CuSuite *test_ssl(void)
     SUITE_ADD_TEST(suite, test_ssl_init);
     SUITE_ADD_TEST(suite, test_ssl_load_cert_file);
     SUITE_ADD_TEST(suite, test_ssl_cert_subject);
+    SUITE_ADD_TEST(suite, test_ssl_cert_issuer);
+    SUITE_ADD_TEST(suite, test_ssl_cert_certificate);
     SUITE_ADD_TEST(suite, test_ssl_load_CA_cert_from_file);
     return suite;
 }
