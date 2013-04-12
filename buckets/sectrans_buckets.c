@@ -21,6 +21,7 @@
 #include "bucket_private.h"
 
 #include <apr_strings.h>
+#include <apr_base64.h>
 
 #include <Security/SecureTransport.h>
 #include <Security/SecPolicy.h>
@@ -398,10 +399,20 @@ validate_server_certificate(sectrans_context_t *ssl_ctx)
             break;
     }
 
-    /* TODO: First implement certificate accessor methods, otherwise this will
-       only result in crashes. */
+#if 0 /* Disable for now to get more test coverage for the X509 parsing code. */
+    if ((failures & SERF_SSL_CERT_ALL_OK) &&
+        (ssl_ctx->modes & serf_ssl_val_mode_serf_managed_with_gui ||
+         ssl_ctx->modes & serf_ssl_val_mode_serf_managed_no_gui))
+    {
+        /* All ok, application allowed us to continue without being
+           contacted. */
+        goto cleanup;
+    }
+#endif
+
     if ((ssl_ctx->modes & serf_ssl_val_mode_application_managed) &&
-        (ssl_ctx->server_cert_callback && failures)) {
+        (ssl_ctx->server_cert_callback && failures))
+    {
         serf_ssl_certificate_t *cert;
         sectrans_certificate_t *sectrans_cert;
 
@@ -832,10 +843,21 @@ apr_hash_t *cert_subject(const serf_ssl_certificate_t *cert,
 const char *cert_export(const serf_ssl_certificate_t *cert,
                         apr_pool_t *pool)
 {
-    serf__log(SSL_VERBOSE, __FILE__,
-              "TODO: function cert_export not implemented.\n");
+    sectrans_certificate_t *sectrans_cert = cert->impl_cert;
+    SecCertificateRef certref = sectrans_cert->certref;
+    CFDataRef dataref = SecCertificateCopyData(certref);
+    const unsigned char *data = CFDataGetBytePtr(dataref);
 
-    return NULL;
+    CFIndex len = CFDataGetLength(dataref);
+
+    if (!len)
+        return NULL;
+
+    char *encoded_cert = apr_palloc(pool, apr_base64_encode_len(len));
+
+    apr_base64_encode(encoded_cert, (char*)data, len);
+
+    return encoded_cert;
 }
 
 static apr_status_t
