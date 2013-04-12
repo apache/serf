@@ -103,10 +103,13 @@ typedef struct serf_request_t serf_request_t;
 #define SERF_ERROR_SSL_CANT_CONFIRM_CERT (APR_OS_START_USERERR + \
                                              SERF_ERROR_RANGE + 72)
 
-/* User denied the use of the certificate, either via GUI or via the certificate
-   store. */
+/* User denied the use of the certificate. */
 #define SERF_ERROR_SSL_USER_DENIED_CERT (APR_OS_START_USERERR + \
                                              SERF_ERROR_RANGE + 73)
+
+/* Certificate was marked as 'Never Trust' in Keychain. */
+#define SERF_ERROR_SSL_KEYCHAIN_DENIED_CERT (APR_OS_START_USERERR + \
+                                             SERF_ERROR_RANGE + 74)
 
 /* General authentication related errors */
 #define SERF_ERROR_AUTHN_FAILED (APR_OS_START_USERERR + SERF_ERROR_RANGE + 90)

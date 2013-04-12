@@ -347,28 +347,18 @@ validate_server_certificate(sectrans_context_t *ssl_ctx)
             serf__log(SSL_VERBOSE, __FILE__,
                       "kSecTrustResultProceed/Unspecified.\n");
             failures = SERF_SSL_CERT_ALL_OK;
-            status = APR_EAGAIN;
+            status = APR_SUCCESS;
             break;
         case kSecTrustResultConfirm:
             serf__log(SSL_VERBOSE, __FILE__, "kSecTrustResultConfirm.\n");
             failures = SERF_SSL_CERT_CONFIRM_NEEDED |
                        SERF_SSL_CERT_RECOVERABLE;
-            if (ssl_ctx->modes & serf_ssl_val_mode_serf_managed_with_gui) {
-                status = ask_approval_gui(ssl_ctx, trust);
-            } else {
-                status = SERF_ERROR_SSL_CANT_CONFIRM_CERT;
-            }
             break;
         case kSecTrustResultRecoverableTrustFailure:
             serf__log(SSL_VERBOSE, __FILE__,
                       "kSecTrustResultRecoverableTrustFailure.\n");
-            failures = SERF_SSL_CERT_RECOVERABLE |
-                       SERF_SSL_CERT_UNKNOWN_FAILURE;
-            if (ssl_ctx->modes & serf_ssl_val_mode_serf_managed_with_gui) {
-                status = ask_approval_gui(ssl_ctx, trust);
-            } else {
-                status = SERF_ERROR_SSL_CANT_CONFIRM_CERT;
-            }
+            failures = SERF_SSL_CERT_UNKNOWN_FAILURE |
+                       SERF_SSL_CERT_RECOVERABLE;
             break;
 
         /* Fatal errors */
@@ -380,7 +370,7 @@ validate_server_certificate(sectrans_context_t *ssl_ctx)
         case kSecTrustResultDeny:
             serf__log(SSL_VERBOSE, __FILE__, "kSecTrustResultDeny.\n");
             failures = SERF_SSL_CERT_FATAL;
-            status = SERF_ERROR_SSL_USER_DENIED_CERT;
+            status = SERF_ERROR_SSL_KEYCHAIN_DENIED_CERT;
             break;
         case kSecTrustResultFatalTrustFailure:
             serf__log(SSL_VERBOSE, __FILE__, "kSecTrustResultFatalTrustFailure.\n");
@@ -399,17 +389,34 @@ validate_server_certificate(sectrans_context_t *ssl_ctx)
             break;
     }
 
-#if 0 /* Disable for now to get more test coverage for the X509 parsing code. */
-    if ((failures & SERF_SSL_CERT_ALL_OK) &&
-        (ssl_ctx->modes & serf_ssl_val_mode_serf_managed_with_gui ||
-         ssl_ctx->modes & serf_ssl_val_mode_serf_managed_no_gui))
+    /* Recoverable errors? Ask the user for confirmation. */
+    if (failures & SERF_SSL_CERT_CONFIRM_NEEDED ||
+        failures & SERF_SSL_CERT_RECOVERABLE)
     {
-        /* All ok, application allowed us to continue without being
-           contacted. */
-        goto cleanup;
+        if (ssl_ctx->modes & serf_ssl_val_mode_serf_managed_with_gui)
+        {
+            status = ask_approval_gui(ssl_ctx, trust);
+            /* TODO: remember this approval for 'some time' ! */
+            goto cleanup;
+        } else
+        {
+            status = SERF_ERROR_SSL_CANT_CONFIRM_CERT;
+        }
     }
-#endif
 
+    /* If serf can take the decision, don't call back to the application. */
+    if (failures & SERF_SSL_CERT_ALL_OK ||
+        failures & SERF_SSL_CERT_FATAL)
+    {
+        if (ssl_ctx->modes & serf_ssl_val_mode_serf_managed_with_gui ||
+            ssl_ctx->modes & serf_ssl_val_mode_serf_managed_no_gui)
+        {
+            /* The application allowed us to take the decision. */
+            goto cleanup;
+        }
+    }
+
+    /* Ask the application to validate the certificate. */
     if ((ssl_ctx->modes & serf_ssl_val_mode_application_managed) &&
         (ssl_ctx->server_cert_callback && failures))
     {
@@ -429,20 +436,13 @@ validate_server_certificate(sectrans_context_t *ssl_ctx)
         /* Callback for further verification. */
         status = ssl_ctx->server_cert_callback(ssl_ctx->server_cert_userdata,
                                                failures, cert);
-        if (status == APR_SUCCESS)
-        {
-            if (!(failures & SERF_SSL_CERT_RECOVERABLE)) {
-                serf__log(SSL_VERBOSE, __FILE__,
-                          "Secure Transport/Keychain reported an unrecoverable "
-                          "problem, but the application wants us to go on "
-                          "anyway. Don't know how to handle this yet.\n");
-                status = APR_ENOTIMPL;
-            }
-        }
+
         serf_bucket_mem_free(ssl_ctx->allocator, cert);
         goto cleanup;
+    } else
+    {
+        status = SERF_ERROR_SSL_CERT_FAILED;
     }
-
 cleanup:
     CFRelease(certs);
     CFRelease(trust);
