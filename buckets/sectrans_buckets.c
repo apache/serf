@@ -754,10 +754,19 @@ load_CA_cert_from_file(serf_ssl_certificate_t **cert,
 static apr_status_t trust_cert(void *impl_ctx,
                                serf_ssl_certificate_t *cert)
 {
-    serf__log(SSL_VERBOSE, __FILE__,
-              "function trust_cert not implemented.\n");
+    sectrans_context_t *ssl_ctx = impl_ctx;
+    sectrans_certificate_t *sectrans_cert = cert->impl_cert;
+    OSStatus sectrans_status;
 
-    return APR_ENOTIMPL;
+    SecCertificateRef certs[1] = { sectrans_cert->certref };
+    CFArrayRef certarray = CFArrayCreate(kCFAllocatorDefault,
+                                         (void *)certs,
+                                         1,
+                                         NULL);
+
+    /* Add the certificate to the current list. */
+    sectrans_status = SSLSetTrustedRoots(ssl_ctx->st_ctxr, certarray, false);
+    return translate_sectrans_status(sectrans_status);
 }
 
 apr_hash_t *cert_certificate(const serf_ssl_certificate_t *cert,
