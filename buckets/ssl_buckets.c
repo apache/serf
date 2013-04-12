@@ -275,14 +275,15 @@ apr_status_t serf_ssl_load_CA_cert_from_file(serf_ssl_context_t *ssl_ctx,
     return ssl_ctx->type->load_CA_cert_from_file(cert, file_path, pool);
 }
 
-
-/* TODO: what to do with this? */
 apr_status_t serf_ssl_load_cert_file(serf_ssl_certificate_t **cert,
                                      const char *file_path,
                                      apr_pool_t *pool)
 {
-    serf__log(SSL_VERBOSE, __FILE__,
-              "TODO: function serf_ssl_load_cert_file not implemented.\n");
+    /* ### This is a hack, depends on the SSL implementation type to be 
+       always the same during multiple ssl sessions. While that's currently
+       the case, it's not guaranteed to stay this way in future versions of
+       serf. */
+    const serf_ssl_bucket_type_t *type = decide_ssl_bucket_type();
 
-    return APR_ENOTIMPL;
+    return type->load_CA_cert_from_file(cert, file_path, pool);
 }
