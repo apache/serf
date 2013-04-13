@@ -245,6 +245,112 @@ static void test_ssl_load_CA_cert_from_file(CuTest *tc)
     test_teardown(test_pool);
 }
 
+static const char *extract_cert_from_pem(const char *pemdata,
+                                         apr_pool_t *pool)
+{
+    enum { INIT, CERT_BEGIN, CERT_FOUND } state;
+    serf_bucket_t *pembkt;
+    const char *begincert = "-----BEGIN CERTIFICATE-----";
+    const char *endcert = "-----END CERTIFICATE-----";
+    char *certdata = "";
+    apr_size_t certlen = 0;
+    apr_status_t status = APR_SUCCESS;
+
+    serf_bucket_alloc_t *alloc = serf_bucket_allocator_create(pool,
+                                                              NULL, NULL);
+
+    /* Extract the certificate from the .pem file, also remove newlines. */
+    pembkt = SERF_BUCKET_SIMPLE_STRING(pemdata, alloc);
+    state = INIT;
+    while (state != CERT_FOUND && status != APR_EOF) {
+        const char *data;
+        apr_size_t len;
+        int found;
+
+        status = serf_bucket_readline(pembkt, SERF_NEWLINE_ANY, &found,
+                                      &data, &len);
+        if (SERF_BUCKET_READ_ERROR(status))
+            return NULL;
+
+        if (state == INIT) {
+            if (strncmp(begincert, data, strlen(begincert)) == 0)
+                state = CERT_BEGIN;
+        } else if (state == CERT_BEGIN) {
+            if (strncmp(endcert, data, strlen(endcert)) == 0)
+                state = CERT_FOUND;
+            else {
+                certdata = apr_pstrcat(pool, certdata, data, NULL);
+                certlen += len;
+                switch (found) {
+                    case SERF_NEWLINE_CR:
+                    case SERF_NEWLINE_LF:
+                        certdata[certlen-1] = '\0';
+                        certlen --;
+                        break;
+                    case SERF_NEWLINE_CRLF:
+                        certdata[certlen-2] = '\0';
+                        certlen-=2;
+                        break;
+                }
+            }
+        }
+    }
+
+    if (state == CERT_FOUND)
+        return certdata;
+    else
+        return NULL;
+}
+
+static void test_ssl_cert_export(CuTest *tc)
+{
+    serf_ssl_certificate_t *cert = NULL;
+    serf_bucket_t *bkt, *stream;
+    serf_ssl_context_t *ssl_context;
+    apr_status_t status;
+    apr_file_t *fp;
+    apr_finfo_t file_info;
+    const char *pembuf, *base64derbuf;
+    apr_size_t pemlen;
+
+    apr_pool_t *test_pool = test_setup();
+    serf_bucket_alloc_t *alloc = serf_bucket_allocator_create(test_pool, NULL,
+                                                              NULL);
+
+    stream = SERF_BUCKET_SIMPLE_STRING("", alloc);
+    bkt = serf_bucket_ssl_decrypt_create(stream, NULL, alloc);
+    ssl_context = serf_bucket_ssl_decrypt_context_get(bkt);
+
+    status = serf_ssl_load_CA_cert_from_file(ssl_context,
+                                             &cert,
+                                             get_ca_file(test_pool, "test/serftestca.pem"),
+                                             test_pool);
+
+    CuAssertIntEquals(tc, APR_SUCCESS, status);
+    CuAssertPtrNotNull(tc, cert);
+
+    /* A .pem file contains a Base64 encoded DER certificate, which is exactly
+       what serf_ssl_cert_export is supposed to be returning. */
+    status = apr_file_open(&fp, "test/serftestca.pem",
+                           APR_FOPEN_READ | APR_FOPEN_BINARY,
+                           APR_FPROT_OS_DEFAULT, test_pool);
+    CuAssertIntEquals(tc, APR_SUCCESS, status);
+
+    apr_file_info_get(&file_info, APR_FINFO_SIZE, fp);
+    pembuf = apr_palloc(test_pool, file_info.size);
+
+    status = apr_file_read_full(fp, pembuf, file_info.size, &pemlen);
+    CuAssertIntEquals(tc, APR_SUCCESS, status);
+
+    base64derbuf = serf_ssl_cert_export(cert, test_pool);
+
+    CuAssertStrEquals(tc,
+                      extract_cert_from_pem(pembuf, test_pool),
+                      base64derbuf);
+
+    test_teardown(test_pool);
+}
+
 CuSuite *test_ssl(void)
 {
     CuSuite *suite = CuSuiteNew();
@@ -255,5 +361,7 @@ CuSuite *test_ssl(void)
     SUITE_ADD_TEST(suite, test_ssl_cert_issuer);
     SUITE_ADD_TEST(suite, test_ssl_cert_certificate);
     SUITE_ADD_TEST(suite, test_ssl_load_CA_cert_from_file);
+    SUITE_ADD_TEST(suite, test_ssl_cert_export);
+
     return suite;
 }
