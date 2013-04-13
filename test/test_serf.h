@@ -93,6 +93,7 @@ typedef struct {
     /* An extra baton which can be freely used by tests. */
     void *user_baton;
 
+    apr_array_header_t *accepted_requests, *handled_requests, *sent_requests;
 } test_baton_t;
 
 apr_status_t test_server_setup(test_baton_t **tb_p,

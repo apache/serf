@@ -73,6 +73,7 @@ static apr_status_t default_conn_setup(apr_socket_t *skt,
 static apr_status_t setup(test_baton_t **tb_p,
                           serf_connection_setup_t conn_setup,
                           int use_proxy,
+                          apr_size_t message_count,
                           apr_pool_t *pool)
 {
     apr_status_t status;
@@ -85,6 +86,11 @@ static apr_status_t setup(test_baton_t **tb_p,
     tb->pool = pool;
     tb->context = serf_context_create(pool);
     tb->bkt_alloc = serf_bucket_allocator_create(pool, NULL, NULL);
+
+    tb->accepted_requests = apr_array_make(pool, message_count, sizeof(int));
+    tb->sent_requests = apr_array_make(pool, message_count, sizeof(int));
+    tb->handled_requests = apr_array_make(pool, message_count, sizeof(int));
+
 
     status = default_server_address(&tb->serv_addr, pool);
     if (status != APR_SUCCESS)
@@ -132,6 +138,7 @@ apr_status_t test_server_setup(test_baton_t **tb_p,
     status = setup(tb_p,
                    conn_setup,
                    FALSE,
+                   message_count,
                    pool);
     if (status != APR_SUCCESS)
         return status;
@@ -166,6 +173,7 @@ test_server_proxy_setup(test_baton_t **tb_p,
     status = setup(tb_p,
                    conn_setup,
                    TRUE,
+                   serv_message_count,
                    pool);
     if (status != APR_SUCCESS)
         return status;
