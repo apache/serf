@@ -23,44 +23,6 @@
 
 #include "test_server.h"
 
-struct serv_ctx_t {
-    /* Pool for resource allocation. */
-    apr_pool_t *pool;
-
-    apr_int32_t options;
-
-    /* Array of actions which server will replay when client connected. */
-    test_server_action_t *action_list;
-    /* Size of action_list array. */
-    apr_size_t action_count;
-    /* Index of current action. */
-    apr_size_t cur_action;
-
-    /* Array of messages the server will receive from the client. */
-    test_server_message_t *message_list;
-    /* Size of message_list array. */
-    apr_size_t message_count;
-    /* Index of current message. */
-    apr_size_t cur_message;
-
-    /* Number of messages received that the server didn't respond to yet. */
-    apr_size_t outstanding_responses;
-
-    /* Position in message buffer (incoming messages being read). */
-    apr_size_t message_buf_pos;
-
-    /* Position in action buffer. (outgoing messages being sent). */
-    apr_size_t action_buf_pos;
-
-    /* Address for server binding. */
-    apr_sockaddr_t *serv_addr;
-    apr_socket_t *serv_sock;
-
-    /* Accepted client socket. NULL if there is no client socket. */
-    apr_socket_t *client_sock;
-
-};
-
 /* Replay support functions */
 static void next_message(serv_ctx_t *servctx)
 {
@@ -71,6 +33,20 @@ static void next_action(serv_ctx_t *servctx)
 {
     servctx->cur_action++;
     servctx->action_buf_pos = 0;
+}
+
+static apr_status_t
+socket_write(serv_ctx_t *serv_ctx, const char *data,
+             apr_size_t *len)
+{
+    return apr_socket_send(serv_ctx->client_sock, data, len);
+}
+
+static apr_status_t
+socket_read(serv_ctx_t *serv_ctx, char *data,
+            apr_size_t *len)
+{
+    return apr_socket_recv(serv_ctx->client_sock, data, len);
 }
 
 /* Verify received requests and take the necessary actions
@@ -94,7 +70,7 @@ static apr_status_t replay(serv_ctx_t *servctx,
             char buf[128];
             apr_size_t len = sizeof(buf);
 
-            status = apr_socket_recv(servctx->client_sock, buf, &len);
+            status = servctx->read(servctx, buf, &len);
             if (! APR_STATUS_IS_EAGAIN(status)) {
                 /* we're out of actions! */
                 printf("Received more requests than expected.\n");
@@ -110,7 +86,7 @@ static apr_status_t replay(serv_ctx_t *servctx,
             char buf[128];
             apr_size_t len = sizeof(buf);
 
-            status = apr_socket_recv(servctx->client_sock, buf, &len);
+            status = servctx->read(servctx, buf, &len);
 
             if (status == APR_EOF) {
                 apr_socket_close(servctx->client_sock);
@@ -135,7 +111,7 @@ static apr_status_t replay(serv_ctx_t *servctx,
             if (len > sizeof(buf))
                 len = sizeof(buf);
 
-            status = apr_socket_recv(servctx->client_sock, buf, &len);
+            status = servctx->read(servctx, buf, &len);
             if (status != APR_SUCCESS)
                 return status;
 
@@ -176,8 +152,9 @@ static apr_status_t replay(serv_ctx_t *servctx,
             msg_len = strlen(action->text);
             len = msg_len - servctx->action_buf_pos;
 
-            status = apr_socket_send(servctx->client_sock,
-                                     action->text + servctx->action_buf_pos, &len);
+            status = servctx->send(servctx,
+                                   action->text + servctx->action_buf_pos,
+                                   &len);
             if (status != APR_SUCCESS)
                 return status;
 
@@ -267,6 +244,13 @@ apr_status_t test_server_run(serv_ctx_t *servctx,
         }
 
         if (desc->desc.s == servctx->client_sock) {
+            if (servctx->handshake) {
+                status = servctx->handshake(servctx);
+            }
+
+            if (status)
+                goto cleanup;
+
             /* Replay data to socket. */
             status = replay(servctx, desc->rtnevents, pool);
 
@@ -292,20 +276,20 @@ cleanup:
     return status;
 }
 
-/* Start a TCP server on port SERV_PORT in thread THREAD. srv_replay is a array
-   of action to replay when connection started. replay_count is count of
-   actions in srv_replay. */
-apr_status_t test_start_server(serv_ctx_t **servctx_p,
-                               apr_sockaddr_t *address,
-                               test_server_message_t *message_list,
-                               apr_size_t message_count,
-                               test_server_action_t *action_list,
-                               apr_size_t action_count,
-                               apr_int32_t options,
-                               apr_pool_t *pool)
+
+/* Setup the context needed to start a TCP server on adress.
+   message_list is a list of expected requests.
+   action_list is the list of responses to be returned in order.
+ */
+void test_setup_server(serv_ctx_t **servctx_p,
+                       apr_sockaddr_t *address,
+                       test_server_message_t *message_list,
+                       apr_size_t message_count,
+                       test_server_action_t *action_list,
+                       apr_size_t action_count,
+                       apr_int32_t options,
+                       apr_pool_t *pool)
 {
-    apr_status_t status;
-    apr_socket_t *serv_sock;
     serv_ctx_t *servctx;
 
     servctx = apr_pcalloc(pool, sizeof(*servctx));
@@ -319,12 +303,58 @@ apr_status_t test_start_server(serv_ctx_t **servctx_p,
     servctx->action_list = action_list;
     servctx->action_count = action_count;
 
+    /* Start replay from first action. */
+    servctx->cur_action = 0;
+    servctx->action_buf_pos = 0;
+    servctx->outstanding_responses = 0;
+
+    servctx->read = socket_read;
+    servctx->send = socket_write;
+
+    *servctx_p = servctx;
+}
+
+void test_setup_https_server(serv_ctx_t **servctx_p,
+                             apr_sockaddr_t *address,
+                             test_server_message_t *message_list,
+                             apr_size_t message_count,
+                             test_server_action_t *action_list,
+                             apr_size_t action_count,
+                             apr_int32_t options,
+                             const char *keyfile,
+                             const char *certfile,
+                             apr_pool_t *pool)
+{
+    serv_ctx_t *servctx;
+
+    test_setup_server(servctx_p, address, message_list,
+                      message_count, action_list, action_count,
+                      options, pool);
+
+    servctx = *servctx_p;
+
+    servctx->handshake = ssl_handshake;
+    /* Override with SSL encrypt/decrypt functions */
+    servctx->read = ssl_socket_read;
+    servctx->send = ssl_socket_write;
+
+    init_ssl_context(servctx, keyfile, certfile);
+}
+
+apr_status_t test_start_server(serv_ctx_t *servctx)
+{
+    apr_status_t status;
+    apr_socket_t *serv_sock;
+
     /* create server socket */
 #if APR_VERSION_AT_LEAST(1, 0, 0)
-    status = apr_socket_create(&serv_sock, address->family, SOCK_STREAM, 0,
-                               pool);
+    status = apr_socket_create(&serv_sock, servctx->serv_addr->family,
+                               SOCK_STREAM, 0,
+                               servctx->pool);
 #else
-    status = apr_socket_create(&serv_sock, address->family, SOCK_STREAM, pool);
+    status = apr_socket_create(&serv_sock, servctx->serv_addr->family,
+                               SOCK_STREAM,
+                               servctx->pool);
 #endif
 
     if (status != APR_SUCCESS)
@@ -338,11 +368,6 @@ apr_status_t test_start_server(serv_ctx_t **servctx_p,
     if (status != APR_SUCCESS)
         return status;
 
-    /* Start replay from first action. */
-    servctx->cur_action = 0;
-    servctx->action_buf_pos = 0;
-    servctx->outstanding_responses = 0;
-
     /* listen for clients */
     status = apr_socket_listen(serv_sock, SOMAXCONN);
     if (status != APR_SUCCESS)
@@ -350,16 +375,22 @@ apr_status_t test_start_server(serv_ctx_t **servctx_p,
 
     servctx->serv_sock = serv_sock;
     servctx->client_sock = NULL;
+
     return APR_SUCCESS;
 }
 
 apr_status_t test_server_destroy(serv_ctx_t *servctx, apr_pool_t *pool)
 {
-    apr_socket_close(servctx->serv_sock);
+    apr_status_t status;
+
+    status = apr_socket_close(servctx->serv_sock);
 
     if (servctx->client_sock) {
         apr_socket_close(servctx->client_sock);
     }
 
-    return APR_SUCCESS;
+    if (servctx->ssl_ctx)
+        cleanup_ssl_context(servctx);
+
+    return status;
 }

@@ -249,6 +249,7 @@ for proggie in TEST_PROGRAMS:
         'test/test_buckets.c',
         'test/test_ssl.c',
         'test/server/test_server.c',
+        'test/server/test_sslserver.c',
         ])
   else:
     tenv.Program(proggie, [proggie + '.c'])

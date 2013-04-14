@@ -94,7 +94,22 @@ typedef struct {
     void *user_baton;
 
     apr_array_header_t *accepted_requests, *handled_requests, *sent_requests;
+
+    serf_ssl_context_t *ssl_context;
+    serf_ssl_need_server_cert_t server_cert_cb;
 } test_baton_t;
+
+apr_status_t test_https_server_setup(test_baton_t **tb_p,
+                                     test_server_message_t *message_list,
+                                     apr_size_t message_count,
+                                     test_server_action_t *action_list,
+                                     apr_size_t action_count,
+                                     apr_int32_t options,
+                                     serf_connection_setup_t conn_setup,
+                                     const char *keyfile,
+                                     const char *certfile,
+                                     serf_ssl_need_server_cert_t server_cert_cb,
+                                     apr_pool_t *pool);
 
 apr_status_t test_server_setup(test_baton_t **tb_p,
                                test_server_message_t *message_list,
