@@ -1099,10 +1099,23 @@ static void test_serf_request_timeout(CuTest *tc)
 }
 
 static apr_status_t
-ssl_server_cert_cb_allok(void *baton, int failures,
-                         const serf_ssl_certificate_t *cert)
+ssl_server_cert_cb_expect_failures(void *baton, int failures,
+                                   const serf_ssl_certificate_t *cert)
 {
-    return APR_SUCCESS;
+    if (failures)
+        return APR_SUCCESS;
+    else
+        return APR_EGENERAL;
+}
+
+static apr_status_t
+ssl_server_cert_cb_expect_allok(void *baton, int failures,
+                                const serf_ssl_certificate_t *cert)
+{
+    if (failures)
+        return APR_EGENERAL;
+    else
+        return APR_SUCCESS;
 }
 
 /* Validate that we can connect successfully to an https server. */
@@ -1130,7 +1143,7 @@ static void test_serf_ssl_handshake(CuTest *tc)
                                      NULL, /* default conn setup */
                                      "test/server/serfserverkey.pem",
                                      "test/server/serfservercert.pem",
-                                     ssl_server_cert_cb_allok,
+                                     ssl_server_cert_cb_expect_failures,
                                      test_pool);
     CuAssertIntEquals(tc, APR_SUCCESS, status);
 
@@ -1165,6 +1178,104 @@ static void test_serf_ssl_handshake(CuTest *tc)
     test_teardown(test_pool);
 }
 
+static apr_status_t
+https_set_root_ca_conn_setup(apr_socket_t *skt,
+                             serf_bucket_t **input_bkt,
+                             serf_bucket_t **output_bkt,
+                             void *setup_baton,
+                             apr_pool_t *pool)
+{
+    serf_ssl_certificate_t *cacert, *rootcacert;
+    test_baton_t *tb = setup_baton;
+    apr_status_t status;
+
+    status = default_https_conn_setup(skt, input_bkt, output_bkt,
+                                      setup_baton, pool);
+    if (status)
+        return status;
+
+    status = serf_ssl_load_cert_file(&cacert, "test/server/serfcacert.pem",
+                                     pool);
+    if (status)
+        return status;
+    status = serf_ssl_trust_cert(tb->ssl_context, cacert);
+    if (status)
+        return status;
+
+    status = serf_ssl_load_cert_file(&rootcacert,
+                                     "test/server/serfrootcacert.pem",
+                                     pool);
+    if (status)
+        return status;
+    status = serf_ssl_trust_cert(tb->ssl_context, rootcacert);
+    if (status)
+        return status;
+
+    return status;
+}
+
+/* Validate that server certificate validation is ok when we
+   explicitly trust our self-signed root ca. */
+static void test_serf_ssl_trust_rootca(CuTest *tc)
+{
+    test_baton_t *tb;
+    handler_baton_t handler_ctx;
+    apr_status_t status;
+    apr_pool_t *iter_pool;
+    test_server_message_t message_list[] = {
+        {CHUNKED_REQUEST(1, "1")},
+    };
+
+    test_server_action_t action_list[] = {
+        {SERVER_RESPOND, CHUNKED_EMPTY_RESPONSE},
+    };
+    const int num_requests = 1;
+
+
+    /* Set up a test context with a server */
+    apr_pool_t *test_pool = test_setup();
+    status = test_https_server_setup(&tb,
+                                     message_list, num_requests,
+                                     action_list, num_requests, 0,
+                                     https_set_root_ca_conn_setup,
+                                     "test/server/serfserverkey.pem",
+                                     "test/server/serfservercert.pem",
+                                     ssl_server_cert_cb_expect_allok,
+                                     test_pool);
+    CuAssertIntEquals(tc, APR_SUCCESS, status);
+
+    create_new_request(tb, &handler_ctx, "GET", "/", 1);
+
+    apr_pool_create(&iter_pool, test_pool);
+
+    while (!handler_ctx.done)
+    {
+        apr_pool_clear(iter_pool);
+
+        status = test_server_run(tb->serv_ctx, 0, iter_pool);
+        if (APR_STATUS_IS_EAGAIN(status) ||
+            APR_STATUS_IS_TIMEUP(status))
+            status = APR_SUCCESS;
+        CuAssertIntEquals(tc, APR_SUCCESS, status);
+
+        status = serf_context_run(tb->context, 0, iter_pool);
+        if (APR_STATUS_IS_EAGAIN(status) ||
+            APR_STATUS_IS_TIMEUP(status))
+            status = APR_SUCCESS;
+        CuAssertIntEquals(tc, APR_SUCCESS, status);
+    }
+    apr_pool_destroy(iter_pool);
+
+    /* Check that all requests were received */
+    CuAssertIntEquals(tc, num_requests, tb->sent_requests->nelts);
+    CuAssertIntEquals(tc, num_requests, tb->accepted_requests->nelts);
+    CuAssertIntEquals(tc, num_requests, tb->handled_requests->nelts);
+
+    test_server_teardown(tb, test_pool);
+    test_teardown(test_pool);
+}
+
+
 CuSuite *test_context(void)
 {
     CuSuite *suite = CuSuiteNew();
@@ -1178,6 +1289,7 @@ CuSuite *test_context(void)
     SUITE_ADD_TEST(suite, test_serf_progress_callback);
     SUITE_ADD_TEST(suite, test_serf_request_timeout);
     SUITE_ADD_TEST(suite, test_serf_ssl_handshake);
+    SUITE_ADD_TEST(suite, test_serf_ssl_trust_rootca);
 
     return suite;
 }

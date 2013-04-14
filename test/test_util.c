@@ -71,11 +71,11 @@ static apr_status_t default_http_conn_setup(apr_socket_t *skt,
 }
 
 /* This function makes serf use SSL on the connection. */
-static apr_status_t default_https_conn_setup(apr_socket_t *skt,
-                                             serf_bucket_t **input_bkt,
-                                             serf_bucket_t **output_bkt,
-                                             void *setup_baton,
-                                             apr_pool_t *pool)
+apr_status_t default_https_conn_setup(apr_socket_t *skt,
+                                      serf_bucket_t **input_bkt,
+                                      serf_bucket_t **output_bkt,
+                                      void *setup_baton,
+                                      apr_pool_t *pool)
 {
     test_baton_t *tb = setup_baton;
 

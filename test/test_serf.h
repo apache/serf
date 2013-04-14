@@ -99,6 +99,12 @@ typedef struct {
     serf_ssl_need_server_cert_t server_cert_cb;
 } test_baton_t;
 
+apr_status_t default_https_conn_setup(apr_socket_t *skt,
+                                      serf_bucket_t **input_bkt,
+                                      serf_bucket_t **output_bkt,
+                                      void *setup_baton,
+                                      apr_pool_t *pool);
+
 apr_status_t test_https_server_setup(test_baton_t **tb_p,
                                      test_server_message_t *message_list,
                                      apr_size_t message_count,
