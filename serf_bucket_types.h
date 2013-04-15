@@ -595,7 +595,7 @@ apr_hash_t *serf_ssl_cert_subject(
 
 /**
  * Extract the fields of the certificate in a table with keys (sha1, notBefore,
- * notAfter). The returned table will be allocated in @a pool.
+ * notAfter, subjectAltName). The returned table will be allocated in @a pool.
  */
 apr_hash_t *serf_ssl_cert_certificate(
     const serf_ssl_certificate_t *cert,
