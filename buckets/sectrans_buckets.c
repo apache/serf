@@ -766,6 +766,7 @@ static apr_status_t trust_cert(void *impl_ctx,
 
     /* Add the certificate to the current list. */
     sectrans_status = SSLSetTrustedRoots(ssl_ctx->st_ctxr, certarray, false);
+    CFRelease(certarray);
     return translate_sectrans_status(sectrans_status);
 }
 
