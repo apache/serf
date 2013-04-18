@@ -35,6 +35,8 @@ static OSStatus
 sectrans_read_cb(SSLConnectionRef connection, void *data, size_t *dataLength);
 static OSStatus
 sectrans_write_cb(SSLConnectionRef connection, const void *data, size_t *dataLength);
+static const char *
+CFStringToChar(CFStringRef str, apr_pool_t *pool);
 
 typedef struct sectrans_ssl_stream_t {
     /* For an encrypt stream: data encrypted & not yet written to the network.
@@ -59,6 +61,8 @@ typedef struct sectrans_context_t {
     /* How many open buckets refer to this context. */
     int refcount;
 
+    apr_pool_t *pool;
+
     serf_bucket_alloc_t *allocator;
 
     SSLContextRef st_ctxr;
@@ -82,7 +86,10 @@ typedef struct sectrans_context_t {
     serf_ssl_need_server_cert_t server_cert_callback;
     serf_ssl_server_cert_chain_cb_t server_cert_chain_callback;
     void *server_cert_userdata;
-    
+
+    /* cache of the trusted certificates, added via serf_ssl_trust_cert(). */
+    apr_array_header_t *anchor_certs;
+
 } sectrans_context_t;
 
 static apr_status_t
@@ -117,8 +124,10 @@ sectrans_init_context(serf_bucket_alloc_t *allocator)
 {
     sectrans_context_t *ssl_ctx;
 
-    ssl_ctx = serf_bucket_mem_alloc(allocator, sizeof(*ssl_ctx));
+    ssl_ctx = serf_bucket_mem_calloc(allocator, sizeof(*ssl_ctx));
     ssl_ctx->refcount = 0;
+
+    apr_pool_create(&ssl_ctx->pool, NULL);
 
     /* Default mode: validate certificates against KeyChain without GUI.
        If a certificate needs to be confirmed by the user, error out. */
@@ -163,6 +172,8 @@ static apr_status_t
 sectrans_free_context(sectrans_context_t * ctx, serf_bucket_alloc_t *allocator)
 {
     OSStatus status = SSLDisposeContext (ctx->st_ctxr);
+
+    apr_pool_destroy(ctx->pool);
 
     serf_bucket_mem_free(allocator, ctx);
 
@@ -329,6 +340,61 @@ validate_server_certificate(sectrans_context_t *ssl_ctx)
         goto cleanup;
     }
 
+    /* If the application provided certificates to trust, use them here. */
+    if (ssl_ctx->anchor_certs)
+    {
+        int anchor_certs = ssl_ctx->anchor_certs->nelts;
+        int i;
+        SecCertificateRef certs[anchor_certs];
+        CFArrayRef certarray;
+
+        for (i = 0; i < anchor_certs; i++)
+            certs[i] = APR_ARRAY_IDX(ssl_ctx->anchor_certs, i, SecCertificateRef);
+
+        certarray = CFArrayCreate(kCFAllocatorDefault,
+                                  (void *)certs,
+                                  anchor_certs,
+                                  NULL);
+
+        sectrans_status = SecTrustSetAnchorCertificates(trust, certarray);
+        if (sectrans_status != noErr) {
+            status = translate_sectrans_status(sectrans_status);
+            goto cleanup;
+        }
+
+        CFRelease(certarray);
+    }
+
+    /* Log for each certificate in the chain if it validates correctly. */
+#ifdef SSL_VERBOSE
+    {
+        CFArrayRef props = SecTrustCopyProperties(trust);
+        CFIndex length = CFArrayGetCount(props);
+        int i;
+        apr_pool_t *pool;
+
+        apr_pool_create(&pool, ssl_ctx->pool);
+        for (i = length-1; i >= 0; i--) {
+            CFDictionaryRef dict = CFArrayGetValueAtIndex(props, i);
+            int depth = length - 1 - i;
+
+            CFStringRef errref = CFDictionaryGetValue(dict, kSecPropertyTypeError);
+            if (errref) {
+                const char *errstr = CFStringToChar(errref, pool);
+
+                serf__log(SSL_VERBOSE, __FILE__,
+                          "Certificate ERROR: %s at depth %d.\n", errstr, depth);
+            } else {
+                serf__log(SSL_VERBOSE, __FILE__, "Certificate validation ok "
+                          "at depth %d.\n", depth);
+            }
+        }
+        apr_pool_destroy(pool);
+
+        CFRelease(props);
+    }
+#endif
+
     /* TODO: SecTrustEvaluateAsync */
     sectrans_status = SecTrustEvaluate(trust, &result);
     if (sectrans_status != noErr) {
@@ -346,7 +412,7 @@ validate_server_certificate(sectrans_context_t *ssl_ctx)
         case kSecTrustResultProceed:
             serf__log(SSL_VERBOSE, __FILE__,
                       "kSecTrustResultProceed/Unspecified.\n");
-            failures = SERF_SSL_CERT_ALL_OK;
+            failures = 0;
             status = APR_SUCCESS;
             break;
         case kSecTrustResultConfirm:
@@ -405,7 +471,7 @@ validate_server_certificate(sectrans_context_t *ssl_ctx)
     }
 
     /* If serf can take the decision, don't call back to the application. */
-    if (failures & SERF_SSL_CERT_ALL_OK ||
+    if (!failures ||
         failures & SERF_SSL_CERT_FATAL)
     {
         if (ssl_ctx->modes & serf_ssl_val_mode_serf_managed_with_gui ||
@@ -756,18 +822,14 @@ static apr_status_t trust_cert(void *impl_ctx,
 {
     sectrans_context_t *ssl_ctx = impl_ctx;
     sectrans_certificate_t *sectrans_cert = cert->impl_cert;
-    OSStatus sectrans_status;
 
-    SecCertificateRef certs[1] = { sectrans_cert->certref };
-    CFArrayRef certarray = CFArrayCreate(kCFAllocatorDefault,
-                                         (void *)certs,
-                                         1,
-                                         NULL);
+    if (!ssl_ctx->anchor_certs)
+        ssl_ctx->anchor_certs = apr_array_make(ssl_ctx->pool, 1,
+                                               sizeof(SecCertificateRef));
+    APR_ARRAY_PUSH(ssl_ctx->anchor_certs,
+                   SecCertificateRef) = sectrans_cert->certref;
 
-    /* Add the certificate to the current list. */
-    sectrans_status = SSLSetTrustedRoots(ssl_ctx->st_ctxr, certarray, false);
-    CFRelease(certarray);
-    return translate_sectrans_status(sectrans_status);
+    return APR_SUCCESS;
 }
 
 apr_hash_t *cert_certificate(const serf_ssl_certificate_t *cert,

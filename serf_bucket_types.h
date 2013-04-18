@@ -496,7 +496,6 @@ serf_bucket_t *serf_bucket_limit_create(
 #define SERF_SSL_CERT_REVOKED          0x20
 
 
-#define SERF_SSL_CERT_ALL_OK         0x1000
 #define SERF_SSL_CERT_CONFIRM_NEEDED 0x2000
 #define SERF_SSL_CERT_RECOVERABLE    0x4000
 #define SERF_SSL_CERT_FATAL          0x8000
