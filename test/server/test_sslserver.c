@@ -18,8 +18,6 @@
 
 #include "serf_private.h"
 
-//#ifdef SERF_HAVE_OPENSSL
-
 #include <openssl/bio.h>
 #include <openssl/ssl.h>
 #include <openssl/err.h>
@@ -249,4 +247,3 @@ void cleanup_ssl_context(serv_ctx_t *serv_ctx)
     SSL_clear(ssl_ctx->ssl);
     SSL_CTX_free(ssl_ctx->ctx);
 }
-//#endif /* SERF_HAVE_OPENSSL */
