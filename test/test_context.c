@@ -43,6 +43,47 @@ typedef struct {
     test_baton_t *tb;
 } handler_baton_t;
 
+/* Helper function, runs the client and server context loops and validates
+   that no errors were encountered, and all messages were sent and received. */
+static void
+test_helper_run_requests(CuTest *tc, test_baton_t *tb, int num_requests,
+                         handler_baton_t handler_ctx[], apr_pool_t *pool)
+{
+    apr_pool_t *iter_pool;
+    int i, done = 0;
+    apr_status_t status;
+
+    apr_pool_create(&iter_pool, pool);
+
+    while (!done)
+    {
+        apr_pool_clear(iter_pool);
+
+        status = test_server_run(tb->serv_ctx, 0, iter_pool);
+        if (APR_STATUS_IS_EAGAIN(status) ||
+            APR_STATUS_IS_TIMEUP(status))
+            status = APR_SUCCESS;
+        CuAssertIntEquals(tc, APR_SUCCESS, status);
+
+        status = serf_context_run(tb->context, 0, iter_pool);
+        if (APR_STATUS_IS_EAGAIN(status) ||
+            APR_STATUS_IS_TIMEUP(status))
+            status = APR_SUCCESS;
+        CuAssertIntEquals(tc, APR_SUCCESS, status);
+
+        done = 1;
+        for (i = 0; i < num_requests; i++)
+            done &= handler_ctx[i].done;
+    }
+    apr_pool_destroy(iter_pool);
+
+    /* Check that all requests were received */
+    CuAssertIntEquals(tc, num_requests, tb->sent_requests->nelts);
+    CuAssertIntEquals(tc, num_requests, tb->accepted_requests->nelts);
+    CuAssertIntEquals(tc, num_requests, tb->handled_requests->nelts);
+    
+}
+
 static serf_bucket_t* accept_response(serf_request_t *request,
                                       serf_bucket_t *stream,
                                       void *acceptor_baton,
@@ -191,9 +232,9 @@ create_new_request_with_resp_hdlr(test_baton_t *tb,
 static void test_serf_connection_request_create(CuTest *tc)
 {
     test_baton_t *tb;
-    handler_baton_t handler_ctx, handler2_ctx;
+    const int num_requests = 2;
+    handler_baton_t handler_ctx[num_requests];
     apr_status_t status;
-    apr_pool_t *iter_pool;
     int i;
     test_server_message_t message_list[] = {
         {CHUNKED_REQUEST(1, "1")},
@@ -204,7 +245,6 @@ static void test_serf_connection_request_create(CuTest *tc)
         {SERVER_RESPOND, CHUNKED_EMPTY_RESPONSE},
         {SERVER_RESPOND, CHUNKED_EMPTY_RESPONSE},
     };
-    const int num_requests = 2;
 
     apr_pool_t *test_pool = test_setup();
 
@@ -215,31 +255,10 @@ static void test_serf_connection_request_create(CuTest *tc)
                                test_pool);
     CuAssertIntEquals(tc, APR_SUCCESS, status);
 
-    create_new_request(tb, &handler_ctx, "GET", "/", 1);
-    create_new_request(tb, &handler2_ctx, "GET", "/", 2);
+    create_new_request(tb, &handler_ctx[0], "GET", "/", 1);
+    create_new_request(tb, &handler_ctx[1], "GET", "/", 2);
 
-    apr_pool_create(&iter_pool, test_pool);
-
-    while (!handler_ctx.done || !handler2_ctx.done)
-    {
-        apr_pool_clear(iter_pool);
-
-        status = test_server_run(tb->serv_ctx, 0, iter_pool);
-        if (APR_STATUS_IS_TIMEUP(status))
-            status = APR_SUCCESS;
-        CuAssertIntEquals(tc, APR_SUCCESS, status);
-
-        status = serf_context_run(tb->context, 0, iter_pool);
-        if (APR_STATUS_IS_TIMEUP(status))
-            status = APR_SUCCESS;
-        CuAssertIntEquals(tc, APR_SUCCESS, status);
-    }
-    apr_pool_destroy(iter_pool);
-
-    /* Check that all requests were received */
-    CuAssertIntEquals(tc, num_requests, tb->sent_requests->nelts);
-    CuAssertIntEquals(tc, num_requests, tb->accepted_requests->nelts);
-    CuAssertIntEquals(tc, num_requests, tb->handled_requests->nelts);
+    test_helper_run_requests(tc, tb, num_requests, handler_ctx, test_pool);
 
     /* Check that the requests were sent in the order we created them */
     for (i = 0; i < tb->sent_requests->nelts; i++) {
@@ -262,11 +281,10 @@ static void test_serf_connection_request_create(CuTest *tc)
 static void test_serf_connection_priority_request_create(CuTest *tc)
 {
     test_baton_t *tb;
-    handler_baton_t handler_ctx, handler2_ctx, handler3_ctx;
-    apr_status_t status;
-    apr_pool_t *iter_pool;
-    int i;
     const int num_requests = 3;
+    handler_baton_t handler_ctx[num_requests];
+    apr_status_t status;
+    int i;
 
     test_server_message_t message_list[] = {
         {CHUNKED_REQUEST(1, "1")},
@@ -289,35 +307,11 @@ static void test_serf_connection_priority_request_create(CuTest *tc)
                                test_pool);
     CuAssertIntEquals(tc, APR_SUCCESS, status);
 
-    create_new_request(tb, &handler_ctx, "GET", "/", 2);
-    create_new_request(tb, &handler2_ctx, "GET", "/", 3);
-    create_new_prio_request(tb, &handler3_ctx, "GET", "/", 1);
+    create_new_request(tb, &handler_ctx[0], "GET", "/", 2);
+    create_new_request(tb, &handler_ctx[1], "GET", "/", 3);
+    create_new_prio_request(tb, &handler_ctx[2], "GET", "/", 1);
 
-    apr_pool_create(&iter_pool, test_pool);
-
-    while (!handler_ctx.done || !handler2_ctx.done || !handler3_ctx.done)
-    {
-        apr_pool_clear(iter_pool);
-
-        status = test_server_run(tb->serv_ctx, 0, iter_pool);
-        if (APR_STATUS_IS_TIMEUP(status))
-            status = APR_SUCCESS;
-        CuAssertIntEquals(tc, APR_SUCCESS, status);
-
-        status = serf_context_run(tb->context, 0, iter_pool);
-        if (APR_STATUS_IS_TIMEUP(status))
-            status = APR_SUCCESS;
-        CuAssertIntEquals(tc, APR_SUCCESS, status);
-
-        /* Debugging purposes only! */
-        serf_debug__closed_conn(tb->bkt_alloc);
-    }
-    apr_pool_destroy(iter_pool);
-
-    /* Check that all requests were received */
-    CuAssertIntEquals(tc, num_requests, tb->sent_requests->nelts);
-    CuAssertIntEquals(tc, num_requests, tb->accepted_requests->nelts);
-    CuAssertIntEquals(tc, num_requests, tb->handled_requests->nelts);
+    test_helper_run_requests(tc, tb, num_requests, handler_ctx, test_pool);
 
     /* Check that the requests were sent in the order we created them */
     for (i = 0; i < tb->sent_requests->nelts; i++) {
@@ -427,10 +421,10 @@ static void test_serf_closed_connection(CuTest *tc)
             break;
     }
 
-    /* Check that all requests were received */
-    CuAssertTrue(tc, tb->sent_requests->nelts >= num_requests);
-    CuAssertIntEquals(tc, num_requests, tb->accepted_requests->nelts);
-    CuAssertIntEquals(tc, num_requests, tb->handled_requests->nelts);
+   /* Check that all requests were received */
+   CuAssertTrue(tc, tb->sent_requests->nelts >= num_requests);
+   CuAssertIntEquals(tc, num_requests, tb->accepted_requests->nelts);
+   CuAssertIntEquals(tc, num_requests, tb->handled_requests->nelts);
 
     /* Cleanup */
     test_server_teardown(tb, test_pool);
@@ -442,11 +436,10 @@ static void test_serf_closed_connection(CuTest *tc)
 static void test_serf_setup_proxy(CuTest *tc)
 {
     test_baton_t *tb;
-    handler_baton_t handler_ctx;
-    apr_status_t status;
+    int i, num_requests = 1;
+    handler_baton_t handler_ctx[num_requests];
     apr_pool_t *iter_pool;
-        int i;
-    int numrequests = 1;
+    apr_status_t status;
 
     test_server_message_t message_list[] = {
         {"GET http://localhost:" SERV_PORT_STR " HTTP/1.1" CRLF\
@@ -477,11 +470,11 @@ static void test_serf_setup_proxy(CuTest *tc)
                                      NULL, test_pool);
     CuAssertIntEquals(tc, APR_SUCCESS, status);
 
-    create_new_request(tb, &handler_ctx, "GET", "/", 1);
+    create_new_request(tb, &handler_ctx[0], "GET", "/", 1);
 
     apr_pool_create(&iter_pool, test_pool);
 
-    while (!handler_ctx.done)
+    while (!handler_ctx[0].done)
     {
         apr_pool_clear(iter_pool);
 
@@ -506,9 +499,10 @@ static void test_serf_setup_proxy(CuTest *tc)
     apr_pool_destroy(iter_pool);
 
     /* Check that all requests were received */
-    CuAssertIntEquals(tc, numrequests, tb->sent_requests->nelts);
-    CuAssertIntEquals(tc, numrequests, tb->accepted_requests->nelts);
-    CuAssertIntEquals(tc, numrequests, tb->handled_requests->nelts);
+    CuAssertIntEquals(tc, num_requests, tb->sent_requests->nelts);
+    CuAssertIntEquals(tc, num_requests, tb->accepted_requests->nelts);
+    CuAssertIntEquals(tc, num_requests, tb->handled_requests->nelts);
+
 
     /* Check that the requests were sent in the order we created them */
     for (i = 0; i < tb->sent_requests->nelts; i++) {
@@ -818,7 +812,7 @@ static void test_serf_progress_callback(CuTest *tc)
     apr_status_t status;
     const int num_requests = 5;
     handler_baton_t handler_ctx[num_requests];
-    int done = FALSE, i;
+    int i;
     progress_baton_t *pb;
 
     test_server_message_t message_list[] = {
@@ -856,34 +850,7 @@ static void test_serf_progress_callback(CuTest *tc)
         create_new_request(tb, &handler_ctx[i], "GET", "/", i+1);
     }
 
-    while (1) {
-        status = test_server_run(tb->serv_ctx, 0, test_pool);
-        if (APR_STATUS_IS_TIMEUP(status))
-            status = APR_SUCCESS;
-        CuAssertIntEquals(tc, APR_SUCCESS, status);
-
-        status = serf_context_run(tb->context, 0, test_pool);
-        if (APR_STATUS_IS_TIMEUP(status))
-            status = APR_SUCCESS;
-        CuAssertIntEquals(tc, APR_SUCCESS, status);
-
-        /* Debugging purposes only! */
-        serf_debug__closed_conn(tb->bkt_alloc);
-
-        done = TRUE;
-        for (i = 0 ; i < num_requests ; i++)
-            if (handler_ctx[i].done == FALSE) {
-                done = FALSE;
-                break;
-            }
-        if (done)
-            break;
-    }
-
-    /* Check that all requests were received */
-    CuAssertTrue(tc, tb->sent_requests->nelts >= num_requests);
-    CuAssertIntEquals(tc, num_requests, tb->accepted_requests->nelts);
-    CuAssertIntEquals(tc, num_requests, tb->handled_requests->nelts);
+    test_helper_run_requests(tc, tb, num_requests, handler_ctx, test_pool);
 
     /* Check that progress was reported. */
     CuAssertTrue(tc, pb->written > 0);
@@ -1073,25 +1040,7 @@ static void test_serf_request_timeout(CuTest *tc)
                                    setup_request_timeout,
                                    &handler_ctx[0]);
 
-    while (1) {
-        status = test_server_run(tb->serv_ctx, 0, test_pool);
-        if (APR_STATUS_IS_TIMEUP(status))
-            status = APR_SUCCESS;
-        CuAssertIntEquals(tc, APR_SUCCESS, status);
-
-        status = serf_context_run(tb->context, 0, test_pool);
-        if (APR_STATUS_IS_TIMEUP(status))
-            status = APR_SUCCESS;
-        CuAssertIntEquals(tc, APR_SUCCESS, status);
-
-        if (handler_ctx[0].done) {
-            break;
-        }
-    }
-    /* Check that all requests were received */
-    CuAssertTrue(tc, tb->sent_requests->nelts >= num_requests);
-    CuAssertIntEquals(tc, num_requests, tb->accepted_requests->nelts);
-    CuAssertIntEquals(tc, num_requests, tb->handled_requests->nelts);
+    test_helper_run_requests(tc, tb, num_requests, handler_ctx, test_pool);
 
     /* Cleanup */
     test_server_teardown(tb, test_pool);
@@ -1122,9 +1071,9 @@ ssl_server_cert_cb_expect_allok(void *baton, int failures,
 static void test_serf_ssl_handshake(CuTest *tc)
 {
     test_baton_t *tb;
-    handler_baton_t handler_ctx;
+    const int num_requests = 1;
+    handler_baton_t handler_ctx[num_requests];
     apr_status_t status;
-    apr_pool_t *iter_pool;
     test_server_message_t message_list[] = {
         {CHUNKED_REQUEST(1, "1")},
     };
@@ -1132,7 +1081,6 @@ static void test_serf_ssl_handshake(CuTest *tc)
     test_server_action_t action_list[] = {
         {SERVER_RESPOND, CHUNKED_EMPTY_RESPONSE},
     };
-    const int num_requests = 1;
 
 
     /* Set up a test context with a server */
@@ -1147,32 +1095,9 @@ static void test_serf_ssl_handshake(CuTest *tc)
                                      test_pool);
     CuAssertIntEquals(tc, APR_SUCCESS, status);
 
-    create_new_request(tb, &handler_ctx, "GET", "/", 1);
+    create_new_request(tb, &handler_ctx[0], "GET", "/", 1);
 
-    apr_pool_create(&iter_pool, test_pool);
-
-    while (!handler_ctx.done)
-    {
-        apr_pool_clear(iter_pool);
-
-        status = test_server_run(tb->serv_ctx, 0, iter_pool);
-        if (APR_STATUS_IS_EAGAIN(status) ||
-            APR_STATUS_IS_TIMEUP(status))
-            status = APR_SUCCESS;
-        CuAssertIntEquals(tc, APR_SUCCESS, status);
-
-        status = serf_context_run(tb->context, 0, iter_pool);
-        if (APR_STATUS_IS_EAGAIN(status) ||
-            APR_STATUS_IS_TIMEUP(status))
-            status = APR_SUCCESS;
-        CuAssertIntEquals(tc, APR_SUCCESS, status);
-    }
-    apr_pool_destroy(iter_pool);
-
-    /* Check that all requests were received */
-    CuAssertIntEquals(tc, num_requests, tb->sent_requests->nelts);
-    CuAssertIntEquals(tc, num_requests, tb->accepted_requests->nelts);
-    CuAssertIntEquals(tc, num_requests, tb->handled_requests->nelts);
+    test_helper_run_requests(tc, tb, num_requests, handler_ctx, test_pool);
 
     test_server_teardown(tb, test_pool);
     test_teardown(test_pool);
@@ -1219,9 +1144,9 @@ https_set_root_ca_conn_setup(apr_socket_t *skt,
 static void test_serf_ssl_trust_rootca(CuTest *tc)
 {
     test_baton_t *tb;
-    handler_baton_t handler_ctx;
+    const int num_requests = 1;
+    handler_baton_t handler_ctx[num_requests];
     apr_status_t status;
-    apr_pool_t *iter_pool;
     test_server_message_t message_list[] = {
         {CHUNKED_REQUEST(1, "1")},
     };
@@ -1229,8 +1154,6 @@ static void test_serf_ssl_trust_rootca(CuTest *tc)
     test_server_action_t action_list[] = {
         {SERVER_RESPOND, CHUNKED_EMPTY_RESPONSE},
     };
-    const int num_requests = 1;
-
 
     /* Set up a test context with a server */
     apr_pool_t *test_pool = test_setup();
@@ -1244,32 +1167,9 @@ static void test_serf_ssl_trust_rootca(CuTest *tc)
                                      test_pool);
     CuAssertIntEquals(tc, APR_SUCCESS, status);
 
-    create_new_request(tb, &handler_ctx, "GET", "/", 1);
+    create_new_request(tb, &handler_ctx[0], "GET", "/", 1);
 
-    apr_pool_create(&iter_pool, test_pool);
-
-    while (!handler_ctx.done)
-    {
-        apr_pool_clear(iter_pool);
-
-        status = test_server_run(tb->serv_ctx, 0, iter_pool);
-        if (APR_STATUS_IS_EAGAIN(status) ||
-            APR_STATUS_IS_TIMEUP(status))
-            status = APR_SUCCESS;
-        CuAssertIntEquals(tc, APR_SUCCESS, status);
-
-        status = serf_context_run(tb->context, 0, iter_pool);
-        if (APR_STATUS_IS_EAGAIN(status) ||
-            APR_STATUS_IS_TIMEUP(status))
-            status = APR_SUCCESS;
-        CuAssertIntEquals(tc, APR_SUCCESS, status);
-    }
-    apr_pool_destroy(iter_pool);
-
-    /* Check that all requests were received */
-    CuAssertIntEquals(tc, num_requests, tb->sent_requests->nelts);
-    CuAssertIntEquals(tc, num_requests, tb->accepted_requests->nelts);
-    CuAssertIntEquals(tc, num_requests, tb->handled_requests->nelts);
+    test_helper_run_requests(tc, tb, num_requests, handler_ctx, test_pool);
 
     test_server_teardown(tb, test_pool);
     test_teardown(test_pool);
