@@ -45,9 +45,11 @@ typedef struct {
 
 /* Helper function, runs the client and server context loops and validates
    that no errors were encountered, and all messages were sent and received. */
-static void
-test_helper_run_requests(CuTest *tc, test_baton_t *tb, int num_requests,
-                         handler_baton_t handler_ctx[], apr_pool_t *pool)
+static apr_status_t
+test_helper_run_requests_no_check(CuTest *tc, test_baton_t *tb,
+                                  int num_requests,
+                                  handler_baton_t handler_ctx[],
+                                  apr_pool_t *pool)
 {
     apr_pool_t *iter_pool;
     int i, done = 0;
@@ -60,16 +62,14 @@ test_helper_run_requests(CuTest *tc, test_baton_t *tb, int num_requests,
         apr_pool_clear(iter_pool);
 
         status = test_server_run(tb->serv_ctx, 0, iter_pool);
-        if (APR_STATUS_IS_EAGAIN(status) ||
-            APR_STATUS_IS_TIMEUP(status))
-            status = APR_SUCCESS;
-        CuAssertIntEquals(tc, APR_SUCCESS, status);
+        if (!APR_STATUS_IS_TIMEUP(status) &&
+            SERF_BUCKET_READ_ERROR(status))
+            return status;
 
         status = serf_context_run(tb->context, 0, iter_pool);
-        if (APR_STATUS_IS_EAGAIN(status) ||
-            APR_STATUS_IS_TIMEUP(status))
-            status = APR_SUCCESS;
-        CuAssertIntEquals(tc, APR_SUCCESS, status);
+        if (!APR_STATUS_IS_TIMEUP(status) &&
+            SERF_BUCKET_READ_ERROR(status))
+            return status;
 
         done = 1;
         for (i = 0; i < num_requests; i++)
@@ -77,11 +77,25 @@ test_helper_run_requests(CuTest *tc, test_baton_t *tb, int num_requests,
     }
     apr_pool_destroy(iter_pool);
 
+    return APR_SUCCESS;
+}
+
+static void
+test_helper_run_requests_expect_ok(CuTest *tc, test_baton_t *tb,
+                                   int num_requests,
+                                   handler_baton_t handler_ctx[],
+                                   apr_pool_t *pool)
+{
+    apr_status_t status;
+
+    status = test_helper_run_requests_no_check(tc, tb, num_requests,
+                                               handler_ctx, pool);
+    CuAssertIntEquals(tc, APR_SUCCESS, status);
+
     /* Check that all requests were received */
     CuAssertIntEquals(tc, num_requests, tb->sent_requests->nelts);
     CuAssertIntEquals(tc, num_requests, tb->accepted_requests->nelts);
     CuAssertIntEquals(tc, num_requests, tb->handled_requests->nelts);
-    
 }
 
 static serf_bucket_t* accept_response(serf_request_t *request,
@@ -258,7 +272,8 @@ static void test_serf_connection_request_create(CuTest *tc)
     create_new_request(tb, &handler_ctx[0], "GET", "/", 1);
     create_new_request(tb, &handler_ctx[1], "GET", "/", 2);
 
-    test_helper_run_requests(tc, tb, num_requests, handler_ctx, test_pool);
+    test_helper_run_requests_expect_ok(tc, tb, num_requests, handler_ctx,
+                                       test_pool);
 
     /* Check that the requests were sent in the order we created them */
     for (i = 0; i < tb->sent_requests->nelts; i++) {
@@ -311,7 +326,8 @@ static void test_serf_connection_priority_request_create(CuTest *tc)
     create_new_request(tb, &handler_ctx[1], "GET", "/", 3);
     create_new_prio_request(tb, &handler_ctx[2], "GET", "/", 1);
 
-    test_helper_run_requests(tc, tb, num_requests, handler_ctx, test_pool);
+    test_helper_run_requests_expect_ok(tc, tb, num_requests, handler_ctx,
+                                       test_pool);
 
     /* Check that the requests were sent in the order we created them */
     for (i = 0; i < tb->sent_requests->nelts; i++) {
@@ -851,7 +867,8 @@ static void test_serf_progress_callback(CuTest *tc)
         create_new_request(tb, &handler_ctx[i], "GET", "/", i+1);
     }
 
-    test_helper_run_requests(tc, tb, num_requests, handler_ctx, test_pool);
+    test_helper_run_requests_expect_ok(tc, tb, num_requests, handler_ctx,
+                                       test_pool);
 
     /* Check that progress was reported. */
     CuAssertTrue(tc, pb->written > 0);
@@ -1041,7 +1058,8 @@ static void test_serf_request_timeout(CuTest *tc)
                                    setup_request_timeout,
                                    &handler_ctx[0]);
 
-    test_helper_run_requests(tc, tb, num_requests, handler_ctx, test_pool);
+    test_helper_run_requests_expect_ok(tc, tb, num_requests, handler_ctx,
+                                       test_pool);
 
     /* Cleanup */
     test_server_teardown(tb, test_pool);
@@ -1052,6 +1070,7 @@ static apr_status_t
 ssl_server_cert_cb_expect_failures(void *baton, int failures,
                                    const serf_ssl_certificate_t *cert)
 {
+    /* We expect an error from the certificate validation function. */
     if (failures)
         return APR_SUCCESS;
     else
@@ -1062,6 +1081,7 @@ static apr_status_t
 ssl_server_cert_cb_expect_allok(void *baton, int failures,
                                 const serf_ssl_certificate_t *cert)
 {
+    /* No error expected, certificate is valid. */
     if (failures)
         return APR_EGENERAL;
     else
@@ -1098,7 +1118,8 @@ static void test_serf_ssl_handshake(CuTest *tc)
 
     create_new_request(tb, &handler_ctx[0], "GET", "/", 1);
 
-    test_helper_run_requests(tc, tb, num_requests, handler_ctx, test_pool);
+    test_helper_run_requests_expect_ok(tc, tb, num_requests, handler_ctx,
+                                       test_pool);
 
     test_server_teardown(tb, test_pool);
     test_teardown(test_pool);
@@ -1170,12 +1191,55 @@ static void test_serf_ssl_trust_rootca(CuTest *tc)
 
     create_new_request(tb, &handler_ctx[0], "GET", "/", 1);
 
-    test_helper_run_requests(tc, tb, num_requests, handler_ctx, test_pool);
+    test_helper_run_requests_expect_ok(tc, tb, num_requests, handler_ctx,
+                                       test_pool);
 
     test_server_teardown(tb, test_pool);
     test_teardown(test_pool);
 }
 
+/* Validate that when the application rejects the cert, the context loop
+   bails out with an error. */
+static void test_serf_ssl_application_rejects_cert(CuTest *tc)
+{
+    test_baton_t *tb;
+    handler_baton_t handler_ctx[1];
+    const int num_requests = sizeof(handler_ctx)/sizeof(handler_ctx[0]);
+    apr_status_t status;
+    test_server_message_t message_list[] = {
+        {CHUNKED_REQUEST(1, "1")},
+    };
+
+    test_server_action_t action_list[] = {
+        {SERVER_RESPOND, CHUNKED_EMPTY_RESPONSE},
+    };
+
+    /* Set up a test context with a server */
+    apr_pool_t *test_pool = test_setup();
+
+    /* The certificate is valid, but we tell serf to reject it by using the
+       ssl_server_cert_cb_expect_failures callback. */
+    status = test_https_server_setup(&tb,
+                                     message_list, num_requests,
+                                     action_list, num_requests, 0,
+                                     https_set_root_ca_conn_setup,
+                                     "test/server/serfserverkey.pem",
+                                     "test/server/serfservercert.pem",
+                                     ssl_server_cert_cb_expect_failures,
+                                     test_pool);
+    CuAssertIntEquals(tc, APR_SUCCESS, status);
+
+    create_new_request(tb, &handler_ctx[0], "GET", "/", 1);
+
+    status = test_helper_run_requests_no_check(tc, tb, num_requests,
+                                               handler_ctx, test_pool);
+    /* We expect an error from the certificate validation function. */
+    CuAssert(tc, "Application told serf the certificate should be rejected,"
+                 " expected error!", status != APR_SUCCESS);
+
+    test_server_teardown(tb, test_pool);
+    test_teardown(test_pool);
+}
 
 CuSuite *test_context(void)
 {
@@ -1191,6 +1255,7 @@ CuSuite *test_context(void)
     SUITE_ADD_TEST(suite, test_serf_request_timeout);
     SUITE_ADD_TEST(suite, test_serf_ssl_handshake);
     SUITE_ADD_TEST(suite, test_serf_ssl_trust_rootca);
+    SUITE_ADD_TEST(suite, test_serf_ssl_application_rejects_cert);
 
     return suite;
 }
