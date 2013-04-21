@@ -1228,6 +1228,8 @@ static void test_serf_ssl_handshake(CuTest *tc)
     test_teardown(test_pool);
 }
 
+/* Set up the ssl context with the CA and root CA certificates needed for
+   successful valiation of the server certificate. */
 static apr_status_t
 https_set_root_ca_conn_setup(apr_socket_t *skt,
                              serf_bucket_t **input_bkt,
@@ -1355,8 +1357,6 @@ cert_chain_cb(void *baton,
     test_baton_t *tb = baton;
     apr_status_t status;
 
-    printf("chain callback. failures: %d, len: %ld.\n",
-           failures, certs_len);
     tb->result_flags |= TEST_RESULT_CERTCHAINCB_CALLED;
 
     if (failures)
@@ -1442,6 +1442,82 @@ static void test_serf_ssl_certificate_chain(CuTest *tc)
     test_teardown(test_pool);
 }
 
+/* Validate that the ssl handshake succeeds if no application callbacks
+   are set, and the ssl server certificate chains is ok. */
+static void test_serf_ssl_no_servercert_callback_allok(CuTest *tc)
+{
+    test_baton_t *tb;
+    handler_baton_t handler_ctx[1];
+    const int num_requests = sizeof(handler_ctx)/sizeof(handler_ctx[0]);
+    test_server_message_t message_list[] = {
+        {CHUNKED_REQUEST(1, "1")},
+    };
+    test_server_action_t action_list[] = {
+        {SERVER_RESPOND, CHUNKED_EMPTY_RESPONSE},
+    };
+    apr_status_t status;
+
+    /* Set up a test context with a server */
+    apr_pool_t *test_pool = test_setup();
+
+    status = test_https_server_setup(&tb,
+                                     message_list, num_requests,
+                                     action_list, num_requests, 0,
+                                     https_set_root_ca_conn_setup,
+                                     "test/server/serfserverkey.pem",
+                                     "test/server/serfservercert.pem",
+                                     NULL, /* No server cert callback */
+                                     test_pool);
+    CuAssertIntEquals(tc, APR_SUCCESS, status);
+
+    create_new_request(tb, &handler_ctx[0], "GET", "/", 1);
+
+    test_helper_run_requests_expect_ok(tc, tb, num_requests,
+                                       handler_ctx, test_pool);
+
+    test_server_teardown(tb, test_pool);
+    test_teardown(test_pool);
+}
+
+/* Validate that the ssl handshake fails if no application callbacks
+ are set, and the ssl server certificate chains is NOT ok. */
+static void test_serf_ssl_no_servercert_callback_fail(CuTest *tc)
+{
+    test_baton_t *tb;
+    handler_baton_t handler_ctx[1];
+    const int num_requests = sizeof(handler_ctx)/sizeof(handler_ctx[0]);
+    test_server_message_t message_list[] = {
+        {CHUNKED_REQUEST(1, "1")},
+    };
+    test_server_action_t action_list[] = {
+        {SERVER_RESPOND, CHUNKED_EMPTY_RESPONSE},
+    };
+    apr_status_t status;
+
+    /* Set up a test context with a server */
+    apr_pool_t *test_pool = test_setup();
+
+    status = test_https_server_setup(&tb,
+                                     message_list, num_requests,
+                                     action_list, num_requests, 0,
+                                     NULL, /* default conn setup, no certs */
+                                     "test/server/serfserverkey.pem",
+                                     "test/server/serfservercert.pem",
+                                     NULL, /* No server cert callback */
+                                     test_pool);
+    CuAssertIntEquals(tc, APR_SUCCESS, status);
+
+    create_new_request(tb, &handler_ctx[0], "GET", "/", 1);
+
+    status = test_helper_run_requests_no_check(tc, tb, num_requests,
+                                               handler_ctx, test_pool);
+    /* We expect an error from the certificate validation function. */
+    CuAssertIntEquals(tc, SERF_ERROR_SSL_CERT_FAILED, status);
+
+    test_server_teardown(tb, test_pool);
+    test_teardown(test_pool);
+}
+
 /*****************************************************************************/
 CuSuite *test_context(void)
 {
@@ -1459,6 +1535,8 @@ CuSuite *test_context(void)
     SUITE_ADD_TEST(suite, test_serf_ssl_trust_rootca);
     SUITE_ADD_TEST(suite, test_serf_ssl_application_rejects_cert);
     SUITE_ADD_TEST(suite, test_serf_ssl_certificate_chain);
+    SUITE_ADD_TEST(suite, test_serf_ssl_no_servercert_callback_allok);
+    SUITE_ADD_TEST(suite, test_serf_ssl_no_servercert_callback_fail);
 
     return suite;
 }
