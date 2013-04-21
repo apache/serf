@@ -43,6 +43,10 @@ typedef struct {
     test_baton_t *tb;
 } handler_baton_t;
 
+/* These defines are used with the test_baton_t result_flags variable. */
+#define TEST_RESULT_CERTCB_CALLED      0x0001
+#define TEST_RESULT_CERTCHAINCB_CALLED 0x0002
+
 /* Helper function, runs the client and server context loops and validates
    that no errors were encountered, and all messages were sent and received. */
 static apr_status_t
@@ -1066,10 +1070,106 @@ static void test_serf_request_timeout(CuTest *tc)
     test_teardown(test_pool);
 }
 
+/*****************************************************************************
+ * SSL handshake tests
+ *****************************************************************************/
+static apr_status_t validate_servercert(const serf_ssl_certificate_t *cert,
+                                        apr_pool_t *pool)
+{
+    apr_hash_t *subject;
+    subject = serf_ssl_cert_subject(cert, pool);
+    if (strcmp("Serf Server",
+               apr_hash_get(subject, "CN", APR_HASH_KEY_STRING)) != 0)
+        return APR_EGENERAL;
+    if (strcmp("Test Suite Server",
+               apr_hash_get(subject, "OU", APR_HASH_KEY_STRING)) != 0)
+        return APR_EGENERAL;
+    if (strcmp("In Serf we trust, Inc.",
+               apr_hash_get(subject, "O", APR_HASH_KEY_STRING)) != 0)
+        return APR_EGENERAL;
+    if (strcmp("Mechelen",
+               apr_hash_get(subject, "L", APR_HASH_KEY_STRING)) != 0)
+        return APR_EGENERAL;
+    if (strcmp("Antwerp",
+               apr_hash_get(subject, "ST", APR_HASH_KEY_STRING)) != 0)
+        return APR_EGENERAL;
+    if (strcmp("BE",
+               apr_hash_get(subject, "C", APR_HASH_KEY_STRING)) != 0)
+        return APR_EGENERAL;
+    if (strcmp("serfserver@example.com",
+               apr_hash_get(subject, "E", APR_HASH_KEY_STRING)) != 0)
+        return APR_EGENERAL;
+
+    return APR_SUCCESS;
+}
+
+static apr_status_t validate_cacert(const serf_ssl_certificate_t *cert,
+                                    apr_pool_t *pool)
+{
+    apr_hash_t *subject;
+    subject = serf_ssl_cert_subject(cert, pool);
+    if (strcmp("Serf CA",
+               apr_hash_get(subject, "CN", APR_HASH_KEY_STRING)) != 0)
+        return APR_EGENERAL;
+    if (strcmp("Test Suite CA",
+               apr_hash_get(subject, "OU", APR_HASH_KEY_STRING)) != 0)
+        return APR_EGENERAL;
+    if (strcmp("In Serf we trust, Inc.",
+               apr_hash_get(subject, "O", APR_HASH_KEY_STRING)) != 0)
+        return APR_EGENERAL;
+    if (strcmp("Mechelen",
+               apr_hash_get(subject, "L", APR_HASH_KEY_STRING)) != 0)
+        return APR_EGENERAL;
+    if (strcmp("Antwerp",
+               apr_hash_get(subject, "ST", APR_HASH_KEY_STRING)) != 0)
+        return APR_EGENERAL;
+    if (strcmp("BE",
+               apr_hash_get(subject, "C", APR_HASH_KEY_STRING)) != 0)
+        return APR_EGENERAL;
+    if (strcmp("serfca@example.com",
+               apr_hash_get(subject, "E", APR_HASH_KEY_STRING)) != 0)
+        return APR_EGENERAL;
+
+    return APR_SUCCESS;
+}
+
+static apr_status_t validate_rootcacert(const serf_ssl_certificate_t *cert,
+                                        apr_pool_t *pool)
+{
+    apr_hash_t *subject;
+    subject = serf_ssl_cert_subject(cert, pool);
+    if (strcmp("Serf Root CA",
+               apr_hash_get(subject, "CN", APR_HASH_KEY_STRING)) != 0)
+        return APR_EGENERAL;
+    if (strcmp("Test Suite Root CA",
+               apr_hash_get(subject, "OU", APR_HASH_KEY_STRING)) != 0)
+        return APR_EGENERAL;
+    if (strcmp("In Serf we trust, Inc.",
+               apr_hash_get(subject, "O", APR_HASH_KEY_STRING)) != 0)
+        return APR_EGENERAL;
+    if (strcmp("Mechelen",
+               apr_hash_get(subject, "L", APR_HASH_KEY_STRING)) != 0)
+        return APR_EGENERAL;
+    if (strcmp("Antwerp",
+               apr_hash_get(subject, "ST", APR_HASH_KEY_STRING)) != 0)
+        return APR_EGENERAL;
+    if (strcmp("BE",
+               apr_hash_get(subject, "C", APR_HASH_KEY_STRING)) != 0)
+        return APR_EGENERAL;
+    if (strcmp("serfrootca@example.com",
+               apr_hash_get(subject, "E", APR_HASH_KEY_STRING)) != 0)
+        return APR_EGENERAL;
+
+    return APR_SUCCESS;
+}
+
 static apr_status_t
 ssl_server_cert_cb_expect_failures(void *baton, int failures,
                                    const serf_ssl_certificate_t *cert)
 {
+    test_baton_t *tb = baton;
+    tb->result_flags |= TEST_RESULT_CERTCB_CALLED;
+
     /* We expect an error from the certificate validation function. */
     if (failures)
         return APR_SUCCESS;
@@ -1081,6 +1181,9 @@ static apr_status_t
 ssl_server_cert_cb_expect_allok(void *baton, int failures,
                                 const serf_ssl_certificate_t *cert)
 {
+    test_baton_t *tb = baton;
+    tb->result_flags |= TEST_RESULT_CERTCB_CALLED;
+
     /* No error expected, certificate is valid. */
     if (failures)
         return APR_EGENERAL;
@@ -1241,6 +1344,105 @@ static void test_serf_ssl_application_rejects_cert(CuTest *tc)
     test_teardown(test_pool);
 }
 
+/* Test for ssl certificate chain callback. */
+static apr_status_t
+cert_chain_cb(void *baton,
+              int failures,
+              int error_depth,
+              const serf_ssl_certificate_t * const * certs,
+              apr_size_t certs_len)
+{
+    test_baton_t *tb = baton;
+    apr_status_t status;
+
+    printf("chain callback. failures: %d, len: %ld.\n",
+           failures, certs_len);
+    tb->result_flags |= TEST_RESULT_CERTCHAINCB_CALLED;
+
+    if (failures)
+        return APR_EGENERAL;
+
+    if (certs_len != 3)
+        return APR_EGENERAL;
+
+    status = validate_rootcacert(certs[2], tb->pool);
+    if (status)
+        return status;
+
+    status = validate_cacert(certs[1], tb->pool);
+    if (status)
+        return status;
+
+    status = validate_servercert(certs[0], tb->pool);
+    if (status)
+        return status;
+
+    return APR_SUCCESS;
+}
+
+static apr_status_t
+chain_callback_conn_setup(apr_socket_t *skt,
+                          serf_bucket_t **input_bkt,
+                          serf_bucket_t **output_bkt,
+                          void *setup_baton,
+                          apr_pool_t *pool)
+{
+    test_baton_t *tb = setup_baton;
+    apr_status_t status;
+
+    status = https_set_root_ca_conn_setup(skt, input_bkt, output_bkt,
+                                          setup_baton, pool);
+    if (status)
+        return status;
+
+    serf_ssl_server_cert_chain_callback_set(tb->ssl_context,
+                                            ssl_server_cert_cb_expect_allok,
+                                            cert_chain_cb,
+                                            tb);
+
+    return APR_SUCCESS;
+}
+
+static void test_serf_ssl_certificate_chain(CuTest *tc)
+{
+    test_baton_t *tb;
+    handler_baton_t handler_ctx[1];
+    const int num_requests = sizeof(handler_ctx)/sizeof(handler_ctx[0]);
+    apr_status_t status;
+    test_server_message_t message_list[] = {
+        {CHUNKED_REQUEST(1, "1")},
+    };
+
+    test_server_action_t action_list[] = {
+        {SERVER_RESPOND, CHUNKED_EMPTY_RESPONSE},
+    };
+
+    /* Set up a test context with a server */
+    apr_pool_t *test_pool = test_setup();
+
+    status = test_https_server_setup(&tb,
+                                     message_list, num_requests,
+                                     action_list, num_requests, 0,
+                                     chain_callback_conn_setup,
+                                     "test/server/serfserverkey.pem",
+                                     "test/server/serfservercert.pem",
+                                     ssl_server_cert_cb_expect_allok,
+                                     test_pool);
+    CuAssertIntEquals(tc, APR_SUCCESS, status);
+
+    create_new_request(tb, &handler_ctx[0], "GET", "/", 1);
+
+    test_helper_run_requests_expect_ok(tc, tb, num_requests,
+                                       handler_ctx, test_pool);
+
+    CuAssertTrue(tc, tb->result_flags & TEST_RESULT_CERTCB_CALLED);
+    CuAssertTrue(tc, tb->result_flags & TEST_RESULT_CERTCHAINCB_CALLED);
+
+    test_server_teardown(tb, test_pool);
+    test_teardown(test_pool);
+}
+
+/*****************************************************************************/
 CuSuite *test_context(void)
 {
     CuSuite *suite = CuSuiteNew();
@@ -1256,6 +1458,7 @@ CuSuite *test_context(void)
     SUITE_ADD_TEST(suite, test_serf_ssl_handshake);
     SUITE_ADD_TEST(suite, test_serf_ssl_trust_rootca);
     SUITE_ADD_TEST(suite, test_serf_ssl_application_rejects_cert);
+    SUITE_ADD_TEST(suite, test_serf_ssl_certificate_chain);
 
     return suite;
 }
