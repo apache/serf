@@ -288,11 +288,13 @@ ask_approval_gui(sectrans_context_t *ssl_ctx, SecTrustRef trust)
 
     /* Don't use these methods as is, they create a small application window
        and have no effect on the z-order of the modal dialog. */
-//    objc_msgSend(obj, sel_getUid("orderFrontRegardless"));
-//    objc_msgSend (obj, sel_getUid ("makeKeyAndOrderFront:"), app);
+#if 0
+    objc_msgSend(obj, sel_getUid("orderFrontRegardless"));
+    objc_msgSend (obj, sel_getUid ("makeKeyAndOrderFront:"), app);
 
-//    objc_msgSend (nsapp, sel_getUid ("activateIgnoringOtherApps:"), 1);
-//    objc_msgSend (stp, sel_getUid ("makeKeyWindow"));
+    objc_msgSend (nsapp, sel_getUid ("activateIgnoringOtherApps:"), 1);
+    objc_msgSend (stp, sel_getUid ("makeKeyWindow"));
+#endif
 
     /* Setting name of the cancel button also makes it visible on the panel. */
     objc_msgSend(stp, sel_getUid("setDefaultButtonTitle:"), OkButtonLbl);
