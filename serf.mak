@@ -147,6 +147,7 @@ TEST_OBJS = \
     "$(INTDIR)\test_buckets.obj" \
     "$(INTDIR)\test_ssl.obj" \
     "$(INTDIR)\test_server.obj" \
+    "$(INTDIR)\test_sslserver.obj" \
 
 TEST_LIBS = user32.lib advapi32.lib gdi32.lib ws2_32.lib
 

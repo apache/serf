@@ -93,6 +93,10 @@ typedef struct {
     /* An extra baton which can be freely used by tests. */
     void *user_baton;
 
+    /* Flags that can be used to report situations, e.g. that a callback was
+       called. */
+    int result_flags;
+
     apr_array_header_t *accepted_requests, *handled_requests, *sent_requests;
 
     serf_ssl_context_t *ssl_context;

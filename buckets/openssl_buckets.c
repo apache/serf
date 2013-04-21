@@ -500,9 +500,13 @@ validate_server_certificate(int cert_valid, X509_STORE_CTX *store_ctx)
                                            failures, cert);
         if (status == APR_SUCCESS)
             cert_valid = 1;
-        else
+        else {
+            /* Even if openssl found the certificate valid, the application
+             told us to reject it. */
+            cert_valid = 0;
             /* Pass the error back to the caller through the context-run. */
             ctx->pending_err = status;
+        }
     }
 
     if (ctx->server_cert_chain_callback
@@ -563,6 +567,9 @@ validate_server_certificate(int cert_valid, X509_STORE_CTX *store_ctx)
         if (status == APR_SUCCESS) {
             cert_valid = 1;
         } else {
+            /* Even if openssl found the certificate valid, the application
+             told us to reject it. */
+            cert_valid = 0;
             /* Pass the error back to the caller through the context-run. */
             ctx->pending_err = status;
         }
