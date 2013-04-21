@@ -129,9 +129,12 @@ sectrans_init_context(serf_bucket_alloc_t *allocator)
 
     apr_pool_create(&ssl_ctx->pool, NULL);
 
+#if 0
+    /* TODO: this mode is not used anymore. Rethink modes. */
     /* Default mode: validate certificates against KeyChain without GUI.
        If a certificate needs to be confirmed by the user, error out. */
     ssl_ctx->modes = serf_ssl_val_mode_serf_managed_no_gui;
+#endif
 
     /* Set up the stream objects. */
     ssl_ctx->encrypt.pending = serf__bucket_stream_create(allocator,
@@ -367,6 +370,13 @@ validate_server_certificate(sectrans_context_t *ssl_ctx)
         CFRelease(certarray);
     }
 
+    /* TODO: SecTrustEvaluateAsync */
+    sectrans_status = SecTrustEvaluate(trust, &result);
+    if (sectrans_status != noErr) {
+        status = translate_sectrans_status(sectrans_status);
+        goto cleanup;
+    }
+
     /* Log for each certificate in the chain if it validates correctly. */
 #ifdef SSL_VERBOSE
     {
@@ -396,13 +406,6 @@ validate_server_certificate(sectrans_context_t *ssl_ctx)
         CFRelease(props);
     }
 #endif
-
-    /* TODO: SecTrustEvaluateAsync */
-    sectrans_status = SecTrustEvaluate(trust, &result);
-    if (sectrans_status != noErr) {
-        status = translate_sectrans_status(sectrans_status);
-        goto cleanup;
-    }
 
     /* Based on the contents of the user's Keychain, Secure Transport will make
        a first validation of this certificate chain.
@@ -472,21 +475,8 @@ validate_server_certificate(sectrans_context_t *ssl_ctx)
         }
     }
 
-    /* If serf can take the decision, don't call back to the application. */
-    if (!failures ||
-        failures & SERF_SSL_CERT_FATAL)
-    {
-        if (ssl_ctx->modes & serf_ssl_val_mode_serf_managed_with_gui ||
-            ssl_ctx->modes & serf_ssl_val_mode_serf_managed_no_gui)
-        {
-            /* The application allowed us to take the decision. */
-            goto cleanup;
-        }
-    }
-
     /* Ask the application to validate the certificate. */
-    if ((ssl_ctx->modes & serf_ssl_val_mode_application_managed) &&
-        (ssl_ctx->server_cert_callback && failures))
+    if (ssl_ctx->server_cert_callback)
     {
         serf_ssl_certificate_t *cert;
         sectrans_certificate_t *sectrans_cert;
@@ -507,10 +497,23 @@ validate_server_certificate(sectrans_context_t *ssl_ctx)
 
         serf_bucket_mem_free(ssl_ctx->allocator, cert);
         goto cleanup;
-    } else
+    }
+
+    if (ssl_ctx->server_cert_chain_callback)
+    {
+        status = APR_ENOTIMPL;
+    }
+
+    /* Return a specific error if the server certificate is not accepted by
+       S.T./Keychain and the application has not set callbacks to override
+       this. */
+    if (failures &&
+        !ssl_ctx->server_cert_chain_callback &&
+        !ssl_ctx->server_cert_callback)
     {
         status = SERF_ERROR_SSL_CERT_FAILED;
     }
+    
 cleanup:
     CFRelease(certs);
     CFRelease(trust);
