@@ -572,6 +572,15 @@ validate_server_certificate(int cert_valid, X509_STORE_CTX *store_ctx)
         apr_pool_destroy(subpool);
     }
 
+    /* Return a specific error if the server certificate is not accepted by
+       OpenSSL and the application has not set callbacks to override this. */
+    if (!cert_valid &&
+        !ctx->server_cert_chain_callback &&
+        !ctx->server_cert_callback)
+    {
+        ctx->pending_err = SERF_ERROR_SSL_CERT_FAILED;
+    }
+        
     return cert_valid;
 }
 
