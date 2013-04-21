@@ -1357,8 +1357,6 @@ cert_chain_cb(void *baton,
     test_baton_t *tb = baton;
     apr_status_t status;
 
-    printf("chain callback. failures: %d, len: %ld.\n",
-           failures, certs_len);
     tb->result_flags |= TEST_RESULT_CERTCHAINCB_CALLED;
 
     if (failures)
