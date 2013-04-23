@@ -221,8 +221,7 @@ gss_api_get_credentials(char *token, apr_size_t token_len,
         status = APR_SUCCESS;
         break;
     default:
-        status = SERF_ERROR_AUTHN_FAILED;
-        break;
+        return status;
     }
 
     /* Return the session key to our caller. */
