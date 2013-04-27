@@ -87,16 +87,15 @@ static apr_status_t serf_copy_readline(serf_bucket_t *bucket,
 {
     copy_context_t *ctx = bucket->data;
 
-    /* ### disregard MIN_SIZE. a "line" could very well be shorter.  */
+    if (ctx->vecs_count > 0)
+    {
+        /* ### return held data  */
+    }
 
-    /* Returned data will be from current position. */
-    *data = ctx->current;
-    serf_util_readline(&ctx->current, &ctx->remaining, acceptable, found);
+    /* Disregard MIN_SIZE. a "line" could very well be shorter. Just
+       delegate this to the wrapped bucket.  */
 
-    /* See how much ctx->current moved forward. */
-    *len = ctx->current - *data;
-
-    return ctx->remaining ? APR_SUCCESS : APR_EOF;
+    return serf_bucket_readline(ctx->wrapped, acceptable, found, data, len);
 }
 
 
@@ -128,9 +127,13 @@ static apr_status_t serf_copy_read_iovec(serf_bucket_t *bucket,
     for (total = 0, i = *vecs_used; i-- > 0; )
         total += vecs[i].iov_len;
 
-    /* The IOVEC holds at least MIN_SIZE data, so we're good.  */
-    if (total >= ctx->min_size)
+    /* The IOVEC holds at least MIN_SIZE data, so we're good. Or, it
+       holds the amount requested, so we shouldn't try to
+       gather/accumulate more data.  */
+    if (total >= ctx->min_size || total == requested)
         return status;
+
+    /* Use our buffer to get at least MIN_SIZE or REQUESTED bytes of data.  */
 
     /* ### copy into HOLD_BUF. then read/append some more.  */
 
@@ -148,6 +151,12 @@ apr_status_t serf_copy_read_for_sendfile(
 {
     copy_context_t *ctx = bucket->data;
 
+    /* Any held data means we cannot provide a source for sendfile().  */
+    if (ctx->vecs_count > 0)
+    {
+        /* ### return the held data  */
+    }
+
     return serf_bucket_read_for_sendfile(ctx->wrapped, requested,
                                          hdtr, file, offset, len);
 }
@@ -159,6 +168,11 @@ serf_bucket_t *serf_copy_read_bucket(
 {
     copy_context_t *ctx = bucket->data;
 
+    /* If there is some held data (at the front of the read stream), then
+       we definitely don't have the requested bucket type.  */
+    if (ctx->vecs_count > 0)
+        return NULL;
+
     return serf_bucket_read_bucket(ctx->wrapped, type);
 }
 
@@ -168,6 +182,13 @@ static apr_status_t serf_copy_peek(serf_bucket_t *bucket,
                                    apr_size_t *len)
 {
     copy_context_t *ctx = bucket->data;
+
+    if (ctx->vecs_count > 0)
+    {
+        *data = ctx->vecs[0].iov_base;
+        *len = ctx->vecs[0].iov_len;
+        return APR_SUCCESS;
+    }
 
     return serf_bucket_peek(ctx->wrapped, data, len);
 }
