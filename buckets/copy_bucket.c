@@ -19,20 +19,36 @@
 #include "serf_bucket_util.h"
 
 
+#define IOVEC_HOLD_COUNT 16
+
 typedef struct {
     serf_bucket_t *wrapped;
 
-    int min_size;
+    /* When reading, this defines the amount of data that we should grab
+       from the wrapped bucket.  */
+    apr_size_t min_size;
 
-    /* ### copied iovec  */
+    /* We try to use read_iovec() on the wrapped bucket. Sometimes, the
+       vecs are NOT completely used, so we need to hold onto the unused
+       iovec structures.
+
+       There is pending data if VECS_COUNT > 0.  */
+    struct iovec vecs[IOVEC_HOLD_COUNT];
+    int vecs_count;
+
+    /* In order to reach MIN_SIZE, we may sometimes make copies of the
+       data to reach that size. HOLD_BUF (if not NULL) is a buffer of
+       MIN_SIZE length to hold/concatenate that data.
+
+       HOLD_BUF remains NULL until the buffer is actually required.  */
+    char *hold_buf;
 
 } copy_context_t;
 
 
-
 serf_bucket_t *serf_bucket_copy_create(
     serf_bucket_t *wrapped,
-    int min_size,
+    apr_size_t min_size,
     serf_bucket_alloc_t *allocator)
 {
     copy_context_t *ctx;
@@ -40,6 +56,8 @@ serf_bucket_t *serf_bucket_copy_create(
     ctx = serf_bucket_mem_alloc(allocator, sizeof(*ctx));
     ctx->wrapped = wrapped;
     ctx->min_size = min_size;
+    ctx->vecs_count = 0;
+    ctx->hold_buf = NULL;
 
     return serf_bucket_create(&serf_bucket_type_copy, allocator, ctx);
 }
@@ -50,24 +68,26 @@ static apr_status_t serf_copy_read(serf_bucket_t *bucket,
 {
     copy_context_t *ctx = bucket->data;
 
-    if (requested == SERF_READ_ALL_AVAIL || requested > ctx->remaining)
-        requested = ctx->remaining;
+    if (ctx->vecs_count > 0)
+    {
+        /* ### return held data  */
+    }
 
-    *data = ctx->current;
-    *len = requested;
+    /* ### peek to see how much is easily available. if it is MIN_SIZE,
+       ### then a read() would (likely) get that same amount. otherwise,
+       ### we should read an iovec and concatenate the result.  */
 
-    ctx->current += requested;
-    ctx->remaining -= requested;
-
-    return ctx->remaining ? APR_SUCCESS : APR_EOF;
+    return FOO;
 }
 
-#if 0
-static apr_status_t serf_simple_readline(serf_bucket_t *bucket,
-                                         int acceptable, int *found,
-                                         const char **data, apr_size_t *len)
+
+static apr_status_t serf_copy_readline(serf_bucket_t *bucket,
+                                       int acceptable, int *found,
+                                       const char **data, apr_size_t *len)
 {
-    simple_context_t *ctx = bucket->data;
+    copy_context_t *ctx = bucket->data;
+
+    /* ### disregard MIN_SIZE. a "line" could very well be shorter.  */
 
     /* Returned data will be from current position. */
     *data = ctx->current;
@@ -78,7 +98,6 @@ static apr_status_t serf_simple_readline(serf_bucket_t *bucket,
 
     return ctx->remaining ? APR_SUCCESS : APR_EOF;
 }
-#endif
 
 
 static apr_status_t serf_copy_read_iovec(serf_bucket_t *bucket,
@@ -88,8 +107,59 @@ static apr_status_t serf_copy_read_iovec(serf_bucket_t *bucket,
                                          int *vecs_used)
 {
     copy_context_t *ctx = bucket->data;
+    apr_status_t status;
+    apr_size_t total;
+    int i;
 
-    /* ### fill buffer  */
+    if (ctx->vecs_count > 0)
+    {
+        /* ### return held data  */
+    }
+
+    status = serf_bucket_read_iovec(bucket, requested,
+                                    vecs_size, vecs, vecs_used);
+
+    /* The wrapped bucket is (temporarily) done, or is depleted. Return
+       the final data, because there is nothing we can do (if the data
+       meets/not the MIN_SIZE requirement).  */
+    if (APR_STATUS_IS_EOF(status) || APR_STATUS_IS_EAGAIN(status))
+        return status;
+
+    for (total = 0, i = *vecs_used; i-- > 0; )
+        total += vecs[i].iov_len;
+
+    /* The IOVEC holds at least MIN_SIZE data, so we're good.  */
+    if (total >= ctx->min_size)
+        return status;
+
+    /* ### copy into HOLD_BUF. then read/append some more.  */
+
+    return status;
+}
+
+
+apr_status_t serf_copy_read_for_sendfile(
+    serf_bucket_t *bucket,
+    apr_size_t requested,
+    apr_hdtr_t *hdtr,
+    apr_file_t **file,
+    apr_off_t *offset,
+    apr_size_t *len)
+{
+    copy_context_t *ctx = bucket->data;
+
+    return serf_bucket_read_for_sendfile(ctx->wrapped, requested,
+                                         hdtr, file, offset, len);
+}
+
+
+serf_bucket_t *serf_copy_read_bucket(
+    serf_bucket_t *bucket,
+    const serf_bucket_type_t *type)
+{
+    copy_context_t *ctx = bucket->data;
+
+    return serf_bucket_read_bucket(ctx->wrapped, type);
 }
 
 
@@ -107,19 +177,19 @@ static void serf_copy_destroy(serf_bucket_t *bucket)
 {
     copy_context_t *ctx = bucket->data;
 
-    /* ### kill the holding iovec  */
+    /* ### kill the HOLD_BUF  */
 
     serf_default_destroy_and_data(bucket);
 }
 
 
-const serf_bucket_type_t serf_bucket_type_simple = {
+const serf_bucket_type_t serf_bucket_type_copy = {
     "COPY",
     serf_copy_read,
     serf_copy_readline,
-    serf_default_read_iovec,
-    serf_default_read_for_sendfile,
-    serf_default_read_bucket,
+    serf_copy_read_iovec,
+    serf_copy_read_for_sendfile,
+    serf_copy_read_bucket,
     serf_copy_peek,
     serf_copy_destroy,
 };
