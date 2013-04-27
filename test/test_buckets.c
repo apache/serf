@@ -906,6 +906,10 @@ static void test_response_bucket_peek_at_headers(CuTest *tc)
 }
 #undef EXP_RESPONSE
 
+/* ### this test is useful, but needs to switch to the new COPY bucket
+   ### to test the behavior.  */
+#if 0
+
 /* Test that the internal function serf_default_read_iovec, used by many
    bucket types, groups multiple buffers in one iovec. */
 static void test_serf_default_read_iovec(CuTest *tc)
@@ -942,6 +946,9 @@ static void test_serf_default_read_iovec(CuTest *tc)
     CuAssertIntEquals(tc, strlen(BODY), actual_len);
 }
 
+#endif
+
+
 CuSuite *test_buckets(void)
 {
     CuSuite *suite = CuSuiteNew();
@@ -961,7 +968,9 @@ CuSuite *test_buckets(void)
     SUITE_ADD_TEST(suite, test_aggregate_buckets);
     SUITE_ADD_TEST(suite, test_aggregate_bucket_readline);
     SUITE_ADD_TEST(suite, test_header_buckets);
+#if 0
     SUITE_ADD_TEST(suite, test_serf_default_read_iovec);
+#endif
 
     return suite;
 }
