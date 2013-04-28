@@ -1070,6 +1070,71 @@ static void test_serf_request_timeout(CuTest *tc)
     test_teardown(test_pool);
 }
 
+/* Validate reading a large chunked response. */
+static void test_serf_connection_large_response(CuTest *tc)
+{
+    test_baton_t *tb;
+    handler_baton_t handler_ctx[1];
+    const int num_requests = sizeof(handler_ctx)/sizeof(handler_ctx[0]);
+    apr_status_t status;
+    int i, j;
+    apr_size_t len;
+    test_server_message_t message_list[] = {
+        {CHUNKED_REQUEST(1, "1")},
+    };
+    test_server_action_t action_list[1];
+
+    apr_pool_t *test_pool = test_setup();
+
+    /* create large chunked response message */
+    char *response = "HTTP/1.1 200 OK" CRLF
+    "Transfer-Encoding: chunked" CRLF
+    CRLF;
+    struct iovec vecs[500];
+    const int num_vecs = 500;
+
+    vecs[0].iov_base = response;
+    vecs[0].iov_len = strlen(response);
+
+    for (i = 1; i < num_vecs; i++)
+    {
+        int chunk_len = 10 * i * 3;
+
+        /* end with empty chunk */
+        if (i == num_vecs - 1)
+            chunk_len = 0;
+
+        char *chunk, *buf = apr_pcalloc(test_pool, chunk_len + 1);
+        for (j = 0; j < chunk_len; j += 10)
+            memcpy(buf + j, "0123456789", 10);
+
+        chunk = apr_pstrcat(test_pool,
+                            apr_psprintf(test_pool, "%x", chunk_len),
+                            CRLF, buf, CRLF, NULL);
+        vecs[i].iov_base = chunk;
+        vecs[i].iov_len = strlen(chunk);
+    }
+
+    response = apr_pstrcatv(test_pool, vecs, num_vecs, &len);
+    action_list[0].kind = SERVER_RESPOND;
+    action_list[0].text = response;
+
+    /* Set up a test context with a server */
+    status = test_server_setup(&tb,
+                               message_list, num_requests,
+                               action_list, num_requests, 0, NULL,
+                               test_pool);
+    CuAssertIntEquals(tc, APR_SUCCESS, status);
+
+    create_new_request(tb, &handler_ctx[0], "GET", "/", 1);
+
+    test_helper_run_requests_expect_ok(tc, tb, num_requests, handler_ctx,
+                                       test_pool);
+
+    test_server_teardown(tb, test_pool);
+    test_teardown(test_pool);
+}
+
 /*****************************************************************************
  * SSL handshake tests
  *****************************************************************************/
@@ -1531,6 +1596,7 @@ CuSuite *test_context(void)
     SUITE_ADD_TEST(suite, test_keepalive_limit_one_by_one_and_burst);
     SUITE_ADD_TEST(suite, test_serf_progress_callback);
     SUITE_ADD_TEST(suite, test_serf_request_timeout);
+    SUITE_ADD_TEST(suite, test_serf_connection_large_response);
     SUITE_ADD_TEST(suite, test_serf_ssl_handshake);
     SUITE_ADD_TEST(suite, test_serf_ssl_trust_rootca);
     SUITE_ADD_TEST(suite, test_serf_ssl_application_rejects_cert);
