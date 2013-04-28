@@ -169,6 +169,7 @@ apr_status_t init_ssl_context(serv_ctx_t *serv_ctx,
         SSL_use_certificate_file(ssl_ctx->ssl, certfile, SSL_FILETYPE_PEM);
 
 
+        SSL_set_mode(ssl_ctx->ssl, SSL_MODE_ENABLE_PARTIAL_WRITE);
         ssl_ctx->bio = BIO_new(&bio_apr_socket_method);
         ssl_ctx->bio->ptr = serv_ctx;
         SSL_set_bio(ssl_ctx->ssl, ssl_ctx->bio, ssl_ctx->bio);
@@ -222,6 +223,9 @@ ssl_socket_write(serv_ctx_t *serv_ctx, const char *data,
         return APR_SUCCESS;
     }
 
+    if (result == 0)
+        return APR_EAGAIN;
+    
     return APR_EGENERAL;
 }
 
