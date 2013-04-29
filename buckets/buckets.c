@@ -559,6 +559,11 @@ apr_status_t serf_linebuf_fetch(
         /* We got APR_SUCCESS and the line buffer is not complete. Let's
          * loop to read some more data.
          */
+
+        /* TODO: serf_bucket_peek returns APR_SUCCESS even if it's wrapped
+           bucket returned APR_EGAIN!!!! This means we can get in an endless
+           loop, if the wrapped bucket returned a 0-length buffer and
+           APR_EAGAIN. */
     }
     /* NOTREACHED */
 }

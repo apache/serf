@@ -24,10 +24,6 @@
 #include "serf_private.h"
 #include "serf_bucket_util.h"
 
-#define CRLF "\r\n"
-#define CR "\r"
-#define LF "\n"
-
 static apr_status_t read_all(serf_bucket_t *bkt,
                              char *buf,
                              apr_size_t buf_len,
@@ -63,8 +59,8 @@ static apr_status_t read_all(serf_bucket_t *bkt,
 
 /* Reads bucket until EOF found and compares read data with zero terminated
    string expected. Report all failures using CuTest. */
-static void read_and_check_bucket(CuTest *tc, serf_bucket_t *bkt,
-                                  const char *expected)
+void read_and_check_bucket(CuTest *tc, serf_bucket_t *bkt,
+                           const char *expected)
 {
     apr_status_t status;
     do
@@ -90,10 +86,10 @@ static void read_and_check_bucket(CuTest *tc, serf_bucket_t *bkt,
    - actual line endings with expected line endings
    - actual data with zero terminated string expected.
    Reports all failures using CuTest. */
-static void readlines_and_check_bucket(CuTest *tc, serf_bucket_t *bkt,
-                                       int acceptable,
-                                       const char *expected,
-                                       int expected_nr_of_lines)
+void readlines_and_check_bucket(CuTest *tc, serf_bucket_t *bkt,
+                                int acceptable,
+                                const char *expected,
+                                int expected_nr_of_lines)
 {
     apr_status_t status;
     int actual_nr_of_lines = 0;
@@ -112,6 +108,12 @@ static void readlines_and_check_bucket(CuTest *tc, serf_bucket_t *bkt,
                  strlen(expected) >= len);
         CuAssert(tc, "Read data is not equal to expected.",
                  strncmp(expected, data, len) == 0);
+
+        expected += len;
+
+        if (found == SERF_NEWLINE_CRLF_SPLIT)
+            continue;
+
         if (found != SERF_NEWLINE_NONE)
         {
             actual_nr_of_lines++;
@@ -142,8 +144,6 @@ static void readlines_and_check_bucket(CuTest *tc, serf_bucket_t *bkt,
                 CuAssert(tc, "CRLF Line ending was not reported but in data!",
                          strncmp(data + len - 2, "\r\n", 2) != 0);
         }
-        
-        expected += len;
     } while(!APR_STATUS_IS_EOF(status));
 
     CuAssertIntEquals(tc, expected_nr_of_lines, actual_nr_of_lines);
@@ -948,6 +948,36 @@ static void test_serf_default_read_iovec(CuTest *tc)
 
 #endif
 
+/* Test that serf doesn't hang in an endless loop when a linebuf is in
+   split-CRLF state. */
+static void test_linebuf_crlf_split(CuTest *tc)
+{
+    serf_bucket_t *mock_bkt, *tmp;
+    apr_pool_t *test_pool = test_setup();
+    serf_bucket_alloc_t *alloc = serf_bucket_allocator_create(test_pool, NULL,
+                                                              NULL);
+
+    mockbkt_action actions[]= {
+        { 1, "HTTP/1.1 200 OK" CRLF, 17, APR_SUCCESS },
+        { 1, "Content-Type: text/plain" CRLF
+             "Transfer-Encoding: chunked" CRLF
+             CRLF, 56, APR_SUCCESS },
+        { 1, "2" CR, 2, APR_SUCCESS },
+        { 1, "", 0, APR_EAGAIN },
+        { 1,  LF "0" CRLF CRLF, 6, APR_SUCCESS }, };
+    mock_bkt = serf_bucket_mock_create(actions, 5, alloc);
+
+    tmp = serf_bucket_response_create(mock_bkt, alloc);
+    read_and_check_bucket(tc, tmp,
+                          "HTTP/1.1 200 OK" CRLF
+                          "Content-Type: text/plain" CRLF
+                          "Transfer-Encoding: chunked" CRLF
+                          CRLF
+                          "2" CRLF
+                          "0" CRLF CRLF);
+
+    test_teardown(test_pool);
+}
 
 CuSuite *test_buckets(void)
 {
@@ -968,6 +998,7 @@ CuSuite *test_buckets(void)
     SUITE_ADD_TEST(suite, test_aggregate_buckets);
     SUITE_ADD_TEST(suite, test_aggregate_bucket_readline);
     SUITE_ADD_TEST(suite, test_header_buckets);
+    SUITE_ADD_TEST(suite, test_linebuf_crlf_split);
 #if 0
     SUITE_ADD_TEST(suite, test_serf_default_read_iovec);
 #endif

@@ -45,10 +45,12 @@ CuSuite *getsuite(void);
 CuSuite *test_context(void);
 CuSuite *test_buckets(void);
 CuSuite *test_ssl(void);
+CuSuite *test_mock_bucket(void);
 
 /* Test setup declarations */
-
 #define CRLF "\r\n"
+#define CR "\r"
+#define LF "\n"
 
 #define CHUNKED_REQUEST(len, body)\
         "GET / HTTP/1.1" CRLF\
@@ -148,5 +150,27 @@ apr_status_t test_server_teardown(test_baton_t *tb, apr_pool_t *pool);
 
 apr_pool_t *test_setup(void);
 void test_teardown(apr_pool_t *test_pool);
+
+/* Mock bucket type and constructor */
+typedef struct {
+    int times;
+    const char *data;
+    apr_size_t len;
+    apr_status_t status;
+} mockbkt_action;
+
+void read_and_check_bucket(CuTest *tc, serf_bucket_t *bkt,
+                           const char *expected);
+void readlines_and_check_bucket(CuTest *tc, serf_bucket_t *bkt,
+                                int acceptable,
+                                const char *expected,
+                                int expected_nr_of_lines);
+
+extern const serf_bucket_type_t serf_bucket_type_mock;
+#define SERF_BUCKET_IS_MOCK(b) SERF_BUCKET_CHECK((b), mock)
+
+serf_bucket_t *serf_bucket_mock_create(mockbkt_action *actions,
+                                       int len,
+                                       serf_bucket_alloc_t *allocator);
 
 #endif /* TEST_SERF_H */

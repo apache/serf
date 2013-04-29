@@ -247,6 +247,7 @@ for proggie in TEST_PROGRAMS:
         'test/test_util.c',
         'test/test_context.c',
         'test/test_buckets.c',
+        'test/mock_buckets.c',
         'test/test_ssl.c',
         'test/server/test_server.c',
         'test/server/test_sslserver.c',
