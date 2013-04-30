@@ -490,11 +490,10 @@ apr_status_t serf_linebuf_fetch(
 
                 /* Whatever was read, the line is now ready for use. */
                 linebuf->state = SERF_LINEBUF_READY;
+            } else {
+                /* no data available, try again later. */
+                return APR_EAGAIN;
             }
-            /* ### we need data. gotta check this char. bail if zero?! */
-            /* else len == 0 */
-
-            /* ### status */
         }
         else {
             int found;
@@ -559,11 +558,6 @@ apr_status_t serf_linebuf_fetch(
         /* We got APR_SUCCESS and the line buffer is not complete. Let's
          * loop to read some more data.
          */
-
-        /* TODO: serf_bucket_peek returns APR_SUCCESS even if it's wrapped
-           bucket returned APR_EGAIN!!!! This means we can get in an endless
-           loop, if the wrapped bucket returned a 0-length buffer and
-           APR_EAGAIN. */
     }
     /* NOTREACHED */
 }
