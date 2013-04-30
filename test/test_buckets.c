@@ -952,7 +952,7 @@ static void test_serf_default_read_iovec(CuTest *tc)
    split-CRLF state. */
 static void test_linebuf_crlf_split(CuTest *tc)
 {
-    serf_bucket_t *mock_bkt, *tmp;
+    serf_bucket_t *mock_bkt, *bkt;
     apr_pool_t *test_pool = test_setup();
     serf_bucket_alloc_t *alloc = serf_bucket_allocator_create(test_pool, NULL,
                                                               NULL);
@@ -962,19 +962,36 @@ static void test_linebuf_crlf_split(CuTest *tc)
         { 1, "Content-Type: text/plain" CRLF
              "Transfer-Encoding: chunked" CRLF
              CRLF, 56, APR_SUCCESS },
-        { 1, "2" CR, 2, APR_SUCCESS },
+        { 1, "6" CR, 2, APR_SUCCESS },
         { 1, "", 0, APR_EAGAIN },
-        { 1,  LF "0" CRLF CRLF, 6, APR_SUCCESS }, };
-    mock_bkt = serf_bucket_mock_create(actions, 5, alloc);
+        { 1,  LF "blabla" CRLF CRLF, 11, APR_SUCCESS }, };
+    apr_status_t status;
 
-    tmp = serf_bucket_response_create(mock_bkt, alloc);
-    read_and_check_bucket(tc, tmp,
-                          "HTTP/1.1 200 OK" CRLF
-                          "Content-Type: text/plain" CRLF
-                          "Transfer-Encoding: chunked" CRLF
-                          CRLF
-                          "2" CRLF
-                          "0" CRLF CRLF);
+    const char *expected = "blabla";
+
+    mock_bkt = serf_bucket_mock_create(actions, 5, alloc);
+    bkt = serf_bucket_response_create(mock_bkt, alloc);
+
+    do
+    {
+        const char *data;
+        apr_size_t len;
+
+        status = serf_bucket_read(bkt, SERF_READ_ALL_AVAIL, &data, &len);
+        CuAssert(tc, "Got error during bucket reading.",
+                 !SERF_BUCKET_READ_ERROR(status));
+        CuAssert(tc, "Read more data than expected.",
+                 strlen(expected) >= len);
+        CuAssert(tc, "Read data is not equal to expected.",
+                 strncmp(expected, data, len) == 0);
+
+        expected += len;
+
+        if (len == 0 && status == APR_EAGAIN)
+            serf_bucket_mock_more_data_arrived(mock_bkt);
+    } while(!APR_STATUS_IS_EOF(status));
+
+    CuAssert(tc, "Read less data than expected.", strlen(expected) == 0);
 
     test_teardown(test_pool);
 }

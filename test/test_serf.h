@@ -172,5 +172,6 @@ extern const serf_bucket_type_t serf_bucket_type_mock;
 serf_bucket_t *serf_bucket_mock_create(mockbkt_action *actions,
                                        int len,
                                        serf_bucket_alloc_t *allocator);
+apr_status_t serf_bucket_mock_more_data_arrived(serf_bucket_t *bucket);
 
 #endif /* TEST_SERF_H */
