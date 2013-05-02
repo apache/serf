@@ -142,7 +142,7 @@ static BIO_METHOD bio_apr_socket_method = {
 
 apr_status_t init_ssl_context(serv_ctx_t *serv_ctx,
                               const char *keyfile,
-                              const char *certfile)
+                              const char **certfiles)
 {
     ssl_context_t *ssl_ctx = apr_pcalloc(serv_ctx->pool, sizeof(*ssl_ctx));
     serv_ctx->ssl_ctx = ssl_ctx;
@@ -160,14 +160,31 @@ apr_status_t init_ssl_context(serv_ctx_t *serv_ctx,
 
     /* Init this connection */
     if (!ssl_ctx->ctx) {
+        const char *certfile;
+        int i;
+
         ssl_ctx->ctx = SSL_CTX_new(SSLv23_server_method());
         SSL_CTX_set_cipher_list(ssl_ctx->ctx, "ALL");
         SSL_CTX_set_default_passwd_cb(ssl_ctx->ctx, pem_passwd_cb);
 
         ssl_ctx->ssl = SSL_new(ssl_ctx->ctx);
         SSL_use_PrivateKey_file(ssl_ctx->ssl, keyfile, SSL_FILETYPE_PEM);
+
+        certfile = certfiles[0];
         SSL_use_certificate_file(ssl_ctx->ssl, certfile, SSL_FILETYPE_PEM);
 
+        i = 1;
+        certfile = certfiles[i++];
+        while(certfile) {
+            FILE *fp = fopen(certfile, "r");
+            if (fp) {
+                X509 *ssl_cert = PEM_read_X509(fp, NULL, NULL, NULL);
+                fclose(fp);
+
+                SSL_CTX_add_extra_chain_cert(ssl_ctx->ctx, ssl_cert);
+            }
+            certfile = certfiles[i++];
+        }
 
         SSL_set_mode(ssl_ctx->ssl, SSL_MODE_ENABLE_PARTIAL_WRITE);
         ssl_ctx->bio = BIO_new(&bio_apr_socket_method);

@@ -322,7 +322,7 @@ void test_setup_https_server(serv_ctx_t **servctx_p,
                              apr_size_t action_count,
                              apr_int32_t options,
                              const char *keyfile,
-                             const char *certfile,
+                             const char **certfiles,
                              apr_pool_t *pool)
 {
     serv_ctx_t *servctx;
@@ -338,7 +338,7 @@ void test_setup_https_server(serv_ctx_t **servctx_p,
     servctx->read = ssl_socket_read;
     servctx->send = ssl_socket_write;
 
-    init_ssl_context(servctx, keyfile, certfile);
+    init_ssl_context(servctx, keyfile, certfiles);
 }
 
 apr_status_t test_start_server(serv_ctx_t *servctx)

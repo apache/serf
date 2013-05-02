@@ -119,7 +119,7 @@ apr_status_t test_https_server_setup(test_baton_t **tb_p,
                                      apr_int32_t options,
                                      serf_connection_setup_t conn_setup,
                                      const char *keyfile,
-                                     const char *certfile,
+                                     const char **certfile,
                                      serf_ssl_need_server_cert_t server_cert_cb,
                                      apr_pool_t *pool);
 

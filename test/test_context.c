@@ -1143,6 +1143,11 @@ static void test_serf_connection_large_response(CuTest *tc)
 /*****************************************************************************
  * SSL handshake tests
  *****************************************************************************/
+static const char *server_certs[] = {
+    "test/server/serfservercert.pem",
+    "test/server/serfcacert.pem",
+    NULL };
+
 static apr_status_t validate_servercert(const serf_ssl_certificate_t *cert,
                                         apr_pool_t *pool)
 {
@@ -1275,6 +1280,8 @@ static void test_serf_ssl_handshake(CuTest *tc)
     test_server_action_t action_list[] = {
         {SERVER_RESPOND, CHUNKED_EMPTY_RESPONSE},
     };
+    static const char *server_cert[] = { "test/server/serfservercert.pem",
+        NULL };
 
 
     /* Set up a test context with a server */
@@ -1284,7 +1291,7 @@ static void test_serf_ssl_handshake(CuTest *tc)
                                      action_list, num_requests, 0,
                                      NULL, /* default conn setup */
                                      "test/server/serfserverkey.pem",
-                                     "test/server/serfservercert.pem",
+                                     server_cert,
                                      ssl_server_cert_cb_expect_failures,
                                      test_pool);
     CuAssertIntEquals(tc, APR_SUCCESS, status);
@@ -1313,14 +1320,6 @@ https_set_root_ca_conn_setup(apr_socket_t *skt,
 
     status = default_https_conn_setup(skt, input_bkt, output_bkt,
                                       setup_baton, pool);
-    if (status)
-        return status;
-
-    status = serf_ssl_load_cert_file(&cacert, "test/server/serfcacert.pem",
-                                     pool);
-    if (status)
-        return status;
-    status = serf_ssl_trust_cert(tb->ssl_context, cacert);
     if (status)
         return status;
 
@@ -1359,7 +1358,7 @@ static void test_serf_ssl_trust_rootca(CuTest *tc)
                                      action_list, num_requests, 0,
                                      https_set_root_ca_conn_setup,
                                      "test/server/serfserverkey.pem",
-                                     "test/server/serfservercert.pem",
+                                     server_certs,
                                      ssl_server_cert_cb_expect_allok,
                                      test_pool);
     CuAssertIntEquals(tc, APR_SUCCESS, status);
@@ -1399,7 +1398,7 @@ static void test_serf_ssl_application_rejects_cert(CuTest *tc)
                                      action_list, num_requests, 0,
                                      https_set_root_ca_conn_setup,
                                      "test/server/serfserverkey.pem",
-                                     "test/server/serfservercert.pem",
+                                     server_certs,
                                      ssl_server_cert_cb_expect_failures,
                                      test_pool);
     CuAssertIntEquals(tc, APR_SUCCESS, status);
@@ -1495,7 +1494,7 @@ static void test_serf_ssl_certificate_chain(CuTest *tc)
                                      action_list, num_requests, 0,
                                      chain_callback_conn_setup,
                                      "test/server/serfserverkey.pem",
-                                     "test/server/serfservercert.pem",
+                                     server_certs,
                                      ssl_server_cert_cb_expect_allok,
                                      test_pool);
     CuAssertIntEquals(tc, APR_SUCCESS, status);
@@ -1535,7 +1534,7 @@ static void test_serf_ssl_no_servercert_callback_allok(CuTest *tc)
                                      action_list, num_requests, 0,
                                      https_set_root_ca_conn_setup,
                                      "test/server/serfserverkey.pem",
-                                     "test/server/serfservercert.pem",
+                                     server_certs,
                                      NULL, /* No server cert callback */
                                      test_pool);
     CuAssertIntEquals(tc, APR_SUCCESS, status);
@@ -1572,7 +1571,7 @@ static void test_serf_ssl_no_servercert_callback_fail(CuTest *tc)
                                      action_list, num_requests, 0,
                                      NULL, /* default conn setup, no certs */
                                      "test/server/serfserverkey.pem",
-                                     "test/server/serfservercert.pem",
+                                     server_certs,
                                      NULL, /* No server cert callback */
                                      test_pool);
     CuAssertIntEquals(tc, APR_SUCCESS, status);
@@ -1609,7 +1608,7 @@ static void test_serf_ssl_large_response(CuTest *tc)
                                      action_list, num_requests, 0,
                                      https_set_root_ca_conn_setup,
                                      "test/server/serfserverkey.pem",
-                                     "test/server/serfservercert.pem",
+                                     server_certs,
                                      NULL, /* No server cert callback */
                                      test_pool);
     CuAssertIntEquals(tc, APR_SUCCESS, status);

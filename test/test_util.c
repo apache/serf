@@ -158,7 +158,7 @@ apr_status_t test_https_server_setup(test_baton_t **tb_p,
                                      apr_int32_t options,
                                      serf_connection_setup_t conn_setup,
                                      const char *keyfile,
-                                     const char *certfile,
+                                     const char **certfiles,
                                      serf_ssl_need_server_cert_t server_cert_cb,
                                      apr_pool_t *pool)
 {
@@ -181,7 +181,7 @@ apr_status_t test_https_server_setup(test_baton_t **tb_p,
     test_setup_https_server(&tb->serv_ctx, tb->serv_addr,
                             message_list, message_count,
                             action_list, action_count, options,
-                            keyfile, certfile,
+                            keyfile, certfiles,
                             pool);
     status = test_start_server(tb->serv_ctx);
 

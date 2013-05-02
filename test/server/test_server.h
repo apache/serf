@@ -111,7 +111,7 @@ void test_setup_https_server(serv_ctx_t **servctx_p,
                              apr_size_t action_count,
                              apr_int32_t options,
                              const char *keyfile,
-                             const char *certfile,
+                             const char **certfiles,
                              apr_pool_t *pool);
 
 apr_status_t test_start_server(serv_ctx_t *serv_ctx);
@@ -124,7 +124,7 @@ apr_status_t test_server_destroy(serv_ctx_t *servctx, apr_pool_t *pool);
 
 apr_status_t init_ssl_context(serv_ctx_t *serv_ctx,
                               const char *keyfile,
-                              const char *certfile);
+                              const char **certfiles);
 apr_status_t ssl_handshake(serv_ctx_t *servctx);
 apr_status_t ssl_socket_write(serv_ctx_t *serv_ctx, const char *data,
                               apr_size_t *len);
