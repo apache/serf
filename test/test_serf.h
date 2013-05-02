@@ -155,7 +155,6 @@ void test_teardown(apr_pool_t *test_pool);
 typedef struct {
     int times;
     const char *data;
-    apr_size_t len;
     apr_status_t status;
 } mockbkt_action;
 

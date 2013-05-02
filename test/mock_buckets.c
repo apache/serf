@@ -61,14 +61,14 @@ static apr_status_t next_action(mockbkt_context_t *ctx)
         if (ctx->remaining_times == 0) {
             ctx->current_action++;
             ctx->remaining_times = -1;
-            ctx->remaining_data = 0;
+            ctx->remaining_data = -1;
             continue;
         }
 
-        if (ctx->remaining_times == -1) {
+        if (ctx->remaining_data <= 0) {
             ctx->current_data = action->data;
             ctx->remaining_times = action->times;
-            ctx->remaining_data = action->len;
+            ctx->remaining_data = strlen(action->data);
         }
 
         return APR_SUCCESS;
@@ -91,16 +91,15 @@ static apr_status_t serf_mock_readline(serf_bucket_t *bucket,
     }
 
     action = &ctx->actions[ctx->current_action];
-    start_line = *data = ctx->current_data + action->len - ctx->remaining_data;
+    start_line = *data = ctx->current_data;
     *len = ctx->remaining_data;
 
-    serf_util_readline(&start_line, len,
-                       acceptable, found);
+    serf_util_readline(&start_line, len, acceptable, found);
 
     /* See how much ctx->current moved forward. */
-    *len = start_line - *data;
+    *len = start_line - ctx->current_data;
     ctx->remaining_data -= *len;
-
+    ctx->current_data += *len;
     if (ctx->remaining_data == 0)
         ctx->remaining_times--;
 
@@ -122,10 +121,11 @@ static apr_status_t serf_mock_read(serf_bucket_t *bucket,
     }
 
     action = &ctx->actions[ctx->current_action];
-    *len = requested < action->len ? requested : action->len;
-    *data = ctx->current_data + action->len - ctx->remaining_data;
+    *len = requested < ctx->remaining_data ? requested : ctx->remaining_data;
+    *data = ctx->current_data;
 
     ctx->remaining_data -= *len;
+    ctx->current_data += *len;
 
     if (ctx->remaining_data == 0)
         ctx->remaining_times--;
@@ -146,8 +146,8 @@ static apr_status_t serf_mock_peek(serf_bucket_t *bucket,
         return status;
 
     action = &ctx->actions[ctx->current_action];
-    *len = action->len;
-    *data = action->data;
+    *len = ctx->remaining_data;
+    *data = ctx->current_data;
 
     /* peek only returns an error, APR_EOF or APR_SUCCESS.
        APR_EAGAIN is returned as APR_SUCCESS. */
@@ -176,7 +176,7 @@ apr_status_t serf_bucket_mock_more_data_arrived(serf_bucket_t *bucket)
         return status;
 
     action = &ctx->actions[ctx->current_action];
-    if (action->len == 0 && action->status == APR_EAGAIN) {
+    if (ctx->remaining_data == 0 && action->status == APR_EAGAIN) {
         ctx->remaining_times--;
         action->times--;
     }
@@ -204,7 +204,7 @@ static void test_basic_mock_bucket(CuTest *tc)
     /* read one line */
     {
         mockbkt_action actions[]= {
-            { 1, "HTTP/1.1 200 OK" CRLF, 17, APR_EOF },
+            { 1, "HTTP/1.1 200 OK" CRLF, APR_EOF },
         };
         mock_bkt = serf_bucket_mock_create(actions, 1, alloc);
         read_and_check_bucket(tc, mock_bkt,
@@ -219,7 +219,7 @@ static void test_basic_mock_bucket(CuTest *tc)
         apr_status_t status;
         const char *expected = "HTTP/1.1 200 OK" CRLF;
         mockbkt_action actions[]= {
-            { 1, expected, strlen(expected), APR_EOF },
+            { 1, expected, APR_EOF },
         };
         mock_bkt = serf_bucket_mock_create(actions, 1, alloc);
         do
@@ -245,8 +245,8 @@ static void test_basic_mock_bucket(CuTest *tc)
     /* read multiple lines */
     {
         mockbkt_action actions[]= {
-            { 1, "HTTP/1.1 200 OK" CRLF, 17, APR_SUCCESS },
-            { 1, "Content-Type: text/plain" CRLF, 26, APR_EOF },
+            { 1, "HTTP/1.1 200 OK" CRLF, APR_SUCCESS },
+            { 1, "Content-Type: text/plain" CRLF, APR_EOF },
         };
         mock_bkt = serf_bucket_mock_create(actions, 2, alloc);
         readlines_and_check_bucket(tc, mock_bkt, SERF_NEWLINE_CRLF,
@@ -256,9 +256,9 @@ static void test_basic_mock_bucket(CuTest *tc)
     /* read empty line */
     {
         mockbkt_action actions[]= {
-            { 1, "HTTP/1.1 200 OK" CRLF, 17, APR_SUCCESS },
-            { 1, "", 0, APR_EAGAIN },
-            { 1, "Content-Type: text/plain" CRLF, 26, APR_EOF },
+            { 1, "HTTP/1.1 200 OK" CRLF, APR_SUCCESS },
+            { 1, "", APR_EAGAIN },
+            { 1, "Content-Type: text/plain" CRLF, APR_EOF },
         };
         mock_bkt = serf_bucket_mock_create(actions, 3, alloc);
         read_and_check_bucket(tc, mock_bkt,
@@ -272,9 +272,9 @@ static void test_basic_mock_bucket(CuTest *tc)
     /* read empty line */
     {
         mockbkt_action actions[]= {
-            { 1, "HTTP/1.1 200 OK" CR, 16, APR_SUCCESS },
-            { 1, "", 0, APR_EAGAIN },
-            { 1, LF, 1, APR_EOF },
+            { 1, "HTTP/1.1 200 OK" CR, APR_SUCCESS },
+            { 1, "", APR_EAGAIN },
+            { 1, LF, APR_EOF },
         };
         mock_bkt = serf_bucket_mock_create(actions,
                                            sizeof(actions)/sizeof(actions[0]),
@@ -296,8 +296,8 @@ static void test_basic_mock_bucket(CuTest *tc)
         int i;
 
         mockbkt_action actions[]= {
-            { 1, "", 0, APR_EAGAIN },
-            { 1, "blabla", 6, APR_EOF },
+            { 1, "", APR_EAGAIN },
+            { 1, "blabla", APR_EOF },
         };
         mock_bkt = serf_bucket_mock_create(actions,
                                            sizeof(actions)/sizeof(actions[0]),

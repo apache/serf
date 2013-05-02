@@ -958,13 +958,13 @@ static void test_linebuf_crlf_split(CuTest *tc)
                                                               NULL);
 
     mockbkt_action actions[]= {
-        { 1, "HTTP/1.1 200 OK" CRLF, 17, APR_SUCCESS },
+        { 1, "HTTP/1.1 200 OK" CRLF, APR_SUCCESS },
         { 1, "Content-Type: text/plain" CRLF
              "Transfer-Encoding: chunked" CRLF
-             CRLF, 56, APR_SUCCESS },
-        { 1, "6" CR, 2, APR_SUCCESS },
-        { 1, "", 0, APR_EAGAIN },
-        { 1,  LF "blabla" CRLF CRLF, 11, APR_SUCCESS }, };
+             CRLF, APR_SUCCESS },
+        { 1, "6" CR, APR_SUCCESS },
+        { 1, "", APR_EAGAIN },
+        { 1,  LF "blabla" CRLF CRLF, APR_SUCCESS }, };
     apr_status_t status;
 
     const char *expected = "blabla";
