@@ -120,6 +120,7 @@ apr_status_t test_https_server_setup(test_baton_t **tb_p,
                                      serf_connection_setup_t conn_setup,
                                      const char *keyfile,
                                      const char **certfile,
+                                     const char *client_cn,
                                      serf_ssl_need_server_cert_t server_cert_cb,
                                      apr_pool_t *pool);
 

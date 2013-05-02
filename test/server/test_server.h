@@ -90,8 +90,10 @@ struct serv_ctx_t {
     send_func_t send;
     receive_func_t read;
 
+    /* SSL related variables */
     handshake_func_t handshake;
     void *ssl_ctx;
+    const char *client_cn;
 };
 
 void test_setup_server(serv_ctx_t **servctx_p,
@@ -112,6 +114,7 @@ void test_setup_https_server(serv_ctx_t **servctx_p,
                              apr_int32_t options,
                              const char *keyfile,
                              const char **certfiles,
+                             const char *client_cn,
                              apr_pool_t *pool);
 
 apr_status_t test_start_server(serv_ctx_t *serv_ctx);
@@ -124,7 +127,8 @@ apr_status_t test_server_destroy(serv_ctx_t *servctx);
 
 apr_status_t init_ssl_context(serv_ctx_t *serv_ctx,
                               const char *keyfile,
-                              const char **certfiles);
+                              const char **certfiles,
+                              const char *client_cn);
 apr_status_t ssl_handshake(serv_ctx_t *servctx);
 apr_status_t ssl_socket_write(serv_ctx_t *serv_ctx, const char *data,
                               apr_size_t *len);
