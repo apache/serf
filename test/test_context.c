@@ -264,7 +264,7 @@ static void test_serf_connection_request_create(CuTest *tc)
         {SERVER_RESPOND, CHUNKED_EMPTY_RESPONSE},
     };
 
-    apr_pool_t *test_pool = test_setup();
+    apr_pool_t *test_pool = tc->testBaton;
 
     /* Set up a test context with a server */
     status = test_server_setup(&tb,
@@ -290,9 +290,6 @@ static void test_serf_connection_request_create(CuTest *tc)
         int req_nr = APR_ARRAY_IDX(tb->handled_requests, i, int);
         CuAssertIntEquals(tc, i + 1, req_nr);
     }
-
-    test_server_teardown(tb, test_pool);
-    test_teardown(test_pool);
 }
 
 /* Validate that priority requests are sent and completed before normal
@@ -317,7 +314,7 @@ static void test_serf_connection_priority_request_create(CuTest *tc)
         {SERVER_RESPOND, CHUNKED_EMPTY_RESPONSE},
     };
 
-    apr_pool_t *test_pool = test_setup();
+    apr_pool_t *test_pool = tc->testBaton;
 
     /* Set up a test context with a server */
     status = test_server_setup(&tb,
@@ -344,9 +341,6 @@ static void test_serf_connection_priority_request_create(CuTest *tc)
         int req_nr = APR_ARRAY_IDX(tb->handled_requests, i, int);
         CuAssertIntEquals(tc, i + 1, req_nr);
     }
-
-    test_server_teardown(tb, test_pool);
-    test_teardown(test_pool);
 }
 
 /* Test that serf correctly handles the 'Connection:close' header when the
@@ -401,7 +395,7 @@ static void test_serf_closed_connection(CuTest *tc)
         {SERVER_RESPOND, CHUNKED_EMPTY_RESPONSE},
     };
 
-    apr_pool_t *test_pool = test_setup();
+    apr_pool_t *test_pool = tc->testBaton;
 
     /* Set up a test context with a server. */
     status = test_server_setup(&tb,
@@ -445,10 +439,6 @@ static void test_serf_closed_connection(CuTest *tc)
    CuAssertTrue(tc, tb->sent_requests->nelts >= num_requests);
    CuAssertIntEquals(tc, num_requests, tb->accepted_requests->nelts);
    CuAssertIntEquals(tc, num_requests, tb->handled_requests->nelts);
-
-    /* Cleanup */
-    test_server_teardown(tb, test_pool);
-    test_teardown(test_pool);
 }
 
 /* Test if serf is sending the request to the proxy, not to the server
@@ -477,7 +467,7 @@ static void test_serf_setup_proxy(CuTest *tc)
         {SERVER_RESPOND, CHUNKED_EMPTY_RESPONSE},
     };
 
-    apr_pool_t *test_pool = test_setup();
+    apr_pool_t *test_pool = tc->testBaton;
 
     /* Set up a test context with a server, no messages expected. */
     status = test_server_proxy_setup(&tb,
@@ -536,9 +526,6 @@ static void test_serf_setup_proxy(CuTest *tc)
         int req_nr = APR_ARRAY_IDX(tb->handled_requests, i, int);
         CuAssertIntEquals(tc, i + 1, req_nr);
     }
-
-    test_server_teardown(tb, test_pool);
-    test_teardown(test_pool);
 }
 
 /*****************************************************************************
@@ -615,7 +602,7 @@ static void test_keepalive_limit_one_by_one(CuTest *tc)
         {SERVER_RESPOND, CHUNKED_EMPTY_RESPONSE},
     };
 
-    apr_pool_t *test_pool = test_setup();
+    apr_pool_t *test_pool = tc->testBaton;
 
     /* Set up a test context with a server. */
     status = test_server_setup(&tb,
@@ -659,10 +646,6 @@ static void test_keepalive_limit_one_by_one(CuTest *tc)
     CuAssertIntEquals(tc, RCVD_REQUESTS, tb->sent_requests->nelts);
     CuAssertIntEquals(tc, RCVD_REQUESTS, tb->accepted_requests->nelts);
     CuAssertIntEquals(tc, RCVD_REQUESTS, tb->handled_requests->nelts);
-
-    /* Cleanup */
-    test_server_teardown(tb, test_pool);
-    test_teardown(test_pool);
 }
 #undef SEND_REQUESTS
 #undef RCVD_REQUESTS
@@ -750,7 +733,7 @@ static void test_keepalive_limit_one_by_one_and_burst(CuTest *tc)
         {SERVER_RESPOND, CHUNKED_EMPTY_RESPONSE},
     };
 
-    apr_pool_t *test_pool = test_setup();
+    apr_pool_t *test_pool = tc->testBaton;
 
     /* Set up a test context with a server. */
     status = test_server_setup(&tb,
@@ -793,10 +776,6 @@ static void test_keepalive_limit_one_by_one_and_burst(CuTest *tc)
     CuAssertIntEquals(tc, RCVD_REQUESTS, tb->sent_requests->nelts);
     CuAssertIntEquals(tc, RCVD_REQUESTS, tb->accepted_requests->nelts);
     CuAssertIntEquals(tc, RCVD_REQUESTS, tb->handled_requests->nelts);
-
-    /* Cleanup */
-    test_server_teardown(tb, test_pool);
-    test_teardown(test_pool);
 }
 #undef SEND_REQUESTS
 #undef RCVD_REQUESTS
@@ -852,7 +831,7 @@ static void test_serf_progress_callback(CuTest *tc)
         {SERVER_RESPOND, CHUNKED_EMPTY_RESPONSE},
     };
 
-    apr_pool_t *test_pool = test_setup();
+    apr_pool_t *test_pool = tc->testBaton;
     
     /* Set up a test context with a server. */
     status = test_server_setup(&tb,
@@ -877,10 +856,6 @@ static void test_serf_progress_callback(CuTest *tc)
     /* Check that progress was reported. */
     CuAssertTrue(tc, pb->written > 0);
     CuAssertTrue(tc, pb->read > 0);
-
-    /* Cleanup */
-    test_server_teardown(tb, test_pool);
-    test_teardown(test_pool);
 }
 
 
@@ -1035,7 +1010,7 @@ static void test_serf_request_timeout(CuTest *tc)
         {SERVER_RESPOND, RESPONSE_408},
     };
 
-    apr_pool_t *test_pool = test_setup();
+    apr_pool_t *test_pool = tc->testBaton;
 
     /* Set up a test context with a server. */
     status = test_server_setup(&tb,
@@ -1064,10 +1039,6 @@ static void test_serf_request_timeout(CuTest *tc)
 
     test_helper_run_requests_expect_ok(tc, tb, num_requests, handler_ctx,
                                        test_pool);
-
-    /* Cleanup */
-    test_server_teardown(tb, test_pool);
-    test_teardown(test_pool);
 }
 
 static const char *create_large_response_message(apr_pool_t *pool)
@@ -1117,7 +1088,7 @@ static void test_serf_connection_large_response(CuTest *tc)
     };
     test_server_action_t action_list[1];
 
-    apr_pool_t *test_pool = test_setup();
+    apr_pool_t *test_pool = tc->testBaton;
 
     /* create large chunked response message */
     const char *response = create_large_response_message(test_pool);
@@ -1135,9 +1106,6 @@ static void test_serf_connection_large_response(CuTest *tc)
 
     test_helper_run_requests_expect_ok(tc, tb, num_requests, handler_ctx,
                                        test_pool);
-
-    test_server_teardown(tb, test_pool);
-    test_teardown(test_pool);
 }
 
 /*****************************************************************************
@@ -1285,7 +1253,7 @@ static void test_serf_ssl_handshake(CuTest *tc)
 
 
     /* Set up a test context with a server */
-    apr_pool_t *test_pool = test_setup();
+    apr_pool_t *test_pool = tc->testBaton;
     status = test_https_server_setup(&tb,
                                      message_list, num_requests,
                                      action_list, num_requests, 0,
@@ -1300,9 +1268,6 @@ static void test_serf_ssl_handshake(CuTest *tc)
 
     test_helper_run_requests_expect_ok(tc, tb, num_requests, handler_ctx,
                                        test_pool);
-
-    test_server_teardown(tb, test_pool);
-    test_teardown(test_pool);
 }
 
 /* Set up the ssl context with the CA and root CA certificates needed for
@@ -1352,7 +1317,7 @@ static void test_serf_ssl_trust_rootca(CuTest *tc)
     };
 
     /* Set up a test context with a server */
-    apr_pool_t *test_pool = test_setup();
+    apr_pool_t *test_pool = tc->testBaton;
     status = test_https_server_setup(&tb,
                                      message_list, num_requests,
                                      action_list, num_requests, 0,
@@ -1367,9 +1332,6 @@ static void test_serf_ssl_trust_rootca(CuTest *tc)
 
     test_helper_run_requests_expect_ok(tc, tb, num_requests, handler_ctx,
                                        test_pool);
-
-    test_server_teardown(tb, test_pool);
-    test_teardown(test_pool);
 }
 
 /* Validate that when the application rejects the cert, the context loop
@@ -1389,7 +1351,7 @@ static void test_serf_ssl_application_rejects_cert(CuTest *tc)
     };
 
     /* Set up a test context with a server */
-    apr_pool_t *test_pool = test_setup();
+    apr_pool_t *test_pool = tc->testBaton;
 
     /* The certificate is valid, but we tell serf to reject it by using the
        ssl_server_cert_cb_expect_failures callback. */
@@ -1410,9 +1372,6 @@ static void test_serf_ssl_application_rejects_cert(CuTest *tc)
     /* We expect an error from the certificate validation function. */
     CuAssert(tc, "Application told serf the certificate should be rejected,"
                  " expected error!", status != APR_SUCCESS);
-
-    test_server_teardown(tb, test_pool);
-    test_teardown(test_pool);
 }
 
 /* Test for ssl certificate chain callback. */
@@ -1487,7 +1446,7 @@ static void test_serf_ssl_certificate_chain(CuTest *tc)
     };
 
     /* Set up a test context with a server */
-    apr_pool_t *test_pool = test_setup();
+    apr_pool_t *test_pool = tc->testBaton;
 
     status = test_https_server_setup(&tb,
                                      message_list, num_requests,
@@ -1506,9 +1465,6 @@ static void test_serf_ssl_certificate_chain(CuTest *tc)
 
     CuAssertTrue(tc, tb->result_flags & TEST_RESULT_CERTCB_CALLED);
     CuAssertTrue(tc, tb->result_flags & TEST_RESULT_CERTCHAINCB_CALLED);
-
-    test_server_teardown(tb, test_pool);
-    test_teardown(test_pool);
 }
 
 /* Validate that the ssl handshake succeeds if no application callbacks
@@ -1527,7 +1483,7 @@ static void test_serf_ssl_no_servercert_callback_allok(CuTest *tc)
     apr_status_t status;
 
     /* Set up a test context with a server */
-    apr_pool_t *test_pool = test_setup();
+    apr_pool_t *test_pool = tc->testBaton;
 
     status = test_https_server_setup(&tb,
                                      message_list, num_requests,
@@ -1543,9 +1499,6 @@ static void test_serf_ssl_no_servercert_callback_allok(CuTest *tc)
 
     test_helper_run_requests_expect_ok(tc, tb, num_requests,
                                        handler_ctx, test_pool);
-
-    test_server_teardown(tb, test_pool);
-    test_teardown(test_pool);
 }
 
 /* Validate that the ssl handshake fails if no application callbacks
@@ -1564,7 +1517,7 @@ static void test_serf_ssl_no_servercert_callback_fail(CuTest *tc)
     apr_status_t status;
 
     /* Set up a test context with a server */
-    apr_pool_t *test_pool = test_setup();
+    apr_pool_t *test_pool = tc->testBaton;
 
     status = test_https_server_setup(&tb,
                                      message_list, num_requests,
@@ -1582,9 +1535,6 @@ static void test_serf_ssl_no_servercert_callback_fail(CuTest *tc)
                                                handler_ctx, test_pool);
     /* We expect an error from the certificate validation function. */
     CuAssertIntEquals(tc, SERF_ERROR_SSL_CERT_FAILED, status);
-
-    test_server_teardown(tb, test_pool);
-    test_teardown(test_pool);
 }
 
 /* Similar to test_serf_connection_large_response, validate reading a large
@@ -1601,7 +1551,7 @@ static void test_serf_ssl_large_response(CuTest *tc)
     apr_status_t status;
 
     /* Set up a test context with a server */
-    apr_pool_t *test_pool = test_setup();
+    apr_pool_t *test_pool = tc->testBaton;
 
     status = test_https_server_setup(&tb,
                                      message_list, num_requests,
@@ -1622,15 +1572,14 @@ static void test_serf_ssl_large_response(CuTest *tc)
 
     test_helper_run_requests_expect_ok(tc, tb, num_requests,
                                        handler_ctx, test_pool);
-
-    test_server_teardown(tb, test_pool);
-    test_teardown(test_pool);
 }
 
 /*****************************************************************************/
 CuSuite *test_context(void)
 {
     CuSuite *suite = CuSuiteNew();
+
+    CuSuiteSetSetupTeardownCallbacks(suite, test_setup, test_teardown);
 
     SUITE_ADD_TEST(suite, test_serf_connection_request_create);
     SUITE_ADD_TEST(suite, test_serf_connection_priority_request_create);

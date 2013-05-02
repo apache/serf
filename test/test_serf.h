@@ -146,10 +146,8 @@ apr_status_t test_server_proxy_setup(
                  serf_connection_setup_t conn_setup,
                  apr_pool_t *pool);
 
-apr_status_t test_server_teardown(test_baton_t *tb, apr_pool_t *pool);
-
-apr_pool_t *test_setup(void);
-void test_teardown(apr_pool_t *test_pool);
+void *test_setup(void *baton);
+void *test_teardown(void *baton);
 
 /* Mock bucket type and constructor */
 typedef struct {

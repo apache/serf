@@ -120,7 +120,7 @@ apr_status_t test_server_run(serv_ctx_t *servctx,
                              apr_short_interval_time_t duration,
                              apr_pool_t *pool);
 
-apr_status_t test_server_destroy(serv_ctx_t *servctx, apr_pool_t *pool);
+apr_status_t test_server_destroy(serv_ctx_t *servctx);
 
 apr_status_t init_ssl_context(serv_ctx_t *serv_ctx,
                               const char *keyfile,

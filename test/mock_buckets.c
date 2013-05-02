@@ -198,7 +198,7 @@ const serf_bucket_type_t serf_bucket_type_mock = {
 static void test_basic_mock_bucket(CuTest *tc)
 {
     serf_bucket_t *mock_bkt;
-    apr_pool_t *test_pool = test_setup();
+    apr_pool_t *test_pool = tc->testBaton;
     serf_bucket_alloc_t *alloc = serf_bucket_allocator_create(test_pool, NULL,
                                                               NULL);
     /* read one line */
@@ -318,12 +318,13 @@ static void test_basic_mock_bucket(CuTest *tc)
         CuAssert(tc, "Read data is not equal to expected.",
                  strncmp("blabla", data, len) == 0);
     }
-    test_teardown(test_pool);
 }
 
 CuSuite *test_mock_bucket(void)
 {
     CuSuite *suite = CuSuiteNew();
+
+    CuSuiteSetSetupTeardownCallbacks(suite, test_setup, test_teardown);
 
     SUITE_ADD_TEST(suite, test_basic_mock_bucket);
 

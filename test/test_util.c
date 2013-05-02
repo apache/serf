@@ -30,6 +30,16 @@
 #define HTTP_SERV_URL  "http://localhost:" SERV_PORT_STR
 #define HTTPS_SERV_URL "https://localhost:" SERV_PORT_STR
 
+/* cleanup for conn */
+static apr_status_t cleanup_conn(void *baton)
+{
+    serf_connection_t *conn = baton;
+
+    serf_connection_close(conn);
+
+    return APR_SUCCESS;
+}
+
 static apr_status_t default_server_address(apr_sockaddr_t **address,
                                            apr_pool_t *pool)
 {
@@ -145,7 +155,9 @@ static apr_status_t setup(test_baton_t **tb_p,
                                      default_closed_connection,
                                      tb,
                                      pool);
-
+    apr_pool_cleanup_register(pool, tb->connection, cleanup_conn,
+                              apr_pool_cleanup_null);
+    
     return status;
 }
 
@@ -270,26 +282,15 @@ test_server_proxy_setup(test_baton_t **tb_p,
     return status;
 }
 
-apr_status_t test_server_teardown(test_baton_t *tb, apr_pool_t *pool)
-{
-    serf_connection_close(tb->connection);
-
-    if (tb->serv_ctx)
-        test_server_destroy(tb->serv_ctx, pool);
-    if (tb->proxy_ctx)
-        test_server_destroy(tb->proxy_ctx, pool);
-
-    return APR_SUCCESS;
-}
-
-apr_pool_t *test_setup(void)
+void *test_setup(void *dummy)
 {
     apr_pool_t *test_pool;
     apr_pool_create(&test_pool, NULL);
     return test_pool;
 }
 
-void test_teardown(apr_pool_t *test_pool)
+void *test_teardown(void *baton)
 {
-    apr_pool_destroy(test_pool);
+    apr_pool_t *pool = baton;
+    apr_pool_destroy(pool);
 }

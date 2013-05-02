@@ -23,6 +23,33 @@
 
 #include "test_server.h"
 
+
+apr_status_t test_server_destroy(serv_ctx_t *servctx)
+{
+    apr_status_t status;
+
+    status = apr_socket_close(servctx->serv_sock);
+
+    if (servctx->client_sock) {
+        apr_socket_close(servctx->client_sock);
+    }
+
+    if (servctx->ssl_ctx)
+        cleanup_ssl_context(servctx);
+
+    return status;
+}
+
+/* Cleanup callback for a server. */
+static apr_status_t cleanup_server(void *baton)
+{
+    serv_ctx_t *serv_ctx = baton;
+
+    test_server_destroy(serv_ctx);
+
+    return APR_SUCCESS;
+}
+
 /* Replay support functions */
 static void next_message(serv_ctx_t *servctx)
 {
@@ -293,6 +320,9 @@ void test_setup_server(serv_ctx_t **servctx_p,
     serv_ctx_t *servctx;
 
     servctx = apr_pcalloc(pool, sizeof(*servctx));
+    apr_pool_cleanup_register(pool, servctx,
+                              cleanup_server,
+                              apr_pool_cleanup_null);
     *servctx_p = servctx;
 
     servctx->serv_addr = address;
@@ -377,20 +407,4 @@ apr_status_t test_start_server(serv_ctx_t *servctx)
     servctx->client_sock = NULL;
 
     return APR_SUCCESS;
-}
-
-apr_status_t test_server_destroy(serv_ctx_t *servctx, apr_pool_t *pool)
-{
-    apr_status_t status;
-
-    status = apr_socket_close(servctx->serv_sock);
-
-    if (servctx->client_sock) {
-        apr_socket_close(servctx->client_sock);
-    }
-
-    if (servctx->ssl_ctx)
-        cleanup_ssl_context(servctx);
-
-    return status;
 }

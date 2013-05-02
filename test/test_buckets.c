@@ -162,7 +162,7 @@ static void test_simple_bucket_readline(CuTest *tc)
     apr_size_t len;
     const char *body;
     
-    apr_pool_t *test_pool = test_setup();
+    apr_pool_t *test_pool = tc->testBaton;
     serf_bucket_alloc_t *alloc = serf_bucket_allocator_create(test_pool, NULL,
                                                               NULL);
 
@@ -190,7 +190,6 @@ static void test_simple_bucket_readline(CuTest *tc)
     CuAssertIntEquals(tc, SERF_NEWLINE_NONE, found);
     CuAssertIntEquals(tc, 5, len);
     CuAssert(tc, data, strncmp("line2", data, len) == 0);
-    test_teardown(test_pool);
 
     /* acceptable line types should be reported */
     bkt = SERF_BUCKET_SIMPLE_STRING("line1" CRLF, alloc);
@@ -231,7 +230,7 @@ static void test_response_bucket_read(CuTest *tc)
 {
     serf_bucket_t *bkt, *tmp;
 
-    apr_pool_t *test_pool = test_setup();
+    apr_pool_t *test_pool = tc->testBaton;
     serf_bucket_alloc_t *alloc = serf_bucket_allocator_create(test_pool, NULL,
                                                               NULL);
 
@@ -246,14 +245,13 @@ static void test_response_bucket_read(CuTest *tc)
 
     /* Read all bucket and check it content. */
     read_and_check_bucket(tc, bkt, "abc1234");
-    test_teardown(test_pool);
 }
 
 static void test_response_bucket_headers(CuTest *tc)
 {
     serf_bucket_t *bkt, *tmp, *hdr;
 
-    apr_pool_t *test_pool = test_setup();
+    apr_pool_t *test_pool = tc->testBaton;
     serf_bucket_alloc_t *alloc = serf_bucket_allocator_create(test_pool, NULL,
                                                               NULL);
 
@@ -284,14 +282,13 @@ static void test_response_bucket_headers(CuTest *tc)
     CuAssertStrEquals(tc,
         "",
         serf_bucket_headers_get(hdr, "NoSpace"));
-    test_teardown(test_pool);
 }
 
 static void test_response_bucket_chunked_read(CuTest *tc)
 {
     serf_bucket_t *bkt, *tmp, *hdrs;
 
-    apr_pool_t *test_pool = test_setup();
+    apr_pool_t *test_pool = tc->testBaton;
     serf_bucket_alloc_t *alloc = serf_bucket_allocator_create(test_pool, NULL,
                                                               NULL);
 
@@ -318,12 +315,11 @@ static void test_response_bucket_chunked_read(CuTest *tc)
 
     /* Check that trailing headers parsed correctly. */
     CuAssertStrEquals(tc, "value", serf_bucket_headers_get(hdrs, "Footer"));
-    test_teardown(test_pool);
 }
 
 static void test_bucket_header_set(CuTest *tc)
 {
-    apr_pool_t *test_pool = test_setup();
+    apr_pool_t *test_pool = tc->testBaton;
     serf_bucket_alloc_t *alloc = serf_bucket_allocator_create(test_pool, NULL,
                                                               NULL);
     serf_bucket_t *hdrs = serf_bucket_headers_create(alloc);
@@ -344,7 +340,6 @@ static void test_bucket_header_set(CuTest *tc)
 
     /* headers are case insensitive. */
     CuAssertStrEquals(tc, "bar,baz,test", serf_bucket_headers_get(hdrs, "fOo"));
-    test_teardown(test_pool);
 }
 
 
@@ -359,7 +354,7 @@ static void test_iovec_buckets(CuTest *tc)
     int i;
     int vecs_used;
 
-    apr_pool_t *test_pool = test_setup();
+    apr_pool_t *test_pool = tc->testBaton;
     serf_bucket_alloc_t *alloc = serf_bucket_allocator_create(test_pool, NULL,
                                                               NULL);
 
@@ -496,15 +491,13 @@ static void test_iovec_buckets(CuTest *tc)
                                     tgt_vecs, &vecs_used);
     CuAssertIntEquals(tc, APR_SUCCESS, status);
     CuAssertIntEquals(tc, 0, vecs_used);
-
-    test_teardown(test_pool);
 }
 
 /* Construct a header bucket with some headers, and then read from it. */
 static void test_header_buckets(CuTest *tc)
 {
     apr_status_t status;
-    apr_pool_t *test_pool = test_setup();
+    apr_pool_t *test_pool = tc->testBaton;
     serf_bucket_alloc_t *alloc = serf_bucket_allocator_create(test_pool, NULL,
                                                               NULL);
     const char *cur;
@@ -547,7 +540,7 @@ static void test_aggregate_buckets(CuTest *tc)
     apr_size_t len;
     const char *data;
 
-    apr_pool_t *test_pool = test_setup();
+    apr_pool_t *test_pool = tc->testBaton;
     serf_bucket_alloc_t *alloc = serf_bucket_allocator_create(test_pool, NULL,
                                                               NULL);
     const char *BODY = "12345678901234567890"\
@@ -617,14 +610,12 @@ static void test_aggregate_buckets(CuTest *tc)
              len > 0 && len <= strlen(BODY) );
     CuAssert(tc, "Data should match first part of body.",
              strncmp(BODY, data, len) == 0);
-
-    test_teardown(test_pool);
 }
 
 static void test_aggregate_bucket_readline(CuTest *tc)
 {
     serf_bucket_t *bkt, *aggbkt;
-    apr_pool_t *test_pool = test_setup();
+    apr_pool_t *test_pool = tc->testBaton;
 
     serf_bucket_alloc_t *alloc = serf_bucket_allocator_create(test_pool, NULL,
                                                               NULL);
@@ -664,7 +655,7 @@ static void test_aggregate_bucket_readline(CuTest *tc)
 static void test_response_body_too_small_cl(CuTest *tc)
 {
     serf_bucket_t *bkt, *tmp;
-    apr_pool_t *test_pool = test_setup();
+    apr_pool_t *test_pool = tc->testBaton;
     serf_bucket_alloc_t *alloc = serf_bucket_allocator_create(test_pool, NULL,
                                                               NULL);
 
@@ -706,7 +697,7 @@ static void test_response_body_too_small_cl(CuTest *tc)
 static void test_response_body_too_small_chunked(CuTest *tc)
 {
     serf_bucket_t *bkt, *tmp;
-    apr_pool_t *test_pool = test_setup();
+    apr_pool_t *test_pool = tc->testBaton;
     serf_bucket_alloc_t *alloc = serf_bucket_allocator_create(test_pool, NULL,
                                                               NULL);
 
@@ -749,7 +740,7 @@ static void test_response_body_too_small_chunked(CuTest *tc)
 static void test_response_body_chunked_no_crlf(CuTest *tc)
 {
     serf_bucket_t *bkt, *tmp;
-    apr_pool_t *test_pool = test_setup();
+    apr_pool_t *test_pool = tc->testBaton;
     serf_bucket_alloc_t *alloc = serf_bucket_allocator_create(test_pool, NULL,
                                                               NULL);
 
@@ -772,7 +763,6 @@ static void test_response_body_chunked_no_crlf(CuTest *tc)
 
         CuAssertIntEquals(tc, SERF_ERROR_TRUNCATED_HTTP_RESPONSE, status);
     }
-    test_teardown(test_pool);
 }
 
 /* Test for issue: the server aborts the connection in the middle of
@@ -781,7 +771,7 @@ static void test_response_body_chunked_no_crlf(CuTest *tc)
 static void test_response_body_chunked_incomplete_crlf(CuTest *tc)
 {
     serf_bucket_t *bkt, *tmp;
-    apr_pool_t *test_pool = test_setup();
+    apr_pool_t *test_pool = tc->testBaton;
     serf_bucket_alloc_t *alloc = serf_bucket_allocator_create(test_pool, NULL,
                                                               NULL);
 
@@ -805,13 +795,12 @@ static void test_response_body_chunked_incomplete_crlf(CuTest *tc)
 
         CuAssertIntEquals(tc, SERF_ERROR_TRUNCATED_HTTP_RESPONSE, status);
     }
-    test_teardown(test_pool);
 }
 
 static void test_response_body_chunked_gzip_small(CuTest *tc)
 {
     serf_bucket_t *bkt, *tmp;
-    apr_pool_t *test_pool = test_setup();
+    apr_pool_t *test_pool = tc->testBaton;
     serf_bucket_alloc_t *alloc = serf_bucket_allocator_create(test_pool, NULL,
                                                               NULL);
 
@@ -835,12 +824,11 @@ static void test_response_body_chunked_gzip_small(CuTest *tc)
 
         CuAssertIntEquals(tc, SERF_ERROR_TRUNCATED_HTTP_RESPONSE, status);
     }
-    test_teardown(test_pool);
 }
 
 static void test_response_bucket_peek_at_headers(CuTest *tc)
 {
-    apr_pool_t *test_pool = test_setup();
+    apr_pool_t *test_pool = tc->testBaton;
     serf_bucket_t *resp_bkt1, *tmp, *hdrs;
     serf_status_line sl;
     serf_bucket_alloc_t *alloc = serf_bucket_allocator_create(test_pool, NULL,
@@ -920,7 +908,7 @@ static void test_serf_default_read_iovec(CuTest *tc)
     int vecs_used, i;
     apr_size_t actual_len = 0;
 
-    apr_pool_t *test_pool = test_setup();
+    apr_pool_t *test_pool = tc->testBaton;
     serf_bucket_alloc_t *alloc = serf_bucket_allocator_create(test_pool, NULL,
                                                               NULL);
     const char *BODY = "12345678901234567890"\
@@ -953,7 +941,7 @@ static void test_serf_default_read_iovec(CuTest *tc)
 static void test_linebuf_crlf_split(CuTest *tc)
 {
     serf_bucket_t *mock_bkt, *bkt;
-    apr_pool_t *test_pool = test_setup();
+    apr_pool_t *test_pool = tc->testBaton;
     serf_bucket_alloc_t *alloc = serf_bucket_allocator_create(test_pool, NULL,
                                                               NULL);
 
@@ -992,13 +980,13 @@ static void test_linebuf_crlf_split(CuTest *tc)
     } while(!APR_STATUS_IS_EOF(status));
 
     CuAssert(tc, "Read less data than expected.", strlen(expected) == 0);
-
-    test_teardown(test_pool);
 }
 
 CuSuite *test_buckets(void)
 {
     CuSuite *suite = CuSuiteNew();
+
+    CuSuiteSetSetupTeardownCallbacks(suite, test_setup, test_teardown);
 
     SUITE_ADD_TEST(suite, test_simple_bucket_readline);
     SUITE_ADD_TEST(suite, test_response_bucket_read);
