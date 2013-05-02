@@ -1051,7 +1051,7 @@ static const char *create_large_response_message(apr_pool_t *pool)
     int i, j;
     apr_size_t len;
 
-    vecs[0].iov_base = response;
+    vecs[0].iov_base = (char *)response;
     vecs[0].iov_len = strlen(response);
 
     for (i = 1; i < num_vecs; i++)
@@ -1279,7 +1279,7 @@ https_set_root_ca_conn_setup(apr_socket_t *skt,
                              void *setup_baton,
                              apr_pool_t *pool)
 {
-    serf_ssl_certificate_t *cacert, *rootcacert;
+    serf_ssl_certificate_t *rootcacert;
     test_baton_t *tb = setup_baton;
     apr_status_t status;
 

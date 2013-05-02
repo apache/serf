@@ -180,6 +180,8 @@ apr_status_t serf_bucket_mock_more_data_arrived(serf_bucket_t *bucket)
         ctx->remaining_times--;
         action->times--;
     }
+
+    return APR_SUCCESS;
 }
 
 const serf_bucket_type_t serf_bucket_type_mock = {

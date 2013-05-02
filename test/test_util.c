@@ -293,4 +293,6 @@ void *test_teardown(void *baton)
 {
     apr_pool_t *pool = baton;
     apr_pool_destroy(pool);
+
+    return NULL;
 }
