@@ -1584,7 +1584,6 @@ static void test_serf_ssl_large_response(CuTest *tc)
 apr_status_t client_cert_cb(void *data,
                             const char **cert_path)
 {
-    printf("client_cert_cb called.\n");
     *cert_path = "test/server/serfclientcert.p12";
 
     return APR_SUCCESS;
@@ -1594,7 +1593,6 @@ apr_status_t client_cert_pw_cb(void *data,
                                const char *cert_path,
                                const char **password)
 {
-    printf("client_cert_pw_cb called.\n");
     if (strcmp(cert_path, "test/server/serfclientcert.p12") == 0)
     {
         *password = "serftest";
