@@ -36,7 +36,7 @@ static void test_ssl_init(CuTest *tc)
     serf_ssl_context_t *ssl_context;
     apr_status_t status;
 
-    apr_pool_t *test_pool = test_setup();
+    apr_pool_t *test_pool = tc->testBaton;
     serf_bucket_alloc_t *alloc = serf_bucket_allocator_create(test_pool, NULL,
                                                               NULL);
 
@@ -52,7 +52,6 @@ static void test_ssl_init(CuTest *tc)
     status = serf_ssl_use_default_certificates(ssl_context);
 
     CuAssertIntEquals(tc, APR_SUCCESS, status);
-    test_teardown(test_pool);
 }
 
 
@@ -74,13 +73,12 @@ static void test_ssl_load_cert_file(CuTest *tc)
 {
     serf_ssl_certificate_t *cert = NULL;
 
-    apr_pool_t *test_pool = test_setup();
+    apr_pool_t *test_pool = tc->testBaton;
     apr_status_t status = serf_ssl_load_cert_file(
         &cert, get_ca_file(test_pool, "test/serftestca.pem"), test_pool);
 
     CuAssertIntEquals(tc, APR_SUCCESS, status);
     CuAssertPtrNotNull(tc, cert);
-    test_teardown(test_pool);
 }
 
 /* Test that reading the subject from a custom CA certificate file works. */
@@ -92,7 +90,7 @@ static void test_ssl_cert_subject(CuTest *tc)
     serf_ssl_context_t *ssl_context;
     apr_status_t status;
 
-    apr_pool_t *test_pool = test_setup();
+    apr_pool_t *test_pool = tc->testBaton;
     serf_bucket_alloc_t *alloc = serf_bucket_allocator_create(test_pool, NULL,
                                                               NULL);
 
@@ -125,8 +123,6 @@ static void test_ssl_cert_subject(CuTest *tc)
                       apr_hash_get(subject, "C", APR_HASH_KEY_STRING));
     CuAssertStrEquals(tc, "serf@example.com", 
                       apr_hash_get(subject, "E", APR_HASH_KEY_STRING));
-
-    test_teardown(test_pool);
 }
 
 /* Test that reading the issuer from a custom CA certificate file works. */
@@ -354,6 +350,8 @@ static void test_ssl_cert_export(CuTest *tc)
 CuSuite *test_ssl(void)
 {
     CuSuite *suite = CuSuiteNew();
+
+    CuSuiteSetSetupTeardownCallbacks(suite, test_setup, test_teardown);
 
     SUITE_ADD_TEST(suite, test_ssl_init);
     SUITE_ADD_TEST(suite, test_ssl_load_cert_file);

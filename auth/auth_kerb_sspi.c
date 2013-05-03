@@ -14,6 +14,7 @@
  */
 
 #include "auth_kerb.h"
+#include "serf.h"
 
 #ifdef SERF_USE_SSPI
 #include <apr.h>
@@ -28,6 +29,45 @@ struct serf__kerb_context_t
     CtxtHandle sspi_context;
     BOOL initalized;
 };
+
+/* Map SECURITY_STATUS from SSPI to APR error code. Some error codes mapped
+ * to our own codes and some to Win32 error codes:
+ * http://support.microsoft.com/kb/113996
+ */
+static apr_status_t
+map_sspi_status(SECURITY_STATUS sspi_status)
+{
+    switch(sspi_status)
+    {
+    case SEC_E_INSUFFICIENT_MEMORY:
+        return APR_FROM_OS_ERROR(ERROR_NO_SYSTEM_RESOURCES);
+    case SEC_E_INVALID_HANDLE:
+        return APR_FROM_OS_ERROR(ERROR_INVALID_HANDLE);
+    case SEC_E_UNSUPPORTED_FUNCTION:
+        return APR_FROM_OS_ERROR(ERROR_INVALID_FUNCTION);
+    case SEC_E_TARGET_UNKNOWN:
+        return APR_FROM_OS_ERROR(ERROR_BAD_NETPATH);
+    case SEC_E_INTERNAL_ERROR:
+        return APR_FROM_OS_ERROR(ERROR_INTERNAL_ERROR);
+    case SEC_E_SECPKG_NOT_FOUND:
+    case SEC_E_BAD_PKGID:
+        return APR_FROM_OS_ERROR(ERROR_NO_SUCH_PACKAGE);
+    case SEC_E_NO_IMPERSONATION:
+        return APR_FROM_OS_ERROR(ERROR_CANNOT_IMPERSONATE);
+    case SEC_E_NO_AUTHENTICATING_AUTHORITY:
+        return APR_FROM_OS_ERROR(ERROR_NO_LOGON_SERVERS);
+    case SEC_E_UNTRUSTED_ROOT:
+        return APR_FROM_OS_ERROR(ERROR_TRUST_FAILURE);
+    case SEC_E_WRONG_PRINCIPAL:
+        return APR_FROM_OS_ERROR(ERROR_WRONG_TARGET_NAME);
+    case SEC_E_MUTUAL_AUTH_FAILED:
+        return APR_FROM_OS_ERROR(ERROR_MUTUAL_AUTH_FAILED);
+    case SEC_E_TIME_SKEW:
+        return APR_FROM_OS_ERROR(ERROR_TIME_SKEW);
+    default:
+        return SERF_ERROR_AUTHN_FAILED;
+    }
+}
 
 /* Cleans the SSPI context object, when the pool used to create it gets
    cleared or destroyed. */
@@ -81,7 +121,7 @@ serf__kerb_create_sec_context(serf__kerb_context_t **ctx_p,
         &ctx->sspi_credentials, NULL);
 
     if (FAILED(sspi_status)) {
-        return APR_EGENERAL;
+        return map_sspi_status(sspi_status);
     }
 
     *ctx_p = ctx;
@@ -216,7 +256,7 @@ serf__kerb_init_sec_context(serf__kerb_context_t *ctx,
         return APR_SUCCESS;
 
     default:
-        return APR_EGENERAL;
+        return map_sspi_status(status);
     }
 }
 

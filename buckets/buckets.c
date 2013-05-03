@@ -41,42 +41,30 @@ apr_status_t serf_default_read_iovec(
     struct iovec *vecs,
     int *vecs_used)
 {
-    apr_status_t status = APR_SUCCESS;
+    const char *data;
+    apr_size_t len;
 
-    *vecs_used = 0;
-
-    /* Read some data from the bucket. Keep reading and adding buffers to the
-     * iovec as long as the bucket has more data directly available.
+    /* Read some data from the bucket.
+     *
+     * Because we're an internal 'helper' to the bucket, we can't call the
+     * normal serf_bucket_read() call because the debug allocator tracker will
+     * end up marking the bucket as read *twice* - once for us and once for
+     * our caller - which is reading the same bucket.  This leads to premature
+     * abort()s if we ever see EAGAIN.  Instead, we'll go directly to the
+     * vtable and bypass the debug tracker.
      */
-    while (requested && vecs_size && status == APR_SUCCESS) {
-        const char *data;
-        apr_size_t len;
+    apr_status_t status = bucket->type->read(bucket, requested, &data, &len);
 
-        /* Because we're an internal 'helper' to the bucket, we can't call the
-         * normal serf_bucket_read() call because the debug allocator tracker will
-         * end up marking the bucket as read *twice* - once for us and once for
-         * our caller - which is reading the same bucket.  This leads to premature
-         * abort()s if we ever see EAGAIN.  Instead, we'll go directly to the
-         * vtable and bypass the debug tracker.
-         */
-        status = bucket->type->read(bucket, requested, &data, &len);
+    /* assert that vecs_size >= 1 ? */
 
-        if (SERF_BUCKET_READ_ERROR(status))
-            return status;
-
-        if (len) {
-            vecs[0].iov_base = (void *)data; /* loses the 'const' */
-            vecs[0].iov_len = len;
-
-            if (requested != SERF_READ_ALL_AVAIL) {
-                requested -= len;
-            }
-
-            /* Adjust our vecs to account for what we just read. */
-            vecs_size--;
-            vecs++;
-            (*vecs_used)++;
-        }
+    /* Return that data as a single iovec. */
+    if (len) {
+        vecs[0].iov_base = (void *)data; /* loses the 'const' */
+        vecs[0].iov_len = len;
+        *vecs_used = 1;
+    }
+    else {
+        *vecs_used = 0;
     }
 
     return status;
@@ -502,11 +490,10 @@ apr_status_t serf_linebuf_fetch(
 
                 /* Whatever was read, the line is now ready for use. */
                 linebuf->state = SERF_LINEBUF_READY;
+            } else {
+                /* no data available, try again later. */
+                return APR_EAGAIN;
             }
-            /* ### we need data. gotta check this char. bail if zero?! */
-            /* else len == 0 */
-
-            /* ### status */
         }
         else {
             int found;
@@ -520,7 +507,7 @@ apr_status_t serf_linebuf_fetch(
                out EOF state, so they'll return no data in that read. This
                means we're done reading, return what we got. */
             if (APR_STATUS_IS_EOF(status) && len == 0) {
-                return status;
+	        return status;
             }
             if (linebuf->used + len > sizeof(linebuf->line)) {
                 /* ### need a "line too long" error */

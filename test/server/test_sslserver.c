@@ -140,12 +140,19 @@ static BIO_METHOD bio_apr_socket_method = {
 #endif
 };
 
+static int validate_client_certificate(int preverify_ok, X509_STORE_CTX *ctx)
+{
+    return preverify_ok;
+}
+
 apr_status_t init_ssl_context(serv_ctx_t *serv_ctx,
                               const char *keyfile,
-                              const char *certfile)
+                              const char **certfiles,
+                              const char *client_cn)
 {
     ssl_context_t *ssl_ctx = apr_pcalloc(serv_ctx->pool, sizeof(*ssl_ctx));
     serv_ctx->ssl_ctx = ssl_ctx;
+    serv_ctx->client_cn = client_cn;
 
     /* Init OpenSSL globally */
     if (!init_done)
@@ -160,15 +167,42 @@ apr_status_t init_ssl_context(serv_ctx_t *serv_ctx,
 
     /* Init this connection */
     if (!ssl_ctx->ctx) {
+        X509_STORE *store;
+        const char *certfile;
+        int i;
+
         ssl_ctx->ctx = SSL_CTX_new(SSLv23_server_method());
         SSL_CTX_set_cipher_list(ssl_ctx->ctx, "ALL");
         SSL_CTX_set_default_passwd_cb(ssl_ctx->ctx, pem_passwd_cb);
 
         ssl_ctx->ssl = SSL_new(ssl_ctx->ctx);
         SSL_use_PrivateKey_file(ssl_ctx->ssl, keyfile, SSL_FILETYPE_PEM);
+
+        /* Set server certificate, add ca certificates if provided. */
+        certfile = certfiles[0];
         SSL_use_certificate_file(ssl_ctx->ssl, certfile, SSL_FILETYPE_PEM);
 
+        i = 1;
+        certfile = certfiles[i++];
+        store = SSL_CTX_get_cert_store(ssl_ctx->ctx);
 
+        while(certfile) {
+            FILE *fp = fopen(certfile, "r");
+            if (fp) {
+                X509 *ssl_cert = PEM_read_X509(fp, NULL, NULL, NULL);
+                fclose(fp);
+
+                SSL_CTX_add_extra_chain_cert(ssl_ctx->ctx, ssl_cert);
+
+                X509_STORE_add_cert(store, ssl_cert);
+            }
+            certfile = certfiles[i++];
+        }
+
+        SSL_set_verify(ssl_ctx->ssl, SSL_VERIFY_PEER,
+                       validate_client_certificate);
+
+        SSL_set_mode(ssl_ctx->ssl, SSL_MODE_ENABLE_PARTIAL_WRITE);
         ssl_ctx->bio = BIO_new(&bio_apr_socket_method);
         ssl_ctx->bio->ptr = serv_ctx;
         SSL_set_bio(ssl_ctx->ssl, ssl_ctx->bio, ssl_ctx->bio);
@@ -188,7 +222,41 @@ apr_status_t ssl_handshake(serv_ctx_t *serv_ctx)
     /* SSL handshake */
     result = SSL_accept(ssl_ctx->ssl);
     if (result == 1) {
+        X509 *peer;
+
         serf__log(TEST_VERBOSE, __FILE__, "Handshake successful.\n");
+
+        /* Check client certificate */
+        peer = SSL_get_peer_certificate(ssl_ctx->ssl);
+        if (peer)
+        {
+            serf__log(TEST_VERBOSE, __FILE__, "Peer cert received.\n");
+            if (SSL_get_verify_result(ssl_ctx->ssl) == X509_V_OK)
+            {
+                /* The client sent a certificate which verified OK */
+                char buf[1024];
+                int ret;
+                X509_NAME *subject = X509_get_subject_name(peer);
+
+                ret = X509_NAME_get_text_by_NID(subject,
+                                                NID_commonName,
+                                                buf, 1024);
+                if (ret != -1 && strcmp(serv_ctx->client_cn, buf) != 0) {
+                    serf__log(TEST_VERBOSE, __FILE__, "Client cert common name "
+                              "\"%s\" doesn't match expected \"%s\".\n", buf,
+                              serv_ctx->client_cn);
+                    return APR_EGENERAL;
+
+                }
+            }
+        } else {
+            if (serv_ctx->client_cn) {
+                serf__log(TEST_VERBOSE, __FILE__, "Client cert expected but not"
+                          " received.\n");
+                return APR_EGENERAL;
+            }
+        }
+
         ssl_ctx->handshake_done = 1;
     }
     else {
@@ -222,6 +290,9 @@ ssl_socket_write(serv_ctx_t *serv_ctx, const char *data,
         return APR_SUCCESS;
     }
 
+    if (result == 0)
+        return APR_EAGAIN;
+    
     return APR_EGENERAL;
 }
 

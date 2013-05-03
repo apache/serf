@@ -221,8 +221,7 @@ gss_api_get_credentials(char *token, apr_size_t token_len,
         status = APR_SUCCESS;
         break;
     default:
-        status = SERF_ERROR_AUTHN_FAILED;
-        break;
+        return status;
     }
 
     /* Return the session key to our caller. */
@@ -496,8 +495,7 @@ serf__validate_response_kerb_auth(peer_t peer,
                                   apr_pool_t *pool)
 {
     gss_authn_info_t *gss_info;
-    serf_bucket_t *hdrs;
-    const char *auth_hdr;
+    const char *auth_hdr_name;
 
     /* TODO: currently this function is only called when a response includes
        an Authenticate header. This header is optional. If the server does
@@ -507,21 +505,23 @@ serf__validate_response_kerb_auth(peer_t peer,
     serf__log_skt(AUTH_VERBOSE, __FILE__, conn->skt,
                   "Validate Negotiate response header.\n");
 
-    hdrs = serf_bucket_response_get_headers(response);
     if (peer == HOST) {
         gss_info = conn->authn_baton;
-        auth_hdr = serf_bucket_headers_get(hdrs, "WWW-Authenticate");
+        auth_hdr_name = "WWW-Authenticate";
     } else {
         gss_info = conn->proxy_authn_baton;
-        auth_hdr = serf_bucket_headers_get(hdrs, "Proxy-Authenticate");
+        auth_hdr_name = "Proxy-Authenticate";
     }
+
     if (gss_info->state != gss_api_auth_completed) {
-        apr_status_t status = do_auth(peer,
-                                      code,
-                                      gss_info,
-                                      conn,
-                                      auth_hdr,
-                                      pool);
+        serf_bucket_t *hdrs;
+        const char *auth_hdr_val;
+        apr_status_t status;
+
+        hdrs = serf_bucket_response_get_headers(response);
+        auth_hdr_val = serf_bucket_headers_get(hdrs, auth_hdr_name);
+
+        status = do_auth(peer, code, gss_info, conn, auth_hdr_val, pool);
         if (status)
             return status;
     }
