@@ -962,7 +962,7 @@ static apr_status_t handle_response_timeout(
     }
 
     if (serf_request_is_written(request) != APR_EBUSY) {
-        return APR_EGENERAL;
+        return SERF_ERROR_ISSUE_IN_TESTSUITE;
     }
 
 
@@ -1123,25 +1123,25 @@ static apr_status_t validate_servercert(const serf_ssl_certificate_t *cert,
     subject = serf_ssl_cert_subject(cert, pool);
     if (strcmp("Serf Server",
                apr_hash_get(subject, "CN", APR_HASH_KEY_STRING)) != 0)
-        return APR_EGENERAL;
+        return SERF_ERROR_ISSUE_IN_TESTSUITE;
     if (strcmp("Test Suite Server",
                apr_hash_get(subject, "OU", APR_HASH_KEY_STRING)) != 0)
-        return APR_EGENERAL;
+        return SERF_ERROR_ISSUE_IN_TESTSUITE;
     if (strcmp("In Serf we trust, Inc.",
                apr_hash_get(subject, "O", APR_HASH_KEY_STRING)) != 0)
-        return APR_EGENERAL;
+        return SERF_ERROR_ISSUE_IN_TESTSUITE;
     if (strcmp("Mechelen",
                apr_hash_get(subject, "L", APR_HASH_KEY_STRING)) != 0)
-        return APR_EGENERAL;
+        return SERF_ERROR_ISSUE_IN_TESTSUITE;
     if (strcmp("Antwerp",
                apr_hash_get(subject, "ST", APR_HASH_KEY_STRING)) != 0)
-        return APR_EGENERAL;
+        return SERF_ERROR_ISSUE_IN_TESTSUITE;
     if (strcmp("BE",
                apr_hash_get(subject, "C", APR_HASH_KEY_STRING)) != 0)
-        return APR_EGENERAL;
+        return SERF_ERROR_ISSUE_IN_TESTSUITE;
     if (strcmp("serfserver@example.com",
                apr_hash_get(subject, "E", APR_HASH_KEY_STRING)) != 0)
-        return APR_EGENERAL;
+        return SERF_ERROR_ISSUE_IN_TESTSUITE;
 
     return APR_SUCCESS;
 }
@@ -1153,25 +1153,25 @@ static apr_status_t validate_cacert(const serf_ssl_certificate_t *cert,
     subject = serf_ssl_cert_subject(cert, pool);
     if (strcmp("Serf CA",
                apr_hash_get(subject, "CN", APR_HASH_KEY_STRING)) != 0)
-        return APR_EGENERAL;
+        return SERF_ERROR_ISSUE_IN_TESTSUITE;
     if (strcmp("Test Suite CA",
                apr_hash_get(subject, "OU", APR_HASH_KEY_STRING)) != 0)
-        return APR_EGENERAL;
+        return SERF_ERROR_ISSUE_IN_TESTSUITE;
     if (strcmp("In Serf we trust, Inc.",
                apr_hash_get(subject, "O", APR_HASH_KEY_STRING)) != 0)
-        return APR_EGENERAL;
+        return SERF_ERROR_ISSUE_IN_TESTSUITE;
     if (strcmp("Mechelen",
                apr_hash_get(subject, "L", APR_HASH_KEY_STRING)) != 0)
-        return APR_EGENERAL;
+        return SERF_ERROR_ISSUE_IN_TESTSUITE;
     if (strcmp("Antwerp",
                apr_hash_get(subject, "ST", APR_HASH_KEY_STRING)) != 0)
-        return APR_EGENERAL;
+        return SERF_ERROR_ISSUE_IN_TESTSUITE;
     if (strcmp("BE",
                apr_hash_get(subject, "C", APR_HASH_KEY_STRING)) != 0)
-        return APR_EGENERAL;
+        return SERF_ERROR_ISSUE_IN_TESTSUITE;
     if (strcmp("serfca@example.com",
                apr_hash_get(subject, "E", APR_HASH_KEY_STRING)) != 0)
-        return APR_EGENERAL;
+        return SERF_ERROR_ISSUE_IN_TESTSUITE;
 
     return APR_SUCCESS;
 }
@@ -1183,25 +1183,25 @@ static apr_status_t validate_rootcacert(const serf_ssl_certificate_t *cert,
     subject = serf_ssl_cert_subject(cert, pool);
     if (strcmp("Serf Root CA",
                apr_hash_get(subject, "CN", APR_HASH_KEY_STRING)) != 0)
-        return APR_EGENERAL;
+        return SERF_ERROR_ISSUE_IN_TESTSUITE;
     if (strcmp("Test Suite Root CA",
                apr_hash_get(subject, "OU", APR_HASH_KEY_STRING)) != 0)
-        return APR_EGENERAL;
+        return SERF_ERROR_ISSUE_IN_TESTSUITE;
     if (strcmp("In Serf we trust, Inc.",
                apr_hash_get(subject, "O", APR_HASH_KEY_STRING)) != 0)
-        return APR_EGENERAL;
+        return SERF_ERROR_ISSUE_IN_TESTSUITE;
     if (strcmp("Mechelen",
                apr_hash_get(subject, "L", APR_HASH_KEY_STRING)) != 0)
-        return APR_EGENERAL;
+        return SERF_ERROR_ISSUE_IN_TESTSUITE;
     if (strcmp("Antwerp",
                apr_hash_get(subject, "ST", APR_HASH_KEY_STRING)) != 0)
-        return APR_EGENERAL;
+        return SERF_ERROR_ISSUE_IN_TESTSUITE;
     if (strcmp("BE",
                apr_hash_get(subject, "C", APR_HASH_KEY_STRING)) != 0)
-        return APR_EGENERAL;
+        return SERF_ERROR_ISSUE_IN_TESTSUITE;
     if (strcmp("serfrootca@example.com",
                apr_hash_get(subject, "E", APR_HASH_KEY_STRING)) != 0)
-        return APR_EGENERAL;
+        return SERF_ERROR_ISSUE_IN_TESTSUITE;
 
     return APR_SUCCESS;
 }
@@ -1217,7 +1217,7 @@ ssl_server_cert_cb_expect_failures(void *baton, int failures,
     if (failures)
         return APR_SUCCESS;
     else
-        return APR_EGENERAL;
+        return SERF_ERROR_ISSUE_IN_TESTSUITE;
 }
 
 static apr_status_t
@@ -1229,7 +1229,7 @@ ssl_server_cert_cb_expect_allok(void *baton, int failures,
 
     /* No error expected, certificate is valid. */
     if (failures)
-        return APR_EGENERAL;
+        return SERF_ERROR_ISSUE_IN_TESTSUITE;
     else
         return APR_SUCCESS;
 }
@@ -1391,10 +1391,10 @@ cert_chain_cb(void *baton,
     tb->result_flags |= TEST_RESULT_CERTCHAINCB_CALLED;
 
     if (failures)
-        return APR_EGENERAL;
+        return SERF_ERROR_ISSUE_IN_TESTSUITE;
 
     if (certs_len != 3)
-        return APR_EGENERAL;
+        return SERF_ERROR_ISSUE_IN_TESTSUITE;
 
     status = validate_rootcacert(certs[2], tb->pool);
     if (status)
@@ -1599,7 +1599,7 @@ apr_status_t client_cert_pw_cb(void *data,
         return APR_SUCCESS;
     }
 
-    return APR_EGENERAL;
+    return SERF_ERROR_ISSUE_IN_TESTSUITE;
 }
 
 static apr_status_t

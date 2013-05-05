@@ -106,6 +106,9 @@ typedef struct serf_request_t serf_request_t;
 /* Authentication handler initialization related errors */
 #define SERF_ERROR_AUTHN_INITALIZATION_FAILED (SERF_ERROR_START + 93)
 
+/* Error code reserved for use in the test suite. */
+#define SERF_ERROR_ISSUE_IN_TESTSUITE (SERF_ERROR_START + 99)
+
 /* This macro groups errors potentially raised when reading a http response.  */
 #define SERF_BAD_RESPONSE_ERROR(status) ((status) \
     && ((SERF_ERROR_DECOMPRESSION_FAILED == (status)) \
