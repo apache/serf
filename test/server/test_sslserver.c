@@ -142,6 +142,9 @@ static BIO_METHOD bio_apr_socket_method = {
 
 static int validate_client_certificate(int preverify_ok, X509_STORE_CTX *ctx)
 {
+    serf__log(TEST_VERBOSE, __FILE__, "validate_client_certificate called, "
+              "preverify code: %d.\n", preverify_ok);
+
     return preverify_ok;
 }
 
@@ -199,6 +202,9 @@ apr_status_t init_ssl_context(serv_ctx_t *serv_ctx,
             certfile = certfiles[i++];
         }
 
+        /* This makes the server send a client certificate request during
+           handshake. The client certificate is optional (most tests don't
+           send one) by default, but mandatory if client_cn was specified. */
         SSL_set_verify(ssl_ctx->ssl, SSL_VERIFY_PEER,
                        validate_client_certificate);
 
