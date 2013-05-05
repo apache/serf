@@ -44,8 +44,10 @@ typedef struct {
 } handler_baton_t;
 
 /* These defines are used with the test_baton_t result_flags variable. */
-#define TEST_RESULT_CERTCB_CALLED      0x0001
-#define TEST_RESULT_CERTCHAINCB_CALLED 0x0002
+#define TEST_RESULT_SERVERCERTCB_CALLED      0x0001
+#define TEST_RESULT_SERVERCERTCHAINCB_CALLED 0x0002
+#define TEST_RESULT_CLIENT_CERTCB_CALLED     0x0004
+#define TEST_RESULT_CLIENT_CERTPWCB_CALLED   0x0008
 
 /* Helper function, runs the client and server context loops and validates
    that no errors were encountered, and all messages were sent and received. */
@@ -1211,7 +1213,7 @@ ssl_server_cert_cb_expect_failures(void *baton, int failures,
                                    const serf_ssl_certificate_t *cert)
 {
     test_baton_t *tb = baton;
-    tb->result_flags |= TEST_RESULT_CERTCB_CALLED;
+    tb->result_flags |= TEST_RESULT_SERVERCERTCB_CALLED;
 
     /* We expect an error from the certificate validation function. */
     if (failures)
@@ -1225,7 +1227,7 @@ ssl_server_cert_cb_expect_allok(void *baton, int failures,
                                 const serf_ssl_certificate_t *cert)
 {
     test_baton_t *tb = baton;
-    tb->result_flags |= TEST_RESULT_CERTCB_CALLED;
+    tb->result_flags |= TEST_RESULT_SERVERCERTCB_CALLED;
 
     /* No error expected, certificate is valid. */
     if (failures)
@@ -1388,7 +1390,7 @@ cert_chain_cb(void *baton,
     test_baton_t *tb = baton;
     apr_status_t status;
 
-    tb->result_flags |= TEST_RESULT_CERTCHAINCB_CALLED;
+    tb->result_flags |= TEST_RESULT_SERVERCERTCHAINCB_CALLED;
 
     if (failures)
         return SERF_ERROR_ISSUE_IN_TESTSUITE;
@@ -1467,8 +1469,8 @@ static void test_serf_ssl_certificate_chain(CuTest *tc)
     test_helper_run_requests_expect_ok(tc, tb, num_requests,
                                        handler_ctx, test_pool);
 
-    CuAssertTrue(tc, tb->result_flags & TEST_RESULT_CERTCB_CALLED);
-    CuAssertTrue(tc, tb->result_flags & TEST_RESULT_CERTCHAINCB_CALLED);
+    CuAssertTrue(tc, tb->result_flags & TEST_RESULT_SERVERCERTCB_CALLED);
+    CuAssertTrue(tc, tb->result_flags & TEST_RESULT_SERVERCERTCHAINCB_CALLED);
 }
 
 /* Validate that the ssl handshake succeeds if no application callbacks
@@ -1584,6 +1586,10 @@ static void test_serf_ssl_large_response(CuTest *tc)
 apr_status_t client_cert_cb(void *data,
                             const char **cert_path)
 {
+    test_baton_t *tb = data;
+
+    tb->result_flags |= TEST_RESULT_CLIENT_CERTCB_CALLED;
+
     *cert_path = "test/server/serfclientcert.p12";
 
     return APR_SUCCESS;
@@ -1593,6 +1599,10 @@ apr_status_t client_cert_pw_cb(void *data,
                                const char *cert_path,
                                const char **password)
 {
+    test_baton_t *tb = data;
+
+    tb->result_flags |= TEST_RESULT_CLIENT_CERTPWCB_CALLED;
+    
     if (strcmp(cert_path, "test/server/serfclientcert.p12") == 0)
     {
         *password = "serftest";
@@ -1619,12 +1629,12 @@ client_cert_conn_setup(apr_socket_t *skt,
 
     serf_ssl_client_cert_provider_set(tb->ssl_context,
                                       client_cert_cb,
-                                      NULL,
+                                      tb,
                                       pool);
 
     serf_ssl_client_cert_password_set(tb->ssl_context,
                                       client_cert_pw_cb,
-                                      NULL,
+                                      tb,
                                       pool);
 
     return APR_SUCCESS;
@@ -1669,6 +1679,9 @@ static void test_serf_ssl_client_certificate(CuTest *tc)
 
     test_helper_run_requests_expect_ok(tc, tb, num_requests,
                                        handler_ctx, test_pool);
+
+    CuAssertTrue(tc, tb->result_flags & TEST_RESULT_CLIENT_CERTCB_CALLED);
+    CuAssertTrue(tc, tb->result_flags & TEST_RESULT_CLIENT_CERTPWCB_CALLED);
 }
 
 /*****************************************************************************/
