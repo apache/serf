@@ -44,8 +44,10 @@ typedef struct {
 } handler_baton_t;
 
 /* These defines are used with the test_baton_t result_flags variable. */
-#define TEST_RESULT_CERTCB_CALLED      0x0001
-#define TEST_RESULT_CERTCHAINCB_CALLED 0x0002
+#define TEST_RESULT_SERVERCERTCB_CALLED      0x0001
+#define TEST_RESULT_SERVERCERTCHAINCB_CALLED 0x0002
+#define TEST_RESULT_CLIENT_CERTCB_CALLED     0x0004
+#define TEST_RESULT_CLIENT_CERTPWCB_CALLED   0x0008
 
 /* Helper function, runs the client and server context loops and validates
    that no errors were encountered, and all messages were sent and received. */
@@ -962,7 +964,7 @@ static apr_status_t handle_response_timeout(
     }
 
     if (serf_request_is_written(request) != APR_EBUSY) {
-        return APR_EGENERAL;
+        return SERF_ERROR_ISSUE_IN_TESTSUITE;
     }
 
 
@@ -1123,25 +1125,25 @@ static apr_status_t validate_servercert(const serf_ssl_certificate_t *cert,
     subject = serf_ssl_cert_subject(cert, pool);
     if (strcmp("Serf Server",
                apr_hash_get(subject, "CN", APR_HASH_KEY_STRING)) != 0)
-        return APR_EGENERAL;
+        return SERF_ERROR_ISSUE_IN_TESTSUITE;
     if (strcmp("Test Suite Server",
                apr_hash_get(subject, "OU", APR_HASH_KEY_STRING)) != 0)
-        return APR_EGENERAL;
+        return SERF_ERROR_ISSUE_IN_TESTSUITE;
     if (strcmp("In Serf we trust, Inc.",
                apr_hash_get(subject, "O", APR_HASH_KEY_STRING)) != 0)
-        return APR_EGENERAL;
+        return SERF_ERROR_ISSUE_IN_TESTSUITE;
     if (strcmp("Mechelen",
                apr_hash_get(subject, "L", APR_HASH_KEY_STRING)) != 0)
-        return APR_EGENERAL;
+        return SERF_ERROR_ISSUE_IN_TESTSUITE;
     if (strcmp("Antwerp",
                apr_hash_get(subject, "ST", APR_HASH_KEY_STRING)) != 0)
-        return APR_EGENERAL;
+        return SERF_ERROR_ISSUE_IN_TESTSUITE;
     if (strcmp("BE",
                apr_hash_get(subject, "C", APR_HASH_KEY_STRING)) != 0)
-        return APR_EGENERAL;
+        return SERF_ERROR_ISSUE_IN_TESTSUITE;
     if (strcmp("serfserver@example.com",
                apr_hash_get(subject, "E", APR_HASH_KEY_STRING)) != 0)
-        return APR_EGENERAL;
+        return SERF_ERROR_ISSUE_IN_TESTSUITE;
 
     return APR_SUCCESS;
 }
@@ -1153,25 +1155,25 @@ static apr_status_t validate_cacert(const serf_ssl_certificate_t *cert,
     subject = serf_ssl_cert_subject(cert, pool);
     if (strcmp("Serf CA",
                apr_hash_get(subject, "CN", APR_HASH_KEY_STRING)) != 0)
-        return APR_EGENERAL;
+        return SERF_ERROR_ISSUE_IN_TESTSUITE;
     if (strcmp("Test Suite CA",
                apr_hash_get(subject, "OU", APR_HASH_KEY_STRING)) != 0)
-        return APR_EGENERAL;
+        return SERF_ERROR_ISSUE_IN_TESTSUITE;
     if (strcmp("In Serf we trust, Inc.",
                apr_hash_get(subject, "O", APR_HASH_KEY_STRING)) != 0)
-        return APR_EGENERAL;
+        return SERF_ERROR_ISSUE_IN_TESTSUITE;
     if (strcmp("Mechelen",
                apr_hash_get(subject, "L", APR_HASH_KEY_STRING)) != 0)
-        return APR_EGENERAL;
+        return SERF_ERROR_ISSUE_IN_TESTSUITE;
     if (strcmp("Antwerp",
                apr_hash_get(subject, "ST", APR_HASH_KEY_STRING)) != 0)
-        return APR_EGENERAL;
+        return SERF_ERROR_ISSUE_IN_TESTSUITE;
     if (strcmp("BE",
                apr_hash_get(subject, "C", APR_HASH_KEY_STRING)) != 0)
-        return APR_EGENERAL;
+        return SERF_ERROR_ISSUE_IN_TESTSUITE;
     if (strcmp("serfca@example.com",
                apr_hash_get(subject, "E", APR_HASH_KEY_STRING)) != 0)
-        return APR_EGENERAL;
+        return SERF_ERROR_ISSUE_IN_TESTSUITE;
 
     return APR_SUCCESS;
 }
@@ -1183,25 +1185,25 @@ static apr_status_t validate_rootcacert(const serf_ssl_certificate_t *cert,
     subject = serf_ssl_cert_subject(cert, pool);
     if (strcmp("Serf Root CA",
                apr_hash_get(subject, "CN", APR_HASH_KEY_STRING)) != 0)
-        return APR_EGENERAL;
+        return SERF_ERROR_ISSUE_IN_TESTSUITE;
     if (strcmp("Test Suite Root CA",
                apr_hash_get(subject, "OU", APR_HASH_KEY_STRING)) != 0)
-        return APR_EGENERAL;
+        return SERF_ERROR_ISSUE_IN_TESTSUITE;
     if (strcmp("In Serf we trust, Inc.",
                apr_hash_get(subject, "O", APR_HASH_KEY_STRING)) != 0)
-        return APR_EGENERAL;
+        return SERF_ERROR_ISSUE_IN_TESTSUITE;
     if (strcmp("Mechelen",
                apr_hash_get(subject, "L", APR_HASH_KEY_STRING)) != 0)
-        return APR_EGENERAL;
+        return SERF_ERROR_ISSUE_IN_TESTSUITE;
     if (strcmp("Antwerp",
                apr_hash_get(subject, "ST", APR_HASH_KEY_STRING)) != 0)
-        return APR_EGENERAL;
+        return SERF_ERROR_ISSUE_IN_TESTSUITE;
     if (strcmp("BE",
                apr_hash_get(subject, "C", APR_HASH_KEY_STRING)) != 0)
-        return APR_EGENERAL;
+        return SERF_ERROR_ISSUE_IN_TESTSUITE;
     if (strcmp("serfrootca@example.com",
                apr_hash_get(subject, "E", APR_HASH_KEY_STRING)) != 0)
-        return APR_EGENERAL;
+        return SERF_ERROR_ISSUE_IN_TESTSUITE;
 
     return APR_SUCCESS;
 }
@@ -1211,13 +1213,13 @@ ssl_server_cert_cb_expect_failures(void *baton, int failures,
                                    const serf_ssl_certificate_t *cert)
 {
     test_baton_t *tb = baton;
-    tb->result_flags |= TEST_RESULT_CERTCB_CALLED;
+    tb->result_flags |= TEST_RESULT_SERVERCERTCB_CALLED;
 
     /* We expect an error from the certificate validation function. */
     if (failures)
         return APR_SUCCESS;
     else
-        return APR_EGENERAL;
+        return SERF_ERROR_ISSUE_IN_TESTSUITE;
 }
 
 static apr_status_t
@@ -1225,11 +1227,11 @@ ssl_server_cert_cb_expect_allok(void *baton, int failures,
                                 const serf_ssl_certificate_t *cert)
 {
     test_baton_t *tb = baton;
-    tb->result_flags |= TEST_RESULT_CERTCB_CALLED;
+    tb->result_flags |= TEST_RESULT_SERVERCERTCB_CALLED;
 
     /* No error expected, certificate is valid. */
     if (failures)
-        return APR_EGENERAL;
+        return SERF_ERROR_ISSUE_IN_TESTSUITE;
     else
         return APR_SUCCESS;
 }
@@ -1388,13 +1390,13 @@ cert_chain_cb(void *baton,
     test_baton_t *tb = baton;
     apr_status_t status;
 
-    tb->result_flags |= TEST_RESULT_CERTCHAINCB_CALLED;
+    tb->result_flags |= TEST_RESULT_SERVERCERTCHAINCB_CALLED;
 
     if (failures)
-        return APR_EGENERAL;
+        return SERF_ERROR_ISSUE_IN_TESTSUITE;
 
     if (certs_len != 3)
-        return APR_EGENERAL;
+        return SERF_ERROR_ISSUE_IN_TESTSUITE;
 
     status = validate_rootcacert(certs[2], tb->pool);
     if (status)
@@ -1467,8 +1469,8 @@ static void test_serf_ssl_certificate_chain(CuTest *tc)
     test_helper_run_requests_expect_ok(tc, tb, num_requests,
                                        handler_ctx, test_pool);
 
-    CuAssertTrue(tc, tb->result_flags & TEST_RESULT_CERTCB_CALLED);
-    CuAssertTrue(tc, tb->result_flags & TEST_RESULT_CERTCHAINCB_CALLED);
+    CuAssertTrue(tc, tb->result_flags & TEST_RESULT_SERVERCERTCB_CALLED);
+    CuAssertTrue(tc, tb->result_flags & TEST_RESULT_SERVERCERTCHAINCB_CALLED);
 }
 
 /* Validate that the ssl handshake succeeds if no application callbacks
@@ -1584,7 +1586,10 @@ static void test_serf_ssl_large_response(CuTest *tc)
 apr_status_t client_cert_cb(void *data,
                             const char **cert_path)
 {
-    printf("client_cert_cb called.\n");
+    test_baton_t *tb = data;
+
+    tb->result_flags |= TEST_RESULT_CLIENT_CERTCB_CALLED;
+
     *cert_path = "test/server/serfclientcert.p12";
 
     return APR_SUCCESS;
@@ -1594,14 +1599,17 @@ apr_status_t client_cert_pw_cb(void *data,
                                const char *cert_path,
                                const char **password)
 {
-    printf("client_cert_pw_cb called.\n");
+    test_baton_t *tb = data;
+
+    tb->result_flags |= TEST_RESULT_CLIENT_CERTPWCB_CALLED;
+    
     if (strcmp(cert_path, "test/server/serfclientcert.p12") == 0)
     {
         *password = "serftest";
         return APR_SUCCESS;
     }
 
-    return APR_EGENERAL;
+    return SERF_ERROR_ISSUE_IN_TESTSUITE;
 }
 
 static apr_status_t
@@ -1621,12 +1629,12 @@ client_cert_conn_setup(apr_socket_t *skt,
 
     serf_ssl_client_cert_provider_set(tb->ssl_context,
                                       client_cert_cb,
-                                      NULL,
+                                      tb,
                                       pool);
 
     serf_ssl_client_cert_password_set(tb->ssl_context,
                                       client_cert_pw_cb,
-                                      NULL,
+                                      tb,
                                       pool);
 
     return APR_SUCCESS;
@@ -1671,6 +1679,9 @@ static void test_serf_ssl_client_certificate(CuTest *tc)
 
     test_helper_run_requests_expect_ok(tc, tb, num_requests,
                                        handler_ctx, test_pool);
+
+    CuAssertTrue(tc, tb->result_flags & TEST_RESULT_CLIENT_CERTCB_CALLED);
+    CuAssertTrue(tc, tb->result_flags & TEST_RESULT_CLIENT_CERTPWCB_CALLED);
 }
 
 /*****************************************************************************/

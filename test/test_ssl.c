@@ -86,23 +86,13 @@ static void test_ssl_cert_subject(CuTest *tc)
 {
     apr_hash_t *subject;
     serf_ssl_certificate_t *cert = NULL;
-    serf_bucket_t *bkt, *stream;
-    serf_ssl_context_t *ssl_context;
     apr_status_t status;
 
     apr_pool_t *test_pool = tc->testBaton;
-    serf_bucket_alloc_t *alloc = serf_bucket_allocator_create(test_pool, NULL,
-                                                              NULL);
 
-    stream = SERF_BUCKET_SIMPLE_STRING("", alloc);
-    bkt = serf_bucket_ssl_decrypt_create(stream, NULL, alloc);
-    ssl_context = serf_bucket_ssl_decrypt_context_get(bkt);
-
-    status = serf_ssl_load_CA_cert_from_file(ssl_context,
-                                             &cert,
-                                             get_ca_file(test_pool, "test/serftestca.pem"),
-                                             test_pool);
-
+    status = serf_ssl_load_cert_file(&cert, get_ca_file(test_pool,
+                                                        "test/serftestca.pem"),
+                                     test_pool);
     CuAssertIntEquals(tc, APR_SUCCESS, status);
     CuAssertPtrNotNull(tc, cert);
 
@@ -130,22 +120,13 @@ static void test_ssl_cert_issuer(CuTest *tc)
 {
     apr_hash_t *issuer;
     serf_ssl_certificate_t *cert = NULL;
-    serf_bucket_t *bkt, *stream;
-    serf_ssl_context_t *ssl_context;
     apr_status_t status;
 
-    apr_pool_t *test_pool = test_setup();
-    serf_bucket_alloc_t *alloc = serf_bucket_allocator_create(test_pool, NULL,
-                                                              NULL);
+    apr_pool_t *test_pool = tc->testBaton;
 
-    stream = SERF_BUCKET_SIMPLE_STRING("", alloc);
-    bkt = serf_bucket_ssl_decrypt_create(stream, NULL, alloc);
-    ssl_context = serf_bucket_ssl_decrypt_context_get(bkt);
-
-    status = serf_ssl_load_CA_cert_from_file(ssl_context,
-                                             &cert,
-                                             get_ca_file(test_pool, "test/serftestca.pem"),
-                                             test_pool);
+    status = serf_ssl_load_cert_file(&cert, get_ca_file(test_pool,
+                                                        "test/serftestca.pem"),
+                                     test_pool);
 
     CuAssertIntEquals(tc, APR_SUCCESS, status);
     CuAssertPtrNotNull(tc, cert);
@@ -168,8 +149,6 @@ static void test_ssl_cert_issuer(CuTest *tc)
                       apr_hash_get(issuer, "C", APR_HASH_KEY_STRING));
     CuAssertStrEquals(tc, "serf@example.com",
                       apr_hash_get(issuer, "E", APR_HASH_KEY_STRING));
-
-    test_teardown(test_pool);
 }
 
 /* Test that reading the notBefore,notAfter,sha1 fingerprint and subjectAltNames
@@ -178,24 +157,14 @@ static void test_ssl_cert_certificate(CuTest *tc)
 {
     apr_hash_t *kv;
     serf_ssl_certificate_t *cert = NULL;
-    serf_bucket_t *bkt, *stream;
-    serf_ssl_context_t *ssl_context;
-    apr_status_t status;
     apr_array_header_t *san_arr;
+    apr_status_t status;
 
-    apr_pool_t *test_pool = test_setup();
-    serf_bucket_alloc_t *alloc = serf_bucket_allocator_create(test_pool, NULL,
-                                                              NULL);
+    apr_pool_t *test_pool = tc->testBaton;
 
-    stream = SERF_BUCKET_SIMPLE_STRING("", alloc);
-    bkt = serf_bucket_ssl_decrypt_create(stream, NULL, alloc);
-    ssl_context = serf_bucket_ssl_decrypt_context_get(bkt);
-
-    status = serf_ssl_load_CA_cert_from_file(ssl_context,
-                                             &cert,
-                                             get_ca_file(test_pool, "test/serftestca.pem"),
-                                             test_pool);
-
+    status = serf_ssl_load_cert_file(&cert, get_ca_file(test_pool,
+                                                        "test/serftestca.pem"),
+                                     test_pool);
     CuAssertIntEquals(tc, APR_SUCCESS, status);
     CuAssertPtrNotNull(tc, cert);
 
@@ -212,8 +181,6 @@ static void test_ssl_cert_certificate(CuTest *tc)
     /* TODO: create a new test certificate with a/some sAN's. */
     san_arr = apr_hash_get(kv, "subjectAltName", APR_HASH_KEY_STRING);
     CuAssertTrue(tc, san_arr == NULL);
-
-    test_teardown(test_pool);
 }
 
 static void test_ssl_load_CA_cert_from_file(CuTest *tc)
@@ -223,7 +190,7 @@ static void test_ssl_load_CA_cert_from_file(CuTest *tc)
     serf_ssl_context_t *ssl_context;
     apr_status_t status;
 
-    apr_pool_t *test_pool = test_setup();
+    apr_pool_t *test_pool = tc->testBaton;
     serf_bucket_alloc_t *alloc = serf_bucket_allocator_create(test_pool, NULL,
                                                               NULL);
 
@@ -232,13 +199,12 @@ static void test_ssl_load_CA_cert_from_file(CuTest *tc)
     ssl_context = serf_bucket_ssl_decrypt_context_get(bkt);
 
     status = serf_ssl_load_CA_cert_from_file(ssl_context,
-                 &cert,
-                 get_ca_file(test_pool, "test/serftestca.pem"),
-                 test_pool);
+                                             &cert,
+                                             get_ca_file(test_pool, "test/serftestca.pem"),
+                                             test_pool);
 
     CuAssertIntEquals(tc, APR_SUCCESS, status);
     CuAssertPtrNotNull(tc, cert);
-    test_teardown(test_pool);
 }
 
 static const char *extract_cert_from_pem(const char *pemdata,
@@ -301,27 +267,18 @@ static const char *extract_cert_from_pem(const char *pemdata,
 static void test_ssl_cert_export(CuTest *tc)
 {
     serf_ssl_certificate_t *cert = NULL;
-    serf_bucket_t *bkt, *stream;
-    serf_ssl_context_t *ssl_context;
-    apr_status_t status;
     apr_file_t *fp;
     apr_finfo_t file_info;
-    const char *pembuf, *base64derbuf;
+    const char *base64derbuf;
+    char *pembuf;
     apr_size_t pemlen;
+    apr_status_t status;
 
-    apr_pool_t *test_pool = test_setup();
-    serf_bucket_alloc_t *alloc = serf_bucket_allocator_create(test_pool, NULL,
-                                                              NULL);
+    apr_pool_t *test_pool = tc->testBaton;
 
-    stream = SERF_BUCKET_SIMPLE_STRING("", alloc);
-    bkt = serf_bucket_ssl_decrypt_create(stream, NULL, alloc);
-    ssl_context = serf_bucket_ssl_decrypt_context_get(bkt);
-
-    status = serf_ssl_load_CA_cert_from_file(ssl_context,
-                                             &cert,
-                                             get_ca_file(test_pool, "test/serftestca.pem"),
-                                             test_pool);
-
+    status = serf_ssl_load_cert_file(&cert, get_ca_file(test_pool,
+                                                        "test/serftestca.pem"),
+                                     test_pool);
     CuAssertIntEquals(tc, APR_SUCCESS, status);
     CuAssertPtrNotNull(tc, cert);
 
@@ -343,8 +300,6 @@ static void test_ssl_cert_export(CuTest *tc)
     CuAssertStrEquals(tc,
                       extract_cert_from_pem(pembuf, test_pool),
                       base64derbuf);
-
-    test_teardown(test_pool);
 }
 
 CuSuite *test_ssl(void)

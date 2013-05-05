@@ -90,7 +90,7 @@ static apr_status_t replay(serv_ctx_t *servctx,
             /* we're not expecting any requests to reach this server! */
             printf("Received request where none was expected\n");
 
-            return APR_EGENERAL;
+            return SERF_ERROR_ISSUE_IN_TESTSUITE;
         }
 
         if (servctx->cur_action >= servctx->action_count) {
@@ -102,7 +102,7 @@ static apr_status_t replay(serv_ctx_t *servctx,
                 /* we're out of actions! */
                 printf("Received more requests than expected.\n");
 
-                return APR_EGENERAL;
+                return SERF_ERROR_ISSUE_IN_TESTSUITE;
             }
             return status;
         }
@@ -154,7 +154,7 @@ static apr_status_t replay(serv_ctx_t *servctx,
                 fwrite(buf, len, 1, stdout);
                 printf(")\n");
 
-                return APR_EGENERAL;
+                return SERF_ERROR_ISSUE_IN_TESTSUITE;
             }
 
             servctx->message_buf_pos += len;

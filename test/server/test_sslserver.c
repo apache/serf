@@ -142,6 +142,9 @@ static BIO_METHOD bio_apr_socket_method = {
 
 static int validate_client_certificate(int preverify_ok, X509_STORE_CTX *ctx)
 {
+    serf__log(TEST_VERBOSE, __FILE__, "validate_client_certificate called, "
+              "preverify code: %d.\n", preverify_ok);
+
     return preverify_ok;
 }
 
@@ -199,6 +202,9 @@ apr_status_t init_ssl_context(serv_ctx_t *serv_ctx,
             certfile = certfiles[i++];
         }
 
+        /* This makes the server send a client certificate request during
+           handshake. The client certificate is optional (most tests don't
+           send one) by default, but mandatory if client_cn was specified. */
         SSL_set_verify(ssl_ctx->ssl, SSL_VERIFY_PEER,
                        validate_client_certificate);
 
@@ -245,7 +251,7 @@ apr_status_t ssl_handshake(serv_ctx_t *serv_ctx)
                     serf__log(TEST_VERBOSE, __FILE__, "Client cert common name "
                               "\"%s\" doesn't match expected \"%s\".\n", buf,
                               serv_ctx->client_cn);
-                    return APR_EGENERAL;
+                    return SERF_ERROR_ISSUE_IN_TESTSUITE;
 
                 }
             }
@@ -253,7 +259,7 @@ apr_status_t ssl_handshake(serv_ctx_t *serv_ctx)
             if (serv_ctx->client_cn) {
                 serf__log(TEST_VERBOSE, __FILE__, "Client cert expected but not"
                           " received.\n");
-                return APR_EGENERAL;
+                return SERF_ERROR_ISSUE_IN_TESTSUITE;
             }
         }
 
@@ -271,7 +277,7 @@ apr_status_t ssl_handshake(serv_ctx_t *serv_ctx)
                 serf__log(TEST_VERBOSE, __FILE__, "SSL Error %d: ", ssl_err);
                 ERR_print_errors_fp(stderr);
                 serf__log_nopref(TEST_VERBOSE, "\n");
-                return APR_EGENERAL;
+                return SERF_ERROR_ISSUE_IN_TESTSUITE;
         }
     }
 
@@ -293,7 +299,7 @@ ssl_socket_write(serv_ctx_t *serv_ctx, const char *data,
     if (result == 0)
         return APR_EAGAIN;
     
-    return APR_EGENERAL;
+    return SERF_ERROR_ISSUE_IN_TESTSUITE;
 }
 
 apr_status_t
@@ -308,7 +314,7 @@ ssl_socket_read(serv_ctx_t *serv_ctx, char *data,
         return APR_SUCCESS;
     }
 
-    return APR_EGENERAL;
+    return SERF_ERROR_ISSUE_IN_TESTSUITE;
 }
 
 void cleanup_ssl_context(serv_ctx_t *serv_ctx)
