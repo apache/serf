@@ -524,34 +524,46 @@ cleanup:
 /* Run the SSL handshake. */
 static apr_status_t do_handshake(sectrans_context_t *ssl_ctx)
 {
-    OSStatus sectrans_status;
-    apr_status_t status;
+    OSStatus osstatus;
+    apr_status_t status = APR_SUCCESS;
 
-    serf__log(SSL_VERBOSE, __FILE__, "do_handshake called.\n");
+    if (ssl_ctx->state == SERF_SECTRANS_INIT ||
+        ssl_ctx->state == SERF_SECTRANS_HANDSHAKE)
+    {
+        ssl_ctx->state = SERF_SECTRANS_HANDSHAKE;
 
-    sectrans_status = SSLHandshake(ssl_ctx->st_ctxr);
-    if (sectrans_status)
-        serf__log(SSL_VERBOSE, __FILE__, "do_handshake returned err %d.\n",
-                  sectrans_status);
+        serf__log(SSL_VERBOSE, __FILE__, "do_handshake called.\n");
 
-    switch(sectrans_status) {
-        case noErr:
-            status = APR_SUCCESS;
-            break;
-        case errSSLServerAuthCompleted:
-            /* Server's cert validation was disabled, so we can to do this
-               here. */
-            status = validate_server_certificate(ssl_ctx);
-            if (!status)
-                return APR_EAGAIN;
-            break;
-        case errSSLClientCertRequested:
-            return APR_ENOTIMPL;
-        default:
-            status = translate_sectrans_status(sectrans_status);
-            break;
+        osstatus = SSLHandshake(ssl_ctx->st_ctxr);
+        if (osstatus)
+            serf__log(SSL_VERBOSE, __FILE__, "do_handshake returned err %d.\n",
+                      osstatus);
+
+        switch(osstatus) {
+            case noErr:
+                status = APR_SUCCESS;
+                break;
+            case errSSLServerAuthCompleted:
+                /* Server's cert validation was disabled, so we can to do this
+                 here. */
+                status = validate_server_certificate(ssl_ctx);
+                if (!status)
+                    return APR_EAGAIN;
+                break;
+            case errSSLClientCertRequested:
+                return APR_ENOTIMPL;
+            default:
+                status = translate_sectrans_status(osstatus);
+                break;
+        }
+
+        if (!status)
+        {
+            serf__log(SSL_VERBOSE, __FILE__, "ssl/tls handshake successful.\n");
+            ssl_ctx->state = SERF_SECTRANS_CONNECTED;
+        }
     }
-
+    
     return status;
 }
 
@@ -982,25 +994,13 @@ serf_sectrans_encrypt_read(serf_bucket_t *bucket,
     serf__log(SSL_VERBOSE, __FILE__, "serf_sectrans_encrypt_read called for "
               "%d bytes.\n", requested);
 
-    /* Pending handshake? */
-    if (ssl_ctx->state == SERF_SECTRANS_INIT ||
-        ssl_ctx->state == SERF_SECTRANS_HANDSHAKE)
-    {
-        ssl_ctx->state = SERF_SECTRANS_HANDSHAKE;
-        status = do_handshake(ssl_ctx);
-
-        if (SERF_BUCKET_READ_ERROR(status))
-            return status;
-
-        if (!status)
-        {
-            serf__log(SSL_VERBOSE, __FILE__, "ssl/tls handshake successful.\n");
-            ssl_ctx->state = SERF_SECTRANS_CONNECTED;
-        } else {
-            /* Maybe the handshake algorithm put some data in the pending
-               outgoing bucket? */
-            return serf_bucket_read(ssl_ctx->encrypt.pending, requested, data, len);
-        }
+    status = do_handshake(ssl_ctx);
+    if (SERF_BUCKET_READ_ERROR(status))
+        return status;
+    if (status) {
+        /* Maybe the handshake algorithm put some data in the pending
+         outgoing bucket? */
+        return serf_bucket_read(ssl_ctx->encrypt.pending, requested, data, len);
     }
 
     /* Handshake successful. */
@@ -1152,6 +1152,13 @@ serf_sectrans_decrypt_read(serf_bucket_t *bucket,
     serf__log(SSL_VERBOSE, __FILE__,
               "serf_sectrans_decrypt_read called for %d bytes.\n", requested);
 
+    /* Pending handshake? */
+    status = do_handshake(ssl_ctx);
+    if (status) {
+        *len = 0;
+        return status;
+    }
+
     /* First use any pending encrypted data. */
     status = serf_bucket_read(ssl_ctx->decrypt.pending,
                               requested, data, len);
@@ -1188,6 +1195,14 @@ serf_sectrans_decrypt_readline(serf_bucket_t *bucket,
     serf__log(SSL_VERBOSE, __FILE__,
               "serf_sectrans_decrypt_readline called.\n");
 
+    /* Pending handshake? */
+    status = do_handshake(ssl_ctx);
+    if (status) {
+        *len = 0;
+        *found = SERF_NEWLINE_NONE;
+        return status;
+    }
+    
     /* First use any pending encrypted data. */
     status = serf_bucket_readline(ssl_ctx->decrypt.pending, acceptable, found,
                                   data, len);
