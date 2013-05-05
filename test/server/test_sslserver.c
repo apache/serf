@@ -245,7 +245,7 @@ apr_status_t ssl_handshake(serv_ctx_t *serv_ctx)
                     serf__log(TEST_VERBOSE, __FILE__, "Client cert common name "
                               "\"%s\" doesn't match expected \"%s\".\n", buf,
                               serv_ctx->client_cn);
-                    return APR_EGENERAL;
+                    return SERF_ERROR_ISSUE_IN_TESTSUITE;
 
                 }
             }
@@ -253,7 +253,7 @@ apr_status_t ssl_handshake(serv_ctx_t *serv_ctx)
             if (serv_ctx->client_cn) {
                 serf__log(TEST_VERBOSE, __FILE__, "Client cert expected but not"
                           " received.\n");
-                return APR_EGENERAL;
+                return SERF_ERROR_ISSUE_IN_TESTSUITE;
             }
         }
 
@@ -271,7 +271,7 @@ apr_status_t ssl_handshake(serv_ctx_t *serv_ctx)
                 serf__log(TEST_VERBOSE, __FILE__, "SSL Error %d: ", ssl_err);
                 ERR_print_errors_fp(stderr);
                 serf__log_nopref(TEST_VERBOSE, "\n");
-                return APR_EGENERAL;
+                return SERF_ERROR_ISSUE_IN_TESTSUITE;
         }
     }
 
@@ -293,7 +293,7 @@ ssl_socket_write(serv_ctx_t *serv_ctx, const char *data,
     if (result == 0)
         return APR_EAGAIN;
     
-    return APR_EGENERAL;
+    return SERF_ERROR_ISSUE_IN_TESTSUITE;
 }
 
 apr_status_t
@@ -308,7 +308,7 @@ ssl_socket_read(serv_ctx_t *serv_ctx, char *data,
         return APR_SUCCESS;
     }
 
-    return APR_EGENERAL;
+    return SERF_ERROR_ISSUE_IN_TESTSUITE;
 }
 
 void cleanup_ssl_context(serv_ctx_t *serv_ctx)
