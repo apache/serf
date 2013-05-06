@@ -22,6 +22,7 @@
 
 #include <apr_strings.h>
 #include <apr_base64.h>
+#include <apr_file_io.h>
 
 #include <Security/SecureTransport.h>
 #include <Security/SecPolicy.h>
@@ -67,6 +68,9 @@ typedef struct sectrans_context_t {
 
     SSLContextRef st_ctxr;
 
+    SecKeychainRef tempKeyChainRef;
+    char *keychain_temp_file;
+
     /* stream of (to be) encrypted data, outgoing to the network. */
     sectrans_ssl_stream_t encrypt;
 
@@ -82,6 +86,22 @@ typedef struct sectrans_context_t {
        serf_ssl_cert_validation_mode_t for more info. */
     int modes;
 
+    /* Client cert callbacks */
+    serf_ssl_need_client_cert_t client_cert_callback;
+    void *client_cert_userdata;
+#if 0
+    apr_pool_t *client_cert_cache_pool;
+    const char *cert_file_success;
+#endif
+
+    /* Client cert PW callbacks */
+    serf_ssl_need_cert_password_t client_cert_pw_callback;
+    void *client_cert_pw_userdata;
+#if 0
+    apr_pool_t *cert_pw_cache_pool;
+    const char *cert_pw_success;
+#endif
+
     /* Server cert callbacks */
     serf_ssl_need_server_cert_t server_cert_callback;
     serf_ssl_server_cert_chain_cb_t server_cert_chain_callback;
@@ -93,17 +113,27 @@ typedef struct sectrans_context_t {
 } sectrans_context_t;
 
 static apr_status_t
-translate_sectrans_status(OSStatus status)
+translate_sectrans_status(OSStatus osstatus)
 {
-    switch (status)
+    switch (osstatus)
     {
         case noErr:
             return APR_SUCCESS;
         case errSSLWouldBlock:
             return APR_EAGAIN;
         default:
+#if SSL_VERBOSE
+        {
+            apr_pool_t *temppool;
+            CFStringRef errref = SecCopyErrorMessageString(osstatus, NULL);
+            apr_pool_create(&temppool, NULL);
+            
             serf__log(SSL_VERBOSE, __FILE__,
-                      "Unknown Secure Transport error %d\n", status);
+                      "Unknown Secure Transport error: %d,%s.\n",
+                      osstatus, CFStringToChar(errref, temppool));
+            apr_pool_destroy(temppool);
+        }
+#endif
             return APR_EGENERAL;
     }
 }
@@ -165,6 +195,10 @@ sectrans_init_context(serf_bucket_alloc_t *allocator)
                             kSSLSessionOptionBreakOnServerAuth,
                             true))
         return NULL;
+    if (SSLSetSessionOption(ssl_ctx->st_ctxr,
+                            kSSLSessionOptionBreakOnCertRequested,
+                            true))
+        return NULL;
     if (SSLSetEnableCertVerify(ssl_ctx->st_ctxr, false))
         return NULL;
 
@@ -172,16 +206,23 @@ sectrans_init_context(serf_bucket_alloc_t *allocator)
 }
 
 static apr_status_t
-sectrans_free_context(sectrans_context_t * ctx, serf_bucket_alloc_t *allocator)
+sectrans_free_context(sectrans_context_t *ssl_ctx,
+                      serf_bucket_alloc_t *allocator)
 {
-    OSStatus status = SSLDisposeContext (ctx->st_ctxr);
+    OSStatus osstatus;
+    apr_status_t status = APR_SUCCESS;
 
-    apr_pool_destroy(ctx->pool);
+    (void)SSLDisposeContext(ssl_ctx->st_ctxr);
 
-    serf_bucket_mem_free(allocator, ctx);
+    (void)delete_temp_keychain(ssl_ctx);
 
-    if (status)
+    apr_pool_destroy(ssl_ctx->pool);
+
+    serf_bucket_mem_free(allocator, ssl_ctx);
+
+    if (status) {
         return APR_EGENERAL;
+    }
 
     return APR_SUCCESS;
 }
@@ -261,6 +302,115 @@ sectrans_write_cb(SSLConnectionRef connection,
     serf_bucket_aggregate_append(ctx->encrypt.pending, tmp);
 
     return noErr;
+}
+
+static apr_status_t
+load_data_from_file(const char *file_path, CFDataRef *databuf, apr_pool_t *pool)
+{
+    apr_file_t *fp;
+    apr_finfo_t file_info;
+    apr_size_t len;
+    char *buf;
+    apr_status_t status;
+
+    status = apr_file_open(&fp, file_path,
+                           APR_FOPEN_READ | APR_FOPEN_BINARY,
+                           APR_FPROT_OS_DEFAULT, pool);
+    if (status)
+        return status;
+
+    /* Read the file in memory */
+    apr_file_info_get(&file_info, APR_FINFO_SIZE, fp);
+    buf = apr_palloc(pool, file_info.size);
+
+    status = apr_file_read_full(fp, buf, file_info.size, &len);
+    if (status)
+        return status;
+
+    *databuf = CFDataCreateWithBytesNoCopy(kCFAllocatorDefault,
+                                           (unsigned char *)buf,
+                                           file_info.size,
+                                           kCFAllocatorNull);
+
+    return APR_SUCCESS;
+}
+
+static apr_status_t
+load_certificate_from_databuf(CFDataRef databuf,
+                              CFArrayRef *items,
+                              apr_pool_t *pool)
+{
+    SecExternalItemType itemType;
+    OSStatus osstatus;
+    apr_status_t status = APR_SUCCESS;
+
+    osstatus = SecItemImport(databuf, NULL,
+                             kSecFormatUnknown,
+                             &itemType,
+                             0,    /* SecItemImportExportFlags */
+                             NULL, /* SecItemImportExportKeyParameters */
+                             NULL, /* SecKeychainRef */
+                             items);
+    if (osstatus != errSecSuccess)
+    {
+        /* TODO: should be handled in translate_... */
+        status = SERF_ERROR_SSL_CERT_FAILED;
+    }
+
+    return status;
+}
+
+static apr_status_t
+load_identity_from_databuf(sectrans_context_t *ssl_ctx,
+                           CFDataRef databuf,
+                           CFArrayRef *items,
+                           const char *passphrase,
+                           apr_pool_t *pool)
+{
+    SecExternalFormat format;
+    SecItemImportExportKeyParameters keyParams;
+    SecExternalItemType itemType;
+    OSStatus osstatus;
+    apr_status_t status = APR_SUCCESS;
+
+    /* SecItemImport will crash if keyUsage member is not set to NULL. */
+    memset(&keyParams, 0, sizeof(SecItemImportExportKeyParameters));
+
+    format = kSecFormatPKCS12;
+    itemType = kSecItemTypeUnknown;
+
+    if (passphrase)
+    {
+        CFStringRef pwref;
+
+        pwref = CFStringCreateWithBytesNoCopy(kCFAllocatorDefault,
+                                              (unsigned char *)passphrase,
+                                              strlen(passphrase),
+                                              kCFStringEncodingMacRoman,
+                                              false,
+                                              kCFAllocatorNull);
+        keyParams.passphrase = pwref;
+    }
+
+    osstatus = SecItemImport(databuf,
+                             NULL,
+                             &format,
+                             &itemType,
+                             0,    /* SecItemImportExportFlags */
+                             &keyParams,
+                             ssl_ctx->tempKeyChainRef,
+                             items);
+    if (osstatus == errSecSuccess)
+    {
+        status = APR_SUCCESS;
+    } else if (osstatus == errSecPassphraseRequired) {
+        status = SERF_ERROR_SSL_CLIENT_CERT_PW_FAILED;
+    } else {
+        /* TODO: should be handled in translate_... */
+        status = SERF_ERROR_SSL_CERT_FAILED;
+    }
+
+    return status;
 }
 
 /* Show a SFCertificateTrustPanel. This is the Mac OS X default dialog to
@@ -521,6 +671,169 @@ cleanup:
     return status;
 }
 
+static apr_status_t create_temp_keychain(sectrans_context_t *ssl_ctx)
+{
+    apr_file_t *tmpfile;
+    const char *temp_dir;
+    apr_status_t status;
+    OSStatus osstatus;
+
+    if (ssl_ctx->tempKeyChainRef)
+        return APR_SUCCESS;
+
+    /* The Keychain API only allows us to load an identity (private key +
+     certificate) for use in the SetCertificate call in a keychain.
+     We don't want to load this identity in the login or system keychain,
+     so we need to create a temporary keychain.
+
+     For the duration of the SSL handshake, this keychain will be visible to
+     the user in the Keychain Access tool.
+     */
+
+    /* TODO: this temporary keychain should be cleaned up as soon as the
+     handshake is finished => create a pool just for the handshake phase.
+
+     TODO: loading an identity from file makes sense when using OpenSSL, but
+     on Mac OS X the identity is most likely already loaded in the user's
+     login keychain => create an API to load the identity from a keychain.
+     */
+
+    /* We need a unique filename for a temporary file. So create an empty
+     file using APR and close it immediately. */
+    status = apr_temp_dir_get(&temp_dir, ssl_ctx->pool);
+    if (status)
+        return status;
+
+    status = apr_filepath_merge(&ssl_ctx->keychain_temp_file,
+                                temp_dir,
+                                "tempfile_XXXXXX",
+                                APR_FILEPATH_NATIVE | APR_FILEPATH_NOTRELATIVE,
+                                ssl_ctx->pool);
+    if (status)
+        return status;
+
+    status = apr_file_mktemp(&tmpfile, ssl_ctx->keychain_temp_file,
+                             APR_READ | APR_WRITE | APR_CREATE | APR_EXCL |
+                                 APR_DELONCLOSE | APR_BINARY,
+                             ssl_ctx->pool);
+    if (status)
+        return status;
+
+    status = apr_file_close(tmpfile);
+    if (status)
+        return status;
+
+    serf__log(SSL_VERBOSE, __FILE__, "Creating temporary keychain in %s.\n",
+              ssl_ctx->keychain_temp_file);
+
+    /* TODO: random password */
+    /* TODO: standard access rights gives unlimited access to the keychain for
+       this application. Other applications can also access the keychain,
+       but require confirmation from the user (no pwd needed). Probably better
+       if the keychain is locked down so that e.g. searches for identity
+       objects don't return any from this keychain. */
+    osstatus = SecKeychainCreate(ssl_ctx->keychain_temp_file,
+                                 4,
+                                 "serf",
+                                 FALSE,
+                                 NULL, /* Standard access rights */
+                                 &ssl_ctx->tempKeyChainRef);
+    if (osstatus != errSecSuccess) {
+        return translate_sectrans_status(osstatus);
+    }
+
+    return APR_SUCCESS;
+}
+
+static apr_status_t delete_temp_keychain(sectrans_context_t *ssl_ctx)
+{
+    apr_status_t status = APR_SUCCESS;
+    OSStatus osstatus;
+
+    if (!ssl_ctx->tempKeyChainRef)
+        return APR_SUCCESS;
+
+    osstatus = SecKeychainDelete(ssl_ctx->tempKeyChainRef);
+    if (osstatus != errSecSuccess) {
+        status = translate_sectrans_status(osstatus);
+    }
+    ssl_ctx->tempKeyChainRef = NULL;
+
+    return status;
+}
+
+/* Get a client certificate for this server from the application. */
+static apr_status_t
+provide_client_certificate(sectrans_context_t *ssl_ctx)
+{
+    const char *cert_path;
+    CFArrayRef items;
+    CFDataRef databuf;
+    const char *passphrase = NULL;
+    apr_status_t status;
+    OSStatus osstatus;
+
+    /* The server asked for a client certificate but we can't ask the
+       application. Consider this a success, the server decides if the request
+       was optional or mandatory. */
+    if (!ssl_ctx->client_cert_callback) {
+        serf__log(SSL_VERBOSE, __FILE__, "Server asked for client certificate, "
+                  "but the application didn't set the necessary callback.\n");
+        return APR_SUCCESS;
+    }
+
+    serf__log(SSL_VERBOSE, __FILE__, "provide_client_certificate called.\n");
+
+    status = create_temp_keychain(ssl_ctx);
+    if (status)
+        return status;
+
+    while (1)
+    {
+        status = ssl_ctx->client_cert_callback(ssl_ctx->client_cert_userdata,
+                                               &cert_path);
+        if (status)
+            return status;
+
+        status = load_data_from_file(cert_path, &databuf, ssl_ctx->pool);
+        if (status)
+            return status;
+
+        /* TODO: lifetime of items is now bound to the session.
+           -> handshake pool? */
+        status = load_identity_from_databuf(ssl_ctx,
+                                            databuf,
+                                            &items,
+                                            passphrase,
+                                            ssl_ctx->pool);
+        if (status == SERF_ERROR_SSL_CLIENT_CERT_PW_FAILED)
+        {
+            if (!ssl_ctx->client_cert_pw_callback)
+                return SERF_ERROR_SSL_CLIENT_CERT_PW_FAILED;
+
+            status = ssl_ctx->client_cert_pw_callback(
+                            ssl_ctx->client_cert_pw_userdata,
+                            cert_path,
+                            &passphrase);
+            continue;
+        } else if (status)
+            return status;
+
+        if (CFArrayGetCount(items) > 0)
+        {
+            osstatus = SSLSetCertificate(ssl_ctx->st_ctxr, items);
+            if (osstatus != noErr) {
+                return translate_sectrans_status(osstatus);
+            }
+            break;
+        } else {
+            return SERF_ERROR_SSL_CERT_FAILED;
+        }
+    }
+    
+    return APR_SUCCESS;
+}
+
 /* Run the SSL handshake. */
 static apr_status_t do_handshake(sectrans_context_t *ssl_ctx)
 {
@@ -551,7 +864,10 @@ static apr_status_t do_handshake(sectrans_context_t *ssl_ctx)
                     return APR_EAGAIN;
                 break;
             case errSSLClientCertRequested:
-                return APR_ENOTIMPL;
+                status = provide_client_certificate(ssl_ctx);
+                if (!status)
+                    return APR_EAGAIN;
+                break;
             default:
                 status = translate_sectrans_status(osstatus);
                 break;
@@ -561,9 +877,13 @@ static apr_status_t do_handshake(sectrans_context_t *ssl_ctx)
         {
             serf__log(SSL_VERBOSE, __FILE__, "ssl/tls handshake successful.\n");
             ssl_ctx->state = SERF_SECTRANS_CONNECTED;
+
+            /* We can now safely delete the keychain created to load the
+             client identity. */
+            delete_temp_keychain(ssl_ctx);
         }
     }
-    
+
     return status;
 }
 
@@ -635,9 +955,13 @@ client_cert_provider_set(void *impl_ctx,
                          void *data,
                          void *cache_pool)
 {
-    return;
-}
+    sectrans_context_t *ssl_ctx = impl_ctx;
 
+    ssl_ctx->modes |= serf_ssl_val_mode_application_managed;
+
+    ssl_ctx->client_cert_callback = callback;
+    ssl_ctx->client_cert_userdata = data;
+}
 
 static void
 client_cert_password_set(void *impl_ctx,
@@ -648,10 +972,10 @@ client_cert_password_set(void *impl_ctx,
     sectrans_context_t *ssl_ctx = impl_ctx;
 
     ssl_ctx->modes |= serf_ssl_val_mode_application_managed;
-    
-    return;
-}
 
+    ssl_ctx->client_cert_pw_callback = callback;
+    ssl_ctx->client_cert_pw_userdata = data;
+}
 
 void server_cert_callback_set(void *impl_ctx,
                               serf_ssl_need_server_cert_t callback,
@@ -699,32 +1023,6 @@ use_default_certificates(void *impl_ctx)
     return APR_SUCCESS;
 }
 
-/* Find the file extension, if any.
-   Copied the original code & comments from the Apache Subversion project. */
-const char * splitext(const char *path)
-{
-    const char *last_dot, *last_slash;
-
-    /* Do we even have a period in this thing?  And if so, is there
-       anything after it?  We look for the "rightmost" period in the
-       string. */
-    last_dot = strrchr(path, '.');
-    if (last_dot && (last_dot + 1 != '\0')) {
-        /* If we have a period, we need to make sure it occurs in the
-           final path component -- that there's no path separator
-           between the last period and the end of the PATH -- otherwise,
-           it doesn't count.  Also, we want to make sure that our period
-           isn't the first character of the last component. */
-        last_slash = strrchr(path, '/');
-        if ((last_slash && (last_dot > (last_slash + 1)))
-            || ((! last_slash) && (last_dot > path))) {
-                return last_dot + 1;
-        }
-    }
-
-    return "";
-}
-
 /* Copies the unicode string from a CFStringRef to a new buffer allocated
    from pool. */
 static const char *
@@ -749,84 +1047,37 @@ load_CA_cert_from_file(serf_ssl_certificate_t **cert,
                        const char *file_path,
                        apr_pool_t *pool)
 {
-    apr_file_t *fp;
+    CFArrayRef items;
+    CFDataRef databuf;
     apr_status_t status;
 
-    status = apr_file_open(&fp, file_path,
-                           APR_FOPEN_READ | APR_FOPEN_BINARY,
-                           APR_FPROT_OS_DEFAULT, pool);
-    if (!status) {
-        const char *ext;
-        OSStatus osstatus;
-        apr_finfo_t file_info;
-        char *buf;
-        apr_size_t len;
-        CFDataRef databuf;
-        CFArrayRef items;
-        CFStringRef extref;
-        SecExternalItemType itemType;
+    status = load_data_from_file(file_path, &databuf, pool);
+    if (status)
+        return status;
 
-        /* Read the file in memory */
-        apr_file_info_get(&file_info, APR_FINFO_SIZE, fp);
-        buf = apr_palloc(pool, file_info.size);
+    status = load_certificate_from_databuf(databuf, &items, pool);
+    if (status)
+        return status;
 
-        status = apr_file_read_full(fp, buf, file_info.size, &len);
-        if (status)
-            return status;
+    if (CFArrayGetCount(items) > 0) {
+        SecCertificateRef ssl_cert = (SecCertificateRef)CFArrayGetValueAtIndex(items, 0);
 
-        ext = splitext(file_path);
-        extref = CFStringCreateWithBytesNoCopy(kCFAllocatorDefault,
-                                               (unsigned char *)ext,
-                                               strlen(ext),
-                                               kCFStringEncodingMacRoman,
-                                               false,
-                                               kCFAllocatorNull);
+        if (ssl_cert) {
+            sectrans_certificate_t *sectrans_cert;
+            serf_bucket_alloc_t *allocator =
+                serf_bucket_allocator_create(pool, NULL, NULL);
 
-        itemType = kSecItemTypeUnknown;
-        databuf = CFDataCreateWithBytesNoCopy(kCFAllocatorDefault,
-                                              (unsigned char *)buf,
-                                              file_info.size,
-                                              kCFAllocatorNull);
+            sectrans_cert = serf_bucket_mem_alloc(allocator,
+                                                  sizeof(sectrans_certificate_t));
+            sectrans_cert->content = NULL;
+            sectrans_cert->certref = ssl_cert;
 
-        osstatus = SecItemImport(databuf, extref,
-                                 kSecFormatUnknown,
-                                 &itemType,
-                                 0,    /* SecItemImportExportFlags */
-                                 NULL, /* SecItemImportExportKeyParameters */
-                                 NULL, /* SecKeychainRef */
-                                 &items);
+            *cert = serf__create_certificate(allocator,
+                                             &serf_ssl_bucket_type_securetransport,
+                                             sectrans_cert,
+                                             0);
 
-        if (osstatus != errSecSuccess) {
-#if SSL_VERBOSE
-            CFStringRef errref = SecCopyErrorMessageString(osstatus, NULL);
-            const char *errstr = CFStringToChar(errref, pool);
-
-            serf__log(SSL_VERBOSE, __FILE__, "Error loading certificate: %s.\n",
-                      errstr);
-#endif
-            return SERF_ERROR_SSL_CERT_FAILED;
-        }
-
-        if (itemType == kSecItemTypeCertificate && CFArrayGetCount(items) > 0) {
-            SecCertificateRef ssl_cert = (SecCertificateRef)CFArrayGetValueAtIndex(items, 0);
-
-            if (ssl_cert) {
-                sectrans_certificate_t *sectrans_cert;
-                serf_bucket_alloc_t *allocator =
-                    serf_bucket_allocator_create(pool, NULL, NULL);
-
-                sectrans_cert = serf_bucket_mem_alloc(allocator,
-                                    sizeof(sectrans_certificate_t));
-                sectrans_cert->content = NULL;
-                sectrans_cert->certref = ssl_cert;
-
-                *cert = serf__create_certificate(allocator,
-                                                 &serf_ssl_bucket_type_securetransport,
-                                                 sectrans_cert,
-                                                 0);
-
-                return APR_SUCCESS;
-            }
+            return APR_SUCCESS;
         }
     }
 
@@ -994,6 +1245,7 @@ serf_sectrans_encrypt_read(serf_bucket_t *bucket,
     serf__log(SSL_VERBOSE, __FILE__, "serf_sectrans_encrypt_read called for "
               "%d bytes.\n", requested);
 
+    /* Pending handshake? */
     status = do_handshake(ssl_ctx);
     if (SERF_BUCKET_READ_ERROR(status))
         return status;
@@ -1202,7 +1454,7 @@ serf_sectrans_decrypt_readline(serf_bucket_t *bucket,
         *found = SERF_NEWLINE_NONE;
         return status;
     }
-    
+
     /* First use any pending encrypted data. */
     status = serf_bucket_readline(ssl_ctx->decrypt.pending, acceptable, found,
                                   data, len);

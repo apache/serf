@@ -91,21 +91,21 @@ typedef struct serf_request_t serf_request_t;
 /* General SSL certificate related errors */
 #define SERF_ERROR_SSL_CERT_FAILED (SERF_ERROR_START + 70)
 
-    /*General SSL communications related errors */
+/* General SSL communications related errors */
 #define SERF_ERROR_SSL_COMM_FAILED (SERF_ERROR_START + 71)
+
+/* Password for client certificate not provided or valid. */
+#define SERF_ERROR_SSL_CLIENT_CERT_PW_FAILED (SERF_ERROR_START + 72)
 
 /* Certificate should be confirmed by user, but we are not allowed to interact
    with the user. */
-#define SERF_ERROR_SSL_CANT_CONFIRM_CERT (APR_OS_START_USERERR + \
-                                             SERF_ERROR_RANGE + 72)
+#define SERF_ERROR_SSL_CANT_CONFIRM_CERT (SERF_ERROR_START + 73)
 
 /* User denied the use of the certificate. */
-#define SERF_ERROR_SSL_USER_DENIED_CERT (APR_OS_START_USERERR + \
-                                             SERF_ERROR_RANGE + 73)
+#define SERF_ERROR_SSL_USER_DENIED_CERT (SERF_ERROR_START + 74)
 
 /* Certificate was marked as 'Never Trust' in Keychain. */
-#define SERF_ERROR_SSL_KEYCHAIN_DENIED_CERT (APR_OS_START_USERERR + \
-                                             SERF_ERROR_RANGE + 74)
+#define SERF_ERROR_SSL_KEYCHAIN_DENIED_CERT (SERF_ERROR_START + 75)
 
 /* General authentication related errors */
 #define SERF_ERROR_AUTHN_FAILED (SERF_ERROR_START + 90)
