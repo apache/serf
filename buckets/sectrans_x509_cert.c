@@ -222,6 +222,7 @@ read_DER_TLvalue(const unsigned char *ptr, unsigned char *tag, long *consumed,
         case 0x16: /* IA5String */
         case 0x13: /* PrintableString */
         case 0x14: /* TeletexString */
+        case 0x0c: /* UTF8String */
             *value = read_DER_string(ptr, value_len, pool);
             break;
 
