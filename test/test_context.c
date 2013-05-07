@@ -1118,6 +1118,12 @@ static const char *server_certs[] = {
     "test/server/serfcacert.pem",
     NULL };
 
+static const char *all_server_certs[] = {
+    "test/server/serfservercert.pem",
+    "test/server/serfcacert.pem",
+    "test/server/serfrootcacert.pem",
+    NULL };
+
 static apr_status_t validate_servercert(const serf_ssl_certificate_t *cert,
                                         apr_pool_t *pool)
 {
@@ -1213,10 +1219,12 @@ ssl_server_cert_cb_expect_failures(void *baton, int failures,
                                    const serf_ssl_certificate_t *cert)
 {
     test_baton_t *tb = baton;
+    int expected_failures = *(int *)tb->user_baton;
+
     tb->result_flags |= TEST_RESULT_SERVERCERTCB_CALLED;
 
     /* We expect an error from the certificate validation function. */
-    if (failures)
+    if (failures & expected_failures)
         return APR_SUCCESS;
     else
         return SERF_ERROR_ISSUE_IN_TESTSUITE;
@@ -1236,12 +1244,21 @@ ssl_server_cert_cb_expect_allok(void *baton, int failures,
         return APR_SUCCESS;
 }
 
-/* Validate that we can connect successfully to an https server. */
+static apr_status_t
+ssl_server_cert_cb_reject(void *baton, int failures,
+                          const serf_ssl_certificate_t *cert)
+{
+    return SERF_ERROR_ISSUE_IN_TESTSUITE;
+}
+
+/* Validate that we can connect successfully to an https server. This
+   certificate is not trusted, so a cert validation failure is expected. */
 static void test_serf_ssl_handshake(CuTest *tc)
 {
     test_baton_t *tb;
     handler_baton_t handler_ctx[1];
     const int num_requests = sizeof(handler_ctx)/sizeof(handler_ctx[0]);
+    int expected_failures;
     apr_status_t status;
     test_server_message_t message_list[] = {
         {CHUNKED_REQUEST(1, "1")},
@@ -1256,6 +1273,7 @@ static void test_serf_ssl_handshake(CuTest *tc)
 
     /* Set up a test context with a server */
     apr_pool_t *test_pool = tc->testBaton;
+
     status = test_https_server_setup(&tb,
                                      message_list, num_requests,
                                      action_list, num_requests, 0,
@@ -1266,6 +1284,13 @@ static void test_serf_ssl_handshake(CuTest *tc)
                                      ssl_server_cert_cb_expect_failures,
                                      test_pool);
     CuAssertIntEquals(tc, APR_SUCCESS, status);
+
+    /* This unknown failures is X509_V_ERR_UNABLE_TO_VERIFY_LEAF_SIGNATURE, 
+       meaning the chain has only the server cert. A good candidate for its
+       own failure code. */
+    expected_failures = SERF_SSL_CERT_UNKNOWNCA |
+                        SERF_SSL_CERT_UNKNOWN_FAILURE;
+    tb->user_baton = &expected_failures;
 
     create_new_request(tb, &handler_ctx[0], "GET", "/", 1);
 
@@ -1357,8 +1382,7 @@ static void test_serf_ssl_application_rejects_cert(CuTest *tc)
     /* Set up a test context with a server */
     apr_pool_t *test_pool = tc->testBaton;
 
-    /* The certificate is valid, but we tell serf to reject it by using the
-       ssl_server_cert_cb_expect_failures callback. */
+    /* The certificate is valid, but we tell serf to reject it. */
     status = test_https_server_setup(&tb,
                                      message_list, num_requests,
                                      action_list, num_requests, 0,
@@ -1366,7 +1390,7 @@ static void test_serf_ssl_application_rejects_cert(CuTest *tc)
                                      "test/server/serfserverkey.pem",
                                      server_certs,
                                      NULL, /* no client cert */
-                                     ssl_server_cert_cb_expect_failures,
+                                     ssl_server_cert_cb_reject,
                                      test_pool);
     CuAssertIntEquals(tc, APR_SUCCESS, status);
 
@@ -1414,11 +1438,11 @@ cert_chain_cb(void *baton,
 }
 
 static apr_status_t
-chain_callback_conn_setup(apr_socket_t *skt,
-                          serf_bucket_t **input_bkt,
-                          serf_bucket_t **output_bkt,
-                          void *setup_baton,
-                          apr_pool_t *pool)
+chain_rootca_callback_conn_setup(apr_socket_t *skt,
+                                 serf_bucket_t **input_bkt,
+                                 serf_bucket_t **output_bkt,
+                                 void *setup_baton,
+                                 apr_pool_t *pool)
 {
     test_baton_t *tb = setup_baton;
     apr_status_t status;
@@ -1436,7 +1460,85 @@ chain_callback_conn_setup(apr_socket_t *skt,
     return APR_SUCCESS;
 }
 
-static void test_serf_ssl_certificate_chain(CuTest *tc)
+/* Make the server return a partial certificate chain (server cert, CA cert),
+   the root CA cert is trusted explicitly in the client. Test the chain
+   callback. */
+static void test_serf_ssl_certificate_chain_with_anchor(CuTest *tc)
+{
+    test_baton_t *tb;
+    handler_baton_t handler_ctx[1];
+    const int num_requests = sizeof(handler_ctx)/sizeof(handler_ctx[0]);
+    apr_status_t status;
+    test_server_message_t message_list[] = {
+        {CHUNKED_REQUEST(1, "1")},
+    };
+
+    test_server_action_t action_list[] = {
+        {SERVER_RESPOND, CHUNKED_EMPTY_RESPONSE},
+    };
+
+    /* Set up a test context with a server */
+    apr_pool_t *test_pool = tc->testBaton;
+
+    status = test_https_server_setup(&tb,
+                                     message_list, num_requests,
+                                     action_list, num_requests, 0,
+                                     chain_rootca_callback_conn_setup,
+                                     "test/server/serfserverkey.pem",
+                                     server_certs,
+                                     NULL, /* no client cert */
+                                     ssl_server_cert_cb_expect_allok,
+                                     test_pool);
+    CuAssertIntEquals(tc, APR_SUCCESS, status);
+
+    create_new_request(tb, &handler_ctx[0], "GET", "/", 1);
+
+    test_helper_run_requests_expect_ok(tc, tb, num_requests,
+                                       handler_ctx, test_pool);
+
+    CuAssertTrue(tc, tb->result_flags & TEST_RESULT_SERVERCERTCB_CALLED);
+    CuAssertTrue(tc, tb->result_flags & TEST_RESULT_SERVERCERTCHAINCB_CALLED);
+}
+
+static apr_status_t
+cert_chain_all_certs_cb(void *baton,
+                        int failures,
+                        int error_depth,
+                        const serf_ssl_certificate_t * const * certs,
+                        apr_size_t certs_len)
+{
+    /* Root CA cert is selfsigned, ignore this 'failure'. */
+    failures &= ~SERF_SSL_CERT_SELF_SIGNED;
+
+    return cert_chain_cb(baton, failures, error_depth, certs, certs_len);
+}
+
+static apr_status_t
+chain_callback_conn_setup(apr_socket_t *skt,
+                          serf_bucket_t **input_bkt,
+                          serf_bucket_t **output_bkt,
+                          void *setup_baton,
+                          apr_pool_t *pool)
+{
+    test_baton_t *tb = setup_baton;
+    apr_status_t status;
+
+    status = default_https_conn_setup(skt, input_bkt, output_bkt,
+                                      setup_baton, pool);
+    if (status)
+        return status;
+
+    serf_ssl_server_cert_chain_callback_set(tb->ssl_context,
+                                            ssl_server_cert_cb_expect_allok,
+                                            cert_chain_all_certs_cb,
+                                            tb);
+
+    return APR_SUCCESS;
+}
+
+/* Make the server return the complete certificate chain (server cert, CA cert
+   and root CA cert). Test the chain callback. */
+static void test_serf_ssl_certificate_chain_all_from_server(CuTest *tc)
 {
     test_baton_t *tb;
     handler_baton_t handler_ctx[1];
@@ -1458,7 +1560,7 @@ static void test_serf_ssl_certificate_chain(CuTest *tc)
                                      action_list, num_requests, 0,
                                      chain_callback_conn_setup,
                                      "test/server/serfserverkey.pem",
-                                     server_certs,
+                                     all_server_certs,
                                      NULL, /* no client cert */
                                      ssl_server_cert_cb_expect_allok,
                                      test_pool);
@@ -1640,12 +1742,6 @@ client_cert_conn_setup(apr_socket_t *skt,
     return APR_SUCCESS;
 }
 
-static const char *all_server_certs[] = {
-    "test/server/serfservercert.pem",
-    "test/server/serfcacert.pem",
-    "test/server/serfrootcacert.pem",
-    NULL };
-
 static void test_serf_ssl_client_certificate(CuTest *tc)
 {
     test_baton_t *tb;
@@ -1684,6 +1780,98 @@ static void test_serf_ssl_client_certificate(CuTest *tc)
     CuAssertTrue(tc, tb->result_flags & TEST_RESULT_CLIENT_CERTPWCB_CALLED);
 }
 
+/* Validate that the expired certificate is reported as failure in the
+   callback. */
+static void test_serf_ssl_expired_server_cert(CuTest *tc)
+{
+    test_baton_t *tb;
+    handler_baton_t handler_ctx[1];
+    const int num_requests = sizeof(handler_ctx)/sizeof(handler_ctx[0]);
+    int expected_failures;
+    apr_status_t status;
+    test_server_message_t message_list[] = {
+        {CHUNKED_REQUEST(1, "1")},
+    };
+
+    test_server_action_t action_list[] = {
+        {SERVER_RESPOND, CHUNKED_EMPTY_RESPONSE},
+    };
+    static const char *expired_server_certs[] = {
+        "test/server/serfserver_expired_cert.pem",
+        "test/server/serfcacert.pem",
+        "test/server/serfrootcacert.pem",
+        NULL };
+
+    /* Set up a test context with a server */
+    apr_pool_t *test_pool = tc->testBaton;
+
+    status = test_https_server_setup(&tb,
+                                     message_list, num_requests,
+                                     action_list, num_requests, 0,
+                                     NULL, /* default conn setup */
+                                     "test/server/serfserverkey.pem",
+                                     expired_server_certs,
+                                     NULL, /* no client cert */
+                                     ssl_server_cert_cb_expect_failures,
+                                     test_pool);
+    CuAssertIntEquals(tc, APR_SUCCESS, status);
+
+    expected_failures = SERF_SSL_CERT_SELF_SIGNED |
+                        SERF_SSL_CERT_EXPIRED;
+    tb->user_baton = &expected_failures;
+
+    create_new_request(tb, &handler_ctx[0], "GET", "/", 1);
+
+    test_helper_run_requests_expect_ok(tc, tb, num_requests, handler_ctx,
+                                       test_pool);
+}
+
+/* Validate that the expired certificate is reported as failure in the
+ callback. */
+static void test_serf_ssl_future_server_cert(CuTest *tc)
+{
+    test_baton_t *tb;
+    handler_baton_t handler_ctx[1];
+    const int num_requests = sizeof(handler_ctx)/sizeof(handler_ctx[0]);
+    int expected_failures;
+    apr_status_t status;
+    test_server_message_t message_list[] = {
+        {CHUNKED_REQUEST(1, "1")},
+    };
+
+    test_server_action_t action_list[] = {
+        {SERVER_RESPOND, CHUNKED_EMPTY_RESPONSE},
+    };
+    static const char *future_server_certs[] = {
+        "test/server/serfserver_future_cert.pem",
+        "test/server/serfcacert.pem",
+        "test/server/serfrootcacert.pem",
+        NULL };
+
+    /* Set up a test context with a server */
+    apr_pool_t *test_pool = tc->testBaton;
+
+    status = test_https_server_setup(&tb,
+                                     message_list, num_requests,
+                                     action_list, num_requests, 0,
+                                     NULL, /* default conn setup */
+                                     "test/server/serfserverkey.pem",
+                                     future_server_certs,
+                                     NULL, /* no client cert */
+                                     ssl_server_cert_cb_expect_failures,
+                                     test_pool);
+    CuAssertIntEquals(tc, APR_SUCCESS, status);
+
+    expected_failures = SERF_SSL_CERT_SELF_SIGNED |
+                        SERF_SSL_CERT_NOTYETVALID;
+    tb->user_baton = &expected_failures;
+
+    create_new_request(tb, &handler_ctx[0], "GET", "/", 1);
+
+    test_helper_run_requests_expect_ok(tc, tb, num_requests, handler_ctx,
+                                       test_pool);
+}
+
 /*****************************************************************************/
 CuSuite *test_context(void)
 {
@@ -1703,11 +1891,14 @@ CuSuite *test_context(void)
     SUITE_ADD_TEST(suite, test_serf_ssl_handshake);
     SUITE_ADD_TEST(suite, test_serf_ssl_trust_rootca);
     SUITE_ADD_TEST(suite, test_serf_ssl_application_rejects_cert);
-    SUITE_ADD_TEST(suite, test_serf_ssl_certificate_chain);
+    SUITE_ADD_TEST(suite, test_serf_ssl_certificate_chain_with_anchor);
+    SUITE_ADD_TEST(suite, test_serf_ssl_certificate_chain_all_from_server);
     SUITE_ADD_TEST(suite, test_serf_ssl_no_servercert_callback_allok);
     SUITE_ADD_TEST(suite, test_serf_ssl_no_servercert_callback_fail);
     SUITE_ADD_TEST(suite, test_serf_ssl_large_response);
     SUITE_ADD_TEST(suite, test_serf_ssl_client_certificate);
+    SUITE_ADD_TEST(suite, test_serf_ssl_expired_server_cert);
+    SUITE_ADD_TEST(suite, test_serf_ssl_future_server_cert);
 
     return suite;
 }
