@@ -112,6 +112,8 @@ typedef struct sectrans_context_t {
 
 } sectrans_context_t;
 
+static apr_status_t delete_temp_keychain(sectrans_context_t *ssl_ctx);
+
 static apr_status_t
 translate_sectrans_status(OSStatus osstatus)
 {
@@ -209,7 +211,6 @@ static apr_status_t
 sectrans_free_context(sectrans_context_t *ssl_ctx,
                       serf_bucket_alloc_t *allocator)
 {
-    OSStatus osstatus;
     apr_status_t status = APR_SUCCESS;
 
     (void)SSLDisposeContext(ssl_ctx->st_ctxr);
@@ -473,7 +474,7 @@ static int
 validate_server_certificate(sectrans_context_t *ssl_ctx)
 {
     OSStatus sectrans_status;
-    CFArrayRef certs;
+    CFArrayRef certrefs;
     SecTrustRef trust;
     SecTrustResultType result;
     int failures = 0;
@@ -483,7 +484,7 @@ validate_server_certificate(sectrans_context_t *ssl_ctx)
     serf__log(SSL_VERBOSE, __FILE__, "validate_server_certificate called.\n");
 
     /* Get the server certificate chain. */
-    sectrans_status = SSLCopyPeerCertificates(ssl_ctx->st_ctxr, &certs);
+    sectrans_status = SSLCopyPeerCertificates(ssl_ctx->st_ctxr, &certrefs);
     if (sectrans_status != noErr)
         return translate_sectrans_status(sectrans_status);
     /* TODO: 0, oh really? How can we know where the error occurred? */
@@ -536,6 +537,7 @@ validate_server_certificate(sectrans_context_t *ssl_ctx)
         apr_pool_t *pool;
 
         apr_pool_create(&pool, ssl_ctx->pool);
+
         for (i = length-1; i >= 0; i--) {
             CFDictionaryRef dict = CFArrayGetValueAtIndex(props, i);
             int depth = length - 1 - i;
@@ -625,7 +627,8 @@ validate_server_certificate(sectrans_context_t *ssl_ctx)
         }
     }
 
-    /* Ask the application to validate the certificate. */
+    /* Ask the application to validate the server certificate at depth 0.
+       TODO: any certificate at other depths with failures. */
     if (ssl_ctx->server_cert_callback)
     {
         serf_ssl_certificate_t *cert;
@@ -634,24 +637,68 @@ validate_server_certificate(sectrans_context_t *ssl_ctx)
         sectrans_cert = serf_bucket_mem_alloc(ssl_ctx->allocator,
                                           sizeof(sectrans_certificate_t));
         sectrans_cert->content = NULL;
-        sectrans_cert->certref = (SecCertificateRef)CFArrayGetValueAtIndex(certs, 0);
+        sectrans_cert->certref =
+            (SecCertificateRef)CFArrayGetValueAtIndex(certrefs, 0);
 
         cert = serf__create_certificate(ssl_ctx->allocator,
                                         &serf_ssl_bucket_type_securetransport,
                                         sectrans_cert,
-                                        depth_of_error);
+                                        0);
 
         /* Callback for further verification. */
         status = ssl_ctx->server_cert_callback(ssl_ctx->server_cert_userdata,
                                                failures, cert);
 
         serf_bucket_mem_free(ssl_ctx->allocator, cert);
-        goto cleanup;
     }
 
+    /* TODO: How to get the complete certificate chain?
+       SecTrustCopyProperties returns properties for all certificates in the 
+       chain, up to a trusted anchor (not necessarily the root CA).
+       (only properties, not the certificates themselves).
+
+       SSLCopyPeerCertificates only returns the certificates returned by
+           the server. If these requires a known anchor/root CA, it will not be
+           included.
+
+       SecTrustGetCertificateCount the same.
+        
+     */
     if (ssl_ctx->server_cert_chain_callback)
     {
-        status = APR_ENOTIMPL;
+        serf_ssl_certificate_t **certs;
+        int certs_len, i;
+
+        certs_len = CFArrayGetCount(certrefs);
+
+        /* Room for all the certs and a trailing NULL.  */
+        certs = serf_bucket_mem_alloc(ssl_ctx->allocator,
+                                      sizeof(*certs) * (certs_len  + 1));
+        for (i = 0; i < certs_len; ++i) {
+            sectrans_certificate_t *sectrans_cert;
+
+            sectrans_cert = serf_bucket_mem_alloc(ssl_ctx->allocator,
+                                                  sizeof(sectrans_certificate_t));
+            sectrans_cert->content = NULL;
+            sectrans_cert->certref =
+                (SecCertificateRef)CFArrayGetValueAtIndex(certrefs, i);
+
+            certs[i] = serf__create_certificate(
+                           ssl_ctx->allocator,
+                           &serf_ssl_bucket_type_securetransport,
+                           sectrans_cert,
+                           i);
+        }
+
+        status =
+            ssl_ctx->server_cert_chain_callback(ssl_ctx->server_cert_userdata,
+                failures, 0, /*depth_of_error,*/
+                (const serf_ssl_certificate_t * const *)certs,
+                certs_len);
+
+        for (i = 0; i < certs_len; ++i)
+            serf_bucket_mem_free(ssl_ctx->allocator, certs[i]);
+        serf_bucket_mem_free(ssl_ctx->allocator, certs);
     }
 
     /* Return a specific error if the server certificate is not accepted by
@@ -663,9 +710,9 @@ validate_server_certificate(sectrans_context_t *ssl_ctx)
     {
         status = SERF_ERROR_SSL_CERT_FAILED;
     }
-    
+
 cleanup:
-    CFRelease(certs);
+    CFRelease(certrefs);
     CFRelease(trust);
 
     return status;
