@@ -466,6 +466,23 @@ ask_approval_gui(sectrans_context_t *ssl_ctx, SecTrustRef trust)
         return SERF_ERROR_SSL_USER_DENIED_CERT;
 }
 
+static serf_ssl_certificate_t *
+create_sectrans_certificate(SecCertificateRef certref,
+                            int depth,
+                            serf_bucket_alloc_t *allocator)
+{
+    sectrans_certificate_t *sectrans_cert;
+
+    sectrans_cert = serf_bucket_mem_calloc(allocator,
+                                           sizeof(sectrans_certificate_t));
+    sectrans_cert->certref = certref;
+
+    return serf__create_certificate(allocator,
+                                    &serf_ssl_bucket_type_securetransport,
+                                    sectrans_cert,
+                                    depth);
+}
+
 /* Validate a server certificate. Call back to the application if needed.
    Returns APR_SUCCESS if the server certificate is accepted.
    Otherwise returns an error.
@@ -632,19 +649,11 @@ validate_server_certificate(sectrans_context_t *ssl_ctx)
     if (ssl_ctx->server_cert_callback)
     {
         serf_ssl_certificate_t *cert;
-        sectrans_certificate_t *sectrans_cert;
 
-        sectrans_cert = serf_bucket_mem_alloc(ssl_ctx->allocator,
-                                          sizeof(sectrans_certificate_t));
-        sectrans_cert->content = NULL;
-        sectrans_cert->certref =
-            (SecCertificateRef)CFArrayGetValueAtIndex(certrefs, 0);
-
-        cert = serf__create_certificate(ssl_ctx->allocator,
-                                        &serf_ssl_bucket_type_securetransport,
-                                        sectrans_cert,
-                                        0);
-
+        cert = create_sectrans_certificate(
+                   (SecCertificateRef)CFArrayGetValueAtIndex(certrefs, 0),
+                   0,
+                   ssl_ctx->allocator);
         /* Callback for further verification. */
         status = ssl_ctx->server_cert_callback(ssl_ctx->server_cert_userdata,
                                                failures, cert);
@@ -674,20 +683,13 @@ validate_server_certificate(sectrans_context_t *ssl_ctx)
         /* Room for all the certs and a trailing NULL.  */
         certs = serf_bucket_mem_alloc(ssl_ctx->allocator,
                                       sizeof(*certs) * (certs_len  + 1));
-        for (i = 0; i < certs_len; ++i) {
-            sectrans_certificate_t *sectrans_cert;
-
-            sectrans_cert = serf_bucket_mem_alloc(ssl_ctx->allocator,
-                                                  sizeof(sectrans_certificate_t));
-            sectrans_cert->content = NULL;
-            sectrans_cert->certref =
-                (SecCertificateRef)CFArrayGetValueAtIndex(certrefs, i);
-
-            certs[i] = serf__create_certificate(
-                           ssl_ctx->allocator,
-                           &serf_ssl_bucket_type_securetransport,
-                           sectrans_cert,
-                           i);
+        for (i = 0; i < certs_len; ++i)
+        {
+            certs[i] = create_sectrans_certificate(
+                           (SecCertificateRef)CFArrayGetValueAtIndex(certrefs,
+                                                                     i),
+                           i,
+                           ssl_ctx->allocator);
         }
 
         status =
@@ -1107,23 +1109,15 @@ load_CA_cert_from_file(serf_ssl_certificate_t **cert,
         return status;
 
     if (CFArrayGetCount(items) > 0) {
-        SecCertificateRef ssl_cert = (SecCertificateRef)CFArrayGetValueAtIndex(items, 0);
+        SecCertificateRef ssl_cert =
+            (SecCertificateRef)CFArrayGetValueAtIndex(items, 0);
 
         if (ssl_cert) {
-            sectrans_certificate_t *sectrans_cert;
             serf_bucket_alloc_t *allocator =
                 serf_bucket_allocator_create(pool, NULL, NULL);
-
-            sectrans_cert = serf_bucket_mem_alloc(allocator,
-                                                  sizeof(sectrans_certificate_t));
-            sectrans_cert->content = NULL;
-            sectrans_cert->certref = ssl_cert;
-
-            *cert = serf__create_certificate(allocator,
-                                             &serf_ssl_bucket_type_securetransport,
-                                             sectrans_cert,
-                                             0);
-
+            *cert = create_sectrans_certificate(ssl_cert,
+                                                0,
+                                                allocator);
             return APR_SUCCESS;
         }
     }
