@@ -13,6 +13,8 @@
  * limitations under the License.
  */
 
+/* This page is very helpful in identifying the bugs in Keychain/Secure Transport:
+   https://github.com/lorentey/LKSecurity/blob/master/Framework%20Bugs.markdown */
 #ifdef SERF_HAVE_SECURETRANSPORT
 
 #include "serf.h"
@@ -466,6 +468,164 @@ ask_approval_gui(sectrans_context_t *ssl_ctx, SecTrustRef trust)
         return SERF_ERROR_SSL_USER_DENIED_CERT;
 }
 
+/* Creates an serf_ssl_certificate_t at depth allocated with allocator.
+   Caller is responsible for cleaning up. */
+static serf_ssl_certificate_t *
+create_sectrans_certificate(SecCertificateRef certref,
+                            int depth,
+                            serf_bucket_alloc_t *allocator)
+{
+    sectrans_certificate_t *sectrans_cert;
+
+    sectrans_cert = serf_bucket_mem_calloc(allocator,
+                                           sizeof(sectrans_certificate_t));
+    sectrans_cert->certref = certref;
+
+    return serf__create_certificate(allocator,
+                                    &serf_ssl_bucket_type_securetransport,
+                                    sectrans_cert,
+                                    depth);
+}
+
+/* Logs the issuer and subject of cert. */
+static void
+log_certificate(sectrans_certificate_t *cert, const char *msg)
+{
+#if SSL_VERBOSE
+    apr_hash_t *subject, *issuer;
+    apr_pool_t *tmppool;
+
+    apr_pool_create(&tmppool, NULL);
+    if (!cert->content) {
+        apr_status_t status;
+        status = serf__sectrans_read_X509_DER_certificate(&cert->content,
+                                                          cert,
+                                                          tmppool);
+        if (status)
+            goto cleanup;
+    }
+
+    subject = (apr_hash_t *)apr_hash_get(cert->content,
+                                         "subject", APR_HASH_KEY_STRING);
+
+    serf__log(SSL_VERBOSE, __FILE__, msg);
+    serf__log(SSL_VERBOSE, __FILE__, "Subject:\n");
+    serf__log(SSL_VERBOSE, __FILE__, " CN:%s,",
+                     apr_hash_get(subject, "CN", APR_HASH_KEY_STRING));
+    serf__log_nopref(SSL_VERBOSE, " OU:%s,",
+                     apr_hash_get(subject, "OU", APR_HASH_KEY_STRING));
+    serf__log_nopref(SSL_VERBOSE, " O:%s,",
+                     apr_hash_get(subject, "O", APR_HASH_KEY_STRING));
+    serf__log_nopref(SSL_VERBOSE, " L:%s,",
+                     apr_hash_get(subject, "L", APR_HASH_KEY_STRING));
+    serf__log_nopref(SSL_VERBOSE, " ST:%s,",
+                     apr_hash_get(subject, "ST", APR_HASH_KEY_STRING));
+    serf__log_nopref(SSL_VERBOSE, " C:%s,",
+                     apr_hash_get(subject, "C", APR_HASH_KEY_STRING));
+    serf__log_nopref(SSL_VERBOSE, " E:%s\n",
+                     apr_hash_get(subject, "E", APR_HASH_KEY_STRING));
+
+    issuer = (apr_hash_t *)apr_hash_get(cert->content,
+                                        "issuer", APR_HASH_KEY_STRING);
+
+    serf__log(SSL_VERBOSE, __FILE__, "Issuer:\n");
+    serf__log(SSL_VERBOSE, __FILE__, " CN:%s,",
+              apr_hash_get(issuer, "CN", APR_HASH_KEY_STRING));
+    serf__log_nopref(SSL_VERBOSE, " OU:%s,",
+                     apr_hash_get(issuer, "OU", APR_HASH_KEY_STRING));
+    serf__log_nopref(SSL_VERBOSE, " O:%s,",
+                     apr_hash_get(issuer, "O", APR_HASH_KEY_STRING));
+    serf__log_nopref(SSL_VERBOSE, " L:%s,",
+                     apr_hash_get(issuer, "L", APR_HASH_KEY_STRING));
+    serf__log_nopref(SSL_VERBOSE, " ST:%s,",
+                     apr_hash_get(issuer, "ST", APR_HASH_KEY_STRING));
+    serf__log_nopref(SSL_VERBOSE, " C:%s,",
+                     apr_hash_get(issuer, "C", APR_HASH_KEY_STRING));
+    serf__log_nopref(SSL_VERBOSE, " E:%s\n",
+                     apr_hash_get(issuer, "E", APR_HASH_KEY_STRING));
+
+cleanup:
+    apr_pool_destroy(tmppool);
+#endif
+}
+
+/* Finds the issuer certificate of certref in the list of trusted anchor
+   certificates (as set by the application).
+   *cert is allocated with allocator, caller is responsible for cleaning
+   up. */
+static apr_status_t
+find_issuer_cert(serf_ssl_certificate_t **cert,
+                 SecCertificateRef certref,
+                 CFArrayRef anchor_certrefs,
+                 serf_bucket_alloc_t *outalloc)
+{
+    CFDataRef issuer;
+    sectrans_certificate_t *prevcert;
+    apr_pool_t *tmppool;
+    serf_bucket_alloc_t *tmpalloc;
+    int i;
+    apr_status_t status;
+
+    apr_pool_create(&tmppool, NULL);
+    tmpalloc = serf_bucket_allocator_create(tmppool, NULL, NULL);
+
+    /* Get the issuer DER encoded data buffer of the provided certificate. */
+    prevcert = serf_bucket_mem_calloc(tmpalloc,
+                                      sizeof(sectrans_certificate_t));
+    prevcert->certref = certref;
+
+    status = serf__sectrans_read_X509_DER_certificate(&prevcert->content,
+                                                      prevcert,
+                                                      tmppool);
+    if (status)
+        goto cleanup;
+
+    log_certificate(prevcert, "Search for issuer of this cert:\n");
+
+    issuer = apr_hash_get(prevcert->content, "_issuer_der",
+                          APR_HASH_KEY_STRING);
+
+    /* Get the subject DER encoded data buffer of each anchor and compare it
+       with the issuer data buffer. */
+    for (i = 0; i < CFArrayGetCount(anchor_certrefs); i++)
+    {
+        sectrans_certificate_t *anchor_cert;
+        CFDataRef subject;
+
+        anchor_cert = serf_bucket_mem_calloc(tmpalloc,
+                                             sizeof(sectrans_certificate_t));
+        anchor_cert->certref =
+            (SecCertificateRef)CFArrayGetValueAtIndex(anchor_certrefs, i);
+
+        serf__sectrans_read_X509_DER_certificate(&anchor_cert->content,
+                                                 anchor_cert,
+                                                 tmppool);
+        subject = apr_hash_get(anchor_cert->content, "_subject_der",
+                               APR_HASH_KEY_STRING);
+
+        if (CFEqual(subject, issuer))
+        {
+            CFTypeRef outcertref;
+
+            /* This is the one. */
+            outcertref = CFArrayGetValueAtIndex(anchor_certrefs, i);
+
+            *cert = create_sectrans_certificate((SecCertificateRef)outcertref,
+                                                i,
+                                                outalloc);
+            status = APR_SUCCESS;
+            goto cleanup;
+        }
+    }
+
+    /* Nothing found. */
+    status = SERF_ERROR_SSL_CERT_FAILED;
+
+cleanup:
+    apr_pool_destroy(tmppool);
+    return status;
+}
+
 /* Certificate validation errors are only available as string. Convert them
    to serf's failure codes. */
 static int
@@ -484,23 +644,6 @@ convert_certerr_to_failure(const char *errstr)
     return SERF_SSL_CERT_UNKNOWN_FAILURE;
 }
 
-static serf_ssl_certificate_t *
-create_sectrans_certificate(SecCertificateRef certref,
-                            int depth,
-                            serf_bucket_alloc_t *allocator)
-{
-    sectrans_certificate_t *sectrans_cert;
-
-    sectrans_cert = serf_bucket_mem_calloc(allocator,
-                                           sizeof(sectrans_certificate_t));
-    sectrans_cert->certref = certref;
-
-    return serf__create_certificate(allocator,
-                                    &serf_ssl_bucket_type_securetransport,
-                                    sectrans_cert,
-                                    depth);
-}
-
 /* Validate a server certificate. Call back to the application if needed.
    Returns APR_SUCCESS if the server certificate is accepted.
    Otherwise returns an error.
@@ -508,22 +651,15 @@ create_sectrans_certificate(SecCertificateRef certref,
 static int
 validate_server_certificate(sectrans_context_t *ssl_ctx)
 {
-    CFArrayRef certrefs;
     SecTrustRef trust;
     SecTrustResultType result;
-    int failures = 0;
+    CFArrayRef anchor_certrefs;
     size_t depth_of_error, chain_depth;
+    int failures = 0;
     OSStatus osstatus;
     apr_status_t status;
 
     serf__log(SSL_VERBOSE, __FILE__, "validate_server_certificate called.\n");
-
-    /* Get the server certificate chain. */
-    osstatus = SSLCopyPeerCertificates(ssl_ctx->st_ctxr, &certrefs);
-    if (osstatus != noErr)
-        return translate_sectrans_status(osstatus);
-    /* TODO: 0, oh really? How can we know where the error occurred? */
-    depth_of_error = 0;
 
     osstatus = SSLCopyPeerTrust(ssl_ctx->st_ctxr, &trust);
     if (osstatus != noErr) {
@@ -537,23 +673,21 @@ validate_server_certificate(sectrans_context_t *ssl_ctx)
         int anchor_certs = ssl_ctx->anchor_certs->nelts;
         int i;
         SecCertificateRef certs[anchor_certs];
-        CFArrayRef certarray;
 
         for (i = 0; i < anchor_certs; i++)
-            certs[i] = APR_ARRAY_IDX(ssl_ctx->anchor_certs, i, SecCertificateRef);
+            certs[i] = APR_ARRAY_IDX(ssl_ctx->anchor_certs, i,
+                                     SecCertificateRef);
 
-        certarray = CFArrayCreate(kCFAllocatorDefault,
-                                  (void *)certs,
-                                  anchor_certs,
-                                  NULL);
+        anchor_certrefs = CFArrayCreate(kCFAllocatorDefault,
+                                        (void *)certs,
+                                        anchor_certs,
+                                        NULL);
 
-        osstatus = SecTrustSetAnchorCertificates(trust, certarray);
+        osstatus = SecTrustSetAnchorCertificates(trust, anchor_certrefs);
         if (osstatus != noErr) {
             status = translate_sectrans_status(osstatus);
             goto cleanup;
         }
-
-        CFRelease(certarray);
     }
 
     /* TODO: SecTrustEvaluateAsync */
@@ -562,37 +696,6 @@ validate_server_certificate(sectrans_context_t *ssl_ctx)
         status = translate_sectrans_status(osstatus);
         goto cleanup;
     }
-
-    /* Log for each certificate in the chain if it validates correctly. */
-#ifdef SSL_VERBOSE
-    {
-        CFArrayRef props = SecTrustCopyProperties(trust);
-        CFIndex length = CFArrayGetCount(props);
-        int i;
-        apr_pool_t *pool;
-
-        apr_pool_create(&pool, ssl_ctx->pool);
-
-        for (i = length-1; i >= 0; i--) {
-            CFDictionaryRef dict = CFArrayGetValueAtIndex(props, i);
-            int depth = length - 1 - i;
-
-            CFStringRef errref = CFDictionaryGetValue(dict, kSecPropertyTypeError);
-            if (errref) {
-                const char *errstr = CFStringToChar(errref, pool);
-
-                serf__log(SSL_VERBOSE, __FILE__,
-                          "Certificate ERROR: %s at depth %d.\n", errstr, depth);
-            } else {
-                serf__log(SSL_VERBOSE, __FILE__, "Certificate validation ok "
-                          "at depth %d.\n", depth);
-            }
-        }
-        apr_pool_destroy(pool);
-
-        CFRelease(props);
-    }
-#endif
 
     /* Based on the contents of the user's Keychain, Secure Transport will make
        a first validation of this certificate chain.
@@ -604,45 +707,35 @@ validate_server_certificate(sectrans_context_t *ssl_ctx)
         case kSecTrustResultProceed:
             serf__log(SSL_VERBOSE, __FILE__,
                       "kSecTrustResultProceed/Unspecified.\n");
-            failures = 0;
             status = APR_SUCCESS;
             break;
         case kSecTrustResultConfirm:
             serf__log(SSL_VERBOSE, __FILE__, "kSecTrustResultConfirm.\n");
-            failures = SERF_SSL_CERT_CONFIRM_NEEDED |
-                       SERF_SSL_CERT_RECOVERABLE;
             break;
         case kSecTrustResultRecoverableTrustFailure:
             serf__log(SSL_VERBOSE, __FILE__,
                       "kSecTrustResultRecoverableTrustFailure.\n");
-            failures = SERF_SSL_CERT_UNKNOWN_FAILURE |
-                       SERF_SSL_CERT_RECOVERABLE;
             break;
 
         /* Fatal errors */
         case kSecTrustResultInvalid:
             serf__log(SSL_VERBOSE, __FILE__, "kSecTrustResultInvalid.\n");
-            failures = SERF_SSL_CERT_FATAL;
             status = SERF_ERROR_SSL_CERT_FAILED;
             break;
         case kSecTrustResultDeny:
             serf__log(SSL_VERBOSE, __FILE__, "kSecTrustResultDeny.\n");
-            failures = SERF_SSL_CERT_FATAL;
             status = SERF_ERROR_SSL_KEYCHAIN_DENIED_CERT;
             break;
         case kSecTrustResultFatalTrustFailure:
             serf__log(SSL_VERBOSE, __FILE__, "kSecTrustResultFatalTrustFailure.\n");
-            failures = SERF_SSL_CERT_FATAL;
             status = SERF_ERROR_SSL_CERT_FAILED;
             break;
         case kSecTrustResultOtherError:
             serf__log(SSL_VERBOSE, __FILE__, "kSecTrustResultOtherError.\n");
-            failures = SERF_SSL_CERT_FATAL;
             status = SERF_ERROR_SSL_CERT_FAILED;
             break;
         default:
             serf__log(SSL_VERBOSE, __FILE__, "unknown.\n");
-            failures = SERF_SSL_CERT_FATAL;
             status = SERF_ERROR_SSL_CERT_FAILED;
             break;
     }
@@ -691,7 +784,8 @@ validate_server_certificate(sectrans_context_t *ssl_ctx)
 
         CFRelease(props);
     }
-    
+
+    /* TODO: 0, oh really? How can we know where the error occurred? */
     depth_of_error = 0;
 
     /* Ask the application to validate the server certificate at depth 0.
@@ -701,9 +795,10 @@ validate_server_certificate(sectrans_context_t *ssl_ctx)
         serf_ssl_certificate_t *cert;
 
         cert = create_sectrans_certificate(
-                   (SecCertificateRef)CFArrayGetValueAtIndex(certrefs, 0),
+                   (SecCertificateRef)SecTrustGetCertificateAtIndex(trust, 0),
                    0,
                    ssl_ctx->allocator);
+
         /* Callback for further verification. */
         status = ssl_ctx->server_cert_callback(ssl_ctx->server_cert_userdata,
                                                failures, cert);
@@ -711,44 +806,85 @@ validate_server_certificate(sectrans_context_t *ssl_ctx)
         serf_bucket_mem_free(ssl_ctx->allocator, cert);
     }
 
-    /* TODO: How to get the complete certificate chain?
-       SecTrustCopyProperties returns properties for all certificates in the 
-       chain, up to a trusted anchor (not necessarily the root CA).
-       (only properties, not the certificates themselves).
+    /* We need to get the full certificate chain and provide it to the
+       application.
 
-       SSLCopyPeerCertificates only returns the certificates returned by
-           the server. If these requires a known anchor/root CA, it will not be
-           included.
+       There are 4 scenario's:
+       1. The server provided all certificates including the root CA.
+       2. The server provided all certificates except the anchor certificate.
+          The anchor certificate is stored in a Keychain. (a root CA provided
+          by Apple or a certificate imported in a Keychain by the user).
+       3. The server provided all certificates except the anchor certificate.
+          The anchor certificate was explicitly trusted by the application via
+          serf_ssl_trust_cert.
+       4. The server provided some certificates but not the root CA. This cert
+          is not available in the Keychain nor in the trusted list set by the
+          application.
 
-       SecTrustGetCertificateCount the same.
-        
+       The Keychain API gives us multiple options to get the full chain in
+       scenario 1, 2 and 4. However, when the anchor certificate was provided
+       by the application, it's not included in the chain returned by the
+       Keychain API.
+     
+       We get the total chain length from SecTrustCopyProperties. We get the
+       certificate chain from the trust object via SecTrustGetCertificateCount
+       and SecTrustGetCertificateAtIndex. If the length of the certificate
+       chain is one shorter than the expected total chain length, we know we're
+       in scenario 3.
      */
     if (ssl_ctx->server_cert_chain_callback)
     {
         serf_ssl_certificate_t **certs;
-        int certs_len, i;
+        int certs_len, actual_len, i;
 
-        certs_len = CFArrayGetCount(certrefs);
-
-        /* Room for all the certs and a trailing NULL.  */
+        /* Room for to total chain length and a trailing NULL.  */
         certs = serf_bucket_mem_alloc(ssl_ctx->allocator,
-                                      sizeof(*certs) * (certs_len  + 1));
+                                      sizeof(*certs) * (chain_depth  + 1));
+
+        /* Copy the certificates as provided by the server + Keychain. */
+        certs_len = SecTrustGetCertificateCount(trust);
         for (i = 0; i < certs_len; ++i)
         {
             certs[i] = create_sectrans_certificate(
-                           (SecCertificateRef)CFArrayGetValueAtIndex(certrefs,
-                                                                     i),
+                           (SecCertificateRef)SecTrustGetCertificateAtIndex(
+                                                  trust, i),
                            i,
                            ssl_ctx->allocator);
         }
+
+        actual_len = certs_len;
+        if (chain_depth > certs_len)
+        {
+            /* The chain relies on (root) CA certificates not provided by the
+               server or a Keychain (scenario 3). We have to find them in the
+               list of trusted anchor certificates.
+             */
+            SecCertificateRef certref;
+
+            serf__log(SSL_VERBOSE, __FILE__, "Chain length (%d) is longer than "
+                      "what we received from the server (%d). Search the "
+                      "remaining anchor certificate.", chain_depth, certs_len);
+
+            /* Take the last known certificate and search its issuer in the
+               list of trusted anchor certificates. */
+            certref = SecTrustGetCertificateAtIndex(trust, certs_len - 1);
+
+            status = find_issuer_cert(&certs[certs_len],
+                                      certref,
+                                      anchor_certrefs,
+                                      ssl_ctx->allocator);
+            if (!status)
+                actual_len++;
+        }
+
 
         status =
             ssl_ctx->server_cert_chain_callback(ssl_ctx->server_cert_userdata,
                 failures, 0, /*depth_of_error,*/
                 (const serf_ssl_certificate_t * const *)certs,
-                certs_len);
+                actual_len);
 
-        for (i = 0; i < certs_len; ++i)
+        for (i = 0; i < actual_len; ++i)
             serf_bucket_mem_free(ssl_ctx->allocator, certs[i]);
         serf_bucket_mem_free(ssl_ctx->allocator, certs);
     }
@@ -764,8 +900,9 @@ validate_server_certificate(sectrans_context_t *ssl_ctx)
     }
 
 cleanup:
-    CFRelease(certrefs);
     CFRelease(trust);
+    if (anchor_certrefs)
+        CFRelease(anchor_certrefs);
 
     return status;
 }

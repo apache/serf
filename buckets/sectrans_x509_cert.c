@@ -261,20 +261,32 @@ skip_DER_TLV(const unsigned char *ptr, unsigned char *tag, long *consumed)
                     if (status) goto cleanup;
 
 /* Reads an issuer or subject structure from PTR, which should point to the
- value of tag type 0x30 grouping either issuer or subject. */
+   value of tag type 0x30 grouping either issuer or subject.
+   Caller should clean up out_der. */
 static apr_status_t
-read_X509_DER_DistinguishedName(apr_hash_t **o, const unsigned char *ptr,
+read_X509_DER_DistinguishedName(apr_hash_t **o, CFDataRef *out_der,
+                                const unsigned char *ptr,
                                 long *total_len, apr_pool_t *pool)
 {
     unsigned char tag;
     long len, object_len, consumed;
     apr_status_t status;
     apr_hash_t *tgt;
+    char *tmp;
 
     tgt = apr_hash_make(pool);
 
     /* RelativeDistinguishedName Sequence. */
     SERF_ERR(read_DER_TL(ptr, &tag, &object_len, &consumed));
+
+    /* Copy this whole structure in out_der. */
+    tmp = apr_palloc(pool, object_len);
+    memcpy(tmp, ptr, object_len);
+    *out_der = CFDataCreateWithBytesNoCopy(kCFAllocatorDefault,
+                                           (unsigned char *)tmp,
+                                           object_len,
+                                           kCFAllocatorNull);
+
     ptr += consumed;
 
     *total_len = object_len + consumed;
@@ -401,6 +413,15 @@ sha1digest(const unsigned char *data, long len, apr_pool_t *pool)
     return sha1hex;
 }
 
+static apr_status_t dataref_cleanup(void *data)
+{
+    CFDataRef derdata = data;
+
+    CFRelease(derdata);
+
+    return APR_SUCCESS;
+}
+
 /* Read all interesting data from a DER-encoded certificate in X.509 format.
    The resulting hash table will have following keys:
    - sha1
@@ -409,6 +430,9 @@ sha1digest(const unsigned char *data, long len, apr_pool_t *pool)
    - subject: hash table with keys CN, O, OU, L, ST, C, E. 
    - notBefore
    - notAfter
+   Internal use only:
+   - _issuer_der
+   - _subject_der
  */
 apr_status_t
 serf__sectrans_read_X509_DER_certificate(apr_hash_t **o,
@@ -416,6 +440,7 @@ serf__sectrans_read_X509_DER_certificate(apr_hash_t **o,
                                          apr_pool_t *pool)
 {
     apr_hash_t *x509_cert, *issuer, *subject;
+    CFDataRef issuer_der, subject_der;
     long consumed, x509_len, value_len, signature_start;
     unsigned char tag;
     apr_status_t status;
@@ -480,9 +505,13 @@ serf__sectrans_read_X509_DER_certificate(apr_hash_t **o,
 
     /* 4.1.2.4  Issuer */
     serf__log(ST_DEBUG, __FILE__, "---- Issuer ----.\n");
-    SERF_ERR(read_X509_DER_DistinguishedName(&issuer, ptr, &consumed, pool));
+    SERF_ERR(read_X509_DER_DistinguishedName(&issuer, &issuer_der,
+                                             ptr, &consumed, pool));
     ptr += consumed; x509_len -= consumed;
     apr_hash_set(x509_cert, "issuer", APR_HASH_KEY_STRING, issuer);
+    /* store the original der data buffer of the issuer, for internal use
+       (comparison of certificates). */
+    apr_hash_set(x509_cert, "_issuer_der", APR_HASH_KEY_STRING, issuer_der);
 
     /* 4.1.2.5  Validity */
     serf__log(ST_DEBUG, __FILE__, "---- Validity ----.\n");
@@ -503,9 +532,13 @@ serf__sectrans_read_X509_DER_certificate(apr_hash_t **o,
 
     /* 4.1.2.6  Subject */
     serf__log(ST_DEBUG, __FILE__, "---- Subject ----.\n");
-    SERF_ERR(read_X509_DER_DistinguishedName(&subject, ptr, &consumed, pool));
+    SERF_ERR(read_X509_DER_DistinguishedName(&subject, &subject_der,
+                                             ptr, &consumed, pool));
     ptr += consumed; x509_len -= consumed;
     apr_hash_set(x509_cert, "subject", APR_HASH_KEY_STRING, subject);
+    /* store the original der data buffer of the subject, for internal use
+       (comparison of certificates). */
+    apr_hash_set(x509_cert, "_subject_der", APR_HASH_KEY_STRING, subject_der);
 
     /* 4.1.2.7  Subject Public Key Info */
     serf__log(ST_DEBUG, __FILE__, "---- Subject Public Key Info ----.\n");
@@ -541,6 +574,11 @@ serf__sectrans_read_X509_DER_certificate(apr_hash_t **o,
 #endif
 
     *o = x509_cert;
+
+    apr_pool_cleanup_register(pool, issuer_der, dataref_cleanup,
+                              dataref_cleanup);
+    apr_pool_cleanup_register(pool, subject_der, dataref_cleanup,
+                              dataref_cleanup);
 
     return APR_SUCCESS;
 
