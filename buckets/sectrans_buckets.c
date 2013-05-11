@@ -466,6 +466,24 @@ ask_approval_gui(sectrans_context_t *ssl_ctx, SecTrustRef trust)
         return SERF_ERROR_SSL_USER_DENIED_CERT;
 }
 
+/* Certificate validation errors are only available as string. Convert them
+   to serf's failure codes. */
+static int
+convert_certerr_to_failure(const char *errstr)
+{
+    if (strcmp(errstr, "CSSMERR_TP_INVALID_ANCHOR_CERT") == 0)
+        return SERF_SSL_CERT_SELF_SIGNED;
+    if (strcmp(errstr, "CSSMERR_TP_CERT_EXPIRED") == 0)
+        return SERF_SSL_CERT_EXPIRED;
+    if (strcmp(errstr, "CSSMERR_TP_CERT_NOT_VALID_YET") == 0)
+        return SERF_SSL_CERT_NOTYETVALID;
+    if ((strcmp(errstr, "CSSMERR_TP_NOT_TRUSTED") == 0) ||
+        (strcmp(errstr, "CSSMERR_TP_VERIFICATION_FAILURE") == 0))
+        return SERF_SSL_CERT_UNKNOWNCA;
+
+    return SERF_SSL_CERT_UNKNOWN_FAILURE;
+}
+
 static serf_ssl_certificate_t *
 create_sectrans_certificate(SecCertificateRef certref,
                             int depth,
@@ -495,7 +513,7 @@ validate_server_certificate(sectrans_context_t *ssl_ctx)
     SecTrustRef trust;
     SecTrustResultType result;
     int failures = 0;
-    size_t depth_of_error;
+    size_t depth_of_error, chain_depth;
     apr_status_t status;
 
     serf__log(SSL_VERBOSE, __FILE__, "validate_server_certificate called.\n");
@@ -643,6 +661,38 @@ validate_server_certificate(sectrans_context_t *ssl_ctx)
             status = SERF_ERROR_SSL_CANT_CONFIRM_CERT;
         }
     }
+
+    /* Secure Transport only reports one error per evaluation. This is stored
+       at depth 0 in the result array, so we don't even know at what depth
+       the error occurred.
+       Get the total chain length (incuding anchor) from
+       SecTrustCopyProperties. */
+    {
+        CFArrayRef props = SecTrustCopyProperties(trust);
+        chain_depth = CFArrayGetCount(props); /* length of the full chain,
+                                               including anchor cert. */
+        CFDictionaryRef dict = CFArrayGetValueAtIndex(props, 0);
+        CFStringRef errref = CFDictionaryGetValue(dict, kSecPropertyTypeError);
+
+        if (errref) {
+            apr_pool_t *tmppool;
+            const char *errstr;
+
+            apr_pool_create(&tmppool, NULL);
+            errstr = CFStringToChar(errref, tmppool);
+
+            failures |= convert_certerr_to_failure(errstr);
+            serf__log(SSL_VERBOSE, __FILE__,
+                      "Certificate ERROR: %s.\n", errstr);
+            apr_pool_destroy(tmppool);
+        } else {
+            serf__log(SSL_VERBOSE, __FILE__, "Certificate validation ok.\n");
+        }
+
+        CFRelease(props);
+    }
+    
+    depth_of_error = 0;
 
     /* Ask the application to validate the server certificate at depth 0.
        TODO: any certificate at other depths with failures. */
