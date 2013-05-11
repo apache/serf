@@ -508,26 +508,26 @@ create_sectrans_certificate(SecCertificateRef certref,
 static int
 validate_server_certificate(sectrans_context_t *ssl_ctx)
 {
-    OSStatus sectrans_status;
     CFArrayRef certrefs;
     SecTrustRef trust;
     SecTrustResultType result;
     int failures = 0;
     size_t depth_of_error, chain_depth;
+    OSStatus osstatus;
     apr_status_t status;
 
     serf__log(SSL_VERBOSE, __FILE__, "validate_server_certificate called.\n");
 
     /* Get the server certificate chain. */
-    sectrans_status = SSLCopyPeerCertificates(ssl_ctx->st_ctxr, &certrefs);
-    if (sectrans_status != noErr)
-        return translate_sectrans_status(sectrans_status);
+    osstatus = SSLCopyPeerCertificates(ssl_ctx->st_ctxr, &certrefs);
+    if (osstatus != noErr)
+        return translate_sectrans_status(osstatus);
     /* TODO: 0, oh really? How can we know where the error occurred? */
     depth_of_error = 0;
 
-    sectrans_status = SSLCopyPeerTrust(ssl_ctx->st_ctxr, &trust);
-    if (sectrans_status != noErr) {
-        status = translate_sectrans_status(sectrans_status);
+    osstatus = SSLCopyPeerTrust(ssl_ctx->st_ctxr, &trust);
+    if (osstatus != noErr) {
+        status = translate_sectrans_status(osstatus);
         goto cleanup;
     }
 
@@ -547,9 +547,9 @@ validate_server_certificate(sectrans_context_t *ssl_ctx)
                                   anchor_certs,
                                   NULL);
 
-        sectrans_status = SecTrustSetAnchorCertificates(trust, certarray);
-        if (sectrans_status != noErr) {
-            status = translate_sectrans_status(sectrans_status);
+        osstatus = SecTrustSetAnchorCertificates(trust, certarray);
+        if (osstatus != noErr) {
+            status = translate_sectrans_status(osstatus);
             goto cleanup;
         }
 
@@ -557,9 +557,9 @@ validate_server_certificate(sectrans_context_t *ssl_ctx)
     }
 
     /* TODO: SecTrustEvaluateAsync */
-    sectrans_status = SecTrustEvaluate(trust, &result);
-    if (sectrans_status != noErr) {
-        status = translate_sectrans_status(sectrans_status);
+    osstatus = SecTrustEvaluate(trust, &result);
+    if (osstatus != noErr) {
+        status = translate_sectrans_status(osstatus);
         goto cleanup;
     }
 
@@ -1368,7 +1368,7 @@ serf_sectrans_encrypt_read(serf_bucket_t *bucket,
 
     if (unenc_len)
     {
-        OSStatus sectrans_status;
+        OSStatus osstatus;
         size_t written;
 
         /* TODO: we now feed each individual chunk of data one by one to 
@@ -1376,9 +1376,9 @@ serf_sectrans_encrypt_read(serf_bucket_t *bucket,
            so 2 bytes of data in results in 37 bytes of data out.
            Need to add a real buffer and feed this function chunks of
            e.g. 8KB. */
-        sectrans_status = SSLWrite(ssl_ctx->st_ctxr, unenc_data, unenc_len,
-                                   &written);
-        status = translate_sectrans_status(sectrans_status);
+        osstatus = SSLWrite(ssl_ctx->st_ctxr, unenc_data, unenc_len,
+                            &written);
+        status = translate_sectrans_status(osstatus);
         if (SERF_BUCKET_READ_ERROR(status))
             return status;
 
@@ -1456,7 +1456,7 @@ decrypt_more_data(sectrans_context_t *ssl_ctx)
     serf_bucket_t *tmp;
     char *dec_data;
     size_t dec_len;
-    OSStatus sectrans_status;
+    OSStatus osstatus;
     apr_status_t status;
 
     serf__log(SSL_VERBOSE, __FILE__,
@@ -1466,10 +1466,10 @@ decrypt_more_data(sectrans_context_t *ssl_ctx)
     dec_data = serf_bucket_mem_alloc(ssl_ctx->decrypt.pending->allocator,
                                      SECURE_TRANSPORT_READ_BUFSIZE);
 
-    sectrans_status = SSLRead(ssl_ctx->st_ctxr, dec_data,
-                              SECURE_TRANSPORT_READ_BUFSIZE,
-                              &dec_len);
-    status = translate_sectrans_status(sectrans_status);
+    osstatus = SSLRead(ssl_ctx->st_ctxr, dec_data,
+                       SECURE_TRANSPORT_READ_BUFSIZE,
+                       &dec_len);
+    status = translate_sectrans_status(osstatus);
     if (SERF_BUCKET_READ_ERROR(status))
         return status;
 
