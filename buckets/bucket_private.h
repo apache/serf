@@ -139,6 +139,14 @@ struct serf_ssl_certificate_t {
     int depth_of_error;
 };
 
+/* Loads a certificate from a memory buffer.
+   Defined here so it can be used by the test suite. */
+apr_status_t
+load_CA_cert_from_buffer(serf_ssl_certificate_t **cert,
+                         const char *buf,
+                         apr_size_t len,
+                         apr_pool_t *pool);
+
 /* Creates a serf_ssl_certificate_t object, caller takes ownership. */
 serf_ssl_certificate_t *
 serf__create_certificate(serf_bucket_alloc_t *allocator,

@@ -1283,6 +1283,44 @@ CFStringToChar(CFStringRef str, apr_pool_t *pool)
     return NULL;
 }
 
+apr_status_t
+load_CA_cert_from_buffer(serf_ssl_certificate_t **cert,
+                         const char *buf,
+                         apr_size_t len,
+                         apr_pool_t *pool)
+{
+    CFArrayRef items;
+    CFDataRef databuf;
+    apr_status_t status;
+
+    databuf = CFDataCreateWithBytesNoCopy(kCFAllocatorDefault,
+                                          (unsigned char *)buf,
+                                          len,
+                                          kCFAllocatorNull);
+
+    status = load_certificate_from_databuf(databuf, &items, pool);
+    if (status)
+        return status;
+
+    if (CFArrayGetCount(items) > 0) {
+        SecCertificateRef ssl_cert =
+            (SecCertificateRef)CFArrayGetValueAtIndex(items, 0);
+
+        if (ssl_cert) {
+            serf_bucket_alloc_t *allocator =
+            serf_bucket_allocator_create(pool, NULL, NULL);
+            *cert = create_sectrans_certificate(ssl_cert,
+                                                0,
+                                                allocator);
+            return APR_SUCCESS;
+        }
+    }
+
+    /* TODO: cleanup databuf needed? */
+
+    return SERF_ERROR_SSL_CERT_FAILED;
+}
+
 static apr_status_t
 load_CA_cert_from_file(serf_ssl_certificate_t **cert,
                        const char *file_path,
