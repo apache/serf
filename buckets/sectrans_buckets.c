@@ -64,7 +64,11 @@ typedef struct sectrans_context_t {
     /* How many open buckets refer to this context. */
     int refcount;
 
+    /* Pool that stays alive during the whole ssl session */
     apr_pool_t *pool;
+
+    /* Pool that is alive only during the hanshake phase. */
+    apr_pool_t *handshake_pool;
 
     serf_bucket_alloc_t *allocator;
 
@@ -114,8 +118,6 @@ typedef struct sectrans_context_t {
 
 } sectrans_context_t;
 
-static apr_status_t delete_temp_keychain(sectrans_context_t *ssl_ctx);
-
 static apr_status_t
 translate_sectrans_status(OSStatus osstatus)
 {
@@ -162,6 +164,7 @@ sectrans_init_context(serf_bucket_alloc_t *allocator)
     ssl_ctx->refcount = 0;
 
     apr_pool_create(&ssl_ctx->pool, NULL);
+    apr_pool_create(&ssl_ctx->handshake_pool, ssl_ctx->pool);
 
 #if 0
     /* TODO: this mode is not used anymore. Rethink modes. */
@@ -217,8 +220,8 @@ sectrans_free_context(sectrans_context_t *ssl_ctx,
 
     (void)SSLDisposeContext(ssl_ctx->st_ctxr);
 
-    (void)delete_temp_keychain(ssl_ctx);
-
+    if (ssl_ctx->handshake_pool)
+        apr_pool_destroy(ssl_ctx->handshake_pool);
     apr_pool_destroy(ssl_ctx->pool);
 
     serf_bucket_mem_free(allocator, ssl_ctx);
@@ -907,7 +910,26 @@ cleanup:
     return status;
 }
 
-static apr_status_t create_temp_keychain(sectrans_context_t *ssl_ctx)
+static apr_status_t delete_temp_keychain(void *data)
+{
+    sectrans_context_t *ssl_ctx = data;
+    apr_status_t status = APR_SUCCESS;
+    OSStatus osstatus;
+
+    if (!ssl_ctx->tempKeyChainRef)
+        return APR_SUCCESS;
+
+    osstatus = SecKeychainDelete(ssl_ctx->tempKeyChainRef);
+    if (osstatus != errSecSuccess) {
+        status = translate_sectrans_status(osstatus);
+    }
+    ssl_ctx->tempKeyChainRef = NULL;
+
+    return status;
+}
+
+static apr_status_t create_temp_keychain(sectrans_context_t *ssl_ctx,
+                                         apr_pool_t *pool)
 {
     apr_file_t *tmpfile;
     const char *temp_dir;
@@ -926,17 +948,14 @@ static apr_status_t create_temp_keychain(sectrans_context_t *ssl_ctx)
      the user in the Keychain Access tool.
      */
 
-    /* TODO: this temporary keychain should be cleaned up as soon as the
-     handshake is finished => create a pool just for the handshake phase.
-
-     TODO: loading an identity from file makes sense when using OpenSSL, but
+    /* TODO: loading an identity from file makes sense when using OpenSSL, but
      on Mac OS X the identity is most likely already loaded in the user's
      login keychain => create an API to load the identity from a keychain.
      */
 
     /* We need a unique filename for a temporary file. So create an empty
-     file using APR and close it immediately. */
-    status = apr_temp_dir_get(&temp_dir, ssl_ctx->pool);
+       file using APR and close it immediately. */
+    status = apr_temp_dir_get(&temp_dir, pool);
     if (status)
         return status;
 
@@ -944,14 +963,14 @@ static apr_status_t create_temp_keychain(sectrans_context_t *ssl_ctx)
                                 temp_dir,
                                 "tempfile_XXXXXX",
                                 APR_FILEPATH_NATIVE | APR_FILEPATH_NOTRELATIVE,
-                                ssl_ctx->pool);
+                                pool);
     if (status)
         return status;
 
     status = apr_file_mktemp(&tmpfile, ssl_ctx->keychain_temp_file,
                              APR_READ | APR_WRITE | APR_CREATE | APR_EXCL |
                                  APR_DELONCLOSE | APR_BINARY,
-                             ssl_ctx->pool);
+                             pool);
     if (status)
         return status;
 
@@ -977,25 +996,10 @@ static apr_status_t create_temp_keychain(sectrans_context_t *ssl_ctx)
     if (osstatus != errSecSuccess) {
         return translate_sectrans_status(osstatus);
     }
+    apr_pool_cleanup_register(pool, ssl_ctx,
+                              delete_temp_keychain, delete_temp_keychain);
 
     return APR_SUCCESS;
-}
-
-static apr_status_t delete_temp_keychain(sectrans_context_t *ssl_ctx)
-{
-    apr_status_t status = APR_SUCCESS;
-    OSStatus osstatus;
-
-    if (!ssl_ctx->tempKeyChainRef)
-        return APR_SUCCESS;
-
-    osstatus = SecKeychainDelete(ssl_ctx->tempKeyChainRef);
-    if (osstatus != errSecSuccess) {
-        status = translate_sectrans_status(osstatus);
-    }
-    ssl_ctx->tempKeyChainRef = NULL;
-
-    return status;
 }
 
 /* Get a client certificate for this server from the application. */
@@ -1020,7 +1024,7 @@ provide_client_certificate(sectrans_context_t *ssl_ctx)
 
     serf__log(SSL_VERBOSE, __FILE__, "provide_client_certificate called.\n");
 
-    status = create_temp_keychain(ssl_ctx);
+    status = create_temp_keychain(ssl_ctx, ssl_ctx->handshake_pool);
     if (status)
         return status;
 
@@ -1031,17 +1035,16 @@ provide_client_certificate(sectrans_context_t *ssl_ctx)
         if (status)
             return status;
 
-        status = load_data_from_file(cert_path, &databuf, ssl_ctx->pool);
+        status = load_data_from_file(cert_path, &databuf,
+                                     ssl_ctx->handshake_pool);
         if (status)
             return status;
 
-        /* TODO: lifetime of items is now bound to the session.
-           -> handshake pool? */
         status = load_identity_from_databuf(ssl_ctx,
                                             databuf,
                                             &items,
                                             passphrase,
-                                            ssl_ctx->pool);
+                                            ssl_ctx->handshake_pool);
         if (status == SERF_ERROR_SSL_CLIENT_CERT_PW_FAILED)
         {
             if (!ssl_ctx->client_cert_pw_callback)
@@ -1114,9 +1117,11 @@ static apr_status_t do_handshake(sectrans_context_t *ssl_ctx)
             serf__log(SSL_VERBOSE, __FILE__, "ssl/tls handshake successful.\n");
             ssl_ctx->state = SERF_SECTRANS_CONNECTED;
 
-            /* We can now safely delete the keychain created to load the
-             client identity. */
-            delete_temp_keychain(ssl_ctx);
+            /* We can now safely cleanup the temporary resources created during
+               handshake (i.e. the temporary keychain used to load the client
+               identity. */
+            apr_pool_destroy(ssl_ctx->handshake_pool);
+            ssl_ctx->handshake_pool = NULL;
         }
     }
 
