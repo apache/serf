@@ -13,8 +13,11 @@
  * limitations under the License.
  */
 
-/* This page is very helpful in identifying the bugs in Keychain/Secure Transport:
-   https://github.com/lorentey/LKSecurity/blob/master/Framework%20Bugs.markdown */
+/* This page is very helpful in identifying the bugs in
+   Keychain/Secure Transport:
+   https://github.com/lorentey/LKSecurity/blob/master/Framework%20Bugs.markdown
+ */
+
 #ifdef SERF_HAVE_SECURETRANSPORT
 
 #include "serf.h"
@@ -310,6 +313,7 @@ sectrans_write_cb(SSLConnectionRef connection,
     return noErr;
 }
 
+/* Read the contents of a file in memory in a CFDataRef buffer. */
 static apr_status_t
 load_data_from_file(const char *file_path, CFDataRef *databuf, apr_pool_t *pool)
 {
@@ -338,9 +342,14 @@ load_data_from_file(const char *file_path, CFDataRef *databuf, apr_pool_t *pool)
                                            file_info.size,
                                            kCFAllocatorNull);
 
+    apr_file_close(fp);
+
     return APR_SUCCESS;
 }
 
+/* Use Keychain Services to extract one or multiple SecCertificateRef's from
+   a data buffer.
+ */
 static apr_status_t
 load_certificate_from_databuf(CFDataRef databuf,
                               CFArrayRef *items,
@@ -366,6 +375,9 @@ load_certificate_from_databuf(CFDataRef databuf,
     return status;
 }
 
+/* Use Keychain Services to extract a SecIndentityRef (client private key +
+   certificate) from a data buffer. Databuf needs to be in PKCS12 format.
+ */
 static apr_status_t
 load_identity_from_databuf(sectrans_context_t *ssl_ctx,
                            CFDataRef databuf,
@@ -1562,8 +1574,9 @@ serf_sectrans_encrypt_read(serf_bucket_t *bucket,
         if (SERF_BUCKET_READ_ERROR(status))
             return status;
 
-        serf__log(SSL_MSG_VERBOSE, __FILE__, "%dB ready with status %d, %d encrypted and written:\n"
-                  "---%.*s-(%d)-\n", unenc_len, status_unenc_stream, written, written, unenc_data, written);
+        serf__log(SSL_MSG_VERBOSE, __FILE__, "%dB ready with status %d, %d "
+                  "encrypted and written:\n---%.*s-(%d)-\n", unenc_len,
+                  status_unenc_stream, written, written, unenc_data, written);
 
         status = serf_bucket_read(ssl_ctx->encrypt.pending, requested,
                                   data, len);
