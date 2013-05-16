@@ -124,6 +124,12 @@ struct serf_ssl_bucket_type_t {
 
     int (*set_allowed_cert_validation_modes)(void *impl_ctx,
                                              int modes);
+
+    apr_status_t
+        (*show_trust_certificate_dialog)(void *impl_ctx,
+                                         const char *message,
+                                         const char *ok_button_label,
+                                         const char *cancel_button_label);
 };
 
 /* Implementation independent certificate object. */

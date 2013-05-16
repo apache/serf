@@ -287,3 +287,15 @@ apr_status_t serf_ssl_load_cert_file(serf_ssl_certificate_t **cert,
 
     return type->load_CA_cert_from_file(cert, file_path, pool);
 }
+
+apr_status_t
+serf_ssl_show_trust_certificate_dialog(serf_ssl_context_t *ssl_ctx,
+                                       const char *message,
+                                       const char *ok_button_label,
+                                       const char *cancel_button_label)
+{
+    return ssl_ctx->type->show_trust_certificate_dialog(ssl_ctx->impl_ctx,
+                                                        message,
+                                                        ok_button_label,
+                                                        cancel_button_label);
+}

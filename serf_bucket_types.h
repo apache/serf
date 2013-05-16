@@ -660,6 +660,12 @@ int
 serf_ssl_set_allowed_cert_validation_modes(serf_ssl_context_t *ssl_ctx,
                                            int modes);
 
+apr_status_t
+serf_ssl_show_trust_certificate_dialog(serf_ssl_context_t *ssl_ctx,
+                                       const char *message,
+                                       const char *ok_button_label,
+                                       const char *cancel_button_label);
+
 void serf_bucket_ssl_destroy_and_data(serf_bucket_t *bucket);
 
 serf_bucket_t *serf_bucket_ssl_encrypt_create(

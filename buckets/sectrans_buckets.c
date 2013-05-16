@@ -95,8 +95,12 @@ typedef struct sectrans_context_t {
 
     SSLContextRef st_ctxr;
 
+    /* Temporary keychain created when importing a client certificate. */
     SecKeychainRef tempKeyChainRef;
     char *keychain_temp_file;
+
+    /* Trust object created during validation of the server certificate. */
+    SecTrustRef trust;
 
     /* stream of (to be) encrypted data, outgoing to the network. */
     sectrans_ssl_stream_t encrypt;
@@ -183,6 +187,17 @@ static apr_status_t cfrelease_ref(void *data)
 
     if (tr)
         CFRelease(tr);
+
+    return APR_SUCCESS;
+}
+
+static apr_status_t cfrelease_trust(void *data)
+{
+    sectrans_context_t *ssl_ctx = data;
+
+    if (ssl_ctx->trust)
+        CFRelease(ssl_ctx->trust);
+    ssl_ctx->trust = NULL;
 
     return APR_SUCCESS;
 }
@@ -475,17 +490,35 @@ load_identity_from_databuf(sectrans_context_t *ssl_ctx,
 /* Show a SFCertificateTrustPanel. This is the Mac OS X default dialog to
    ask the user to confirm or deny the use of the certificate. This panel
    also gives the option to store the user's decision for this certificate
-   permantly in the Keychain (requires password).
+   permanently in the Keychain (requires password).
  */
-
-/* TODO: serf or application? If serf, let appl. customize labels. If 
-   application, how to get SecTrustRef object back to app? */
 static apr_status_t
-ask_approval_gui(sectrans_context_t *ssl_ctx, SecTrustRef trust)
+show_trust_certificate_dialog(void *impl_ctx,
+                              const char *message,
+                              const char *ok_button,
+                              const char *cancel_button)
 {
-    const CFStringRef OkButtonLbl = CFSTR("Accept");
-    const CFStringRef CancelButtonLbl = CFSTR("Cancel");
-    const CFStringRef Message = CFSTR("The server certificate requires validation.");
+    CFStringRef OkButtonLbl, CancelButtonLbl = NULL, MessageLbl;
+
+    MessageLbl = CFStringCreateWithBytesNoCopy(kCFAllocatorDefault,
+                     (unsigned char *)message, strlen(message),
+                     kCFStringEncodingMacRoman, false, kCFAllocatorNull);
+    if (cancel_button)
+        CancelButtonLbl = CFStringCreateWithBytesNoCopy(kCFAllocatorDefault,
+                              (unsigned char *)cancel_button,
+                              strlen(cancel_button),
+                              kCFStringEncodingMacRoman, false,
+                              kCFAllocatorNull);
+    OkButtonLbl = CFStringCreateWithBytesNoCopy(kCFAllocatorDefault,
+                     (unsigned char *)ok_button, strlen(ok_button),
+                     kCFStringEncodingMacRoman, false, kCFAllocatorNull);
+
+    /* Function can only be called from the callback to validate the
+       server certificate or server certificate chain! */
+    sectrans_context_t *ssl_ctx = impl_ctx;
+    SecTrustRef trust = ssl_ctx->trust;
+    if (!trust)
+        return APR_EGENERAL; /* TODO */
 
     /* Creates an NSApplication object (enables GUI for cocoa apps) if one
        doesn't exist already. */
@@ -514,7 +547,7 @@ ask_approval_gui(sectrans_context_t *ssl_ctx, SecTrustRef trust)
     
     long result = (long)objc_msgSend(stp,
                                      sel_getUid("runModalForTrust:message:"),
-                                     trust, Message);
+                                     trust, MessageLbl);
     serf__log(SSL_VERBOSE, __FILE__, "User clicked %s button.\n",
               result ? "Accept" : "Cancel");
 
@@ -754,7 +787,6 @@ convert_certerr_to_failure(const char *errstr)
 static int
 validate_server_certificate(sectrans_context_t *ssl_ctx)
 {
-    SecTrustRef trust;
     SecTrustResultType result;
     CFArrayRef anchor_certrefs = NULL;
     size_t depth_of_error, chain_depth;
@@ -764,11 +796,13 @@ validate_server_certificate(sectrans_context_t *ssl_ctx)
 
     serf__log(SSL_VERBOSE, __FILE__, "validate_server_certificate called.\n");
 
-    osstatus = SSLCopyPeerTrust(ssl_ctx->st_ctxr, &trust);
+    osstatus = SSLCopyPeerTrust(ssl_ctx->st_ctxr, &ssl_ctx->trust);
     if (osstatus != noErr) {
         status = translate_sectrans_status(osstatus);
         goto cleanup;
     }
+    apr_pool_cleanup_register(ssl_ctx->handshake_pool, ssl_ctx,
+                              cfrelease_trust, cfrelease_trust);
 
     /* If the application provided certificates to trust, use them here. */
     if (ssl_ctx->anchor_certs)
@@ -786,7 +820,8 @@ validate_server_certificate(sectrans_context_t *ssl_ctx)
                                         anchor_certs,
                                         NULL);
 
-        osstatus = SecTrustSetAnchorCertificates(trust, anchor_certrefs);
+        osstatus = SecTrustSetAnchorCertificates(ssl_ctx->trust,
+                                                 anchor_certrefs);
         if (osstatus != noErr) {
             status = translate_sectrans_status(osstatus);
             goto cleanup;
@@ -794,7 +829,7 @@ validate_server_certificate(sectrans_context_t *ssl_ctx)
     }
 
     /* TODO: SecTrustEvaluateAsync */
-    osstatus = SecTrustEvaluate(trust, &result);
+    osstatus = SecTrustEvaluate(ssl_ctx->trust, &result);
     if (osstatus != noErr) {
         status = translate_sectrans_status(osstatus);
         goto cleanup;
@@ -843,13 +878,14 @@ validate_server_certificate(sectrans_context_t *ssl_ctx)
             break;
     }
 
+#if 0
     /* Recoverable errors? Ask the user for confirmation. */
     if (failures & SERF_SSL_CERT_CONFIRM_NEEDED ||
         failures & SERF_SSL_CERT_RECOVERABLE)
     {
         if (ssl_ctx->modes & serf_ssl_val_mode_serf_managed_with_gui)
         {
-            status = ask_approval_gui(ssl_ctx, trust);
+            status = ask_approval_gui(ssl_ctx, ssl_ctx->trust);
             /* TODO: remember this approval for 'some time' ! */
             goto cleanup;
         } else
@@ -857,6 +893,7 @@ validate_server_certificate(sectrans_context_t *ssl_ctx)
             status = SERF_ERROR_SSL_CANT_CONFIRM_CERT;
         }
     }
+#endif
 
     /* Secure Transport only reports one error per evaluation. This is stored
        at depth 0 in the result array, so we don't even know at what depth
@@ -864,7 +901,7 @@ validate_server_certificate(sectrans_context_t *ssl_ctx)
        Get the total chain length (incuding anchor) from
        SecTrustCopyProperties. */
     {
-        CFArrayRef props = SecTrustCopyProperties(trust);
+        CFArrayRef props = SecTrustCopyProperties(ssl_ctx->trust);
         chain_depth = CFArrayGetCount(props); /* length of the full chain,
                                                including anchor cert. */
         CFDictionaryRef dict = CFArrayGetValueAtIndex(props, 0);
@@ -896,11 +933,10 @@ validate_server_certificate(sectrans_context_t *ssl_ctx)
     if (ssl_ctx->server_cert_callback)
     {
         serf_ssl_certificate_t *cert;
+        SecCertificateRef certref;
 
-        cert = create_ssl_certificate(
-                   (SecCertificateRef)SecTrustGetCertificateAtIndex(trust, 0),
-                   0,
-                   ssl_ctx->handshake_pool);
+        certref = SecTrustGetCertificateAtIndex(ssl_ctx->trust, 0);
+        cert = create_ssl_certificate(certref, 0, ssl_ctx->handshake_pool);
 
         /* Callback for further verification. */
         status = ssl_ctx->server_cert_callback(ssl_ctx->server_cert_userdata,
@@ -943,14 +979,14 @@ validate_server_certificate(sectrans_context_t *ssl_ctx)
                            sizeof(*certs) * (chain_depth  + 1));
 
         /* Copy the certificates as provided by the server + Keychain. */
-        certs_len = SecTrustGetCertificateCount(trust);
+        certs_len = SecTrustGetCertificateCount(ssl_ctx->trust);
         for (i = 0; i < certs_len; ++i)
         {
-            certs[i] = create_ssl_certificate(
-                           (SecCertificateRef)SecTrustGetCertificateAtIndex(
-                                                  trust, i),
-                           i,
-                           ssl_ctx->handshake_pool);
+            SecCertificateRef certref;
+
+            certref = SecTrustGetCertificateAtIndex(ssl_ctx->trust, i);
+            certs[i] = create_ssl_certificate(certref, i,
+                                              ssl_ctx->handshake_pool);
         }
 
         actual_len = certs_len;
@@ -969,7 +1005,8 @@ validate_server_certificate(sectrans_context_t *ssl_ctx)
 
             /* Take the last known certificate and search its issuer in the
                list of trusted anchor certificates. */
-            certref = SecTrustGetCertificateAtIndex(trust, certs_len - 1);
+            certref = SecTrustGetCertificateAtIndex(ssl_ctx->trust,
+                                                    certs_len - 1);
             status = create_sectrans_certificate(&cert, certref, 1,
                                                  ssl_ctx->handshake_pool);
 
@@ -999,7 +1036,6 @@ validate_server_certificate(sectrans_context_t *ssl_ctx)
     }
 
 cleanup:
-    CFRelease(trust);
     if (anchor_certrefs)
         CFRelease(anchor_certrefs);
 
@@ -2247,6 +2283,6 @@ const serf_ssl_bucket_type_t serf_ssl_bucket_type_securetransport = {
     cert_export,
     use_compression,
     set_allowed_cert_validation_modes,
+    show_trust_certificate_dialog,
 };
-
 #endif /* SERF_HAVE_SECURETRANSPORT */

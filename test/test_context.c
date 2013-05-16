@@ -1220,8 +1220,22 @@ ssl_server_cert_cb_expect_failures(void *baton, int failures,
 {
     test_baton_t *tb = baton;
     int expected_failures = *(int *)tb->user_baton;
+    apr_status_t status;
 
     tb->result_flags |= TEST_RESULT_SERVERCERTCB_CALLED;
+
+#if 0
+    /* Example of how to ask the user to validate a server certificate
+       via a platform-specific dialog. */
+    if (failures) {
+        status = serf_ssl_show_trust_certificate_dialog(tb->ssl_context,
+                     "Server certificate requires validation",
+                     "Accept",
+                     "Cancel");
+        if (status && status != APR_ENOTIMPL)
+            return status;
+    }
+#endif
 
     /* We expect an error from the certificate validation function. */
     if (failures & expected_failures)

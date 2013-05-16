@@ -1716,6 +1716,15 @@ serf__openssl_set_allowed_cert_validation_modes(void *impl_ctx,
     return ssl_ctx->modes;
 }
 
+apr_status_t
+serf__openssl_show_trust_certificate_dialog(void *impl_ctx,
+                                            const char *message,
+                                            const char *ok_button_label,
+                                            const char *cancel_button_label)
+{
+    return APR_ENOTIMPL;
+}
+
 static void openssl_destroy_and_data(serf_bucket_t *bucket)
 {
     ssl_context_t *ctx = bucket->data;
@@ -1842,6 +1851,7 @@ const serf_ssl_bucket_type_t serf_ssl_bucket_type_openssl = {
     serf__openssl_cert_export,
     serf__openssl_use_compression,
     serf__openssl_set_allowed_cert_validation_modes,
+    serf__openssl_show_trust_certificate_dialog,
 };
 
 #endif /* SERF_HAVE_OPENSSL */
