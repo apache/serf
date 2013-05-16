@@ -126,27 +126,39 @@ typedef struct sectrans_context_t {
 static apr_status_t
 translate_sectrans_status(OSStatus osstatus)
 {
+    apr_status_t status;
+
     switch (osstatus)
     {
         case noErr:
             return APR_SUCCESS;
         case errSSLWouldBlock:
             return APR_EAGAIN;
+        case errSSLClosedGraceful:
+            /* Server sent a */
+            status = APR_EOF;
+            break;
+        case errSSLClosedAbort:
+            status = APR_ECONNABORTED;
+            break;
         default:
-#if SSL_VERBOSE
-        {
-            apr_pool_t *temppool;
-            CFStringRef errref = SecCopyErrorMessageString(osstatus, NULL);
-            apr_pool_create(&temppool, NULL);
-            
-            serf__log(SSL_VERBOSE, __FILE__,
-                      "Unknown Secure Transport error: %d,%s.\n",
-                      osstatus, CFStringToChar(errref, temppool));
-            apr_pool_destroy(temppool);
-        }
-#endif
-            return APR_EGENERAL;
+            status = APR_EGENERAL;
     }
+
+#if SSL_VERBOSE
+    {
+        apr_pool_t *temppool;
+        CFStringRef errref = SecCopyErrorMessageString(osstatus, NULL);
+        apr_pool_create(&temppool, NULL);
+
+        serf__log(SSL_VERBOSE, __FILE__,
+                  "Unknown Secure Transport error: %d,%s.\n",
+                  osstatus, CFStringToChar(errref, temppool));
+        apr_pool_destroy(temppool);
+    }
+#endif
+
+    return status;
 }
 
 static apr_status_t cfrelease_ref(void *data)
@@ -531,19 +543,42 @@ select_identity(sectrans_context_t *ssl_ctx, SecIdentityRef *identity,
         return APR_EGENERAL;
 
 }
-/* Creates an serf_ssl_certificate_t at depth allocated with allocator.
-   Caller is responsible for cleaning up. */
-static serf_ssl_certificate_t *
-create_sectrans_certificate(SecCertificateRef certref,
-                            int depth,
-                            serf_bucket_alloc_t *allocator)
+
+/* Creates a sectrans_certificate_t allocated on pool. */
+static apr_status_t
+create_sectrans_certificate(sectrans_certificate_t **out_sectrans_cert,
+                            SecCertificateRef certref,
+                            int parse_content,
+                            apr_pool_t *pool)
 {
     sectrans_certificate_t *sectrans_cert;
+    apr_status_t status = APR_SUCCESS;
 
-    sectrans_cert = serf_bucket_mem_calloc(allocator,
-                                           sizeof(sectrans_certificate_t));
+    sectrans_cert = apr_pcalloc(pool, sizeof(sectrans_certificate_t));
     sectrans_cert->certref = certref;
 
+    if (parse_content)
+        status = serf__sectrans_read_X509_DER_certificate(&sectrans_cert->content,
+                                                          sectrans_cert,
+                                                          pool);
+    *out_sectrans_cert = sectrans_cert;
+
+    return status;
+}
+
+/* Creates a serf_ssl_certificate_t at depth allocated on pool. */
+static serf_ssl_certificate_t *
+create_ssl_certificate(SecCertificateRef certref,
+                       int depth,
+                       apr_pool_t *pool)
+{
+    sectrans_certificate_t *sectrans_cert;
+    serf_bucket_alloc_t *allocator;
+
+    /* Since we're not asking to parse the content we can ignore the status. */
+    (void) create_sectrans_certificate(&sectrans_cert, certref, 0, pool);
+
+    allocator = serf_bucket_allocator_create(pool, NULL, NULL);
     return serf__create_certificate(allocator,
                                     &serf_ssl_bucket_type_securetransport,
                                     sectrans_cert,
@@ -612,58 +647,42 @@ cleanup:
 #endif
 }
 
-/* Finds the issuer certificate of certref in the list of trusted anchor
-   certificates (as set by the application).
-   *cert is allocated with allocator, caller is responsible for cleaning
-   up. */
+/* Finds the issuer certificate of cert in the provided list of 
+   SecCertificateRef's. *outcert is allocated in pool. */
 static apr_status_t
-find_issuer_cert(serf_ssl_certificate_t **cert,
-                 SecCertificateRef certref,
-                 CFArrayRef anchor_certrefs,
-                 serf_bucket_alloc_t *outalloc)
+find_issuer_cert_in_array(serf_ssl_certificate_t **outcert,
+                          sectrans_certificate_t *cert,
+                          CFArrayRef certref_list,
+                          apr_pool_t *pool)
 {
     CFDataRef issuer;
-    sectrans_certificate_t *prevcert;
     apr_pool_t *tmppool;
     serf_bucket_alloc_t *tmpalloc;
     int i;
     apr_status_t status;
 
-    apr_pool_create(&tmppool, NULL);
+    apr_pool_create(&tmppool, pool);
     tmpalloc = serf_bucket_allocator_create(tmppool, NULL, NULL);
 
     /* Get the issuer DER encoded data buffer of the provided certificate. */
-    prevcert = serf_bucket_mem_calloc(tmpalloc,
-                                      sizeof(sectrans_certificate_t));
-    prevcert->certref = certref;
+    log_certificate(cert, "Search for issuer of this cert:\n");
+    issuer = apr_hash_get(cert->content, "_issuer_der", APR_HASH_KEY_STRING);
 
-    status = serf__sectrans_read_X509_DER_certificate(&prevcert->content,
-                                                      prevcert,
-                                                      tmppool);
-    if (status)
-        goto cleanup;
-
-    log_certificate(prevcert, "Search for issuer of this cert:\n");
-
-    issuer = apr_hash_get(prevcert->content, "_issuer_der",
-                          APR_HASH_KEY_STRING);
-
-    /* Get the subject DER encoded data buffer of each anchor and compare it
-       with the issuer data buffer. */
-    for (i = 0; i < CFArrayGetCount(anchor_certrefs); i++)
+    /* Get the subject DER encoded data buffer of each cert in the list and
+       compare it with the issuer data buffer. */
+    for (i = 0; i < CFArrayGetCount(certref_list); i++)
     {
-        sectrans_certificate_t *anchor_cert;
+        sectrans_certificate_t *list_cert;
         CFDataRef subject;
+        SecCertificateRef certref;
 
-        anchor_cert = serf_bucket_mem_calloc(tmpalloc,
-                                             sizeof(sectrans_certificate_t));
-        anchor_cert->certref =
-            (SecCertificateRef)CFArrayGetValueAtIndex(anchor_certrefs, i);
+        certref = (SecCertificateRef)CFArrayGetValueAtIndex(certref_list, i);
+        status = create_sectrans_certificate(&list_cert, certref, 1,
+                                             tmppool);
+        if (status)
+            goto cleanup;
 
-        serf__sectrans_read_X509_DER_certificate(&anchor_cert->content,
-                                                 anchor_cert,
-                                                 tmppool);
-        subject = apr_hash_get(anchor_cert->content, "_subject_der",
+        subject = apr_hash_get(list_cert->content, "_subject_der",
                                APR_HASH_KEY_STRING);
 
         if (CFEqual(subject, issuer))
@@ -671,11 +690,11 @@ find_issuer_cert(serf_ssl_certificate_t **cert,
             CFTypeRef outcertref;
 
             /* This is the one. */
-            outcertref = CFArrayGetValueAtIndex(anchor_certrefs, i);
+            outcertref = CFArrayGetValueAtIndex(certref_list, i);
 
-            *cert = create_sectrans_certificate((SecCertificateRef)outcertref,
-                                                i,
-                                                outalloc);
+            *outcert = create_ssl_certificate((SecCertificateRef)outcertref,
+                                              i,
+                                              pool);
             status = APR_SUCCESS;
             goto cleanup;
         }
@@ -857,16 +876,14 @@ validate_server_certificate(sectrans_context_t *ssl_ctx)
     {
         serf_ssl_certificate_t *cert;
 
-        cert = create_sectrans_certificate(
+        cert = create_ssl_certificate(
                    (SecCertificateRef)SecTrustGetCertificateAtIndex(trust, 0),
                    0,
-                   ssl_ctx->allocator);
+                   ssl_ctx->handshake_pool);
 
         /* Callback for further verification. */
         status = ssl_ctx->server_cert_callback(ssl_ctx->server_cert_userdata,
                                                failures, cert);
-
-        serf_bucket_mem_free(ssl_ctx->allocator, cert);
     }
 
     /* We need to get the full certificate chain and provide it to the
@@ -900,19 +917,19 @@ validate_server_certificate(sectrans_context_t *ssl_ctx)
         serf_ssl_certificate_t **certs;
         int certs_len, actual_len, i;
 
-        /* Room for to total chain length and a trailing NULL.  */
-        certs = serf_bucket_mem_alloc(ssl_ctx->allocator,
-                                      sizeof(*certs) * (chain_depth  + 1));
+        /* Room for the total chain length and a trailing NULL.  */
+        certs = apr_palloc(ssl_ctx->handshake_pool,
+                           sizeof(*certs) * (chain_depth  + 1));
 
         /* Copy the certificates as provided by the server + Keychain. */
         certs_len = SecTrustGetCertificateCount(trust);
         for (i = 0; i < certs_len; ++i)
         {
-            certs[i] = create_sectrans_certificate(
+            certs[i] = create_ssl_certificate(
                            (SecCertificateRef)SecTrustGetCertificateAtIndex(
                                                   trust, i),
                            i,
-                           ssl_ctx->allocator);
+                           ssl_ctx->handshake_pool);
         }
 
         actual_len = certs_len;
@@ -923,6 +940,7 @@ validate_server_certificate(sectrans_context_t *ssl_ctx)
                list of trusted anchor certificates.
              */
             SecCertificateRef certref;
+            sectrans_certificate_t *cert;
 
             serf__log(SSL_VERBOSE, __FILE__, "Chain length (%d) is longer than "
                       "what we received from the server (%d). Search the "
@@ -931,25 +949,22 @@ validate_server_certificate(sectrans_context_t *ssl_ctx)
             /* Take the last known certificate and search its issuer in the
                list of trusted anchor certificates. */
             certref = SecTrustGetCertificateAtIndex(trust, certs_len - 1);
+            status = create_sectrans_certificate(&cert, certref, 1,
+                                                 ssl_ctx->handshake_pool);
 
-            status = find_issuer_cert(&certs[certs_len],
-                                      certref,
-                                      anchor_certrefs,
-                                      ssl_ctx->allocator);
+            status = find_issuer_cert_in_array(&certs[certs_len],
+                                               cert,
+                                               anchor_certrefs,
+                                               ssl_ctx->handshake_pool);
             if (!status)
                 actual_len++;
         }
-
 
         status =
             ssl_ctx->server_cert_chain_callback(ssl_ctx->server_cert_userdata,
                 failures, 0, /*depth_of_error,*/
                 (const serf_ssl_certificate_t * const *)certs,
                 actual_len);
-
-        for (i = 0; i < actual_len; ++i)
-            serf_bucket_mem_free(ssl_ctx->allocator, certs[i]);
-        serf_bucket_mem_free(ssl_ctx->allocator, certs);
     }
 
     /* Return a specific error if the server certificate is not accepted by
@@ -1062,12 +1077,193 @@ static apr_status_t create_temp_keychain(sectrans_context_t *ssl_ctx,
     return APR_SUCCESS;
 }
 
+/* Find the certificate of the issuer of certref in the keychains. */
+static apr_status_t
+find_issuer_certificate_in_keychain(sectrans_certificate_t **out_cert,
+                                    SecCertificateRef certref,
+                                    apr_pool_t *pool)
+{
+    CFErrorRef error = NULL;
+    CFDataRef issuer;
+    apr_pool_t *tmppool;
+    apr_status_t status;
+
+    apr_pool_create(&tmppool, pool);
+
+    issuer = SecCertificateCopyNormalizedIssuerContent(certref,
+                                                       &error);
+    if (error) {
+        CFStringRef errstr = CFErrorCopyDescription(error);
+
+        serf__log(SSL_VERBOSE, __FILE__, "Can't get issuer DER buffer from "
+                  "certificate, reason: %s.\n",
+                  CFStringToChar(errstr, tmppool));
+        CFRelease(error);
+
+        return SERF_ERROR_SSL_CERT_FAILED;
+    }
+    else
+    {
+        CFDictionaryRef query;
+        sectrans_certificate_t *cert, *issuer_cert;
+        SecCertificateRef issuer_certref;
+        CFDataRef cert_issuer, issuer_subject;
+        OSStatus osstatus;
+
+        const void *keys[] =   { kSecClass, kSecAttrSubject,
+                                 kSecMatchLimit, kSecReturnRef };
+        const void *values[] = { kSecClassCertificate, issuer,
+                                 kSecMatchLimitOne, kCFBooleanTrue };
+
+        /* Find a certificate with issuer in the keychains. */
+        query = CFDictionaryCreate(kCFAllocatorDefault,
+                                   (const void **)keys, (const void **)values,
+                                   4L, NULL, NULL);
+        osstatus = SecItemCopyMatching(query, (CFTypeRef*)&issuer_certref);
+        CFRelease(query);
+        CFRelease(issuer);
+        if (osstatus != errSecSuccess) {
+            return translate_sectrans_status(osstatus);
+        }
+
+        /* if SecItemCopyMatching doesn't find a matching certificate, it is
+           known that it returns another (no kidding), so check that we received
+           the right certificate.
+         */
+        status = create_sectrans_certificate(&cert,
+                                             certref,
+                                             1,
+                                             pool);
+        if (status)
+            return status;
+        status = create_sectrans_certificate(&issuer_cert,
+                                             issuer_certref,
+                                             1,
+                                             pool);
+        if (status)
+            return status;
+
+        cert_issuer =  apr_hash_get(cert->content, "_issuer_der",
+                                     APR_HASH_KEY_STRING);
+        issuer_subject =  apr_hash_get(issuer_cert->content, "_subject_der",
+                                       APR_HASH_KEY_STRING);
+
+        if (CFEqual(cert_issuer, issuer_subject))
+        {
+            *out_cert = issuer_cert;
+            return APR_SUCCESS;
+        }
+
+        *out_cert = NULL;
+
+        return APR_SUCCESS;
+    }
+}
+
+/* Create a list of all certificates in between certref and any anchor
+   certificate in the list of anchor_certrefs.
+   Caller is responsible for cleanin up *intermediate_ca_certrefs. */
+static apr_status_t
+find_intermediate_cas(CFArrayRef *intermediate_ca_certrefs,
+                      SecCertificateRef certref,
+                      CFArrayRef peer_certrefs,
+                      apr_pool_t *pool)
+{
+    sectrans_certificate_t *prevcert;
+    CFMutableArrayRef ca_certrefs;
+    apr_pool_t *tmppool;
+    apr_status_t status;
+
+    ca_certrefs = CFArrayCreateMutable(kCFAllocatorDefault, 0, NULL);
+
+    if (peer_certrefs == NULL ||
+        CFArrayGetCount(peer_certrefs) == 0)
+    {
+        /* The server didn't provide any certificate at all?? */
+        *intermediate_ca_certrefs = ca_certrefs;
+
+        return APR_SUCCESS;
+    }
+
+    apr_pool_create(&tmppool, pool);
+
+    status = create_sectrans_certificate(&prevcert, certref, 1, tmppool);
+    if (status)
+        goto cleanup;
+
+    /* Get the issuer DER encoded data buffer of the provided certificate. */
+    while (1)
+    {
+        sectrans_certificate_t *issuer_cert;
+        CFDataRef issuer, subject;
+        serf_ssl_certificate_t *dummy_cert;
+
+        /* Find issuer in the list of certificates sent by the server. */
+        status = find_issuer_cert_in_array(&dummy_cert,
+                                           prevcert,
+                                           peer_certrefs,
+                                           tmppool);
+        if (status == APR_SUCCESS)
+            goto cleanup;
+#if 0
+        /* We have to send the certificate to the server. Find issuer in the
+           list of anchor certificates set by the application. */
+        status = find_issuer_cert_in_array(&cert,
+                                           prevcert,
+                                           ssl_ctx->anchor_certs,
+                                           tmppool)
+        if (status == APR_SUCCESS)
+            goto cleanup;
+#endif
+
+        /* Issuer certificate was not found in peer_certs, add it to the
+           output list. */
+        status = find_issuer_certificate_in_keychain(&issuer_cert,
+                                                     prevcert->certref,
+                                                     pool);
+        if (status)
+            goto cleanup;
+
+        if (!issuer_cert)
+        {
+            /* The issuer's certificate was not found in the keychain.
+               Send what we have to the server. */
+            status = APR_SUCCESS;
+            goto cleanup;
+        }
+
+        CFArrayAppendValue(ca_certrefs, issuer_cert->certref);
+
+        prevcert = issuer_cert;
+
+        /* break if selfsigned */
+        subject = apr_hash_get(issuer_cert->content, "_subject_der",
+                               APR_HASH_KEY_STRING);
+        issuer = apr_hash_get(issuer_cert->content, "_issuer_der",
+                               APR_HASH_KEY_STRING);
+        if (CFEqual(subject, issuer))
+        {
+            status = APR_SUCCESS;
+            goto cleanup;
+        }
+    }
+
+    /* Nothing found. */
+    status = SERF_ERROR_SSL_CERT_FAILED;
+    
+cleanup:
+    *intermediate_ca_certrefs = ca_certrefs;
+    apr_pool_destroy(tmppool);
+    return status;
+}
+
+
 /* Get a client certificate for this server from the application. */
 static apr_status_t
 provide_client_certificate(sectrans_context_t *ssl_ctx)
 {
     const char *cert_path;
-    CFArrayRef items;
+    CFMutableArrayRef items;
     CFDataRef databuf;
     const char *passphrase = NULL;
     apr_status_t status;
@@ -1138,12 +1334,8 @@ provide_client_certificate(sectrans_context_t *ssl_ctx)
             const void *values[] = { kSecClassIdentity, kCFBooleanTrue,
                 kSecMatchLimitAll, kCFBooleanTrue };
 
-            query = CFDictionaryCreate(kCFAllocatorDefault,
-                                       keys,
-                                       values,
-                                       4L,
-                                       NULL,
-                                       NULL);
+            query = CFDictionaryCreate(kCFAllocatorDefault, keys, values,
+                                       4L, NULL, NULL);
             osstatus = SecItemCopyMatching(query, (CFTypeRef *)&identities);
             CFRelease(query);
             if (osstatus != noErr) {
@@ -1161,7 +1353,8 @@ provide_client_certificate(sectrans_context_t *ssl_ctx)
 
         if (identity)
         {
-            void *tmp[] = { identity };
+            CFArrayRef intermediate_certrefs, peer_certrefs;
+            SecCertificateRef cert;
 
             /* TODO: if the issuer of the client certificate is not in the list
                of certificates the server provided, we need to send it along.
@@ -1172,14 +1365,35 @@ provide_client_certificate(sectrans_context_t *ssl_ctx)
                certificate is the issuer of the client certificate, but is not
                send by the server. */
 
-            /* This can show a popup to ask the user if the application is
-               allowed to use the signing key. */
-            items = CFArrayCreate(kCFAllocatorDefault,
-                                  (void *)tmp,
-                                  1,
-                                  NULL);
+            items = CFArrayCreateMutable(kCFAllocatorDefault, 0, NULL);
+            CFArrayAppendValue(items, identity);
             apr_pool_cleanup_register(ssl_ctx->pool, items,
                                       cfrelease_ref, cfrelease_ref);
+
+            osstatus = SecIdentityCopyCertificate(identity, &cert);
+            if (osstatus != noErr) {
+                return translate_sectrans_status(osstatus);
+            }
+
+            osstatus = SSLCopyPeerCertificates(ssl_ctx->st_ctxr,
+                                               &peer_certrefs);
+            if (osstatus != noErr) {
+                return translate_sectrans_status(osstatus);
+            }
+
+            status = find_intermediate_cas(&intermediate_certrefs,
+                                           cert,
+                                           peer_certrefs,
+                                           ssl_ctx->pool);
+            CFRelease(peer_certrefs);
+            if (status)
+                return status;
+
+            CFArrayAppendArray(items, intermediate_certrefs,
+                               CFRangeMake(0,
+                                           CFArrayGetCount(intermediate_certrefs)));
+            /* This can show a popup to ask the user if the application is
+               allowed to use the signing key. */
 
             /* Secure Transport assumes the following:
                The certificate references remain valid for the lifetime of the
@@ -1229,7 +1443,7 @@ provide_client_certificate(sectrans_context_t *ssl_ctx)
 
         status = load_identity_from_databuf(ssl_ctx,
                                             databuf,
-                                            &items,
+                                            (CFArrayRef*)&items,
                                             passphrase,
                                             ssl_ctx->handshake_pool);
         if (!status)
@@ -1506,11 +1720,9 @@ load_CA_cert_from_buffer(serf_ssl_certificate_t **cert,
             (SecCertificateRef)CFArrayGetValueAtIndex(items, 0);
 
         if (ssl_cert) {
-            serf_bucket_alloc_t *allocator =
-            serf_bucket_allocator_create(pool, NULL, NULL);
-            *cert = create_sectrans_certificate(ssl_cert,
-                                                0,
-                                                allocator);
+            *cert = create_ssl_certificate(ssl_cert,
+                                           0,
+                                           pool);
             return APR_SUCCESS;
         }
     }
@@ -1542,11 +1754,9 @@ load_CA_cert_from_file(serf_ssl_certificate_t **cert,
             (SecCertificateRef)CFArrayGetValueAtIndex(items, 0);
 
         if (ssl_cert) {
-            serf_bucket_alloc_t *allocator =
-                serf_bucket_allocator_create(pool, NULL, NULL);
-            *cert = create_sectrans_certificate(ssl_cert,
-                                                0,
-                                                allocator);
+            *cert = create_ssl_certificate(ssl_cert,
+                                           0,
+                                           pool);
             return APR_SUCCESS;
         }
     }
@@ -1850,7 +2060,9 @@ decrypt_more_data(sectrans_context_t *ssl_ctx)
                        SECURE_TRANSPORT_READ_BUFSIZE,
                        &dec_len);
     status = translate_sectrans_status(osstatus);
-    if (SERF_BUCKET_READ_ERROR(status))
+    /* Apparently SSLRead can put data in dec_data while returning an
+       error status. */
+    if (SERF_BUCKET_READ_ERROR(status) && !dec_len)
         return status;
 
     /* Successfully received and decrypted some data, add to pending. */
