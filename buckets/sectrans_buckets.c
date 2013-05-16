@@ -174,12 +174,11 @@ static sectrans_context_t *
 sectrans_init_context(serf_bucket_alloc_t *allocator)
 {
     sectrans_context_t *ssl_ctx;
-    apr_pool_t *parent_pool = serf_bucket_allocator_get_pool(allocator);
 
     ssl_ctx = serf_bucket_mem_calloc(allocator, sizeof(*ssl_ctx));
     ssl_ctx->refcount = 0;
 
-    apr_pool_create(&ssl_ctx->pool, parent_pool);
+    apr_pool_create(&ssl_ctx->pool, NULL);
     apr_pool_create(&ssl_ctx->handshake_pool, ssl_ctx->pool);
 
 #if 0
@@ -717,7 +716,7 @@ validate_server_certificate(sectrans_context_t *ssl_ctx)
 {
     SecTrustRef trust;
     SecTrustResultType result;
-    CFArrayRef anchor_certrefs;
+    CFArrayRef anchor_certrefs = NULL;
     size_t depth_of_error, chain_depth;
     int failures = 0;
     OSStatus osstatus;
