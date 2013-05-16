@@ -13,8 +13,24 @@
  * limitations under the License.
  */
 
-/* This page is very helpful in identifying the bugs in
-   Keychain/Secure Transport:
+/* This code implements the ssl bucket API using the services provided by Apple
+   on Mac OS X 10.7+:
+   - Secure Transport
+   - Keychain Services
+   - Certificate, Key and Trust Services.
+ 
+   Reference documentation can be found on http://developer.apple.com .
+ 
+   Source code can be found on http://www.opensource.apple.com . Search for the
+   Security-xxxxxx package, where xxxxxx is a version number.
+
+   Note: unfortunately, the reference documentation seems to be a specification
+   more than a correct representation of the actual implementation. So
+   analysis of the source code of the services is needed to understand its exact
+   behavior.
+
+   Furthermore, the implementation of the services has some bugs that needed
+   workarounds. This page is very helpful in identifying these bugs:
    https://github.com/lorentey/LKSecurity/blob/master/Framework%20Bugs.markdown
  */
 
@@ -507,6 +523,11 @@ ask_approval_gui(sectrans_context_t *ssl_ctx, SecTrustRef trust)
     else        /* NSCancelButton = 0 */
         return SERF_ERROR_SSL_USER_DENIED_CERT;
 }
+
+/* Show a SFChooseIdentityPanel. This is the Mac OS X default dialog to
+   ask the user which client certificate to use for this server. The choice
+   of client certificate will not be saved.
+ */
 
 /* TODO: serf or application? If serf, let appl. customize labels. */
 static apr_status_t
@@ -1273,16 +1294,17 @@ provide_client_certificate(sectrans_context_t *ssl_ctx)
 
     /* If gui mode is enabled, find the client certificate in the keychains.
        First: see if the user has defined a preferred client certificate
-       defined for this hostname. (identity preference entry).
+       for this hostname. (identity preference entry).
        If not: get the list of all matching client certificates and ask the
        user to select one. 
-     
+       TODO: filter on matching domains.
+
        Note: this will automatically support smart cards. As soon as the card
        is inserted in the reader, an extra keychain will be created containing
-       the certificate(s) and private key(s) stored on the smart card. The
-       client certificate can be set as preferred identity for a host (with
-       wildcards) or will be shown in the identity selection dialog if no such
-       preference was set.
+       the certificate(s) and private key(s) stored on the smart card. From
+       there it can be used just like any other identity: The client identity
+       can be set as preferred identity for a host (or with wildcards) or will
+       be shown in the identity selection dialog if no such preference was set.
 
        Tested successfully with a Belgian Personal ID Card (BELPIC) and
        Smartcard services v2.0b2-mtlion on Mac OS X 10.8.3 */
@@ -1351,20 +1373,23 @@ provide_client_certificate(sectrans_context_t *ssl_ctx)
             CFRelease(identities);
         }
 
+        /* If the issuer of the client certificate is not in the list
+           of certificates the server provided, we need to send it along.
+           Otherwise the server can complain that it doesn't trust the
+           client identity.
+           Note: this is what happens with the Belgian Personal ID Card on
+           site https://https://test.eid.belgium.be, where the "Citizen CA"
+           certificate is the issuer of the client certificate, but is not
+           sent by the server. */
         if (identity)
         {
             CFArrayRef intermediate_certrefs, peer_certrefs;
             SecCertificateRef cert;
 
-            /* TODO: if the issuer of the client certificate is not in the list
-               of certificates the server provided, we need to send it along.
-               Otherwise the server can complain that it doesn't trust the
-               client identity. 
-               Note: this is what happens with the Belgian Personal ID Card on 
-               site https://https://test.eid.belgium.be, where the "Citizen CA"
-               certificate is the issuer of the client certificate, but is not
-               send by the server. */
-
+            /* Secure Transport assumes the following:
+               The certificate references remain valid for the lifetime of the
+               session.
+               The identity specified in certRefs[0] is capable of signing. */
             items = CFArrayCreateMutable(kCFAllocatorDefault, 0, NULL);
             CFArrayAppendValue(items, identity);
             apr_pool_cleanup_register(ssl_ctx->pool, items,
@@ -1392,13 +1417,10 @@ provide_client_certificate(sectrans_context_t *ssl_ctx)
             CFArrayAppendArray(items, intermediate_certrefs,
                                CFRangeMake(0,
                                            CFArrayGetCount(intermediate_certrefs)));
+
             /* This can show a popup to ask the user if the application is
                allowed to use the signing key. */
 
-            /* Secure Transport assumes the following:
-               The certificate references remain valid for the lifetime of the
-               session.
-               The identity specified in certRefs[0] is capable of signing. */
             osstatus = SSLSetCertificate(ssl_ctx->st_ctxr, items);
             if (osstatus != noErr) {
                 return translate_sectrans_status(osstatus);
