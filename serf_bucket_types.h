@@ -505,10 +505,17 @@ extern const serf_bucket_type_t serf_bucket_type_ssl_encrypt;
 
 typedef struct serf_ssl_context_t serf_ssl_context_t;
 typedef struct serf_ssl_certificate_t serf_ssl_certificate_t;
+typedef struct serf_ssl_identity_t serf_ssl_identity_t;
 
+/* Deprecated, replaced by serf_ssl_need_identity_t. */
 typedef apr_status_t (*serf_ssl_need_client_cert_t)(
     void *data,
     const char **cert_path);
+
+typedef apr_status_t (*serf_ssl_need_identity_t)(
+    void *data,
+    const serf_ssl_identity_t **identity,
+    apr_pool_t *pool);
 
 typedef apr_status_t (*serf_ssl_need_cert_password_t)(
     void *data,
@@ -527,20 +534,39 @@ typedef apr_status_t (*serf_ssl_server_cert_chain_cb_t)(
     const serf_ssl_certificate_t * const * certs,
     apr_size_t certs_len);
 
+/* Deprecated, replaced by serf_ssl_identity_provider_set. */
 void serf_ssl_client_cert_provider_set(
     serf_ssl_context_t *context,
     serf_ssl_need_client_cert_t callback,
     void *data,
     void *cache_pool);
 
-void serf_ssl_client_cert_password_set(
-    serf_ssl_context_t *context,
-    serf_ssl_need_cert_password_t callback,
-    void *data,
-    void *cache_pool);
+/* Deprecated, replaced by serf_ssl_identity_password_callback_set. */
+void serf_ssl_client_cert_password_set(serf_ssl_context_t *context,
+                                       serf_ssl_need_cert_password_t callback,
+                                       void *data,
+                                       void *cache_pool);
 
 /**
- * Set a callback to override the default SSL server certificate validation 
+ * Set a callback to provide an identity - client certificate and private key -
+ * for authentication to the server.
+ */
+void serf_ssl_identity_provider_set(serf_ssl_context_t *context,
+                                    serf_ssl_need_identity_t callback,
+                                    void *data,
+                                    void *cache_pool);
+
+/**
+ * Set a callback to provide the password of an identity.
+ */
+void serf_ssl_identity_password_callback_set(
+                                    serf_ssl_context_t *context,
+                                    serf_ssl_need_cert_password_t callback,
+                                    void *data,
+                                    void *cache_pool);
+
+/**
+ * Set a callback to override the default SSL server certificate validation
  * algorithm.
  */
 void serf_ssl_server_cert_callback_set(
@@ -632,6 +658,11 @@ apr_status_t serf_ssl_load_CA_cert_from_file(serf_ssl_context_t *ssl_ctx,
                                              const char *file_path,
                                              apr_pool_t *pool);
 
+apr_status_t serf_ssl_load_identity_from_file(serf_ssl_context_t *ssl_ctx,
+                 const serf_ssl_identity_t **identity,
+                 const char *file_path,
+                 apr_pool_t *pool);
+
 /**
  * Adds the certificate @a cert to the list of trusted certificates in 
  * @a ssl_ctx that will be used for verification. 
@@ -665,6 +696,14 @@ serf_ssl_show_trust_certificate_dialog(serf_ssl_context_t *ssl_ctx,
                                        const char *message,
                                        const char *ok_button_label,
                                        const char *cancel_button_label);
+
+apr_status_t
+serf_ssl_show_select_identity_dialog(serf_ssl_context_t *ssl_ctx,
+                                     const serf_ssl_identity_t **identity,
+                                     const char *message,
+                                     const char *ok_button_label,
+                                     const char *cancel_button_label,
+                                     apr_pool_t *pool);
 
 void serf_bucket_ssl_destroy_and_data(serf_bucket_t *bucket);
 

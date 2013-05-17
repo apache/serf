@@ -107,6 +107,9 @@ typedef struct serf_request_t serf_request_t;
 /* Certificate was marked as 'Never Trust' in Keychain. */
 #define SERF_ERROR_SSL_KEYCHAIN_DENIED_CERT (SERF_ERROR_START + 75)
 
+/* There are no identities available in the keychains to select from. */
+#define SERF_ERROR_SSL_NO_IDENTITIES_AVAILABLE (SERF_ERROR_START + 76)
+
 /* General authentication related errors */
 #define SERF_ERROR_AUTHN_FAILED (SERF_ERROR_START + 90)
 

@@ -1220,7 +1220,6 @@ ssl_server_cert_cb_expect_failures(void *baton, int failures,
 {
     test_baton_t *tb = baton;
     int expected_failures = *(int *)tb->user_baton;
-    apr_status_t status;
 
     tb->result_flags |= TEST_RESULT_SERVERCERTCB_CALLED;
 
@@ -1794,6 +1793,102 @@ static void test_serf_ssl_client_certificate(CuTest *tc)
     CuAssertTrue(tc, tb->result_flags & TEST_RESULT_CLIENT_CERTPWCB_CALLED);
 }
 
+apr_status_t identity_cb(void *data,
+                         const serf_ssl_identity_t **identity,
+                         apr_pool_t *pool)
+{
+    test_baton_t *tb = data;
+    const char *cert_path = "test/server/serfclientcert.p12";
+    apr_status_t status;
+
+    tb->result_flags |= TEST_RESULT_CLIENT_CERTCB_CALLED;
+
+#if 0
+    /* Example of how to ask the user to validate a server certificate
+     via a platform-specific dialog. */
+    status = serf_ssl_show_select_identity_dialog(tb->ssl_context,
+                 identity,
+                 "Select client identity.", "Accept", "Cancel",
+                 pool);
+    if (status && status != APR_ENOTIMPL)
+        return status;
+
+    return status;
+#endif
+
+    status = serf_ssl_load_identity_from_file(tb->ssl_context,
+                                              identity,
+                                              cert_path, pool);
+
+    return status;
+}
+
+static apr_status_t
+identity_conn_setup(apr_socket_t *skt,
+                    serf_bucket_t **input_bkt,
+                    serf_bucket_t **output_bkt,
+                    void *setup_baton,
+                    apr_pool_t *pool)
+{
+    test_baton_t *tb = setup_baton;
+    apr_status_t status;
+
+    status = https_set_root_ca_conn_setup(skt, input_bkt, output_bkt,
+                                          setup_baton, pool);
+    if (status)
+        return status;
+
+    serf_ssl_identity_provider_set(tb->ssl_context,
+                                   identity_cb,
+                                   tb,
+                                   pool);
+
+    serf_ssl_identity_password_callback_set(tb->ssl_context,
+                                            client_cert_pw_cb,
+                                            tb,
+                                            pool);
+
+    return APR_SUCCESS;
+}
+
+static void test_serf_ssl_identity(CuTest *tc)
+{
+    test_baton_t *tb;
+    handler_baton_t handler_ctx[1];
+    const int num_requests = sizeof(handler_ctx)/sizeof(handler_ctx[0]);
+    test_server_message_t message_list[] = {
+        {CHUNKED_REQUEST(1, "1")},
+    };
+    test_server_action_t action_list[] = {
+        {SERVER_RESPOND, CHUNKED_EMPTY_RESPONSE},
+    };
+    apr_status_t status;
+
+    /* Set up a test context with a server */
+    apr_pool_t *test_pool = tc->testBaton;
+
+    /* The SSL server the complete certificate chain to validate the client
+     certificate. */
+    status = test_https_server_setup(&tb,
+                                     message_list, num_requests,
+                                     action_list, num_requests, 0,
+                                     identity_conn_setup,
+                                     "test/server/serfserverkey.pem",
+                                     all_server_certs,
+                                     "Serf Client",
+                                     NULL, /* No server cert callback */
+                                     test_pool);
+    CuAssertIntEquals(tc, APR_SUCCESS, status);
+
+    create_new_request(tb, &handler_ctx[0], "GET", "/", 1);
+
+    test_helper_run_requests_expect_ok(tc, tb, num_requests,
+                                       handler_ctx, test_pool);
+
+    CuAssertTrue(tc, tb->result_flags & TEST_RESULT_CLIENT_CERTCB_CALLED);
+    CuAssertTrue(tc, tb->result_flags & TEST_RESULT_CLIENT_CERTPWCB_CALLED);
+}
+
 /* Validate that the expired certificate is reported as failure in the
    callback. */
 static void test_serf_ssl_expired_server_cert(CuTest *tc)
@@ -1911,6 +2006,7 @@ CuSuite *test_context(void)
     SUITE_ADD_TEST(suite, test_serf_ssl_no_servercert_callback_fail);
     SUITE_ADD_TEST(suite, test_serf_ssl_large_response);
     SUITE_ADD_TEST(suite, test_serf_ssl_client_certificate);
+    SUITE_ADD_TEST(suite, test_serf_ssl_identity);
     SUITE_ADD_TEST(suite, test_serf_ssl_expired_server_cert);
     SUITE_ADD_TEST(suite, test_serf_ssl_future_server_cert);
 

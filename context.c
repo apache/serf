@@ -380,6 +380,8 @@ const char *serf_error_string(apr_status_t errcode)
     case SERF_ERROR_SSL_CANT_CONFIRM_CERT:
          return "The use of the server SSL certificate needs confirmation but "\
                 "user interaction is disabled.";
+    case SERF_ERROR_SSL_NO_IDENTITIES_AVAILABLE:
+         return "Can't find matching identities in any of the keychains.";
     case SERF_ERROR_AUTHN_FAILED:
         return "An error occurred during authentication";
     case SERF_ERROR_AUTHN_NOT_SUPPORTED:

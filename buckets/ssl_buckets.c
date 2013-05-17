@@ -62,7 +62,6 @@ void serf_ssl_client_cert_provider_set(
                                                    data, cache_pool);
 }
 
-
 void serf_ssl_client_cert_password_set(
     serf_ssl_context_t *ssl_ctx,
     serf_ssl_need_cert_password_t callback,
@@ -73,6 +72,24 @@ void serf_ssl_client_cert_password_set(
                                                    data, cache_pool);
 }
 
+void serf_ssl_identity_provider_set(serf_ssl_context_t *ssl_ctx,
+                                    serf_ssl_need_identity_t callback,
+                                    void *data,
+                                    void *cache_pool)
+{
+    return ssl_ctx->type->identity_provider_set(ssl_ctx->impl_ctx, callback,
+                                                data, cache_pool);
+}
+
+void serf_ssl_identity_password_callback_set(
+    serf_ssl_context_t *ssl_ctx,
+    serf_ssl_need_cert_password_t callback,
+    void *data,
+    void *cache_pool)
+{
+    return ssl_ctx->type->client_cert_password_set(ssl_ctx->impl_ctx, callback,
+                                                   data, cache_pool);
+}
 
 void serf_ssl_server_cert_callback_set(
     serf_ssl_context_t *ssl_ctx,
@@ -265,6 +282,30 @@ const char *serf_ssl_cert_export(
     return cert->type->cert_export(cert, pool);
 }
 
+/* Create a implementation-independent serf_ssl_identity_t object */
+serf_ssl_identity_t *
+serf__create_identity(const serf_ssl_bucket_type_t *type,
+                      void *impl_identity,
+                      apr_pool_t *pool)
+{
+    serf_ssl_identity_t *identity;
+
+    identity = apr_palloc(pool, sizeof(serf_ssl_identity_t));
+    identity->impl_identity = impl_identity;
+    identity->type = type;
+
+    return identity;
+}
+
+apr_status_t serf_ssl_load_identity_from_file(serf_ssl_context_t *ssl_ctx,
+                 const serf_ssl_identity_t **identity,
+                 const char *file_path,
+                 apr_pool_t *pool)
+{
+    return ssl_ctx->type->load_identity_from_file(ssl_ctx->impl_ctx, identity,
+                                                  file_path, pool);
+}
+
 apr_status_t serf_ssl_load_CA_cert_from_file(serf_ssl_context_t *ssl_ctx,
                                              serf_ssl_certificate_t **cert,
                                              const char *file_path,
@@ -298,4 +339,20 @@ serf_ssl_show_trust_certificate_dialog(serf_ssl_context_t *ssl_ctx,
                                                         message,
                                                         ok_button_label,
                                                         cancel_button_label);
+}
+
+apr_status_t
+serf_ssl_show_select_identity_dialog(serf_ssl_context_t *ssl_ctx,
+                                     const serf_ssl_identity_t **identity,
+                                     const char *message,
+                                     const char *ok_button_label,
+                                     const char *cancel_button_label,
+                                     apr_pool_t *pool)
+{
+    return ssl_ctx->type->show_select_identity_dialog(ssl_ctx->impl_ctx,
+                                                      identity,
+                                                      message,
+                                                      ok_button_label,
+                                                      cancel_button_label,
+                                                      pool);
 }

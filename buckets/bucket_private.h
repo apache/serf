@@ -43,6 +43,11 @@ struct serf_ssl_bucket_type_t {
                                      void *data,
                                      void *cache_pool);
 
+    void (*identity_provider_set)(void *impl_ctx,
+                                  serf_ssl_need_identity_t callback,
+                                  void *data,
+                                  void *cache_pool);
+
     void (*client_cert_password_set)(void *impl_ctx,
                                      serf_ssl_need_cert_password_t callback,
                                      void *data,
@@ -77,6 +82,11 @@ struct serf_ssl_bucket_type_t {
     apr_status_t (*load_CA_cert_from_file)(serf_ssl_certificate_t **cert,
                                            const char *file_path,
                                            apr_pool_t *pool);
+
+    apr_status_t (*load_identity_from_file)(void *impl_ctx,
+                                            const serf_ssl_identity_t **identity,
+                                            const char *file_path,
+                                            apr_pool_t *pool);
 
     /**
      * Adds the certificate @a cert to the list of trusted certificates in
@@ -130,6 +140,13 @@ struct serf_ssl_bucket_type_t {
                                          const char *message,
                                          const char *ok_button_label,
                                          const char *cancel_button_label);
+    apr_status_t
+        (*show_select_identity_dialog)(void *impl_ctx,
+                                       const serf_ssl_identity_t **identity,
+                                       const char *message,
+                                       const char *ok_button_label,
+                                       const char *cancel_button_label,
+                                       apr_pool_t *pool);
 };
 
 /* Implementation independent certificate object. */
@@ -159,6 +176,22 @@ serf__create_certificate(serf_bucket_alloc_t *allocator,
                          const serf_ssl_bucket_type_t *type,
                          void *impl_cert,
                          int depth);
+
+/* Implementation independent identity object. An identity is a combination
+ of a certificate and a private key, typically stored in a .p12 file. */
+struct serf_ssl_identity_t {
+    /** bucket implementation that can parse this identity. */
+    const serf_ssl_bucket_type_t *type;
+
+    /** implementation specific identity data */
+    const void *impl_identity;
+};
+
+/* Creates a serf_ssl_identity_t object, caller takes ownership. */
+serf_ssl_identity_t *
+serf__create_identity(const serf_ssl_bucket_type_t *type,
+                      void *impl_identity,
+                      apr_pool_t *pool);
 
 /* sectrans_bucket internal functions */
 #ifdef SERF_HAVE_SECURETRANSPORT

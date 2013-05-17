@@ -55,13 +55,6 @@
 
 #define SECURE_TRANSPORT_READ_BUFSIZE 8000
 
-static OSStatus
-sectrans_read_cb(SSLConnectionRef connection, void *data, size_t *dataLength);
-static OSStatus
-sectrans_write_cb(SSLConnectionRef connection, const void *data, size_t *dataLength);
-static const char *
-CFStringToChar(CFStringRef str, apr_pool_t *pool);
-
 typedef struct sectrans_ssl_stream_t {
     /* For an encrypt stream: data encrypted & not yet written to the network.
        For a decrypt stream: data decrypted & not yet read by the application.*/
@@ -119,15 +112,16 @@ typedef struct sectrans_context_t {
 
     /* Client cert callbacks */
     serf_ssl_need_client_cert_t client_cert_callback;
-    void *client_cert_userdata;
+    serf_ssl_need_identity_t identity_callback;
+    void *identity_userdata;
 #if 0
     apr_pool_t *client_cert_cache_pool;
     const char *cert_file_success;
 #endif
 
     /* Client cert PW callbacks */
-    serf_ssl_need_cert_password_t client_cert_pw_callback;
-    void *client_cert_pw_userdata;
+    serf_ssl_need_cert_password_t identity_pw_callback;
+    void *identity_pw_userdata;
 #if 0
     apr_pool_t *cert_pw_cache_pool;
     const char *cert_pw_success;
@@ -142,6 +136,28 @@ typedef struct sectrans_context_t {
     apr_array_header_t *anchor_certs;
 
 } sectrans_context_t;
+
+/* Some forward declarations */
+static OSStatus
+sectrans_read_cb(SSLConnectionRef connection, void *data, size_t *dataLength);
+
+static OSStatus
+sectrans_write_cb(SSLConnectionRef connection, const void *data, size_t *dataLength);
+
+static const char *
+CFStringToChar(CFStringRef str, apr_pool_t *pool);
+
+static apr_status_t
+callback_for_identity_password(sectrans_context_t *ssl_ctx,
+                               const char *cert_path,
+                               const char **password);
+
+static apr_status_t
+load_identity_from_file(void *impl_ctx,
+                        const serf_ssl_identity_t **identity,
+                        const char *file_path,
+                        apr_pool_t *pool);
+
 
 static apr_status_t
 translate_sectrans_status(OSStatus osstatus)
@@ -436,16 +452,14 @@ load_certificate_from_databuf(CFDataRef databuf,
  */
 static apr_status_t
 load_identity_from_databuf(sectrans_context_t *ssl_ctx,
+                           const serf_ssl_identity_t **identity,
+                           const char *label,
                            CFDataRef databuf,
-                           CFArrayRef *items,
-                           const char *passphrase,
                            apr_pool_t *pool)
 {
     SecExternalFormat format;
     SecItemImportExportKeyParameters keyParams;
     SecExternalItemType itemType;
-    OSStatus osstatus;
-    apr_status_t status = APR_SUCCESS;
 
     /* SecItemImport will crash if keyUsage member is not set to NULL. */
     memset(&keyParams, 0, sizeof(SecItemImportExportKeyParameters));
@@ -453,38 +467,72 @@ load_identity_from_databuf(sectrans_context_t *ssl_ctx,
     format = kSecFormatPKCS12;
     itemType = kSecItemTypeUnknown;
 
-    if (passphrase)
+    /* Try importing the identity until it succeeds, fails or the application
+       stops setting passphrases. */
+    while (1)
     {
-        CFStringRef pwref;
+        CFArrayRef items;
+        OSStatus osstatus;
+        apr_status_t status;
+        const char *passphrase;
 
-        pwref = CFStringCreateWithBytesNoCopy(kCFAllocatorDefault,
-                                              (unsigned char *)passphrase,
-                                              strlen(passphrase),
-                                              kCFStringEncodingMacRoman,
-                                              false,
-                                              kCFAllocatorNull);
-        keyParams.passphrase = pwref;
+        osstatus = SecItemImport(databuf,
+                                 NULL,
+                                 &format,
+                                 &itemType,
+                                 0,    /* SecItemImportExportFlags */
+                                 &keyParams,
+                                 ssl_ctx->tempKeyChainRef,
+                                 &items);
+        if (osstatus == errSecSuccess)
+        {
+            *identity = NULL;
+
+            /* Identity successfully imported in the keychain, return the
+               (wrapped) reference to the caller. */
+            if (CFArrayGetCount(items) > 0)
+            {
+                SecIdentityRef identityref;
+                serf_bucket_alloc_t *allocator;
+
+                identityref = (SecIdentityRef)CFArrayGetValueAtIndex(items, 0);
+
+                if (!identityref)
+                    return SERF_ERROR_SSL_CERT_FAILED;
+
+                allocator = serf_bucket_allocator_create(pool, NULL, NULL);
+
+                *identity = serf__create_identity(
+                                &serf_ssl_bucket_type_securetransport,
+                                identityref, pool);
+
+                return APR_SUCCESS;
+            }
+
+            return SERF_ERROR_SSL_CERT_FAILED;
+        } else if (osstatus == errSecPassphraseRequired)
+        {
+            CFStringRef pwref;
+
+            status = callback_for_identity_password(
+                         ssl_ctx,
+                         label,
+                         &passphrase);
+            if (status)
+                return status;
+
+            pwref = CFStringCreateWithBytesNoCopy(kCFAllocatorDefault,
+                                                  (unsigned char *)passphrase,
+                                                  strlen(passphrase),
+                                                  kCFStringEncodingMacRoman,
+                                                  false,
+                                                  kCFAllocatorNull);
+            keyParams.passphrase = pwref;
+        } else {
+            /* TODO: should be handled in translate_... */
+            return SERF_ERROR_SSL_CERT_FAILED;
+        }
     }
-
-    osstatus = SecItemImport(databuf,
-                             NULL,
-                             &format,
-                             &itemType,
-                             0,    /* SecItemImportExportFlags */
-                             &keyParams,
-                             ssl_ctx->tempKeyChainRef,
-                             items);
-    if (osstatus == errSecSuccess)
-    {
-        status = APR_SUCCESS;
-    } else if (osstatus == errSecPassphraseRequired) {
-        status = SERF_ERROR_SSL_CLIENT_CERT_PW_FAILED;
-    } else {
-        /* TODO: should be handled in translate_... */
-        status = SERF_ERROR_SSL_CERT_FAILED;
-    }
-
-    return status;
 }
 
 /* Show a SFCertificateTrustPanel. This is the Mac OS X default dialog to
@@ -499,19 +547,8 @@ show_trust_certificate_dialog(void *impl_ctx,
                               const char *cancel_button)
 {
     CFStringRef OkButtonLbl, CancelButtonLbl = NULL, MessageLbl;
-
-    MessageLbl = CFStringCreateWithBytesNoCopy(kCFAllocatorDefault,
-                     (unsigned char *)message, strlen(message),
-                     kCFStringEncodingMacRoman, false, kCFAllocatorNull);
-    if (cancel_button)
-        CancelButtonLbl = CFStringCreateWithBytesNoCopy(kCFAllocatorDefault,
-                              (unsigned char *)cancel_button,
-                              strlen(cancel_button),
-                              kCFStringEncodingMacRoman, false,
-                              kCFAllocatorNull);
-    OkButtonLbl = CFStringCreateWithBytesNoCopy(kCFAllocatorDefault,
-                     (unsigned char *)ok_button, strlen(ok_button),
-                     kCFStringEncodingMacRoman, false, kCFAllocatorNull);
+    void *nsapp_cls, *stp_cls, *stp;
+    long result;
 
     /* Function can only be called from the callback to validate the
        server certificate or server certificate chain! */
@@ -520,13 +557,27 @@ show_trust_certificate_dialog(void *impl_ctx,
     if (!trust)
         return APR_EGENERAL; /* TODO */
 
+    MessageLbl = CFStringCreateWithBytesNoCopy(kCFAllocatorDefault,
+                     (unsigned char *)message, strlen(message),
+                     kCFStringEncodingMacRoman, false, kCFAllocatorNull);
+    if (cancel_button)
+        CancelButtonLbl = CFStringCreateWithBytesNoCopy(kCFAllocatorDefault,
+                              (unsigned char *)cancel_button,
+                              strlen(cancel_button),
+                              kCFStringEncodingMacRoman,
+                              false,
+                              kCFAllocatorNull);
+    OkButtonLbl = CFStringCreateWithBytesNoCopy(kCFAllocatorDefault,
+                      (unsigned char *)ok_button, strlen(ok_button),
+                      kCFStringEncodingMacRoman, false, kCFAllocatorNull);
+
     /* Creates an NSApplication object (enables GUI for cocoa apps) if one
-       doesn't exist already. */
-    void *nsapp_cls = objc_getClass("NSApplication");
+     doesn't exist already. */
+    nsapp_cls = objc_getClass("NSApplication");
     (void) objc_msgSend(nsapp_cls,sel_registerName("sharedApplication"));
 
-    void *stp_cls = objc_getClass("SFCertificateTrustPanel");
-    void *stp = objc_msgSend(stp_cls, sel_registerName("alloc"));
+    stp_cls = objc_getClass("SFCertificateTrustPanel");
+    stp = objc_msgSend(stp_cls, sel_registerName("alloc"));
     stp = objc_msgSend(stp, sel_registerName("init"));
 
     /* TODO: find a way to get the panel in front of all other windows. */
@@ -545,9 +596,8 @@ show_trust_certificate_dialog(void *impl_ctx,
     objc_msgSend(stp, sel_getUid("setDefaultButtonTitle:"), OkButtonLbl);
     objc_msgSend(stp, sel_getUid("setAlternateButtonTitle:"), CancelButtonLbl);
     
-    long result = (long)objc_msgSend(stp,
-                                     sel_getUid("runModalForTrust:message:"),
-                                     trust, MessageLbl);
+    result = (long)objc_msgSend(stp, sel_getUid("runModalForTrust:message:"),
+                                trust, MessageLbl);
     serf__log(SSL_VERBOSE, __FILE__, "User clicked %s button.\n",
               result ? "Accept" : "Cancel");
 
@@ -561,41 +611,102 @@ show_trust_certificate_dialog(void *impl_ctx,
    ask the user which client certificate to use for this server. The choice
    of client certificate will not be saved.
  */
-
-/* TODO: serf or application? If serf, let appl. customize labels. */
-static apr_status_t
-select_identity(sectrans_context_t *ssl_ctx, SecIdentityRef *identity,
-                CFArrayRef identities)
+apr_status_t
+show_select_identity_dialog(void *impl_ctx,
+                            const serf_ssl_identity_t **identity,
+                            const char *message,
+                            const char *ok_button_label,
+                            const char *cancel_button_label,
+                            apr_pool_t *pool)
 {
-    const CFStringRef OkButtonLbl = CFSTR("Accept");
-    const CFStringRef CancelButtonLbl = CFSTR("Cancel");
-    const CFStringRef Message = CFSTR("Select client identity.");
+    CFStringRef OkButtonLbl, CancelButtonLbl = NULL, MessageLbl;
+    CFArrayRef identities;
+    CFDictionaryRef query;
+    void *nsapp_cls, *cip_cls, *cip;
+    long result;
+    OSStatus osstatus;
+    apr_status_t status;
 
-    void *nsapp_cls = objc_getClass("NSApplication");
+    /* Find all matching identities in the keychains.
+     Note: SecIdentityRef items are not stored on the keychain but
+     generated when needed if both a certificate and matching private
+     key are available on the keychain. */
+    const void *keys[] =   { kSecClass, kSecAttrCanSign,
+        kSecMatchLimit, kSecReturnRef };
+    const void *values[] = { kSecClassIdentity, kCFBooleanTrue,
+        kSecMatchLimitAll, kCFBooleanTrue };
+
+    query = CFDictionaryCreate(kCFAllocatorDefault, keys, values,
+                               4L, NULL, NULL);
+    osstatus = SecItemCopyMatching(query, (CFTypeRef *)&identities);
+    CFRelease(query);
+    if (osstatus == errSecItemNotFound)
+    {
+        /* There is no single identity in the keychains. */
+        return SERF_ERROR_SSL_NO_IDENTITIES_AVAILABLE;
+    } else if (osstatus != noErr) {
+        return translate_sectrans_status(osstatus);
+    }
+
+    /* TODO: filter on matching certificates. How?? Distinguished
+     names? */
+
+    /* Found the identities, now let the user choose. */
+    MessageLbl = CFStringCreateWithBytesNoCopy(kCFAllocatorDefault,
+                     (unsigned char *)message, strlen(message),
+                     kCFStringEncodingMacRoman, false, kCFAllocatorNull);
+    if (cancel_button_label)
+        CancelButtonLbl = CFStringCreateWithBytesNoCopy(kCFAllocatorDefault,
+                              (unsigned char *)cancel_button_label,
+                              strlen(cancel_button_label),
+                              kCFStringEncodingMacRoman, false,
+                              kCFAllocatorNull);
+    OkButtonLbl = CFStringCreateWithBytesNoCopy(kCFAllocatorDefault,
+                      (unsigned char *)ok_button_label, strlen(ok_button_label),
+                      kCFStringEncodingMacRoman, false, kCFAllocatorNull);
+
+    nsapp_cls = objc_getClass("NSApplication");
     (void) objc_msgSend(nsapp_cls,sel_registerName("sharedApplication"));
 
-    void *cip_cls = objc_getClass("SFChooseIdentityPanel");
-    void *cip = objc_msgSend(cip_cls, sel_registerName("sharedChooseIdentityPanel"));
+    cip_cls = objc_getClass("SFChooseIdentityPanel");
+    cip = objc_msgSend(cip_cls, sel_registerName("sharedChooseIdentityPanel"));
     objc_msgSend(cip, sel_registerName("setDefaultButtonTitle:"), OkButtonLbl);
     objc_msgSend(cip, sel_registerName("setAlternateButtonTitle:"), CancelButtonLbl);
 
     /* TODO: find a way to get the panel in front of all other windows. */
 
-    long result = (long)objc_msgSend(cip,
-                                     sel_registerName("runModalForIdentities:"
+    result = (long)objc_msgSend(cip, sel_registerName("runModalForIdentities:"
                                                       "message:"),
-                                     identities, Message);
+                                identities, MessageLbl);
     serf__log(SSL_VERBOSE, __FILE__, "User clicked %s button.\n",
               result ? "Accept" : "Cancel");
 
-    if (result) { /* NSOKButton = 1 */
-        *identity = (SecIdentityRef)objc_msgSend(cip,
-                                                 sel_registerName("identity"));
-        return APR_SUCCESS;
-    }
-    else        /* NSCancelButton = 0 */
-        return APR_EGENERAL;
+    if (result)
+    {
+        /* NSOKButton = 1 */
+        SecIdentityRef identityref;
 
+        identityref = (SecIdentityRef)objc_msgSend(cip,
+                                                   sel_registerName("identity"));
+        *identity = serf__create_identity(&serf_ssl_bucket_type_securetransport,
+                                          identityref,
+                                          pool);
+
+        status = APR_SUCCESS;
+    }
+    else
+    {
+        /* NSCancelButton = 0 */
+        status = SERF_ERROR_SSL_CERT_FAILED;
+    }
+
+    CFRelease(OkButtonLbl);
+    if (CancelButtonLbl)
+        CFRelease(CancelButtonLbl);
+    CFRelease(MessageLbl);
+    CFRelease(identities);
+
+    return status;
 }
 
 /* Creates a sectrans_certificate_t allocated on pool. */
@@ -1314,15 +1425,62 @@ cleanup:
     return status;
 }
 
+static apr_status_t
+callback_for_identity_password(sectrans_context_t *ssl_ctx,
+                               const char *cert_path,
+                               const char **passphrase)
+{
+    if (ssl_ctx->identity_pw_callback)
+    {
+        apr_status_t status;
+
+        status = ssl_ctx->identity_pw_callback(ssl_ctx->identity_pw_userdata,
+                                               cert_path,
+                                               passphrase);
+        return status;
+    }
+
+    return SERF_ERROR_SSL_CLIENT_CERT_PW_FAILED;
+}
+
+static apr_status_t
+callback_for_identity(sectrans_context_t *ssl_ctx,
+                      SecIdentityRef *identityref,
+                      apr_pool_t *pool)
+{
+    apr_status_t status;
+    const serf_ssl_identity_t *identity;
+
+    if (ssl_ctx->client_cert_callback)
+    {
+        const char *cert_path;
+
+        status = ssl_ctx->client_cert_callback(ssl_ctx->identity_userdata,
+                                               &cert_path);
+        if (status)
+            return status;
+
+        status = load_identity_from_file(ssl_ctx, &identity, cert_path, pool);
+        if (status)
+            return status;
+    } else if (ssl_ctx->identity_callback)
+    {
+        status = ssl_ctx->identity_callback(ssl_ctx->identity_userdata,
+                                            &identity, pool);
+    } else
+        status = APR_EGENERAL;
+
+    if (status == APR_SUCCESS)
+        *identityref = (SecIdentityRef)identity->impl_identity;
+
+    return status;
+}
 
 /* Get a client certificate for this server from the application. */
 static apr_status_t
 provide_client_certificate(sectrans_context_t *ssl_ctx)
 {
-    const char *cert_path;
-    CFMutableArrayRef items;
-    CFDataRef databuf;
-    const char *passphrase = NULL;
+    SecIdentityRef identityref = NULL;
     apr_status_t status;
     OSStatus osstatus;
 
@@ -1346,7 +1504,6 @@ provide_client_certificate(sectrans_context_t *ssl_ctx)
        Smartcard services v2.0b2-mtlion on Mac OS X 10.8.3 */
     if (ssl_ctx->modes & serf_ssl_val_mode_serf_managed_with_gui)
     {
-        SecIdentityRef identity = NULL;
         apr_pool_t *tmppool;
 
         apr_pool_create(&tmppool, ssl_ctx->handshake_pool);
@@ -1375,173 +1532,96 @@ provide_client_certificate(sectrans_context_t *ssl_ctx)
                                                  kCFStringEncodingMacRoman,
                                                  false,
                                                  kCFAllocatorNull);
-        identity = SecIdentityCopyPreferred(labelref,
-                                            keyUsageRef, NULL);
+        identityref = SecIdentityCopyPreferred(labelref,
+                                               keyUsageRef, NULL);
 
-        if (!identity)
+        CFRelease(labelref);
+        CFRelease(keyUsageRef);
+        apr_pool_destroy(tmppool);
+    } else
+    {
+        /* The server asked for a client certificate but we can't ask the
+           application. Consider this a success, the server decides if the 
+           request was optional or mandatory. */
+        if (!ssl_ctx->client_cert_callback &&
+            !ssl_ctx->identity_callback)
         {
-            CFDictionaryRef query;
-            CFArrayRef identities;
-
-            /* Find all matching identities in the keychains.
-               Note: SecIdentityRef items are not stored on the keychain but
-               generated when needed if both a certificate and matching private
-               key are available on the keychain. */
-            const void *keys[] =   { kSecClass, kSecAttrCanSign,
-                kSecMatchLimit, kSecReturnRef };
-            const void *values[] = { kSecClassIdentity, kCFBooleanTrue,
-                kSecMatchLimitAll, kCFBooleanTrue };
-
-            query = CFDictionaryCreate(kCFAllocatorDefault, keys, values,
-                                       4L, NULL, NULL);
-            osstatus = SecItemCopyMatching(query, (CFTypeRef *)&identities);
-            CFRelease(query);
-            if (osstatus != noErr) {
-                return translate_sectrans_status(osstatus);
-            }
-
-            /* TODO: filter on matching certificates. How?? Distinguished
-               names? */
-
-            /* Present the user with the list of identities to make a choice. */
-            status = select_identity(ssl_ctx, &identity, identities);
-
-            CFRelease(identities);
-        }
-
-        /* If the issuer of the client certificate is not in the list
-           of certificates the server provided, we need to send it along.
-           Otherwise the server can complain that it doesn't trust the
-           client identity.
-           Note: this is what happens with the Belgian Personal ID Card on
-           site https://https://test.eid.belgium.be, where the "Citizen CA"
-           certificate is the issuer of the client certificate, but is not
-           sent by the server. */
-        if (identity)
-        {
-            CFArrayRef intermediate_certrefs, peer_certrefs;
-            SecCertificateRef cert;
-
-            /* Secure Transport assumes the following:
-               The certificate references remain valid for the lifetime of the
-               session.
-               The identity specified in certRefs[0] is capable of signing. */
-            items = CFArrayCreateMutable(kCFAllocatorDefault, 0, NULL);
-            CFArrayAppendValue(items, identity);
-            apr_pool_cleanup_register(ssl_ctx->pool, items,
-                                      cfrelease_ref, cfrelease_ref);
-
-            osstatus = SecIdentityCopyCertificate(identity, &cert);
-            if (osstatus != noErr) {
-                return translate_sectrans_status(osstatus);
-            }
-
-            osstatus = SSLCopyPeerCertificates(ssl_ctx->st_ctxr,
-                                               &peer_certrefs);
-            if (osstatus != noErr) {
-                return translate_sectrans_status(osstatus);
-            }
-
-            status = find_intermediate_cas(&intermediate_certrefs,
-                                           cert,
-                                           peer_certrefs,
-                                           ssl_ctx->pool);
-            CFRelease(peer_certrefs);
-            if (status)
-                return status;
-
-            CFArrayAppendArray(items, intermediate_certrefs,
-                               CFRangeMake(0,
-                                           CFArrayGetCount(intermediate_certrefs)));
-
-            /* This can show a popup to ask the user if the application is
-               allowed to use the signing key. */
-
-            osstatus = SSLSetCertificate(ssl_ctx->st_ctxr, items);
-            if (osstatus != noErr) {
-                return translate_sectrans_status(osstatus);
-            }
-
-            apr_pool_destroy(tmppool);
-
+            serf__log(SSL_VERBOSE, __FILE__, "Server asked for client "
+                      "certificate, but the application didn't set the "
+                      "necessary callback.\n");
             return APR_SUCCESS;
         }
 
-        apr_pool_destroy(tmppool);
-    }
-
-    /* The server asked for a client certificate but we can't ask the
-       application. Consider this a success, the server decides if the request
-       was optional or mandatory. */
-    if (!ssl_ctx->client_cert_callback) {
-        serf__log(SSL_VERBOSE, __FILE__, "Server asked for client certificate, "
-                  "but the application didn't set the necessary callback.\n");
-        return APR_SUCCESS;
-    }
-
-    status = create_temp_keychain(ssl_ctx, ssl_ctx->handshake_pool);
-    if (status)
-        return status;
-
-    while (1)
-    {
         /* We trust that the application knows which identity to provide,
            based on the server this serf context connects to, as we do not have
            a way to pass the list of distinguished names provided by the
            server to the application. */
-        status = ssl_ctx->client_cert_callback(ssl_ctx->client_cert_userdata,
-                                               &cert_path);
+        /* TODO: fix this for the new identity_callback API */
+        status = callback_for_identity(ssl_ctx, &identityref,
+                                       ssl_ctx->pool);
         if (status)
             return status;
-
-        status = load_data_from_file(cert_path, &databuf,
-                                     ssl_ctx->handshake_pool);
-        if (status)
-            return status;
-
-        status = load_identity_from_databuf(ssl_ctx,
-                                            databuf,
-                                            (CFArrayRef*)&items,
-                                            passphrase,
-                                            ssl_ctx->handshake_pool);
-        if (!status)
-        {
-            apr_pool_cleanup_register(ssl_ctx->handshake_pool, items,
-                                      cfrelease_ref, cfrelease_ref);
-        }
-        else if (status == SERF_ERROR_SSL_CLIENT_CERT_PW_FAILED)
-        {
-            if (!ssl_ctx->client_cert_pw_callback)
-                return SERF_ERROR_SSL_CLIENT_CERT_PW_FAILED;
-
-            status = ssl_ctx->client_cert_pw_callback(
-                            ssl_ctx->client_cert_pw_userdata,
-                            cert_path,
-                            &passphrase);
-            continue;
-        } else
-            return status;
-
-        if (CFArrayGetCount(items) > 0)
-        {
-            SecIdentityRef identity;
-
-            identity = (SecIdentityRef)CFArrayGetValueAtIndex(items, 0);
-
-            if (!identity)
-                return SERF_ERROR_SSL_CERT_FAILED;
-
-            osstatus = SSLSetCertificate(ssl_ctx->st_ctxr, items);
-            if (osstatus != noErr) {
-                return translate_sectrans_status(osstatus);
-            }
-            break;
-        } else {
-            return SERF_ERROR_SSL_CERT_FAILED;
-        }
     }
-    
-    return APR_SUCCESS;
+
+    /* If the issuer of the client certificate is not in the list
+       of certificates the server provided, we need to send it along.
+       Otherwise the server can complain that it doesn't trust the
+       client identity.
+       Note: this is what happens with the Belgian Personal ID Card on
+       site https://https://test.eid.belgium.be, where the "Citizen CA"
+       certificate is the issuer of the client certificate, but is not
+       sent by the server. */
+    if (identityref)
+    {
+        CFArrayRef intermediate_certrefs, peer_certrefs;
+        SecCertificateRef cert;
+        CFMutableArrayRef items;
+
+        /* Secure Transport assumes the following:
+           The certificate references remain valid for the lifetime of the
+           session.
+           The identity specified in certRefs[0] is capable of signing. */
+        items = CFArrayCreateMutable(kCFAllocatorDefault, 0, NULL);
+        CFArrayAppendValue(items, identityref);
+        apr_pool_cleanup_register(ssl_ctx->pool, items,
+                                  cfrelease_ref, cfrelease_ref);
+
+        osstatus = SecIdentityCopyCertificate(identityref, &cert);
+        if (osstatus != noErr) {
+            return translate_sectrans_status(osstatus);
+        }
+
+        osstatus = SSLCopyPeerCertificates(ssl_ctx->st_ctxr,
+                                           &peer_certrefs);
+        if (osstatus != noErr) {
+            return translate_sectrans_status(osstatus);
+        }
+
+        status = find_intermediate_cas(&intermediate_certrefs,
+                                       cert,
+                                       peer_certrefs,
+                                       ssl_ctx->pool);
+        CFRelease(peer_certrefs);
+        if (status)
+            return status;
+
+        /* Add the intermediate certificates to the list to send to the
+           server. */
+        CFArrayAppendArray(items, intermediate_certrefs,
+                           CFRangeMake(0,
+                                       CFArrayGetCount(intermediate_certrefs)));
+
+        /* This can show a popup to ask the user if the application is
+           allowed to use the signing key. */
+        osstatus = SSLSetCertificate(ssl_ctx->st_ctxr, items);
+        if (osstatus != noErr) {
+            return translate_sectrans_status(osstatus);
+        }
+
+        return APR_SUCCESS;
+    }
+
+    return status;
 }
 
 /* Run the SSL handshake. */
@@ -1672,7 +1752,21 @@ client_cert_provider_set(void *impl_ctx,
     ssl_ctx->modes |= serf_ssl_val_mode_application_managed;
 
     ssl_ctx->client_cert_callback = callback;
-    ssl_ctx->client_cert_userdata = data;
+    ssl_ctx->identity_userdata = data;
+}
+
+static void
+identity_provider_set(void *impl_ctx,
+                      serf_ssl_need_identity_t callback,
+                      void *data,
+                      void *cache_pool)
+{
+    sectrans_context_t *ssl_ctx = impl_ctx;
+
+    ssl_ctx->modes |= serf_ssl_val_mode_application_managed;
+
+    ssl_ctx->identity_callback = callback;
+    ssl_ctx->identity_userdata = data;
 }
 
 static void
@@ -1685,8 +1779,8 @@ client_cert_password_set(void *impl_ctx,
 
     ssl_ctx->modes |= serf_ssl_val_mode_application_managed;
 
-    ssl_ctx->client_cert_pw_callback = callback;
-    ssl_ctx->client_cert_pw_userdata = data;
+    ssl_ctx->identity_pw_callback = callback;
+    ssl_ctx->identity_pw_userdata = data;
 }
 
 void server_cert_callback_set(void *impl_ctx,
@@ -1822,6 +1916,29 @@ load_CA_cert_from_file(serf_ssl_certificate_t **cert,
     return SERF_ERROR_SSL_CERT_FAILED;
 }
 
+static apr_status_t
+load_identity_from_file(void *impl_ctx,
+                        const serf_ssl_identity_t **identity,
+                        const char *file_path,
+                        apr_pool_t *pool)
+{
+    apr_status_t status;
+    CFDataRef databuf;
+    sectrans_context_t *ssl_ctx = impl_ctx;
+
+    status = load_data_from_file(file_path, &databuf, pool);
+    if (status)
+        return status;
+
+    status = create_temp_keychain(ssl_ctx, ssl_ctx->handshake_pool);
+    if (status)
+        return status;
+
+    status = load_identity_from_databuf(ssl_ctx, identity, file_path,
+                                        databuf, pool);
+
+    return status;
+}
 
 static apr_status_t trust_cert(void *impl_ctx,
                                serf_ssl_certificate_t *cert)
@@ -2271,11 +2388,13 @@ const serf_ssl_bucket_type_t serf_ssl_bucket_type_securetransport = {
     encrypt_context_get,
     set_hostname,
     client_cert_provider_set,
+    identity_provider_set,
     client_cert_password_set,
     server_cert_callback_set,
     server_cert_chain_callback_set,
     use_default_certificates,
     load_CA_cert_from_file,
+    load_identity_from_file,
     trust_cert,
     cert_issuer,
     cert_subject,
@@ -2284,5 +2403,6 @@ const serf_ssl_bucket_type_t serf_ssl_bucket_type_securetransport = {
     use_compression,
     set_allowed_cert_validation_modes,
     show_trust_certificate_dialog,
+    show_select_identity_dialog,
 };
 #endif /* SERF_HAVE_SECURETRANSPORT */
