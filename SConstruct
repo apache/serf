@@ -45,6 +45,9 @@ opts.AddVariables(
                "Path to GSSAPI's install area",
                None,
                None),
+  BoolVariable('DEBUG',
+               "Enable debugging info and strict compile warnings",
+               False),
   )
 
 if sys.platform == 'darwin':
@@ -72,6 +75,37 @@ match = re.search('SERF_MAJOR_VERSION ([0-9]+).*'
                   re.DOTALL)
 MAJOR, MINOR, PATCH = [int(x) for x in match.groups()]
 env.Append(MAJOR=str(MAJOR))
+
+
+# HANDLING OF OPTION VARIABLES
+
+unknown = opts.UnknownVariables()
+if unknown:
+  print 'Unknown variables:', ', '.join(unknown.keys())
+  Exit(1)
+
+apr = str(env['APR'])
+if os.path.isdir(apr):
+  apr = os.path.join(apr, 'bin', 'apr-1-config')
+  env['APR'] = apr
+apu = str(env['APU'])
+if os.path.isdir(apu):
+  apu = os.path.join(apu, 'bin', 'apu-1-config')
+  env['APU'] = apu
+gssapi = env.get('GSSAPI', None)
+if gssapi and os.path.isdir(str(gssapi)):
+  gssapi = os.path.join(gssapi, 'bin', 'krb5-config')
+  env['GSSAPI'] = gssapi
+openssl = env.get('OPENSSL', None)
+if openssl and os.path.isdir(str(openssl)):
+  env.Append(CPPPATH='$OPENSSL/include')
+  env.Append(LIBPATH='$OPENSSL/lib')
+  env.Append(CFLAGS='-DSERF_HAVE_OPENSSL')
+debug = env.get('DEBUG', None)
+
+Help(opts.GenerateHelpText(env))
+opts.Save(SAVED_CONFIG, env)
+
 
 # PLATFORM-SPECIFIC BUILD TWEAKS
 
@@ -112,10 +146,13 @@ if 1:
   ### gcc only. figure out appropriate test / better way to check these
   ### flags, and check for gcc.
   ### -Wall is not available on Solaris
-  ccflags = ['-g', '-O2', '-std=c89', ]
+  ccflags = ['-std=c89', ]
   if sys.platform != 'sunos5':
     ccflags.append('-Wall')
-
+  if debug:
+    ccflags.append(['-g', '-Wmissing-prototypes'])
+  else:
+    ccflags.append('-O2')
 libs = [ ]
 if 1:
   ### works for Mac OS. probably needs to change
@@ -131,36 +168,6 @@ env.Replace(LINKFLAGS=linkflags,
             CCFLAGS=ccflags,
             LIBS=libs,
             )
-
-
-# HANDLING OF OPTION VARIABLES
-
-unknown = opts.UnknownVariables()
-if unknown:
-  print 'Unknown variables:', ', '.join(unknown.keys())
-  Exit(1)
-
-apr = str(env['APR'])
-if os.path.isdir(apr):
-  apr = os.path.join(apr, 'bin', 'apr-1-config')
-  env['APR'] = apr
-apu = str(env['APU'])
-if os.path.isdir(apu):
-  apu = os.path.join(apu, 'bin', 'apu-1-config')
-  env['APU'] = apu
-gssapi = env.get('GSSAPI', None)
-if gssapi and os.path.isdir(str(gssapi)):
-  gssapi = os.path.join(gssapi, 'bin', 'krb5-config')
-  env['GSSAPI'] = gssapi
-openssl = env.get('OPENSSL', None)
-if openssl and os.path.isdir(str(openssl)):
-  env.Append(CPPPATH='$OPENSSL/include')
-  env.Append(LIBPATH='$OPENSSL/lib')
-  env.Append(CFLAGS='-DSERF_HAVE_OPENSSL')
-
-Help(opts.GenerateHelpText(env))
-opts.Save(SAVED_CONFIG, env)
-
 
 
 # PLAN THE BUILD
