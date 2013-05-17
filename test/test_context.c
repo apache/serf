@@ -1129,7 +1129,7 @@ static apr_status_t validate_servercert(const serf_ssl_certificate_t *cert,
 {
     apr_hash_t *subject;
     subject = serf_ssl_cert_subject(cert, pool);
-    if (strcmp("Serf Server",
+    if (strcmp("localhost",
                apr_hash_get(subject, "CN", APR_HASH_KEY_STRING)) != 0)
         return SERF_ERROR_ISSUE_IN_TESTSUITE;
     if (strcmp("Test Suite Server",
