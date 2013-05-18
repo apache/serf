@@ -240,14 +240,6 @@ serf__create_certificate(serf_bucket_alloc_t *allocator,
     return cert;
 }
 
-int
-serf_ssl_set_allowed_cert_validation_modes(serf_ssl_context_t *ssl_ctx,
-                                           int modes)
-{
-    return ssl_ctx->type->set_allowed_cert_validation_modes(ssl_ctx->impl_ctx,
-                                                         modes);
-}
-
 /* Functions to read a serf_ssl_certificate structure. */
 int serf_ssl_cert_depth(const serf_ssl_certificate_t *cert)
 {
@@ -357,4 +349,14 @@ serf_ssl_show_select_identity_dialog(serf_ssl_context_t *ssl_ctx,
                                                       ok_button_label,
                                                       cancel_button_label,
                                                       pool);
+}
+
+apr_status_t
+serf_ssl_find_preferred_identity_in_store(serf_ssl_context_t *ssl_ctx,
+                                          const serf_ssl_identity_t **identity,
+                                          apr_pool_t *pool)
+{
+    return ssl_ctx->type->find_preferred_identity_in_store(ssl_ctx->impl_ctx,
+                                                           identity,
+                                                           pool);
 }

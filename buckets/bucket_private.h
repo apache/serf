@@ -132,9 +132,6 @@ struct serf_ssl_bucket_type_t {
     apr_status_t (*use_compression)(void *impl_ctx,
                                     int enabled);
 
-    int (*set_allowed_cert_validation_modes)(void *impl_ctx,
-                                             int modes);
-
     apr_status_t
         (*show_trust_certificate_dialog)(void *impl_ctx,
                                          const char *message,
@@ -147,6 +144,11 @@ struct serf_ssl_bucket_type_t {
                                        const char *ok_button_label,
                                        const char *cancel_button_label,
                                        apr_pool_t *pool);
+
+    apr_status_t (*find_preferred_identity_in_store)(
+                       void *impl_ctx,
+                       const serf_ssl_identity_t **identity,
+                       apr_pool_t *pool);
 };
 
 /* Implementation independent certificate object. */

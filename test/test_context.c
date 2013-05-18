@@ -1804,16 +1804,38 @@ apr_status_t identity_cb(void *data,
     tb->result_flags |= TEST_RESULT_CLIENT_CERTCB_CALLED;
 
 #if 0
-    /* Example of how to ask the user to validate a server certificate
-     via a platform-specific dialog. */
+    /* Example of how to use Keychain to fetch a client identity for a server.
+
+       How to test:
+       1. Import file test/server/serfclientcert.p12 in a keychain.
+       -> run the test test_serf_ssl_identity now, you should get a dialog
+          where you can select "Serf Client".
+       2. If you have a smart card with a client identity, plug it in.
+       -> run the test again, the dialog should show both the "Serf Client"
+          identity as your personal (stored on the smart card) identity.
+       3. Add an identity preferences for 'https://localhost' to the
+           "Serf Client" certificate in the login keychain.
+       -> run the test test_serf_ssl_identity now. It should continue without
+          showing a dialog.
+     
+       Note: in all these cases the test will fail, because the identity
+       password callback isn't called - Keychain handles that.
+     */
+
+    /* First check if the user has set a preferred identity for this server. */
+    status = serf_ssl_find_preferred_identity_in_store(tb->ssl_context,
+                                                       identity,
+                                                       pool);
+    if (status == APR_SUCCESS)
+        return APR_SUCCESS;
+
+    /* Choose an identity from the available identities in the keychains. */
     status = serf_ssl_show_select_identity_dialog(tb->ssl_context,
                  identity,
                  "Select client identity.", "Accept", "Cancel",
                  pool);
-    if (status && status != APR_ENOTIMPL)
+    if (status != APR_ENOTIMPL)
         return status;
-
-    return status;
 #endif
 
     status = serf_ssl_load_identity_from_file(tb->ssl_context,

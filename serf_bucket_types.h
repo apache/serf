@@ -681,16 +681,6 @@ apr_status_t serf_ssl_use_compression(
     serf_ssl_context_t *ssl_ctx,
     int enabled);
 
-typedef enum {
-    serf_ssl_val_mode_serf_managed_with_gui = 0x1,
-    serf_ssl_val_mode_serf_managed_no_gui =   0x2,
-    serf_ssl_val_mode_application_managed =   0x4,
-} serf_ssl_cert_validation_mode_t;
-
-int
-serf_ssl_set_allowed_cert_validation_modes(serf_ssl_context_t *ssl_ctx,
-                                           int modes);
-
 apr_status_t
 serf_ssl_show_trust_certificate_dialog(serf_ssl_context_t *ssl_ctx,
                                        const char *message,
@@ -704,6 +694,11 @@ serf_ssl_show_select_identity_dialog(serf_ssl_context_t *ssl_ctx,
                                      const char *ok_button_label,
                                      const char *cancel_button_label,
                                      apr_pool_t *pool);
+
+apr_status_t
+serf_ssl_find_preferred_identity_in_store(serf_ssl_context_t *ssl_ctx,
+                                          const serf_ssl_identity_t **identity,
+                                          apr_pool_t *pool);
 
 void serf_bucket_ssl_destroy_and_data(serf_bucket_t *bucket);
 

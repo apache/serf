@@ -185,10 +185,6 @@ typedef struct openssl_context_t {
     /* Status of a fatal error, returned on subsequent encrypt or decrypt
        requests. */
     apr_status_t fatal_err;
-
-    /* allowed modes for certification validation, see enum
-       serf_ssl_cert_validation_mode_t for more info. */
-    int modes;
 } openssl_context_t;
 
 typedef struct {
@@ -1113,8 +1109,6 @@ void serf__openssl_client_cert_password_set(
 {
     openssl_context_t *ssl_ctx = impl_ctx;
 
-    ssl_ctx->modes |= serf_ssl_val_mode_application_managed;
-
     ssl_ctx->cert_pw_callback = callback;
     ssl_ctx->cert_pw_userdata = data;
     ssl_ctx->cert_pw_cache_pool = cache_pool;
@@ -1149,8 +1143,6 @@ void serf__openssl_server_cert_callback_set(
 {
     openssl_context_t *ssl_ctx = impl_ctx;
 
-    ssl_ctx->modes |= serf_ssl_val_mode_application_managed;
-
     ssl_ctx->server_cert_callback = callback;
     ssl_ctx->server_cert_userdata = data;
 }
@@ -1162,8 +1154,6 @@ void serf__openssl_server_cert_chain_callback_set(
     void *data)
 {
     openssl_context_t *ssl_ctx = impl_ctx;
-
-    ssl_ctx->modes |= serf_ssl_val_mode_application_managed;
 
     ssl_ctx->server_cert_callback = cert_callback;
     ssl_ctx->server_cert_chain_callback = cert_chain_callback;
@@ -1186,9 +1176,6 @@ static openssl_context_t *ssl_init_context(void)
     ssl_ctx->refcount = 0;
     ssl_ctx->pool = pool;
     ssl_ctx->allocator = allocator;
-
-    /* Default mode: OpenSSL validates certificates without GUI. */
-    ssl_ctx->modes = serf_ssl_val_mode_serf_managed_no_gui;
 
     ssl_ctx->ctx = SSL_CTX_new(SSLv23_client_method());
 
@@ -1792,25 +1779,6 @@ serf__openssl_use_compression(void *impl_ctx, int enabled)
     return APR_EGENERAL;
 }
 
-static int
-serf__openssl_set_allowed_cert_validation_modes(void *impl_ctx,
-                                                int modes)
-{
-    openssl_context_t *ssl_ctx = impl_ctx;
-
-    ssl_ctx->modes = 0;
-
-    /* We support all requested modes, although we won't use GUI mode. */
-    if (modes & serf_ssl_val_mode_serf_managed_with_gui)
-        ssl_ctx->modes |= serf_ssl_val_mode_serf_managed_with_gui;
-    if (modes & serf_ssl_val_mode_serf_managed_no_gui)
-        ssl_ctx->modes |= serf_ssl_val_mode_serf_managed_no_gui;
-    if (modes & serf_ssl_val_mode_application_managed)
-        ssl_ctx->modes |= serf_ssl_val_mode_application_managed;
-
-    return ssl_ctx->modes;
-}
-
 apr_status_t
 serf__openssl_show_trust_certificate_dialog(void *impl_ctx,
                                             const char *message,
@@ -1827,6 +1795,14 @@ serf__openssl_show_select_identity_dialog(void *impl_ctx,
                                           const char *ok_button_label,
                                           const char *cancel_button_label,
                                           apr_pool_t *pool)
+{
+    return APR_ENOTIMPL;
+}
+
+static apr_status_t
+serf__openssl_find_preferred_identity_in_store(void *impl_ctx,
+    const serf_ssl_identity_t **identity,
+    apr_pool_t *pool)
 {
     return APR_ENOTIMPL;
 }
@@ -1958,9 +1934,9 @@ const serf_ssl_bucket_type_t serf_ssl_bucket_type_openssl = {
     serf__openssl_cert_certificate,
     serf__openssl_cert_export,
     serf__openssl_use_compression,
-    serf__openssl_set_allowed_cert_validation_modes,
     serf__openssl_show_trust_certificate_dialog,
     serf__openssl_show_select_identity_dialog,
+    serf__openssl_find_preferred_identity_in_store,
 };
 
 #endif /* SERF_HAVE_OPENSSL */

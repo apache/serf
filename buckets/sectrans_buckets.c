@@ -106,10 +106,6 @@ typedef struct sectrans_context_t {
     /* name of the peer, used with TLS's Server Name Indication extension. */
     char *hostname;
 
-    /* allowed modes for certification validation, see enum
-       serf_ssl_cert_validation_mode_t for more info. */
-    int modes;
-
     /* Client cert callbacks */
     serf_ssl_need_client_cert_t client_cert_callback;
     serf_ssl_need_identity_t identity_callback;
@@ -239,13 +235,6 @@ sectrans_init_context(serf_bucket_alloc_t *allocator)
 
     apr_pool_create(&ssl_ctx->pool, NULL);
     apr_pool_create(&ssl_ctx->handshake_pool, ssl_ctx->pool);
-
-#if 0
-    /* TODO: this mode is not used anymore. Rethink modes. */
-    /* Default mode: validate certificates against KeyChain without GUI.
-       If a certificate needs to be confirmed by the user, error out. */
-    ssl_ctx->modes = serf_ssl_val_mode_serf_managed_no_gui;
-#endif
 
     /* Set up the stream objects. */
     ssl_ctx->encrypt.pending = serf__bucket_stream_create(allocator,
@@ -493,14 +482,11 @@ load_identity_from_databuf(sectrans_context_t *ssl_ctx,
             if (CFArrayGetCount(items) > 0)
             {
                 SecIdentityRef identityref;
-                serf_bucket_alloc_t *allocator;
 
                 identityref = (SecIdentityRef)CFArrayGetValueAtIndex(items, 0);
 
                 if (!identityref)
                     return SERF_ERROR_SSL_CERT_FAILED;
-
-                allocator = serf_bucket_allocator_create(pool, NULL, NULL);
 
                 *identity = serf__create_identity(
                                 &serf_ssl_bucket_type_securetransport,
@@ -989,23 +975,6 @@ validate_server_certificate(sectrans_context_t *ssl_ctx)
             break;
     }
 
-#if 0
-    /* Recoverable errors? Ask the user for confirmation. */
-    if (failures & SERF_SSL_CERT_CONFIRM_NEEDED ||
-        failures & SERF_SSL_CERT_RECOVERABLE)
-    {
-        if (ssl_ctx->modes & serf_ssl_val_mode_serf_managed_with_gui)
-        {
-            status = ask_approval_gui(ssl_ctx, ssl_ctx->trust);
-            /* TODO: remember this approval for 'some time' ! */
-            goto cleanup;
-        } else
-        {
-            status = SERF_ERROR_SSL_CANT_CONFIRM_CERT;
-        }
-    }
-#endif
-
     /* Secure Transport only reports one error per evaluation. This is stored
        at depth 0 in the result array, so we don't even know at what depth
        the error occurred.
@@ -1476,6 +1445,74 @@ callback_for_identity(sectrans_context_t *ssl_ctx,
     return status;
 }
 
+
+/* Find a preferred identity for this hostname in the kechains.
+   (identity preference entry). */
+
+/* Note: this will automatically support smart cards. As soon as the card
+   is inserted in the reader, an extra keychain will be created containing
+   the certificate(s) and private key(s) stored on the smart card. From
+   there it can be used just like any other identity: The client identity
+   can be set as preferred identity for a host (or with wildcards) or will
+   be shown in the identity selection dialog if no such preference was set.
+
+   Tested successfully with a Belgian Personal ID Card (BELPIC) and
+   Smartcard services v2.0b2-mtlion on Mac OS X 10.8.3 */
+apr_status_t
+find_preferred_identity_in_store(void *impl_ctx,
+                                 const serf_ssl_identity_t **identity,
+                                 apr_pool_t *pool)
+{
+    apr_pool_t *tmppool;
+    sectrans_context_t *ssl_ctx = impl_ctx;
+    SecIdentityRef identityref = NULL;
+    apr_status_t status;
+
+    apr_pool_create(&tmppool, pool);
+
+    /* We can get the distinguished names from the server with
+       SSLCopyDistinguishedNames to filter matching client certificates,
+       but we can't pass this list to the application, and
+       SecIdentityCopyPreferred doesn't have this feature implemented
+       either. So, don't bother. */
+
+    /* We absolutelely need an item that can sign. Otherwise we will get
+     an incomplete identity object, with which SecIdentityCopyCertificate
+     will crash. */
+    const void *keyUsage[] = { kSecAttrCanSign };
+    CFArrayRef keyUsageRef = CFArrayCreate(kCFAllocatorDefault,
+                                           (void *)keyUsage,
+                                           1,
+                                           NULL);
+    /* Find an identity preference using label https://<hostname> */
+    const char *label = apr_pstrcat(tmppool, "https://", ssl_ctx->hostname,
+                                    NULL);
+    CFStringRef labelref;
+    labelref = CFStringCreateWithBytesNoCopy(kCFAllocatorDefault,
+                                             (unsigned char *)label,
+                                             strlen(label),
+                                             kCFStringEncodingMacRoman,
+                                             false,
+                                             kCFAllocatorNull);
+    identityref = SecIdentityCopyPreferred(labelref,
+                                           keyUsageRef, NULL);
+    if (identityref)
+    {
+        *identity = serf__create_identity(&serf_ssl_bucket_type_securetransport,
+                                          identityref, NULL, pool);
+        status = APR_SUCCESS;
+    } else {
+        *identity = NULL;
+        status = SERF_ERROR_SSL_CERT_FAILED;
+    }
+
+    CFRelease(labelref);
+    CFRelease(keyUsageRef);
+    apr_pool_destroy(tmppool);
+
+    return status;
+}
+
 /* Get a client certificate for this server from the application. */
 static apr_status_t
 provide_client_certificate(sectrans_context_t *ssl_ctx)
@@ -1486,82 +1523,27 @@ provide_client_certificate(sectrans_context_t *ssl_ctx)
 
     serf__log(SSL_VERBOSE, __FILE__, "provide_client_certificate called.\n");
 
-    /* If gui mode is enabled, find the client certificate in the keychains.
-       First: see if the user has defined a preferred client certificate
-       for this hostname. (identity preference entry).
-       If not: get the list of all matching client certificates and ask the
-       user to select one. 
-       TODO: filter on matching domains.
-
-       Note: this will automatically support smart cards. As soon as the card
-       is inserted in the reader, an extra keychain will be created containing
-       the certificate(s) and private key(s) stored on the smart card. From
-       there it can be used just like any other identity: The client identity
-       can be set as preferred identity for a host (or with wildcards) or will
-       be shown in the identity selection dialog if no such preference was set.
-
-       Tested successfully with a Belgian Personal ID Card (BELPIC) and
-       Smartcard services v2.0b2-mtlion on Mac OS X 10.8.3 */
-    if (ssl_ctx->modes & serf_ssl_val_mode_serf_managed_with_gui)
+    /* The server asked for a client certificate but we can't ask the
+       application. Consider this a success, the server decides if the
+       request was optional or mandatory. */
+    if (!ssl_ctx->client_cert_callback &&
+        !ssl_ctx->identity_callback)
     {
-        apr_pool_t *tmppool;
-
-        apr_pool_create(&tmppool, ssl_ctx->handshake_pool);
-
-        /* We can get the distinguished names from the server with
-           SSLCopyDistinguishedNames to filter matching client certificates,
-           but we can't pass this list to the application, and
-           SecIdentityCopyPreferred doesn't have this feature implemented
-           either. So, don't bother. */
-
-        /* We absolutelely need an item that can sign. Otherwise we will get
-           an incomplete identity object, with which SecIdentityCopyCertificate
-           will crash. */
-        const void *keyUsage[] = { kSecAttrCanSign };
-        CFArrayRef keyUsageRef = CFArrayCreate(kCFAllocatorDefault,
-                                               (void *)keyUsage,
-                                               1,
-                                               NULL);
-        /* Find an identity preference using label https://<hostname> */
-        const char *label = apr_pstrcat(tmppool, "https://", ssl_ctx->hostname,
-                                        NULL);
-        CFStringRef labelref;
-        labelref = CFStringCreateWithBytesNoCopy(kCFAllocatorDefault,
-                                                 (unsigned char *)label,
-                                                 strlen(label),
-                                                 kCFStringEncodingMacRoman,
-                                                 false,
-                                                 kCFAllocatorNull);
-        identityref = SecIdentityCopyPreferred(labelref,
-                                               keyUsageRef, NULL);
-
-        CFRelease(labelref);
-        CFRelease(keyUsageRef);
-        apr_pool_destroy(tmppool);
-    } else
-    {
-        /* The server asked for a client certificate but we can't ask the
-           application. Consider this a success, the server decides if the 
-           request was optional or mandatory. */
-        if (!ssl_ctx->client_cert_callback &&
-            !ssl_ctx->identity_callback)
-        {
-            serf__log(SSL_VERBOSE, __FILE__, "Server asked for client "
-                      "certificate, but the application didn't set the "
-                      "necessary callback.\n");
-            return APR_SUCCESS;
-        }
-
-        /* We trust that the application knows which identity to provide,
-           based on the server this serf context connects to, as we do not have
-           a way to pass the list of distinguished names provided by the
-           server to the application. */
-        /* TODO: fix this for the new identity_callback API */
-        status = callback_for_identity(ssl_ctx, &identityref,
-                                       ssl_ctx->pool);
-        if (status)
-            return status;
+        serf__log(SSL_VERBOSE, __FILE__, "Server asked for client "
+                  "certificate, but the application didn't set the "
+                  "necessary callback.\n");
+        return APR_SUCCESS;
     }
+
+    /* We trust that the application knows which identity to provide,
+       based on the server this serf context connects to, as we do not have
+       a way to pass the list of distinguished names provided by the
+       server to the application. */
+    /* TODO: fix this for the new identity_callback API */
+    status = callback_for_identity(ssl_ctx, &identityref,
+                                   ssl_ctx->pool);
+    if (status)
+        return status;
 
     /* If the issuer of the client certificate is not in the list
        of certificates the server provided, we need to send it along.
@@ -1749,8 +1731,6 @@ client_cert_provider_set(void *impl_ctx,
 {
     sectrans_context_t *ssl_ctx = impl_ctx;
 
-    ssl_ctx->modes |= serf_ssl_val_mode_application_managed;
-
     ssl_ctx->client_cert_callback = callback;
     ssl_ctx->identity_userdata = data;
 }
@@ -1762,8 +1742,6 @@ identity_provider_set(void *impl_ctx,
                       void *cache_pool)
 {
     sectrans_context_t *ssl_ctx = impl_ctx;
-
-    ssl_ctx->modes |= serf_ssl_val_mode_application_managed;
 
     ssl_ctx->identity_callback = callback;
     ssl_ctx->identity_userdata = data;
@@ -1777,8 +1755,6 @@ client_cert_password_set(void *impl_ctx,
 {
     sectrans_context_t *ssl_ctx = impl_ctx;
 
-    ssl_ctx->modes |= serf_ssl_val_mode_application_managed;
-
     ssl_ctx->identity_pw_callback = callback;
     ssl_ctx->identity_pw_userdata = data;
 }
@@ -1788,8 +1764,6 @@ void server_cert_callback_set(void *impl_ctx,
                               void *data)
 {
     sectrans_context_t *ssl_ctx = impl_ctx;
-
-    ssl_ctx->modes |= serf_ssl_val_mode_application_managed;
 
     ssl_ctx->server_cert_callback = callback;
     ssl_ctx->server_cert_userdata = data;
@@ -1801,8 +1775,6 @@ void server_cert_chain_callback_set(void *impl_ctx,
                                     void *data)
 {
     sectrans_context_t *ssl_ctx = impl_ctx;
-
-    ssl_ctx->modes |= serf_ssl_val_mode_application_managed;
 
     ssl_ctx->server_cert_callback = cert_callback;
     ssl_ctx->server_cert_chain_callback = cert_chain_callback;
@@ -2066,23 +2038,6 @@ use_compression(void *impl_ctx, int enabled)
     } else {
         return APR_SUCCESS;
     }
-}
-
-int set_allowed_cert_validation_modes(void *impl_ctx,
-                                      int modes)
-{
-    sectrans_context_t *ssl_ctx = impl_ctx;
-
-    ssl_ctx->modes = 0;
-
-    if (modes & serf_ssl_val_mode_serf_managed_with_gui)
-        ssl_ctx->modes |= serf_ssl_val_mode_serf_managed_with_gui;
-    if (modes & serf_ssl_val_mode_serf_managed_no_gui)
-        ssl_ctx->modes |= serf_ssl_val_mode_serf_managed_no_gui;
-    if (modes & serf_ssl_val_mode_application_managed)
-        ssl_ctx->modes |= serf_ssl_val_mode_application_managed;
-
-    return ssl_ctx->modes;
 }
 
 /**** ENCRYPTION BUCKET API *****/
@@ -2401,8 +2356,8 @@ const serf_ssl_bucket_type_t serf_ssl_bucket_type_securetransport = {
     cert_certificate,
     cert_export,
     use_compression,
-    set_allowed_cert_validation_modes,
     show_trust_certificate_dialog,
     show_select_identity_dialog,
+    find_preferred_identity_in_store,
 };
 #endif /* SERF_HAVE_SECURETRANSPORT */
