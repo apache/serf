@@ -504,7 +504,7 @@ load_identity_from_databuf(sectrans_context_t *ssl_ctx,
 
                 *identity = serf__create_identity(
                                 &serf_ssl_bucket_type_securetransport,
-                                identityref, pool);
+                                identityref, NULL, pool);
 
                 return APR_SUCCESS;
             }
@@ -689,7 +689,7 @@ show_select_identity_dialog(void *impl_ctx,
         identityref = (SecIdentityRef)objc_msgSend(cip,
                                                    sel_registerName("identity"));
         *identity = serf__create_identity(&serf_ssl_bucket_type_securetransport,
-                                          identityref,
+                                          identityref, NULL,
                                           pool);
 
         status = APR_SUCCESS;
@@ -1471,7 +1471,7 @@ callback_for_identity(sectrans_context_t *ssl_ctx,
         status = APR_EGENERAL;
 
     if (status == APR_SUCCESS)
-        *identityref = (SecIdentityRef)identity->impl_identity;
+        *identityref = (SecIdentityRef)identity->impl_cert;
 
     return status;
 }

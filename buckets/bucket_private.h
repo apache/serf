@@ -178,19 +178,23 @@ serf__create_certificate(serf_bucket_alloc_t *allocator,
                          int depth);
 
 /* Implementation independent identity object. An identity is a combination
- of a certificate and a private key, typically stored in a .p12 file. */
+   of a certificate and a private key, typically stored in a .p12 file. */
 struct serf_ssl_identity_t {
     /** bucket implementation that can parse this identity. */
     const serf_ssl_bucket_type_t *type;
 
-    /** implementation specific identity data */
-    const void *impl_identity;
+    /** implementation specific client certificate */
+    void *impl_cert;
+
+    /** implementation specific private key */
+    void *impl_pkey;
 };
 
 /* Creates a serf_ssl_identity_t object, caller takes ownership. */
 serf_ssl_identity_t *
 serf__create_identity(const serf_ssl_bucket_type_t *type,
-                      void *impl_identity,
+                      void *impl_cert,
+                      void *impl_pkey,
                       apr_pool_t *pool);
 
 /* sectrans_bucket internal functions */

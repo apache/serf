@@ -285,13 +285,15 @@ const char *serf_ssl_cert_export(
 /* Create a implementation-independent serf_ssl_identity_t object */
 serf_ssl_identity_t *
 serf__create_identity(const serf_ssl_bucket_type_t *type,
-                      void *impl_identity,
+                      void *impl_cert,
+                      void *impl_pkey,
                       apr_pool_t *pool)
 {
     serf_ssl_identity_t *identity;
 
     identity = apr_palloc(pool, sizeof(serf_ssl_identity_t));
-    identity->impl_identity = impl_identity;
+    identity->impl_cert = impl_cert;
+    identity->impl_pkey = impl_pkey;
     identity->type = type;
 
     return identity;

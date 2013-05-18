@@ -160,8 +160,9 @@ typedef struct openssl_context_t {
     serf_ssl_stream_t encrypt;
     serf_ssl_stream_t decrypt;
 
-    /* Client cert callbacks */
-    serf_ssl_need_client_cert_t cert_callback;
+    /* Identity callbacks */
+    serf_ssl_need_client_cert_t cert_callback;    /* Deprecated */
+    serf_ssl_need_identity_t identity_callback;
     void *cert_userdata;
     apr_pool_t *cert_cache_pool;
     const char *cert_file_success;
@@ -177,10 +178,7 @@ typedef struct openssl_context_t {
     serf_ssl_server_cert_chain_cb_t server_cert_chain_callback;
     void *server_cert_userdata;
 
-    const char *cert_path;
-
-    X509 *cached_cert;
-    EVP_PKEY *cached_cert_pw;
+    const serf_ssl_identity_t *cached_identity;
 
     apr_status_t pending_err;
 
@@ -205,6 +203,9 @@ typedef struct {
 } ssl_context_t;
 
 static void disable_compression(openssl_context_t *ssl_ctx);
+static apr_status_t serf__openssl_load_identity_from_file(void *impl_ctx,
+                        const serf_ssl_identity_t **identity,
+                        const char *file_path, apr_pool_t *pool);
 
 #if SSL_VERBOSE
 /* Log all ssl alerts that we receive from the server. */
@@ -1023,123 +1024,63 @@ static int ssl_need_client_cert(SSL *ssl, X509 **cert, EVP_PKEY **pkey)
     openssl_context_t *ctx = SSL_get_app_data(ssl);
     apr_status_t status;
 
-    if (ctx->cached_cert) {
-        *cert = ctx->cached_cert;
-        *pkey = ctx->cached_cert_pw;
+    if (ctx->cached_identity) {
+        *cert = ctx->cached_identity->impl_cert;
+        *pkey = ctx->cached_identity->impl_pkey;
         return 1;
     }
 
-    while (ctx->cert_callback) {
+    if (!ctx->cert_callback && !ctx->identity_callback)
+        return 0;
+
+    /* Loop until a client identity is returned by the application, a .p12 file
+       is read and parsed successfully, or as long as the application keeps 
+       providing .p12 paths and passwords. */
+    while (1) {
         const char *cert_path;
-        apr_file_t *cert_file;
-        BIO *bio;
-        PKCS12 *p12;
-        int i;
-        int retrying_success = 0;
+        const serf_ssl_identity_t *identity;
 
-        if (ctx->cert_file_success) {
-            status = APR_SUCCESS;
-            cert_path = ctx->cert_file_success;
-            ctx->cert_file_success = NULL;
-            retrying_success = 1;
-        } else {
-            status = ctx->cert_callback(ctx->cert_userdata, &cert_path);
-        }
-
-        if (status || !cert_path) {
-            break;
-        }
-
-        /* Load the x.509 cert file stored in PKCS12 */
-        status = apr_file_open(&cert_file, cert_path, APR_READ, APR_OS_DEFAULT,
-                               ctx->pool);
-
-        if (status) {
-            continue;
-        }
-
-        bio = BIO_new(&bio_file_method);
-        bio->ptr = cert_file;
-
-        ctx->cert_path = cert_path;
-        p12 = d2i_PKCS12_bio(bio, NULL);
-        apr_file_close(cert_file);
-
-        i = PKCS12_parse(p12, NULL, pkey, cert, NULL);
-
-        if (i == 1) {
-            PKCS12_free(p12);
-            ctx->cached_cert = *cert;
-            ctx->cached_cert_pw = *pkey;
-            if (!retrying_success && ctx->cert_cache_pool) {
-                const char *c;
-
-                c = apr_pstrdup(ctx->cert_cache_pool, ctx->cert_path);
-
-                apr_pool_userdata_setn(c, "serf:ssl:cert",
-                                       apr_pool_cleanup_null,
-                                       ctx->cert_cache_pool);
+        if (ctx->cert_callback)
+        {
+            /* If we have a path to a .p12 file cached from a previous session,
+               we will reuse it here so we don't have to call the application.
+             */
+            if (ctx->cert_file_success) {
+                cert_path = ctx->cert_file_success;
+            } else {
+                status = ctx->cert_callback(ctx->cert_userdata, &cert_path);
+                if (status || !cert_path)
+                    break;
             }
+            status = serf__openssl_load_identity_from_file(ctx,
+                                                           &identity,
+                                                           cert_path,
+                                                           ctx->pool);
+            /* No need to read & parse this file again. If it was parsed
+               successfully we will cache the identity object. If not we
+               don't want to use it anyway. */
+            ctx->cert_file_success = NULL;
+        }
+        else
+        {
+            status = ctx->identity_callback(ctx->cert_userdata, &identity,
+                                            ctx->pool);
+            if (status || !identity)
+                break;
+        }
+
+        if (status == APR_SUCCESS)
+        {
+            ctx->cached_identity = identity;
+
+            *cert = identity->impl_cert;
+            *pkey = identity->impl_pkey;
+
             return 1;
         }
-        else {
-            int err = ERR_get_error();
-            ERR_clear_error();
-            if (ERR_GET_LIB(err) == ERR_LIB_PKCS12 &&
-                ERR_GET_REASON(err) == PKCS12_R_MAC_VERIFY_FAILURE) {
-                if (ctx->cert_pw_callback) {
-                    const char *password;
 
-                    if (ctx->cert_pw_success) {
-                        status = APR_SUCCESS;
-                        password = ctx->cert_pw_success;
-                        ctx->cert_pw_success = NULL;
-                    } else {
-                        status = ctx->cert_pw_callback(ctx->cert_pw_userdata,
-                                                       ctx->cert_path,
-                                                       &password);
-                    }
-
-                    if (!status && password) {
-                        i = PKCS12_parse(p12, password, pkey, cert, NULL);
-                        if (i == 1) {
-                            PKCS12_free(p12);
-                            ctx->cached_cert = *cert;
-                            ctx->cached_cert_pw = *pkey;
-                            if (!retrying_success && ctx->cert_cache_pool) {
-                                const char *c;
-
-                                c = apr_pstrdup(ctx->cert_cache_pool,
-                                                ctx->cert_path);
-
-                                apr_pool_userdata_setn(c, "serf:ssl:cert",
-                                                       apr_pool_cleanup_null,
-                                                       ctx->cert_cache_pool);
-                            }
-                            if (!retrying_success && ctx->cert_pw_cache_pool) {
-                                const char *c;
-
-                                c = apr_pstrdup(ctx->cert_pw_cache_pool,
-                                                password);
-
-                                apr_pool_userdata_setn(c, "serf:ssl:certpw",
-                                                       apr_pool_cleanup_null,
-                                                       ctx->cert_pw_cache_pool);
-                            }
-                            return 1;
-                        }
-                    }
-                }
-                PKCS12_free(p12);
-                return 0;
-            }
-            else {
-                printf("OpenSSL cert error: %d %d %d\n", ERR_GET_LIB(err),
-                       ERR_GET_FUNC(err),
-                       ERR_GET_REASON(err));
-                PKCS12_free(p12);
-            }
-        }
+        /* A file was read but not parsed successfully, so ask the application
+           for another file. */
     }
 
     return 0;
@@ -1183,6 +1124,23 @@ void serf__openssl_client_cert_password_set(
     }
 }
 
+
+static void
+serf__openssl_identity_provider_set(void *impl_ctx,
+                                    serf_ssl_need_identity_t callback,
+                                    void *data,
+                                    void *cache_pool)
+{
+    openssl_context_t *ssl_ctx = impl_ctx;
+
+    ssl_ctx->identity_callback = callback;
+    ssl_ctx->cert_userdata = data;
+    ssl_ctx->cert_cache_pool = cache_pool;
+    if (ssl_ctx->cert_cache_pool) {
+        apr_pool_userdata_get((void**)&ssl_ctx->cert_file_success,
+                              "serf:ssl:cert", cache_pool);
+    }
+}
 
 void serf__openssl_server_cert_callback_set(
     void *impl_ctx,
@@ -1235,12 +1193,12 @@ static openssl_context_t *ssl_init_context(void)
     ssl_ctx->ctx = SSL_CTX_new(SSLv23_client_method());
 
     SSL_CTX_set_client_cert_cb(ssl_ctx->ctx, ssl_need_client_cert);
-    ssl_ctx->cached_cert = 0;
-    ssl_ctx->cached_cert_pw = 0;
+    ssl_ctx->cached_identity = 0;
     ssl_ctx->pending_err = APR_SUCCESS;
     ssl_ctx->fatal_err = APR_SUCCESS;
 
     ssl_ctx->cert_callback = NULL;
+    ssl_ctx->identity_callback = NULL;
     ssl_ctx->cert_pw_callback = NULL;
     ssl_ctx->server_cert_callback = NULL;
     ssl_ctx->server_cert_chain_callback = NULL;
@@ -1376,6 +1334,143 @@ apr_status_t serf__openssl_load_CA_cert_from_file(
     }
 
     return SERF_ERROR_SSL_CERT_FAILED;
+}
+
+
+static apr_status_t
+callback_for_identity_pw(openssl_context_t *ctx,
+                         const char *cert_path,
+                         const char **password)
+{
+    apr_status_t status;
+
+    if (ctx->cert_pw_success) {
+        status = APR_SUCCESS;
+        *password = ctx->cert_pw_success;
+        ctx->cert_pw_success = NULL;
+    } else if (ctx->cert_pw_callback)
+    {
+        status = ctx->cert_pw_callback(ctx->cert_pw_userdata,
+                                       cert_path,
+                                       password);
+    } else
+    {
+        status = SERF_ERROR_SSL_CLIENT_CERT_PW_FAILED;
+    }
+
+    return status;
+}
+
+/* Opens a .p12 file and reads the client certificate and private key.
+   When parsing the file without password fails, this function will call the
+   application's identity password callback.
+
+   On successful parsing of the .p12 file, the file name & password will be
+   cached in the cache_pool provided in the calls:
+    client_cert_provider_set/client_cert_password_set (deprecated)
+    or identity_provider_set/client_cert_password_set.
+ */
+static apr_status_t
+serf__openssl_load_identity_from_file(void *impl_ctx,
+                                      const serf_ssl_identity_t **identity,
+                                      const char *file_path,
+                                      apr_pool_t *pool)
+{
+    openssl_context_t *ctx = impl_ctx;
+    apr_file_t *cert_file;
+    BIO *bio;
+    PKCS12 *p12;
+    const char *password = NULL;
+    int i, retry_once = 2;
+    apr_status_t status;
+
+    /* Load the x.509 cert file stored in PKCS12 */
+    status = apr_file_open(&cert_file, file_path, APR_READ, APR_OS_DEFAULT,
+                           ctx->pool);
+    if (status)
+        return status;
+
+    bio = BIO_new(&bio_file_method);
+    bio->ptr = cert_file;
+
+    p12 = d2i_PKCS12_bio(bio, NULL);
+    apr_file_close(cert_file);
+
+    /* Try parsing the file without password. If that doesn'twork, call the
+       application to get the password and try again. */
+    while (retry_once)
+    {
+        X509 *cert;
+        EVP_PKEY *pkey;
+
+        retry_once--;
+
+        i = PKCS12_parse(p12, password, &pkey, &cert, NULL);
+
+        if (i == 1)
+        {
+            *identity = serf__create_identity(&serf_ssl_bucket_type_openssl,
+                                              cert, pkey, pool);
+
+            /* If we haven't done so for this file already, store the file path
+               and associated password in the pool that will survive this
+               session for reuse. */
+            if (!ctx->cert_file_success && ctx->cert_cache_pool) {
+                const char *c;
+
+                c = apr_pstrdup(ctx->cert_cache_pool,
+                                file_path);
+
+                apr_pool_userdata_setn(c, "serf:ssl:cert",
+                                       apr_pool_cleanup_null,
+                                       ctx->cert_cache_pool);
+            }
+            if (!ctx->cert_file_success && ctx->cert_pw_cache_pool) {
+                const char *c;
+
+                c = apr_pstrdup(ctx->cert_pw_cache_pool,
+                                password);
+
+                apr_pool_userdata_setn(c, "serf:ssl:certpw",
+                                       apr_pool_cleanup_null,
+                                       ctx->cert_pw_cache_pool);
+            }
+
+            status = APR_SUCCESS;
+            goto cleanup;
+        } else {
+            int err = ERR_get_error();
+            ERR_clear_error();
+
+            /* If we haven't done so yet, call the application to get the
+               matching passphrase and retry parsing the file. */
+            if (retry_once &&
+                ERR_GET_LIB(err) == ERR_LIB_PKCS12 &&
+                ERR_GET_REASON(err) == PKCS12_R_MAC_VERIFY_FAILURE)
+            {
+                status = callback_for_identity_pw(ctx, file_path,
+                                                  &password);
+                if (status)
+                    goto cleanup;
+
+                /* continue with new password */
+            } else {
+                if (retry_once)
+                    serf__log(SSL_VERBOSE, __FILE__,
+                              "OpenSSL cert error: %d %d %d.\n",
+                              ERR_GET_LIB(err), ERR_GET_FUNC(err),
+                              ERR_GET_REASON(err));
+                status = SERF_ERROR_SSL_CERT_FAILED;
+                goto cleanup;
+            }
+        }
+    }
+
+cleanup:
+    BIO_free(bio);
+    PKCS12_free(p12);
+
+    return status;
 }
 
 
@@ -1725,6 +1820,17 @@ serf__openssl_show_trust_certificate_dialog(void *impl_ctx,
     return APR_ENOTIMPL;
 }
 
+static apr_status_t
+serf__openssl_show_select_identity_dialog(void *impl_ctx,
+                                          const serf_ssl_identity_t **identity,
+                                          const char *message,
+                                          const char *ok_button_label,
+                                          const char *cancel_button_label,
+                                          apr_pool_t *pool)
+{
+    return APR_ENOTIMPL;
+}
+
 static void openssl_destroy_and_data(serf_bucket_t *bucket)
 {
     ssl_context_t *ctx = bucket->data;
@@ -1839,11 +1945,13 @@ const serf_ssl_bucket_type_t serf_ssl_bucket_type_openssl = {
     serf_bucket__openssl_encrypt_context_get,
     serf__openssl_set_hostname,
     serf__openssl_client_cert_provider_set,
+    serf__openssl_identity_provider_set,
     serf__openssl_client_cert_password_set,
     serf__openssl_server_cert_callback_set,
     serf__openssl_server_cert_chain_callback_set,
     serf__openssl_use_default_certificates,
     serf__openssl_load_CA_cert_from_file,
+    serf__openssl_load_identity_from_file,
     serf__openssl_trust_cert,
     serf__openssl_cert_issuer,
     serf__openssl_cert_subject,
@@ -1852,6 +1960,7 @@ const serf_ssl_bucket_type_t serf_ssl_bucket_type_openssl = {
     serf__openssl_use_compression,
     serf__openssl_set_allowed_cert_validation_modes,
     serf__openssl_show_trust_certificate_dialog,
+    serf__openssl_show_select_identity_dialog,
 };
 
 #endif /* SERF_HAVE_OPENSSL */
