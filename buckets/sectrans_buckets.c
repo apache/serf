@@ -53,7 +53,8 @@
 #include <objc/runtime.h>
 #include <objc/message.h>
 
-#define SECURE_TRANSPORT_READ_BUFSIZE 8000
+/* The maximum amount of data read and decrypted in one pass. */
+#define MAX_READ_BUFSIZE 2 ^ 20    /* 1 MB */
 
 typedef struct sectrans_ssl_stream_t {
     /* For an encrypt stream: data encrypted & not yet written to the network.
@@ -614,9 +615,9 @@ show_select_identity_dialog(void *impl_ctx,
     apr_status_t status;
 
     /* Find all matching identities in the keychains.
-     Note: SecIdentityRef items are not stored on the keychain but
-     generated when needed if both a certificate and matching private
-     key are available on the keychain. */
+       Note: SecIdentityRef items are not stored on the keychain but
+       generated when needed if both a certificate and matching private
+       key are available on the keychain. */
     const void *keys[] =   { kSecClass, kSecAttrCanSign,
         kSecMatchLimit, kSecReturnRef };
     const void *values[] = { kSecClassIdentity, kCFBooleanTrue,
@@ -635,7 +636,7 @@ show_select_identity_dialog(void *impl_ctx,
     }
 
     /* TODO: filter on matching certificates. How?? Distinguished
-     names? */
+       names? */
 
     /* Found the identities, now let the user choose. */
     MessageLbl = CFStringCreateWithBytesNoCopy(kCFAllocatorDefault,
@@ -1152,17 +1153,12 @@ static apr_status_t create_temp_keychain(sectrans_context_t *ssl_ctx,
         return APR_SUCCESS;
 
     /* The Keychain API only allows us to load an identity (private key +
-     certificate) for use in the SetCertificate call in a keychain.
-     We don't want to load this identity in the login or system keychain,
-     so we need to create a temporary keychain.
+       certificate) for use in the SetCertificate call in a keychain.
+       We don't want to load this identity in the login or system keychain,
+       so we need to create a temporary keychain.
 
-     For the duration of the SSL handshake, this keychain will be visible to
-     the user in the Keychain Access tool.
-     */
-
-    /* TODO: loading an identity from file makes sense when using OpenSSL, but
-     on Mac OS X the identity is most likely already loaded in the user's
-     login keychain => create an API to load the identity from a keychain.
+       For the duration of the SSL handshake, this keychain will be visible to
+       the user in the Keychain Access tool.
      */
 
     /* We need a unique filename for a temporary file. So create an empty
@@ -2168,6 +2164,8 @@ serf_sectrans_decrypt_peek(serf_bucket_t *bucket,
 
 /* Ask Secure Transport to decrypt some more data. If anything was received,
    add it to the to decrypt.pending buffer.
+   This function will read all available data up to a maximum of 
+   MAX_READ_BUFSIZE.
  */
 static apr_status_t
 decrypt_more_data(sectrans_context_t *ssl_ctx)
@@ -2175,21 +2173,30 @@ decrypt_more_data(sectrans_context_t *ssl_ctx)
     /* Decrypt more data. */
     serf_bucket_t *tmp;
     char *dec_data;
-    size_t dec_len;
+    size_t dec_len, available_len;
     OSStatus osstatus;
     apr_status_t status;
 
     serf__log(SSL_VERBOSE, __FILE__,
               "decrypt_more_data called.\n");
 
-    /* We have to provide ST with the buffer for the decrypted data. */
+    /* We have to provide ST with a sufficiently large buffer for the
+       decrypted data. */
+    osstatus = SSLGetBufferedReadSize(ssl_ctx->st_ctxr, &available_len);
+    if (osstatus != noErr)
+        return translate_sectrans_status(osstatus);
+    else
+        available_len = available_len > MAX_READ_BUFSIZE ?
+                           MAX_READ_BUFSIZE :
+                           available_len;
     dec_data = serf_bucket_mem_alloc(ssl_ctx->decrypt.pending->allocator,
-                                     SECURE_TRANSPORT_READ_BUFSIZE);
+                                     available_len);
 
     osstatus = SSLRead(ssl_ctx->st_ctxr, dec_data,
-                       SECURE_TRANSPORT_READ_BUFSIZE,
+                       available_len,
                        &dec_len);
     status = translate_sectrans_status(osstatus);
+
     /* Apparently SSLRead can put data in dec_data while returning an
        error status. */
     if (SERF_BUCKET_READ_ERROR(status) && !dec_len)
@@ -2233,14 +2240,10 @@ serf_sectrans_decrypt_read(serf_bucket_t *bucket,
     if (*len)
         return status;
 
-    /* TODO: integrate this loop in decrypt_more_data so we can be more 
-       efficient with memory. */
-    do {
-        /* Pending buffer empty, decrypt more. */
-        status = decrypt_more_data(ssl_ctx);
-        if (SERF_BUCKET_READ_ERROR(status))
-            return status;
-    } while (status == APR_SUCCESS);
+    /* Pending buffer empty, decrypt more. */
+    status = decrypt_more_data(ssl_ctx);
+    if (SERF_BUCKET_READ_ERROR(status))
+        return status;
 
     /* We should now have more decrypted data in the pending buffer. */
     return serf_bucket_read(ssl_ctx->decrypt.pending, requested, data,
@@ -2280,12 +2283,10 @@ serf_sectrans_decrypt_readline(serf_bucket_t *bucket,
         return status;
     }
 
-    do {
-        /* Pending buffer empty, decrypt more. */
-        status = decrypt_more_data(ssl_ctx);
-        if (SERF_BUCKET_READ_ERROR(status))
-            return status;
-    } while (status == APR_SUCCESS);
+    /* Pending buffer empty, decrypt more. */
+    status = decrypt_more_data(ssl_ctx);
+    if (SERF_BUCKET_READ_ERROR(status))
+        return status;
 
     /* We have more decrypted data in the pending buffer. */
     status = serf_bucket_readline(ssl_ctx->decrypt.pending, acceptable, found,
