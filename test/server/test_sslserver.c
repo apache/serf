@@ -319,7 +319,7 @@ ssl_socket_read(serv_ctx_t *serv_ctx, char *data,
     } else {
         int ssl_err;
 
-        ssl_err = SSL_get_error(ssl_ctx, result);
+        ssl_err = SSL_get_error(ssl_ctx->ssl, result);
         switch (ssl_err) {
             case SSL_ERROR_SYSCALL:
                 /* error in bio_bucket_read, probably APR_EAGAIN or APR_EOF */
