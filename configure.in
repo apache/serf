@@ -194,6 +194,45 @@ dnl Look for OpenSSL
 AC_CHECK_HEADER([openssl/opensslv.h], [],
                 [AC_MSG_ERROR([We require OpenSSL; try --with-openssl])])
 
+dnl Look for Kerberos 5 for GSSAPI
+AC_ARG_WITH(gssapi,
+  APR_HELP_STRING([--with-gssapi=PATH],[build with GSSAPI support; needs krb5-config in PATH/bin (eg. /usr/lib/mit)]),
+[
+  if test "$withval" = "yes"; then
+    AC_MSG_ERROR([--with-gssapi requires a path])
+  else
+    gssapi_prefix=$withval/
+  
+    if test "x$gssapi_prefix" != "x" -a ! -d "$gssapi_prefix"; then
+      AC_MSG_ERROR('--with-gssapi requires a path to a directory')
+    fi
+    AC_MSG_CHECKING([for krb5-config])
+    if test -x "$gssapi_prefix/bin/krb5-config"; then
+	krb5conf=$gssapi_prefix/bin/krb5-config
+	AC_MSG_RESULT([$krb5conf])
+	AC_MSG_CHECKING([for gssapi support in krb5-config])
+	if "$krb5conf" | grep gssapi > /dev/null; then
+		AC_MSG_RESULT([yes])
+		GSSAPI_confopts=gssapi
+	else
+		AC_MSG_RESULT([no])
+		GSSAPI_confopts=
+	fi
+	GSSAPI_cflags=`"$krb5conf" --cflags $GSSAPI_confopts`
+	APR_ADDTO(CFLAGS, "$GSSAPI_cflags")
+	APR_ADDTO(CFLAGS, [-DSERF_HAVE_GSSAPI])
+	APR_ADDTO(CFLAGS, [-g])
+	GSSAPI_libs=`"$krb5conf" --libs $GSSAPI_confopts`
+	APR_ADDTO(LDFLAGS, "$GSSAPI_libs")
+    else
+     	AC_MSG_RESULT([no])
+	AC_MSG_WARN([--with-gssapi specified but krb5-config not found])
+    fi
+
+  fi
+])
+
+
 dnl CuTest requires libm on Solaris
 AC_SEARCH_LIBS(fabs, m)
 
