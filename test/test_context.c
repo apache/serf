@@ -1807,8 +1807,7 @@ static void test_serf_ssl_large_request(CuTest *tc)
                                        handler_ctx, test_pool);
 }
 
-apr_status_t client_cert_cb(void *data,
-                            const char **cert_path)
+static apr_status_t client_cert_cb(void *data, const char **cert_path)
 {
     test_baton_t *tb = data;
 
@@ -1819,9 +1818,9 @@ apr_status_t client_cert_cb(void *data,
     return APR_SUCCESS;
 }
 
-apr_status_t client_cert_pw_cb(void *data,
-                               const char *cert_path,
-                               const char **password)
+static apr_status_t client_cert_pw_cb(void *data,
+                                      const char *cert_path,
+                                      const char **password)
 {
     test_baton_t *tb = data;
 

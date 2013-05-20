@@ -35,7 +35,7 @@ typedef struct ssl_context_t {
 
 } ssl_context_t;
 
-int pem_passwd_cb(char *buf, int size, int rwflag, void *userdata)
+static int pem_passwd_cb(char *buf, int size, int rwflag, void *userdata)
 {
     strncpy(buf, "serftest", size);
     buf[size - 1] = '\0';
