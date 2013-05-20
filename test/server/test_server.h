@@ -94,9 +94,10 @@ struct serv_ctx_t {
     handshake_func_t handshake;
     void *ssl_ctx;
     const char *client_cn;
+    apr_status_t bio_read_status;
 };
 
-void test_setup_server(serv_ctx_t **servctx_p,
+void setup_test_server(serv_ctx_t **servctx_p,
                        apr_sockaddr_t *address,
                        test_server_message_t *message_list,
                        apr_size_t message_count,
@@ -105,7 +106,7 @@ void test_setup_server(serv_ctx_t **servctx_p,
                        apr_int32_t options,
                        apr_pool_t *pool);
 
-void test_setup_https_server(serv_ctx_t **servctx_p,
+void setup_https_test_server(serv_ctx_t **servctx_p,
                              apr_sockaddr_t *address,
                              test_server_message_t *message_list,
                              apr_size_t message_count,
@@ -117,23 +118,11 @@ void test_setup_https_server(serv_ctx_t **servctx_p,
                              const char *client_cn,
                              apr_pool_t *pool);
 
-apr_status_t test_start_server(serv_ctx_t *serv_ctx);
+apr_status_t start_test_server(serv_ctx_t *serv_ctx);
 
-apr_status_t test_server_run(serv_ctx_t *servctx,
+apr_status_t run_test_server(serv_ctx_t *servctx,
                              apr_short_interval_time_t duration,
                              apr_pool_t *pool);
-
-apr_status_t test_server_destroy(serv_ctx_t *servctx);
-
-apr_status_t init_ssl_context(serv_ctx_t *serv_ctx,
-                              const char *keyfile,
-                              const char **certfiles,
-                              const char *client_cn);
-apr_status_t ssl_handshake(serv_ctx_t *servctx);
-apr_status_t ssl_socket_write(serv_ctx_t *serv_ctx, const char *data,
-                              apr_size_t *len);
-apr_status_t ssl_socket_read(serv_ctx_t *serv_ctx, char *data, apr_size_t *len);
-void cleanup_ssl_context(serv_ctx_t *serv_ctx);
 
 
 #ifndef APR_VERSION_AT_LEAST /* Introduced in APR 1.3.0 */

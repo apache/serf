@@ -24,8 +24,10 @@
 #include "test_server.h"
 
 
-apr_status_t test_server_destroy(serv_ctx_t *servctx)
+/* Cleanup callback for a server. */
+static apr_status_t cleanup_server(void *baton)
 {
+    serv_ctx_t *servctx = baton;
     apr_status_t status;
 
     status = apr_socket_close(servctx->serv_sock);
@@ -34,20 +36,7 @@ apr_status_t test_server_destroy(serv_ctx_t *servctx)
         apr_socket_close(servctx->client_sock);
     }
 
-    if (servctx->ssl_ctx)
-        cleanup_ssl_context(servctx);
-
     return status;
-}
-
-/* Cleanup callback for a server. */
-static apr_status_t cleanup_server(void *baton)
-{
-    serv_ctx_t *serv_ctx = baton;
-
-    test_server_destroy(serv_ctx);
-
-    return APR_SUCCESS;
 }
 
 /* Replay support functions */
@@ -134,39 +123,46 @@ static apr_status_t replay(serv_ctx_t *servctx,
             message = &servctx->message_list[servctx->cur_message];
             msg_len = strlen(message->text);
 
-            len = msg_len - servctx->message_buf_pos;
-            if (len > sizeof(buf))
-                len = sizeof(buf);
+            do
+            {
+                len = msg_len - servctx->message_buf_pos;
+                if (len > sizeof(buf))
+                    len = sizeof(buf);
+                
+                status = servctx->read(servctx, buf, &len);
+                if (SERF_BUCKET_READ_ERROR(status))
+                    return status;
 
-            status = servctx->read(servctx, buf, &len);
-            if (status != APR_SUCCESS)
-                return status;
+                if (servctx->options & TEST_SERVER_DUMP)
+                    fwrite(buf, len, 1, stdout);
 
-            if (servctx->options & TEST_SERVER_DUMP)
-                fwrite(buf, len, 1, stdout);
+                if (strncmp(buf,
+                            message->text + servctx->message_buf_pos,
+                            len) != 0) {
+                    /* ## TODO: Better diagnostics. */
+                    printf("Expected: (\n");
+                    fwrite(message->text + servctx->message_buf_pos, len, 1,
+                           stdout);
+                    printf(")\n");
+                    printf("Actual: (\n");
+                    fwrite(buf, len, 1, stdout);
+                    printf(")\n");
 
-            if (strncmp(buf, message->text + servctx->message_buf_pos, len) != 0) {
-                /* ## TODO: Better diagnostics. */
-                printf("Expected: (\n");
-                fwrite(message->text + servctx->message_buf_pos, len, 1, stdout);
-                printf(")\n");
-                printf("Actual: (\n");
-                fwrite(buf, len, 1, stdout);
-                printf(")\n");
+                    return SERF_ERROR_ISSUE_IN_TESTSUITE;
+                }
 
-                return SERF_ERROR_ISSUE_IN_TESTSUITE;
-            }
+                servctx->message_buf_pos += len;
 
-            servctx->message_buf_pos += len;
-
-            if (servctx->message_buf_pos >= msg_len) {
-                next_message(servctx);
-                servctx->message_buf_pos -= msg_len;
-                if (action->kind == SERVER_RESPOND)
-                    servctx->outstanding_responses++;
-                if (action->kind == SERVER_RECV)
-                    next_action(servctx);
-            }
+                if (servctx->message_buf_pos >= msg_len) {
+                    next_message(servctx);
+                    servctx->message_buf_pos -= msg_len;
+                    if (action->kind == SERVER_RESPOND)
+                        servctx->outstanding_responses++;
+                    if (action->kind == SERVER_RECV)
+                        next_action(servctx);
+                    break;
+                }
+            } while (!status);
         }
     }
     if (rtnevents & APR_POLLOUT) {
@@ -213,7 +209,7 @@ static apr_status_t replay(serv_ctx_t *servctx,
     return status;
 }
 
-apr_status_t test_server_run(serv_ctx_t *servctx,
+apr_status_t run_test_server(serv_ctx_t *servctx,
                              apr_short_interval_time_t duration,
                              apr_pool_t *pool)
 {
@@ -308,7 +304,7 @@ cleanup:
    message_list is a list of expected requests.
    action_list is the list of responses to be returned in order.
  */
-void test_setup_server(serv_ctx_t **servctx_p,
+void setup_test_server(serv_ctx_t **servctx_p,
                        apr_sockaddr_t *address,
                        test_server_message_t *message_list,
                        apr_size_t message_count,
@@ -344,35 +340,7 @@ void test_setup_server(serv_ctx_t **servctx_p,
     *servctx_p = servctx;
 }
 
-void test_setup_https_server(serv_ctx_t **servctx_p,
-                             apr_sockaddr_t *address,
-                             test_server_message_t *message_list,
-                             apr_size_t message_count,
-                             test_server_action_t *action_list,
-                             apr_size_t action_count,
-                             apr_int32_t options,
-                             const char *keyfile,
-                             const char **certfiles,
-                             const char *client_cn,
-                             apr_pool_t *pool)
-{
-    serv_ctx_t *servctx;
-
-    test_setup_server(servctx_p, address, message_list,
-                      message_count, action_list, action_count,
-                      options, pool);
-
-    servctx = *servctx_p;
-
-    servctx->handshake = ssl_handshake;
-    /* Override with SSL encrypt/decrypt functions */
-    servctx->read = ssl_socket_read;
-    servctx->send = ssl_socket_write;
-
-    init_ssl_context(servctx, keyfile, certfiles, client_cn);
-}
-
-apr_status_t test_start_server(serv_ctx_t *servctx)
+apr_status_t start_test_server(serv_ctx_t *servctx)
 {
     apr_status_t status;
     apr_socket_t *serv_sock;

@@ -110,6 +110,8 @@ apr_status_t default_https_conn_setup(apr_socket_t *skt,
     return APR_SUCCESS;
 }
 
+/* Setup the client context, ready to connect and send requests to a
+   server.*/
 static apr_status_t setup(test_baton_t **tb_p,
                           serf_connection_setup_t conn_setup,
                           const char *serv_url,
@@ -163,7 +165,7 @@ static apr_status_t setup(test_baton_t **tb_p,
     return status;
 }
 
-
+/* Setup an https server and the client context to connect to that server */
 apr_status_t test_https_server_setup(test_baton_t **tb_p,
                                      test_server_message_t *message_list,
                                      apr_size_t message_count,
@@ -193,24 +195,25 @@ apr_status_t test_https_server_setup(test_baton_t **tb_p,
     tb->server_cert_cb = server_cert_cb;
 
     /* Prepare a server. */
-    test_setup_https_server(&tb->serv_ctx, tb->serv_addr,
+    setup_https_test_server(&tb->serv_ctx, tb->serv_addr,
                             message_list, message_count,
                             action_list, action_count, options,
                             keyfile, certfiles, client_cn,
                             pool);
-    status = test_start_server(tb->serv_ctx);
+    status = start_test_server(tb->serv_ctx);
 
     return status;
 }
 
-apr_status_t test_server_setup(test_baton_t **tb_p,
-                               test_server_message_t *message_list,
-                               apr_size_t message_count,
-                               test_server_action_t *action_list,
-                               apr_size_t action_count,
-                               apr_int32_t options,
-                               serf_connection_setup_t conn_setup,
-                               apr_pool_t *pool)
+/* Setup an http server and the client context to connect to that server */
+apr_status_t test_http_server_setup(test_baton_t **tb_p,
+                                    test_server_message_t *message_list,
+                                    apr_size_t message_count,
+                                    test_server_action_t *action_list,
+                                    apr_size_t action_count,
+                                    apr_int32_t options,
+                                    serf_connection_setup_t conn_setup,
+                                    apr_pool_t *pool)
 {
     apr_status_t status;
     test_baton_t *tb;
@@ -227,15 +230,17 @@ apr_status_t test_server_setup(test_baton_t **tb_p,
     tb = *tb_p;
 
     /* Prepare a server. */
-    test_setup_server(&tb->serv_ctx, tb->serv_addr,
+    setup_test_server(&tb->serv_ctx, tb->serv_addr,
                       message_list, message_count,
                       action_list, action_count, options,
                       pool);
-    status = test_start_server(tb->serv_ctx);
+    status = start_test_server(tb->serv_ctx);
 
     return status;
 }
 
+/* Setup a proxy server and an http server and the client context to connect to
+   that proxy server */
 apr_status_t
 test_server_proxy_setup(test_baton_t **tb_p,
                         test_server_message_t *serv_message_list,
@@ -265,22 +270,22 @@ test_server_proxy_setup(test_baton_t **tb_p,
     tb = *tb_p;
 
     /* Prepare the server. */
-    test_setup_server(&tb->serv_ctx, tb->serv_addr,
+    setup_test_server(&tb->serv_ctx, tb->serv_addr,
                       serv_message_list, serv_message_count,
                       serv_action_list, serv_action_count,
                       options,
                       pool);
-    status = test_start_server(tb->serv_ctx);
+    status = start_test_server(tb->serv_ctx);
     if (status != APR_SUCCESS)
         return status;
 
     /* Prepare the proxy. */
-    test_setup_server(&tb->proxy_ctx, tb->proxy_addr,
+    setup_test_server(&tb->proxy_ctx, tb->proxy_addr,
                       proxy_message_list, proxy_message_count,
                       proxy_action_list, proxy_action_count,
                       options,
                       pool);
-    status = test_start_server(tb->proxy_ctx);
+    status = start_test_server(tb->proxy_ctx);
 
     return status;
 }

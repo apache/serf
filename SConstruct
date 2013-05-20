@@ -148,9 +148,9 @@ if 1:
   ### -Wall is not available on Solaris
   ccflags = ['-std=c89', ]
   if sys.platform != 'sunos5':
-    ccflags.append('-Wall')
+    ccflags.append(['-Wall', '-Wmissing-prototypes'])
   if debug:
-    ccflags.append(['-g', '-Wmissing-prototypes'])
+    ccflags.append(['-g'])
   else:
     ccflags.append('-O2')
 libs = [ ]

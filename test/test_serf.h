@@ -124,14 +124,14 @@ apr_status_t test_https_server_setup(test_baton_t **tb_p,
                                      serf_ssl_need_server_cert_t server_cert_cb,
                                      apr_pool_t *pool);
 
-apr_status_t test_server_setup(test_baton_t **tb_p,
-                               test_server_message_t *message_list,
-                               apr_size_t message_count,
-                               test_server_action_t *action_list,
-                               apr_size_t action_count,
-                               apr_int32_t options,
-                               serf_connection_setup_t conn_setup,
-                               apr_pool_t *pool);
+apr_status_t test_http_server_setup(test_baton_t **tb_p,
+                                    test_server_message_t *message_list,
+                                    apr_size_t message_count,
+                                    test_server_action_t *action_list,
+                                    apr_size_t action_count,
+                                    apr_int32_t options,
+                                    serf_connection_setup_t conn_setup,
+                                    apr_pool_t *pool);
 
 apr_status_t test_server_proxy_setup(
                  test_baton_t **tb_p,
