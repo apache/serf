@@ -91,11 +91,14 @@ static int bio_apr_socket_read(BIO *bio, char *in, int inlen)
     BIO_clear_retry_flags(bio);
 
     status = apr_socket_recv(serv_ctx->client_sock, in, &len);
+    serv_ctx->bio_read_status = status;
+
     if (status == APR_EAGAIN) {
+        serf__log(TEST_VERBOSE, __FILE__, "Read %d bytes from socket with "
+                  "status %d.\n", len, status);
         BIO_set_retry_read(bio);
         if (len == 0)
             return -1;
-
     }
 
     if (SERF_BUCKET_READ_ERROR(status))
@@ -156,6 +159,7 @@ apr_status_t init_ssl_context(serv_ctx_t *serv_ctx,
     ssl_context_t *ssl_ctx = apr_pcalloc(serv_ctx->pool, sizeof(*ssl_ctx));
     serv_ctx->ssl_ctx = ssl_ctx;
     serv_ctx->client_cn = client_cn;
+    serv_ctx->bio_read_status = APR_SUCCESS;
 
     /* Init OpenSSL globally */
     if (!init_done)
@@ -312,8 +316,26 @@ ssl_socket_read(serv_ctx_t *serv_ctx, char *data,
     if (result > 0) {
         *len = result;
         return APR_SUCCESS;
+    } else {
+        int ssl_err;
+
+        ssl_err = SSL_get_error(ssl_ctx, result);
+        switch (ssl_err) {
+            case SSL_ERROR_SYSCALL:
+                /* error in bio_bucket_read, probably APR_EAGAIN or APR_EOF */
+                *len = 0;
+                return serv_ctx->bio_read_status;
+            case SSL_ERROR_WANT_READ:
+                *len = 0;
+                return APR_EAGAIN;
+            case SSL_ERROR_SSL:
+            default:
+                *len = 0;
+                return SERF_ERROR_ISSUE_IN_TESTSUITE;
+        }
     }
 
+    /* not reachable */
     return SERF_ERROR_ISSUE_IN_TESTSUITE;
 }
 

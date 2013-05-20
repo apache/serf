@@ -134,39 +134,46 @@ static apr_status_t replay(serv_ctx_t *servctx,
             message = &servctx->message_list[servctx->cur_message];
             msg_len = strlen(message->text);
 
-            len = msg_len - servctx->message_buf_pos;
-            if (len > sizeof(buf))
-                len = sizeof(buf);
+            do
+            {
+                len = msg_len - servctx->message_buf_pos;
+                if (len > sizeof(buf))
+                    len = sizeof(buf);
+                
+                status = servctx->read(servctx, buf, &len);
+                if (SERF_BUCKET_READ_ERROR(status))
+                    return status;
 
-            status = servctx->read(servctx, buf, &len);
-            if (status != APR_SUCCESS)
-                return status;
+                if (servctx->options & TEST_SERVER_DUMP)
+                    fwrite(buf, len, 1, stdout);
 
-            if (servctx->options & TEST_SERVER_DUMP)
-                fwrite(buf, len, 1, stdout);
+                if (strncmp(buf,
+                            message->text + servctx->message_buf_pos,
+                            len) != 0) {
+                    /* ## TODO: Better diagnostics. */
+                    printf("Expected: (\n");
+                    fwrite(message->text + servctx->message_buf_pos, len, 1,
+                           stdout);
+                    printf(")\n");
+                    printf("Actual: (\n");
+                    fwrite(buf, len, 1, stdout);
+                    printf(")\n");
 
-            if (strncmp(buf, message->text + servctx->message_buf_pos, len) != 0) {
-                /* ## TODO: Better diagnostics. */
-                printf("Expected: (\n");
-                fwrite(message->text + servctx->message_buf_pos, len, 1, stdout);
-                printf(")\n");
-                printf("Actual: (\n");
-                fwrite(buf, len, 1, stdout);
-                printf(")\n");
+                    return SERF_ERROR_ISSUE_IN_TESTSUITE;
+                }
 
-                return SERF_ERROR_ISSUE_IN_TESTSUITE;
-            }
+                servctx->message_buf_pos += len;
 
-            servctx->message_buf_pos += len;
-
-            if (servctx->message_buf_pos >= msg_len) {
-                next_message(servctx);
-                servctx->message_buf_pos -= msg_len;
-                if (action->kind == SERVER_RESPOND)
-                    servctx->outstanding_responses++;
-                if (action->kind == SERVER_RECV)
-                    next_action(servctx);
-            }
+                if (servctx->message_buf_pos >= msg_len) {
+                    next_message(servctx);
+                    servctx->message_buf_pos -= msg_len;
+                    if (action->kind == SERVER_RESPOND)
+                        servctx->outstanding_responses++;
+                    if (action->kind == SERVER_RECV)
+                        next_action(servctx);
+                    break;
+                }
+            } while (!status);
         }
     }
     if (rtnevents & APR_POLLOUT) {

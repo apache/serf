@@ -94,6 +94,7 @@ struct serv_ctx_t {
     handshake_func_t handshake;
     void *ssl_ctx;
     const char *client_cn;
+    apr_status_t bio_read_status;
 };
 
 void test_setup_server(serv_ctx_t **servctx_p,

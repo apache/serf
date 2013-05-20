@@ -38,6 +38,8 @@ typedef struct {
 
     const char *method;
     const char *path;
+    /* Use this for a raw request message */
+    const char *request;
     int done;
 
     test_baton_t *tb;
@@ -136,15 +138,26 @@ static apr_status_t setup_request(serf_request_t *request,
     handler_baton_t *ctx = setup_baton;
     serf_bucket_t *body_bkt;
 
-    /* create a simple body text */
-    const char *str = apr_psprintf(pool, "%d", ctx->req_id);
-    body_bkt = serf_bucket_simple_create(str, strlen(str), NULL, NULL,
-                                         serf_request_get_alloc(request));
-    *req_bkt = 
-        serf_request_bucket_request_create(request, 
-                                           ctx->method, ctx->path, 
-                                           body_bkt,
-                                           serf_request_get_alloc(request));
+    if (ctx->request)
+    {
+        /* Create a raw request bucket. */
+        *req_bkt = serf_bucket_simple_create(ctx->request, strlen(ctx->request),
+                                             NULL, NULL,
+                                             serf_request_get_alloc(request));
+    }
+    else
+    {
+        /* create a simple body text */
+        const char *str = apr_psprintf(pool, "%d", ctx->req_id);
+
+        body_bkt = serf_bucket_simple_create(str, strlen(str), NULL, NULL,
+                                             serf_request_get_alloc(request));
+        *req_bkt =
+            serf_request_bucket_request_create(request,
+                                               ctx->method, ctx->path,
+                                               body_bkt,
+                                               serf_request_get_alloc(request));
+    }
 
     APR_ARRAY_PUSH(ctx->sent_requests, int) = ctx->req_id;
 
@@ -211,6 +224,7 @@ static void setup_handler(test_baton_t *tb, handler_baton_t *handler_ctx,
     handler_ctx->sent_requests = tb->sent_requests;
     handler_ctx->handled_requests = tb->handled_requests;
     handler_ctx->tb = tb;
+    handler_ctx->request = NULL;
 }
 
 static void create_new_prio_request(test_baton_t *tb,
@@ -1110,6 +1124,75 @@ static void test_serf_connection_large_response(CuTest *tc)
                                        test_pool);
 }
 
+static const char *create_large_request_message(apr_pool_t *pool)
+{
+    const char *request = "GET / HTTP/1.1" CRLF
+                          "Host: localhost:12345" CRLF
+                          "Transfer-Encoding: chunked" CRLF
+                          CRLF;
+    struct iovec vecs[500];
+    const int num_vecs = 5;
+    int i, j;
+    apr_size_t len;
+
+    vecs[0].iov_base = (char *)request;
+    vecs[0].iov_len = strlen(request);
+
+    for (i = 1; i < num_vecs; i++)
+    {
+        int chunk_len = 10 * i * 3;
+
+        /* end with empty chunk */
+        if (i == num_vecs - 1)
+            chunk_len = 0;
+
+        char *chunk, *buf = apr_pcalloc(pool, chunk_len + 1);
+        for (j = 0; j < chunk_len; j += 10)
+            memcpy(buf + j, "0123456789", 10);
+
+        chunk = apr_pstrcat(pool,
+                            apr_psprintf(pool, "%x", chunk_len),
+                            CRLF, buf, CRLF, NULL);
+        vecs[i].iov_base = chunk;
+        vecs[i].iov_len = strlen(chunk);
+    }
+
+    return apr_pstrcatv(pool, vecs, num_vecs, &len);
+}
+
+/* Validate sending a large chunked response. */
+static void test_serf_connection_large_request(CuTest *tc)
+{
+    test_baton_t *tb;
+    handler_baton_t handler_ctx[1];
+    const int num_requests = sizeof(handler_ctx)/sizeof(handler_ctx[0]);
+    test_server_message_t message_list[1];
+    test_server_action_t action_list[] = {
+        {SERVER_RESPOND, CHUNKED_EMPTY_RESPONSE},
+    };
+    const char *request;
+    apr_status_t status;
+
+    apr_pool_t *test_pool = tc->testBaton;
+
+    /* Set up a test context with a server */
+    status = test_server_setup(&tb,
+                               message_list, num_requests,
+                               action_list, num_requests, 0, NULL,
+                               test_pool);
+    CuAssertIntEquals(tc, APR_SUCCESS, status);
+
+    /* create large chunked request message */
+    request = create_large_request_message(test_pool);
+    message_list[0].text = request;
+
+    create_new_request(tb, &handler_ctx[0], "GET", "/", 1);
+    handler_ctx[0].request = request;
+
+    test_helper_run_requests_expect_ok(tc, tb, num_requests, handler_ctx,
+                                       test_pool);
+}
+
 /*****************************************************************************
  * SSL handshake tests
  *****************************************************************************/
@@ -1685,6 +1768,45 @@ static void test_serf_ssl_large_response(CuTest *tc)
                                        handler_ctx, test_pool);
 }
 
+/* Similar to test_serf_connection_large_request, validate sending a large
+   chunked request over SSL. */
+static void test_serf_ssl_large_request(CuTest *tc)
+{
+    test_baton_t *tb;
+    handler_baton_t handler_ctx[1];
+    const int num_requests = sizeof(handler_ctx)/sizeof(handler_ctx[0]);
+    test_server_message_t message_list[1];
+    test_server_action_t action_list[] = {
+        {SERVER_RESPOND, CHUNKED_EMPTY_RESPONSE},
+    };
+    const char *request;
+    apr_status_t status;
+
+    /* Set up a test context with a server */
+    apr_pool_t *test_pool = tc->testBaton;
+
+    status = test_https_server_setup(&tb,
+                                     message_list, num_requests,
+                                     action_list, num_requests, 0,
+                                     https_set_root_ca_conn_setup,
+                                     "test/server/serfserverkey.pem",
+                                     server_certs,
+                                     NULL, /* no client cert */
+                                     NULL, /* No server cert callback */
+                                     test_pool);
+    CuAssertIntEquals(tc, APR_SUCCESS, status);
+
+    /* create large chunked request message */
+    request = create_large_request_message(test_pool);
+    message_list[0].text = request;
+
+    create_new_request(tb, &handler_ctx[0], "GET", "/", 1);
+    handler_ctx[0].request = request;
+
+    test_helper_run_requests_expect_ok(tc, tb, num_requests,
+                                       handler_ctx, test_pool);
+}
+
 apr_status_t client_cert_cb(void *data,
                             const char **cert_path)
 {
@@ -1888,6 +2010,7 @@ CuSuite *test_context(void)
     SUITE_ADD_TEST(suite, test_serf_progress_callback);
     SUITE_ADD_TEST(suite, test_serf_request_timeout);
     SUITE_ADD_TEST(suite, test_serf_connection_large_response);
+    SUITE_ADD_TEST(suite, test_serf_connection_large_request);
     SUITE_ADD_TEST(suite, test_serf_ssl_handshake);
     SUITE_ADD_TEST(suite, test_serf_ssl_trust_rootca);
     SUITE_ADD_TEST(suite, test_serf_ssl_application_rejects_cert);
@@ -1896,6 +2019,7 @@ CuSuite *test_context(void)
     SUITE_ADD_TEST(suite, test_serf_ssl_no_servercert_callback_allok);
     SUITE_ADD_TEST(suite, test_serf_ssl_no_servercert_callback_fail);
     SUITE_ADD_TEST(suite, test_serf_ssl_large_response);
+    SUITE_ADD_TEST(suite, test_serf_ssl_large_request);
     SUITE_ADD_TEST(suite, test_serf_ssl_client_certificate);
     SUITE_ADD_TEST(suite, test_serf_ssl_expired_server_cert);
     SUITE_ADD_TEST(suite, test_serf_ssl_future_server_cert);
