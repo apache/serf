@@ -144,6 +144,7 @@ def cmd_build(param):
 
 def cmd_install(param):
   builder = Builder(param)
+  builder.build_target(File('.', PCFILE, 'pc'), False) 
   ### should be called .install_all()
   builder.install_target(File('.', LIBNAME, 'la'), False)
 
