@@ -151,10 +151,11 @@ static int validate_client_certificate(int preverify_ok, X509_STORE_CTX *ctx)
     return preverify_ok;
 }
 
-apr_status_t init_ssl_context(serv_ctx_t *serv_ctx,
-                              const char *keyfile,
-                              const char **certfiles,
-                              const char *client_cn)
+static apr_status_t
+init_ssl_context(serv_ctx_t *serv_ctx,
+                 const char *keyfile,
+                 const char **certfiles,
+                 const char *client_cn)
 {
     ssl_context_t *ssl_ctx = apr_pcalloc(serv_ctx->pool, sizeof(*ssl_ctx));
     serv_ctx->ssl_ctx = ssl_ctx;
@@ -221,7 +222,7 @@ apr_status_t init_ssl_context(serv_ctx_t *serv_ctx,
     return APR_SUCCESS;
 }
 
-apr_status_t ssl_handshake(serv_ctx_t *serv_ctx)
+static apr_status_t ssl_handshake(serv_ctx_t *serv_ctx)
 {
     ssl_context_t *ssl_ctx = serv_ctx->ssl_ctx;
     int result;
@@ -288,7 +289,7 @@ apr_status_t ssl_handshake(serv_ctx_t *serv_ctx)
     return APR_EAGAIN;
 }
 
-apr_status_t
+static apr_status_t
 ssl_socket_write(serv_ctx_t *serv_ctx, const char *data,
                  apr_size_t *len)
 {
@@ -306,7 +307,7 @@ ssl_socket_write(serv_ctx_t *serv_ctx, const char *data,
     return SERF_ERROR_ISSUE_IN_TESTSUITE;
 }
 
-apr_status_t
+static apr_status_t
 ssl_socket_read(serv_ctx_t *serv_ctx, char *data,
                 apr_size_t *len)
 {
@@ -339,10 +340,45 @@ ssl_socket_read(serv_ctx_t *serv_ctx, char *data,
     return SERF_ERROR_ISSUE_IN_TESTSUITE;
 }
 
-void cleanup_ssl_context(serv_ctx_t *serv_ctx)
+static apr_status_t cleanup_https_server(void *baton)
 {
-    ssl_context_t *ssl_ctx = serv_ctx->ssl_ctx;
+    serv_ctx_t *servctx = baton;
+    ssl_context_t *ssl_ctx = servctx->ssl_ctx;
 
-    SSL_clear(ssl_ctx->ssl);
-    SSL_CTX_free(ssl_ctx->ctx);
+    if (ssl_ctx) {
+        SSL_clear(ssl_ctx->ssl);
+        SSL_CTX_free(ssl_ctx->ctx);
+    }
+
+    return APR_SUCCESS;
+}
+
+void setup_https_test_server(serv_ctx_t **servctx_p,
+                             apr_sockaddr_t *address,
+                             test_server_message_t *message_list,
+                             apr_size_t message_count,
+                             test_server_action_t *action_list,
+                             apr_size_t action_count,
+                             apr_int32_t options,
+                             const char *keyfile,
+                             const char **certfiles,
+                             const char *client_cn,
+                             apr_pool_t *pool)
+{
+    serv_ctx_t *servctx;
+
+    setup_test_server(servctx_p, address, message_list,
+                      message_count, action_list, action_count,
+                      options, pool);
+    servctx = *servctx_p;
+    apr_pool_cleanup_register(pool, servctx,
+                              cleanup_https_server,
+                              apr_pool_cleanup_null);
+
+    servctx->handshake = ssl_handshake;
+    /* Override with SSL encrypt/decrypt functions */
+    servctx->read = ssl_socket_read;
+    servctx->send = ssl_socket_write;
+
+    init_ssl_context(servctx, keyfile, certfiles, client_cn);
 }

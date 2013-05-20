@@ -69,7 +69,7 @@ test_helper_run_requests_no_check(CuTest *tc, test_baton_t *tb,
     {
         apr_pool_clear(iter_pool);
 
-        status = test_server_run(tb->serv_ctx, 0, iter_pool);
+        status = run_test_server(tb->serv_ctx, 0, iter_pool);
         if (!APR_STATUS_IS_TIMEUP(status) &&
             SERF_BUCKET_READ_ERROR(status))
             return status;
@@ -283,10 +283,10 @@ static void test_serf_connection_request_create(CuTest *tc)
     apr_pool_t *test_pool = tc->testBaton;
 
     /* Set up a test context with a server */
-    status = test_server_setup(&tb,
-                               message_list, num_requests,
-                               action_list, num_requests, 0, NULL,
-                               test_pool);
+    status = test_http_server_setup(&tb,
+                                    message_list, num_requests,
+                                    action_list, num_requests, 0, NULL,
+                                    test_pool);
     CuAssertIntEquals(tc, APR_SUCCESS, status);
 
     create_new_request(tb, &handler_ctx[0], "GET", "/", 1);
@@ -333,10 +333,10 @@ static void test_serf_connection_priority_request_create(CuTest *tc)
     apr_pool_t *test_pool = tc->testBaton;
 
     /* Set up a test context with a server */
-    status = test_server_setup(&tb,
-                               message_list, num_requests,
-                               action_list, num_requests, 0, NULL,
-                               test_pool);
+    status = test_http_server_setup(&tb,
+                                    message_list, num_requests,
+                                    action_list, num_requests, 0, NULL,
+                                    test_pool);
     CuAssertIntEquals(tc, APR_SUCCESS, status);
 
     create_new_request(tb, &handler_ctx[0], "GET", "/", 2);
@@ -414,12 +414,12 @@ static void test_serf_closed_connection(CuTest *tc)
     apr_pool_t *test_pool = tc->testBaton;
 
     /* Set up a test context with a server. */
-    status = test_server_setup(&tb,
-                               message_list, num_requests,
-                               action_list, 12,
-                               0,
-                               NULL,
-                               test_pool);
+    status = test_http_server_setup(&tb,
+                                    message_list, num_requests,
+                                    action_list, 12,
+                                    0,
+                                    NULL,
+                                    test_pool);
     CuAssertIntEquals(tc, APR_SUCCESS, status);
 
     /* Send some requests on the connections */
@@ -428,7 +428,7 @@ static void test_serf_closed_connection(CuTest *tc)
     }
 
     while (1) {
-        status = test_server_run(tb->serv_ctx, 0, test_pool);
+        status = run_test_server(tb->serv_ctx, 0, test_pool);
         if (APR_STATUS_IS_TIMEUP(status))
             status = APR_SUCCESS;
         CuAssertIntEquals(tc, APR_SUCCESS, status);
@@ -505,12 +505,12 @@ static void test_serf_setup_proxy(CuTest *tc)
     {
         apr_pool_clear(iter_pool);
 
-        status = test_server_run(tb->serv_ctx, 0, iter_pool);
+        status = run_test_server(tb->serv_ctx, 0, iter_pool);
         if (APR_STATUS_IS_TIMEUP(status))
             status = APR_SUCCESS;
         CuAssertIntEquals(tc, APR_SUCCESS, status);
 
-        status = test_server_run(tb->proxy_ctx, 0, iter_pool);
+        status = run_test_server(tb->proxy_ctx, 0, iter_pool);
         if (APR_STATUS_IS_TIMEUP(status))
             status = APR_SUCCESS;
         CuAssertIntEquals(tc, APR_SUCCESS, status);
@@ -621,10 +621,10 @@ static void test_keepalive_limit_one_by_one(CuTest *tc)
     apr_pool_t *test_pool = tc->testBaton;
 
     /* Set up a test context with a server. */
-    status = test_server_setup(&tb,
-                               message_list, RCVD_REQUESTS,
-                               action_list, RCVD_REQUESTS, 0, NULL,
-                               test_pool);
+    status = test_http_server_setup(&tb,
+                                    message_list, RCVD_REQUESTS,
+                                    action_list, RCVD_REQUESTS, 0, NULL,
+                                    test_pool);
     CuAssertIntEquals(tc, APR_SUCCESS, status);
 
     for (i = 0 ; i < SEND_REQUESTS ; i++) {
@@ -635,7 +635,7 @@ static void test_keepalive_limit_one_by_one(CuTest *tc)
     }
 
     while (1) {
-        status = test_server_run(tb->serv_ctx, 0, test_pool);
+        status = run_test_server(tb->serv_ctx, 0, test_pool);
         if (APR_STATUS_IS_TIMEUP(status))
             status = APR_SUCCESS;
         CuAssertIntEquals(tc, APR_SUCCESS, status);
@@ -752,10 +752,10 @@ static void test_keepalive_limit_one_by_one_and_burst(CuTest *tc)
     apr_pool_t *test_pool = tc->testBaton;
 
     /* Set up a test context with a server. */
-    status = test_server_setup(&tb,
-                               message_list, RCVD_REQUESTS,
-                               action_list, RCVD_REQUESTS, 0, NULL,
-                               test_pool);
+    status = test_http_server_setup(&tb,
+                                    message_list, RCVD_REQUESTS,
+                                    action_list, RCVD_REQUESTS, 0, NULL,
+                                    test_pool);
     CuAssertIntEquals(tc, APR_SUCCESS, status);
 
     for (i = 0 ; i < SEND_REQUESTS ; i++) {
@@ -765,7 +765,7 @@ static void test_keepalive_limit_one_by_one_and_burst(CuTest *tc)
     }
 
     while (1) {
-        status = test_server_run(tb->serv_ctx, 0, test_pool);
+        status = run_test_server(tb->serv_ctx, 0, test_pool);
         if (APR_STATUS_IS_TIMEUP(status))
             status = APR_SUCCESS;
         CuAssertIntEquals(tc, APR_SUCCESS, status);
@@ -850,10 +850,10 @@ static void test_serf_progress_callback(CuTest *tc)
     apr_pool_t *test_pool = tc->testBaton;
     
     /* Set up a test context with a server. */
-    status = test_server_setup(&tb,
-                               message_list, num_requests,
-                               action_list, num_requests, 0,
-                               progress_conn_setup, test_pool);
+    status = test_http_server_setup(&tb,
+                                    message_list, num_requests,
+                                    action_list, num_requests, 0,
+                                    progress_conn_setup, test_pool);
     CuAssertIntEquals(tc, APR_SUCCESS, status);
 
     /* Set up the progress callback. */
@@ -1029,10 +1029,10 @@ static void test_serf_request_timeout(CuTest *tc)
     apr_pool_t *test_pool = tc->testBaton;
 
     /* Set up a test context with a server. */
-    status = test_server_setup(&tb,
-                               message_list, 2,
-                               action_list, 1, 0,
-                               NULL, test_pool);
+    status = test_http_server_setup(&tb,
+                                    message_list, 2,
+                                    action_list, 1, 0,
+                                    NULL, test_pool);
     CuAssertIntEquals(tc, APR_SUCCESS, status);
 
     /* Send some requests on the connection */
@@ -1112,10 +1112,10 @@ static void test_serf_connection_large_response(CuTest *tc)
     action_list[0].text = response;
 
     /* Set up a test context with a server */
-    status = test_server_setup(&tb,
-                               message_list, num_requests,
-                               action_list, num_requests, 0, NULL,
-                               test_pool);
+    status = test_http_server_setup(&tb,
+                                    message_list, num_requests,
+                                    action_list, num_requests, 0, NULL,
+                                    test_pool);
     CuAssertIntEquals(tc, APR_SUCCESS, status);
 
     create_new_request(tb, &handler_ctx[0], "GET", "/", 1);
@@ -1176,10 +1176,10 @@ static void test_serf_connection_large_request(CuTest *tc)
     apr_pool_t *test_pool = tc->testBaton;
 
     /* Set up a test context with a server */
-    status = test_server_setup(&tb,
-                               message_list, num_requests,
-                               action_list, num_requests, 0, NULL,
-                               test_pool);
+    status = test_http_server_setup(&tb,
+                                    message_list, num_requests,
+                                    action_list, num_requests, 0, NULL,
+                                    test_pool);
     CuAssertIntEquals(tc, APR_SUCCESS, status);
 
     /* create large chunked request message */
