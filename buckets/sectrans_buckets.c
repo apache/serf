@@ -53,8 +53,8 @@
 #include <objc/runtime.h>
 #include <objc/message.h>
 
-/* The maximum amount of data read and decrypted in one pass. */
-#define MAX_READ_BUFSIZE 2 ^ 20    /* 1 MB */
+/* The minimum amount of data we try to read and decrypt in one pass. */
+#define READ_BUFSIZE 8096
 
 typedef struct sectrans_ssl_stream_t {
     /* For an encrypt stream: data encrypted & not yet written to the network.
@@ -2164,8 +2164,7 @@ serf_sectrans_decrypt_peek(serf_bucket_t *bucket,
 
 /* Ask Secure Transport to decrypt some more data. If anything was received,
    add it to the to decrypt.pending buffer.
-   This function will read all available data up to a maximum of 
-   MAX_READ_BUFSIZE.
+   This function will read and decrypt all available data.
  */
 static apr_status_t
 decrypt_more_data(sectrans_context_t *ssl_ctx)
@@ -2180,35 +2179,42 @@ decrypt_more_data(sectrans_context_t *ssl_ctx)
     serf__log(SSL_VERBOSE, __FILE__,
               "decrypt_more_data called.\n");
 
-    /* We have to provide ST with a sufficiently large buffer for the
-       decrypted data. */
-    osstatus = SSLGetBufferedReadSize(ssl_ctx->st_ctxr, &available_len);
-    if (osstatus != noErr)
-        return translate_sectrans_status(osstatus);
-    else
-        available_len = available_len > MAX_READ_BUFSIZE ?
-                           MAX_READ_BUFSIZE :
-                           available_len;
-    dec_data = serf_bucket_mem_alloc(ssl_ctx->decrypt.pending->allocator,
-                                     available_len);
+    /* Read until the stream has no more data and until SSLRead decrypted
+       all data - which can take multiple calls! */
+    do {
+        /* We have to provide ST with a sufficiently large buffer for the
+           decrypted data. We can ask S.T. how many bytes are still buffered,
+           but this gives no indication on how many are still waiting to
+           be decrypted. Use it only to increase the bufsize over the
+           default (minimum) size READ_BUFSIZE. */
+        osstatus = SSLGetBufferedReadSize(ssl_ctx->st_ctxr, &available_len);
+        if (osstatus != noErr)
+            return translate_sectrans_status(osstatus);
+        else {
+            if (available_len < READ_BUFSIZE)
+                available_len = READ_BUFSIZE;
+        }
+        dec_data = serf_bucket_mem_alloc(ssl_ctx->decrypt.pending->allocator,
+                                         available_len);
 
-    osstatus = SSLRead(ssl_ctx->st_ctxr, dec_data,
-                       available_len,
-                       &dec_len);
-    status = translate_sectrans_status(osstatus);
+        osstatus = SSLRead(ssl_ctx->st_ctxr, dec_data,
+                           available_len,
+                           &dec_len);
+        status = translate_sectrans_status(osstatus);
 
-    /* Apparently SSLRead can put data in dec_data while returning an
-       error status. */
-    if (SERF_BUCKET_READ_ERROR(status) && !dec_len)
-        return status;
+        /* SSLRead can put data in dec_data while returning an error status. */
+        if (SERF_BUCKET_READ_ERROR(status) && !dec_len)
+            return status;
 
-    /* Successfully received and decrypted some data, add to pending. */
-    serf__log(SSL_MSG_VERBOSE, __FILE__, " received and decrypted data:"
-              "---\n%.*s\n-(%d)-\n", dec_len, dec_data, dec_len);
+        /* Successfully received and decrypted some data, add to pending. */
+        serf__log(SSL_MSG_VERBOSE, __FILE__, " received and decrypted data:"
+                  "---\n%.*s\n-(%d)-\n", dec_len, dec_data, dec_len);
 
-    tmp = SERF_BUCKET_SIMPLE_STRING_LEN(dec_data, dec_len,
-                                        ssl_ctx->decrypt.pending->allocator);
-    serf_bucket_aggregate_append(ssl_ctx->decrypt.pending, tmp);
+        tmp = SERF_BUCKET_SIMPLE_STRING_LEN(dec_data, dec_len,
+                                            ssl_ctx->decrypt.pending->allocator);
+        serf_bucket_aggregate_append(ssl_ctx->decrypt.pending, tmp);
+
+    } while (status == APR_SUCCESS);
 
     return status;
 }
