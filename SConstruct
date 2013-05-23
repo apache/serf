@@ -106,6 +106,11 @@ debug = env.get('DEBUG', None)
 Help(opts.GenerateHelpText(env))
 opts.Save(SAVED_CONFIG, env)
 
+if sys.platform == 'darwin':
+  securetransport = True
+else:
+  securetransport = False
+
 
 # PLATFORM-SPECIFIC BUILD TWEAKS
 
@@ -130,6 +135,7 @@ if sys.platform == 'darwin':
   linkflags.append('-Wl,-compatibility_version,%d' % (MINOR+1,))
   linkflags.append('-Wl,-current_version,%d.%d' % (MINOR+1, PATCH,))
 
+if securetransport:
   # add Secure Transport library for ssl/tls on Mac OS X
   env.Append(FRAMEWORKS='Security')
   env.Append(FRAMEWORKS='SecurityInterface')
@@ -173,6 +179,8 @@ env.Replace(LINKFLAGS=linkflags,
 # PLAN THE BUILD
 
 SOURCES = Glob('*.c') + Glob('buckets/*.c') + Glob('auth/*.c')
+if securetransport:
+    SOURCES += ['buckets/sectrans_helper.m']
 
 lib_static = env.StaticLibrary(LIBNAME, SOURCES)
 lib_shared = env.SharedLibrary(LIBNAME, SOURCES)

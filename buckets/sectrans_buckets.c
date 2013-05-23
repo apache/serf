@@ -132,6 +132,12 @@ typedef struct sectrans_context_t {
     /* cache of the trusted certificates, added via serf_ssl_trust_cert(). */
     apr_array_header_t *anchor_certs;
 
+    /* Flag set when an asynchronous evaluation of the server certificate chain
+       is ongoing. */
+    int evaluate_in_progress;
+
+    /* Result of the evaluation of the server certificate chain. */
+    SecTrustResultType result;
 } sectrans_context_t;
 
 /* Some forward declarations */
@@ -266,11 +272,14 @@ sectrans_init_context(serf_bucket_alloc_t *allocator)
                             kSSLSessionOptionBreakOnServerAuth,
                             true))
         return NULL;
+    if (SSLSetEnableCertVerify(ssl_ctx->st_ctxr, false))
+        return NULL;
+
+    /* If the handshake needs a client identity to continue, break it
+       temporarily so we can call back to the application. */
     if (SSLSetSessionOption(ssl_ctx->st_ctxr,
                             kSSLSessionOptionBreakOnCertRequested,
                             true))
-        return NULL;
-    if (SSLSetEnableCertVerify(ssl_ctx->st_ctxr, false))
         return NULL;
 
     return ssl_ctx;
@@ -885,7 +894,6 @@ convert_certerr_to_failure(const char *errstr)
 static int
 validate_server_certificate(sectrans_context_t *ssl_ctx)
 {
-    SecTrustResultType result;
     CFArrayRef anchor_certrefs = NULL;
     size_t depth_of_error, chain_depth;
     int failures = 0;
@@ -893,7 +901,6 @@ validate_server_certificate(sectrans_context_t *ssl_ctx)
     apr_status_t status;
 
     serf__log(SSL_VERBOSE, __FILE__, "validate_server_certificate called.\n");
-
     osstatus = SSLCopyPeerTrust(ssl_ctx->st_ctxr, &ssl_ctx->trust);
     if (osstatus != noErr) {
         status = translate_sectrans_status(osstatus);
@@ -926,18 +933,34 @@ validate_server_certificate(sectrans_context_t *ssl_ctx)
         }
     }
 
-    /* TODO: SecTrustEvaluateAsync */
-    osstatus = SecTrustEvaluate(ssl_ctx->trust, &result);
-    if (osstatus != noErr) {
-        status = translate_sectrans_status(osstatus);
-        goto cleanup;
+    if (!ssl_ctx->evaluate_in_progress) {
+        void *sectrans_cls;
+        id tmp;
+
+        ssl_ctx->evaluate_in_progress = 1;
+
+        sectrans_cls = objc_getClass("SecTrans_Buckets");
+        tmp = objc_msgSend(sectrans_cls,
+                           sel_getUid("evaluate:trustResult:"),
+                           ssl_ctx->trust,
+                           &ssl_ctx->result);
+        osstatus = (OSStatus)(SInt64)tmp;
+        if (osstatus != noErr) {
+            status = translate_sectrans_status(osstatus);
+            goto cleanup;
+        }
+    }
+
+    if (!ssl_ctx->result) {
+        /* No evaluation results received yet. */
+        return APR_EAGAIN;
     }
 
     /* Based on the contents of the user's Keychain, Secure Transport will make
        a first validation of this certificate chain.
        The status set here is temporary, as it can be overridden by the
        application. */
-    switch (result)
+    switch (ssl_ctx->result)
     {
         case kSecTrustResultUnspecified:
         case kSecTrustResultProceed:
@@ -1082,7 +1105,8 @@ validate_server_certificate(sectrans_context_t *ssl_ctx)
 
             serf__log(SSL_VERBOSE, __FILE__, "Chain length (%d) is longer than "
                       "what we received from the server (%d). Search the "
-                      "remaining anchor certificate.", chain_depth, certs_len);
+                      "remaining anchor certificate.\n",
+                      chain_depth, certs_len);
 
             /* Take the last known certificate and search its issuer in the
                list of trusted anchor certificates. */
@@ -1615,6 +1639,13 @@ static apr_status_t do_handshake(sectrans_context_t *ssl_ctx)
 
         serf__log(SSL_VERBOSE, __FILE__, "do_handshake called.\n");
 
+        if (ssl_ctx->evaluate_in_progress) {
+            status = validate_server_certificate(ssl_ctx);
+
+            if (status)
+                return status;
+        }
+
         osstatus = SSLHandshake(ssl_ctx->st_ctxr);
         if (osstatus)
             serf__log(SSL_VERBOSE, __FILE__, "do_handshake returned err %d.\n",
@@ -1651,6 +1682,9 @@ static apr_status_t do_handshake(sectrans_context_t *ssl_ctx)
                identity. */
             apr_pool_destroy(ssl_ctx->handshake_pool);
             ssl_ctx->handshake_pool = NULL;
+
+            ssl_ctx->result = 0;
+            ssl_ctx->evaluate_in_progress = 0;
         }
     }
 
@@ -2194,6 +2228,9 @@ decrypt_more_data(sectrans_context_t *ssl_ctx)
             if (available_len < READ_BUFSIZE)
                 available_len = READ_BUFSIZE;
         }
+        /* TODO: SSLRead doesn't always return a lot of data in one go, so
+           it makes sense to continue receiving data in the remainder of this
+           buffer before allocating a new buffer. */
         dec_data = serf_bucket_mem_alloc(ssl_ctx->decrypt.pending->allocator,
                                          available_len);
 
