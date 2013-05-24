@@ -542,65 +542,18 @@ show_trust_certificate_dialog(void *impl_ctx,
                               const char *ok_button,
                               const char *cancel_button)
 {
-    CFStringRef OkButtonLbl, CancelButtonLbl = NULL, MessageLbl;
-    void *nsapp_cls, *stp_cls, *stp;
-    long result;
-
-    /* Function can only be called from the callback to validate the
-       server certificate or server certificate chain! */
     sectrans_context_t *ssl_ctx = impl_ctx;
     SecTrustRef trust = ssl_ctx->trust;
-    if (!trust)
-        return APR_EGENERAL; /* TODO */
+    apr_status_t status;
 
-    MessageLbl = CFStringCreateWithBytesNoCopy(kCFAllocatorDefault,
-                     (unsigned char *)message, strlen(message),
-                     kCFStringEncodingMacRoman, false, kCFAllocatorNull);
-    if (cancel_button)
-        CancelButtonLbl = CFStringCreateWithBytesNoCopy(kCFAllocatorDefault,
-                              (unsigned char *)cancel_button,
-                              strlen(cancel_button),
-                              kCFStringEncodingMacRoman,
-                              false,
-                              kCFAllocatorNull);
-    OkButtonLbl = CFStringCreateWithBytesNoCopy(kCFAllocatorDefault,
-                      (unsigned char *)ok_button, strlen(ok_button),
-                      kCFStringEncodingMacRoman, false, kCFAllocatorNull);
+    void *sectrans_cls = objc_getClass("SecTrans_Buckets");
+    id tmp = objc_msgSend(sectrans_cls,
+                          sel_getUid("showTrustCertificateDialog:message:"
+                                     "ok_button:cancel_button:"),
+                          trust, message, ok_button, cancel_button);
+    status = (apr_status_t)(SInt64)tmp;
 
-    /* Creates an NSApplication object (enables GUI for cocoa apps) if one
-     doesn't exist already. */
-    nsapp_cls = objc_getClass("NSApplication");
-    (void) objc_msgSend(nsapp_cls,sel_registerName("sharedApplication"));
-
-    stp_cls = objc_getClass("SFCertificateTrustPanel");
-    stp = objc_msgSend(stp_cls, sel_registerName("alloc"));
-    stp = objc_msgSend(stp, sel_registerName("init"));
-
-    /* TODO: find a way to get the panel in front of all other windows. */
-
-    /* Don't use these methods as is, they create a small application window
-       and have no effect on the z-order of the modal dialog. */
-#if 0
-    objc_msgSend(obj, sel_getUid("orderFrontRegardless"));
-    objc_msgSend (obj, sel_getUid ("makeKeyAndOrderFront:"), app);
-
-    objc_msgSend (nsapp, sel_getUid ("activateIgnoringOtherApps:"), 1);
-    objc_msgSend (stp, sel_getUid ("makeKeyWindow"));
-#endif
-
-    /* Setting name of the cancel button also makes it visible on the panel. */
-    objc_msgSend(stp, sel_getUid("setDefaultButtonTitle:"), OkButtonLbl);
-    objc_msgSend(stp, sel_getUid("setAlternateButtonTitle:"), CancelButtonLbl);
-    
-    result = (long)objc_msgSend(stp, sel_getUid("runModalForTrust:message:"),
-                                trust, MessageLbl);
-    serf__log(SSL_VERBOSE, __FILE__, "User clicked %s button.\n",
-              result ? "Accept" : "Cancel");
-
-    if (result) /* NSOKButton = 1 */
-        return APR_SUCCESS;
-    else        /* NSCancelButton = 0 */
-        return SERF_ERROR_SSL_USER_DENIED_CERT;
+    return status;
 }
 
 /* Show a SFChooseIdentityPanel. This is the Mac OS X default dialog to
