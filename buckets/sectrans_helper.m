@@ -3,6 +3,7 @@
 #import <AppKit/AppKit.h>
 #import <Foundation/Foundation.h>
 #import <SecurityInterface/SFCertificateTrustPanel.h>
+#import <SecurityInterface/SFChooseIdentityPanel.h>
 
 #import "serf.h"
 
@@ -79,4 +80,74 @@
     else
         return SERF_ERROR_SSL_USER_DENIED_CERT;
 }
+
++ (OSStatus) showSelectIdentityDialog:(SecIdentityRef *)identity
+                                  message:(const char *)message
+                                ok_button:(const char *)ok_button
+                            cancel_button:(const char *)cancel_button
+{
+    NSString *MessageLbl = [[NSString alloc] initWithUTF8String:message];
+    NSString *OkButtonLbl = [[NSString alloc] initWithUTF8String:ok_button];
+    NSString *CancelButtonLbl;
+    NSArray *identities;
+    OSStatus osstatus;
+    apr_status_t status;
+
+    if (cancel_button)
+        CancelButtonLbl = [[NSString alloc] initWithUTF8String:cancel_button];
+
+    /* Find all matching identities in the keychains.
+       Note: SecIdentityRef items are not stored on the keychain but
+       generated when needed if both a certificate and matching private
+       key are available on the keychain. */
+    NSDictionary *query = [NSDictionary dictionaryWithObjectsAndKeys:
+                           kSecClassIdentity, kSecClass,
+                           kCFBooleanTrue, kSecAttrCanSign,
+                           kSecMatchLimitAll, kSecMatchLimit,
+                           kCFBooleanTrue, kSecReturnRef,
+                           nil];
+
+    osstatus = SecItemCopyMatching(query, (CFTypeRef *)&identities);
+    [query release];
+
+    if (osstatus != noErr)
+        return osstatus;
+
+    /* TODO: filter on matching certificates. How?? Distinguished names? */
+
+    /* Found the identities, now let the user choose. */
+    SFChooseIdentityPanel *panel;
+    NSApplication *app = [NSApplication sharedApplication];
+
+    panel = [SFChooseIdentityPanel sharedChooseIdentityPanel];
+
+    /* Put the dialog in front of the application, and give it the focus. */
+    [app setActivationPolicy:NSApplicationActivationPolicyRegular];
+    [app activateIgnoringOtherApps:YES];
+
+    [panel setShowsHelp:YES];
+    [panel setDefaultButtonTitle:OkButtonLbl];
+    if (cancel_button)
+        [panel setAlternateButtonTitle:CancelButtonLbl];
+    
+    NSInteger result = [panel runModalForIdentities:identities
+                                            message:MessageLbl];
+
+    if (result) {
+        *identity = [panel identity];
+    }
+    else {
+        *identity = nil;
+    }
+
+    [identities autorelease];
+    [MessageLbl release];
+    [OkButtonLbl release];
+    if (cancel_button)
+        [CancelButtonLbl release];
+    [panel release];
+
+    return noErr;
+}
+
 @end

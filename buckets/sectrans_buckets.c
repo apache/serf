@@ -564,31 +564,19 @@ apr_status_t
 show_select_identity_dialog(void *impl_ctx,
                             const serf_ssl_identity_t **identity,
                             const char *message,
-                            const char *ok_button_label,
-                            const char *cancel_button_label,
+                            const char *ok_button,
+                            const char *cancel_button,
                             apr_pool_t *pool)
 {
-    CFStringRef OkButtonLbl, CancelButtonLbl = NULL, MessageLbl;
-    CFArrayRef identities;
-    CFDictionaryRef query;
-    void *nsapp_cls, *cip_cls, *cip;
-    long result;
+    SecIdentityRef identityref;
     OSStatus osstatus;
-    apr_status_t status;
 
-    /* Find all matching identities in the keychains.
-       Note: SecIdentityRef items are not stored on the keychain but
-       generated when needed if both a certificate and matching private
-       key are available on the keychain. */
-    const void *keys[] =   { kSecClass, kSecAttrCanSign,
-        kSecMatchLimit, kSecReturnRef };
-    const void *values[] = { kSecClassIdentity, kCFBooleanTrue,
-        kSecMatchLimitAll, kCFBooleanTrue };
-
-    query = CFDictionaryCreate(kCFAllocatorDefault, keys, values,
-                               4L, NULL, NULL);
-    osstatus = SecItemCopyMatching(query, (CFTypeRef *)&identities);
-    CFRelease(query);
+    void *sectrans_cls = objc_getClass("SecTrans_Buckets");
+    id tmp = objc_msgSend(sectrans_cls,
+                          sel_getUid("showSelectIdentityDialog:message:"
+                                     "ok_button:cancel_button:"),
+                          &identityref, message, ok_button, cancel_button);
+    osstatus = (OSStatus)(SInt64)tmp;
     if (osstatus == errSecItemNotFound)
     {
         /* There is no single identity in the keychains. */
@@ -597,65 +585,13 @@ show_select_identity_dialog(void *impl_ctx,
         return translate_sectrans_status(osstatus);
     }
 
-    /* TODO: filter on matching certificates. How?? Distinguished
-       names? */
+    if (!identityref)
+        return SERF_ERROR_SSL_CERT_FAILED;
 
-    /* Found the identities, now let the user choose. */
-    MessageLbl = CFStringCreateWithBytesNoCopy(kCFAllocatorDefault,
-                     (unsigned char *)message, strlen(message),
-                     kCFStringEncodingMacRoman, false, kCFAllocatorNull);
-    if (cancel_button_label)
-        CancelButtonLbl = CFStringCreateWithBytesNoCopy(kCFAllocatorDefault,
-                              (unsigned char *)cancel_button_label,
-                              strlen(cancel_button_label),
-                              kCFStringEncodingMacRoman, false,
-                              kCFAllocatorNull);
-    OkButtonLbl = CFStringCreateWithBytesNoCopy(kCFAllocatorDefault,
-                      (unsigned char *)ok_button_label, strlen(ok_button_label),
-                      kCFStringEncodingMacRoman, false, kCFAllocatorNull);
-
-    nsapp_cls = objc_getClass("NSApplication");
-    (void) objc_msgSend(nsapp_cls,sel_registerName("sharedApplication"));
-
-    cip_cls = objc_getClass("SFChooseIdentityPanel");
-    cip = objc_msgSend(cip_cls, sel_registerName("sharedChooseIdentityPanel"));
-    objc_msgSend(cip, sel_registerName("setDefaultButtonTitle:"), OkButtonLbl);
-    objc_msgSend(cip, sel_registerName("setAlternateButtonTitle:"), CancelButtonLbl);
-
-    /* TODO: find a way to get the panel in front of all other windows. */
-
-    result = (long)objc_msgSend(cip, sel_registerName("runModalForIdentities:"
-                                                      "message:"),
-                                identities, MessageLbl);
-    serf__log(SSL_VERBOSE, __FILE__, "User clicked %s button.\n",
-              result ? "Accept" : "Cancel");
-
-    if (result)
-    {
-        /* NSOKButton = 1 */
-        SecIdentityRef identityref;
-
-        identityref = (SecIdentityRef)objc_msgSend(cip,
-                                                   sel_registerName("identity"));
-        *identity = serf__create_identity(&serf_ssl_bucket_type_securetransport,
-                                          identityref, NULL,
-                                          pool);
-
-        status = APR_SUCCESS;
-    }
-    else
-    {
-        /* NSCancelButton = 0 */
-        status = SERF_ERROR_SSL_CERT_FAILED;
-    }
-
-    CFRelease(OkButtonLbl);
-    if (CancelButtonLbl)
-        CFRelease(CancelButtonLbl);
-    CFRelease(MessageLbl);
-    CFRelease(identities);
-
-    return status;
+    *identity = serf__create_identity(&serf_ssl_bucket_type_securetransport,
+                                      identityref, NULL,
+                                      pool);
+    return APR_SUCCESS;
 }
 
 /* Creates a sectrans_certificate_t allocated on pool. */
