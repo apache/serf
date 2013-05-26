@@ -140,6 +140,7 @@ if securetransport:
   env.Append(FRAMEWORKS='Security')
   env.Append(FRAMEWORKS='SecurityInterface')
   env.Append(FRAMEWORKS='CoreFoundation')
+  env.Append(FRAMEWORKS='AppKit')
   env.Append(CFLAGS='-DSERF_HAVE_SECURETRANSPORT')
 
 if sys.platform == 'win32':
