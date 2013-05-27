@@ -1131,7 +1131,7 @@ static const char *create_large_request_message(apr_pool_t *pool)
                           "Transfer-Encoding: chunked" CRLF
                           CRLF;
     struct iovec vecs[500];
-    const int num_vecs = 5;
+    const int num_vecs = 500;
     int i, j;
     apr_size_t len;
 
