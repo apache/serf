@@ -1969,8 +1969,10 @@ serf_sectrans_encrypt_read(serf_bucket_t *bucket,
     sectrans_context_t *ssl_ctx = bucket->data;
     apr_status_t status, status_unenc_stream;
     const char *unenc_data;
+    struct iovec vecs[32];
+    int vecs_used;
     size_t unenc_len;
-    
+
     serf__log(SSL_VERBOSE, __FILE__, "serf_sectrans_encrypt_read called for "
               "%d bytes.\n", requested);
 
@@ -1998,22 +2000,32 @@ serf_sectrans_encrypt_read(serf_bucket_t *bucket,
         return APR_SUCCESS;
     }
 
+    /* SSLWrite does not write directly to a socket, but to an aggregate bucket
+       which can be infinitely big. To ensure that the outgoing data is 
+       written to the socket regularely, we only read one block at a time and
+       then return to the caller. */
+    if (requested == SERF_READ_ALL_AVAIL)
+        requested = 65536;
+
     /* Encrypt more data. */
-    status_unenc_stream = serf_bucket_read(ssl_ctx->encrypt.stream, requested,
-                                           &unenc_data, &unenc_len);
+    status_unenc_stream = serf_bucket_read_iovec(ssl_ctx->encrypt.stream,
+                                                 requested,
+                                                 32, vecs,
+                                                 &vecs_used);
     if (SERF_BUCKET_READ_ERROR(status_unenc_stream))
         return status_unenc_stream;
+
+    unenc_data = serf_bstrcatv(ssl_ctx->encrypt.stream->allocator,
+                               vecs, vecs_used, &unenc_len);
+
+    serf__log(SSL_VERBOSE, __FILE__, "ready to encrypt %d bytes with status %d.\n",
+              unenc_len, status_unenc_stream);
 
     if (unenc_len)
     {
         OSStatus osstatus;
         size_t written;
 
-        /* TODO: we now feed each individual chunk of data one by one to 
-           SSLWrite. This seems to add a record header etc. per call, 
-           so 2 bytes of data in results in 37 bytes of data out.
-           Need to add a real buffer and feed this function chunks of
-           e.g. 8KB. */
         osstatus = SSLWrite(ssl_ctx->st_ctxr, unenc_data, unenc_len,
                             &written);
         status = translate_sectrans_status(osstatus);
@@ -2023,6 +2035,17 @@ serf_sectrans_encrypt_read(serf_bucket_t *bucket,
         serf__log(SSL_MSG_VERBOSE, __FILE__, "%dB ready with status %d, %d "
                   "encrypted and written:\n---%.*s-(%d)-\n", unenc_len,
                   status_unenc_stream, written, written, unenc_data, written);
+
+        /* Less data written than available! This situation can never happen,
+           because SSLWrite loops until all data is sent or sectrans_write_cb
+           returns errSSLWouldBlock, and the callback will never return this
+           error because it can process all data that it's given. */
+        if (written < unenc_len)
+        {
+            serf__log(SSL_VERBOSE, __FILE__, "Less data written than was "
+                      "available! Aborting, this should not be possible.\n");
+            return APR_EGENERAL;
+        }
 
         status = serf_bucket_read(ssl_ctx->encrypt.pending, requested,
                                   data, len);
