@@ -340,10 +340,10 @@ sectrans_read_cb(SSLConnectionRef connection,
             return -1;
         }
 
-        if (buflen) {
-            serf__log(SSL_VERBOSE, __FILE__, "Read %d bytes with status %d.\n",
-                      buflen, status);
+        serf__log(SSL_VERBOSE, __FILE__, "Read %d bytes with status %d.\n",
+                  buflen, status);
 
+        if (buflen) {
             /* Copy the data in the buffer provided by the caller. */
             memcpy(outbuf, buf, buflen);
             outbuf += buflen;
@@ -928,12 +928,17 @@ validate_server_certificate(sectrans_context_t *ssl_ctx)
         serf_ssl_certificate_t *cert;
         SecCertificateRef certref;
 
+        serf__log(SSL_VERBOSE, __FILE__, "Call application for server cert "
+                  "validation.\n");
+
         certref = SecTrustGetCertificateAtIndex(ssl_ctx->trust, 0);
         cert = create_ssl_certificate(certref, 0, ssl_ctx->handshake_pool);
 
         /* Callback for further verification. */
         status = ssl_ctx->server_cert_callback(ssl_ctx->server_cert_userdata,
                                                failures, cert);
+        serf__log(SSL_VERBOSE, __FILE__, "Application returned status %d.\n",
+                  status);
     }
 
     /* We need to get the full certificate chain and provide it to the
@@ -966,6 +971,9 @@ validate_server_certificate(sectrans_context_t *ssl_ctx)
     {
         serf_ssl_certificate_t **certs;
         int certs_len, actual_len, i;
+
+        serf__log(SSL_VERBOSE, __FILE__, "Call application for server cert "
+                  "chain validation.\n");
 
         /* Room for the total chain length and a trailing NULL.  */
         certs = apr_palloc(ssl_ctx->handshake_pool,
@@ -1528,11 +1536,11 @@ static apr_status_t do_handshake(sectrans_context_t *ssl_ctx)
 
         serf__log(SSL_VERBOSE, __FILE__, "do_handshake called.\n");
 
-        if (ssl_ctx->evaluate_in_progress) {
-            status = validate_server_certificate(ssl_ctx);
+        if (ssl_ctx->evaluate_in_progress && !ssl_ctx->result) {
+            serf__log(SSL_VERBOSE, __FILE__, "evaluation in progress, but no "
+                      " results were received yet.\n");
 
-            if (status)
-                return status;
+            return APR_EAGAIN;
         }
 
         osstatus = SSLHandshake(ssl_ctx->st_ctxr);
@@ -1873,7 +1881,6 @@ apr_hash_t *cert_certificate(const serf_ssl_certificate_t *cert,
 
     sha1 = apr_hash_get(sectrans_cert->content, "sha1", APR_HASH_KEY_STRING);
     apr_hash_set(tgt, "sha1", APR_HASH_KEY_STRING, sha1);
-    serf__log(SSL_VERBOSE, __FILE__, "SHA1 fingerprint:%s.\n", sha1);
 
     /* TODO: array of subjectAltName's */
 
@@ -2205,7 +2212,6 @@ serf_sectrans_decrypt_read(serf_bucket_t *bucket,
                             len);
 }
 
-/* TODO: remove some logging to make the function easier to read. */
 static apr_status_t
 serf_sectrans_decrypt_readline(serf_bucket_t *bucket,
                                int acceptable, int *found,
@@ -2214,9 +2220,6 @@ serf_sectrans_decrypt_readline(serf_bucket_t *bucket,
 {
     sectrans_context_t *ssl_ctx = bucket->data;
     apr_status_t status;
-
-    serf__log(SSL_VERBOSE, __FILE__,
-              "serf_sectrans_decrypt_readline called.\n");
 
     /* Pending handshake? */
     status = do_handshake(ssl_ctx);
@@ -2230,11 +2233,10 @@ serf_sectrans_decrypt_readline(serf_bucket_t *bucket,
     status = serf_bucket_readline(ssl_ctx->decrypt.pending, acceptable, found,
                                   data, len);
     if (SERF_BUCKET_READ_ERROR(status))
-        goto error;
+        return status;
 
     if (*len) {
-        serf__log(SSL_VERBOSE, __FILE__, "  read one %s line.\n",
-                  *found ? "complete" : "partial");
+        /* We read a partial or complete line */
         return status;
     }
 
@@ -2246,15 +2248,7 @@ serf_sectrans_decrypt_readline(serf_bucket_t *bucket,
     /* We have more decrypted data in the pending buffer. */
     status = serf_bucket_readline(ssl_ctx->decrypt.pending, acceptable, found,
                                   data, len);
-    if (SERF_BUCKET_READ_ERROR(status))
-        goto error;
 
-    serf__log(SSL_VERBOSE, __FILE__, "  read one %s line.\n",
-              *found ? "complete" : "partial");
-    return status;
-
-error:
-    serf__log(SSL_VERBOSE, __FILE__, "  return with status %d.\n", status);
     return status;
 }
 
