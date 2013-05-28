@@ -19,6 +19,7 @@
 #include "serf.h"
 #include "serf_bucket_util.h"
 
+#if APR_HAS_MMAP
 
 typedef struct {
     apr_mmap_t *mmap;
@@ -116,3 +117,24 @@ const serf_bucket_type_t serf_bucket_type_mmap = {
     serf_mmap_peek,
     serf_default_destroy_and_data,
 };
+
+#else /* !APR_HAS_MMAP */
+
+serf_bucket_t *serf_bucket_mmap_create(apr_mmap_t *file_mmap,
+                                       serf_bucket_alloc_t *allocator)
+{
+    return NULL;
+}
+
+const serf_bucket_type_t serf_bucket_type_mmap = {
+    "MMAP",
+    NULL,
+    NULL,
+    NULL,
+    NULL,
+    NULL,
+    NULL,
+    NULL,
+};
+
+#endif
