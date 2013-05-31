@@ -153,18 +153,18 @@ TEST_OBJS = \
 TEST_LIBS = user32.lib advapi32.lib gdi32.lib ws2_32.lib
 
 
-ALL: INTDIR $(STATIC_LIB) TESTS
+ALL: $(INTDIR) $(STATIC_LIB) TESTS
 
 CLEAN:
   -@erase /q "$(INTDIR)" >nul
 
-INTDIR:
+$(INTDIR):
   -@if not exist "$(INTDIR)/$(NULL)" mkdir "$(INTDIR)"
 
 TESTS: $(STATIC_LIB) $(INTDIR)\serf_response.exe $(INTDIR)\serf_get.exe \
        $(INTDIR)\serf_request.exe $(INTDIR)\test_all.exe
 
-CHECK: INTDIR TESTS
+CHECK: $(INTDIR) TESTS
   $(INTDIR)\serf_response.exe test\testcases\simple.response
   $(INTDIR)\serf_response.exe test\testcases\chunked-empty.response
   $(INTDIR)\serf_response.exe test\testcases\chunked.response
@@ -172,7 +172,7 @@ CHECK: INTDIR TESTS
   $(INTDIR)\serf_response.exe test\testcases\deflate.response
   $(INTDIR)\test_all.exe
   
-"$(STATIC_LIB)": INTDIR $(LIB32_OBJS)
+"$(STATIC_LIB)": $(INTDIR) $(LIB32_OBJS)
   $(LIB32) -lib @<<
     $(LIB32_FLAGS) $(LIB32_OBJS) $(SYS_LIBS) /OUT:$@
 <<
