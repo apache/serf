@@ -141,6 +141,7 @@ SYS_LIBS = secur32.lib
 
 TEST_OBJS = \
     "$(INTDIR)\CuTest.obj" \
+    "$(INTDIR)\mock_buckets.obj" \
     "$(INTDIR)\test_all.obj" \
     "$(INTDIR)\test_util.obj" \
     "$(INTDIR)\test_context.obj" \
