@@ -129,7 +129,7 @@ if 1:
   ### gcc only. figure out appropriate test / better way to check these
   ### flags, and check for gcc.
   ### -Wall is not available on Solaris
-  ccflags = ['-std=c89', ]
+  ccflags = ['-std=c89', '-Wdeclaration-after-statement', ]
   if sys.platform != 'sunos5':
     ccflags.append(['-Wall', '-Wmissing-prototypes'])
   if debug:
