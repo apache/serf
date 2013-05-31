@@ -23,6 +23,11 @@
 #define SECURITY_WIN32
 #include <sspi.h>
 
+/* SEC_E_MUTUAL_AUTH_FAILED is not defined in Windows Platform SDK 5.0. */
+#ifndef SEC_E_MUTUAL_AUTH_FAILED
+#define SEC_E_MUTUAL_AUTH_FAILED _HRESULT_TYPEDEF_(0x80090363L)
+#endif
+
 struct serf__kerb_context_t
 {
     CredHandle sspi_credentials;
