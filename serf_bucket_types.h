@@ -707,24 +707,62 @@ apr_status_t serf_ssl_use_compression(
     serf_ssl_context_t *ssl_ctx,
     int enabled);
 
+/* Show a SFCertificateTrustPanel. This is the Mac OS X default dialog to
+   ask the user to confirm or deny the use of the certificate. This panel
+   also gives the option to store the user's decision for this certificate
+   permanently in the Keychain (requires password).
+ 
+   This function will return APR_ENOTIMPL when SERF_HAVE_SECURETRANSPORT is not 
+   defined.
+ */
 apr_status_t
-serf_ssl_show_trust_certificate_dialog(serf_ssl_context_t *ssl_ctx,
-                                       const char *message,
-                                       const char *ok_button_label,
-                                       const char *cancel_button_label);
+serf_sectrans_show_trust_certificate_panel(serf_ssl_context_t *ssl_ctx,
+                                           const char *message,
+                                           const char *ok_button_label,
+                                           const char *cancel_button_label);
 
-apr_status_t
-serf_ssl_show_select_identity_dialog(serf_ssl_context_t *ssl_ctx,
-                                     const serf_ssl_identity_t **identity,
-                                     const char *message,
-                                     const char *ok_button_label,
-                                     const char *cancel_button_label,
-                                     apr_pool_t *pool);
+    
+/* Note: both serf_sectrans_show_select_identity_panel and
+   serf_sectrans_find_preferred_identity_in_keychainthis support smart cards.
+ 
+   As soon as the card is inserted in the reader, an extra keychain will be 
+   created containing the certificate(s) and private key(s) stored on the smart 
+   card. From there it can be used just like any other identity: The client 
+   identity can be set as preferred identity for a host (or with wildcards) or 
+   will be shown in the identity selection dialog if no such preference was set.
 
+   Tested successfully with a Belgian Personal ID Card (BELPIC) and
+   Smartcard services v2.0b2-mtlion on Mac OS X 10.8.3
+ */
+
+/* Show a SFChooseIdentityPanel. This is the Mac OS X default dialog to
+   ask the user which client certificate to use for this server. The choice
+   of client certificate will not be saved.
+
+   This function will return APR_ENOTIMPL when SERF_HAVE_SECURETRANSPORT is not
+   defined.
+ */
 apr_status_t
-serf_ssl_find_preferred_identity_in_store(serf_ssl_context_t *ssl_ctx,
-                                          const serf_ssl_identity_t **identity,
-                                          apr_pool_t *pool);
+serf_sectrans_show_select_identity_panel(serf_ssl_context_t *ssl_ctx,
+                                         const serf_ssl_identity_t **identity,
+                                         const char *message,
+                                         const char *ok_button_label,
+                                         const char *cancel_button_label,
+                                         apr_pool_t *pool);
+
+/* Find a preferred identity for this hostname in the kechains.
+   (identity preference entry).
+ 
+   This function will return APR_ENOTIMPL when SERF_HAVE_SECURETRANSPORT is not
+   defined.
+ */
+apr_status_t
+serf_sectrans_find_preferred_identity_in_keychain(
+        serf_ssl_context_t *ssl_ctx,
+        const serf_ssl_identity_t **identity,
+        apr_pool_t *pool);
+
+
 
 void serf_bucket_ssl_destroy_and_data(serf_bucket_t *bucket);
 

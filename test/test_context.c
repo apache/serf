@@ -1310,7 +1310,9 @@ ssl_server_cert_cb_expect_failures(void *baton, int failures,
     /* Example of how to ask the user to validate a server certificate
        via a platform-specific dialog. */
     if (failures) {
-        status = serf_ssl_show_trust_certificate_dialog(tb->ssl_context,
+        apr_status_t status;
+
+        status = serf_sectrans_show_trust_certificate_panel(tb->ssl_context,
                      "Server certificate requires validation",
                      "Accept",
                      "Cancel");
@@ -1944,14 +1946,14 @@ static apr_status_t identity_cb(void *data,
      */
 
     /* First check if the user has set a preferred identity for this server. */
-    status = serf_ssl_find_preferred_identity_in_store(tb->ssl_context,
-                                                       identity,
-                                                       pool);
+    status = serf_sectrans_find_preferred_identity_in_keychain(tb->ssl_context,
+                                                               identity,
+                                                               pool);
     if (status == APR_SUCCESS)
         return APR_SUCCESS;
 
     /* Choose an identity from the available identities in the keychains. */
-    status = serf_ssl_show_select_identity_dialog(tb->ssl_context,
+    status = serf_sectrans_show_select_identity_panel(tb->ssl_context,
                  identity,
                  "Select client identity.", "Accept", "Cancel",
                  pool);

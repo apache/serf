@@ -131,24 +131,6 @@ struct serf_ssl_bucket_type_t {
      */
     apr_status_t (*use_compression)(void *impl_ctx,
                                     int enabled);
-
-    apr_status_t
-        (*show_trust_certificate_dialog)(void *impl_ctx,
-                                         const char *message,
-                                         const char *ok_button_label,
-                                         const char *cancel_button_label);
-    apr_status_t
-        (*show_select_identity_dialog)(void *impl_ctx,
-                                       const serf_ssl_identity_t **identity,
-                                       const char *message,
-                                       const char *ok_button_label,
-                                       const char *cancel_button_label,
-                                       apr_pool_t *pool);
-
-    apr_status_t (*find_preferred_identity_in_store)(
-                       void *impl_ctx,
-                       const serf_ssl_identity_t **identity,
-                       apr_pool_t *pool);
 };
 
 /* Implementation independent certificate object. */
@@ -198,6 +180,8 @@ serf__create_identity(const serf_ssl_bucket_type_t *type,
                       void *impl_cert,
                       void *impl_pkey,
                       apr_pool_t *pool);
+
+void *serf__ssl_get_impl_context(serf_ssl_context_t *ssl_ctx);
 
 /* sectrans_bucket internal functions */
 #ifdef SERF_HAVE_SECURETRANSPORT

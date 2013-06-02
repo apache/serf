@@ -532,18 +532,15 @@ load_identity_from_databuf(sectrans_context_t *ssl_ctx,
     }
 }
 
-/* Show a SFCertificateTrustPanel. This is the Mac OS X default dialog to
-   ask the user to confirm or deny the use of the certificate. This panel
-   also gives the option to store the user's decision for this certificate
-   permanently in the Keychain (requires password).
- */
-static apr_status_t
-serf__sectrans_show_trust_certificate_dialog(void *impl_ctx,
-                                             const char *message,
-                                             const char *ok_button,
-                                             const char *cancel_button)
+
+apr_status_t
+serf_sectrans_show_trust_certificate_panel(serf_ssl_context_t *ctx,
+                                           const char *message,
+                                           const char *ok_button,
+                                           const char *cancel_button)
 {
-    sectrans_context_t *ssl_ctx = impl_ctx;
+#ifdef SERF_HAVE_SECURETRANSPORT
+    sectrans_context_t *ssl_ctx = serf__ssl_get_impl_context(ctx);
     SecTrustRef trust = ssl_ctx->trust;
     apr_status_t status;
 
@@ -555,21 +552,21 @@ serf__sectrans_show_trust_certificate_dialog(void *impl_ctx,
     status = (apr_status_t)(SInt64)tmp;
 
     return status;
+#else
+    return APR_ENOTIMPL;
+#endif
 }
 
-/* Show a SFChooseIdentityPanel. This is the Mac OS X default dialog to
-   ask the user which client certificate to use for this server. The choice
-   of client certificate will not be saved.
- */
-static apr_status_t
-serf__sectrans_show_select_identity_dialog(
-        void *impl_ctx,
+apr_status_t
+serf_sectrans_show_select_identity_panel(
+        serf_ssl_context_t *ctx,
         const serf_ssl_identity_t **identity,
         const char *message,
         const char *ok_button,
         const char *cancel_button,
         apr_pool_t *pool)
 {
+#ifdef SERF_HAVE_SECURETRANSPORT
     SecIdentityRef identityref;
     OSStatus osstatus;
 
@@ -594,6 +591,9 @@ serf__sectrans_show_select_identity_dialog(
                                       identityref, NULL,
                                       pool);
     return APR_SUCCESS;
+#else
+    return APR_ENOTIMPL;
+#endif
 }
 
 /* Creates a sectrans_certificate_t allocated on pool. */
@@ -1366,26 +1366,15 @@ callback_for_identity(sectrans_context_t *ssl_ctx,
 }
 
 
-/* Find a preferred identity for this hostname in the kechains.
-   (identity preference entry). */
-
-/* Note: this will automatically support smart cards. As soon as the card
-   is inserted in the reader, an extra keychain will be created containing
-   the certificate(s) and private key(s) stored on the smart card. From
-   there it can be used just like any other identity: The client identity
-   can be set as preferred identity for a host (or with wildcards) or will
-   be shown in the identity selection dialog if no such preference was set.
-
-   Tested successfully with a Belgian Personal ID Card (BELPIC) and
-   Smartcard services v2.0b2-mtlion on Mac OS X 10.8.3 */
-static apr_status_t
-serf__sectrans_find_preferred_identity_in_store(
-        void *impl_ctx,
+apr_status_t
+serf_sectrans_find_preferred_identity_in_keychain(
+        serf_ssl_context_t *ctx,
         const serf_ssl_identity_t **identity,
         apr_pool_t *pool)
 {
+#ifdef SERF_HAVE_SECURETRANSPORT
     apr_pool_t *tmppool;
-    sectrans_context_t *ssl_ctx = impl_ctx;
+    sectrans_context_t *ssl_ctx = serf__ssl_get_impl_context(ctx);
     SecIdentityRef identityref = NULL;
     apr_status_t status;
 
@@ -1432,6 +1421,9 @@ serf__sectrans_find_preferred_identity_in_store(
     apr_pool_destroy(tmppool);
 
     return status;
+#else
+    return APR_ENOTIMPL;
+#endif
 }
 
 /* Get a client certificate for this server from the application. */
@@ -2312,8 +2304,5 @@ const serf_ssl_bucket_type_t serf_ssl_bucket_type_securetransport = {
     serf__sectrans_cert_certificate,
     serf__sectrans_cert_export,
     serf__sectrans_use_compression,
-    serf__sectrans_show_trust_certificate_dialog,
-    serf__sectrans_show_select_identity_dialog,
-    serf__sectrans_find_preferred_identity_in_store,
 };
 #endif /* SERF_HAVE_SECURETRANSPORT */

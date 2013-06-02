@@ -1773,34 +1773,6 @@ serf__openssl_use_compression(void *impl_ctx, int enabled)
     return APR_EGENERAL;
 }
 
-static apr_status_t
-serf__openssl_show_trust_certificate_dialog(void *impl_ctx,
-                                            const char *message,
-                                            const char *ok_button_label,
-                                            const char *cancel_button_label)
-{
-    return APR_ENOTIMPL;
-}
-
-static apr_status_t
-serf__openssl_show_select_identity_dialog(void *impl_ctx,
-                                          const serf_ssl_identity_t **identity,
-                                          const char *message,
-                                          const char *ok_button_label,
-                                          const char *cancel_button_label,
-                                          apr_pool_t *pool)
-{
-    return APR_ENOTIMPL;
-}
-
-static apr_status_t
-serf__openssl_find_preferred_identity_in_store(void *impl_ctx,
-    const serf_ssl_identity_t **identity,
-    apr_pool_t *pool)
-{
-    return APR_ENOTIMPL;
-}
-
 static void openssl_destroy_and_data(serf_bucket_t *bucket)
 {
     ssl_context_t *ctx = bucket->data;
@@ -1928,9 +1900,6 @@ const serf_ssl_bucket_type_t serf_ssl_bucket_type_openssl = {
     serf__openssl_cert_certificate,
     serf__openssl_cert_export,
     serf__openssl_use_compression,
-    serf__openssl_show_trust_certificate_dialog,
-    serf__openssl_show_select_identity_dialog,
-    serf__openssl_find_preferred_identity_in_store,
 };
 
 #endif /* SERF_HAVE_OPENSSL */

@@ -41,6 +41,11 @@ struct serf_ssl_context_t
     void *impl_ctx;
 };
 
+void *serf__ssl_get_impl_context(serf_ssl_context_t *ssl_ctx)
+{
+    return ssl_ctx->impl_ctx;
+}
+
 static const serf_ssl_bucket_type_t *decide_ssl_bucket_type(void)
 {
     apr_uint32_t bucket_impls = serf_config_get_bucket_impls();
@@ -340,42 +345,4 @@ apr_status_t serf_ssl_load_cert_file(serf_ssl_certificate_t **cert,
     const serf_ssl_bucket_type_t *type = decide_ssl_bucket_type();
 
     return type->load_CA_cert_from_file(cert, file_path, pool);
-}
-
-apr_status_t
-serf_ssl_show_trust_certificate_dialog(serf_ssl_context_t *ssl_ctx,
-                                       const char *message,
-                                       const char *ok_button_label,
-                                       const char *cancel_button_label)
-{
-    return ssl_ctx->type->show_trust_certificate_dialog(ssl_ctx->impl_ctx,
-                                                        message,
-                                                        ok_button_label,
-                                                        cancel_button_label);
-}
-
-apr_status_t
-serf_ssl_show_select_identity_dialog(serf_ssl_context_t *ssl_ctx,
-                                     const serf_ssl_identity_t **identity,
-                                     const char *message,
-                                     const char *ok_button_label,
-                                     const char *cancel_button_label,
-                                     apr_pool_t *pool)
-{
-    return ssl_ctx->type->show_select_identity_dialog(ssl_ctx->impl_ctx,
-                                                      identity,
-                                                      message,
-                                                      ok_button_label,
-                                                      cancel_button_label,
-                                                      pool);
-}
-
-apr_status_t
-serf_ssl_find_preferred_identity_in_store(serf_ssl_context_t *ssl_ctx,
-                                          const serf_ssl_identity_t **identity,
-                                          apr_pool_t *pool)
-{
-    return ssl_ctx->type->find_preferred_identity_in_store(ssl_ctx->impl_ctx,
-                                                           identity,
-                                                           pool);
 }
