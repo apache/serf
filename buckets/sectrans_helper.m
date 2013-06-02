@@ -48,13 +48,14 @@
     NSString *MessageLbl = [[NSString alloc] initWithUTF8String:message];
     NSString *OkButtonLbl = [[NSString alloc] initWithUTF8String:ok_button];
     NSString *CancelButtonLbl;
+    NSApplication *app;
+    SFCertificateTrustPanel *panel;
+    NSInteger result;
 
     if (cancel_button)
         CancelButtonLbl = [[NSString alloc] initWithUTF8String:cancel_button];
 
-    SFCertificateTrustPanel *panel;
-    NSApplication *app = [NSApplication sharedApplication];
-
+    app = [NSApplication sharedApplication];
     panel = [SFCertificateTrustPanel sharedCertificateTrustPanel];
 
     /* Put the dialog in front of the application, and give it the focus. */
@@ -66,8 +67,8 @@
     if (cancel_button)
         [panel setAlternateButtonTitle:CancelButtonLbl];
 
-    NSInteger result = [panel runModalForTrust:trust
-                                       message:MessageLbl];
+    result = [panel runModalForTrust:trust
+                             message:MessageLbl];
 
     [panel release];
     [MessageLbl release];
@@ -89,8 +90,11 @@
     NSString *MessageLbl = [[NSString alloc] initWithUTF8String:message];
     NSString *OkButtonLbl = [[NSString alloc] initWithUTF8String:ok_button];
     NSString *CancelButtonLbl;
+    NSApplication *app;
+    SFChooseIdentityPanel *panel;
     NSArray *identities;
     NSDictionary *query;
+    NSInteger result;
     OSStatus osstatus;
 
     if (cancel_button)
@@ -117,8 +121,7 @@
     /* TODO: filter on matching certificates. How?? Distinguished names? */
 
     /* Found the identities, now let the user choose. */
-    SFChooseIdentityPanel *panel;
-    NSApplication *app = [NSApplication sharedApplication];
+    app = [NSApplication sharedApplication];
 
     panel = [SFChooseIdentityPanel sharedChooseIdentityPanel];
 
@@ -131,8 +134,8 @@
     if (cancel_button)
         [panel setAlternateButtonTitle:CancelButtonLbl];
     
-    NSInteger result = [panel runModalForIdentities:identities
-                                            message:MessageLbl];
+    result = [panel runModalForIdentities:identities
+                                  message:MessageLbl];
 
     if (result) {
         *identity = [panel identity];

@@ -383,12 +383,10 @@ static apr_status_t read_certificate(serf_bucket_t *bkt,
 {
     apr_size_t total_read;
     apr_status_t status;
-
     const char *delimiter = "=========================";
-
-    total_read = 0;
     int acceptable = SERF_NEWLINE_CRLF | SERF_NEWLINE_LF | SERF_NEWLINE_CR;
 
+    total_read = 0;
     do
     {
         const char *data;
@@ -524,11 +522,12 @@ static void test_ssl_no_implementations(CuTest *tc)
 CuSuite *test_ssl(void)
 {
     CuSuite *suite = CuSuiteNew();
+    CuSuite *openssl_suite, *sectransssl_suite;
 
     CuSuiteSetSetupTeardownCallbacks(suite, test_setup, test_teardown);
 
 #ifdef SERF_HAVE_OPENSSL
-    CuSuite *openssl_suite = CuSuiteNew();
+    openssl_suite = CuSuiteNew();
 
     CuSuiteSetSetupTeardownCallbacks(openssl_suite, test_openssl_setup,
                                      test_openssl_teardown);
@@ -545,7 +544,7 @@ CuSuite *test_ssl(void)
     CuSuiteAddSuite(suite, openssl_suite);
 #endif
 #ifdef SERF_HAVE_SECURETRANSPORT
-    CuSuite *sectransssl_suite = CuSuiteNew();
+    sectransssl_suite = CuSuiteNew();
 
     CuSuiteSetSetupTeardownCallbacks(sectransssl_suite, test_sectransssl_setup,
                                      test_sectransssl_teardown);

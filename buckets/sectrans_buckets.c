@@ -897,10 +897,11 @@ validate_server_certificate(sectrans_context_t *ssl_ctx)
        SecTrustCopyProperties. */
     {
         CFArrayRef props = SecTrustCopyProperties(ssl_ctx->trust);
-        chain_depth = CFArrayGetCount(props); /* length of the full chain,
-                                               including anchor cert. */
         CFDictionaryRef dict = CFArrayGetValueAtIndex(props, 0);
         CFStringRef errref = CFDictionaryGetValue(dict, kSecPropertyTypeError);
+
+        chain_depth = CFArrayGetCount(props); /* length of the full chain,
+                                               including anchor cert. */
 
         if (errref) {
             apr_pool_t *tmppool;
@@ -1376,9 +1377,9 @@ serf_sectrans_find_preferred_identity_in_keychain(
     apr_pool_t *tmppool;
     sectrans_context_t *ssl_ctx = serf__ssl_get_impl_context(ctx);
     SecIdentityRef identityref = NULL;
+    CFStringRef labelref;
+    const char *label;
     apr_status_t status;
-
-    apr_pool_create(&tmppool, pool);
 
     /* We can get the distinguished names from the server with
        SSLCopyDistinguishedNames to filter matching client certificates,
@@ -1387,17 +1388,18 @@ serf_sectrans_find_preferred_identity_in_keychain(
        either. So, don't bother. */
 
     /* We absolutelely need an item that can sign. Otherwise we will get
-     an incomplete identity object, with which SecIdentityCopyCertificate
-     will crash. */
+       an incomplete identity object, with which SecIdentityCopyCertificate
+       will crash. */
     const void *keyUsage[] = { kSecAttrCanSign };
     CFArrayRef keyUsageRef = CFArrayCreate(kCFAllocatorDefault,
                                            (void *)keyUsage,
                                            1,
                                            NULL);
+
+    apr_pool_create(&tmppool, pool);
+
     /* Find an identity preference using label https://<hostname> */
-    const char *label = apr_pstrcat(tmppool, "https://", ssl_ctx->hostname,
-                                    NULL);
-    CFStringRef labelref;
+    label = apr_pstrcat(tmppool, "https://", ssl_ctx->hostname, NULL);
     labelref = CFStringCreateWithBytesNoCopy(kCFAllocatorDefault,
                                              (unsigned char *)label,
                                              strlen(label),
@@ -1408,6 +1410,7 @@ serf_sectrans_find_preferred_identity_in_keychain(
                                            keyUsageRef, NULL);
     if (identityref)
     {
+
         *identity = serf__create_identity(&serf_ssl_bucket_type_securetransport,
                                           identityref, NULL, pool);
         status = APR_SUCCESS;
@@ -1714,12 +1717,14 @@ static apr_status_t
 serf__sectrans_set_hostname(void *impl_ctx, const char * hostname)
 {
     sectrans_context_t *ssl_ctx = impl_ctx;
+    OSStatus osstatus;
 
     ssl_ctx->hostname = serf_bstrdup(ssl_ctx->allocator, hostname);
-    OSStatus status = SSLSetPeerDomainName(ssl_ctx->st_ctxr,
-                                           ssl_ctx->hostname,
-                                           strlen(hostname));
-    return status;
+    osstatus= SSLSetPeerDomainName(ssl_ctx->st_ctxr,
+                                   ssl_ctx->hostname,
+                                   strlen(hostname));
+
+    return translate_sectrans_status(osstatus);
 }
 
 static apr_status_t
@@ -1938,13 +1943,14 @@ serf__sectrans_cert_export(const serf_ssl_certificate_t *cert,
     SecCertificateRef certref = sectrans_cert->certref;
     CFDataRef dataref = SecCertificateCopyData(certref);
     const unsigned char *data = CFDataGetBytePtr(dataref);
+    char *encoded_cert;
 
     CFIndex len = CFDataGetLength(dataref);
 
     if (!len)
         return NULL;
 
-    char *encoded_cert = apr_palloc(pool, apr_base64_encode_len(len));
+    encoded_cert = apr_palloc(pool, apr_base64_encode_len(len));
 
     apr_base64_encode(encoded_cert, (char*)data, len);
 

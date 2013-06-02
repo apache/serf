@@ -2135,6 +2135,7 @@ static void test_serf_ssl_future_server_cert(CuTest *tc)
 CuSuite *test_context(void)
 {
     CuSuite *suite = CuSuiteNew();
+    CuSuite *openssl_suite, *sectransssl_suite;
 
     CuSuiteSetSetupTeardownCallbacks(suite, test_setup, test_teardown);
 
@@ -2150,7 +2151,7 @@ CuSuite *test_context(void)
     SUITE_ADD_TEST(suite, test_serf_connection_large_request);
 
 #ifdef SERF_HAVE_OPENSSL
-    CuSuite *openssl_suite = CuSuiteNew();
+    openssl_suite = CuSuiteNew();
 
     CuSuiteSetSetupTeardownCallbacks(openssl_suite, test_openssl_setup,
                                      test_openssl_teardown);
@@ -2172,7 +2173,7 @@ CuSuite *test_context(void)
     CuSuiteAddSuite(suite, openssl_suite);
 #endif
 #ifdef SERF_HAVE_SECURETRANSPORT
-    CuSuite *sectransssl_suite = CuSuiteNew();
+    sectransssl_suite = CuSuiteNew();
 
     CuSuiteSetSetupTeardownCallbacks(sectransssl_suite, test_sectransssl_setup,
                                      test_sectransssl_teardown);
