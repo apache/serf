@@ -497,6 +497,27 @@ static void test_sectrans_DER_decoding(CuTest *tc)
 #endif
 }
 
+/* Disable all available SSL implementations, test for no crash. */
+static void test_ssl_no_implementations(CuTest *tc)
+{
+    serf_bucket_t *bkt, *stream;
+
+    apr_pool_t *test_pool = tc->testBaton;
+    serf_bucket_alloc_t *alloc = serf_bucket_allocator_create(test_pool, NULL,
+                                                              NULL);
+    stream = SERF_BUCKET_SIMPLE_STRING("", alloc);
+
+    serf_config_disable_bucket_impls(SERF_IMPL_SSL_ALL);
+
+    bkt = serf_bucket_ssl_decrypt_create(stream, NULL, alloc);
+    CuAssertPtrEquals(tc, NULL, bkt);
+
+    bkt = serf_bucket_ssl_encrypt_create(stream, NULL, alloc);
+    CuAssertPtrEquals(tc, NULL, bkt);
+
+    serf_config_enable_bucket_impls(SERF_IMPL_SSL_ALL);
+}
+
 CuSuite *test_ssl(void)
 {
     CuSuite *suite = CuSuiteNew();
@@ -537,6 +558,8 @@ CuSuite *test_ssl(void)
 
     CuSuiteAddSuite(suite, sectransssl_suite);
 #endif
+
+    SUITE_ADD_TEST(suite, test_ssl_no_implementations);
 
     return suite;
 }

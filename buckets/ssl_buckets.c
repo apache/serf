@@ -138,8 +138,14 @@ serf_bucket_t *serf_bucket_ssl_decrypt_create(
     serf_bucket_alloc_t *allocator)
 {
     const serf_ssl_bucket_type_t *type = decide_ssl_bucket_type();
-    serf_ssl_bucket_t *ssl_bkt = serf_bucket_mem_alloc(allocator,
-                                                       sizeof(*ssl_bkt));
+    serf_ssl_bucket_t *ssl_bkt;
+
+    /* If no SSL implementation is available or allowed, we can't create
+       a bucket. */
+    if (!type)
+        return NULL;
+
+    ssl_bkt = serf_bucket_mem_alloc(allocator, sizeof(*ssl_bkt));
     ssl_bkt->allocator = allocator;
 
     if (!ssl_ctx) {
@@ -175,8 +181,14 @@ serf_bucket_t *serf_bucket_ssl_encrypt_create(
     serf_bucket_alloc_t *allocator)
 {
     const serf_ssl_bucket_type_t *type = decide_ssl_bucket_type();
-    serf_ssl_bucket_t *ssl_bkt = serf_bucket_mem_alloc(allocator,
-                                                       sizeof(*ssl_bkt));
+    serf_ssl_bucket_t *ssl_bkt;
+
+    /* If no SSL implementation is available or allowed, we can't create
+     a bucket. */
+    if (!type)
+        return NULL;
+
+    ssl_bkt = serf_bucket_mem_alloc(allocator, sizeof(*ssl_bkt));
     ssl_bkt->allocator = allocator;
 
     if (!ssl_ctx) {
