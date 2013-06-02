@@ -156,10 +156,10 @@ callback_for_identity_password(sectrans_context_t *ssl_ctx,
                                const char **password);
 
 static apr_status_t
-load_identity_from_file(void *impl_ctx,
-                        const serf_ssl_identity_t **identity,
-                        const char *file_path,
-                        apr_pool_t *pool);
+serf__sectrans_load_identity_from_file(void *impl_ctx,
+                                       const serf_ssl_identity_t **identity,
+                                       const char *file_path,
+                                       apr_pool_t *pool);
 
 
 static apr_status_t
@@ -224,8 +224,9 @@ static apr_status_t cfrelease_trust(void *data)
 /* Callback function for the encrypt.pending and decrypt.pending stream-type
    aggregate buckets.
  */
-apr_status_t pending_stream_eof(void *baton,
-                                serf_bucket_t *pending)
+static apr_status_t
+pending_stream_eof(void *baton,
+                   serf_bucket_t *pending)
 {
     /* Both pending streams have to stay open so that the Secure Transport
        library can keep appending data buckets. */
@@ -537,10 +538,10 @@ load_identity_from_databuf(sectrans_context_t *ssl_ctx,
    permanently in the Keychain (requires password).
  */
 static apr_status_t
-show_trust_certificate_dialog(void *impl_ctx,
-                              const char *message,
-                              const char *ok_button,
-                              const char *cancel_button)
+serf__sectrans_show_trust_certificate_dialog(void *impl_ctx,
+                                             const char *message,
+                                             const char *ok_button,
+                                             const char *cancel_button)
 {
     sectrans_context_t *ssl_ctx = impl_ctx;
     SecTrustRef trust = ssl_ctx->trust;
@@ -560,13 +561,14 @@ show_trust_certificate_dialog(void *impl_ctx,
    ask the user which client certificate to use for this server. The choice
    of client certificate will not be saved.
  */
-apr_status_t
-show_select_identity_dialog(void *impl_ctx,
-                            const serf_ssl_identity_t **identity,
-                            const char *message,
-                            const char *ok_button,
-                            const char *cancel_button,
-                            apr_pool_t *pool)
+static apr_status_t
+serf__sectrans_show_select_identity_dialog(
+        void *impl_ctx,
+        const serf_ssl_identity_t **identity,
+        const char *message,
+        const char *ok_button,
+        const char *cancel_button,
+        apr_pool_t *pool)
 {
     SecIdentityRef identityref;
     OSStatus osstatus;
@@ -1346,7 +1348,8 @@ callback_for_identity(sectrans_context_t *ssl_ctx,
         if (status)
             return status;
 
-        status = load_identity_from_file(ssl_ctx, &identity, cert_path, pool);
+        status = serf__sectrans_load_identity_from_file(ssl_ctx, &identity,
+                                                        cert_path, pool);
         if (status)
             return status;
     } else if (ssl_ctx->identity_callback)
@@ -1375,10 +1378,11 @@ callback_for_identity(sectrans_context_t *ssl_ctx,
 
    Tested successfully with a Belgian Personal ID Card (BELPIC) and
    Smartcard services v2.0b2-mtlion on Mac OS X 10.8.3 */
-apr_status_t
-find_preferred_identity_in_store(void *impl_ctx,
-                                 const serf_ssl_identity_t **identity,
-                                 apr_pool_t *pool)
+static apr_status_t
+serf__sectrans_find_preferred_identity_in_store(
+        void *impl_ctx,
+        const serf_ssl_identity_t **identity,
+        apr_pool_t *pool)
 {
     apr_pool_t *tmppool;
     sectrans_context_t *ssl_ctx = impl_ctx;
@@ -1592,10 +1596,10 @@ static apr_status_t do_handshake(sectrans_context_t *ssl_ctx)
 /**** SSL_BUCKET API ****/
 /************************/
 static void *
-decrypt_create(serf_bucket_t *bucket,
-               serf_bucket_t *stream,
-               void *impl_ctx,
-               serf_bucket_alloc_t *allocator)
+serf__sectrans_decrypt_create(serf_bucket_t *bucket,
+                              serf_bucket_t *stream,
+                              void *impl_ctx,
+                              serf_bucket_alloc_t *allocator)
 {
     sectrans_context_t *ssl_ctx;
     bucket->type = &serf_bucket_type_sectrans_decrypt;
@@ -1615,10 +1619,10 @@ decrypt_create(serf_bucket_t *bucket,
 }
 
 static void *
-encrypt_create(serf_bucket_t *bucket,
-               serf_bucket_t *stream,
-               void *impl_ctx,
-               serf_bucket_alloc_t *allocator)
+serf__sectrans_encrypt_create(serf_bucket_t *bucket,
+                              serf_bucket_t *stream,
+                              void *impl_ctx,
+                              serf_bucket_alloc_t *allocator)
 {
     sectrans_context_t *ssl_ctx;
     bucket->type = &serf_bucket_type_sectrans_encrypt;
@@ -1638,23 +1642,24 @@ encrypt_create(serf_bucket_t *bucket,
 }
 
 static void *
-decrypt_context_get(serf_bucket_t *bucket)
+serf__sectrans_decrypt_context_get(serf_bucket_t *bucket)
 {
     return NULL;
 }
 
 static void *
-encrypt_context_get(serf_bucket_t *bucket)
+serf__sectrans_encrypt_context_get(serf_bucket_t *bucket)
 {
     return NULL;
 }
 
 
 static void
-client_cert_provider_set(void *impl_ctx,
-                         serf_ssl_need_client_cert_t callback,
-                         void *data,
-                         void *cache_pool)
+serf__sectrans_client_cert_provider_set(
+        void *impl_ctx,
+        serf_ssl_need_client_cert_t callback,
+        void *data,
+        void *cache_pool)
 {
     sectrans_context_t *ssl_ctx = impl_ctx;
 
@@ -1663,10 +1668,10 @@ client_cert_provider_set(void *impl_ctx,
 }
 
 static void
-identity_provider_set(void *impl_ctx,
-                      serf_ssl_need_identity_t callback,
-                      void *data,
-                      void *cache_pool)
+serf__sectrans_identity_provider_set(void *impl_ctx,
+                                     serf_ssl_need_identity_t callback,
+                                     void *data,
+                                     void *cache_pool)
 {
     sectrans_context_t *ssl_ctx = impl_ctx;
 
@@ -1675,10 +1680,11 @@ identity_provider_set(void *impl_ctx,
 }
 
 static void
-client_cert_password_set(void *impl_ctx,
-                         serf_ssl_need_cert_password_t callback,
-                         void *data,
-                         void *cache_pool)
+serf__sectrans_client_cert_password_set(
+        void *impl_ctx,
+        serf_ssl_need_cert_password_t callback,
+        void *data,
+        void *cache_pool)
 {
     sectrans_context_t *ssl_ctx = impl_ctx;
 
@@ -1686,9 +1692,11 @@ client_cert_password_set(void *impl_ctx,
     ssl_ctx->identity_pw_userdata = data;
 }
 
-void server_cert_callback_set(void *impl_ctx,
-                              serf_ssl_need_server_cert_t callback,
-                              void *data)
+static void
+serf__sectrans_server_cert_callback_set(
+        void *impl_ctx,
+        serf_ssl_need_server_cert_t callback,
+        void *data)
 {
     sectrans_context_t *ssl_ctx = impl_ctx;
 
@@ -1696,10 +1704,12 @@ void server_cert_callback_set(void *impl_ctx,
     ssl_ctx->server_cert_userdata = data;
 }
 
-void server_cert_chain_callback_set(void *impl_ctx,
-                                    serf_ssl_need_server_cert_t cert_callback,
-                                    serf_ssl_server_cert_chain_cb_t cert_chain_callback,
-                                    void *data)
+static void
+serf__sectrans_server_cert_chain_callback_set(
+        void *impl_ctx,
+        serf_ssl_need_server_cert_t cert_callback,
+        serf_ssl_server_cert_chain_cb_t cert_chain_callback,
+        void *data)
 {
     sectrans_context_t *ssl_ctx = impl_ctx;
 
@@ -1709,7 +1719,7 @@ void server_cert_chain_callback_set(void *impl_ctx,
 }
 
 static apr_status_t
-set_hostname(void *impl_ctx, const char * hostname)
+serf__sectrans_set_hostname(void *impl_ctx, const char * hostname)
 {
     sectrans_context_t *ssl_ctx = impl_ctx;
 
@@ -1721,7 +1731,7 @@ set_hostname(void *impl_ctx, const char * hostname)
 }
 
 static apr_status_t
-use_default_certificates(void *impl_ctx)
+serf__sectrans_use_default_certificates(void *impl_ctx)
 {
     /* Secure transport uses default certificates automatically.
        TODO: verify if this true. */
@@ -1784,9 +1794,9 @@ load_CA_cert_from_buffer(serf_ssl_certificate_t **cert,
 }
 
 static apr_status_t
-load_CA_cert_from_file(serf_ssl_certificate_t **cert,
-                       const char *file_path,
-                       apr_pool_t *pool)
+serf__sectrans_load_CA_cert_from_file(serf_ssl_certificate_t **cert,
+                                      const char *file_path,
+                                      apr_pool_t *pool)
 {
     CFArrayRef items;
     CFDataRef databuf;
@@ -1816,10 +1826,10 @@ load_CA_cert_from_file(serf_ssl_certificate_t **cert,
 }
 
 static apr_status_t
-load_identity_from_file(void *impl_ctx,
-                        const serf_ssl_identity_t **identity,
-                        const char *file_path,
-                        apr_pool_t *pool)
+serf__sectrans_load_identity_from_file(void *impl_ctx,
+                                       const serf_ssl_identity_t **identity,
+                                       const char *file_path,
+                                       apr_pool_t *pool)
 {
     apr_status_t status;
     CFDataRef databuf;
@@ -1839,8 +1849,9 @@ load_identity_from_file(void *impl_ctx,
     return status;
 }
 
-static apr_status_t trust_cert(void *impl_ctx,
-                               serf_ssl_certificate_t *cert)
+static apr_status_t
+serf__sectrans_trust_cert(void *impl_ctx,
+                          serf_ssl_certificate_t *cert)
 {
     sectrans_context_t *ssl_ctx = impl_ctx;
     sectrans_certificate_t *sectrans_cert = cert->impl_cert;
@@ -1854,8 +1865,9 @@ static apr_status_t trust_cert(void *impl_ctx,
     return APR_SUCCESS;
 }
 
-apr_hash_t *cert_certificate(const serf_ssl_certificate_t *cert,
-                             apr_pool_t *pool)
+static apr_hash_t *
+serf__sectrans_cert_certificate(const serf_ssl_certificate_t *cert,
+                                apr_pool_t *pool)
 {
     apr_hash_t *tgt;
     const char *date_str, *sha1;
@@ -1888,17 +1900,9 @@ apr_hash_t *cert_certificate(const serf_ssl_certificate_t *cert,
 }
 
 
-/* Functions to read a serf_ssl_certificate structure. */
-int cert_depth(const serf_ssl_certificate_t *cert)
-{
-    serf__log(SSL_VERBOSE, __FILE__,
-              "TODO: function cert_depth not implemented.\n");
-
-    return 0;
-}
-
-apr_hash_t *cert_issuer(const serf_ssl_certificate_t *cert,
-                        apr_pool_t *pool)
+static apr_hash_t *
+serf__sectrans_cert_issuer(const serf_ssl_certificate_t *cert,
+                           apr_pool_t *pool)
 {
     sectrans_certificate_t *sectrans_cert = cert->impl_cert;
 
@@ -1915,8 +1919,9 @@ apr_hash_t *cert_issuer(const serf_ssl_certificate_t *cert,
                                       "issuer", APR_HASH_KEY_STRING);
 }
 
-apr_hash_t *cert_subject(const serf_ssl_certificate_t *cert,
-                         apr_pool_t *pool)
+static apr_hash_t *
+serf__sectrans_cert_subject(const serf_ssl_certificate_t *cert,
+                            apr_pool_t *pool)
 {
     sectrans_certificate_t *sectrans_cert = cert->impl_cert;
 
@@ -1933,8 +1938,9 @@ apr_hash_t *cert_subject(const serf_ssl_certificate_t *cert,
                                       "subject", APR_HASH_KEY_STRING);
 }
 
-const char *cert_export(const serf_ssl_certificate_t *cert,
-                        apr_pool_t *pool)
+static const char *
+serf__sectrans_cert_export(const serf_ssl_certificate_t *cert,
+                           apr_pool_t *pool)
 {
     sectrans_certificate_t *sectrans_cert = cert->impl_cert;
     SecCertificateRef certref = sectrans_cert->certref;
@@ -1954,7 +1960,7 @@ const char *cert_export(const serf_ssl_certificate_t *cert,
 }
 
 static apr_status_t
-use_compression(void *impl_ctx, int enabled)
+serf__sectrans_use_compression(void *impl_ctx, int enabled)
 {
     if (enabled) {
         serf__log(SSL_VERBOSE, __FILE__,
@@ -2287,27 +2293,27 @@ const serf_bucket_type_t    serf_bucket_type_sectrans_decrypt = {
 };
 
 const serf_ssl_bucket_type_t serf_ssl_bucket_type_securetransport = {
-    decrypt_create,
-    decrypt_context_get,
-    encrypt_create,
-    encrypt_context_get,
-    set_hostname,
-    client_cert_provider_set,
-    identity_provider_set,
-    client_cert_password_set,
-    server_cert_callback_set,
-    server_cert_chain_callback_set,
-    use_default_certificates,
-    load_CA_cert_from_file,
-    load_identity_from_file,
-    trust_cert,
-    cert_issuer,
-    cert_subject,
-    cert_certificate,
-    cert_export,
-    use_compression,
-    show_trust_certificate_dialog,
-    show_select_identity_dialog,
-    find_preferred_identity_in_store,
+    serf__sectrans_decrypt_create,
+    serf__sectrans_decrypt_context_get,
+    serf__sectrans_encrypt_create,
+    serf__sectrans_encrypt_context_get,
+    serf__sectrans_set_hostname,
+    serf__sectrans_client_cert_provider_set,
+    serf__sectrans_identity_provider_set,
+    serf__sectrans_client_cert_password_set,
+    serf__sectrans_server_cert_callback_set,
+    serf__sectrans_server_cert_chain_callback_set,
+    serf__sectrans_use_default_certificates,
+    serf__sectrans_load_CA_cert_from_file,
+    serf__sectrans_load_identity_from_file,
+    serf__sectrans_trust_cert,
+    serf__sectrans_cert_issuer,
+    serf__sectrans_cert_subject,
+    serf__sectrans_cert_certificate,
+    serf__sectrans_cert_export,
+    serf__sectrans_use_compression,
+    serf__sectrans_show_trust_certificate_dialog,
+    serf__sectrans_show_select_identity_dialog,
+    serf__sectrans_find_preferred_identity_in_store,
 };
 #endif /* SERF_HAVE_SECURETRANSPORT */

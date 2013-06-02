@@ -105,11 +105,13 @@ read_DER_boolean(const unsigned char* ptr, int clen, apr_pool_t *pool)
 static const char *
 read_DER_bitstring(const unsigned char* ptr, int clen, apr_pool_t *pool)
 {
-    unsigned char unused_bits = *ptr++;
-    clen--;
     char *value = "";
 
     /* TODO: take into account unused_bits. */
+    /*    unsigned char unused_bits = *ptr++; */
+    ptr++;
+    clen--;
+
     while (clen-- > 0) {
         unsigned char b = *ptr++;
         value = apr_psprintf(pool, "%s %2x", value, b);

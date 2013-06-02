@@ -90,8 +90,8 @@
     NSString *OkButtonLbl = [[NSString alloc] initWithUTF8String:ok_button];
     NSString *CancelButtonLbl;
     NSArray *identities;
+    NSDictionary *query;
     OSStatus osstatus;
-    apr_status_t status;
 
     if (cancel_button)
         CancelButtonLbl = [[NSString alloc] initWithUTF8String:cancel_button];
@@ -100,14 +100,15 @@
        Note: SecIdentityRef items are not stored on the keychain but
        generated when needed if both a certificate and matching private
        key are available on the keychain. */
-    NSDictionary *query = [NSDictionary dictionaryWithObjectsAndKeys:
-                           kSecClassIdentity, kSecClass,
-                           kCFBooleanTrue, kSecAttrCanSign,
-                           kSecMatchLimitAll, kSecMatchLimit,
-                           kCFBooleanTrue, kSecReturnRef,
-                           nil];
+    query = [NSDictionary dictionaryWithObjectsAndKeys:
+             (id)kSecClassIdentity, (id)kSecClass,
+             (id)kCFBooleanTrue, (id)kSecAttrCanSign,
+             (id)kSecMatchLimitAll, (id)kSecMatchLimit,
+             (id)kCFBooleanTrue, (id)kSecReturnRef,
+             nil];
 
-    osstatus = SecItemCopyMatching(query, (CFTypeRef *)&identities);
+    osstatus = SecItemCopyMatching((CFDictionaryRef)query,
+                                   (CFTypeRef *)&identities);
     [query release];
 
     if (osstatus != noErr)

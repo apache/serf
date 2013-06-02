@@ -1914,9 +1914,9 @@ static void test_serf_ssl_client_certificate(CuTest *tc)
     CuAssertTrue(tc, tb->result_flags & TEST_RESULT_CLIENT_CERTPWCB_CALLED);
 }
 
-apr_status_t identity_cb(void *data,
-                         const serf_ssl_identity_t **identity,
-                         apr_pool_t *pool)
+static apr_status_t identity_cb(void *data,
+                                const serf_ssl_identity_t **identity,
+                                apr_pool_t *pool)
 {
     test_baton_t *tb = data;
     const char *cert_path = "test/server/serfclientcert.p12";

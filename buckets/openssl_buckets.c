@@ -1083,7 +1083,7 @@ static int ssl_need_client_cert(SSL *ssl, X509 **cert, EVP_PKEY **pkey)
 }
 
 
-void serf__openssl_client_cert_provider_set(
+static void serf__openssl_client_cert_provider_set(
     void *impl_ctx,
     serf_ssl_need_client_cert_t callback,
     void *data,
@@ -1101,7 +1101,7 @@ void serf__openssl_client_cert_provider_set(
 }
 
 
-void serf__openssl_client_cert_password_set(
+static void serf__openssl_client_cert_password_set(
     void *impl_ctx,
     serf_ssl_need_cert_password_t callback,
     void *data,
@@ -1136,7 +1136,7 @@ serf__openssl_identity_provider_set(void *impl_ctx,
     }
 }
 
-void serf__openssl_server_cert_callback_set(
+static void serf__openssl_server_cert_callback_set(
     void *impl_ctx,
     serf_ssl_need_server_cert_t callback,
     void *data)
@@ -1147,7 +1147,7 @@ void serf__openssl_server_cert_callback_set(
     ssl_ctx->server_cert_userdata = data;
 }
 
-void serf__openssl_server_cert_chain_callback_set(
+static void serf__openssl_server_cert_chain_callback_set(
     void *impl_ctx,
     serf_ssl_need_server_cert_t cert_callback,
     serf_ssl_server_cert_chain_cb_t cert_chain_callback,
@@ -1274,8 +1274,8 @@ static void bucket_create(
     bucket->allocator = allocator;
 }
 
-apr_status_t serf__openssl_set_hostname(void *impl_ctx,
-                                        const char * hostname)
+static apr_status_t serf__openssl_set_hostname(void *impl_ctx,
+                                               const char * hostname)
 {
     openssl_context_t *ssl_ctx = impl_ctx;
 
@@ -1287,7 +1287,7 @@ apr_status_t serf__openssl_set_hostname(void *impl_ctx,
     return APR_SUCCESS;
 }
 
-apr_status_t serf__openssl_use_default_certificates(void *impl_ctx)
+static apr_status_t serf__openssl_use_default_certificates(void *impl_ctx)
 {
     openssl_context_t *ssl_ctx = impl_ctx;
     X509_STORE *store = SSL_CTX_get_cert_store(ssl_ctx->ctx);
@@ -1297,7 +1297,7 @@ apr_status_t serf__openssl_use_default_certificates(void *impl_ctx)
     return result ? APR_SUCCESS : SERF_ERROR_SSL_CERT_FAILED;
 }
 
-apr_status_t serf__openssl_load_CA_cert_from_file(
+static apr_status_t serf__openssl_load_CA_cert_from_file(
     serf_ssl_certificate_t **cert,
     const char *file_path,
     apr_pool_t *pool)
@@ -1461,7 +1461,7 @@ cleanup:
 }
 
 
-apr_status_t serf__openssl_trust_cert(
+static apr_status_t serf__openssl_trust_cert(
     void *impl_ctx,
     serf_ssl_certificate_t *cert)
 {
@@ -1475,7 +1475,7 @@ apr_status_t serf__openssl_trust_cert(
 
 
 static void *
-serf_bucket__openssl_decrypt_create(serf_bucket_t *bucket,
+serf__openssl_bucket_decrypt_create(serf_bucket_t *bucket,
                                     serf_bucket_t *stream,
                                     void *impl_ctx,
                                     serf_bucket_alloc_t *allocator)
@@ -1498,7 +1498,7 @@ serf_bucket__openssl_decrypt_create(serf_bucket_t *bucket,
 }
 
 
-void *serf_bucket__openssl_decrypt_context_get(
+static void *serf__openssl_bucket_decrypt_context_get(
      serf_bucket_t *bucket)
 {
     ssl_context_t *ctx = bucket->data;
@@ -1506,7 +1506,7 @@ void *serf_bucket__openssl_decrypt_context_get(
 }
 
 static void *
-serf_bucket__openssl_encrypt_create(serf_bucket_t *bucket,
+serf__openssl_bucket_encrypt_create(serf_bucket_t *bucket,
                                     serf_bucket_t *stream,
                                     void *impl_ctx,
                                     serf_bucket_alloc_t *allocator)
@@ -1548,7 +1548,7 @@ serf_bucket__openssl_encrypt_create(serf_bucket_t *bucket,
 }
 
 
-void *serf_bucket__openssl_encrypt_context_get(
+static void *serf__openssl_bucket_encrypt_context_get(
      serf_bucket_t *bucket)
 {
     ssl_context_t *ctx = bucket->data;
@@ -1606,13 +1606,7 @@ convert_X509_NAME_to_table(X509_NAME *org, apr_pool_t *pool)
 }
 
 
-int serf__openssl_cert_depth(const serf_ssl_certificate_t *cert)
-{
-    return cert->depth_of_error;
-}
-
-
-apr_hash_t *serf__openssl_cert_issuer(
+static apr_hash_t *serf__openssl_cert_issuer(
     const serf_ssl_certificate_t *cert,
     apr_pool_t *pool)
 {
@@ -1625,7 +1619,7 @@ apr_hash_t *serf__openssl_cert_issuer(
 }
 
 
-apr_hash_t *serf__openssl_cert_subject(
+static apr_hash_t *serf__openssl_cert_subject(
     const serf_ssl_certificate_t *cert,
     apr_pool_t *pool)
 {
@@ -1638,7 +1632,7 @@ apr_hash_t *serf__openssl_cert_subject(
 }
 
 
-apr_hash_t *serf__openssl_cert_certificate(
+static apr_hash_t *serf__openssl_cert_certificate(
     const serf_ssl_certificate_t *cert,
     apr_pool_t *pool)
 {
@@ -1723,7 +1717,7 @@ apr_hash_t *serf__openssl_cert_certificate(
 }
 
 
-const char *serf__openssl_cert_export(
+static const char *serf__openssl_cert_export(
     const serf_ssl_certificate_t *cert,
     apr_pool_t *pool)
 {
@@ -1759,7 +1753,7 @@ static void disable_compression(openssl_context_t *ssl_ctx)
 #endif
 }
 
-apr_status_t
+static apr_status_t
 serf__openssl_use_compression(void *impl_ctx, int enabled)
 {
     openssl_context_t *ssl_ctx = impl_ctx;
@@ -1779,7 +1773,7 @@ serf__openssl_use_compression(void *impl_ctx, int enabled)
     return APR_EGENERAL;
 }
 
-apr_status_t
+static apr_status_t
 serf__openssl_show_trust_certificate_dialog(void *impl_ctx,
                                             const char *message,
                                             const char *ok_button_label,
@@ -1915,10 +1909,10 @@ const serf_bucket_type_t serf_bucket_type_openssl_decrypt = {
 };
 
 const serf_ssl_bucket_type_t serf_ssl_bucket_type_openssl = {
-    serf_bucket__openssl_decrypt_create,
-    serf_bucket__openssl_decrypt_context_get,
-    serf_bucket__openssl_encrypt_create,
-    serf_bucket__openssl_encrypt_context_get,
+    serf__openssl_bucket_decrypt_create,
+    serf__openssl_bucket_decrypt_context_get,
+    serf__openssl_bucket_encrypt_create,
+    serf__openssl_bucket_encrypt_context_get,
     serf__openssl_set_hostname,
     serf__openssl_client_cert_provider_set,
     serf__openssl_identity_provider_set,
