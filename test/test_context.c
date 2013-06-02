@@ -1073,12 +1073,14 @@ static const char *create_large_response_message(apr_pool_t *pool)
     for (i = 1; i < num_vecs; i++)
     {
         int chunk_len = 10 * i * 3;
+        char *chunk;
+        char *buf;
 
         /* end with empty chunk */
         if (i == num_vecs - 1)
             chunk_len = 0;
 
-        char *chunk, *buf = apr_pcalloc(pool, chunk_len + 1);
+        buf = apr_pcalloc(pool, chunk_len + 1);
         for (j = 0; j < chunk_len; j += 10)
             memcpy(buf + j, "0123456789", 10);
 
@@ -1131,7 +1133,7 @@ static const char *create_large_request_message(apr_pool_t *pool)
                           "Transfer-Encoding: chunked" CRLF
                           CRLF;
     struct iovec vecs[500];
-    const int num_vecs = 5;
+    const int num_vecs = 500;
     int i, j;
     apr_size_t len;
 
@@ -1141,12 +1143,14 @@ static const char *create_large_request_message(apr_pool_t *pool)
     for (i = 1; i < num_vecs; i++)
     {
         int chunk_len = 10 * i * 3;
+        char *chunk;
+        char *buf;
 
         /* end with empty chunk */
         if (i == num_vecs - 1)
             chunk_len = 0;
 
-        char *chunk, *buf = apr_pcalloc(pool, chunk_len + 1);
+        buf = apr_pcalloc(pool, chunk_len + 1);
         for (j = 0; j < chunk_len; j += 10)
             memcpy(buf + j, "0123456789", 10);
 
@@ -1760,6 +1764,7 @@ static void test_serf_ssl_large_response(CuTest *tc)
 
     /* Set up a test context with a server */
     apr_pool_t *test_pool = tc->testBaton;
+    const char *response;
 
     status = test_https_server_setup(&tb,
                                      message_list, num_requests,
@@ -1773,7 +1778,7 @@ static void test_serf_ssl_large_response(CuTest *tc)
     CuAssertIntEquals(tc, APR_SUCCESS, status);
 
     /* create large chunked response message */
-    const char *response = create_large_response_message(test_pool);
+    response = create_large_response_message(test_pool);
     action_list[0].kind = SERVER_RESPOND;
     action_list[0].text = response;
 

@@ -409,6 +409,7 @@ apr_status_t
 serf__setup_request_kerb_auth(peer_t peer,
                               int code,
                               serf_connection_t *conn,
+                              serf_request_t *request,
                               const char *method,
                               const char *uri,
                               serf_bucket_t *hdrs_bkt)

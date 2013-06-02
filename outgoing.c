@@ -1485,12 +1485,14 @@ serf_bucket_t *serf_request_bucket_request_create(
 
     /* Setup server authorization headers */
     if (ctx->authn_info.scheme)
-        ctx->authn_info.scheme->setup_request_func(HOST, 0, conn, method, uri,
+        ctx->authn_info.scheme->setup_request_func(HOST, 0, conn, request,
+                                                   method, uri,
                                                    hdrs_bkt);
 
     /* Setup proxy authorization headers */
     if (ctx->proxy_authn_info.scheme)
         ctx->proxy_authn_info.scheme->setup_request_func(PROXY, 0, conn,
+                                                         request,
                                                          method, uri, hdrs_bkt);
 
     return req_bkt;

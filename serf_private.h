@@ -26,6 +26,13 @@
 #define IOV_MAX 16
 #endif
 
+/* Older versions of APR do not have this macro.  */
+#ifdef APR_SIZE_MAX
+#define REQUESTED_MAX APR_SIZE_MAX
+#else
+#define REQUESTED_MAX (~((apr_size_t)0))
+#endif
+
 #define SERF_IO_CLIENT (1)
 #define SERF_IO_CONN (2)
 #define SERF_IO_LISTENER (3)
@@ -76,6 +83,13 @@ struct serf_request_t {
 
     int written;
     int priority;
+
+    /* This baton is currently only used for digest authentication, which
+       needs access to the uri of the request in the response handler.
+       If serf_request_t is replaced by a serf_http_request_t in the future,
+       which knows about uri and method and such, this baton won't be needed
+       anymore. */
+    void *auth_baton;
 
     struct serf_request_t *next;
 };
@@ -300,6 +314,7 @@ typedef apr_status_t
 (*serf__setup_request_func_t)(peer_t peer,
                               int code,
                               serf_connection_t *conn,
+                              serf_request_t *request,
                               const char *method,
                               const char *uri,
                               serf_bucket_t *hdrs_bkt);
