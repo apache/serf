@@ -304,3 +304,30 @@ void *test_teardown(void *baton)
 
     return NULL;
 }
+
+void *test_openssl_setup(void *dummy)
+{
+    serf_config_disable_bucket_impls(SERF_IMPL_SSL_ALL);
+    serf_config_enable_bucket_impls(SERF_IMPL_SSL_OPENSSL);
+
+    return test_setup(dummy);
+}
+
+void *test_openssl_teardown(void *baton)
+{
+    serf_config_enable_bucket_impls(SERF_IMPL_SSL_ALL);
+    return test_teardown(baton);
+}
+
+void *test_sectransssl_setup(void *dummy)
+{
+    serf_config_disable_bucket_impls(SERF_IMPL_SSL_ALL);
+    serf_config_enable_bucket_impls(SERF_IMPL_SSL_SECTRANS);
+    return test_setup(dummy);
+}
+
+void *test_sectransssl_teardown(void *baton)
+{
+    serf_config_enable_bucket_impls(SERF_IMPL_SSL_ALL);
+    return test_teardown(baton);
+}

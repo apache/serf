@@ -2141,19 +2141,54 @@ CuSuite *test_context(void)
     SUITE_ADD_TEST(suite, test_serf_request_timeout);
     SUITE_ADD_TEST(suite, test_serf_connection_large_response);
     SUITE_ADD_TEST(suite, test_serf_connection_large_request);
-    SUITE_ADD_TEST(suite, test_serf_ssl_handshake);
-    SUITE_ADD_TEST(suite, test_serf_ssl_trust_rootca);
-    SUITE_ADD_TEST(suite, test_serf_ssl_application_rejects_cert);
-    SUITE_ADD_TEST(suite, test_serf_ssl_certificate_chain_with_anchor);
-    SUITE_ADD_TEST(suite, test_serf_ssl_certificate_chain_all_from_server);
-    SUITE_ADD_TEST(suite, test_serf_ssl_no_servercert_callback_allok);
-    SUITE_ADD_TEST(suite, test_serf_ssl_no_servercert_callback_fail);
-    SUITE_ADD_TEST(suite, test_serf_ssl_large_response);
-    SUITE_ADD_TEST(suite, test_serf_ssl_large_request);
-    SUITE_ADD_TEST(suite, test_serf_ssl_client_certificate);
-    SUITE_ADD_TEST(suite, test_serf_ssl_identity);
-    SUITE_ADD_TEST(suite, test_serf_ssl_expired_server_cert);
-    SUITE_ADD_TEST(suite, test_serf_ssl_future_server_cert);
+
+#ifdef SERF_HAVE_OPENSSL
+    CuSuite *openssl_suite = CuSuiteNew();
+
+    CuSuiteSetSetupTeardownCallbacks(openssl_suite, test_openssl_setup,
+                                     test_openssl_teardown);
+
+    SUITE_ADD_TEST(openssl_suite, test_serf_ssl_handshake);
+    SUITE_ADD_TEST(openssl_suite, test_serf_ssl_trust_rootca);
+    SUITE_ADD_TEST(openssl_suite, test_serf_ssl_application_rejects_cert);
+    SUITE_ADD_TEST(openssl_suite, test_serf_ssl_certificate_chain_with_anchor);
+    SUITE_ADD_TEST(openssl_suite, test_serf_ssl_certificate_chain_all_from_server);
+    SUITE_ADD_TEST(openssl_suite, test_serf_ssl_no_servercert_callback_allok);
+    SUITE_ADD_TEST(openssl_suite, test_serf_ssl_no_servercert_callback_fail);
+    SUITE_ADD_TEST(openssl_suite, test_serf_ssl_large_response);
+    SUITE_ADD_TEST(openssl_suite, test_serf_ssl_large_request);
+    SUITE_ADD_TEST(openssl_suite, test_serf_ssl_client_certificate);
+    SUITE_ADD_TEST(openssl_suite, test_serf_ssl_identity);
+    SUITE_ADD_TEST(openssl_suite, test_serf_ssl_expired_server_cert);
+    SUITE_ADD_TEST(openssl_suite, test_serf_ssl_future_server_cert);
+
+    CuSuiteAddSuite(suite, openssl_suite);
+#endif
+#ifdef SERF_HAVE_SECURETRANSPORT
+    CuSuite *sectransssl_suite = CuSuiteNew();
+
+    CuSuiteSetSetupTeardownCallbacks(sectransssl_suite, test_sectransssl_setup,
+                                     test_sectransssl_teardown);
+
+    SUITE_ADD_TEST(sectransssl_suite, test_serf_ssl_handshake);
+    SUITE_ADD_TEST(sectransssl_suite, test_serf_ssl_trust_rootca);
+    SUITE_ADD_TEST(sectransssl_suite, test_serf_ssl_application_rejects_cert);
+    SUITE_ADD_TEST(sectransssl_suite,
+                   test_serf_ssl_certificate_chain_with_anchor);
+    SUITE_ADD_TEST(sectransssl_suite,
+                   test_serf_ssl_certificate_chain_all_from_server);
+    SUITE_ADD_TEST(sectransssl_suite,
+                   test_serf_ssl_no_servercert_callback_allok);
+    SUITE_ADD_TEST(sectransssl_suite, test_serf_ssl_no_servercert_callback_fail);
+    SUITE_ADD_TEST(sectransssl_suite, test_serf_ssl_large_response);
+    SUITE_ADD_TEST(sectransssl_suite, test_serf_ssl_large_request);
+    SUITE_ADD_TEST(sectransssl_suite, test_serf_ssl_client_certificate);
+    SUITE_ADD_TEST(sectransssl_suite, test_serf_ssl_identity);
+    SUITE_ADD_TEST(sectransssl_suite, test_serf_ssl_expired_server_cert);
+    SUITE_ADD_TEST(sectransssl_suite, test_serf_ssl_future_server_cert);
+
+    CuSuiteAddSuite(suite, sectransssl_suite);
+#endif
 
     return suite;
 }

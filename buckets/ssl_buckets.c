@@ -41,15 +41,22 @@ struct serf_ssl_context_t
     void *impl_ctx;
 };
 
-const serf_ssl_bucket_type_t *decide_ssl_bucket_type(void)
+static const serf_ssl_bucket_type_t *decide_ssl_bucket_type(void)
 {
-#ifdef SERF_HAVE_OPENSSL
-    return &serf_ssl_bucket_type_openssl;
-#elif defined SERF_HAVE_SECURETRANSPORT
-    return &serf_ssl_bucket_type_securetransport;
-#else
-    return NULL;
+    apr_uint32_t bucket_impls = serf_config_get_bucket_impls();
+
+    /* Prefer SSL implementation integrated in host platform, depending
+       on what's builtin and what the application allows. */
+#ifdef SERF_HAVE_SECURETRANSPORT
+    if (bucket_impls & SERF_IMPL_SSL_SECTRANS)
+        return &serf_ssl_bucket_type_securetransport;
 #endif
+#ifdef SERF_HAVE_OPENSSL
+    if (bucket_impls & SERF_IMPL_SSL_OPENSSL)
+        return &serf_ssl_bucket_type_openssl;
+#endif
+
+    return NULL;
 }
 
 void serf_ssl_client_cert_provider_set(

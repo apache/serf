@@ -503,14 +503,40 @@ CuSuite *test_ssl(void)
 
     CuSuiteSetSetupTeardownCallbacks(suite, test_setup, test_teardown);
 
-    SUITE_ADD_TEST(suite, test_ssl_init);
-    SUITE_ADD_TEST(suite, test_ssl_load_cert_file);
-    SUITE_ADD_TEST(suite, test_ssl_cert_subject);
-    SUITE_ADD_TEST(suite, test_ssl_cert_issuer);
-    SUITE_ADD_TEST(suite, test_ssl_cert_certificate);
-    SUITE_ADD_TEST(suite, test_ssl_load_CA_cert_from_file);
-    SUITE_ADD_TEST(suite, test_ssl_cert_export);
-    SUITE_ADD_TEST(suite, test_sectrans_DER_decoding);
+#ifdef SERF_HAVE_OPENSSL
+    CuSuite *openssl_suite = CuSuiteNew();
+
+    CuSuiteSetSetupTeardownCallbacks(openssl_suite, test_openssl_setup,
+                                     test_openssl_teardown);
+
+    SUITE_ADD_TEST(openssl_suite, test_ssl_init);
+    SUITE_ADD_TEST(openssl_suite, test_ssl_load_cert_file);
+    SUITE_ADD_TEST(openssl_suite, test_ssl_cert_subject);
+    SUITE_ADD_TEST(openssl_suite, test_ssl_cert_issuer);
+    SUITE_ADD_TEST(openssl_suite, test_ssl_cert_certificate);
+    SUITE_ADD_TEST(openssl_suite, test_ssl_load_CA_cert_from_file);
+    SUITE_ADD_TEST(openssl_suite, test_ssl_cert_export);
+    SUITE_ADD_TEST(openssl_suite, test_sectrans_DER_decoding);
+
+    CuSuiteAddSuite(suite, openssl_suite);
+#endif
+#ifdef SERF_HAVE_SECURETRANSPORT
+    CuSuite *sectransssl_suite = CuSuiteNew();
+
+    CuSuiteSetSetupTeardownCallbacks(sectransssl_suite, test_sectransssl_setup,
+                                     test_sectransssl_teardown);
+
+    SUITE_ADD_TEST(sectransssl_suite, test_ssl_init);
+    SUITE_ADD_TEST(sectransssl_suite, test_ssl_load_cert_file);
+    SUITE_ADD_TEST(sectransssl_suite, test_ssl_cert_subject);
+    SUITE_ADD_TEST(sectransssl_suite, test_ssl_cert_issuer);
+    SUITE_ADD_TEST(sectransssl_suite, test_ssl_cert_certificate);
+    SUITE_ADD_TEST(sectransssl_suite, test_ssl_load_CA_cert_from_file);
+    SUITE_ADD_TEST(sectransssl_suite, test_ssl_cert_export);
+    SUITE_ADD_TEST(sectransssl_suite, test_sectrans_DER_decoding);
+
+    CuSuiteAddSuite(suite, sectransssl_suite);
+#endif
 
     return suite;
 }

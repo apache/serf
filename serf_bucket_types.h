@@ -35,6 +35,32 @@
 extern "C" {
 #endif
 
+
+#define SERF_IMPL_SSL_SECTRANS    0x0001
+#define SERF_IMPL_SSL_OPENSSL     0x0002
+#define SERF_IMPL_SSL_ALL         0x0003
+
+#define SERF_IMPL_NONE            0x0000
+#define SERF_IMPL_ALL             0xFFFF
+
+/**
+ * From the compiled bucket implementations, activate only those specified
+ * in the SELECTED mask.
+ */
+apr_uint32_t serf_config_enable_bucket_impls(apr_uint32_t selected);
+
+/**
+ * From the currently active bucket implementations, disable those
+ * specified in the SELECTED mask.
+ */
+apr_uint32_t serf_config_disable_bucket_impls(apr_uint32_t selected);
+
+/**
+ * Get the current list of active bucket implementations. Returns a mask
+ * made of SERF_IMPL* bits.
+ */
+apr_uint32_t serf_config_get_bucket_impls(void);
+
 /* ==================================================================== */
 
 

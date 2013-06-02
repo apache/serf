@@ -149,6 +149,10 @@ apr_status_t test_server_proxy_setup(
 
 void *test_setup(void *baton);
 void *test_teardown(void *baton);
+void *test_openssl_setup(void *baton);
+void *test_openssl_teardown(void *baton);
+void *test_sectransssl_setup(void *baton);
+void *test_sectransssl_teardown(void *baton);
 
 /* Mock bucket type and constructor */
 typedef struct {

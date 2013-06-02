@@ -14,10 +14,77 @@
  */
 
 #include <apr_pools.h>
+#include <apr_version.h>
+#include <apr_atomic.h>
 
 #include "serf.h"
 #include "serf_bucket_util.h"
 #include "serf_private.h"
+#include "serf_bucket_types.h"
+
+/* ==================================================================== */
+
+/* Code to select specific implementations for buckets (currently only
+   for SSL buckets).
+ */
+
+static apr_uint32_t available_bucket_impls;
+static apr_uint32_t bucket_impls;
+static apr_uint32_t have_init_bucket_impls = 0;
+
+/* Initializes the list of chosen bucket implementation libraries with those
+   included at compile time. */
+static void init_bucket_impls()
+{
+    apr_uint32_t val;
+#if APR_VERSION_AT_LEAST(1,0,0)
+    val = apr_atomic_xchg32(&have_init_bucket_impls, 1);
+#else
+    val = apr_atomic_cas(&have_init_bucket_impls, 1, 0);
+#endif
+
+    if (!val)
+    {
+        available_bucket_impls = 0;
+#ifdef SERF_HAVE_OPENSSL
+        available_bucket_impls |= SERF_IMPL_SSL_OPENSSL;
+#endif
+#ifdef SERF_HAVE_SECURETRANSPORT
+        available_bucket_impls |= SERF_IMPL_SSL_SECTRANS;
+#endif
+
+        bucket_impls = available_bucket_impls;
+    }
+}
+
+apr_uint32_t serf_config_enable_bucket_impls(apr_uint32_t selected)
+{
+    init_bucket_impls();
+
+    bucket_impls |= selected;
+    bucket_impls &= available_bucket_impls;
+
+    return bucket_impls;
+}
+
+apr_uint32_t serf_config_disable_bucket_impls(apr_uint32_t selected)
+{
+    init_bucket_impls();
+
+    bucket_impls &= ~selected;
+    bucket_impls &= available_bucket_impls;
+
+    return bucket_impls;
+}
+
+apr_uint32_t serf_config_get_bucket_impls(void)
+{
+    init_bucket_impls();
+
+    return bucket_impls;
+}
+
+/* ==================================================================== */
 
 serf_bucket_t *serf_bucket_create(
     const serf_bucket_type_t *type,
