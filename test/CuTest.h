@@ -24,8 +24,10 @@
  * Originally obtained from "http://cutest.sourceforge.net/" version 1.4.
  *
  * Modified for serf as follows
- *    3) added CuSuiteSetSetupTeardownCallbacks to set a constructor and
-         destructor per test suite, run for each test.
+ *    4) added CuSuiteSetSetupTeardownCallbacks to set a constructor and
+ *       destructor per test suite, run for each test.
+ *    3) added CuAssertStrnEquals(), CuAssertStrnEquals_Msg() and
+ *       CuAssertStrnEquals_LineMsg()
  *    2) removed const from struct CuTest.name
  *    1) added CuStringFree(), CuTestFree(), CuSuiteFree(), and
  *       CuSuiteFreeDeep()

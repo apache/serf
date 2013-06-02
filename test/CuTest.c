@@ -23,10 +23,7 @@
  *
  * Originally obtained from "http://cutest.sourceforge.net/" version 1.4.
  *
- * Modified for serf as follows
- *    1) added CuStringFree(), CuTestFree(), CuSuiteFree(), and
- *       CuSuiteFreeDeep()
- *    0) reformatted the whitespace (doh!)
+ * See CuTest.h for a list of serf-specific modifications.
  */
 #include <assert.h>
 #include <setjmp.h>
@@ -239,8 +236,26 @@ void CuAssertStrnEquals_LineMsg(CuTest* tc, const char* file, int line, const ch
 void CuAssertStrEquals_LineMsg(CuTest* tc, const char* file, int line, const char* message,
     const char* expected, const char* actual)
 {
-    CuAssertStrnEquals_LineMsg(tc, file, line, message, expected, strlen(expected), actual);
-}
+    CuString string;
+    if ((expected == NULL && actual == NULL) ||
+        (expected != NULL && actual != NULL &&
+         strcmp(expected, actual) == 0))
+    {
+        return;
+    }
+
+    CuStringInit(&string);
+    if (message != NULL)
+    {
+        CuStringAppend(&string, message);
+        CuStringAppend(&string, ": ");
+    }
+    CuStringAppend(&string, "expected <");
+    CuStringAppend(&string, expected);
+    CuStringAppend(&string, "> but was <");
+    CuStringAppend(&string, actual);
+    CuStringAppend(&string, ">");
+    CuFailInternal(tc, file, line, &string);}
 
 void CuAssertIntEquals_LineMsg(CuTest* tc, const char* file, int line, const char* message,
     int expected, int actual)
