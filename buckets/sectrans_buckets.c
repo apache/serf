@@ -1535,11 +1535,18 @@ static apr_status_t do_handshake(sectrans_context_t *ssl_ctx)
 
         serf__log(SSL_VERBOSE, __FILE__, "do_handshake called.\n");
 
-        if (ssl_ctx->evaluate_in_progress && !ssl_ctx->result) {
-            serf__log(SSL_VERBOSE, __FILE__, "evaluation in progress, but no "
-                      " results were received yet.\n");
-
-            return APR_EAGAIN;
+        if (ssl_ctx->evaluate_in_progress) {
+            if (ssl_ctx->result) {
+                status = validate_server_certificate(ssl_ctx);
+                ssl_ctx->evaluate_in_progress = 0;
+                if (!status)
+                    return APR_EAGAIN;
+                return status;
+            } else {
+                serf__log(SSL_VERBOSE, __FILE__, "evaluation in progress, but "
+                          "no results were received yet.\n");
+                return APR_EAGAIN;
+            }
         }
 
         osstatus = SSLHandshake(ssl_ctx->st_ctxr);
