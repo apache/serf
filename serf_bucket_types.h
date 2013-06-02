@@ -527,7 +527,9 @@ serf_bucket_t *serf_bucket_limit_create(
 #define SERF_SSL_CERT_FATAL          0x8000
 
 extern const serf_bucket_type_t serf_bucket_type_ssl_encrypt;
-#define SERF_BUCKET_IS_SSL_ENCRYPT(b) SERF_BUCKET_CHECK((b), ssl_encrypt)
+#define SERF_BUCKET_IS_SSL_ENCRYPT(b) \
+(((b)->type == &serf_bucket_type_openssl_encrypt) || \
+((b)->type == &serf_bucket_type_sectrans_encrypt))
 
 typedef struct serf_ssl_context_t serf_ssl_context_t;
 typedef struct serf_ssl_certificate_t serf_ssl_certificate_t;
@@ -778,8 +780,9 @@ serf_ssl_context_t *serf_bucket_ssl_encrypt_context_get(
 
 
 extern const serf_bucket_type_t serf_bucket_type_ssl_decrypt;
-#define SERF_BUCKET_IS_SSL_DECRYPT(b) SERF_BUCKET_CHECK((b), ssl_decrypt)
-
+#define SERF_BUCKET_IS_SSL_DECRYPT(b) \
+    (((b)->type == &serf_bucket_type_openssl_decrypt) || \
+     ((b)->type == &serf_bucket_type_sectrans_decrypt))
 serf_bucket_t *serf_bucket_ssl_decrypt_create(
     serf_bucket_t *stream,
     serf_ssl_context_t *ssl_context,

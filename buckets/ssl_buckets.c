@@ -346,3 +346,11 @@ apr_status_t serf_ssl_load_cert_file(serf_ssl_certificate_t **cert,
 
     return type->load_CA_cert_from_file(cert, file_path, pool);
 }
+
+/* Define dummy ssl_decrypt and ssl_encrypt buckets. These are needed because
+   they are exported symbols, previously (not anymore) used in the
+   SERF_BUCKET_IS_SSL_DECRYPT and SERF_BUCKET_IS_SSL_ENCRYPT macro's. */
+const serf_bucket_type_t serf_bucket_type_ssl_decrypt = {
+    "ABSTRACT DECRYPT", NULL, NULL, NULL, NULL, NULL, NULL, NULL };
+const serf_bucket_type_t serf_bucket_type_ssl_encrypt = {
+    "ABSTRACT ENCRYPT", NULL, NULL, NULL, NULL, NULL, NULL, NULL };

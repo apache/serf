@@ -2273,7 +2273,7 @@ const serf_bucket_type_t serf_bucket_type_sectrans_encrypt = {
     serf_sectrans_encrypt_destroy_and_data,
 };
 
-const serf_bucket_type_t    serf_bucket_type_sectrans_decrypt = {
+const serf_bucket_type_t serf_bucket_type_sectrans_decrypt = {
     "SECURETRANSPORTDECRYPT",
     serf_sectrans_decrypt_read,
     serf_sectrans_decrypt_readline,

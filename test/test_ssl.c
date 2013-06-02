@@ -47,10 +47,13 @@ static void test_ssl_init(CuTest *tc)
 
     bkt = serf_bucket_ssl_decrypt_create(stream, NULL,
                                          alloc);
+    CuAssertTrue(tc, SERF_BUCKET_IS_SSL_DECRYPT(bkt));
+
     ssl_context = serf_bucket_ssl_decrypt_context_get(bkt);
 
     bkt = serf_bucket_ssl_encrypt_create(stream, ssl_context,
                                          alloc);
+    CuAssertTrue(tc, SERF_BUCKET_IS_SSL_ENCRYPT(bkt));
 
     status = serf_ssl_use_default_certificates(ssl_context);
 
