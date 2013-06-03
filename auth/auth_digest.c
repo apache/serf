@@ -361,6 +361,7 @@ apr_status_t
 serf__setup_request_digest_auth(peer_t peer,
                                 int code,
                                 serf_connection_t *conn,
+                                serf_request_t *request,
                                 const char *method,
                                 const char *uri,
                                 serf_bucket_t *hdrs_bkt)
@@ -373,7 +374,9 @@ serf__setup_request_digest_auth(peer_t peer,
         const char *value;
         apr_uri_t parsed_uri;
 
-        /* extract path from uri */
+        /* TODO: per request pool? */
+
+        /* Extract path from uri. */
         status = apr_uri_parse(conn->pool, uri, &parsed_uri);
 
         /* Build a new Authorization header. */
@@ -385,6 +388,11 @@ serf__setup_request_digest_auth(peer_t peer,
         serf_bucket_headers_setn(hdrs_bkt, digest_info->header,
                                  value);
         digest_info->digest_nc++;
+
+        /* Store the uri of this request on the serf_request_t object, to make
+           it available when validating the Authentication-Info header of the
+           matching response. */
+        request->auth_baton = parsed_uri.path;
     }
 
     return status;
@@ -459,8 +467,9 @@ serf__validate_response_digest_auth(peer_t peer,
     if (rspauth) {
         const char *ha2, *tmp, *resp_hdr_hex;
         unsigned char resp_hdr[APR_MD5_DIGESTSIZE];
+        const char *req_uri = request->auth_baton;
 
-        ha2 = build_digest_ha2(conn->host_info.path, "", qop, pool);
+        ha2 = build_digest_ha2(req_uri, "", qop, pool);
         tmp = apr_psprintf(pool, "%s:%s:%s:%s:%s:%s",
                            digest_info->ha1, digest_info->nonce, nc_str,
                            digest_info->cnonce, digest_info->qop, ha2);

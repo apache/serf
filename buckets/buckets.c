@@ -464,11 +464,10 @@ apr_status_t serf_linebuf_fetch(
 
                 /* Whatever was read, the line is now ready for use. */
                 linebuf->state = SERF_LINEBUF_READY;
+            } else {
+                /* no data available, try again later. */
+                return APR_EAGAIN;
             }
-            /* ### we need data. gotta check this char. bail if zero?! */
-            /* else len == 0 */
-
-            /* ### status */
         }
         else {
             int found;

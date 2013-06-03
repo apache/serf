@@ -77,6 +77,13 @@ struct serf_request_t {
     int written;
     int priority;
 
+    /* This baton is currently only used for digest authentication, which
+       needs access to the uri of the request in the response handler.
+       If serf_request_t is replaced by a serf_http_request_t in the future,
+       which knows about uri and method and such, this baton won't be needed
+       anymore. */
+    void *auth_baton;
+
     struct serf_request_t *next;
 };
 
@@ -300,6 +307,7 @@ typedef apr_status_t
 (*serf__setup_request_func_t)(peer_t peer,
                               int code,
                               serf_connection_t *conn,
+                              serf_request_t *request,
                               const char *method,
                               const char *uri,
                               serf_bucket_t *hdrs_bkt);
