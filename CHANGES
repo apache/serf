@@ -1,5 +1,5 @@
-Serf 1.2.1 [2013-06-??, from /tags/1.2.1]
-  Fix issue 95: add gssapi switches to configure (r1864)
+Serf 1.2.1 [2013-06-03, from /tags/1.2.1]
+  Fix issue 95: add gssapi switches to configure (r1864, r1900)
   Fix issue 97: skip mmap bucket if APR_HAS_MMAP is undefined (r1877)
   Fix issue 100: building against an old Windows Platform SDK (r1881)
   Fix issue 102: digest authentication failures (r1885)
