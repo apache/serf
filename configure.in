@@ -219,11 +219,30 @@ AC_ARG_WITH(gssapi,
 		GSSAPI_confopts=
 	fi
 	GSSAPI_cflags=`"$krb5conf" --cflags $GSSAPI_confopts`
+	GSSAPI_libs=`"$krb5conf" --libs $GSSAPI_confopts`
+	if test -z "$GSSAPI_confopts"; then
+		case "${host_os}" in
+			solaris*)		
+			  GSSAPI_cflags="$GSSAPI_cflags -I/usr/include/gssapi"
+			  GSSAPI_libs="$GSSAPI_libs -lgss"
+			  ;;
+		esac
+	fi
 	APR_ADDTO(CFLAGS, "$GSSAPI_cflags")
 	APR_ADDTO(CFLAGS, [-DSERF_HAVE_GSSAPI])
-	APR_ADDTO(CFLAGS, [-g])
-	GSSAPI_libs=`"$krb5conf" --libs $GSSAPI_confopts`
 	APR_ADDTO(LDFLAGS, "$GSSAPI_libs")
+	AC_MSG_CHECKING([if gssapi works])
+	AC_LINK_IFELSE([AC_LANG_SOURCE([[
+#include <gssapi.h>
+int main()
+{gss_init_sec_context(NULL, NULL, NULL, NULL, NULL, 0, 0, NULL, NULL, NULL, NULL, NULL, NULL);}]])],
+	lib_gssapi="yes", lib_gssapi="no")
+	if test "$lib_gssapi" = "yes"; then
+		AC_MSG_RESULT([yes])
+	else
+		AC_MSG_RESULT([no])
+		AC_MSG_ERROR([cannot find GSSAPI (Kerberos)])
+	fi
     else
      	AC_MSG_RESULT([no])
 	AC_MSG_WARN([--with-gssapi specified but krb5-config not found])
