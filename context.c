@@ -373,19 +373,21 @@ const char *serf_error_string(apr_status_t errcode)
         return "An error occurred during SSL communication";
     case SERF_ERROR_SSL_CERT_FAILED:
         return "An SSL certificate related error occurred ";
+    case SERF_ERROR_SSL_CLIENT_CERT_PW_FAILED:
+        return "The client certificate requires a password, but the necessary "
+               "application callback isn't configured.";
     case SERF_ERROR_SSL_USER_DENIED_CERT:
          return "The user denied the use of the server SSL certificate.";
     case SERF_ERROR_SSL_FATAL_CERT_INVALID:
-            return "Invalid setting or result during server certificate chain "
-                   "evaluation.";
+        return "Invalid setting or result during server certificate chain "
+               "evaluation.";
     case SERF_ERROR_SSL_FATAL_CERT_DENIED_IN_KEYCHAIN:
          return "The user set the certificate as 'not trusted' in Keychain.";
     case SERF_ERROR_SSL_FATAL_CERT_TRUST_FAILURE:
          return "Error in the OS X trust framework during server certificate "
                 "chain evaluation.";
     case SERF_ERROR_SSL_FATAL_CERT_FAILED:
-            return "Unspecified error during server certificate chain "
-                   "evaluation.";
+         return "Unspecified error during server certificate chain evaluation.";
     case SERF_ERROR_SSL_NO_IDENTITIES_AVAILABLE:
          return "Can't find matching identities in any of the keychains.";
     case SERF_ERROR_AUTHN_FAILED:
