@@ -97,18 +97,23 @@ typedef struct serf_request_t serf_request_t;
 /* Password for client certificate not provided or valid. */
 #define SERF_ERROR_SSL_CLIENT_CERT_PW_FAILED (SERF_ERROR_START + 72)
 
-/* Certificate should be confirmed by user, but we are not allowed to interact
-   with the user. */
-#define SERF_ERROR_SSL_CANT_CONFIRM_CERT (SERF_ERROR_START + 73)
-
 /* User denied the use of the certificate. */
 #define SERF_ERROR_SSL_USER_DENIED_CERT (SERF_ERROR_START + 74)
 
+/* Fatal error during server certificate validation */
+#define SERF_ERROR_SSL_FATAL_CERT_INVALID (SERF_ERROR_START + 75)
+
 /* Certificate was marked as 'Never Trust' in Keychain. */
-#define SERF_ERROR_SSL_KEYCHAIN_DENIED_CERT (SERF_ERROR_START + 75)
+#define SERF_ERROR_SSL_FATAL_CERT_DENIED_IN_KEYCHAIN (SERF_ERROR_START + 76)
+
+/* Fatal error during server certificate validation */
+#define SERF_ERROR_SSL_FATAL_CERT_TRUST_FAILURE (SERF_ERROR_START + 77)
+
+/* Fatal error during server certificate validation */
+#define SERF_ERROR_SSL_FATAL_CERT_FAILED (SERF_ERROR_START + 78)
 
 /* There are no identities available in the keychains to select from. */
-#define SERF_ERROR_SSL_NO_IDENTITIES_AVAILABLE (SERF_ERROR_START + 76)
+#define SERF_ERROR_SSL_NO_IDENTITIES_AVAILABLE (SERF_ERROR_START + 79)
 
 /* General authentication related errors */
 #define SERF_ERROR_AUTHN_FAILED (SERF_ERROR_START + 90)

@@ -129,8 +129,13 @@ typedef struct sectrans_context_t {
     serf_ssl_server_cert_chain_cb_t server_cert_chain_callback;
     void *server_cert_userdata;
 
+    /* Flag, if set use the root certificates stored in the System keychain
+       when evaluating server certificates. */
+    int use_system_roots;
+
     /* cache of the trusted certificates, added via serf_ssl_trust_cert(). */
     apr_array_header_t *anchor_certs;
+    CFArrayRef anchor_certrefs;
 
     /* Flag set when an asynchronous evaluation of the server certificate chain
        is ongoing. */
@@ -800,33 +805,68 @@ validate_server_certificate(sectrans_context_t *ssl_ctx)
     apr_pool_cleanup_register(ssl_ctx->handshake_pool, ssl_ctx,
                               cfrelease_trust, cfrelease_trust);
 
-    /* If the application provided certificates to trust, use them here. */
-    if (ssl_ctx->anchor_certs)
+    if (!ssl_ctx->evaluate_in_progress)
     {
-        int anchor_certs = ssl_ctx->anchor_certs->nelts;
-        int i;
-        SecCertificateRef certs[anchor_certs];
-
-        for (i = 0; i < anchor_certs; i++)
-            certs[i] = APR_ARRAY_IDX(ssl_ctx->anchor_certs, i,
-                                     SecCertificateRef);
-
-        anchor_certrefs = CFArrayCreate(kCFAllocatorDefault,
-                                        (void *)certs,
-                                        anchor_certs,
-                                        NULL);
-
-        osstatus = SecTrustSetAnchorCertificates(ssl_ctx->trust,
-                                                 anchor_certrefs);
-        if (osstatus != noErr) {
-            status = translate_sectrans_status(osstatus);
-            goto cleanup;
-        }
-    }
-
-    if (!ssl_ctx->evaluate_in_progress) {
+        CFArrayRef root_certrefs = NULL;
         void *sectrans_cls;
         id tmp;
+
+        /* If the application provided certificates to trust, use them here. */
+        if (ssl_ctx->anchor_certs)
+        {
+            int anchor_certs = ssl_ctx->anchor_certs->nelts;
+            int i;
+            SecCertificateRef certs[anchor_certs];
+
+            for (i = 0; i < anchor_certs; i++)
+                certs[i] = APR_ARRAY_IDX(ssl_ctx->anchor_certs, i,
+                                         SecCertificateRef);
+
+            anchor_certrefs = CFArrayCreate(kCFAllocatorDefault,
+                                            (void *)certs,
+                                            anchor_certs,
+                                            NULL);
+            ssl_ctx->anchor_certrefs = anchor_certrefs;
+        }
+
+        /* If we can use the system's default root certificates, copy them
+           here. */
+        if (ssl_ctx->use_system_roots)
+        {
+            osstatus = SecTrustCopyAnchorCertificates(&root_certrefs);
+            if (osstatus != noErr) {
+                status = translate_sectrans_status(osstatus);
+                goto cleanup;
+            }
+        }
+
+        /* Make one list of custom anchor and system root certificates and
+           add them to the trust object to use them during evaluation of the
+           server certificate chain. */
+        if (anchor_certrefs || root_certrefs)
+        {
+            CFIndex anchors, roots;
+            CFMutableArrayRef all_certrefs;
+
+            anchors = anchor_certrefs ? CFArrayGetCount(anchor_certrefs) : 0;
+            roots = root_certrefs ? CFArrayGetCount(root_certrefs) : 0;
+
+            all_certrefs = CFArrayCreateMutable(kCFAllocatorDefault,
+                                                anchors + roots, NULL);
+            if (anchor_certrefs)
+                CFArrayAppendArray(all_certrefs, anchor_certrefs,
+                                   CFRangeMake(0, anchors));
+            if (root_certrefs)
+                CFArrayAppendArray(all_certrefs, root_certrefs,
+                                   CFRangeMake(0, roots));
+
+            osstatus = SecTrustSetAnchorCertificates(ssl_ctx->trust,
+                                                     all_certrefs);
+            if (osstatus != noErr) {
+                status = translate_sectrans_status(osstatus);
+                goto cleanup;
+            }
+        }
 
         ssl_ctx->evaluate_in_progress = 1;
 
@@ -849,45 +889,78 @@ validate_server_certificate(sectrans_context_t *ssl_ctx)
 
     /* Based on the contents of the user's Keychain, Secure Transport will make
        a first validation of this certificate chain.
-       The status set here is temporary, as it can be overridden by the
-       application. */
+       The status set here can in some cases be overridden by the application.*/
     switch (ssl_ctx->result)
     {
-        case kSecTrustResultUnspecified:
+        /* kSecTrustResultProceed Indicates you may proceed.
+           User trusts this certificate, so continue without calling back to
+           the application. */
         case kSecTrustResultProceed:
-            serf__log(SSL_VERBOSE, __FILE__,
-                      "kSecTrustResultProceed/Unspecified.\n");
+            serf__log(SSL_VERBOSE, __FILE__, "kSecTrustResultProceed.\n");
             status = APR_SUCCESS;
+            goto cleanup;
+
+        /* Non-fatal errors, application decides. */
+
+        /* kSecTrustResultUnspecified Indicates user intent is unknown.
+           (certificate is valid, but user didn't specify trust) */
+        case kSecTrustResultUnspecified:
+            serf__log(SSL_VERBOSE, __FILE__, "kSecTrustResultUnspecified.\n");
+            status = APR_SUCCESS;
+            failures = 0;
             break;
+
+        /* kSecTrustResultConfirm Indicates confirmation with the user is
+           required before proceeding. */
         case kSecTrustResultConfirm:
             serf__log(SSL_VERBOSE, __FILE__, "kSecTrustResultConfirm.\n");
+            status = SERF_ERROR_SSL_CERT_FAILED;
+            failures = SERF_SSL_CERT_CONFIRM_NEEDED;
             break;
+
+        /* kSecTrustResultRecoverableTrustFailure Indicates a trust framework
+           failure; retry after fixing inputs. */
         case kSecTrustResultRecoverableTrustFailure:
             serf__log(SSL_VERBOSE, __FILE__,
                       "kSecTrustResultRecoverableTrustFailure.\n");
+            status = SERF_ERROR_SSL_CERT_FAILED;
+            failures = 0; /* Failure info will be added later */
             break;
 
-        /* Fatal errors */
+        /* Fatal errors. Since they cannot be overridden, don't call back to the
+           application but return with an error. */
+
+        /* kSecTrustResultInvalid Indicates an invalid setting or result. */
         case kSecTrustResultInvalid:
             serf__log(SSL_VERBOSE, __FILE__, "kSecTrustResultInvalid.\n");
-            status = SERF_ERROR_SSL_CERT_FAILED;
-            break;
+            status = SERF_ERROR_SSL_FATAL_CERT_INVALID;
+            goto cleanup;
+
+        /* kSecTrustResultDeny Indicates a user-configured deny; do not
+           proceed. */
         case kSecTrustResultDeny:
             serf__log(SSL_VERBOSE, __FILE__, "kSecTrustResultDeny.\n");
-            status = SERF_ERROR_SSL_KEYCHAIN_DENIED_CERT;
-            break;
+            status = SERF_ERROR_SSL_FATAL_CERT_DENIED_IN_KEYCHAIN;
+            goto cleanup;
+
+        /* kSecTrustResultFatalTrustFailure Indicates a trust framework failure;
+           no "easy" fix. */
         case kSecTrustResultFatalTrustFailure:
             serf__log(SSL_VERBOSE, __FILE__, "kSecTrustResultFatalTrustFailure.\n");
-            status = SERF_ERROR_SSL_CERT_FAILED;
-            break;
+            status = SERF_ERROR_SSL_FATAL_CERT_TRUST_FAILURE;
+            goto cleanup;
+
+        /* kSecTrustResultOtherError Indicates a failure other than that of
+           trust evaluation. */
         case kSecTrustResultOtherError:
             serf__log(SSL_VERBOSE, __FILE__, "kSecTrustResultOtherError.\n");
-            status = SERF_ERROR_SSL_CERT_FAILED;
-            break;
+            status = SERF_ERROR_SSL_FATAL_CERT_FAILED;
+            goto cleanup;
         default:
-            serf__log(SSL_VERBOSE, __FILE__, "unknown.\n");
-            status = SERF_ERROR_SSL_CERT_FAILED;
-            break;
+            serf__log(SSL_VERBOSE, __FILE__, "unknown result from trust "
+                      "evaluation.\n");
+            status = SERF_ERROR_SSL_FATAL_CERT_FAILED;
+            goto cleanup;
     }
 
     /* Secure Transport only reports one error per evaluation. This is stored
@@ -901,7 +974,7 @@ validate_server_certificate(sectrans_context_t *ssl_ctx)
         CFStringRef errref = CFDictionaryGetValue(dict, kSecPropertyTypeError);
 
         chain_depth = CFArrayGetCount(props); /* length of the full chain,
-                                               including anchor cert. */
+                                                 including anchor cert. */
 
         if (errref) {
             apr_pool_t *tmppool;
@@ -912,10 +985,12 @@ validate_server_certificate(sectrans_context_t *ssl_ctx)
 
             failures |= convert_certerr_to_failure(errstr);
             serf__log(SSL_VERBOSE, __FILE__,
-                      "Certificate ERROR: %s.\n", errstr);
+                      "Certificate ERROR: %s in chain of length %d.\n", errstr,
+                      chain_depth);
             apr_pool_destroy(tmppool);
         } else {
-            serf__log(SSL_VERBOSE, __FILE__, "Certificate validation ok.\n");
+            serf__log(SSL_VERBOSE, __FILE__, "No certificate validation errors "
+                      "found.\n");
         }
 
         CFRelease(props);
@@ -1017,7 +1092,7 @@ validate_server_certificate(sectrans_context_t *ssl_ctx)
 
             status = find_issuer_cert_in_array(&certs[certs_len],
                                                cert,
-                                               anchor_certrefs,
+                                               ssl_ctx->anchor_certrefs,
                                                ssl_ctx->handshake_pool);
             if (!status)
                 actual_len++;
@@ -1737,8 +1812,13 @@ serf__sectrans_set_hostname(void *impl_ctx, const char * hostname)
 static apr_status_t
 serf__sectrans_use_default_certificates(void *impl_ctx)
 {
-    /* Secure transport uses default certificates automatically.
-       TODO: verify if this true. */
+    sectrans_context_t *ssl_ctx = impl_ctx;
+
+    /* When constructing the trust object to validate the server certificate
+       chain, extract all root certificates from the System keychain first
+       to include them during validation. */
+    ssl_ctx->use_system_roots = 1;
+
     return APR_SUCCESS;
 }
 
