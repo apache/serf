@@ -1,4 +1,17 @@
-Serf 1.2.0 [2013-02-22, from /tags/1.2.0]
+Serf 1.2.1 [2013-06-03, from /tags/1.2.1]
+  Fix issue 95: add gssapi switches to configure (r1864, r1900)
+  Fix issue 97: skip mmap bucket if APR_HAS_MMAP is undefined (r1877)
+  Fix issue 100: building against an old Windows Platform SDK (r1881)
+  Fix issue 102: digest authentication failures (r1885)
+  Improve error return values in SSPI authentication (r1804)
+  Ensure serf-1.pc is constructed by serfmake (r1865)
+  Optimize SPNego authentication processing (r1868)
+  Reject certs that application does not like (r1794)
+  Fix possible endless loop in serf_linebuf_fetch() (r1816)
+  Windows build: dereference INTDIR in serf.mak (r1882)
+
+
+Serf 1.2.0 [2013-02-22, from /tags/1.2.0, r1726]
   Fixed issue 94: Serf can enter an infinite loop when server aborts conn.
   Fixed issue 91: Serf doesn't handle an incoming 408 Timeout Request
   Fixed issue 80: Serf is not handling Negotiate authentication correctly
