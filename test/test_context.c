@@ -246,8 +246,8 @@ create_new_request_with_resp_hdlr(test_baton_t *tb,
 static void test_serf_connection_request_create(CuTest *tc)
 {
     test_baton_t *tb;
-    const int num_requests = 2;
-    handler_baton_t handler_ctx[num_requests];
+    handler_baton_t handler_ctx[2];
+    const int num_requests = sizeof(handler_ctx)/sizeof(handler_ctx[0]);
     apr_status_t status;
     int i;
     test_server_message_t message_list[] = {
@@ -296,8 +296,8 @@ static void test_serf_connection_request_create(CuTest *tc)
 static void test_serf_connection_priority_request_create(CuTest *tc)
 {
     test_baton_t *tb;
-    const int num_requests = 3;
-    handler_baton_t handler_ctx[num_requests];
+    handler_baton_t handler_ctx[3];
+    const int num_requests = sizeof(handler_ctx)/sizeof(handler_ctx[0]);
     apr_status_t status;
     int i;
 
@@ -351,8 +351,8 @@ static void test_serf_closed_connection(CuTest *tc)
 {
     test_baton_t *tb;
     apr_status_t status;
-    const int num_requests = 10;
-    handler_baton_t handler_ctx[num_requests];
+    handler_baton_t handler_ctx[10];
+    const int num_requests = sizeof(handler_ctx)/sizeof(handler_ctx[0]);
     int done = FALSE, i;
 
     test_server_message_t message_list[] = {
@@ -452,8 +452,9 @@ static void test_serf_closed_connection(CuTest *tc)
 static void test_serf_setup_proxy(CuTest *tc)
 {
     test_baton_t *tb;
-    int i, num_requests = 1;
-    handler_baton_t handler_ctx[num_requests];
+    int i;
+    handler_baton_t handler_ctx[1];
+    const int num_requests = sizeof(handler_ctx)/sizeof(handler_ctx[0]);
     apr_pool_t *iter_pool;
     apr_status_t status;
 
@@ -826,8 +827,8 @@ static void test_serf_progress_callback(CuTest *tc)
 {
     test_baton_t *tb;
     apr_status_t status;
-    const int num_requests = 5;
-    handler_baton_t handler_ctx[num_requests];
+    handler_baton_t handler_ctx[5];
+    const int num_requests = sizeof(handler_ctx)/sizeof(handler_ctx[0]);
     int i;
     progress_baton_t *pb;
 
@@ -1018,8 +1019,8 @@ static void test_serf_request_timeout(CuTest *tc)
 {
     test_baton_t *tb;
         apr_status_t status;
-    const int num_requests = 1;
-    handler_baton_t handler_ctx[num_requests];
+    handler_baton_t handler_ctx[1];
+    const int num_requests = sizeof(handler_ctx)/sizeof(handler_ctx[0]);
 
     test_server_message_t message_list[] = {
         {REQUEST_PART1},
@@ -1091,8 +1092,8 @@ ssl_server_cert_cb_expect_allok(void *baton, int failures,
 static void test_serf_ssl_handshake(CuTest *tc)
 {
     test_baton_t *tb;
-    const int num_requests = 1;
-    handler_baton_t handler_ctx[num_requests];
+    handler_baton_t handler_ctx[1];
+    const int num_requests = sizeof(handler_ctx)/sizeof(handler_ctx[0]);
     apr_status_t status;
     test_server_message_t message_list[] = {
         {CHUNKED_REQUEST(1, "1")},
@@ -1165,8 +1166,8 @@ https_set_root_ca_conn_setup(apr_socket_t *skt,
 static void test_serf_ssl_trust_rootca(CuTest *tc)
 {
     test_baton_t *tb;
-    const int num_requests = 1;
-    handler_baton_t handler_ctx[num_requests];
+    handler_baton_t handler_ctx[1];
+    const int num_requests = sizeof(handler_ctx)/sizeof(handler_ctx[0]);
     apr_status_t status;
     test_server_message_t message_list[] = {
         {CHUNKED_REQUEST(1, "1")},
