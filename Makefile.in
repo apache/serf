@@ -28,7 +28,8 @@ TEST_OBJECTS = test/serf_get.lo test/serf_response.lo test/serf_request.lo \
 
 TEST_SUITE_OBJECTS = test/CuTest.lo test/test_all.lo test/test_util.lo \
                      test/test_buckets.lo test/test_context.lo \
-                     test/test_ssl.lo test/server/test_server.lo
+                     test/test_ssl.lo test/server/test_server.lo \
+                     test/server/test_sslserver.lo
 
 PROGRAMS = $(TEST_OBJECTS:.lo=) test/test_all
 
