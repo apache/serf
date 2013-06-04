@@ -123,6 +123,7 @@ LIB32_OBJS= \
     "$(INTDIR)\request_buckets.obj" \
     "$(INTDIR)\response_buckets.obj" \
     "$(INTDIR)\response_body_buckets.obj" \
+    "$(INTDIR)\copy_buckets.obj" \
     "$(INTDIR)\simple_buckets.obj" \
     "$(INTDIR)\socket_buckets.obj" \
     "$(INTDIR)\ssl_buckets.obj" \
