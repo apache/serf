@@ -210,12 +210,6 @@ serf__sectrans_read_X509_DER_certificate(apr_hash_t **o,
 
 extern const serf_ssl_bucket_type_t serf_ssl_bucket_type_openssl;
 
-extern const serf_bucket_type_t serf_bucket_type_openssl_encrypt;
-#define SERF_BUCKET_IS_OPENSSL_ENCRYPT(b) SERF_BUCKET_CHECK((b), openssl_encrypt)
-
-extern const serf_bucket_type_t serf_bucket_type_openssl_decrypt;
-#define SERF_BUCKET_IS_OPENSSL_DECRYPT(b) SERF_BUCKET_CHECK((b), openssl_decrypt)
-
 #endif /* SERF_HAVE_OPENSSL */
 
 /* ==================================================================== */
@@ -223,12 +217,6 @@ extern const serf_bucket_type_t serf_bucket_type_openssl_decrypt;
 #if SERF_HAVE_SECURETRANSPORT
 
 extern const serf_ssl_bucket_type_t serf_ssl_bucket_type_securetransport;
-
-extern const serf_bucket_type_t serf_bucket_type_sectrans_encrypt;
-#define SERF_BUCKET_IS_SECTRANS_ENCRYPT(b) SERF_BUCKET_CHECK((b), sectrans_encrypt)
-
-extern const serf_bucket_type_t serf_bucket_type_sectrans_decrypt;
-#define SERF_BUCKET_IS_SECTRANS_DECRYPT(b) SERF_BUCKET_CHECK((b), sectrans_decrypt)
 
 #endif /* SERF_HAVE_SECURETRANSPORT */
 

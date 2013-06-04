@@ -34,8 +34,6 @@
  * Originally developed by Aaron Bannert and Justin Erenkrantz, eBuilt.
  */
 
-#ifdef SERF_HAVE_OPENSSL
-
 #include <apr_pools.h>
 #include <apr_network_io.h>
 #include <apr_portable.h>
@@ -48,6 +46,8 @@
 #include "serf_private.h"
 #include "serf_bucket_util.h"
 #include "bucket_private.h"
+
+#ifdef SERF_HAVE_OPENSSL
 
 #include <openssl/bio.h>
 #include <openssl/ssl.h>
@@ -1900,6 +1900,16 @@ const serf_ssl_bucket_type_t serf_ssl_bucket_type_openssl = {
     serf__openssl_cert_certificate,
     serf__openssl_cert_export,
     serf__openssl_use_compression,
+};
+#else
+
+const serf_bucket_type_t serf_bucket_type_openssl_encrypt = {
+    "OPENSSLENCRYPT",
+    NULL, NULL, NULL, NULL, NULL, NULL, NULL,
+};
+const serf_bucket_type_t serf_bucket_type_openssl_decrypt = {
+    "OPENSSLDECRYPT",
+    NULL, NULL, NULL, NULL, NULL, NULL, NULL,
 };
 
 #endif /* SERF_HAVE_OPENSSL */

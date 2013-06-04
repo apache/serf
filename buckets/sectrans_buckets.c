@@ -2398,4 +2398,16 @@ const serf_ssl_bucket_type_t serf_ssl_bucket_type_securetransport = {
     serf__sectrans_cert_export,
     serf__sectrans_use_compression,
 };
+
+#else
+
+const serf_bucket_type_t serf_bucket_type_sectrans_encrypt = {
+    "SECURETRANSPORTENCRYPT",
+    NULL, NULL, NULL, NULL, NULL, NULL, NULL,
+};
+const serf_bucket_type_t serf_bucket_type_sectrans_decrypt = {
+    "SECURETRANSPORTDECRYPT",
+    NULL, NULL, NULL, NULL, NULL, NULL, NULL,
+};
+
 #endif /* SERF_HAVE_SECURETRANSPORT */
