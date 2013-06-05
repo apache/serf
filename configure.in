@@ -230,7 +230,7 @@ AC_ARG_WITH(gssapi,
 	fi
 	APR_ADDTO(CFLAGS, "$GSSAPI_cflags")
 	APR_ADDTO(CFLAGS, [-DSERF_HAVE_GSSAPI])
-	APR_ADDTO(LDFLAGS, "$GSSAPI_libs")
+	APR_ADDTO(LIBS, "$GSSAPI_libs")
 	AC_MSG_CHECKING([if gssapi works])
 	AC_LINK_IFELSE([AC_LANG_SOURCE([[
 #include <gssapi.h>
