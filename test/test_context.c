@@ -1929,7 +1929,7 @@ static apr_status_t identity_cb(void *data,
 {
     test_baton_t *tb = data;
     const char *cert_path = "test/server/serfclientcert.p12";
-    apr_hash_t *issuer, *dn;
+    apr_hash_t *ca;
     int i;
     apr_status_t status;
 
@@ -1939,15 +1939,15 @@ static apr_status_t identity_cb(void *data,
         return SERF_ERROR_ISSUE_IN_TESTSUITE;
 
     for (i = 0; i < 2; i++) {
-        issuer = dnlist[i];
-        if (!issuer) return SERF_ERROR_ISSUE_IN_TESTSUITE;
+        ca = dnlist[i];
+        if (!ca) return SERF_ERROR_ISSUE_IN_TESTSUITE;
 
         if (strcmp("Serf Root CA",
-                   apr_hash_get(issuer, "CN", APR_HASH_KEY_STRING)) == 0)
+                   apr_hash_get(ca, "CN", APR_HASH_KEY_STRING)) == 0)
             continue;
 
         if (strcmp("Serf CA",
-                   apr_hash_get(issuer, "CN", APR_HASH_KEY_STRING)) != 0)
+                   apr_hash_get(ca, "CN", APR_HASH_KEY_STRING)) != 0)
             return SERF_ERROR_ISSUE_IN_TESTSUITE;
     }
 

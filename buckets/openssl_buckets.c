@@ -1067,7 +1067,7 @@ static int ssl_need_client_cert(SSL *ssl, X509 **cert, EVP_PKEY **pkey)
         {
             if (!dnlist) {
                 STACK_OF(X509_NAME) *cas;
-                int count, i;
+                int i;
 
                 cas = SSL_get_client_CA_list(ctx->ssl);
                 dnlen = sk_X509_NAME_num(cas);

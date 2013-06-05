@@ -1545,7 +1545,7 @@ provide_client_certificate(sectrans_context_t *ssl_ctx)
         int i;
 
         dnlen = CFArrayGetCount(dnlistrefs);
-        dnlist = apr_array_make(tmppool, dnlen, sizeof(apr_hash_t *));
+        dnlist = apr_palloc(tmppool, dnlen * sizeof(apr_hash_t*));
 
         for (i = 0; i < dnlen; i++) {
             CFDataRef cader = CFArrayGetValueAtIndex(dnlistrefs, i);
