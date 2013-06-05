@@ -202,6 +202,7 @@ static void disable_compression(openssl_context_t *ssl_ctx);
 static apr_status_t serf__openssl_load_identity_from_file(void *impl_ctx,
                         const serf_ssl_identity_t **identity,
                         const char *file_path, apr_pool_t *pool);
+static apr_hash_t *convert_X509_NAME_to_table(X509_NAME *org, apr_pool_t *pool);
 
 #if SSL_VERBOSE
 /* Log all ssl alerts that we receive from the server. */
@@ -1018,6 +1019,9 @@ static void init_ssl_libraries(void)
 static int ssl_need_client_cert(SSL *ssl, X509 **cert, EVP_PKEY **pkey)
 {
     openssl_context_t *ctx = SSL_get_app_data(ssl);
+    apr_hash_t **dnlist = NULL;
+    apr_size_t dnlen = 0;
+    apr_pool_t *tmppool;
     apr_status_t status;
 
     if (ctx->cached_identity) {
@@ -1028,6 +1032,8 @@ static int ssl_need_client_cert(SSL *ssl, X509 **cert, EVP_PKEY **pkey)
 
     if (!ctx->cert_callback && !ctx->identity_callback)
         return 0;
+
+    apr_pool_create(&tmppool, ctx->pool);
 
     /* Loop until a client identity is returned by the application, a .p12 file
        is read and parsed successfully, or as long as the application keeps 
@@ -1059,7 +1065,26 @@ static int ssl_need_client_cert(SSL *ssl, X509 **cert, EVP_PKEY **pkey)
         }
         else
         {
-            status = ctx->identity_callback(ctx->cert_userdata, &identity,
+            if (!dnlist) {
+                STACK_OF(X509_NAME) *cas;
+                int count, i;
+
+                cas = SSL_get_client_CA_list(ctx->ssl);
+                dnlen = sk_X509_NAME_num(cas);
+
+                dnlist = apr_palloc(tmppool, dnlen * sizeof(apr_hash_t*));
+
+                for (i = 0; i < dnlen; i++) {
+                    apr_hash_t *issuer;
+
+                    X509_NAME *ca = (X509_NAME *)sk_X509_NAME_value(cas, i);
+                    issuer = convert_X509_NAME_to_table(ca, tmppool);
+
+                    dnlist[i] = issuer;
+                }
+            }
+            status = ctx->identity_callback(ctx->cert_userdata,
+                                            dnlist, dnlen, &identity,
                                             ctx->pool);
             if (status || !identity)
                 break;
@@ -1072,12 +1097,16 @@ static int ssl_need_client_cert(SSL *ssl, X509 **cert, EVP_PKEY **pkey)
             *cert = identity->impl_cert;
             *pkey = identity->impl_pkey;
 
+            apr_pool_destroy(tmppool);
+
             return 1;
         }
 
         /* A file was read but not parsed successfully, so ask the application
            for another file. */
     }
+
+    apr_pool_destroy(tmppool);
 
     return 0;
 }

@@ -539,8 +539,22 @@ typedef apr_status_t (*serf_ssl_need_client_cert_t)(
     void *data,
     const char **cert_path);
 
+/**
+ * Callback to let the application provide a client identity as requested by
+ * the server during the SSL/TLS handshake.
+ * The baton provided in serf_ssl_identity_provider_set is passed as @a data.
+ *
+ * The list of acceptable CA's as provided in @a dn_list should be used to
+ * filter allowed client identities. The dn_list array contains @a dn_len
+ * elements of type apr_hash_t *, each with following keys:
+ * - CN, O, OU, L, ST, C, E.
+ *
+ * The returned identity can be allocated in @a pool.
+ */
 typedef apr_status_t (*serf_ssl_need_identity_t)(
     void *data,
+    apr_hash_t **dn_list,
+    apr_size_t dn_len,
     const serf_ssl_identity_t **identity,
     apr_pool_t *pool);
 

@@ -198,6 +198,10 @@ typedef struct sectrans_certificate_t {
 } sectrans_certificate_t;
 
 apr_status_t
+serf__sectrans_read_X509_DER_DN(apr_hash_t **o, CFDataRef ptr,
+                                apr_pool_t *pool);
+
+apr_status_t
 serf__sectrans_read_X509_DER_certificate(apr_hash_t **o,
                                          const sectrans_certificate_t *cert,
                                          apr_pool_t *pool);

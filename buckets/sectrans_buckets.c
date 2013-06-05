@@ -1409,6 +1409,8 @@ callback_for_identity_password(sectrans_context_t *ssl_ctx,
 
 static apr_status_t
 callback_for_identity(sectrans_context_t *ssl_ctx,
+                      apr_hash_t **dnlist,
+                      apr_size_t dnlen,
                       SecIdentityRef *identityref,
                       apr_pool_t *pool)
 {
@@ -1431,7 +1433,7 @@ callback_for_identity(sectrans_context_t *ssl_ctx,
     } else if (ssl_ctx->identity_callback)
     {
         status = ssl_ctx->identity_callback(ssl_ctx->identity_userdata,
-                                            &identity, pool);
+                                            dnlist, dnlen, &identity, pool);
     } else
         status = APR_EGENERAL;
 
@@ -1509,6 +1511,10 @@ static apr_status_t
 provide_client_certificate(sectrans_context_t *ssl_ctx)
 {
     SecIdentityRef identityref = NULL;
+    CFArrayRef dnlistrefs = NULL;
+    apr_hash_t **dnlist = NULL;
+    apr_size_t dnlen = 0;
+    apr_pool_t *tmppool;
     apr_status_t status;
     OSStatus osstatus;
 
@@ -1526,15 +1532,39 @@ provide_client_certificate(sectrans_context_t *ssl_ctx)
         return APR_SUCCESS;
     }
 
-    /* We trust that the application knows which identity to provide,
-       based on the server this serf context connects to, as we do not have
-       a way to pass the list of distinguished names provided by the
-       server to the application. */
-    /* TODO: fix this for the new identity_callback API */
-    status = callback_for_identity(ssl_ctx, &identityref,
+    /* The server will send us a list of Distinguished Names, indicating that
+       client certificates issued by one of these DN's are acceptable. */
+    osstatus = SSLCopyDistinguishedNames(ssl_ctx->st_ctxr, &dnlistrefs);
+    if (osstatus != noErr) {
+        return translate_sectrans_status(osstatus);
+    }
+
+    apr_pool_create(&tmppool, ssl_ctx->pool);
+    if (dnlistrefs && CFArrayGetCount(dnlistrefs) > 0)
+    {
+        int i;
+
+        dnlen = CFArrayGetCount(dnlistrefs);
+        dnlist = apr_array_make(tmppool, dnlen, sizeof(apr_hash_t *));
+
+        for (i = 0; i < dnlen; i++) {
+            CFDataRef cader = CFArrayGetValueAtIndex(dnlistrefs, i);
+            apr_hash_t *ca;
+
+            status = serf__sectrans_read_X509_DER_DN(&ca, cader, tmppool);
+            if (status)
+                goto cleanup;
+
+            dnlist[i] = ca;
+        }
+    }
+
+    /* Call the application to find an identity trusted by one of the DN's
+       provided by the server. */
+    status = callback_for_identity(ssl_ctx, dnlist, dnlen, &identityref,
                                    ssl_ctx->pool);
     if (status)
-        return status;
+        goto cleanup;
 
     /* If the issuer of the client certificate is not in the list
        of certificates the server provided, we need to send it along.
@@ -1561,13 +1591,15 @@ provide_client_certificate(sectrans_context_t *ssl_ctx)
 
         osstatus = SecIdentityCopyCertificate(identityref, &cert);
         if (osstatus != noErr) {
-            return translate_sectrans_status(osstatus);
+            status = translate_sectrans_status(osstatus);
+            goto cleanup;
         }
 
         osstatus = SSLCopyPeerCertificates(ssl_ctx->st_ctxr,
                                            &peer_certrefs);
         if (osstatus != noErr) {
-            return translate_sectrans_status(osstatus);
+            status = translate_sectrans_status(osstatus);
+            goto cleanup;
         }
 
         status = find_intermediate_cas(&intermediate_certrefs,
@@ -1576,7 +1608,7 @@ provide_client_certificate(sectrans_context_t *ssl_ctx)
                                        ssl_ctx->pool);
         CFRelease(peer_certrefs);
         if (status)
-            return status;
+            goto cleanup;
 
         /* Add the intermediate certificates to the list to send to the
            server. */
@@ -1588,11 +1620,17 @@ provide_client_certificate(sectrans_context_t *ssl_ctx)
            allowed to use the signing key. */
         osstatus = SSLSetCertificate(ssl_ctx->st_ctxr, items);
         if (osstatus != noErr) {
-            return translate_sectrans_status(osstatus);
+            status = translate_sectrans_status(osstatus);
+            goto cleanup;
         }
 
-        return APR_SUCCESS;
+        status = APR_SUCCESS;
     }
+
+cleanup:
+    apr_pool_destroy(tmppool);
+    if (dnlistrefs)
+        CFRelease(dnlistrefs);
 
     return status;
 }

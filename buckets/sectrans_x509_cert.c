@@ -424,6 +424,34 @@ static apr_status_t dataref_cleanup(void *data)
     return APR_SUCCESS;
 }
 
+/* Read a Distinquished Name from a DER-encoded DN in X.509 format.
+   The resulting hash table will have following keys:
+   - CN, O, OU, L, ST, C, E.
+   Internal use only:
+   - _der
+ */
+
+apr_status_t
+serf__sectrans_read_X509_DER_DN(apr_hash_t **o, CFDataRef dndata,
+                                apr_pool_t *pool)
+{
+    CFDataRef dnder;
+    apr_hash_t *dn;
+    long consumed;
+    const unsigned char *data = CFDataGetBytePtr(dndata);
+    apr_status_t status;
+
+    SERF_ERR(read_X509_DER_DistinguishedName(&dn, &dnder,
+                                             data, &consumed, pool));
+
+    apr_hash_set(dn, "_der", APR_HASH_KEY_STRING, dnder);
+
+    *o = dn;
+
+cleanup:
+    return status;
+}
+
 /* Read all interesting data from a DER-encoded certificate in X.509 format.
    The resulting hash table will have following keys:
    - sha1

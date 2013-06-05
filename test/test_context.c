@@ -1922,14 +1922,34 @@ static void test_serf_ssl_client_certificate(CuTest *tc)
 }
 
 static apr_status_t identity_cb(void *data,
+                                apr_hash_t **dnlist,
+                                apr_size_t dnlen,
                                 const serf_ssl_identity_t **identity,
                                 apr_pool_t *pool)
 {
     test_baton_t *tb = data;
     const char *cert_path = "test/server/serfclientcert.p12";
+    apr_hash_t *issuer, *dn;
+    int i;
     apr_status_t status;
 
     tb->result_flags |= TEST_RESULT_CLIENT_CERTCB_CALLED;
+
+    if (!dnlist || dnlen != 2)
+        return SERF_ERROR_ISSUE_IN_TESTSUITE;
+
+    for (i = 0; i < 2; i++) {
+        issuer = dnlist[i];
+        if (!issuer) return SERF_ERROR_ISSUE_IN_TESTSUITE;
+
+        if (strcmp("Serf Root CA",
+                   apr_hash_get(issuer, "CN", APR_HASH_KEY_STRING)) == 0)
+            continue;
+
+        if (strcmp("Serf CA",
+                   apr_hash_get(issuer, "CN", APR_HASH_KEY_STRING)) != 0)
+            return SERF_ERROR_ISSUE_IN_TESTSUITE;
+    }
 
 #if 0
     /* Example of how to use Keychain to fetch a client identity for a server.
