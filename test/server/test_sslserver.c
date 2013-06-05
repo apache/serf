@@ -186,7 +186,10 @@ init_ssl_context(serv_ctx_t *serv_ctx,
         ssl_ctx->ssl = SSL_new(ssl_ctx->ctx);
         SSL_use_PrivateKey_file(ssl_ctx->ssl, keyfile, SSL_FILETYPE_PEM);
 
-        /* Set server certificate, add ca certificates if provided. */
+        /* Set server certificate, add CA certificates if provided.
+           Also, use the same CA certificates as acceptable CA's for the client
+           certificate. This doesn't have to be the same list, but for now it's
+           sufficient. */
         certfile = certfiles[0];
         SSL_use_certificate_file(ssl_ctx->ssl, certfile, SSL_FILETYPE_PEM);
 
@@ -203,6 +206,9 @@ init_ssl_context(serv_ctx_t *serv_ctx,
                 SSL_CTX_add_extra_chain_cert(ssl_ctx->ctx, ssl_cert);
 
                 X509_STORE_add_cert(store, ssl_cert);
+
+                /* acceptable CA for the client cert */
+                SSL_CTX_add_client_CA(ssl_ctx->ctx, ssl_cert);
             }
             certfile = certfiles[i++];
         }
