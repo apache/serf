@@ -146,26 +146,31 @@ typedef struct sectrans_context_t {
 } sectrans_context_t;
 
 /* Some forward declarations */
-static OSStatus
-sectrans_read_cb(SSLConnectionRef connection, void *data, size_t *dataLength);
-
-static OSStatus
-sectrans_write_cb(SSLConnectionRef connection, const void *data, size_t *dataLength);
-
-static const char *
-CFStringToChar(CFStringRef str, apr_pool_t *pool);
-
-static apr_status_t
-callback_for_identity_password(sectrans_context_t *ssl_ctx,
-                               const char *cert_path,
-                               const char **password);
-
 static apr_status_t
 serf__sectrans_load_identity_from_file(void *impl_ctx,
                                        const serf_ssl_identity_t **identity,
                                        const char *file_path,
                                        apr_pool_t *pool);
 
+
+/* Copies the unicode string from a CFStringRef to a new buffer allocated
+ from pool. */
+static const char *
+CFStringToChar(CFStringRef str, apr_pool_t *pool)
+{
+    const char *ptr = CFStringGetCStringPtr(str, kCFStringEncodingMacRoman);
+
+    if (ptr == NULL) {
+        const int strlen = CFStringGetLength(str) * 2;
+        char *buf = apr_pcalloc(pool, strlen);
+        if (CFStringGetCString(str, buf, strlen, kCFStringEncodingMacRoman))
+            return buf;
+    } else {
+        return apr_pstrdup(pool, ptr);
+    }
+
+    return NULL;
+}
 
 static apr_status_t
 translate_sectrans_status(OSStatus osstatus)
@@ -222,92 +227,6 @@ static apr_status_t cfrelease_trust(void *data)
     if (ssl_ctx->trust)
         CFRelease(ssl_ctx->trust);
     ssl_ctx->trust = NULL;
-
-    return APR_SUCCESS;
-}
-
-/* Callback function for the encrypt.pending and decrypt.pending stream-type
-   aggregate buckets.
- */
-static apr_status_t
-pending_stream_eof(void *baton,
-                   serf_bucket_t *pending)
-{
-    /* Both pending streams have to stay open so that the Secure Transport
-       library can keep appending data buckets. */
-    return APR_EAGAIN;
-}
-
-static sectrans_context_t *
-sectrans_init_context(serf_bucket_alloc_t *allocator)
-{
-    sectrans_context_t *ssl_ctx;
-
-    ssl_ctx = serf_bucket_mem_calloc(allocator, sizeof(*ssl_ctx));
-    ssl_ctx->refcount = 0;
-
-    apr_pool_create(&ssl_ctx->pool, NULL);
-    apr_pool_create(&ssl_ctx->handshake_pool, ssl_ctx->pool);
-
-    /* Set up the stream objects. */
-    ssl_ctx->encrypt.pending = serf__bucket_stream_create(allocator,
-                                                          pending_stream_eof,
-                                                          NULL);
-    ssl_ctx->decrypt.pending = serf__bucket_stream_create(allocator,
-                                                          pending_stream_eof,
-                                                          NULL);
-
-    /* Set up a Secure Transport session. */
-    ssl_ctx->state = SERF_SECTRANS_INIT;
-
-    if (SSLNewContext(FALSE, &ssl_ctx->st_ctxr))
-        return NULL;
-
-    if (SSLSetIOFuncs(ssl_ctx->st_ctxr, sectrans_read_cb, sectrans_write_cb))
-        return NULL;
-
-    /* Ensure the sectrans_context will be passed to the read and write callback
-       functions. */
-    if (SSLSetConnection(ssl_ctx->st_ctxr, ssl_ctx))
-        return NULL;
-
-    /* We do our own validation of server certificates.
-       Note that Secure Transport will not do any validation with this option
-       enabled, it's all or nothing. */
-    if (SSLSetSessionOption(ssl_ctx->st_ctxr,
-                            kSSLSessionOptionBreakOnServerAuth,
-                            true))
-        return NULL;
-    if (SSLSetEnableCertVerify(ssl_ctx->st_ctxr, false))
-        return NULL;
-
-    /* If the handshake needs a client identity to continue, break it
-       temporarily so we can call back to the application. */
-    if (SSLSetSessionOption(ssl_ctx->st_ctxr,
-                            kSSLSessionOptionBreakOnCertRequested,
-                            true))
-        return NULL;
-
-    return ssl_ctx;
-}
-
-static apr_status_t
-sectrans_free_context(sectrans_context_t *ssl_ctx,
-                      serf_bucket_alloc_t *allocator)
-{
-    apr_status_t status = APR_SUCCESS;
-
-    (void)SSLDisposeContext(ssl_ctx->st_ctxr);
-
-    if (ssl_ctx->handshake_pool)
-        apr_pool_destroy(ssl_ctx->handshake_pool);
-    apr_pool_destroy(ssl_ctx->pool);
-
-    serf_bucket_mem_free(allocator, ssl_ctx);
-
-    if (status) {
-        return APR_EGENERAL;
-    }
 
     return APR_SUCCESS;
 }
@@ -389,6 +308,50 @@ sectrans_write_cb(SSLConnectionRef connection,
     return noErr;
 }
 
+#pragma mark VALIDATE SERVER CERTIFICATES
+#pragma mark -
+
+/* Creates a sectrans_certificate_t allocated on pool. */
+static apr_status_t
+create_sectrans_certificate(sectrans_certificate_t **out_sectrans_cert,
+                            SecCertificateRef certref,
+                            int parse_content,
+                            apr_pool_t *pool)
+{
+    sectrans_certificate_t *sectrans_cert;
+    apr_status_t status = APR_SUCCESS;
+
+    sectrans_cert = apr_pcalloc(pool, sizeof(sectrans_certificate_t));
+    sectrans_cert->certref = certref;
+
+    if (parse_content)
+        status = serf__sectrans_read_X509_DER_certificate(&sectrans_cert->content,
+                                                          sectrans_cert,
+                                                          pool);
+    *out_sectrans_cert = sectrans_cert;
+
+    return status;
+}
+
+/* Creates a serf_ssl_certificate_t at depth allocated on pool. */
+static serf_ssl_certificate_t *
+create_ssl_certificate(SecCertificateRef certref,
+                       int depth,
+                       apr_pool_t *pool)
+{
+    sectrans_certificate_t *sectrans_cert;
+    serf_bucket_alloc_t *allocator;
+
+    /* Since we're not asking to parse the content we can ignore the status. */
+    (void) create_sectrans_certificate(&sectrans_cert, certref, 0, pool);
+
+    allocator = serf_bucket_allocator_create(pool, NULL, NULL);
+    return serf__create_certificate(allocator,
+                                    &serf_ssl_bucket_type_securetransport,
+                                    sectrans_cert,
+                                    depth);
+}
+
 /* Read the contents of a file in memory in a CFDataRef buffer. */
 static apr_status_t
 load_data_from_file(const char *file_path, CFDataRef *databuf, apr_pool_t *pool)
@@ -447,199 +410,8 @@ load_certificate_from_databuf(CFDataRef databuf,
         /* TODO: should be handled in translate_... */
         status = SERF_ERROR_SSL_CERT_FAILED;
     }
-
+    
     return status;
-}
-
-/* Use Keychain Services to extract a SecIndentityRef (client private key +
-   certificate) from a data buffer. Databuf needs to be in PKCS12 format.
-   Caller is responsible to clean up items.
- */
-static apr_status_t
-load_identity_from_databuf(sectrans_context_t *ssl_ctx,
-                           const serf_ssl_identity_t **identity,
-                           const char *label,
-                           CFDataRef databuf,
-                           apr_pool_t *pool)
-{
-    SecExternalFormat format;
-    SecItemImportExportKeyParameters keyParams;
-    SecExternalItemType itemType;
-
-    /* SecItemImport will crash if keyUsage member is not set to NULL. */
-    memset(&keyParams, 0, sizeof(SecItemImportExportKeyParameters));
-
-    format = kSecFormatPKCS12;
-    itemType = kSecItemTypeUnknown;
-
-    /* Try importing the identity until it succeeds, fails or the application
-       stops setting passphrases. */
-    while (1)
-    {
-        CFArrayRef items;
-        OSStatus osstatus;
-        apr_status_t status;
-        const char *passphrase;
-
-        osstatus = SecItemImport(databuf,
-                                 NULL,
-                                 &format,
-                                 &itemType,
-                                 0,    /* SecItemImportExportFlags */
-                                 &keyParams,
-                                 ssl_ctx->tempKeyChainRef,
-                                 &items);
-        if (osstatus == errSecSuccess)
-        {
-            *identity = NULL;
-
-            /* Identity successfully imported in the keychain, return the
-               (wrapped) reference to the caller. */
-            if (CFArrayGetCount(items) > 0)
-            {
-                SecIdentityRef identityref;
-
-                identityref = (SecIdentityRef)CFArrayGetValueAtIndex(items, 0);
-
-                if (!identityref)
-                    return SERF_ERROR_SSL_CERT_FAILED;
-
-                *identity = serf__create_identity(
-                                &serf_ssl_bucket_type_securetransport,
-                                identityref, NULL, pool);
-
-                return APR_SUCCESS;
-            }
-
-            return SERF_ERROR_SSL_CERT_FAILED;
-        } else if (osstatus == errSecPassphraseRequired)
-        {
-            CFStringRef pwref;
-
-            status = callback_for_identity_password(
-                         ssl_ctx,
-                         label,
-                         &passphrase);
-            if (status)
-                return status;
-
-            pwref = CFStringCreateWithBytesNoCopy(kCFAllocatorDefault,
-                                                  (unsigned char *)passphrase,
-                                                  strlen(passphrase),
-                                                  kCFStringEncodingMacRoman,
-                                                  false,
-                                                  kCFAllocatorNull);
-            keyParams.passphrase = pwref;
-        } else {
-            /* TODO: should be handled in translate_... */
-            return SERF_ERROR_SSL_CERT_FAILED;
-        }
-    }
-}
-
-
-apr_status_t
-serf_sectrans_show_trust_certificate_panel(serf_ssl_context_t *ctx,
-                                           const char *message,
-                                           const char *ok_button,
-                                           const char *cancel_button)
-{
-#ifdef SERF_HAVE_SECURETRANSPORT
-    sectrans_context_t *ssl_ctx = serf__ssl_get_impl_context(ctx);
-    SecTrustRef trust = ssl_ctx->trust;
-    apr_status_t status;
-
-    void *sectrans_cls = objc_getClass("SecTrans_Buckets");
-    id tmp = objc_msgSend(sectrans_cls,
-                          sel_getUid("showTrustCertificateDialog:message:"
-                                     "ok_button:cancel_button:"),
-                          trust, message, ok_button, cancel_button);
-    status = (apr_status_t)(SInt64)tmp;
-
-    return status;
-#else
-    return APR_ENOTIMPL;
-#endif
-}
-
-apr_status_t
-serf_sectrans_show_select_identity_panel(
-        serf_ssl_context_t *ctx,
-        const serf_ssl_identity_t **identity,
-        const char *message,
-        const char *ok_button,
-        const char *cancel_button,
-        apr_pool_t *pool)
-{
-#ifdef SERF_HAVE_SECURETRANSPORT
-    SecIdentityRef identityref;
-    OSStatus osstatus;
-
-    void *sectrans_cls = objc_getClass("SecTrans_Buckets");
-    id tmp = objc_msgSend(sectrans_cls,
-                          sel_getUid("showSelectIdentityDialog:message:"
-                                     "ok_button:cancel_button:"),
-                          &identityref, message, ok_button, cancel_button);
-    osstatus = (OSStatus)(SInt64)tmp;
-    if (osstatus == errSecItemNotFound)
-    {
-        /* There is no single identity in the keychains. */
-        return SERF_ERROR_SSL_NO_IDENTITIES_AVAILABLE;
-    } else if (osstatus != noErr) {
-        return translate_sectrans_status(osstatus);
-    }
-
-    if (!identityref)
-        return SERF_ERROR_SSL_CERT_FAILED;
-
-    *identity = serf__create_identity(&serf_ssl_bucket_type_securetransport,
-                                      identityref, NULL,
-                                      pool);
-    return APR_SUCCESS;
-#else
-    return APR_ENOTIMPL;
-#endif
-}
-
-/* Creates a sectrans_certificate_t allocated on pool. */
-static apr_status_t
-create_sectrans_certificate(sectrans_certificate_t **out_sectrans_cert,
-                            SecCertificateRef certref,
-                            int parse_content,
-                            apr_pool_t *pool)
-{
-    sectrans_certificate_t *sectrans_cert;
-    apr_status_t status = APR_SUCCESS;
-
-    sectrans_cert = apr_pcalloc(pool, sizeof(sectrans_certificate_t));
-    sectrans_cert->certref = certref;
-
-    if (parse_content)
-        status = serf__sectrans_read_X509_DER_certificate(&sectrans_cert->content,
-                                                          sectrans_cert,
-                                                          pool);
-    *out_sectrans_cert = sectrans_cert;
-
-    return status;
-}
-
-/* Creates a serf_ssl_certificate_t at depth allocated on pool. */
-static serf_ssl_certificate_t *
-create_ssl_certificate(SecCertificateRef certref,
-                       int depth,
-                       apr_pool_t *pool)
-{
-    sectrans_certificate_t *sectrans_cert;
-    serf_bucket_alloc_t *allocator;
-
-    /* Since we're not asking to parse the content we can ignore the status. */
-    (void) create_sectrans_certificate(&sectrans_cert, certref, 0, pool);
-
-    allocator = serf_bucket_allocator_create(pool, NULL, NULL);
-    return serf__create_certificate(allocator,
-                                    &serf_ssl_bucket_type_securetransport,
-                                    sectrans_cert,
-                                    depth);
 }
 
 /* Logs the issuer and subject of cert. */
@@ -1122,6 +894,11 @@ cleanup:
     return status;
 }
 
+/**** Client identity related code ****/
+/**************************************/
+#pragma mark NEED CLIENT IDENTITY 
+#pragma mark -
+
 static apr_status_t delete_temp_keychain(void *data)
 {
     sectrans_context_t *ssl_ctx = data;
@@ -1443,69 +1220,6 @@ callback_for_identity(sectrans_context_t *ssl_ctx,
     return status;
 }
 
-
-apr_status_t
-serf_sectrans_find_preferred_identity_in_keychain(
-        serf_ssl_context_t *ctx,
-        const serf_ssl_identity_t **identity,
-        apr_pool_t *pool)
-{
-#ifdef SERF_HAVE_SECURETRANSPORT
-    apr_pool_t *tmppool;
-    sectrans_context_t *ssl_ctx = serf__ssl_get_impl_context(ctx);
-    SecIdentityRef identityref = NULL;
-    CFStringRef labelref;
-    const char *label;
-    apr_status_t status;
-
-    /* We can get the distinguished names from the server with
-       SSLCopyDistinguishedNames to filter matching client certificates,
-       but we can't pass this list to the application, and
-       SecIdentityCopyPreferred doesn't have this feature implemented
-       either. So, don't bother. */
-
-    /* We absolutelely need an item that can sign. Otherwise we will get
-       an incomplete identity object, with which SecIdentityCopyCertificate
-       will crash. */
-    const void *keyUsage[] = { kSecAttrCanSign };
-    CFArrayRef keyUsageRef = CFArrayCreate(kCFAllocatorDefault,
-                                           (void *)keyUsage,
-                                           1,
-                                           NULL);
-
-    apr_pool_create(&tmppool, pool);
-
-    /* Find an identity preference using label https://<hostname> */
-    label = apr_pstrcat(tmppool, "https://", ssl_ctx->hostname, NULL);
-    labelref = CFStringCreateWithBytesNoCopy(kCFAllocatorDefault,
-                                             (unsigned char *)label,
-                                             strlen(label),
-                                             kCFStringEncodingMacRoman,
-                                             false,
-                                             kCFAllocatorNull);
-    identityref = SecIdentityCopyPreferred(labelref,
-                                           keyUsageRef, NULL);
-    if (identityref)
-    {
-
-        *identity = serf__create_identity(&serf_ssl_bucket_type_securetransport,
-                                          identityref, NULL, pool);
-        status = APR_SUCCESS;
-    } else {
-        *identity = NULL;
-        status = SERF_ERROR_SSL_CERT_FAILED;
-    }
-
-    CFRelease(labelref);
-    CFRelease(keyUsageRef);
-    apr_pool_destroy(tmppool);
-
-    return status;
-#else
-    return APR_ENOTIMPL;
-#endif
-}
-
 /* Get a client certificate for this server from the application. */
 static apr_status_t
 provide_client_certificate(sectrans_context_t *ssl_ctx)
@@ -1635,7 +1349,96 @@ cleanup:
     return status;
 }
 
-/* Run the SSL handshake. */
+/* Use Keychain Services to extract a SecIndentityRef (client private key +
+   certificate) from a data buffer. Databuf needs to be in PKCS12 format.
+   Caller is responsible to clean up items.
+ */
+static apr_status_t
+load_identity_from_databuf(sectrans_context_t *ssl_ctx,
+                           const serf_ssl_identity_t **identity,
+                           const char *label,
+                           CFDataRef databuf,
+                           apr_pool_t *pool)
+{
+    SecExternalFormat format;
+    SecItemImportExportKeyParameters keyParams;
+    SecExternalItemType itemType;
+
+    /* SecItemImport will crash if keyUsage member is not set to NULL. */
+    memset(&keyParams, 0, sizeof(SecItemImportExportKeyParameters));
+
+    format = kSecFormatPKCS12;
+    itemType = kSecItemTypeUnknown;
+
+    /* Try importing the identity until it succeeds, fails or the application
+       stops setting passphrases. */
+    while (1)
+    {
+        CFArrayRef items;
+        OSStatus osstatus;
+        apr_status_t status;
+        const char *passphrase;
+
+        osstatus = SecItemImport(databuf,
+                                 NULL,
+                                 &format,
+                                 &itemType,
+                                 0,    /* SecItemImportExportFlags */
+                                 &keyParams,
+                                 ssl_ctx->tempKeyChainRef,
+                                 &items);
+        if (osstatus == errSecSuccess)
+        {
+            *identity = NULL;
+
+            /* Identity successfully imported in the keychain, return the
+               (wrapped) reference to the caller. */
+            if (CFArrayGetCount(items) > 0)
+            {
+                SecIdentityRef identityref;
+
+                identityref = (SecIdentityRef)CFArrayGetValueAtIndex(items, 0);
+
+                if (!identityref)
+                    return SERF_ERROR_SSL_CERT_FAILED;
+
+                *identity = serf__create_identity(
+                                                  &serf_ssl_bucket_type_securetransport,
+                                                  identityref, NULL, pool);
+
+                return APR_SUCCESS;
+            }
+
+            return SERF_ERROR_SSL_CERT_FAILED;
+        } else if (osstatus == errSecPassphraseRequired)
+        {
+            CFStringRef pwref;
+
+            status = callback_for_identity_password(
+                                                    ssl_ctx,
+                                                    label,
+                                                    &passphrase);
+            if (status)
+                return status;
+
+            pwref = CFStringCreateWithBytesNoCopy(kCFAllocatorDefault,
+                                                  (unsigned char *)passphrase,
+                                                  strlen(passphrase),
+                                                  kCFStringEncodingMacRoman,
+                                                  false,
+                                                  kCFAllocatorNull);
+            keyParams.passphrase = pwref;
+        } else {
+            /* TODO: should be handled in translate_... */
+            return SERF_ERROR_SSL_CERT_FAILED;
+        }
+    }
+}
+
+/**** Run the SSL handshake. ****/
+/********************************/
+#pragma mark HANDSHAKE AND INITIALIZATION
+#pragma mark -
 static apr_status_t do_handshake(sectrans_context_t *ssl_ctx)
 {
     OSStatus osstatus;
@@ -1707,9 +1510,96 @@ static apr_status_t do_handshake(sectrans_context_t *ssl_ctx)
     return status;
 }
 
+/* Callback function for the encrypt.pending and decrypt.pending stream-type
+   aggregate buckets.
+ */
+static apr_status_t
+pending_stream_eof(void *baton,
+                   serf_bucket_t *pending)
+{
+    /* Both pending streams have to stay open so that the Secure Transport
+       library can keep appending data buckets. */
+    return APR_EAGAIN;
+}
+
+static sectrans_context_t *
+sectrans_init_context(serf_bucket_alloc_t *allocator)
+{
+    sectrans_context_t *ssl_ctx;
+
+    ssl_ctx = serf_bucket_mem_calloc(allocator, sizeof(*ssl_ctx));
+    ssl_ctx->refcount = 0;
+
+    apr_pool_create(&ssl_ctx->pool, NULL);
+    apr_pool_create(&ssl_ctx->handshake_pool, ssl_ctx->pool);
+
+    /* Set up the stream objects. */
+    ssl_ctx->encrypt.pending = serf__bucket_stream_create(allocator,
+                                                          pending_stream_eof,
+                                                          NULL);
+    ssl_ctx->decrypt.pending = serf__bucket_stream_create(allocator,
+                                                          pending_stream_eof,
+                                                          NULL);
+
+    /* Set up a Secure Transport session. */
+    ssl_ctx->state = SERF_SECTRANS_INIT;
+
+    if (SSLNewContext(FALSE, &ssl_ctx->st_ctxr))
+        return NULL;
+
+    if (SSLSetIOFuncs(ssl_ctx->st_ctxr, sectrans_read_cb, sectrans_write_cb))
+        return NULL;
+
+    /* Ensure the sectrans_context will be passed to the read and write callback
+     functions. */
+    if (SSLSetConnection(ssl_ctx->st_ctxr, ssl_ctx))
+        return NULL;
+
+    /* We do our own validation of server certificates.
+       Note that Secure Transport will not do any validation with this option
+       enabled, it's all or nothing. */
+    if (SSLSetSessionOption(ssl_ctx->st_ctxr,
+                            kSSLSessionOptionBreakOnServerAuth,
+                            true))
+        return NULL;
+    if (SSLSetEnableCertVerify(ssl_ctx->st_ctxr, false))
+        return NULL;
+
+    /* If the handshake needs a client identity to continue, break it
+       temporarily so we can call back to the application. */
+    if (SSLSetSessionOption(ssl_ctx->st_ctxr,
+                            kSSLSessionOptionBreakOnCertRequested,
+                            true))
+        return NULL;
+
+    return ssl_ctx;
+}
+
+static apr_status_t
+sectrans_free_context(sectrans_context_t *ssl_ctx,
+                      serf_bucket_alloc_t *allocator)
+{
+    apr_status_t status = APR_SUCCESS;
+
+    (void)SSLDisposeContext(ssl_ctx->st_ctxr);
+
+    if (ssl_ctx->handshake_pool)
+        apr_pool_destroy(ssl_ctx->handshake_pool);
+    apr_pool_destroy(ssl_ctx->pool);
+
+    serf_bucket_mem_free(allocator, ssl_ctx);
+
+    if (status) {
+        return APR_EGENERAL;
+    }
+    
+    return APR_SUCCESS;
+}
 
 /**** SSL_BUCKET API ****/
 /************************/
+#pragma mark SSL_BUCKET API
+#pragma mark -
 static void *
 serf__sectrans_decrypt_create(serf_bucket_t *bucket,
                               serf_bucket_t *stream,
@@ -1858,25 +1748,6 @@ serf__sectrans_use_default_certificates(void *impl_ctx)
     ssl_ctx->use_system_roots = 1;
 
     return APR_SUCCESS;
-}
-
-/* Copies the unicode string from a CFStringRef to a new buffer allocated
-   from pool. */
-static const char *
-CFStringToChar(CFStringRef str, apr_pool_t *pool)
-{
-    const char *ptr = CFStringGetCStringPtr(str, kCFStringEncodingMacRoman);
-
-    if (ptr == NULL) {
-        const int strlen = CFStringGetLength(str) * 2;
-        char *buf = apr_pcalloc(pool, strlen);
-        if (CFStringGetCString(str, buf, strlen, kCFStringEncodingMacRoman))
-            return buf;
-    } else {
-        return apr_pstrdup(pool, ptr);
-    }
-
-    return NULL;
 }
 
 apr_status_t
@@ -2097,6 +1968,8 @@ serf__sectrans_use_compression(void *impl_ctx, int enabled)
 
 /**** ENCRYPTION BUCKET API *****/
 /********************************/
+#pragma mark ENCRYPTION BUCKET API
+#pragma mark -
 static apr_status_t
 serf_sectrans_encrypt_read(serf_bucket_t *bucket,
                            apr_size_t requested,
@@ -2234,6 +2107,8 @@ serf_sectrans_encrypt_destroy_and_data(serf_bucket_t *bucket)
 
 /**** DECRYPTION BUCKET API *****/
 /********************************/
+#pragma mark DECRYPTION BUCKET API
+#pragma mark -
 static apr_status_t
 serf_sectrans_decrypt_peek(serf_bucket_t *bucket,
                            const char **data,
@@ -2393,6 +2268,136 @@ serf_sectrans_decrypt_destroy_and_data(serf_bucket_t *bucket)
     serf_bucket_ssl_destroy_and_data(bucket);
 }
 
+/**** Helper function to fetch info from Keychain ****/
+/*****************************************************/
+#pragma mark KEYCHAIN HELPER FUNCTIONS
+#pragma mark -
+apr_status_t
+serf_sectrans_show_trust_certificate_panel(serf_ssl_context_t *ctx,
+                                           const char *message,
+                                           const char *ok_button,
+                                           const char *cancel_button)
+{
+#ifdef SERF_HAVE_SECURETRANSPORT
+    sectrans_context_t *ssl_ctx = serf__ssl_get_impl_context(ctx);
+    SecTrustRef trust = ssl_ctx->trust;
+    apr_status_t status;
+
+    void *sectrans_cls = objc_getClass("SecTrans_Buckets");
+    id tmp = objc_msgSend(sectrans_cls,
+                          sel_getUid("showTrustCertificateDialog:message:"
+                                     "ok_button:cancel_button:"),
+                          trust, message, ok_button, cancel_button);
+    status = (apr_status_t)(SInt64)tmp;
+
+    return status;
+#else
+    return APR_ENOTIMPL;
+#endif
+}
+
+apr_status_t
+serf_sectrans_show_select_identity_panel(
+                                         serf_ssl_context_t *ctx,
+                                         const serf_ssl_identity_t **identity,
+                                         const char *message,
+                                         const char *ok_button,
+                                         const char *cancel_button,
+                                         apr_pool_t *pool)
+{
+#ifdef SERF_HAVE_SECURETRANSPORT
+    SecIdentityRef identityref;
+    OSStatus osstatus;
+
+    void *sectrans_cls = objc_getClass("SecTrans_Buckets");
+    id tmp = objc_msgSend(sectrans_cls,
+                          sel_getUid("showSelectIdentityDialog:message:"
+                                     "ok_button:cancel_button:"),
+                          &identityref, message, ok_button, cancel_button);
+    osstatus = (OSStatus)(SInt64)tmp;
+    if (osstatus == errSecItemNotFound)
+    {
+        /* There is no single identity in the keychains. */
+        return SERF_ERROR_SSL_NO_IDENTITIES_AVAILABLE;
+    } else if (osstatus != noErr) {
+        return translate_sectrans_status(osstatus);
+    }
+
+    if (!identityref)
+        return SERF_ERROR_SSL_CERT_FAILED;
+
+    *identity = serf__create_identity(&serf_ssl_bucket_type_securetransport,
+                                      identityref, NULL,
+                                      pool);
+    return APR_SUCCESS;
+#else
+    return APR_ENOTIMPL;
+#endif
+}
+
+apr_status_t
+serf_sectrans_find_preferred_identity_in_keychain(
+                                                  serf_ssl_context_t *ctx,
+                                                  const serf_ssl_identity_t **identity,
+                                                  apr_pool_t *pool)
+{
+#ifdef SERF_HAVE_SECURETRANSPORT
+    apr_pool_t *tmppool;
+    sectrans_context_t *ssl_ctx = serf__ssl_get_impl_context(ctx);
+    SecIdentityRef identityref = NULL;
+    CFStringRef labelref;
+    const char *label;
+    apr_status_t status;
+
+    /* We can get the distinguished names from the server with
+       SSLCopyDistinguishedNames to filter matching client certificates,
+       but we can't pass this list to the application, and
+       SecIdentityCopyPreferred doesn't have this feature implemented
+       either. So, don't bother. */
+
+    /* We absolutelely need an item that can sign. Otherwise we will get
+       an incomplete identity object, with which SecIdentityCopyCertificate
+       will crash. */
+    const void *keyUsage[] = { kSecAttrCanSign };
+    CFArrayRef keyUsageRef = CFArrayCreate(kCFAllocatorDefault,
+                                           (void *)keyUsage,
+                                           1,
+                                           NULL);
+
+    apr_pool_create(&tmppool, pool);
+
+    /* Find an identity preference using label https://<hostname> */
+    label = apr_pstrcat(tmppool, "https://", ssl_ctx->hostname, NULL);
+    labelref = CFStringCreateWithBytesNoCopy(kCFAllocatorDefault,
+                                             (unsigned char *)label,
+                                             strlen(label),
+                                             kCFStringEncodingMacRoman,
+                                             false,
+                                             kCFAllocatorNull);
+    identityref = SecIdentityCopyPreferred(labelref,
+                                           keyUsageRef, NULL);
+    if (identityref)
+    {
+
+        *identity = serf__create_identity(&serf_ssl_bucket_type_securetransport,
+                                          identityref, NULL, pool);
+        status = APR_SUCCESS;
+    } else {
+        *identity = NULL;
+        status = SERF_ERROR_SSL_CERT_FAILED;
+    }
+
+    CFRelease(labelref);
+    CFRelease(keyUsageRef);
+    apr_pool_destroy(tmppool);
+    
+    return status;
+#else
+    return APR_ENOTIMPL;
+#endif
+}
+
+/*****************************************************************************/
 const serf_bucket_type_t serf_bucket_type_sectrans_encrypt = {
     "SECURETRANSPORTENCRYPT",
     serf_sectrans_encrypt_read,
