@@ -18,6 +18,7 @@
 import sys
 import os
 import re
+import platform
 
 HEADER_FILES = ['serf.h',
                 'serf_bucket_types.h',
@@ -106,11 +107,6 @@ debug = env.get('DEBUG', None)
 Help(opts.GenerateHelpText(env))
 opts.Save(SAVED_CONFIG, env)
 
-if sys.platform == 'darwin':
-  securetransport = True
-else:
-  securetransport = False
-
 
 # PLATFORM-SPECIFIC BUILD TWEAKS
 
@@ -135,13 +131,13 @@ if sys.platform == 'darwin':
   linkflags.append('-Wl,-compatibility_version,%d' % (MINOR+1,))
   linkflags.append('-Wl,-current_version,%d.%d' % (MINOR+1, PATCH,))
 
-if securetransport:
-  # add Secure Transport library for ssl/tls on Mac OS X
-  env.Append(FRAMEWORKS='Security')
-  env.Append(FRAMEWORKS='SecurityInterface')
-  env.Append(FRAMEWORKS='CoreFoundation')
-  env.Append(FRAMEWORKS='AppKit')
-  env.Append(CFLAGS='-DSERF_HAVE_SECURETRANSPORT')
+  # enable sectans_buckets only on Mac OS X 10.7+
+  securetransport = False
+  ver, _, _ = platform.mac_ver()
+  ver = float('.'.join(ver.split('.')[:2]))
+  if ver >= 10.7:
+    securetransport = True
+    env.Append(CFLAGS='-DSERF_HAVE_SECURETRANSPORT')
 
 if sys.platform == 'win32':
   ### we should create serf.def for Windows DLLs and add it into the link
@@ -165,8 +161,10 @@ if 1:
   ### works for Mac OS. probably needs to change
   libs = ['ssl', 'crypto', 'z', ]
 
-  if sys.platform == 'darwin':
-    libs.append('objc')    # TODO: Required by Secure Transport only.
+  if securetransport:
+    env.Append(FRAMEWORKS=['Security', 'SecurityInterface', 'CoreFoundation',
+                           'AppKit'])
+    libs.append('objc')
 
   if sys.platform == 'sunos5':
     libs.append('m')
