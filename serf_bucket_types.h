@@ -558,7 +558,13 @@ typedef apr_status_t (*serf_ssl_need_identity_t)(
     const serf_ssl_identity_t **identity,
     apr_pool_t *pool);
 
-typedef apr_status_t (*serf_ssl_need_cert_password_t)(
+/* TODO: this callback type doesn't make sense for serf_ssl_need_identity_t,
+   as that function doesn't return a file path, but an identity which doesn't
+   necessarily come from a file.
+   Need serf_ssl_need_identity_password_t. and another label to identify
+   for which identity we ask the password. Maybe just pass the identity itself.
+ */
+ typedef apr_status_t (*serf_ssl_need_cert_password_t)(
     void *data,
     const char *cert_path,
     const char **password);
@@ -694,6 +700,8 @@ apr_status_t serf_ssl_load_cert_file(
  * 
  * The certificate can be reused in ssl_context's.
  */
+/* TODO: ssl_ctx is currently not needed as the choice of ssl buckets is
+   for the whole process, not per context. Probably can be removed. */
 apr_status_t serf_ssl_load_CA_cert_from_file(serf_ssl_context_t *ssl_ctx,
                                              serf_ssl_certificate_t **cert,
                                              const char *file_path,
@@ -703,6 +711,10 @@ apr_status_t serf_ssl_load_identity_from_file(serf_ssl_context_t *ssl_ctx,
                  const serf_ssl_identity_t **identity,
                  const char *file_path,
                  apr_pool_t *pool);
+
+/* TODO: add serf_ssl_get_certificate_from_identity, to give the application
+   a view on the client identity. This can be useful when matching an identity
+   with a list of acceptable CA's. */
 
 /**
  * Adds the certificate @a cert to the list of trusted certificates in 
@@ -738,7 +750,7 @@ serf_sectrans_show_trust_certificate_panel(serf_ssl_context_t *ssl_ctx,
 
     
 /* Note: both serf_sectrans_show_select_identity_panel and
-   serf_sectrans_find_preferred_identity_in_keychainthis support smart cards.
+   serf_sectrans_find_preferred_identity_in_keychain support smart cards.
  
    As soon as the card is inserted in the reader, an extra keychain will be 
    created containing the certificate(s) and private key(s) stored on the smart 
@@ -753,6 +765,8 @@ serf_sectrans_show_trust_certificate_panel(serf_ssl_context_t *ssl_ctx,
 /* Show a SFChooseIdentityPanel. This is the Mac OS X default dialog to
    ask the user which client certificate to use for this server. The choice
    of client certificate will not be saved.
+
+   TODO: should take list of acceptable CA's.
 
    This function will return APR_ENOTIMPL when SERF_HAVE_SECURETRANSPORT is not
    defined.
