@@ -32,6 +32,13 @@
    Furthermore, the implementation of the services has some bugs that needed
    workarounds. This page is very helpful in identifying these bugs:
    https://github.com/lorentey/LKSecurity/blob/master/Framework%20Bugs.markdown
+ 
+ 
+   A secure transport bucket implements following API's
+   - a serf_bucket_t for encryption
+   - a serf_bucket_t for decryption
+   - a serf_ssl_bucket_type_t for certificate handling, general SSL/TLS stuff.
+   - extra serf_sectrans_ functions to integrate with Keychain.
  */
 
 #ifdef SERF_HAVE_SECURETRANSPORT
