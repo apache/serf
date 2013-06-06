@@ -2344,9 +2344,9 @@ serf_sectrans_show_select_identity_panel(
 
 apr_status_t
 serf_sectrans_find_preferred_identity_in_keychain(
-                                                  serf_ssl_context_t *ctx,
-                                                  const serf_ssl_identity_t **identity,
-                                                  apr_pool_t *pool)
+    serf_ssl_context_t *ctx,
+    const serf_ssl_identity_t **identity,
+    apr_pool_t *pool)
 {
 #ifdef SERF_HAVE_SECURETRANSPORT
     apr_pool_t *tmppool;
