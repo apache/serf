@@ -232,17 +232,23 @@ apr_status_t run_test_server(serv_ctx_t *servctx,
     /* Don't accept new connection while processing client connection. At
        least for present time.*/
     if (servctx->client_sock) {
-        apr_pollfd_t pfd = { pool, APR_POLL_SOCKET, APR_POLLIN | APR_POLLOUT, 0,
-                             { NULL }, NULL };
+        apr_pollfd_t pfd = { 0 };
+
+        pfd.desc_type = APR_POLL_SOCKET;
         pfd.desc.s = servctx->client_sock;
+        pfd.reqevents = APR_POLLIN | APR_POLLOUT;
+
         status = apr_pollset_add(pollset, &pfd);
         if (status != APR_SUCCESS)
             goto cleanup;
     }
     else {
-        apr_pollfd_t pfd = { pool, APR_POLL_SOCKET, APR_POLLIN, 0,
-                             { NULL }, NULL };
+        apr_pollfd_t pfd = { 0 };
+
+        pfd.desc_type = APR_POLL_SOCKET;
         pfd.desc.s = servctx->serv_sock;
+        pfd.reqevents = APR_POLLIN;
+
         status = apr_pollset_add(pollset, &pfd);
         if (status != APR_SUCCESS)
             goto cleanup;

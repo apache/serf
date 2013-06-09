@@ -197,7 +197,7 @@ static apr_status_t serf_copy_peek(serf_bucket_t *bucket,
 
 static void serf_copy_destroy(serf_bucket_t *bucket)
 {
-    copy_context_t *ctx = bucket->data;
+/*    copy_context_t *ctx = bucket->data;*/
 
     /* ### kill the HOLD_BUF  */
 

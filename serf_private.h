@@ -165,7 +165,7 @@ typedef enum {
     SERF_CONN_INIT,             /* no socket created yet */
     SERF_CONN_SETUP_SSLTUNNEL,  /* ssl tunnel being setup, no requests sent */
     SERF_CONN_CONNECTED,        /* conn is ready to send requests */
-    SERF_CONN_CLOSING,          /* conn is closing, no more requests,
+    SERF_CONN_CLOSING           /* conn is closing, no more requests,
                                    start a new socket */
 } serf__connection_state_t;
 
