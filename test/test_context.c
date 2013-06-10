@@ -50,6 +50,7 @@ typedef struct {
 #define TEST_RESULT_SERVERCERTCHAINCB_CALLED 0x0002
 #define TEST_RESULT_CLIENT_CERTCB_CALLED     0x0004
 #define TEST_RESULT_CLIENT_CERTPWCB_CALLED   0x0008
+#define TEST_RESULT_AUTHNCB_CALLED           0x001A
 
 /* Helper function, runs the client and server context loops and validates
    that no errors were encountered, and all messages were sent and received. */
@@ -1197,6 +1198,88 @@ static void test_connection_large_request(CuTest *tc)
                                        test_pool);
 }
 
+static apr_status_t
+authn_callback(char **username,
+               char **password,
+               serf_request_t *request, void *baton,
+               int code, const char *authn_type,
+               const char *realm,
+               apr_pool_t *pool)
+{
+    handler_baton_t *handler_ctx = baton;
+    test_baton_t *tb = handler_ctx->tb;
+
+    tb->result_flags |= TEST_RESULT_AUTHNCB_CALLED;
+
+    if (code != 401)
+        return SERF_ERROR_ISSUE_IN_TESTSUITE;
+    if (strcmp("Basic", authn_type) != 0)
+        return SERF_ERROR_ISSUE_IN_TESTSUITE;
+    if (strcmp("<http://localhost:12345> Test Suite", realm) != 0)
+        return SERF_ERROR_ISSUE_IN_TESTSUITE;
+
+    *username = "serf";
+    *password = "serftest";
+
+    return APR_SUCCESS;
+}
+
+static void test_basic_authentication(CuTest *tc)
+{
+    test_baton_t *tb;
+    handler_baton_t handler_ctx[1];
+    const int num_requests_sent = sizeof(handler_ctx)/sizeof(handler_ctx[0]);
+    const int num_requests_recvd = num_requests_sent + 1; /* retry for authn */
+
+    /* Expected string relies on strict order of headers, which is not
+       guaranteed. c2VyZjpzZXJmdGVzdA== is base64 encoded serf:serftest . */
+    test_server_message_t message_list[] = {
+        {CHUNKED_REQUEST(1, "1")},
+        {"GET / HTTP/1.1" CRLF
+         "Host: localhost:12345" CRLF
+         "Authorization: Basic c2VyZjpzZXJmdGVzdA==" CRLF
+         "Transfer-Encoding: chunked" CRLF
+         CRLF
+         "1" CRLF
+         "1" CRLF
+         "0" CRLF CRLF},
+        {CHUNKED_REQUEST(1, "1")}, };
+    test_server_action_t action_list[] = {
+        {SERVER_RESPOND, "HTTP/1.1 401 Unauthorized" CRLF
+                         "Transfer-Encoding: chunked" CRLF
+                         "WWW-Authenticate: Basic realm=""Test Suite""" CRLF
+                         CRLF
+                         "1" CRLF CRLF
+                         "0" CRLF CRLF},
+        {SERVER_RESPOND, CHUNKED_EMPTY_RESPONSE},
+    };
+    const char *request;
+    apr_status_t status;
+
+    apr_pool_t *test_pool = tc->testBaton;
+
+    /* Set up a test context with a server */
+    status = test_http_server_setup(&tb,
+                                    message_list, num_requests_recvd,
+                                    action_list, num_requests_recvd, 0, NULL,
+                                    test_pool);
+    CuAssertIntEquals(tc, APR_SUCCESS, status);
+
+    serf_config_authn_types(tb->context, SERF_AUTHN_BASIC);
+    serf_config_credentials_callback(tb->context, authn_callback);
+
+    create_new_request(tb, &handler_ctx[0], "GET", "/", 1);
+
+    status = test_helper_run_requests_no_check(tc, tb, num_requests_sent,
+                                               handler_ctx, test_pool);
+    CuAssertIntEquals(tc, APR_SUCCESS, status);
+
+    /* Check that all requests were received */
+    CuAssertIntEquals(tc, num_requests_recvd, tb->sent_requests->nelts);
+    CuAssertIntEquals(tc, num_requests_recvd, tb->accepted_requests->nelts);
+    CuAssertIntEquals(tc, num_requests_sent, tb->handled_requests->nelts);
+}
+
 /*****************************************************************************
  * SSL handshake tests
  *****************************************************************************/
@@ -2015,6 +2098,7 @@ CuSuite *test_context(void)
     SUITE_ADD_TEST(suite, test_request_timeout);
     SUITE_ADD_TEST(suite, test_connection_large_response);
     SUITE_ADD_TEST(suite, test_connection_large_request);
+    SUITE_ADD_TEST(suite, test_basic_authentication);
     SUITE_ADD_TEST(suite, test_ssl_handshake);
     SUITE_ADD_TEST(suite, test_ssl_trust_rootca);
     SUITE_ADD_TEST(suite, test_ssl_application_rejects_cert);
