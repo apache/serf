@@ -16,6 +16,10 @@
 #ifndef TEST_SERVER_H
 #define TEST_SERVER_H
 
+/* Test logging facilities, set flag to 1 to enable console logging for
+   the test suite. */
+#define TEST_VERBOSE 0
+
 #define TEST_SERVER_DUMP 1
 
 /* Default port for our test server. */

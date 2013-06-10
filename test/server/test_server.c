@@ -77,7 +77,8 @@ static apr_status_t replay(serv_ctx_t *servctx,
     if (rtnevents & APR_POLLIN) {
         if (servctx->message_list == NULL) {
             /* we're not expecting any requests to reach this server! */
-            printf("Received request where none was expected\n");
+            serf__log(TEST_VERBOSE, __FILE__,
+                      "Received request where none was expected.\n");
 
             return SERF_ERROR_ISSUE_IN_TESTSUITE;
         }
@@ -89,7 +90,8 @@ static apr_status_t replay(serv_ctx_t *servctx,
             status = servctx->read(servctx, buf, &len);
             if (! APR_STATUS_IS_EAGAIN(status)) {
                 /* we're out of actions! */
-                printf("Received more requests than expected.\n");
+                serf__log(TEST_VERBOSE, __FILE__,
+                          "Received more requests than expected.\n");
 
                 return SERF_ERROR_ISSUE_IN_TESTSUITE;
             }

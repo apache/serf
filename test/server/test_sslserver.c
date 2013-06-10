@@ -22,8 +22,6 @@
 #include <openssl/ssl.h>
 #include <openssl/err.h>
 
-#define TEST_VERBOSE 0
-
 static int init_done = 0;
 
 typedef struct ssl_context_t {
