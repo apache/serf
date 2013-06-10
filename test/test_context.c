@@ -361,7 +361,7 @@ static void test_serf_connection_priority_request_create(CuTest *tc)
 
 /* Test that serf correctly handles the 'Connection:close' header when the
    server is planning to close the connection. */
-static void test_serf_closed_connection(CuTest *tc)
+static void test_closed_connection(CuTest *tc)
 {
     test_baton_t *tb;
     apr_status_t status;
@@ -459,7 +459,7 @@ static void test_serf_closed_connection(CuTest *tc)
 
 /* Test if serf is sending the request to the proxy, not to the server
    directly. */
-static void test_serf_setup_proxy(CuTest *tc)
+static void test_setup_proxy(CuTest *tc)
 {
     test_baton_t *tb;
     int i;
@@ -822,7 +822,7 @@ static apr_status_t progress_conn_setup(apr_socket_t *skt,
     return APR_SUCCESS;
 }
 
-static void test_serf_progress_callback(CuTest *tc)
+static void test_progress_callback(CuTest *tc)
 {
     test_baton_t *tb;
     apr_status_t status;
@@ -1010,7 +1010,7 @@ static apr_status_t handle_response_timeout(
     return APR_SUCCESS;
 }
 
-static void test_serf_request_timeout(CuTest *tc)
+static void test_request_timeout(CuTest *tc)
 {
     test_baton_t *tb;
         apr_status_t status;
@@ -1095,7 +1095,7 @@ static const char *create_large_response_message(apr_pool_t *pool)
 }
 
 /* Validate reading a large chunked response. */
-static void test_serf_connection_large_response(CuTest *tc)
+static void test_connection_large_response(CuTest *tc)
 {
     test_baton_t *tb;
     handler_baton_t handler_ctx[1];
@@ -1165,7 +1165,7 @@ static const char *create_large_request_message(apr_pool_t *pool)
 }
 
 /* Validate sending a large chunked response. */
-static void test_serf_connection_large_request(CuTest *tc)
+static void test_connection_large_request(CuTest *tc)
 {
     test_baton_t *tb;
     handler_baton_t handler_ctx[1];
@@ -1340,7 +1340,7 @@ ssl_server_cert_cb_reject(void *baton, int failures,
 
 /* Validate that we can connect successfully to an https server. This
    certificate is not trusted, so a cert validation failure is expected. */
-static void test_serf_ssl_handshake(CuTest *tc)
+static void test_ssl_handshake(CuTest *tc)
 {
     test_baton_t *tb;
     handler_baton_t handler_ctx[1];
@@ -1417,7 +1417,7 @@ https_set_root_ca_conn_setup(apr_socket_t *skt,
 
 /* Validate that server certificate validation is ok when we
    explicitly trust our self-signed root ca. */
-static void test_serf_ssl_trust_rootca(CuTest *tc)
+static void test_ssl_trust_rootca(CuTest *tc)
 {
     test_baton_t *tb;
     handler_baton_t handler_ctx[1];
@@ -1452,7 +1452,7 @@ static void test_serf_ssl_trust_rootca(CuTest *tc)
 
 /* Validate that when the application rejects the cert, the context loop
    bails out with an error. */
-static void test_serf_ssl_application_rejects_cert(CuTest *tc)
+static void test_ssl_application_rejects_cert(CuTest *tc)
 {
     test_baton_t *tb;
     handler_baton_t handler_ctx[1];
@@ -1550,7 +1550,7 @@ chain_rootca_callback_conn_setup(apr_socket_t *skt,
 /* Make the server return a partial certificate chain (server cert, CA cert),
    the root CA cert is trusted explicitly in the client. Test the chain
    callback. */
-static void test_serf_ssl_certificate_chain_with_anchor(CuTest *tc)
+static void test_ssl_certificate_chain_with_anchor(CuTest *tc)
 {
     test_baton_t *tb;
     handler_baton_t handler_ctx[1];
@@ -1625,7 +1625,7 @@ chain_callback_conn_setup(apr_socket_t *skt,
 
 /* Make the server return the complete certificate chain (server cert, CA cert
    and root CA cert). Test the chain callback. */
-static void test_serf_ssl_certificate_chain_all_from_server(CuTest *tc)
+static void test_ssl_certificate_chain_all_from_server(CuTest *tc)
 {
     test_baton_t *tb;
     handler_baton_t handler_ctx[1];
@@ -1664,7 +1664,7 @@ static void test_serf_ssl_certificate_chain_all_from_server(CuTest *tc)
 
 /* Validate that the ssl handshake succeeds if no application callbacks
    are set, and the ssl server certificate chains is ok. */
-static void test_serf_ssl_no_servercert_callback_allok(CuTest *tc)
+static void test_ssl_no_servercert_callback_allok(CuTest *tc)
 {
     test_baton_t *tb;
     handler_baton_t handler_ctx[1];
@@ -1699,7 +1699,7 @@ static void test_serf_ssl_no_servercert_callback_allok(CuTest *tc)
 
 /* Validate that the ssl handshake fails if no application callbacks
  are set, and the ssl server certificate chains is NOT ok. */
-static void test_serf_ssl_no_servercert_callback_fail(CuTest *tc)
+static void test_ssl_no_servercert_callback_fail(CuTest *tc)
 {
     test_baton_t *tb;
     handler_baton_t handler_ctx[1];
@@ -1734,9 +1734,9 @@ static void test_serf_ssl_no_servercert_callback_fail(CuTest *tc)
     CuAssertIntEquals(tc, SERF_ERROR_SSL_CERT_FAILED, status);
 }
 
-/* Similar to test_serf_connection_large_response, validate reading a large
+/* Similar to test_connection_large_response, validate reading a large
    chunked response over SSL. */
-static void test_serf_ssl_large_response(CuTest *tc)
+static void test_ssl_large_response(CuTest *tc)
 {
     test_baton_t *tb;
     handler_baton_t handler_ctx[1];
@@ -1773,9 +1773,9 @@ static void test_serf_ssl_large_response(CuTest *tc)
                                        handler_ctx, test_pool);
 }
 
-/* Similar to test_serf_connection_large_request, validate sending a large
+/* Similar to test_connection_large_request, validate sending a large
    chunked request over SSL. */
-static void test_serf_ssl_large_request(CuTest *tc)
+static void test_ssl_large_request(CuTest *tc)
 {
     test_baton_t *tb;
     handler_baton_t handler_ctx[1];
@@ -1868,7 +1868,7 @@ client_cert_conn_setup(apr_socket_t *skt,
     return APR_SUCCESS;
 }
 
-static void test_serf_ssl_client_certificate(CuTest *tc)
+static void test_ssl_client_certificate(CuTest *tc)
 {
     test_baton_t *tb;
     handler_baton_t handler_ctx[1];
@@ -1908,7 +1908,7 @@ static void test_serf_ssl_client_certificate(CuTest *tc)
 
 /* Validate that the expired certificate is reported as failure in the
    callback. */
-static void test_serf_ssl_expired_server_cert(CuTest *tc)
+static void test_ssl_expired_server_cert(CuTest *tc)
 {
     test_baton_t *tb;
     handler_baton_t handler_ctx[1];
@@ -1954,7 +1954,7 @@ static void test_serf_ssl_expired_server_cert(CuTest *tc)
 
 /* Validate that the expired certificate is reported as failure in the
  callback. */
-static void test_serf_ssl_future_server_cert(CuTest *tc)
+static void test_ssl_future_server_cert(CuTest *tc)
 {
     test_baton_t *tb;
     handler_baton_t handler_ctx[1];
@@ -2007,26 +2007,26 @@ CuSuite *test_context(void)
 
     SUITE_ADD_TEST(suite, test_serf_connection_request_create);
     SUITE_ADD_TEST(suite, test_serf_connection_priority_request_create);
-    SUITE_ADD_TEST(suite, test_serf_closed_connection);
-    SUITE_ADD_TEST(suite, test_serf_setup_proxy);
+    SUITE_ADD_TEST(suite, test_closed_connection);
+    SUITE_ADD_TEST(suite, test_setup_proxy);
     SUITE_ADD_TEST(suite, test_keepalive_limit_one_by_one);
     SUITE_ADD_TEST(suite, test_keepalive_limit_one_by_one_and_burst);
-    SUITE_ADD_TEST(suite, test_serf_progress_callback);
-    SUITE_ADD_TEST(suite, test_serf_request_timeout);
-    SUITE_ADD_TEST(suite, test_serf_connection_large_response);
-    SUITE_ADD_TEST(suite, test_serf_connection_large_request);
-    SUITE_ADD_TEST(suite, test_serf_ssl_handshake);
-    SUITE_ADD_TEST(suite, test_serf_ssl_trust_rootca);
-    SUITE_ADD_TEST(suite, test_serf_ssl_application_rejects_cert);
-    SUITE_ADD_TEST(suite, test_serf_ssl_certificate_chain_with_anchor);
-    SUITE_ADD_TEST(suite, test_serf_ssl_certificate_chain_all_from_server);
-    SUITE_ADD_TEST(suite, test_serf_ssl_no_servercert_callback_allok);
-    SUITE_ADD_TEST(suite, test_serf_ssl_no_servercert_callback_fail);
-    SUITE_ADD_TEST(suite, test_serf_ssl_large_response);
-    SUITE_ADD_TEST(suite, test_serf_ssl_large_request);
-    SUITE_ADD_TEST(suite, test_serf_ssl_client_certificate);
-    SUITE_ADD_TEST(suite, test_serf_ssl_expired_server_cert);
-    SUITE_ADD_TEST(suite, test_serf_ssl_future_server_cert);
+    SUITE_ADD_TEST(suite, test_progress_callback);
+    SUITE_ADD_TEST(suite, test_request_timeout);
+    SUITE_ADD_TEST(suite, test_connection_large_response);
+    SUITE_ADD_TEST(suite, test_connection_large_request);
+    SUITE_ADD_TEST(suite, test_ssl_handshake);
+    SUITE_ADD_TEST(suite, test_ssl_trust_rootca);
+    SUITE_ADD_TEST(suite, test_ssl_application_rejects_cert);
+    SUITE_ADD_TEST(suite, test_ssl_certificate_chain_with_anchor);
+    SUITE_ADD_TEST(suite, test_ssl_certificate_chain_all_from_server);
+    SUITE_ADD_TEST(suite, test_ssl_no_servercert_callback_allok);
+    SUITE_ADD_TEST(suite, test_ssl_no_servercert_callback_fail);
+    SUITE_ADD_TEST(suite, test_ssl_large_response);
+    SUITE_ADD_TEST(suite, test_ssl_large_request);
+    SUITE_ADD_TEST(suite, test_ssl_client_certificate);
+    SUITE_ADD_TEST(suite, test_ssl_expired_server_cert);
+    SUITE_ADD_TEST(suite, test_ssl_future_server_cert);
 
     return suite;
 }
