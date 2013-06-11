@@ -100,6 +100,11 @@ static apr_status_t replay(serv_ctx_t *servctx,
 
         action = &servctx->action_list[servctx->cur_action];
 
+        serf__log(TEST_VERBOSE, __FILE__,
+                  "Replaying action %d, kind: %d.\n", servctx->cur_action,
+                  action->kind);
+
+        /* Read the remaining data from the client and kill the socket. */
         if (action->kind == SERVER_IGNORE_AND_KILL_CONNECTION) {
             char buf[128];
             apr_size_t len = sizeof(buf);
@@ -107,6 +112,8 @@ static apr_status_t replay(serv_ctx_t *servctx,
             status = servctx->read(servctx, buf, &len);
 
             if (status == APR_EOF) {
+                serf__log(TEST_VERBOSE, __FILE__,
+                          "Killing this connection.\n");
                 apr_socket_close(servctx->client_sock);
                 servctx->client_sock = NULL;
                 next_action(servctx);
@@ -170,6 +177,10 @@ static apr_status_t replay(serv_ctx_t *servctx,
     if (rtnevents & APR_POLLOUT) {
         action = &servctx->action_list[servctx->cur_action];
 
+        serf__log(TEST_VERBOSE, __FILE__,
+                  "Replaying action %d, kind: %d.\n", servctx->cur_action,
+                  action->kind);
+
         if (action->kind == SERVER_RESPOND && servctx->outstanding_responses) {
             apr_size_t msg_len;
             apr_size_t len;
@@ -195,6 +206,8 @@ static apr_status_t replay(serv_ctx_t *servctx,
         }
         else if (action->kind == SERVER_KILL_CONNECTION ||
                  action->kind == SERVER_IGNORE_AND_KILL_CONNECTION) {
+            serf__log(TEST_VERBOSE, __FILE__,
+                      "Killing this connection.\n");
             apr_socket_close(servctx->client_sock);
             servctx->client_sock = NULL;
             next_action(servctx);
