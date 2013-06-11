@@ -92,6 +92,11 @@ typedef struct {
     serv_ctx_t *proxy_ctx;
     apr_sockaddr_t *proxy_addr;
 
+    /* Cache connection params here so it gets user for a test to switch to a
+       new connection. */
+    const char *serv_url;
+    serf_connection_setup_t conn_setup;
+
     /* An extra baton which can be freely used by tests. */
     void *user_baton;
 
@@ -110,6 +115,9 @@ apr_status_t default_https_conn_setup(apr_socket_t *skt,
                                       serf_bucket_t **output_bkt,
                                       void *setup_baton,
                                       apr_pool_t *pool);
+
+apr_status_t use_new_connection(test_baton_t *tb,
+                                apr_pool_t *pool);
 
 apr_status_t test_https_server_setup(test_baton_t **tb_p,
                                      test_server_message_t *message_list,

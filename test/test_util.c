@@ -110,6 +110,33 @@ apr_status_t default_https_conn_setup(apr_socket_t *skt,
     return APR_SUCCESS;
 }
 
+apr_status_t use_new_connection(test_baton_t *tb,
+                                apr_pool_t *pool)
+{
+    apr_uri_t url;
+    apr_status_t status;
+
+    if (tb->connection)
+        cleanup_conn(tb->connection);
+    tb->connection = NULL;
+
+    status = apr_uri_parse(pool, tb->serv_url, &url);
+    if (status != APR_SUCCESS)
+        return status;
+
+    status = serf_connection_create2(&tb->connection, tb->context,
+                                     url,
+                                     tb->conn_setup,
+                                     tb,
+                                     default_closed_connection,
+                                     tb,
+                                     pool);
+    apr_pool_cleanup_register(pool, tb->connection, cleanup_conn,
+                              apr_pool_cleanup_null);
+
+    return status;
+}
+
 /* Setup the client context, ready to connect and send requests to a
    server.*/
 static apr_status_t setup(test_baton_t **tb_p,
@@ -119,9 +146,8 @@ static apr_status_t setup(test_baton_t **tb_p,
                           apr_size_t message_count,
                           apr_pool_t *pool)
 {
-    apr_status_t status;
     test_baton_t *tb;
-    apr_uri_t url;
+    apr_status_t status;
 
     tb = apr_pcalloc(pool, sizeof(*tb));
     *tb_p = tb;
@@ -134,6 +160,8 @@ static apr_status_t setup(test_baton_t **tb_p,
     tb->sent_requests = apr_array_make(pool, message_count, sizeof(int));
     tb->handled_requests = apr_array_make(pool, message_count, sizeof(int));
 
+    tb->serv_url = serv_url;
+    tb->conn_setup = conn_setup;
 
     status = default_server_address(&tb->serv_addr, pool);
     if (status != APR_SUCCESS)
@@ -148,20 +176,8 @@ static apr_status_t setup(test_baton_t **tb_p,
         serf_config_proxy(tb->context, tb->proxy_addr);
     }
 
-    status = apr_uri_parse(pool, serv_url, &url);
-    if (status != APR_SUCCESS)
-        return status;
+    status = use_new_connection(tb, pool);
 
-    status = serf_connection_create2(&tb->connection, tb->context,
-                                     url,
-                                     conn_setup,
-                                     tb,
-                                     default_closed_connection,
-                                     tb,
-                                     pool);
-    apr_pool_cleanup_register(pool, tb->connection, cleanup_conn,
-                              apr_pool_cleanup_null);
-    
     return status;
 }
 
