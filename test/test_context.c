@@ -1227,9 +1227,8 @@ authn_callback(char **username,
 static void test_basic_authentication(CuTest *tc)
 {
     test_baton_t *tb;
-    handler_baton_t handler_ctx[1];
-    const int num_requests_sent = sizeof(handler_ctx)/sizeof(handler_ctx[0]);
-    const int num_requests_recvd = num_requests_sent + 1; /* retry for authn */
+    handler_baton_t handler_ctx[2];
+    int num_requests_sent, num_requests_recvd;
 
     /* Expected string relies on strict order of headers, which is not
        guaranteed. c2VyZjpzZXJmdGVzdA== is base64 encoded serf:serftest . */
@@ -1243,7 +1242,14 @@ static void test_basic_authentication(CuTest *tc)
          "1" CRLF
          "1" CRLF
          "0" CRLF CRLF},
-        {CHUNKED_REQUEST(1, "1")}, };
+        {"GET / HTTP/1.1" CRLF
+            "Host: localhost:12345" CRLF
+            "Authorization: Basic c2VyZjpzZXJmdGVzdA==" CRLF
+            "Transfer-Encoding: chunked" CRLF
+            CRLF
+            "1" CRLF
+            "2" CRLF
+            "0" CRLF CRLF}, };
     test_server_action_t action_list[] = {
         {SERVER_RESPOND, "HTTP/1.1 401 Unauthorized" CRLF
                          "Transfer-Encoding: chunked" CRLF
@@ -1251,6 +1257,7 @@ static void test_basic_authentication(CuTest *tc)
                          CRLF
                          "1" CRLF CRLF
                          "0" CRLF CRLF},
+        {SERVER_RESPOND, CHUNKED_EMPTY_RESPONSE},
         {SERVER_RESPOND, CHUNKED_EMPTY_RESPONSE},
     };
     const char *request;
@@ -1260,8 +1267,8 @@ static void test_basic_authentication(CuTest *tc)
 
     /* Set up a test context with a server */
     status = test_http_server_setup(&tb,
-                                    message_list, num_requests_recvd,
-                                    action_list, num_requests_recvd, 0, NULL,
+                                    message_list, 3,
+                                    action_list, 3, 0, NULL,
                                     test_pool);
     CuAssertIntEquals(tc, APR_SUCCESS, status);
 
@@ -1270,14 +1277,29 @@ static void test_basic_authentication(CuTest *tc)
 
     create_new_request(tb, &handler_ctx[0], "GET", "/", 1);
 
+    /* Test that a request is retried and authentication headers are set
+       correctly. */
+    num_requests_sent = 1;
+    num_requests_recvd = 2;
+
     status = test_helper_run_requests_no_check(tc, tb, num_requests_sent,
                                                handler_ctx, test_pool);
     CuAssertIntEquals(tc, APR_SUCCESS, status);
-
-    /* Check that all requests were received */
     CuAssertIntEquals(tc, num_requests_recvd, tb->sent_requests->nelts);
     CuAssertIntEquals(tc, num_requests_recvd, tb->accepted_requests->nelts);
     CuAssertIntEquals(tc, num_requests_sent, tb->handled_requests->nelts);
+
+    CuAssertTrue(tc, tb->result_flags & TEST_RESULT_AUTHNCB_CALLED);
+
+    /* Test that credentials were cached by asserting that the authn callback
+       wasn't called again. */
+    tb->result_flags = 0;
+
+    create_new_request(tb, &handler_ctx[0], "GET", "/", 2);
+    status = test_helper_run_requests_no_check(tc, tb, num_requests_sent,
+                                               handler_ctx, test_pool);
+    CuAssertIntEquals(tc, APR_SUCCESS, status);
+    CuAssertTrue(tc, !(tb->result_flags & TEST_RESULT_AUTHNCB_CALLED));
 }
 
 /*****************************************************************************
