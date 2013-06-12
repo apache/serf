@@ -239,8 +239,12 @@ struct serf_connection_t {
     unsigned int max_outstanding_requests;
 
     int hit_eof;
-    /* Host info. */
+
+    /* Host url, path ommitted, syntax: https://svn.apache.org . */
     const char *host_url;
+    
+    /* Exploded host url, path ommitted. Only scheme, hostinfo, hostname,
+       port_str & port values are filled in. */
     apr_uri_t host_info;
 
     /* connection and authentication scheme specific information */ 
