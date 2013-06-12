@@ -81,13 +81,19 @@ log_error(int verbose_flag, const char *filename,
 static apr_status_t
 cleanup_ctx(void *data)
 {
-    OM_uint32 min_stat;
     serf__kerb_context_t *ctx = data;
 
     if (ctx->gss_ctx != GSS_C_NO_CONTEXT) {
-        if (gss_delete_sec_context(&min_stat, &ctx->gss_ctx,
-                                   GSS_C_NO_BUFFER) == GSS_S_FAILURE)
-            return APR_EGENERAL;
+        OM_uint32 gss_min_stat, gss_maj_stat;
+
+        gss_maj_stat = gss_delete_sec_context(&gss_min_stat, &ctx->gss_ctx,
+                                              GSS_C_NO_BUFFER);
+        if(GSS_ERROR(gss_maj_stat)) {
+            log_error(AUTH_VERBOSE, __FILE__, ctx,
+                      gss_maj_stat, gss_min_stat,
+                      "Error cleaning up GSS security context");
+            return SERF_ERROR_AUTHN_FAILED;
+        }
     }
 
     return APR_SUCCESS;
@@ -164,7 +170,10 @@ serf__kerb_init_sec_context(serf__kerb_context_t *ctx,
                                     GSS_C_NT_HOSTBASED_SERVICE,
                                     &host_gss_name);
     if(GSS_ERROR(gss_maj_stat)) {
-        return APR_EGENERAL;
+        log_error(AUTH_VERBOSE, __FILE__, ctx,
+                  gss_maj_stat, gss_min_stat,
+                  "Error converting principal name to GSS internal format ");
+        return SERF_ERROR_AUTHN_FAILED;
     }
 
     /* If the server sent us a token, pass it to gss_init_sec_token for
@@ -207,7 +216,7 @@ serf__kerb_init_sec_context(serf__kerb_context_t *ctx,
         log_error(AUTH_VERBOSE, __FILE__, ctx,
                   gss_maj_stat, gss_min_stat,
                   "Error during Kerberos handshake");
-        return APR_EGENERAL;
+        return SERF_ERROR_AUTHN_FAILED;
     }
 }
 
