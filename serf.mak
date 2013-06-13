@@ -144,6 +144,7 @@ TEST_OBJS = \
     "$(INTDIR)\CuTest.obj" \
     "$(INTDIR)\mock_buckets.obj" \
     "$(INTDIR)\test_all.obj" \
+    "$(INTDIR)\test_auth.obj" \
     "$(INTDIR)\test_util.obj" \
     "$(INTDIR)\test_context.obj" \
     "$(INTDIR)\test_buckets.obj" \
