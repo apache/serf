@@ -79,7 +79,6 @@ static void test_basic_authentication(CuTest *tc)
         {SERVER_RESPOND, CHUNKED_EMPTY_RESPONSE},
         {SERVER_RESPOND, CHUNKED_EMPTY_RESPONSE},
     };
-    const char *request;
     apr_status_t status;
 
     apr_pool_t *test_pool = tc->testBaton;
