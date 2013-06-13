@@ -139,17 +139,17 @@ serf__setup_request_basic_auth(peer_t peer,
                                serf_bucket_t *hdrs_bkt)
 {
     serf_context_t *ctx = conn->ctx;
-    basic_authn_info_t *authn_info;
+    basic_authn_info_t *basic_info;
 
     if (peer == HOST) {
-        authn_info = ctx->authn_info.baton;
+        basic_info = ctx->authn_info.baton;
     } else {
-        authn_info = ctx->proxy_authn_info.baton;
+        basic_info = ctx->proxy_authn_info.baton;
     }
 
-    if (authn_info && authn_info->header && authn_info->value) {
-        serf_bucket_headers_setn(hdrs_bkt, authn_info->header,
-                                 authn_info->value);
+    if (basic_info && basic_info->header && basic_info->value) {
+        serf_bucket_headers_setn(hdrs_bkt, basic_info->header,
+                                 basic_info->value);
         return APR_SUCCESS;
     }
 
