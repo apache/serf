@@ -15,6 +15,8 @@
 
 #include "apr.h"
 #include "apr_pools.h"
+#include <apr_strings.h>
+
 #include <stdlib.h>
 
 #include "serf.h"
@@ -319,4 +321,215 @@ void *test_teardown(void *baton)
     apr_pool_destroy(pool);
 
     return NULL;
+}
+
+/* Helper function, runs the client and server context loops and validates
+ that no errors were encountered, and all messages were sent and received. */
+apr_status_t
+test_helper_run_requests_no_check(CuTest *tc, test_baton_t *tb,
+                                  int num_requests,
+                                  handler_baton_t handler_ctx[],
+                                  apr_pool_t *pool)
+{
+    apr_pool_t *iter_pool;
+    int i, done = 0;
+    apr_status_t status;
+
+    apr_pool_create(&iter_pool, pool);
+
+    while (!done)
+    {
+        apr_pool_clear(iter_pool);
+
+        status = run_test_server(tb->serv_ctx, 0, iter_pool);
+        if (!APR_STATUS_IS_TIMEUP(status) &&
+            SERF_BUCKET_READ_ERROR(status))
+            return status;
+
+        status = serf_context_run(tb->context, 0, iter_pool);
+        if (!APR_STATUS_IS_TIMEUP(status) &&
+            SERF_BUCKET_READ_ERROR(status))
+            return status;
+
+        done = 1;
+        for (i = 0; i < num_requests; i++)
+            done &= handler_ctx[i].done;
+    }
+    apr_pool_destroy(iter_pool);
+
+    return APR_SUCCESS;
+}
+
+void
+test_helper_run_requests_expect_ok(CuTest *tc, test_baton_t *tb,
+                                   int num_requests,
+                                   handler_baton_t handler_ctx[],
+                                   apr_pool_t *pool)
+{
+    apr_status_t status;
+
+    status = test_helper_run_requests_no_check(tc, tb, num_requests,
+                                               handler_ctx, pool);
+    CuAssertIntEquals(tc, APR_SUCCESS, status);
+
+    /* Check that all requests were received */
+    CuAssertIntEquals(tc, num_requests, tb->sent_requests->nelts);
+    CuAssertIntEquals(tc, num_requests, tb->accepted_requests->nelts);
+    CuAssertIntEquals(tc, num_requests, tb->handled_requests->nelts);
+}
+
+serf_bucket_t* accept_response(serf_request_t *request,
+                               serf_bucket_t *stream,
+                               void *acceptor_baton,
+                               apr_pool_t *pool)
+{
+    serf_bucket_t *c;
+    serf_bucket_alloc_t *bkt_alloc;
+    handler_baton_t *ctx = acceptor_baton;
+
+    /* get the per-request bucket allocator */
+    bkt_alloc = serf_request_get_alloc(request);
+
+    /* Create a barrier so the response doesn't eat us! */
+    c = serf_bucket_barrier_create(stream, bkt_alloc);
+
+    APR_ARRAY_PUSH(ctx->accepted_requests, int) = ctx->req_id;
+
+    return serf_bucket_response_create(c, bkt_alloc);
+}
+
+apr_status_t setup_request(serf_request_t *request,
+                           void *setup_baton,
+                           serf_bucket_t **req_bkt,
+                           serf_response_acceptor_t *acceptor,
+                           void **acceptor_baton,
+                           serf_response_handler_t *handler,
+                           void **handler_baton,
+                           apr_pool_t *pool)
+{
+    handler_baton_t *ctx = setup_baton;
+    serf_bucket_t *body_bkt;
+
+    if (ctx->request)
+    {
+        /* Create a raw request bucket. */
+        *req_bkt = serf_bucket_simple_create(ctx->request, strlen(ctx->request),
+                                             NULL, NULL,
+                                             serf_request_get_alloc(request));
+    }
+    else
+    {
+        /* create a simple body text */
+        const char *str = apr_psprintf(pool, "%d", ctx->req_id);
+
+        body_bkt = serf_bucket_simple_create(str, strlen(str), NULL, NULL,
+                                             serf_request_get_alloc(request));
+        *req_bkt =
+        serf_request_bucket_request_create(request,
+                                           ctx->method, ctx->path,
+                                           body_bkt,
+                                           serf_request_get_alloc(request));
+    }
+
+    APR_ARRAY_PUSH(ctx->sent_requests, int) = ctx->req_id;
+
+    *acceptor = ctx->acceptor;
+    *acceptor_baton = ctx;
+    *handler = ctx->handler;
+    *handler_baton = ctx;
+
+    return APR_SUCCESS;
+}
+
+apr_status_t handle_response(serf_request_t *request,
+                             serf_bucket_t *response,
+                             void *handler_baton,
+                             apr_pool_t *pool)
+{
+    handler_baton_t *ctx = handler_baton;
+
+    if (! response) {
+        serf_connection_request_create(ctx->tb->connection,
+                                       setup_request,
+                                       ctx);
+        return APR_SUCCESS;
+    }
+
+    while (1) {
+        apr_status_t status;
+        const char *data;
+        apr_size_t len;
+
+        status = serf_bucket_read(response, 2048, &data, &len);
+        if (SERF_BUCKET_READ_ERROR(status))
+            return status;
+
+        if (APR_STATUS_IS_EOF(status)) {
+            APR_ARRAY_PUSH(ctx->handled_requests, int) = ctx->req_id;
+            ctx->done = TRUE;
+            return APR_EOF;
+        }
+
+        if (APR_STATUS_IS_EAGAIN(status)) {
+            return status;
+        }
+
+    }
+
+    return APR_SUCCESS;
+}
+
+void setup_handler(test_baton_t *tb, handler_baton_t *handler_ctx,
+                   const char *method, const char *path,
+                   int req_id,
+                   serf_response_handler_t handler)
+{
+    handler_ctx->method = method;
+    handler_ctx->path = path;
+    handler_ctx->done = FALSE;
+
+    handler_ctx->acceptor = accept_response;
+    handler_ctx->acceptor_baton = NULL;
+    handler_ctx->handler = handler ? handler : handle_response;
+    handler_ctx->req_id = req_id;
+    handler_ctx->accepted_requests = tb->accepted_requests;
+    handler_ctx->sent_requests = tb->sent_requests;
+    handler_ctx->handled_requests = tb->handled_requests;
+    handler_ctx->tb = tb;
+    handler_ctx->request = NULL;
+}
+
+void create_new_prio_request(test_baton_t *tb,
+                             handler_baton_t *handler_ctx,
+                             const char *method, const char *path,
+                             int req_id)
+{
+    setup_handler(tb, handler_ctx, method, path, req_id, NULL);
+    serf_connection_priority_request_create(tb->connection,
+                                            setup_request,
+                                            handler_ctx);
+}
+
+void create_new_request(test_baton_t *tb,
+                        handler_baton_t *handler_ctx,
+                        const char *method, const char *path,
+                        int req_id)
+{
+    setup_handler(tb, handler_ctx, method, path, req_id, NULL);
+    serf_connection_request_create(tb->connection,
+                                   setup_request,
+                                   handler_ctx);
+}
+
+void
+create_new_request_with_resp_hdlr(test_baton_t *tb,
+                                  handler_baton_t *handler_ctx,
+                                  const char *method, const char *path,
+                                  int req_id,
+                                  serf_response_handler_t handler)
+{
+    setup_handler(tb, handler_ctx, method, path, req_id, handler);
+    serf_connection_request_create(tb->connection,
+                                   setup_request,
+                                   handler_ctx);
 }

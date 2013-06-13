@@ -25,7 +25,8 @@ static const struct testlist {
     {"context", test_context},
     {"buckets", test_buckets},
     {"ssl",     test_ssl},
-#if 0   
+    {"auth",    test_auth},
+#if 0
     /* internal test for the mock bucket. */
     {"mock",    test_mock_bucket},
 #endif
