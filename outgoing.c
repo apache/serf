@@ -1232,7 +1232,12 @@ apr_status_t serf_connection_create2(
     c->host_url = apr_uri_unparse(c->pool,
                                   &host_info,
                                   APR_URI_UNP_OMITPATHINFO);
+
+    /* Store the host info without the path on the connection. */
     (void)apr_uri_parse(c->pool, c->host_url, &(c->host_info));
+    if (!c->host_info.port) {
+        c->host_info.port = apr_uri_port_of_scheme(c->host_info.scheme);
+    }
 
     *conn = c;
 

@@ -41,10 +41,10 @@
    the selected component. */
 #define SSL_VERBOSE 0
 #define SSL_MSG_VERBOSE 0  /* logs decrypted requests and responses. */
-#define SOCK_VERBOSE 0
+#define SOCK_VERBOSE 1
 #define SOCK_MSG_VERBOSE 0 /* logs bytes received from or written to a socket. */
-#define CONN_VERBOSE 0
-#define AUTH_VERBOSE 0
+#define CONN_VERBOSE 1
+#define AUTH_VERBOSE 1
 
 
 typedef struct serf__authn_scheme_t serf__authn_scheme_t;
@@ -243,8 +243,8 @@ struct serf_connection_t {
     /* Host url, path ommitted, syntax: https://svn.apache.org . */
     const char *host_url;
     
-    /* Exploded host url, path ommitted. Only scheme, hostinfo, hostname,
-       port_str & port values are filled in. */
+    /* Exploded host url, path ommitted. Only scheme, hostinfo, hostname &
+       port values are filled in. */
     apr_uri_t host_info;
 
     /* connection and authentication scheme specific information */ 
