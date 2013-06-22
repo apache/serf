@@ -308,6 +308,61 @@ test_server_proxy_setup(test_baton_t **tb_p,
     return status;
 }
 
+/* Setup a proxy server and a https server and the client context to connect to
+   that proxy server */
+apr_status_t
+test_https_server_proxy_setup(test_baton_t **tb_p,
+                              test_server_message_t *serv_message_list,
+                              apr_size_t serv_message_count,
+                              test_server_action_t *serv_action_list,
+                              apr_size_t serv_action_count,
+                              test_server_message_t *proxy_message_list,
+                              apr_size_t proxy_message_count,
+                              test_server_action_t *proxy_action_list,
+                              apr_size_t proxy_action_count,
+                              apr_int32_t options,
+                              serf_connection_setup_t conn_setup,
+                              const char *keyfile,
+                              const char **certfiles,
+                              const char *client_cn,
+                              serf_ssl_need_server_cert_t server_cert_cb,
+                              apr_pool_t *pool)
+{
+    apr_status_t status;
+    test_baton_t *tb;
+
+    status = setup(tb_p,
+                   conn_setup ? conn_setup : default_https_conn_setup,
+                   HTTPS_SERV_URL,
+                   TRUE, /* use proxy */
+                   serv_message_count,
+                   pool);
+    if (status != APR_SUCCESS)
+        return status;
+
+    tb = *tb_p;
+    tb->server_cert_cb = server_cert_cb;
+
+    /* Prepare a https server. */
+    setup_https_test_server(&tb->serv_ctx, tb->serv_addr,
+                            serv_message_list, serv_message_count,
+                            serv_action_list, serv_action_count,
+                            options,
+                            keyfile, certfiles, client_cn,
+                            pool);
+    status = start_test_server(tb->serv_ctx);
+
+    /* Prepare the proxy. */
+    setup_test_server(&tb->proxy_ctx, tb->proxy_addr,
+                      proxy_message_list, proxy_message_count,
+                      proxy_action_list, proxy_action_count,
+                      options,
+                      pool);
+    status = start_test_server(tb->proxy_ctx);
+
+    return status;
+}
+
 void *test_setup(void *dummy)
 {
     apr_pool_t *test_pool;
@@ -341,11 +396,21 @@ test_helper_run_requests_no_check(CuTest *tc, test_baton_t *tb,
     {
         apr_pool_clear(iter_pool);
 
+        /* run server event loop */
         status = run_test_server(tb->serv_ctx, 0, iter_pool);
         if (!APR_STATUS_IS_TIMEUP(status) &&
             SERF_BUCKET_READ_ERROR(status))
             return status;
 
+        /* run proxy event loop */
+        if (tb->proxy_ctx) {
+            status = run_test_server(tb->proxy_ctx, 0, iter_pool);
+            if (!APR_STATUS_IS_TIMEUP(status) &&
+                SERF_BUCKET_READ_ERROR(status))
+                return status;
+        }
+
+        /* run client event loop */
         status = serf_context_run(tb->context, 0, iter_pool);
         if (!APR_STATUS_IS_TIMEUP(status) &&
             SERF_BUCKET_READ_ERROR(status))

@@ -1761,6 +1761,82 @@ static void test_ssl_future_server_cert(CuTest *tc)
                                        test_pool);
 }
 
+
+/* Test if serf is sets up an SSL tunnel to the proxy and doesn't contact the
+ https server directly. */
+static void test_setup_ssltunnel(CuTest *tc)
+{
+    test_baton_t *tb;
+    int i;
+    handler_baton_t handler_ctx[1];
+    const int num_requests = sizeof(handler_ctx)/sizeof(handler_ctx[0]);
+    apr_status_t status;
+
+    /* TODO: issue 83: should be relative uri instead of absolute. */
+    test_server_message_t message_list_server[] = {
+        {"GET https://localhost:" SERV_PORT_STR " HTTP/1.1" CRLF\
+            "Host: localhost:" SERV_PORT_STR CRLF\
+            "Transfer-Encoding: chunked" CRLF\
+            CRLF\
+            "1" CRLF\
+            "1" CRLF\
+            "0" CRLF\
+            CRLF}
+    };
+    test_server_action_t action_list_server[] = {
+        {SERVER_RESPOND, CHUNKED_EMPTY_RESPONSE},
+    };
+    test_server_message_t message_list_proxy[] = {
+        {"CONNECT localhost:" SERV_PORT_STR " HTTP/1.1" CRLF\
+         "Host: localhost:" SERV_PORT_STR CRLF\
+         CRLF },
+        NULL,
+    };
+    test_server_action_t action_list_proxy[] = {
+        {SERVER_RESPOND, CHUNKED_EMPTY_RESPONSE},
+        /* Forward the remainder of the data to the server without validation */
+        {PROXY_FORWARD, "https://localhost:" SERV_PORT_STR},
+    };
+
+    apr_pool_t *test_pool = tc->testBaton;
+
+    /* Set up a test context with a server and a proxy. Serf should send a
+       CONNECT request to the server. */
+    status = test_https_server_proxy_setup(&tb,
+                                           /* server messages and actions */
+                                           message_list_server, 1,
+                                           action_list_server, 1,
+                                           /* proxy messages and actions */
+                                           message_list_proxy, 2,
+                                           action_list_proxy, 2,
+                                           0,
+                                           https_set_root_ca_conn_setup,
+                                           "test/server/serfserverkey.pem",
+                                           server_certs,
+                                           NULL, /* no client cert */
+                                           NULL, /* No server cert callback */
+                                           test_pool);
+                                     
+    CuAssertIntEquals(tc, APR_SUCCESS, status);
+
+    create_new_request(tb, &handler_ctx[0], "GET", "/", 1);
+
+    test_helper_run_requests_expect_ok(tc, tb, num_requests,
+                                       handler_ctx, test_pool);
+
+    /* Check that the requests were sent in the order we created them */
+    for (i = 0; i < tb->sent_requests->nelts; i++) {
+        int req_nr = APR_ARRAY_IDX(tb->sent_requests, i, int);
+        CuAssertIntEquals(tc, i + 1, req_nr);
+    }
+
+    /* Check that the requests were received in the order we created them */
+    for (i = 0; i < tb->handled_requests->nelts; i++) {
+        int req_nr = APR_ARRAY_IDX(tb->handled_requests, i, int);
+        CuAssertIntEquals(tc, i + 1, req_nr);
+    }
+}
+
 /*****************************************************************************/
 CuSuite *test_context(void)
 {
@@ -1790,6 +1866,7 @@ CuSuite *test_context(void)
     SUITE_ADD_TEST(suite, test_ssl_client_certificate);
     SUITE_ADD_TEST(suite, test_ssl_expired_server_cert);
     SUITE_ADD_TEST(suite, test_ssl_future_server_cert);
+    SUITE_ADD_TEST(suite, test_setup_ssltunnel);
 
     return suite;
 }

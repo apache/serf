@@ -156,6 +156,24 @@ apr_status_t test_server_proxy_setup(
                  serf_connection_setup_t conn_setup,
                  apr_pool_t *pool);
 
+apr_status_t test_https_server_proxy_setup(
+                 test_baton_t **tb_p,
+                 test_server_message_t *serv_message_list,
+                 apr_size_t serv_message_count,
+                 test_server_action_t *serv_action_list,
+                 apr_size_t serv_action_count,
+                 test_server_message_t *proxy_message_list,
+                 apr_size_t proxy_message_count,
+                 test_server_action_t *proxy_action_list,
+                 apr_size_t proxy_action_count,
+                 apr_int32_t options,
+                 serf_connection_setup_t conn_setup,
+                 const char *keyfile,
+                 const char **certfiles,
+                 const char *client_cn,
+                 serf_ssl_need_server_cert_t server_cert_cb,
+                 apr_pool_t *pool);
+
 void *test_setup(void *baton);
 void *test_teardown(void *baton);
 

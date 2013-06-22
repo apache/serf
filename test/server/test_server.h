@@ -44,7 +44,8 @@ typedef struct
         SERVER_SEND,
         SERVER_RESPOND,
         SERVER_IGNORE_AND_KILL_CONNECTION,
-        SERVER_KILL_CONNECTION
+        SERVER_KILL_CONNECTION,
+        PROXY_FORWARD,
     } kind;
 
     const char *text;
@@ -58,6 +59,7 @@ typedef struct
 struct serv_ctx_t {
     /* Pool for resource allocation. */
     apr_pool_t *pool;
+    serf_bucket_alloc_t *allocator;
 
     apr_int32_t options;
 
@@ -90,6 +92,12 @@ struct serv_ctx_t {
 
     /* Accepted client socket. NULL if there is no client socket. */
     apr_socket_t *client_sock;
+
+    /* Client socket to a server, in case this server acts as a proxy. */
+    apr_socket_t *proxy_client_sock;
+
+    serf_bucket_t *clientstream;
+    serf_bucket_t *servstream;
 
     send_func_t send;
     receive_func_t read;

@@ -20,9 +20,11 @@
 #include <stdlib.h>
 
 #include "serf.h"
+#include "serf_private.h" /* for serf__log and serf__bucket_stream_create */
 
 #include "test_server.h"
 
+#define BUFSIZE 8192
 
 /* Cleanup callback for a server. */
 static apr_status_t cleanup_server(void *baton)
@@ -65,6 +67,55 @@ socket_read(serv_ctx_t *serv_ctx, char *data,
     return apr_socket_recv(serv_ctx->client_sock, data, len);
 }
 
+static apr_status_t
+create_client_socket(apr_socket_t **skt,
+                     serv_ctx_t *servctx,
+                     const char *url)
+{
+    apr_sockaddr_t *address;
+    apr_uri_t uri;
+    apr_status_t status;
+
+    status = apr_uri_parse(servctx->pool, url, &uri);
+    if (status != APR_SUCCESS)
+        return status;
+
+    status = apr_sockaddr_info_get(&address,
+                                   uri.hostname,
+                                   APR_UNSPEC,
+                                   uri.port,
+                                   0,
+                                   servctx->pool);
+    if (status != APR_SUCCESS)
+        return status;
+
+    status = apr_socket_create(skt,
+                               address->family,
+                               SOCK_STREAM,
+#if APR_MAJOR_VERSION > 0
+                               APR_PROTO_TCP,
+#endif
+                               servctx->pool);
+    if (status != APR_SUCCESS)
+        return status;
+
+    /* Set the socket to be non-blocking */
+    status = apr_socket_timeout_set(*skt, 0);
+    if (status != APR_SUCCESS)
+        return status;
+
+    status = apr_socket_connect(*skt, address);
+    if (status != APR_SUCCESS && !APR_STATUS_IS_EINPROGRESS(status))
+        return status;
+
+    return APR_SUCCESS;
+}
+
+static apr_status_t detect_eof(void *baton, serf_bucket_t *aggregate_bucket)
+{
+    return APR_EAGAIN;
+}
+
 /* Verify received requests and take the necessary actions
    (return a response, kill the connection ...) */
 static apr_status_t replay(serv_ctx_t *servctx,
@@ -101,8 +152,8 @@ static apr_status_t replay(serv_ctx_t *servctx,
         action = &servctx->action_list[servctx->cur_action];
 
         serf__log(TEST_VERBOSE, __FILE__,
-                  "Replaying action %d, kind: %d.\n", servctx->cur_action,
-                  action->kind);
+                  "POLLIN while replaying action %d, kind: %d.\n",
+                  servctx->cur_action, action->kind);
 
         /* Read the remaining data from the client and kill the socket. */
         if (action->kind == SERVER_IGNORE_AND_KILL_CONNECTION) {
@@ -173,12 +224,35 @@ static apr_status_t replay(serv_ctx_t *servctx,
                 }
             } while (!status);
         }
+        else if (action->kind == PROXY_FORWARD) {
+            apr_size_t len;
+            char buf[BUFSIZE];
+            serf_bucket_t *tmp;
+
+            /* Read all incoming data from the client to forward it to the
+               server later. */
+            do
+            {
+                len = BUFSIZE;
+
+                status = servctx->read(servctx, buf, &len);
+                if (SERF_BUCKET_READ_ERROR(status))
+                    return status;
+
+                serf__log(TEST_VERBOSE, __FILE__,
+                          "proxy: reading %d bytes %.*s from client.\n",
+                          len, len, buf);
+                tmp = serf_bucket_simple_copy_create(buf, len,
+                                                     servctx->allocator);
+                serf_bucket_aggregate_append(servctx->servstream, tmp);
+            } while (!status);
+        }
     }
     if (rtnevents & APR_POLLOUT) {
         action = &servctx->action_list[servctx->cur_action];
 
         serf__log(TEST_VERBOSE, __FILE__,
-                  "Replaying action %d, kind: %d.\n", servctx->cur_action,
+                  "POLLOUT when replaying action %d, kind: %d.\n", servctx->cur_action,
                   action->kind);
 
         if (action->kind == SERVER_RESPOND && servctx->outstanding_responses) {
@@ -212,6 +286,124 @@ static apr_status_t replay(serv_ctx_t *servctx,
             servctx->client_sock = NULL;
             next_action(servctx);
         }
+        else if (action->kind == PROXY_FORWARD) {
+            apr_size_t len;
+            char *buf;
+            serf_bucket_t *tmp;
+
+            if (!servctx->proxy_client_sock) {
+                status = create_client_socket(&servctx->proxy_client_sock,
+                                              servctx, action->text);
+
+                servctx->servstream = serf__bucket_stream_create(
+                                        servctx->allocator, detect_eof,servctx);
+                servctx->clientstream = serf__bucket_stream_create(
+                                        servctx->allocator, detect_eof,servctx);
+            }
+
+            /* Send all data received from the server to the client. */
+            do
+            {
+                apr_size_t readlen;
+
+                readlen = BUFSIZE;
+
+                status = serf_bucket_read(servctx->clientstream, readlen,
+                                          &buf, &readlen);
+                if (SERF_BUCKET_READ_ERROR(status))
+                    return status;
+                if (!readlen)
+                    break;
+
+                len = readlen;
+
+                serf__log(TEST_VERBOSE, __FILE__,
+                          "proxy: sending %d bytes to client.\n", len);
+                status = servctx->send(servctx, buf, &len);
+                if (status != APR_SUCCESS) {
+                    return status;
+                }
+                
+                if (len != readlen) /* abort for now, return buf to aggregate
+                                       if not everything could be sent. */
+                    return APR_EGENERAL;
+            } while (!status);
+        }
+    }
+    else if (rtnevents & APR_POLLIN) {
+        /* ignore */
+    }
+    else {
+        printf("Unknown rtnevents: %d\n", rtnevents);
+        abort();
+    }
+
+    return status;
+}
+
+/* Exchange data between proxy and server */
+static apr_status_t proxy_replay(serv_ctx_t *servctx,
+                                 apr_int16_t rtnevents,
+                                 apr_pool_t *pool)
+{
+    apr_status_t status;
+
+    if (rtnevents & APR_POLLIN) {
+        apr_size_t len;
+        char buf[BUFSIZE];
+        serf_bucket_t *tmp;
+
+        /* Read all incoming data from the server to forward it to the
+           client later. */
+        do
+        {
+            len = BUFSIZE;
+
+            status = apr_socket_recv(servctx->proxy_client_sock, buf, &len);
+            if (SERF_BUCKET_READ_ERROR(status))
+                return status;
+
+            serf__log(TEST_VERBOSE, __FILE__,
+                      "proxy: reading %d bytes %.*s from server.\n",
+                      len, len, buf);
+            tmp = serf_bucket_simple_copy_create(buf, len,
+                                                 servctx->allocator);
+            serf_bucket_aggregate_append(servctx->clientstream, tmp);
+        } while (!status);
+    }
+
+    if (rtnevents & APR_POLLOUT) {
+        apr_size_t len;
+        char *buf;
+        serf_bucket_t *tmp;
+
+        /* Send all data received from the client to the server. */
+        do
+        {
+            apr_size_t readlen;
+
+            readlen = BUFSIZE;
+
+            status = serf_bucket_read(servctx->servstream, BUFSIZE,
+                                      &buf, &readlen);
+            if (SERF_BUCKET_READ_ERROR(status))
+                return status;
+            if (!readlen)
+                break;
+
+            len = readlen;
+
+            status = apr_socket_send(servctx->proxy_client_sock, buf, &len);
+            if (status != APR_SUCCESS) {
+                return status;
+            }
+
+            serf__log(TEST_VERBOSE, __FILE__,
+                      "proxy: sending %d bytes %.*s to server.\n",
+                      len, len, buf);
+            if (len != readlen) /* abort for now */
+                return APR_EGENERAL;
+        } while (!status);
     }
     else if (rtnevents & APR_POLLIN) {
         /* ignore */
@@ -256,6 +448,18 @@ apr_status_t run_test_server(serv_ctx_t *servctx,
         status = apr_pollset_add(pollset, &pfd);
         if (status != APR_SUCCESS)
             goto cleanup;
+
+        if (servctx->proxy_client_sock) {
+            apr_pollfd_t pfd = { 0 };
+
+            pfd.desc_type = APR_POLL_SOCKET;
+            pfd.desc.s = servctx->proxy_client_sock;
+            pfd.reqevents = APR_POLLIN | APR_POLLOUT;
+
+            status = apr_pollset_add(pollset, &pfd);
+            if (status != APR_SUCCESS)
+                goto cleanup;
+        }
     }
     else {
         apr_pollfd_t pfd = { 0 };
@@ -310,6 +514,21 @@ apr_status_t run_test_server(serv_ctx_t *servctx,
                 goto cleanup;
             }
         }
+        if (desc->desc.s == servctx->proxy_client_sock) {
+            /* Replay data to proxy socket. */
+            status = proxy_replay(servctx, desc->rtnevents, pool);
+            if (APR_STATUS_IS_EOF(status)) {
+                apr_socket_close(servctx->proxy_client_sock);
+                servctx->proxy_client_sock = NULL;
+            }
+            else if (APR_STATUS_IS_EAGAIN(status)) {
+                status = APR_SUCCESS;
+            }
+            else if (status != APR_SUCCESS) {
+                /* Real error. */
+                goto cleanup;
+            }
+        }
 
         desc++;
     }
@@ -345,6 +564,7 @@ void setup_test_server(serv_ctx_t **servctx_p,
     servctx->serv_addr = address;
     servctx->options = options;
     servctx->pool = pool;
+    servctx->allocator = serf_bucket_allocator_create(pool, NULL, NULL);
     servctx->message_list = message_list;
     servctx->message_count = message_count;
     servctx->action_list = action_list;
