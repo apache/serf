@@ -1340,11 +1340,11 @@ void serf_connection_set_async_responses(
     conn->async_handler_baton = handler_baton;
 }
 
-
-serf_request_t *serf_connection_request_create(
-    serf_connection_t *conn,
-    serf_request_setup_t setup,
-    void *setup_baton)
+static serf_request_t *
+create_request(serf_connection_t *conn,
+               serf_request_setup_t setup,
+               void *setup_baton,
+               int priority)
 {
     serf_request_t *request;
 
@@ -1356,9 +1356,22 @@ serf_request_t *serf_connection_request_create(
     request->respool = NULL;
     request->req_bkt = NULL;
     request->resp_bkt = NULL;
-    request->priority = 0;
+    request->priority = priority;
     request->written = 0;
     request->next = NULL;
+
+    return request;
+}
+
+serf_request_t *serf_connection_request_create(
+    serf_connection_t *conn,
+    serf_request_setup_t setup,
+    void *setup_baton)
+{
+    serf_request_t *request;
+
+    request = create_request(conn, setup, setup_baton,
+                             0 /* priority */);
 
     /* Link the request to the end of the request chain. */
     link_requests(&conn->requests, &conn->requests_tail, request);
@@ -1379,17 +1392,8 @@ serf_request_t *serf_connection_priority_request_create(
     serf_request_t *request;
     serf_request_t *iter, *prev;
 
-    request = serf_bucket_mem_alloc(conn->allocator, sizeof(*request));
-    request->conn = conn;
-    request->setup = setup;
-    request->setup_baton = setup_baton;
-    request->handler = NULL;
-    request->respool = NULL;
-    request->req_bkt = NULL;
-    request->resp_bkt = NULL;
-    request->priority = 1;
-    request->written = 0;
-    request->next = NULL;
+    request = create_request(conn, setup, setup_baton,
+                             1 /* priority */);
 
     /* Link the new request after the last written request. */
     iter = conn->requests;
