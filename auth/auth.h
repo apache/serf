@@ -26,6 +26,13 @@ void serf__encode_auth_header(const char **header, const char *protocol,
                               const char *data, apr_size_t data_len,
                               apr_pool_t *pool);
 
+/* Prefixes the realm_name with a string containing scheme, hostname and port
+   of the connection, for providing it to the application. */
+const char *serf__construct_realm(peer_t peer,
+                                  serf_connection_t *conn,
+                                  const char *realm_name,
+                                  apr_pool_t *pool);
+
 /** Basic authentication **/
 apr_status_t serf__init_basic(int code,
                               serf_context_t *ctx,

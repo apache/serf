@@ -286,11 +286,9 @@ serf__handle_digest_auth(int code,
         return SERF_ERROR_AUTHN_MISSING_ATTRIBUTE;
     }
 
-    authn_info->realm = apr_psprintf(conn->pool, "<%s://%s:%d> %s",
-                                     conn->host_info.scheme,
-                                     conn->host_info.hostname,
-                                     conn->host_info.port,
-                                     realm_name);
+    authn_info->realm = serf__construct_realm(code == 401 ? HOST : PROXY,
+                                              conn, realm_name,
+                                              pool);
 
     /* Ask the application for credentials */
     apr_pool_create(&cred_pool, pool);

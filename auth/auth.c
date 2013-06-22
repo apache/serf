@@ -419,3 +419,24 @@ void serf__encode_auth_header(const char **header,
 
     apr_base64_encode(ptr, data, data_len);
 }
+
+const char *serf__construct_realm(peer_t peer,
+                                  serf_connection_t *conn,
+                                  const char *realm_name,
+                                  apr_pool_t *pool)
+{
+    if (peer == HOST) {
+        return apr_psprintf(pool, "<%s://%s:%d> %s",
+                            conn->host_info.scheme,
+                            conn->host_info.hostname,
+                            conn->host_info.port,
+                            realm_name);
+    } else {
+        serf_context_t *ctx = conn->ctx;
+
+        return apr_psprintf(pool, "<http://%s:%d> %s",
+                            ctx->proxy_address->hostname,
+                            ctx->proxy_address->port,
+                            realm_name);
+    }
+}
