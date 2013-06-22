@@ -167,9 +167,9 @@ apr_status_t serf__ssltunnel_connect(serf_connection_t *conn)
                                                          conn);
 
     /* TODO: should be the first request on the connection. */
-    serf_connection_priority_request_create(conn,
-                                            setup_request,
-                                            ctx);
+    serf__ssltunnel_request_create(conn,
+                                   setup_request,
+                                   ctx);
 
     conn->state = SERF_CONN_SETUP_SSLTUNNEL;
     serf__log(CONN_VERBOSE, __FILE__,
