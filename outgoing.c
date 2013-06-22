@@ -1498,16 +1498,10 @@ serf_request_t *serf__ssltunnel_request_create(serf_connection_t *conn,
 {
     serf_request_t *request;
 
-    request = create_request(conn, setup, setup_baton,
-                             1, /* priority */
-                             1  /* ssl tunnel */);
-
-    /* Link the request to the end of the request chain. */
-    link_requests(&conn->requests, &conn->requests_tail, request);
-
-    /* Ensure our pollset becomes writable in context run */
-    conn->ctx->dirty_pollset = 1;
-    conn->dirty_conn = 1;
+    request = serf_connection_priority_request_create(conn,
+                                                      setup,
+                                                      setup_baton);
+    request->ssltunnel = 1;
     
     return request;
 }
