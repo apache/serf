@@ -159,7 +159,7 @@ apr_status_t serf__ssltunnel_connect(serf_connection_t *conn)
 
     ctx = apr_palloc(ssltunnel_pool, sizeof(*ctx));
     ctx->pool = ssltunnel_pool;
-    ctx->uri = apr_psprintf(ctx->pool, "%s:%d", conn->host_info.hostinfo,
+    ctx->uri = apr_psprintf(ctx->pool, "%s:%d", conn->host_info.hostname,
                             conn->host_info.port);
 
     conn->ssltunnel_ostream = serf__bucket_stream_create(conn->allocator,
