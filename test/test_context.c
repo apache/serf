@@ -2005,8 +2005,118 @@ static void test_ssltunnel_basic_auth(CuTest *tc)
     serf_config_credentials_callback(tb->context, proxy_authn_callback);
 
     create_new_request(tb, &handler_ctx[0], "GET", "/", 1);
-    status = test_helper_run_requests_no_check(tc, tb, num_requests,
-                                               handler_ctx, test_pool);
+    test_helper_run_requests_expect_ok(tc, tb, num_requests,
+                                       handler_ctx, test_pool);
+
+    CuAssertTrue(tc, tb->result_flags & TEST_RESULT_AUTHNCB_CALLED);
+}
+
+static apr_status_t
+proxy_digest_authn_callback(char **username,
+                            char **password,
+                            serf_request_t *request, void *baton,
+                            int code, const char *authn_type,
+                            const char *realm,
+                            apr_pool_t *pool)
+{
+    handler_baton_t *handler_ctx = baton;
+    test_baton_t *tb = handler_ctx->tb;
+
+    tb->result_flags |= TEST_RESULT_AUTHNCB_CALLED;
+
+    if (code != 407)
+        return SERF_ERROR_ISSUE_IN_TESTSUITE;
+    if (strcmp("Digest", authn_type) != 0)
+        return SERF_ERROR_ISSUE_IN_TESTSUITE;
+    if (strcmp("<http://localhost:23456> Test Suite Proxy", realm) != 0)
+        return SERF_ERROR_ISSUE_IN_TESTSUITE;
+
+    *username = "serf";
+    *password = "serftest";
+
+    return APR_SUCCESS;
+}
+
+/* Test if serf can successfully authenticate to a proxy used for an ssl
+   tunnel. Retry the authentication a few times to test requeueing of the
+   CONNECT request. */
+static void test_ssltunnel_digest_auth(CuTest *tc)
+{
+    test_baton_t *tb;
+    handler_baton_t handler_ctx[1];
+    const int num_requests = sizeof(handler_ctx)/sizeof(handler_ctx[0]);
+    apr_status_t status;
+
+    /* TODO: issue 83: should be relative uri instead of absolute. */
+    test_server_message_t message_list_server[] = {
+        {"GET https://localhost:" SERV_PORT_STR "/test/index.html HTTP/1.1" CRLF\
+            "Host: localhost:" SERV_PORT_STR CRLF\
+            "Transfer-Encoding: chunked" CRLF\
+            CRLF\
+            "1" CRLF\
+            "1" CRLF\
+            "0" CRLF\
+            CRLF}
+    };
+    test_server_action_t action_list_server[] = {
+        {SERVER_RESPOND, CHUNKED_EMPTY_RESPONSE},
+    };
+
+#define CONNECT_REQ\
+    "CONNECT localhost:" SERV_PORT_STR " HTTP/1.1" CRLF\
+    "Host: localhost:" SERV_PORT_STR CRLF
+
+    test_server_message_t message_list_proxy[] = {
+        { CONNECT_REQ CRLF },
+        { CONNECT_REQ
+            "Proxy-Authorization: Digest realm=\"Test Suite Proxy\", "
+            "username=\"serf\", "
+            "nonce=\"ABCDEF1234567890\", uri=\"localhost:" SERV_PORT_STR "\", "
+            "response=\"15b1841822273b0fd44d2f6457f64213\", opaque=\"myopaque\", "
+            "algorithm=\"MD5\"" CRLF
+          CRLF },
+    };
+    test_server_action_t action_list_proxy[] = {
+        {SERVER_RESPOND, "HTTP/1.1 407 Unauthorized" CRLF
+            "Transfer-Encoding: chunked" CRLF
+            "Proxy-Authenticate: Digest realm=\"Test Suite Proxy\","
+            "nonce=\"ABCDEF1234567890\",opaque=\"myopaque\","
+            "algorithm=\"MD5\",qop-options=\"auth\"" CRLF
+            CRLF
+            "1" CRLF CRLF
+            "0" CRLF CRLF},
+        {SERVER_RESPOND, CHUNKED_EMPTY_RESPONSE},
+        /* Forward the remainder of the data to the server without validation */
+        {PROXY_FORWARD, "https://localhost:" SERV_PORT_STR},
+    };
+
+    apr_pool_t *test_pool = tc->testBaton;
+
+    /* Set up a test context with a server and a proxy. Serf should send a
+       CONNECT request to the server. */
+    status = test_https_server_proxy_setup(&tb,
+                                           /* server messages and actions */
+                                           message_list_server, 1,
+                                           action_list_server, 1,
+                                           /* proxy messages and actions */
+                                           message_list_proxy, 2,
+                                           action_list_proxy, 3,
+                                           0,
+                                           https_set_root_ca_conn_setup,
+                                           "test/server/serfserverkey.pem",
+                                           server_certs,
+                                           NULL, /* no client cert */
+                                           NULL, /* No server cert callback */
+                                           test_pool);
+
+    CuAssertIntEquals(tc, APR_SUCCESS, status);
+
+    serf_config_authn_types(tb->context, SERF_AUTHN_BASIC | SERF_AUTHN_DIGEST);
+    serf_config_credentials_callback(tb->context, proxy_digest_authn_callback);
+
+    create_new_request(tb, &handler_ctx[0], "GET", "/test/index.html", 1);
+    test_helper_run_requests_expect_ok(tc, tb, num_requests,
+                                       handler_ctx, test_pool);
 
     CuAssertTrue(tc, tb->result_flags & TEST_RESULT_AUTHNCB_CALLED);
 }
@@ -2043,6 +2153,7 @@ CuSuite *test_context(void)
     SUITE_ADD_TEST(suite, test_setup_ssltunnel);
     SUITE_ADD_TEST(suite, test_ssltunnel_no_creds_cb);
     SUITE_ADD_TEST(suite, test_ssltunnel_basic_auth);
+    SUITE_ADD_TEST(suite, test_ssltunnel_digest_auth);
 
     return suite;
 }

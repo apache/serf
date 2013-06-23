@@ -1571,17 +1571,29 @@ serf_bucket_t *serf_request_bucket_request_create(
         serf_bucket_headers_setn(hdrs_bkt, "Host",
                                  conn->host_info.hostinfo);
 
-    /* Setup server authorization headers */
-    if (ctx->authn_info.scheme)
+    /* Setup server authorization headers, unless this is a CONNECT request. */
+    if (ctx->authn_info.scheme && !request->ssltunnel)
         ctx->authn_info.scheme->setup_request_func(HOST, 0, conn, request,
                                                    method, uri,
                                                    hdrs_bkt);
 
-    /* Setup proxy authorization headers */
-    if (ctx->proxy_authn_info.scheme)
-        ctx->proxy_authn_info.scheme->setup_request_func(PROXY, 0, conn,
-                                                         request,
-                                                         method, uri, hdrs_bkt);
+    /* Setup proxy authorization headers.
+       Don't set these headers on the requests to the server if we're using
+       an SSL tunnel, only on the CONNECT request to setup the tunnel. */
+    if (ctx->proxy_authn_info.scheme) {
+        if (strcmp(conn->host_info.scheme, "https") == 0) {
+            if (request->ssltunnel)
+                ctx->proxy_authn_info.scheme->setup_request_func(PROXY, 0, conn,
+                                                                 request,
+                                                                 method, uri,
+                                                                 hdrs_bkt);
+        } else {
+            ctx->proxy_authn_info.scheme->setup_request_func(PROXY, 0, conn,
+                                                             request,
+                                                             method, uri,
+                                                             hdrs_bkt);
+        }
+    }
 
     return req_bkt;
 }
