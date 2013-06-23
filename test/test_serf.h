@@ -63,6 +63,16 @@ CuSuite *test_mock_bucket(void);
         "0" CRLF\
         CRLF
 
+#define CHUNKED_REQUEST_URI(uri, len, body)\
+        "GET " uri " HTTP/1.1" CRLF\
+        "Host: localhost:12345" CRLF\
+        "Transfer-Encoding: chunked" CRLF\
+        CRLF\
+        #len CRLF\
+        body CRLF\
+        "0" CRLF\
+        CRLF
+
 #define CHUNKED_RESPONSE(len, body)\
         "HTTP/1.1 200 OK" CRLF\
         "Transfer-Encoding: chunked" CRLF\
