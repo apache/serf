@@ -356,9 +356,15 @@ apr_status_t serf__handle_auth_response(int *consumed_response,
 
         /* Requeue the request with the necessary auth headers. */
         /* ### Application doesn't know about this request! */
-        serf_connection_priority_request_create(request->conn,
-                                                request->setup,
-                                                request->setup_baton);
+        if (request->ssltunnel) {
+            serf__ssltunnel_request_create(request->conn,
+                                           request->setup,
+                                           request->setup_baton);
+        } else {
+            serf_connection_priority_request_create(request->conn,
+                                                    request->setup,
+                                                    request->setup_baton);
+        }
 
         return APR_EOF;
     } else {

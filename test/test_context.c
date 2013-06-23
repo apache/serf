@@ -1916,7 +1916,8 @@ proxy_authn_callback(char **username,
 }
 
 /* Test if serf can successfully authenticate to a proxy used for an ssl
-   tunnel. */
+   tunnel. Retry the authentication a few times to test requeueing of the 
+   CONNECT request. */
 static void test_ssltunnel_basic_auth(CuTest *tc)
 {
     test_baton_t *tb;
@@ -1946,8 +1947,28 @@ static void test_ssltunnel_basic_auth(CuTest *tc)
             "Host: localhost:" SERV_PORT_STR CRLF\
             "Proxy-Authorization: Basic c2VyZjpzZXJmdGVzdA==" CRLF
             CRLF },
+        {"CONNECT localhost:" SERV_PORT_STR " HTTP/1.1" CRLF\
+            "Host: localhost:" SERV_PORT_STR CRLF\
+            "Proxy-Authorization: Basic c2VyZjpzZXJmdGVzdA==" CRLF
+            CRLF },
+        {"CONNECT localhost:" SERV_PORT_STR " HTTP/1.1" CRLF\
+            "Host: localhost:" SERV_PORT_STR CRLF\
+            "Proxy-Authorization: Basic c2VyZjpzZXJmdGVzdA==" CRLF
+            CRLF },
     };
     test_server_action_t action_list_proxy[] = {
+        {SERVER_RESPOND, "HTTP/1.1 407 Unauthorized" CRLF
+            "Transfer-Encoding: chunked" CRLF
+            "Proxy-Authenticate: Basic realm=""Test Suite Proxy""" CRLF
+            CRLF
+            "1" CRLF CRLF
+            "0" CRLF CRLF},
+        {SERVER_RESPOND, "HTTP/1.1 407 Unauthorized" CRLF
+            "Transfer-Encoding: chunked" CRLF
+            "Proxy-Authenticate: Basic realm=""Test Suite Proxy""" CRLF
+            CRLF
+            "1" CRLF CRLF
+            "0" CRLF CRLF},
         {SERVER_RESPOND, "HTTP/1.1 407 Unauthorized" CRLF
             "Transfer-Encoding: chunked" CRLF
             "Proxy-Authenticate: Basic realm=""Test Suite Proxy""" CRLF
@@ -1968,8 +1989,8 @@ static void test_ssltunnel_basic_auth(CuTest *tc)
                                            message_list_server, 1,
                                            action_list_server, 1,
                                            /* proxy messages and actions */
-                                           message_list_proxy, 2,
-                                           action_list_proxy, 3,
+                                           message_list_proxy, 4,
+                                           action_list_proxy, 5,
                                            0,
                                            https_set_root_ca_conn_setup,
                                            "test/server/serfserverkey.pem",
