@@ -16,6 +16,7 @@
 #include <apr_pools.h>
 #include <apr_poll.h>
 #include <apr_version.h>
+#include <apr_portable.h>
 
 #include "serf.h"
 #include "serf_bucket_util.h"
@@ -1202,6 +1203,20 @@ apr_status_t serf__process_connection(serf_connection_t *conn,
         if (conn->completed_requests && !conn->probable_keepalive_limit) {
             return reset_connection(conn, 1);
         }
+#ifdef SO_ERROR
+        /* If possible, get the error from the platform's socket layer and
+           convert it to an APR status code. */
+        {
+            apr_os_sock_t osskt;
+            if (!apr_os_sock_get(&osskt, conn->skt)) {
+                int error;
+                apr_socklen_t l = sizeof(error);
+
+                if (!getsockopt(osskt, SOL_SOCKET, SO_ERROR, (char*)&error, &l))
+                    return APR_FROM_OS_ERROR(error);
+            }
+        }
+#endif
         return APR_EGENERAL;
     }
     if ((events & APR_POLLOUT) != 0) {
