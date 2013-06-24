@@ -1574,13 +1574,21 @@ serf_bucket_t *serf_request_bucket_request_create(
     serf_bucket_t *req_bkt, *hdrs_bkt;
     serf_connection_t *conn = request->conn;
     serf_context_t *ctx = conn->ctx;
+    int ssltunnel;
+
+    ssltunnel = ctx->proxy_address &&
+                (strcmp(conn->host_info.scheme, "https") == 0);
 
     req_bkt = serf_bucket_request_create(method, uri, body, allocator);
     hdrs_bkt = serf_bucket_request_get_headers(req_bkt);
 
-    /* Proxy? */
-    if (ctx->proxy_address && conn->host_url)
+    /* Use absolute uri's in requests to a proxy. USe relative uri's in
+       requests directly to a server or sent through an SSL tunnel. */
+    if (ctx->proxy_address && conn->host_url &&
+        !(ssltunnel && !request->ssltunnel)) {
+
         serf_bucket_request_set_root(req_bkt, conn->host_url);
+    }
 
     if (conn->host_info.hostinfo)
         serf_bucket_headers_setn(hdrs_bkt, "Host",

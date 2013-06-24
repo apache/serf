@@ -1774,7 +1774,7 @@ static void test_setup_ssltunnel(CuTest *tc)
 
     /* TODO: issue 83: should be relative uri instead of absolute. */
     test_server_message_t message_list_server[] = {
-        {"GET https://localhost:" SERV_PORT_STR " HTTP/1.1" CRLF\
+        {"GET / HTTP/1.1" CRLF\
             "Host: localhost:" SERV_PORT_STR CRLF\
             "Transfer-Encoding: chunked" CRLF\
             CRLF\
@@ -1925,9 +1925,8 @@ static void test_ssltunnel_basic_auth(CuTest *tc)
     const int num_requests = sizeof(handler_ctx)/sizeof(handler_ctx[0]);
     apr_status_t status;
 
-    /* TODO: issue 83: should be relative uri instead of absolute. */
     test_server_message_t message_list_server[] = {
-        {"GET https://localhost:" SERV_PORT_STR " HTTP/1.1" CRLF\
+        {"GET / HTTP/1.1" CRLF\
             "Host: localhost:" SERV_PORT_STR CRLF\
             "Transfer-Encoding: chunked" CRLF\
             CRLF\
@@ -2047,9 +2046,8 @@ static void test_ssltunnel_digest_auth(CuTest *tc)
     const int num_requests = sizeof(handler_ctx)/sizeof(handler_ctx[0]);
     apr_status_t status;
 
-    /* TODO: issue 83: should be relative uri instead of absolute. */
     test_server_message_t message_list_server[] = {
-        {"GET https://localhost:" SERV_PORT_STR "/test/index.html HTTP/1.1" CRLF\
+        {"GET /test/index.html HTTP/1.1" CRLF\
             "Host: localhost:" SERV_PORT_STR CRLF\
             "Transfer-Encoding: chunked" CRLF\
             CRLF\
