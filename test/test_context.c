@@ -1845,8 +1845,6 @@ static void test_ssltunnel_no_creds_cb(CuTest *tc)
     const int num_requests = sizeof(handler_ctx)/sizeof(handler_ctx[0]);
     apr_status_t status;
 
-    test_server_message_t message_list_server[] = { };
-    test_server_action_t action_list_server[] = { };
     test_server_message_t message_list_proxy[] = {
         {"CONNECT localhost:" SERV_PORT_STR " HTTP/1.1" CRLF\
             "Host: localhost:" SERV_PORT_STR CRLF\
@@ -1867,8 +1865,8 @@ static void test_ssltunnel_no_creds_cb(CuTest *tc)
      CONNECT request to the server. */
     status = test_https_server_proxy_setup(&tb,
                                            /* server messages and actions */
-                                           message_list_server, 0,
-                                           action_list_server, 0,
+                                           NULL, 0,
+                                           NULL, 0,
                                            /* proxy messages and actions */
                                            message_list_proxy, 1,
                                            action_list_proxy, 1,
