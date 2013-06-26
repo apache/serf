@@ -34,6 +34,10 @@ struct serf__spnego_context_t
     CredHandle sspi_credentials;
     CtxtHandle sspi_context;
     BOOL initalized;
+    apr_pool_t *pool;
+
+    /* Service Principal Name (SPN) used for authentication. */
+    const char *target_name;
 };
 
 /* Map SECURITY_STATUS from SSPI to APR error code. Some error codes mapped
@@ -116,6 +120,8 @@ serf__spnego_create_sec_context(serf__spnego_context_t **ctx_p,
     SecInvalidateHandle(&ctx->sspi_context);
     SecInvalidateHandle(&ctx->sspi_credentials);
     ctx->initalized = FALSE;
+    ctx->pool = result_pool;
+    ctx->target_name = NULL;
 
     apr_pool_cleanup_register(result_pool, ctx,
                               cleanup_ctx,
@@ -190,18 +196,21 @@ serf__spnego_init_sec_context(serf__spnego_context_t *ctx,
     SecBufferDesc sspi_in_buffer_desc;
     SecBuffer sspi_out_buffer;
     SecBufferDesc sspi_out_buffer_desc;
-    char *target_name;
     apr_status_t apr_status;
     const char *canonname;
 
-    apr_status = get_canonical_hostname(&canonname, hostname, scratch_pool);
-    if (apr_status) {
-        return apr_status;
-    }
-    target_name = apr_pstrcat(scratch_pool, service, "/", canonname, NULL);
+    if (!ctx->initalized) {
+        apr_status = get_canonical_hostname(&canonname, hostname, scratch_pool);
+        if (apr_status) {
+            return apr_status;
+        }
 
-    serf__log(AUTH_VERBOSE, __FILE__,
-              "Using SPN '%s' for '%s'\n", target_name, hostname);
+        ctx->target_name = apr_pstrcat(scratch_pool, service, "/", canonname,
+                                       NULL);
+
+        serf__log(AUTH_VERBOSE, __FILE__,
+                  "Using SPN '%s' for '%s'\n", ctx->target_name, hostname);
+    }
 
     /* Prepare input buffer description. */
     sspi_in_buffer.BufferType = SECBUFFER_TOKEN;
@@ -224,7 +233,7 @@ serf__spnego_init_sec_context(serf__spnego_context_t *ctx,
     status = InitializeSecurityContext(
         &ctx->sspi_credentials,
         ctx->initalized ? &ctx->sspi_context : NULL,
-        target_name,
+        ctx->target_name,
         ISC_REQ_ALLOCATE_MEMORY
         | ISC_REQ_MUTUAL_AUTH
         | ISC_REQ_CONFIDENTIALITY,
