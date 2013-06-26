@@ -306,7 +306,8 @@ typedef apr_status_t
  * connection is opened.
  */
 typedef apr_status_t
-(*serf__init_conn_func_t)(int code,
+(*serf__init_conn_func_t)(const serf__authn_scheme_t *scheme,
+                          int code,
                           serf_connection_t *conn,
                           apr_pool_t *pool);
 

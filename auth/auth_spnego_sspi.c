@@ -38,6 +38,9 @@ struct serf__spnego_context_t
 
     /* Service Principal Name (SPN) used for authentication. */
     const char *target_name;
+
+    /* One of SERF_AUTHN_* authentication types.*/
+    int authn_type;
 };
 
 /* Map SECURITY_STATUS from SSPI to APR error code. Some error codes mapped
@@ -109,11 +112,13 @@ cleanup_sec_buffer(void *data)
 
 apr_status_t
 serf__spnego_create_sec_context(serf__spnego_context_t **ctx_p,
+                                const serf__authn_scheme_t *scheme,
                                 apr_pool_t *scratch_pool,
                                 apr_pool_t *result_pool)
 {
     SECURITY_STATUS sspi_status;
     serf__spnego_context_t *ctx;
+    const char *sspi_package;
 
     ctx = apr_pcalloc(result_pool, sizeof(*ctx));
 
@@ -122,13 +127,19 @@ serf__spnego_create_sec_context(serf__spnego_context_t **ctx_p,
     ctx->initalized = FALSE;
     ctx->pool = result_pool;
     ctx->target_name = NULL;
+    ctx->authn_type = scheme->type;
 
     apr_pool_cleanup_register(result_pool, ctx,
                               cleanup_ctx,
                               apr_pool_cleanup_null);
 
+    if (ctx->authn_type == SERF_AUTHN_NEGOTIATE)
+        sspi_package = "Negotiate";
+    else
+        sspi_package = "NTLM";
+
     sspi_status = AcquireCredentialsHandle(
-        NULL, "Negotiate", SECPKG_CRED_OUTBOUND,
+        NULL, sspi_package, SECPKG_CRED_OUTBOUND,
         NULL, NULL, NULL, NULL,
         &ctx->sspi_credentials, NULL);
 
@@ -199,7 +210,7 @@ serf__spnego_init_sec_context(serf__spnego_context_t *ctx,
     apr_status_t apr_status;
     const char *canonname;
 
-    if (!ctx->initalized) {
+    if (!ctx->initalized && ctx->authn_type == SERF_AUTHN_NEGOTIATE) {
         apr_status = get_canonical_hostname(&canonname, hostname, scratch_pool);
         if (apr_status) {
             return apr_status;
@@ -210,6 +221,11 @@ serf__spnego_init_sec_context(serf__spnego_context_t *ctx,
 
         serf__log(AUTH_VERBOSE, __FILE__,
                   "Using SPN '%s' for '%s'\n", ctx->target_name, hostname);
+    }
+    else if (ctx->authn_type == SERF_AUTHN_NTLM)
+    {
+        /* Target name is not used for NTLM authentication. */
+        ctx->target_name = NULL;
     }
 
     /* Prepare input buffer description. */

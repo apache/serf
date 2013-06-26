@@ -111,9 +111,10 @@ cleanup_sec_buffer(void *data)
 }
 
 apr_status_t
-serf__spnego_create_sec_context(serf__spnego_context_t **ctx_p,
-                               apr_pool_t *scratch_pool,
-                               apr_pool_t *result_pool)
+serf__spnego_create_sec_context(const serf__init_spnego_connection *scheme,
+                                serf__spnego_context_t **ctx_p,
+                                apr_pool_t *scratch_pool,
+                                apr_pool_t *result_pool)
 {
     serf__spnego_context_t *ctx;
 

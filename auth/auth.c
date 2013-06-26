@@ -94,7 +94,29 @@ static const serf__authn_scheme_t serf_authn_schemes[] = {
         serf__setup_request_spnego_auth,
         serf__validate_response_spnego_auth,
     },
-#endif
+#ifdef WIN32
+    {
+        401,
+        "NTLM",
+        SERF_AUTHN_NTLM,
+        serf__init_spnego,
+        serf__init_spnego_connection,
+        serf__handle_spnego_auth,
+        serf__setup_request_spnego_auth,
+        serf__validate_response_spnego_auth,
+    },
+    {
+        407,
+        "NTLM",
+        SERF_AUTHN_NTLM,
+        serf__init_spnego,
+        serf__init_spnego_connection,
+        serf__handle_spnego_auth,
+        serf__setup_request_spnego_auth,
+        serf__validate_response_spnego_auth,
+    },
+#endif /* #ifdef WIN32 */
+#endif /* SERF_HAVE_SPNEGO */
     /* ADD NEW AUTHENTICATION IMPLEMENTATIONS HERE (as they're written) */
 
     /* sentinel */
@@ -191,7 +213,8 @@ static int handle_auth_header(void *baton,
             if (ab->code == 401 && ctx->authn_info.scheme != scheme) {
                 status = scheme->init_ctx_func(ab->code, ctx, ctx->pool);
                 if (!status) {
-                    status = scheme->init_conn_func(ab->code, conn, conn->pool);
+                    status = scheme->init_conn_func(scheme, ab->code, conn,
+                                                    conn->pool);
 
                     if (!status)
                         ctx->authn_info.scheme = scheme;
@@ -202,7 +225,8 @@ static int handle_auth_header(void *baton,
             else if (ab->code == 407 && ctx->proxy_authn_info.scheme != scheme) {
                 status = scheme->init_ctx_func(ab->code, ctx, ctx->pool);
                 if (!status) {
-                    status = scheme->init_conn_func(ab->code, conn, conn->pool);
+                    status = scheme->init_conn_func(scheme, ab->code, conn,
+                                                    conn->pool);
 
                     if (!status)
                         ctx->proxy_authn_info.scheme = scheme;

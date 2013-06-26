@@ -18,6 +18,8 @@
 
 #include <apr.h>
 #include <apr_pools.h>
+#include "serf.h"
+#include "serf_private.h"
 
 #if defined(SERF_HAVE_SSPI)
 #define SERF_HAVE_SPNEGO
@@ -49,6 +51,7 @@ typedef struct serf__spnego_buffer_t {
  */
 apr_status_t
 serf__spnego_create_sec_context(serf__spnego_context_t **ctx_p,
+                                const serf__authn_scheme_t *scheme,
                                 apr_pool_t *scratch_pool,
                                 apr_pool_t *result_pool);
 

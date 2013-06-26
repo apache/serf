@@ -254,14 +254,16 @@ apr_status_t serf__open_connections(serf_context_t *ctx)
            prepare this connection (it might be possible to skip some
            part of the handshaking). */
         if (ctx->proxy_address) {
-            if (conn->ctx->proxy_authn_info.scheme)
-                conn->ctx->proxy_authn_info.scheme->init_conn_func(407, conn,
-                                                                   conn->pool);
+            if (conn->ctx->proxy_authn_info.scheme) {
+                conn->ctx->proxy_authn_info.scheme->init_conn_func(
+                    conn->ctx->proxy_authn_info.scheme, 407, conn, conn->pool);
+            }
         }
 
-        if (conn->ctx->authn_info.scheme)
-            conn->ctx->authn_info.scheme->init_conn_func(401, conn,
-                                                         conn->pool);
+        if (conn->ctx->authn_info.scheme) {
+            conn->ctx->authn_info.scheme->init_conn_func(
+                conn->ctx->authn_info.scheme, 401, conn, conn->pool);
+        }
 
         /* Does this connection require a SSL tunnel over the proxy? */
         if (ctx->proxy_address && strcmp(conn->host_info.scheme, "https") == 0)

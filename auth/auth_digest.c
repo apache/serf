@@ -339,7 +339,8 @@ serf__init_digest(int code,
 }
 
 apr_status_t
-serf__init_digest_connection(int code,
+serf__init_digest_connection(const serf__authn_scheme_t *scheme,
+                             int code,
                              serf_connection_t *conn,
                              apr_pool_t *pool)
 {

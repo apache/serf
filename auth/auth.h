@@ -37,7 +37,8 @@ const char *serf__construct_realm(peer_t peer,
 apr_status_t serf__init_basic(int code,
                               serf_context_t *ctx,
                               apr_pool_t *pool);
-apr_status_t serf__init_basic_connection(int code,
+apr_status_t serf__init_basic_connection(const serf__authn_scheme_t *scheme,
+                                         int code,
                                          serf_connection_t *conn,
                                          apr_pool_t *pool);
 apr_status_t serf__handle_basic_auth(int code,
@@ -59,7 +60,8 @@ apr_status_t serf__setup_request_basic_auth(peer_t peer,
 apr_status_t serf__init_digest(int code,
                                serf_context_t *ctx,
                                apr_pool_t *pool);
-apr_status_t serf__init_digest_connection(int code,
+apr_status_t serf__init_digest_connection(const serf__authn_scheme_t *scheme,
+                                          int code,
                                           serf_connection_t *conn,
                                           apr_pool_t *pool);
 apr_status_t serf__handle_digest_auth(int code,
@@ -88,7 +90,8 @@ apr_status_t serf__validate_response_digest_auth(peer_t peer,
 apr_status_t serf__init_spnego(int code,
                                serf_context_t *ctx,
                                apr_pool_t *pool);
-apr_status_t serf__init_spnego_connection(int code,
+apr_status_t serf__init_spnego_connection(const serf__authn_scheme_t *scheme,
+                                          int code,
                                           serf_connection_t *conn,
                                           apr_pool_t *pool);
 apr_status_t serf__handle_spnego_auth(int code,

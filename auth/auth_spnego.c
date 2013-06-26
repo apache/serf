@@ -347,7 +347,8 @@ serf__init_spnego(int code,
 /* A new connection is created to a server that's known to use
    Kerberos. */
 apr_status_t
-serf__init_spnego_connection(int code,
+serf__init_spnego_connection(const serf__authn_scheme_t *scheme,
+                             int code,
                              serf_connection_t *conn,
                              apr_pool_t *pool)
 {
@@ -358,8 +359,8 @@ serf__init_spnego_connection(int code,
     gss_info->pool = conn->pool;
     gss_info->state = gss_api_auth_not_started;
     gss_info->pstate = pstate_init;
-    status = serf__spnego_create_sec_context(&gss_info->gss_ctx, pool,
-                                           gss_info->pool);
+    status = serf__spnego_create_sec_context(&gss_info->gss_ctx, scheme, pool,
+                                             gss_info->pool);
 
     if (status) {
         return status;
