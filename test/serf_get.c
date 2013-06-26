@@ -580,9 +580,13 @@ int main(int argc, const char **argv)
             continue;
         if (status) {
             char buf[200];
+            const char *err_string;
+            err_string = serf_error_string(status);
+            if (!err_string) {
+                err_string = apr_strerror(status, buf, sizeof(buf));
+            }
 
-            printf("Error running context: (%d) %s\n", status,
-                   apr_strerror(status, buf, sizeof(buf)));
+            printf("Error running context: (%d) %s\n", status, err_string);
             apr_pool_destroy(pool);
             exit(1);
         }
