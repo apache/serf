@@ -15,6 +15,7 @@
 
 #include "auth_spnego.h"
 #include "serf.h"
+#include "serf_private.h"
 
 #ifdef SERF_USE_SSPI
 #include <apr.h>
@@ -198,6 +199,9 @@ serf__spnego_init_sec_context(serf__spnego_context_t *ctx,
         return apr_status;
     }
     target_name = apr_pstrcat(scratch_pool, service, "/", canonname, NULL);
+
+    serf__log(AUTH_VERBOSE, __FILE__,
+              "Using SPN '%s' for '%s'\n", target_name, hostname);
 
     /* Prepare input buffer description. */
     sspi_in_buffer.BufferType = SECBUFFER_TOKEN;
