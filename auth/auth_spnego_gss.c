@@ -15,7 +15,7 @@
 
 #include "serf.h"
 #include "serf_private.h"
-#include "auth_kerb.h"
+#include "auth_spnego.h"
 
 #ifdef SERF_USE_GSSAPI
 #include <apr_strings.h>
@@ -33,7 +33,7 @@ static gss_OID_desc spnego_mech_oid = { 6, "\x2b\x06\x01\x05\x05\x02" };
 #define GSS_SPNEGO_MECHANISM &spnego_mech_oid
 #endif
 
-struct serf__kerb_context_t
+struct serf__spnego_context_t
 {
     /* GSSAPI context */
     gss_ctx_id_t gss_ctx;
@@ -44,7 +44,7 @@ struct serf__kerb_context_t
 
 static void
 log_error(int verbose_flag, const char *filename,
-          serf__kerb_context_t *ctx,
+          serf__spnego_context_t *ctx,
           OM_uint32 err_maj_stat,
           OM_uint32 err_min_stat,
           const char *msg)
@@ -81,7 +81,7 @@ log_error(int verbose_flag, const char *filename,
 static apr_status_t
 cleanup_ctx(void *data)
 {
-    serf__kerb_context_t *ctx = data;
+    serf__spnego_context_t *ctx = data;
 
     if (ctx->gss_ctx != GSS_C_NO_CONTEXT) {
         OM_uint32 gss_min_stat, gss_maj_stat;
@@ -111,11 +111,11 @@ cleanup_sec_buffer(void *data)
 }
 
 apr_status_t
-serf__kerb_create_sec_context(serf__kerb_context_t **ctx_p,
-                              apr_pool_t *scratch_pool,
-                              apr_pool_t *result_pool)
+serf__spnego_create_sec_context(serf__spnego_context_t **ctx_p,
+                               apr_pool_t *scratch_pool,
+                               apr_pool_t *result_pool)
 {
-    serf__kerb_context_t *ctx;
+    serf__spnego_context_t *ctx;
 
     ctx = apr_pcalloc(result_pool, sizeof(*ctx));
 
@@ -132,7 +132,7 @@ serf__kerb_create_sec_context(serf__kerb_context_t **ctx_p,
 }
 
 apr_status_t
-serf__kerb_reset_sec_context(serf__kerb_context_t *ctx)
+serf__spnego_reset_sec_context(serf__spnego_context_t *ctx)
 {
     OM_uint32 dummy_stat;
 
@@ -145,14 +145,14 @@ serf__kerb_reset_sec_context(serf__kerb_context_t *ctx)
 }
 
 apr_status_t
-serf__kerb_init_sec_context(serf__kerb_context_t *ctx,
-                            const char *service,
-                            const char *hostname,
-                            serf__kerb_buffer_t *input_buf,
-                            serf__kerb_buffer_t *output_buf,
-                            apr_pool_t *scratch_pool,
-                            apr_pool_t *result_pool
-                            )
+serf__spnego_init_sec_context(serf__spnego_context_t *ctx,
+                              const char *service,
+                              const char *hostname,
+                              serf__spnego_buffer_t *input_buf,
+                              serf__spnego_buffer_t *output_buf,
+                              apr_pool_t *scratch_pool,
+                              apr_pool_t *result_pool
+                              )
 {
     gss_buffer_desc gss_input_buf = GSS_C_EMPTY_BUFFER;
     gss_buffer_desc *gss_output_buf_p;

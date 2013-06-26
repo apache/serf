@@ -13,9 +13,9 @@
  * limitations under the License.
  */
 
-#include "auth_kerb.h"
+#include "auth_spnego.h"
 
-#ifdef SERF_HAVE_KERB
+#ifdef SERF_HAVE_SPNEGO
 
 /** These functions implement SPNEGO-based Kerberos and NTLM authentication,
  *  using either GSS-API (RFC 2743) or SSPI on Windows.
@@ -31,8 +31,6 @@
 #include <apr_strings.h>
 
 /** TODO:
- ** - This implements the SPNEGO mechanism, not Kerberos directly. Adapt
- **   filename, functions & comments.
  ** - send session key directly on new connections where we already know
  **   the server requires Kerberos authn.
  ** - Add a way for serf to give detailed error information back to the
@@ -166,7 +164,7 @@ typedef struct
     apr_pool_t *pool;
 
     /* GSSAPI context */
-    serf__kerb_context_t *gss_ctx;
+    serf__spnego_context_t *gss_ctx;
 
     /* Current state of the authentication cycle. */
     gss_api_auth_state state;
@@ -188,8 +186,8 @@ gss_api_get_credentials(char *token, apr_size_t token_len,
                         const char **buf, apr_size_t *buf_len,
                         gss_authn_info_t *gss_info)
 {
-    serf__kerb_buffer_t input_buf;
-    serf__kerb_buffer_t output_buf;
+    serf__spnego_buffer_t input_buf;
+    serf__spnego_buffer_t output_buf;
     apr_status_t status = APR_SUCCESS;
 
     /* If the server sent us a token, pass it to gss_init_sec_token for
@@ -203,7 +201,7 @@ gss_api_get_credentials(char *token, apr_size_t token_len,
     }
 
     /* Establish a security context to the server. */
-    status = serf__kerb_init_sec_context
+    status = serf__spnego_init_sec_context
         (gss_info->gss_ctx,
          KRB_HTTP_SERVICE, hostname,
          &input_buf,
@@ -306,7 +304,7 @@ do_auth(peer_t peer,
     /* If the server didn't provide us with a token, start with a new initial
        step in the SPNEGO authentication. */
     if (!token) {
-        serf__kerb_reset_sec_context(gss_info->gss_ctx);
+        serf__spnego_reset_sec_context(gss_info->gss_ctx);
         gss_info->state = gss_api_auth_not_started;
     }
 
@@ -360,7 +358,7 @@ serf__init_kerb_connection(int code,
     gss_info->pool = conn->pool;
     gss_info->state = gss_api_auth_not_started;
     gss_info->pstate = pstate_init;
-    status = serf__kerb_create_sec_context(&gss_info->gss_ctx, pool,
+    status = serf__spnego_create_sec_context(&gss_info->gss_ctx, pool,
                                            gss_info->pool);
 
     if (status) {

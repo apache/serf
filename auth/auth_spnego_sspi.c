@@ -13,7 +13,7 @@
  * limitations under the License.
  */
 
-#include "auth_kerb.h"
+#include "auth_spnego.h"
 #include "serf.h"
 
 #ifdef SERF_USE_SSPI
@@ -28,7 +28,7 @@
 #define SEC_E_MUTUAL_AUTH_FAILED _HRESULT_TYPEDEF_(0x80090363L)
 #endif
 
-struct serf__kerb_context_t
+struct serf__spnego_context_t
 {
     CredHandle sspi_credentials;
     CtxtHandle sspi_context;
@@ -79,7 +79,7 @@ map_sspi_status(SECURITY_STATUS sspi_status)
 static apr_status_t
 cleanup_ctx(void *data)
 {
-    serf__kerb_context_t *ctx = data;
+    serf__spnego_context_t *ctx = data;
 
     if (SecIsValidHandle(&ctx->sspi_context)) {
         DeleteSecurityContext(&ctx->sspi_context);
@@ -103,12 +103,12 @@ cleanup_sec_buffer(void *data)
 }
 
 apr_status_t
-serf__kerb_create_sec_context(serf__kerb_context_t **ctx_p,
-                              apr_pool_t *scratch_pool,
-                              apr_pool_t *result_pool)
+serf__spnego_create_sec_context(serf__spnego_context_t **ctx_p,
+                                apr_pool_t *scratch_pool,
+                                apr_pool_t *result_pool)
 {
     SECURITY_STATUS sspi_status;
-    serf__kerb_context_t *ctx;
+    serf__spnego_context_t *ctx;
 
     ctx = apr_pcalloc(result_pool, sizeof(*ctx));
 
@@ -161,7 +161,7 @@ get_canonical_hostname(const char **canonname,
 }
 
 apr_status_t
-serf__kerb_reset_sec_context(serf__kerb_context_t *ctx)
+serf__spnego_reset_sec_context(serf__spnego_context_t *ctx)
 {
     if (SecIsValidHandle(&ctx->sspi_context)) {
         DeleteSecurityContext(&ctx->sspi_context);
@@ -174,14 +174,14 @@ serf__kerb_reset_sec_context(serf__kerb_context_t *ctx)
 }
 
 apr_status_t
-serf__kerb_init_sec_context(serf__kerb_context_t *ctx,
-                            const char *service,
-                            const char *hostname,
-                            serf__kerb_buffer_t *input_buf,
-                            serf__kerb_buffer_t *output_buf,
-                            apr_pool_t *scratch_pool,
-                            apr_pool_t *result_pool
-                            )
+serf__spnego_init_sec_context(serf__spnego_context_t *ctx,
+                              const char *service,
+                              const char *hostname,
+                              serf__spnego_buffer_t *input_buf,
+                              serf__spnego_buffer_t *output_buf,
+                              apr_pool_t *scratch_pool,
+                              apr_pool_t *result_pool
+                              )
 {
     SECURITY_STATUS status;
     ULONG actual_attr;

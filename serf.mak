@@ -102,9 +102,9 @@ LIB32_OBJS= \
     "$(INTDIR)\auth.obj" \
     "$(INTDIR)\auth_basic.obj" \
     "$(INTDIR)\auth_digest.obj" \
-    "$(INTDIR)\auth_kerb.obj" \
-    "$(INTDIR)\auth_kerb_gss.obj" \
-    "$(INTDIR)\auth_kerb_sspi.obj" \
+    "$(INTDIR)\auth_spnego.obj" \
+    "$(INTDIR)\auth_spnego_gss.obj" \
+    "$(INTDIR)\auth_spnego_sspi.obj" \
     "$(INTDIR)\context.obj" \
     "$(INTDIR)\ssltunnel.obj" \
     "$(INTDIR)\allocator.obj" \
