@@ -143,6 +143,9 @@ void CuTestInit(CuTest* t, const char* name, TestFunction function)
     t->message = NULL;
     t->function = function;
     t->jumpBuf = NULL;
+    t->setup = NULL;
+    t->teardown = NULL;
+    t->testBaton = NULL;
 }
 
 CuTest* CuTestNew(const char* name, TestFunction function)
