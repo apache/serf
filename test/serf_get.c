@@ -199,7 +199,9 @@ typedef struct {
     const char *method;
     const char *path;
     const char *req_body_path;
-    const char *authn;
+    const char *username;
+    const char *password;
+    int auth_attempts;
 } handler_baton_t;
 
 /* Kludges for APR 0.9 support. */
@@ -319,16 +321,36 @@ static apr_status_t setup_request(serf_request_t *request,
     /* Shouldn't serf do this for us? */
     serf_bucket_headers_setn(hdrs_bkt, "Accept-Encoding", "gzip");
 
-    if (ctx->authn != NULL) {
-        serf_bucket_headers_setn(hdrs_bkt, "Authorization", ctx->authn);
-    }
-
     *acceptor = ctx->acceptor;
     *acceptor_baton = ctx->acceptor_baton;
     *handler = ctx->handler;
     *handler_baton = ctx;
 
     return APR_SUCCESS;
+}
+
+static apr_status_t
+credentials_callback(char **username,
+                     char **password,
+                     serf_request_t *request, void *baton,
+                     int code, const char *authn_type,
+                     const char *realm,
+                     apr_pool_t *pool)
+{
+    handler_baton_t *ctx = baton;
+
+    if (ctx->auth_attempts > 0)
+    {
+        return SERF_ERROR_AUTHN_FAILED;
+    }
+    else
+    {
+        *username = ctx->username;
+        *password = ctx->password;
+        ctx->auth_attempts++;
+
+        return APR_SUCCESS;
+    }
 }
 
 static void print_usage(apr_pool_t *pool)
@@ -339,7 +361,8 @@ static void print_usage(apr_pool_t *pool)
     puts("-H\tPrint response headers");
     puts("-n <count> Fetch URL <count> times");
     puts("-x <count> Number of maximum outstanding requests inflight");
-    puts("-a <user:password> Present Basic authentication credentials");
+    puts("-U <user> Username for Basic/Digest authentication");
+    puts("-P <password> Password for Basic/Digest authentication");
     puts("-m <method> Use the <method> HTTP Method");
     puts("-f <file> Use the <file> as the request body");
     puts("-p <hostname:port> Use the <host:port> as proxy server");
@@ -360,7 +383,8 @@ int main(int argc, const char **argv)
     int count, inflight;
     int i;
     int print_headers;
-    char *authn = NULL;
+    char *username = NULL;
+    char *password = "";
     apr_getopt_t *opt;
     char opt_c;
     const char *opt_arg;
@@ -381,17 +405,15 @@ int main(int argc, const char **argv)
 
     apr_getopt_init(&opt, pool, argc, argv);
 
-    while ((status = apr_getopt(opt, "a:f:hHm:n:vp:x:", &opt_c, &opt_arg)) ==
+    while ((status = apr_getopt(opt, "U:P:f:hHm:n:vp:x:", &opt_c, &opt_arg)) ==
            APR_SUCCESS) {
-        int srclen, enclen;
 
         switch (opt_c) {
-        case 'a':
-            srclen = strlen(opt_arg);
-            enclen = apr_base64_encode_len(srclen);
-            authn = apr_palloc(pool, enclen + 6);
-            strcpy(authn, "Basic ");
-            (void) apr_base64_encode(&authn[6], opt_arg, srclen);
+        case 'U':
+            username = opt_arg;
+            break;
+        case 'P':
+            password = opt_arg;
             break;
         case 'f':
             req_body_path = opt_arg;
@@ -503,6 +525,17 @@ int main(int argc, const char **argv)
         serf_config_proxy(context, proxy_address);
     }
 
+    if (username)
+    {
+        serf_config_authn_types(context, SERF_AUTHN_ALL);
+    }
+    else
+    {
+        serf_config_authn_types(context, SERF_AUTHN_NTLM | SERF_AUTHN_NEGOTIATE);
+    }
+
+    serf_config_credentials_callback(context, credentials_callback);
+
     /* ### Connection or Context should have an allocator? */
     app_ctx.bkt_alloc = serf_bucket_allocator_create(pool, NULL, NULL);
     app_ctx.ssl_ctx = NULL;
@@ -524,7 +557,9 @@ int main(int argc, const char **argv)
     handler_ctx.host = url.hostinfo;
     handler_ctx.method = method;
     handler_ctx.path = url.path;
-    handler_ctx.authn = authn;
+    handler_ctx.username = username;
+    handler_ctx.password = password;
+    handler_ctx.auth_attempts = 0;
 
     handler_ctx.req_body_path = req_body_path;
 
