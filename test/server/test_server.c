@@ -289,7 +289,6 @@ static apr_status_t replay(serv_ctx_t *servctx,
         else if (action->kind == PROXY_FORWARD) {
             apr_size_t len;
             char *buf;
-            serf_bucket_t *tmp;
 
             if (!servctx->proxy_client_sock) {
                 status = create_client_socket(&servctx->proxy_client_sock,
@@ -375,7 +374,6 @@ static apr_status_t proxy_replay(serv_ctx_t *servctx,
     if (rtnevents & APR_POLLOUT) {
         apr_size_t len;
         char *buf;
-        serf_bucket_t *tmp;
 
         /* Send all data received from the client to the server. */
         do
