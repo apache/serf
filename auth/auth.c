@@ -73,26 +73,26 @@ static const serf__authn_scheme_t serf_authn_schemes[] = {
         serf__setup_request_digest_auth,
         serf__validate_response_digest_auth,
     },
-#ifdef SERF_HAVE_KERB
+#ifdef SERF_HAVE_SPNEGO
     {
         401,
         "Negotiate",
         SERF_AUTHN_NEGOTIATE,
-        serf__init_kerb,
-        serf__init_kerb_connection,
-        serf__handle_kerb_auth,
-        serf__setup_request_kerb_auth,
-        serf__validate_response_kerb_auth,
+        serf__init_spnego,
+        serf__init_spnego_connection,
+        serf__handle_spnego_auth,
+        serf__setup_request_spnego_auth,
+        serf__validate_response_spnego_auth,
     },
     {
         407,
         "Negotiate",
         SERF_AUTHN_NEGOTIATE,
-        serf__init_kerb,
-        serf__init_kerb_connection,
-        serf__handle_kerb_auth,
-        serf__setup_request_kerb_auth,
-        serf__validate_response_kerb_auth,
+        serf__init_spnego,
+        serf__init_spnego_connection,
+        serf__handle_spnego_auth,
+        serf__setup_request_spnego_auth,
+        serf__validate_response_spnego_auth,
     },
 #endif
     /* ADD NEW AUTHENTICATION IMPLEMENTATIONS HERE (as they're written) */

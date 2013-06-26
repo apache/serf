@@ -337,9 +337,9 @@ do_auth(peer_t peer,
 }
 
 apr_status_t
-serf__init_kerb(int code,
-                serf_context_t *ctx,
-                apr_pool_t *pool)
+serf__init_spnego(int code,
+                  serf_context_t *ctx,
+                  apr_pool_t *pool)
 {
     return APR_SUCCESS;
 }
@@ -347,9 +347,9 @@ serf__init_kerb(int code,
 /* A new connection is created to a server that's known to use
    Kerberos. */
 apr_status_t
-serf__init_kerb_connection(int code,
-                           serf_connection_t *conn,
-                           apr_pool_t *pool)
+serf__init_spnego_connection(int code,
+                             serf_connection_t *conn,
+                             apr_pool_t *pool)
 {
     gss_authn_info_t *gss_info;
     apr_status_t status;
@@ -382,13 +382,13 @@ serf__init_kerb_connection(int code,
 
 /* A 40x response was received, handle the authentication. */
 apr_status_t
-serf__handle_kerb_auth(int code,
-                       serf_request_t *request,
-                       serf_bucket_t *response,
-                       const char *auth_hdr,
-                       const char *auth_attr,
-                       void *baton,
-                       apr_pool_t *pool)
+serf__handle_spnego_auth(int code,
+                         serf_request_t *request,
+                         serf_bucket_t *response,
+                         const char *auth_hdr,
+                         const char *auth_attr,
+                         void *baton,
+                         apr_pool_t *pool)
 {
     serf_connection_t *conn = request->conn;
     gss_authn_info_t *gss_info = (code == 401) ? conn->authn_baton :
@@ -404,13 +404,13 @@ serf__handle_kerb_auth(int code,
 
 /* Setup the authn headers on this request message. */
 apr_status_t
-serf__setup_request_kerb_auth(peer_t peer,
-                              int code,
-                              serf_connection_t *conn,
-                              serf_request_t *request,
-                              const char *method,
-                              const char *uri,
-                              serf_bucket_t *hdrs_bkt)
+serf__setup_request_spnego_auth(peer_t peer,
+                                int code,
+                                serf_connection_t *conn,
+                                serf_request_t *request,
+                                const char *method,
+                                const char *uri,
+                                serf_bucket_t *hdrs_bkt)
 {
     gss_authn_info_t *gss_info = (peer == HOST) ? conn->authn_baton :
         conn->proxy_authn_baton;
@@ -486,12 +486,12 @@ serf__setup_request_kerb_auth(peer_t peer,
  * data which should be validated by the client (mutual authentication).
  */
 apr_status_t
-serf__validate_response_kerb_auth(peer_t peer,
-                                  int code,
-                                  serf_connection_t *conn,
-                                  serf_request_t *request,
-                                  serf_bucket_t *response,
-                                  apr_pool_t *pool)
+serf__validate_response_spnego_auth(peer_t peer,
+                                    int code,
+                                    serf_connection_t *conn,
+                                    serf_request_t *request,
+                                    serf_bucket_t *response,
+                                    apr_pool_t *pool)
 {
     gss_authn_info_t *gss_info;
     const char *auth_hdr_name;
@@ -547,4 +547,4 @@ serf__validate_response_kerb_auth(peer_t peer,
     return APR_SUCCESS;
 }
 
-#endif /* SERF_HAVE_GSSAPI */
+#endif /* SERF_HAVE_SPNEGO */
