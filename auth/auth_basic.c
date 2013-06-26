@@ -84,9 +84,11 @@ serf__handle_basic_auth(int code,
 
     /* Ask the application for credentials */
     apr_pool_create(&cred_pool, pool);
-    status = (*ctx->cred_cb)(&username, &password, request, baton,
-                             code, authn_info->scheme->name,
-                             authn_info->realm, cred_pool);
+    status = serf__provide_credentials(ctx,
+                                       &username, &password,
+                                       request, baton,
+                                       code, authn_info->scheme->name,
+                                       authn_info->realm, cred_pool);
     if (status) {
         apr_pool_destroy(cred_pool);
         return status;

@@ -628,6 +628,29 @@ static apr_status_t prepare_conn_streams(serf_connection_t *conn,
     return APR_SUCCESS;
 }
 
+static apr_status_t setup_request(serf_request_t *request)
+{
+    serf_connection_t *conn = request->conn;
+    apr_status_t status;
+
+    /* Now that we are about to serve the request, allocate a pool. */
+    apr_pool_create(&request->respool, conn->pool);
+    request->allocator = serf_bucket_allocator_create(request->respool,
+                                                      NULL, NULL);
+    apr_pool_cleanup_register(request->respool, request,
+                              clean_resp, clean_resp);
+
+    /* Fill in the rest of the values for the request. */
+    status = request->setup(request, request->setup_baton,
+                            &request->req_bkt,
+                            &request->acceptor,
+                            &request->acceptor_baton,
+                            &request->handler,
+                            &request->handler_baton,
+                            request->respool);
+    return status;
+}
+
 /* write data out to the connection */
 static apr_status_t write_to_connection(serf_connection_t *conn)
 {
@@ -717,27 +740,14 @@ static apr_status_t write_to_connection(serf_connection_t *conn)
         }
 
         if (request->req_bkt == NULL) {
-            /* Now that we are about to serve the request, allocate a pool. */
-            apr_pool_create(&request->respool, conn->pool);
-            request->allocator = serf_bucket_allocator_create(request->respool,
-                                                              NULL, NULL);
-            apr_pool_cleanup_register(request->respool, request,
-                                      clean_resp, clean_resp);
-
-            /* Fill in the rest of the values for the request. */
-            read_status = request->setup(request, request->setup_baton,
-                                         &request->req_bkt,
-                                         &request->acceptor,
-                                         &request->acceptor_baton,
-                                         &request->handler,
-                                         &request->handler_baton,
-                                         request->respool);
-
+            read_status = setup_request(request);
             if (read_status) {
                 /* Something bad happened. Propagate any errors. */
                 return read_status;
             }
+        }
 
+        if (!request->written) {
             request->written = 1;
             serf_bucket_aggregate_append(ostreamt, request->req_bkt);
         }
@@ -893,6 +903,57 @@ static apr_status_t handle_async_response(serf_connection_t *conn,
     }
 
     return status;
+}
+
+
+apr_status_t
+serf__provide_credentials(serf_context_t *ctx,
+                          char **username,
+                          char **password,
+                          serf_request_t *request, void *baton,
+                          int code, const char *authn_type,
+                          const char *realm,
+                          apr_pool_t *pool)
+{
+    serf_connection_t *conn = request->conn;
+    serf_request_t *authn_req = request;
+    apr_status_t status;
+
+    if (request->ssltunnel == 1 &&
+        conn->state == SERF_CONN_SETUP_SSLTUNNEL) {
+        /* This is a CONNECT request to set up an SSL tunnel over a proxy.
+           This request is created by serf, so if the proxy requires
+           authentication, we can't ask the application for credentials with
+           this request.
+
+           Solution: setup the first request created by the application on
+           this connection, and use that request and its handler_baton to
+           call back to the application. */
+
+        authn_req = request->next;
+        /* assert: app_request != NULL */
+        if (!authn_req)
+            return APR_EGENERAL;
+
+        if (!authn_req->req_bkt) {
+            apr_status_t status;
+
+            status = setup_request(authn_req);
+            /* If we can't setup a request, don't bother setting up the
+               ssl tunnel. */
+            if (status)
+                return status;
+        }
+    }
+
+    /* Ask the application. */
+    status = (*ctx->cred_cb)(username, password,
+                             authn_req, authn_req->handler_baton,
+                             code, authn_type, realm, pool);
+    if (status)
+        return status;
+
+    return APR_SUCCESS;
 }
 
 /* read data from the connection */
@@ -1330,11 +1391,12 @@ void serf_connection_set_async_responses(
     conn->async_handler_baton = handler_baton;
 }
 
-
-serf_request_t *serf_connection_request_create(
-    serf_connection_t *conn,
-    serf_request_setup_t setup,
-    void *setup_baton)
+static serf_request_t *
+create_request(serf_connection_t *conn,
+               serf_request_setup_t setup,
+               void *setup_baton,
+               int priority,
+               int ssltunnel)
 {
     serf_request_t *request;
 
@@ -1346,9 +1408,24 @@ serf_request_t *serf_connection_request_create(
     request->respool = NULL;
     request->req_bkt = NULL;
     request->resp_bkt = NULL;
-    request->priority = 0;
+    request->priority = priority;
     request->written = 0;
+    request->ssltunnel = ssltunnel;
     request->next = NULL;
+
+    return request;
+}
+
+serf_request_t *serf_connection_request_create(
+    serf_connection_t *conn,
+    serf_request_setup_t setup,
+    void *setup_baton)
+{
+    serf_request_t *request;
+
+    request = create_request(conn, setup, setup_baton,
+                             0, /* priority */
+                             0  /* ssl tunnel */);
 
     /* Link the request to the end of the request chain. */
     link_requests(&conn->requests, &conn->requests_tail, request);
@@ -1369,17 +1446,9 @@ serf_request_t *serf_connection_priority_request_create(
     serf_request_t *request;
     serf_request_t *iter, *prev;
 
-    request = serf_bucket_mem_alloc(conn->allocator, sizeof(*request));
-    request->conn = conn;
-    request->setup = setup;
-    request->setup_baton = setup_baton;
-    request->handler = NULL;
-    request->respool = NULL;
-    request->req_bkt = NULL;
-    request->resp_bkt = NULL;
-    request->priority = 1;
-    request->written = 0;
-    request->next = NULL;
+    request = create_request(conn, setup, setup_baton,
+                             1, /* priority */
+                             0  /* ssl tunnel */);
 
     /* Link the new request after the last written request. */
     iter = conn->requests;
@@ -1412,6 +1481,20 @@ serf_request_t *serf_connection_priority_request_create(
     return request;
 }
 
+
+serf_request_t *serf__ssltunnel_request_create(serf_connection_t *conn,
+                                               serf_request_setup_t setup,
+                                               void *setup_baton)
+{
+    serf_request_t *request;
+
+    request = serf_connection_priority_request_create(conn,
+                                                      setup,
+                                                      setup_baton);
+    request->ssltunnel = 1;
+    
+    return request;
+}
 
 apr_status_t serf_request_cancel(serf_request_t *request)
 {
@@ -1478,17 +1561,29 @@ serf_bucket_t *serf_request_bucket_request_create(
         serf_bucket_headers_setn(hdrs_bkt, "Host",
                                  conn->host_info.hostinfo);
 
-    /* Setup server authorization headers */
-    if (ctx->authn_info.scheme)
+    /* Setup server authorization headers, unless this is a CONNECT request. */
+    if (ctx->authn_info.scheme && !request->ssltunnel)
         ctx->authn_info.scheme->setup_request_func(HOST, 0, conn, request,
                                                    method, uri,
                                                    hdrs_bkt);
 
-    /* Setup proxy authorization headers */
-    if (ctx->proxy_authn_info.scheme)
-        ctx->proxy_authn_info.scheme->setup_request_func(PROXY, 0, conn,
-                                                         request,
-                                                         method, uri, hdrs_bkt);
+    /* Setup proxy authorization headers.
+       Don't set these headers on the requests to the server if we're using
+       an SSL tunnel, only on the CONNECT request to setup the tunnel. */
+    if (ctx->proxy_authn_info.scheme) {
+        if (strcmp(conn->host_info.scheme, "https") == 0) {
+            if (request->ssltunnel)
+                ctx->proxy_authn_info.scheme->setup_request_func(PROXY, 0, conn,
+                                                                 request,
+                                                                 method, uri,
+                                                                 hdrs_bkt);
+        } else {
+            ctx->proxy_authn_info.scheme->setup_request_func(PROXY, 0, conn,
+                                                             request,
+                                                             method, uri,
+                                                             hdrs_bkt);
+        }
+    }
 
     return req_bkt;
 }

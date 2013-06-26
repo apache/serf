@@ -294,9 +294,11 @@ serf__handle_digest_auth(int code,
 
     /* Ask the application for credentials */
     apr_pool_create(&cred_pool, pool);
-    status = (*ctx->cred_cb)(&username, &password, request, baton,
-                             code, authn_info->scheme->name,
-                             authn_info->realm, cred_pool);
+    status = serf__provide_credentials(ctx,
+                                       &username, &password,
+                                       request, baton,
+                                       code, authn_info->scheme->name,
+                                       authn_info->realm, cred_pool);
     if (status) {
         apr_pool_destroy(cred_pool);
         return status;
@@ -373,16 +375,28 @@ serf__setup_request_digest_auth(peer_t peer,
     if (digest_info && digest_info->realm) {
         const char *value;
         apr_uri_t parsed_uri;
+        const char *path;
 
         /* TODO: per request pool? */
 
-        /* Extract path from uri. */
-        status = apr_uri_parse(conn->pool, uri, &parsed_uri);
+        /* for request 'CONNECT serf.googlecode.com:443', the uri also should be
+           serf.googlecode.com:443. apr_uri_parse can't handle this, so special
+           case. */
+        if (strcmp(method, "CONNECT") == 0)
+            path = uri;
+        else {
+            /* Extract path from uri. */
+            status = apr_uri_parse(conn->pool, uri, &parsed_uri);
+            if (status)
+                return status;
+
+            path = parsed_uri.path;
+        }
 
         /* Build a new Authorization header. */
         digest_info->header = (peer == HOST) ? "Authorization" :
             "Proxy-Authorization";
-        value = build_auth_header(digest_info, parsed_uri.path, method,
+        value = build_auth_header(digest_info, path, method,
                                   conn->pool);
 
         serf_bucket_headers_setn(hdrs_bkt, digest_info->header,

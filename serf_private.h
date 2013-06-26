@@ -76,6 +76,8 @@ struct serf_request_t {
 
     int written;
     int priority;
+    /* 1 if this is a request to setup a SSL tunnel, 0 for normal requests. */
+    int ssltunnel;
 
     /* This baton is currently only used for digest authentication, which
        needs access to the uri of the request in the response handler.
@@ -380,6 +382,17 @@ apr_status_t serf__open_connections(serf_context_t *ctx);
 apr_status_t serf__process_connection(serf_connection_t *conn,
                                        apr_int16_t events);
 apr_status_t serf__conn_update_pollset(serf_connection_t *conn);
+serf_request_t *serf__ssltunnel_request_create(serf_connection_t *conn,
+                                               serf_request_setup_t setup,
+                                               void *setup_baton);
+apr_status_t serf__provide_credentials(serf_context_t *ctx,
+                                       char **username,
+                                       char **password,
+                                       serf_request_t *request,
+                                       void *baton,
+                                       int code, const char *authn_type,
+                                       const char *realm,
+                                       apr_pool_t *pool);
 
 /* from ssltunnel.c */
 apr_status_t serf__ssltunnel_connect(serf_connection_t *conn);
