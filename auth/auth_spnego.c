@@ -201,8 +201,8 @@ gss_api_get_credentials(char *token, apr_size_t token_len,
     }
 
     /* Establish a security context to the server. */
-    status = serf__spnego_init_sec_context
-        (gss_info->gss_ctx,
+    status = serf__spnego_init_sec_context(
+         gss_info->gss_ctx,
          KRB_HTTP_SERVICE, hostname,
          &input_buf,
          &output_buf,
@@ -355,12 +355,12 @@ serf__init_spnego_connection(const serf__authn_scheme_t *scheme,
     gss_authn_info_t *gss_info;
     apr_status_t status;
 
-    gss_info = apr_pcalloc(pool, sizeof(*gss_info));
+    gss_info = apr_pcalloc(conn->pool, sizeof(*gss_info));
     gss_info->pool = conn->pool;
     gss_info->state = gss_api_auth_not_started;
     gss_info->pstate = pstate_init;
-    status = serf__spnego_create_sec_context(&gss_info->gss_ctx, scheme, pool,
-                                             gss_info->pool);
+    status = serf__spnego_create_sec_context(&gss_info->gss_ctx, scheme,
+                                             gss_info->pool, pool);
 
     if (status) {
         return status;

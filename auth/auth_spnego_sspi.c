@@ -113,8 +113,8 @@ cleanup_sec_buffer(void *data)
 apr_status_t
 serf__spnego_create_sec_context(serf__spnego_context_t **ctx_p,
                                 const serf__authn_scheme_t *scheme,
-                                apr_pool_t *scratch_pool,
-                                apr_pool_t *result_pool)
+                                apr_pool_t *result_pool,
+                                apr_pool_t *scratch_pool)
 {
     SECURITY_STATUS sspi_status;
     serf__spnego_context_t *ctx;
@@ -197,8 +197,8 @@ serf__spnego_init_sec_context(serf__spnego_context_t *ctx,
                               const char *hostname,
                               serf__spnego_buffer_t *input_buf,
                               serf__spnego_buffer_t *output_buf,
-                              apr_pool_t *scratch_pool,
-                              apr_pool_t *result_pool
+                              apr_pool_t *result_pool,
+                              apr_pool_t *scratch_pool
                               )
 {
     SECURITY_STATUS status;
