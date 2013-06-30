@@ -28,14 +28,6 @@ typedef struct {
        from the wrapped bucket.  */
     apr_size_t min_size;
 
-    /* We try to use read_iovec() on the wrapped bucket. Sometimes, the
-       vecs are NOT completely used, so we need to hold onto the unused
-       iovec structures.
-
-       There is pending data if VECS_COUNT > 0.  */
-    struct iovec vecs[IOVEC_HOLD_COUNT];
-    int vecs_count;
-
     /* In order to reach MIN_SIZE, we may sometimes make copies of the
        data to reach that size. HOLD_BUF (if not NULL) is a buffer of
        MIN_SIZE length to hold/concatenate that data.
@@ -56,7 +48,6 @@ serf_bucket_t *serf_bucket_copy_create(
     ctx = serf_bucket_mem_alloc(allocator, sizeof(*ctx));
     ctx->wrapped = wrapped;
     ctx->min_size = min_size;
-    ctx->vecs_count = 0;
     ctx->hold_buf = NULL;
 
     return serf_bucket_create(&serf_bucket_type_copy, allocator, ctx);
@@ -67,11 +58,6 @@ static apr_status_t serf_copy_read(serf_bucket_t *bucket,
                                    const char **data, apr_size_t *len)
 {
     copy_context_t *ctx = bucket->data;
-
-    if (ctx->vecs_count > 0)
-    {
-        /* ### return held data  */
-    }
 
     /* ### peek to see how much is easily available. if it is MIN_SIZE,
        ### then a read() would (likely) get that same amount. otherwise,
@@ -87,11 +73,6 @@ static apr_status_t serf_copy_readline(serf_bucket_t *bucket,
                                        const char **data, apr_size_t *len)
 {
     copy_context_t *ctx = bucket->data;
-
-    if (ctx->vecs_count > 0)
-    {
-        /* ### return held data  */
-    }
 
     /* Disregard MIN_SIZE. a "line" could very well be shorter. Just
        delegate this to the wrapped bucket.  */
@@ -110,11 +91,6 @@ static apr_status_t serf_copy_read_iovec(serf_bucket_t *bucket,
     apr_status_t status;
     apr_size_t total;
     int i;
-
-    if (ctx->vecs_count > 0)
-    {
-        /* ### return held data  */
-    }
 
     status = serf_bucket_read_iovec(bucket, requested,
                                     vecs_size, vecs, vecs_used);
@@ -165,12 +141,6 @@ static apr_status_t serf_copy_read_for_sendfile(
 {
     copy_context_t *ctx = bucket->data;
 
-    /* Any held data means we cannot provide a source for sendfile().  */
-    if (ctx->vecs_count > 0)
-    {
-        /* ### return the held data  */
-    }
-
     return serf_bucket_read_for_sendfile(ctx->wrapped, requested,
                                          hdtr, file, offset, len);
 }
@@ -182,11 +152,6 @@ static serf_bucket_t *serf_copy_read_bucket(
 {
     copy_context_t *ctx = bucket->data;
 
-    /* If there is some held data (at the front of the read stream), then
-       we definitely don't have the requested bucket type.  */
-    if (ctx->vecs_count > 0)
-        return NULL;
-
     return serf_bucket_read_bucket(ctx->wrapped, type);
 }
 
@@ -196,13 +161,6 @@ static apr_status_t serf_copy_peek(serf_bucket_t *bucket,
                                    apr_size_t *len)
 {
     copy_context_t *ctx = bucket->data;
-
-    if (ctx->vecs_count > 0)
-    {
-        *data = ctx->vecs[0].iov_base;
-        *len = ctx->vecs[0].iov_len;
-        return APR_SUCCESS;
-    }
 
     return serf_bucket_peek(ctx->wrapped, data, len);
 }
