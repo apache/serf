@@ -119,24 +119,37 @@ static apr_status_t serf_copy_read_iovec(serf_bucket_t *bucket,
     status = serf_bucket_read_iovec(bucket, requested,
                                     vecs_size, vecs, vecs_used);
 
-    /* The wrapped bucket is (temporarily) done, or is depleted. Return
-       the final data, because there is nothing we can do (if the data
-       meets/not the MIN_SIZE requirement).  */
-    if (APR_STATUS_IS_EOF(status) || APR_STATUS_IS_EAGAIN(status))
+    /* There are four possible results:
+
+       EOF: if the wrapped bucket is done, then we must be done, too. it is
+            quite possible we'll return less than MIN_SIZE, but with EOF, there
+            is no way we'll be able to return that.
+       EAGAIN: we cannot possibly read more (right now), so return. whatever
+               was read, it is all we have, whether we met MIN_SIZE or not.
+       error: any other error will prevent us from further work; return it.
+       SUCCESS: we read a portion, and the bucket says we can read more.
+
+       For all but SUCCESS, we simply return the status. We're done now.  */
+    if (status)
         return status;
 
+    /* How much was read on this pass?  */
     for (total = 0, i = *vecs_used; i-- > 0; )
         total += vecs[i].iov_len;
 
     /* The IOVEC holds at least MIN_SIZE data, so we're good. Or, it
-       holds the amount requested, so we shouldn't try to
+       holds precisely the amount requested, so we shouldn't try to
        gather/accumulate more data.  */
     if (total >= ctx->min_size || total == requested)
-        return status;
+        return APR_SUCCESS;
+    /* TOTAL < REQUESTED. TOTAL < MIN_SIZE. We should try and fetch more.  */
 
-    /* Use our buffer to get at least MIN_SIZE or REQUESTED bytes of data.  */
+    /* Copy what we have into our buffer. Then continue reading to get at
+       least MIN_SIZE or REQUESTED bytes of data.  */
 
     /* ### copy into HOLD_BUF. then read/append some more.  */
+
+    /* ### point vecs[0] at HOLD_BUF.  */
 
     return status;
 }
