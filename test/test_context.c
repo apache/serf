@@ -2035,8 +2035,7 @@ proxy_digest_authn_callback(char **username,
 }
 
 /* Test if serf can successfully authenticate to a proxy used for an ssl
-   tunnel. Retry the authentication a few times to test requeueing of the
-   CONNECT request. */
+   tunnel. */
 static void test_ssltunnel_digest_auth(CuTest *tc)
 {
     test_baton_t *tb;
@@ -2072,9 +2071,14 @@ static void test_ssltunnel_digest_auth(CuTest *tc)
             "algorithm=\"MD5\"" CRLF
           CRLF },
     };
+    /* Add a Basic header before Digest header, to test that serf uses the most
+       secure authentication scheme first, instead of following the order of
+       the headers. */
     test_server_action_t action_list_proxy[] = {
         {SERVER_RESPOND, "HTTP/1.1 407 Unauthorized" CRLF
             "Transfer-Encoding: chunked" CRLF
+            "Proxy-Authenticate: Basic c2VyZjpzZXJmdGVzdA==" CRLF
+            "Proxy-Authenticate: NonExistent blablablabla" CRLF
             "Proxy-Authenticate: Digest realm=\"Test Suite Proxy\","
             "nonce=\"ABCDEF1234567890\",opaque=\"myopaque\","
             "algorithm=\"MD5\",qop-options=\"auth\"" CRLF

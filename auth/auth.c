@@ -32,47 +32,10 @@ default_auth_response_handler(peer_t peer,
     return APR_SUCCESS;
 }
 
+/* These authentication schemes are in order of decreasing security, the topmost
+   scheme will be used first when the server supports it. */
+/* TODO: split in two, one for host and one for proxy authn. */
 static const serf__authn_scheme_t serf_authn_schemes[] = {
-    {
-        401,
-        "Basic",
-        SERF_AUTHN_BASIC,
-        serf__init_basic,
-        serf__init_basic_connection,
-        serf__handle_basic_auth,
-        serf__setup_request_basic_auth,
-        default_auth_response_handler,
-    },
-    {
-          407,
-          "Basic",
-          SERF_AUTHN_BASIC,
-          serf__init_basic,
-          serf__init_basic_connection,
-          serf__handle_basic_auth,
-          serf__setup_request_basic_auth,
-          default_auth_response_handler,
-    },
-    {
-        401,
-        "Digest",
-        SERF_AUTHN_DIGEST,
-        serf__init_digest,
-        serf__init_digest_connection,
-        serf__handle_digest_auth,
-        serf__setup_request_digest_auth,
-        serf__validate_response_digest_auth,
-    },
-    {
-        407,
-        "Digest",
-        SERF_AUTHN_DIGEST,
-        serf__init_digest,
-        serf__init_digest_connection,
-        serf__handle_digest_auth,
-        serf__setup_request_digest_auth,
-        serf__validate_response_digest_auth,
-    },
 #ifdef SERF_HAVE_SPNEGO
     {
         401,
@@ -117,27 +80,51 @@ static const serf__authn_scheme_t serf_authn_schemes[] = {
     },
 #endif /* #ifdef WIN32 */
 #endif /* SERF_HAVE_SPNEGO */
+    {
+        401,
+        "Digest",
+        SERF_AUTHN_DIGEST,
+        serf__init_digest,
+        serf__init_digest_connection,
+        serf__handle_digest_auth,
+        serf__setup_request_digest_auth,
+        serf__validate_response_digest_auth,
+    },
+    {
+        407,
+        "Digest",
+        SERF_AUTHN_DIGEST,
+        serf__init_digest,
+        serf__init_digest_connection,
+        serf__handle_digest_auth,
+        serf__setup_request_digest_auth,
+        serf__validate_response_digest_auth,
+    },    {
+        401,
+        "Basic",
+        SERF_AUTHN_BASIC,
+        serf__init_basic,
+        serf__init_basic_connection,
+        serf__handle_basic_auth,
+        serf__setup_request_basic_auth,
+        default_auth_response_handler,
+    },
+    {
+        407,
+        "Basic",
+        SERF_AUTHN_BASIC,
+        serf__init_basic,
+        serf__init_basic_connection,
+        serf__handle_basic_auth,
+        serf__setup_request_basic_auth,
+        default_auth_response_handler,
+    },
     /* ADD NEW AUTHENTICATION IMPLEMENTATIONS HERE (as they're written) */
 
     /* sentinel */
     { 0 }
 };
 
-
-/**
- * Baton passed to the response header callback function
- */
-typedef struct {
-    int code;
-    apr_status_t status;
-    const char *header;
-    serf_request_t *request;
-    serf_bucket_t *response;
-    void *baton;
-    apr_pool_t *pool;
-    const serf__authn_scheme_t *scheme;
-    const char *last_scheme_name;
-} auth_baton_t;
 
 /* Reads and discards all bytes in the response body. */
 static apr_status_t discard_body(serf_bucket_t *response)
@@ -164,17 +151,113 @@ static apr_status_t discard_body(serf_bucket_t *response)
  *
  * Returns a non-0 value of a matching handler was found.
  */
-static int handle_auth_header(void *baton,
-                              const char *key,
-                              const char *header)
+static int handle_auth_headers(int code,
+                               void *baton,
+                               apr_hash_t *hdrs,
+                               serf_request_t *request,
+                               serf_bucket_t *response,
+                               apr_pool_t *pool)
+{
+    const serf__authn_scheme_t *scheme;
+    serf_connection_t *conn = request->conn;
+    serf_context_t *ctx = conn->ctx;
+    apr_status_t status;
+
+    status = SERF_ERROR_AUTHN_NOT_SUPPORTED;
+
+    /* Find the matching authentication handler.
+       Note that we don't reuse the auth scheme stored in the context,
+       as that may have changed. (ex. fallback from ntlm to basic.) */
+    for (scheme = serf_authn_schemes; scheme->code != 0; ++scheme) {
+        const char *auth_hdr;
+        serf__auth_handler_func_t handler;
+
+        if (! (code == scheme->code &&
+               ctx->authn_types & scheme->type))
+            continue;
+
+        serf__log_skt(AUTH_VERBOSE, __FILE__, conn->skt,
+                      "Client supports: %s\n", scheme->name);
+
+        auth_hdr = apr_hash_get(hdrs, scheme->name, APR_HASH_KEY_STRING);
+
+        if (!auth_hdr)
+            continue;
+
+        /* Found a matching scheme */
+        status = APR_SUCCESS;
+
+        handler = scheme->handle_func;
+
+        serf__log_skt(AUTH_VERBOSE, __FILE__, conn->skt,
+                      "... matched: %s\n", scheme->name);
+
+        /* If this is the first time we use this scheme on this connection,
+         make sure to initialize the authentication handler first. */
+        if (code == 401 && ctx->authn_info.scheme != scheme) {
+            status = scheme->init_ctx_func(code, ctx, ctx->pool);
+            if (!status) {
+                status = scheme->init_conn_func(scheme, code, conn,
+                                                conn->pool);
+
+                if (!status)
+                    ctx->authn_info.scheme = scheme;
+                else
+                    ctx->authn_info.scheme = NULL;
+            }
+        }
+        else if (code == 407 && ctx->proxy_authn_info.scheme != scheme) {
+            status = scheme->init_ctx_func(code, ctx, ctx->pool);
+            if (!status) {
+                status = scheme->init_conn_func(scheme, code, conn,
+                                                conn->pool);
+
+                if (!status)
+                    ctx->proxy_authn_info.scheme = scheme;
+                else
+                    ctx->proxy_authn_info.scheme = NULL;
+            }
+        }
+
+        if (!status) {
+            const char *auth_attr = strchr(auth_hdr, ' ');
+            if (auth_attr) {
+                auth_attr++;
+            }
+
+            status = handler(code, request, response,
+                             auth_hdr, auth_attr, baton, ctx->pool);
+        }
+
+        if (status == APR_SUCCESS)
+            break;
+
+        /* No success authenticating with this scheme, try the next.
+           If no more authn schemes are found the status of this scheme will be
+           returned.
+        */
+        serf__log_skt(AUTH_VERBOSE, __FILE__, conn->skt,
+                      "%s authentication failed.\n", scheme->name);
+    }
+
+    return status;
+}
+
+/**
+ * Baton passed to the store_header_in_dict callback function
+ */
+typedef struct {
+    const char *header;
+    apr_pool_t *pool;
+    apr_hash_t *hdrs;
+} auth_baton_t;
+
+static int store_header_in_dict(void *baton,
+                                const char *key,
+                                const char *header)
 {
     auth_baton_t *ab = baton;
-    int scheme_found = FALSE;
-    const char *auth_name;
-    const char *auth_attr;
-    const serf__authn_scheme_t *scheme = NULL;
-    serf_connection_t *conn = ab->request->conn;
-    serf_context_t *ctx = conn->ctx;
+    const char *auth_name, *auth_attr;
 
     /* We're only interested in xxxx-Authenticate headers. */
     if (strcmp(key, ab->header) != 0)
@@ -185,80 +268,14 @@ static int handle_auth_header(void *baton,
     auth_attr = strchr(header, ' ');
     if (auth_attr) {
         auth_name = apr_pstrmemdup(ab->pool, header, auth_attr - header);
-        ++auth_attr;
     }
     else
         auth_name = header;
 
-    ab->last_scheme_name = auth_name;
+    apr_hash_set(ab->hdrs, auth_name, APR_HASH_KEY_STRING,
+                 apr_pstrdup(ab->pool, header));
 
-    /* Find the matching authentication handler.
-       Note that we don't reuse the auth scheme stored in the context,
-       as that may have changed. (ex. fallback from ntlm to basic.) */
-    for (scheme = serf_authn_schemes; scheme->code != 0; ++scheme) {
-        if (! (ab->code == scheme->code &&
-               ctx->authn_types & scheme->type))
-            continue;
-
-        serf__log_skt(AUTH_VERBOSE, __FILE__, conn->skt,
-                      "Client supports: %s\n", scheme->name);
-        if (strcmp(auth_name, scheme->name) == 0) {
-            serf__auth_handler_func_t handler = scheme->handle_func;
-            apr_status_t status = 0;
-
-            serf__log_skt(AUTH_VERBOSE, __FILE__, conn->skt,
-                          "... matched: %s\n", scheme->name);
-            /* If this is the first time we use this scheme on this connection,
-               make sure to initialize the authentication handler first. */
-            if (ab->code == 401 && ctx->authn_info.scheme != scheme) {
-                status = scheme->init_ctx_func(ab->code, ctx, ctx->pool);
-                if (!status) {
-                    status = scheme->init_conn_func(scheme, ab->code, conn,
-                                                    conn->pool);
-
-                    if (!status)
-                        ctx->authn_info.scheme = scheme;
-                    else
-                        ctx->authn_info.scheme = NULL;
-                }
-            }
-            else if (ab->code == 407 && ctx->proxy_authn_info.scheme != scheme) {
-                status = scheme->init_ctx_func(ab->code, ctx, ctx->pool);
-                if (!status) {
-                    status = scheme->init_conn_func(scheme, ab->code, conn,
-                                                    conn->pool);
-
-                    if (!status)
-                        ctx->proxy_authn_info.scheme = scheme;
-                    else
-                        ctx->proxy_authn_info.scheme = NULL;
-                }
-            }
-
-            if (!status) {
-                scheme_found = TRUE;
-                ab->scheme = scheme;
-                status = handler(ab->code, ab->request, ab->response,
-                                 header, auth_attr, ab->baton, ctx->pool);
-            }
-
-            /* If the authentication fails, cache the error for now. Try the
-               next available scheme. If there's none raise the error. */
-            if (status) {
-                scheme_found = FALSE;
-                scheme = NULL;
-            }
-            /* Let the caller now if the authentication setup was succesful
-               or not. */
-            ab->status = status;
-
-            break;
-        }
-    }
-
-    /* If a matching scheme handler was found, we can stop iterating
-       over the response headers - so return a non-0 value. */
-    return scheme_found;
+    return 0;
 }
 
 /* Dispatch authentication handling. This function matches the possible
@@ -276,11 +293,7 @@ static apr_status_t dispatch_auth(int code,
         auth_baton_t ab = { 0 };
         const char *auth_hdr;
 
-        ab.code = code;
-        ab.status = APR_SUCCESS;
-        ab.request = request;
-        ab.response = response;
-        ab.baton = baton;
+        ab.hdrs = apr_hash_make(pool);
         ab.pool = pool;
 
         /* Before iterating over all authn headers, check if there are any. */
@@ -299,8 +312,8 @@ static apr_status_t dispatch_auth(int code,
                       "%s authz required. Response header(s): %s\n",
                       code == 401 ? "Server" : "Proxy", auth_hdr);
 
-        /* Iterate over all headers. Try to find a matching authentication scheme
-           handler.
+
+        /* Store all WWW- or Proxy-Authenticate headers in a dictionary.
 
            Note: it is possible to have multiple Authentication: headers. We do
            not want to combine them (per normal header combination rules) as that
@@ -309,15 +322,13 @@ static apr_status_t dispatch_auth(int code,
            work with.
         */
         serf_bucket_headers_do(hdrs,
-                               handle_auth_header,
+                               store_header_in_dict,
                                &ab);
-        if (ab.status != APR_SUCCESS)
-            return ab.status;
 
-        if (!ab.scheme || ab.scheme->name == NULL) {
-            /* No matching authentication found. */
-            return SERF_ERROR_AUTHN_NOT_SUPPORTED;
-        }
+        /* Iterate over all authentication schemes, in order of decreasing
+           security. Try to find a authentication schema the server support. */
+        return handle_auth_headers(code, baton, ab.hdrs,
+                                   request, response, pool);
     }
 
     return APR_SUCCESS;
