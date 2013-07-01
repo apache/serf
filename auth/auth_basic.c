@@ -46,7 +46,8 @@ serf__handle_basic_auth(int code,
     basic_authn_info_t *basic_info = authn_info->baton;
     apr_status_t status;
     apr_pool_t *cred_pool;
-    char *username, *password;
+    char *username, *password, *realm_name;
+    const char *eq, *realm;
 
     /* Can't do Basic authentication if there's no callback to get
        username & password. */
@@ -54,20 +55,18 @@ serf__handle_basic_auth(int code,
         return SERF_ERROR_AUTHN_FAILED;
     }
 
-    if (!authn_info->realm) {
-        char *realm_name = NULL;
-        const char *eq = strchr(auth_attr, '=');
+    realm_name = NULL;
+    eq = strchr(auth_attr, '=');
 
-        if (eq && strncasecmp(auth_attr, "realm", 5) == 0) {
-            realm_name = apr_pstrdup(pool, eq + 1);
-            if (realm_name[0] == '\"') {
-                apr_size_t realm_len;
+    if (eq && strncasecmp(auth_attr, "realm", 5) == 0) {
+        realm_name = apr_pstrdup(pool, eq + 1);
+        if (realm_name[0] == '\"') {
+            apr_size_t realm_len;
 
-                realm_len = strlen(realm_name);
-                if (realm_name[realm_len - 1] == '\"') {
-                    realm_name[realm_len - 1] = '\0';
-                    realm_name++;
-                }
+            realm_len = strlen(realm_name);
+            if (realm_name[realm_len - 1] == '\"') {
+                realm_name[realm_len - 1] = '\0';
+                realm_name++;
             }
         }
 
@@ -75,9 +74,9 @@ serf__handle_basic_auth(int code,
             return SERF_ERROR_AUTHN_MISSING_ATTRIBUTE;
         }
 
-        authn_info->realm = serf__construct_realm(code == 401 ? HOST : PROXY,
-                                                  conn, realm_name,
-                                                  pool);
+        realm = serf__construct_realm(code == 401 ? HOST : PROXY,
+                                      conn, realm_name,
+                                      pool);
     }
 
     /* Ask the application for credentials */
@@ -86,7 +85,7 @@ serf__handle_basic_auth(int code,
                                        &username, &password,
                                        request, baton,
                                        code, authn_info->scheme->name,
-                                       authn_info->realm, cred_pool);
+                                       realm, cred_pool);
     if (status) {
         apr_pool_destroy(cred_pool);
         return status;

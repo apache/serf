@@ -102,8 +102,6 @@ typedef struct serf_pollset_t {
 } serf_pollset_t;
 
 typedef struct serf__authn_info_t {
-    const char *realm;
-
     const serf__authn_scheme_t *scheme;
 
     void *baton;

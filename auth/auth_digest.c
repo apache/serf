@@ -217,7 +217,7 @@ serf__handle_digest_auth(int code,
 {
     char *attrs;
     char *nextkv;
-    const char *realm_name = NULL;
+    const char *realm, *realm_name = NULL;
     const char *nonce = NULL;
     const char *algorithm = NULL;
     const char *qop = NULL;
@@ -286,9 +286,9 @@ serf__handle_digest_auth(int code,
         return SERF_ERROR_AUTHN_MISSING_ATTRIBUTE;
     }
 
-    authn_info->realm = serf__construct_realm(code == 401 ? HOST : PROXY,
-                                              conn, realm_name,
-                                              pool);
+    realm = serf__construct_realm(code == 401 ? HOST : PROXY,
+                                  conn, realm_name,
+                                  pool);
 
     /* Ask the application for credentials */
     apr_pool_create(&cred_pool, pool);
@@ -296,7 +296,7 @@ serf__handle_digest_auth(int code,
                                        &username, &password,
                                        request, baton,
                                        code, authn_info->scheme->name,
-                                       authn_info->realm, cred_pool);
+                                       realm, cred_pool);
     if (status) {
         apr_pool_destroy(cred_pool);
         return status;
