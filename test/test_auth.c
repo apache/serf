@@ -174,9 +174,10 @@ static void test_basic_authentication(CuTest *tc)
             "2" CRLF
             "0" CRLF CRLF}, };
     test_server_action_t action_list[] = {
+        /* Non-standard case usage for scheme name */
         {SERVER_RESPOND, "HTTP/1.1 401 Unauthorized" CRLF
             "Transfer-Encoding: chunked" CRLF
-            "WWW-Authenticate: Basic realm=""Test Suite""" CRLF
+            "WWW-Authenticate: bAsIc realm=""Test Suite""" CRLF
             CRLF
             "1" CRLF CRLF
             "0" CRLF CRLF},

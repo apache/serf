@@ -20,6 +20,7 @@
 #include <apr.h>
 #include <apr_base64.h>
 #include <apr_strings.h>
+#include <apr_lib.h>
 
 static apr_status_t
 default_auth_response_handler(peer_t peer,
@@ -37,11 +38,14 @@ default_auth_response_handler(peer_t peer,
  
    Each set of handlers should support both server (401) and proxy (407)
    authentication.
+ 
+   Use lower case for the scheme names to enable case insensitive matching.
  */
 static const serf__authn_scheme_t serf_authn_schemes[] = {
 #ifdef SERF_HAVE_SPNEGO
     {
         "Negotiate",
+        "negotiate",
         SERF_AUTHN_NEGOTIATE,
         serf__init_spnego,
         serf__init_spnego_connection,
@@ -52,6 +56,7 @@ static const serf__authn_scheme_t serf_authn_schemes[] = {
 #ifdef WIN32
     {
         "NTLM",
+        "ntlm",
         SERF_AUTHN_NTLM,
         serf__init_spnego,
         serf__init_spnego_connection,
@@ -63,6 +68,7 @@ static const serf__authn_scheme_t serf_authn_schemes[] = {
 #endif /* SERF_HAVE_SPNEGO */
     {
         "Digest",
+        "digest",
         SERF_AUTHN_DIGEST,
         serf__init_digest,
         serf__init_digest_connection,
@@ -72,6 +78,7 @@ static const serf__authn_scheme_t serf_authn_schemes[] = {
     },
     {
         "Basic",
+        "basic",
         SERF_AUTHN_BASIC,
         serf__init_basic,
         serf__init_basic_connection,
@@ -138,7 +145,7 @@ static int handle_auth_headers(int code,
         serf__log_skt(AUTH_VERBOSE, __FILE__, conn->skt,
                       "Client supports: %s\n", scheme->name);
 
-        auth_hdr = apr_hash_get(hdrs, scheme->name, APR_HASH_KEY_STRING);
+        auth_hdr = apr_hash_get(hdrs, scheme->key, APR_HASH_KEY_STRING);
 
         if (!auth_hdr)
             continue;
@@ -216,20 +223,24 @@ static int store_header_in_dict(void *baton,
                                 const char *header)
 {
     auth_baton_t *ab = baton;
-    const char *auth_name, *auth_attr;
+    const char *auth_attr;
+    char *auth_name, *c;
 
     /* We're only interested in xxxx-Authenticate headers. */
     if (strcmp(key, ab->header) != 0)
         return 0;
 
-    /* Extract the authentication scheme name, and prepare for reading
-       the attributes.  */
+    /* Extract the authentication scheme name.  */
     auth_attr = strchr(header, ' ');
     if (auth_attr) {
         auth_name = apr_pstrmemdup(ab->pool, header, auth_attr - header);
     }
     else
-        auth_name = header;
+        auth_name = apr_pstrmemdup(ab->pool, header, strlen(header));
+
+    /* Convert scheme name to lower case to enable case insensitive matching. */
+    for (c = auth_name; *c != '\0'; c++)
+        *c = (char)apr_tolower(*c);
 
     apr_hash_set(ab->hdrs, auth_name, APR_HASH_KEY_STRING,
                  apr_pstrdup(ab->pool, header));

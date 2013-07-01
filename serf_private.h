@@ -341,9 +341,13 @@ typedef apr_status_t
  * serf__authn_scheme_t: vtable for an authn scheme provider.
  */
 struct serf__authn_scheme_t {
-    /* The name of this authentication scheme. This should be a case
-       sensitive match of the string sent in the HTTP authentication header. */
+    /* The name of this authentication scheme. Used in headers of requests and
+       for logging. */
     const char *name;
+
+    /* Key is the name of the authentication scheme in lower case, to
+       facilitate case insensitive matching of the response headers. */
+    const char *key;
 
     /* Internal code used for this authn type. */
     int type;
