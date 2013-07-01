@@ -33,22 +33,14 @@ default_auth_response_handler(peer_t peer,
 }
 
 /* These authentication schemes are in order of decreasing security, the topmost
-   scheme will be used first when the server supports it. */
-/* TODO: split in two, one for host and one for proxy authn. */
+   scheme will be used first when the server supports it.
+ 
+   Each set of handlers should support both server (401) and proxy (407)
+   authentication.
+ */
 static const serf__authn_scheme_t serf_authn_schemes[] = {
 #ifdef SERF_HAVE_SPNEGO
     {
-        401,
-        "Negotiate",
-        SERF_AUTHN_NEGOTIATE,
-        serf__init_spnego,
-        serf__init_spnego_connection,
-        serf__handle_spnego_auth,
-        serf__setup_request_spnego_auth,
-        serf__validate_response_spnego_auth,
-    },
-    {
-        407,
         "Negotiate",
         SERF_AUTHN_NEGOTIATE,
         serf__init_spnego,
@@ -59,17 +51,6 @@ static const serf__authn_scheme_t serf_authn_schemes[] = {
     },
 #ifdef WIN32
     {
-        401,
-        "NTLM",
-        SERF_AUTHN_NTLM,
-        serf__init_spnego,
-        serf__init_spnego_connection,
-        serf__handle_spnego_auth,
-        serf__setup_request_spnego_auth,
-        serf__validate_response_spnego_auth,
-    },
-    {
-        407,
         "NTLM",
         SERF_AUTHN_NTLM,
         serf__init_spnego,
@@ -81,7 +62,6 @@ static const serf__authn_scheme_t serf_authn_schemes[] = {
 #endif /* #ifdef WIN32 */
 #endif /* SERF_HAVE_SPNEGO */
     {
-        401,
         "Digest",
         SERF_AUTHN_DIGEST,
         serf__init_digest,
@@ -91,26 +71,6 @@ static const serf__authn_scheme_t serf_authn_schemes[] = {
         serf__validate_response_digest_auth,
     },
     {
-        407,
-        "Digest",
-        SERF_AUTHN_DIGEST,
-        serf__init_digest,
-        serf__init_digest_connection,
-        serf__handle_digest_auth,
-        serf__setup_request_digest_auth,
-        serf__validate_response_digest_auth,
-    },    {
-        401,
-        "Basic",
-        SERF_AUTHN_BASIC,
-        serf__init_basic,
-        serf__init_basic_connection,
-        serf__handle_basic_auth,
-        serf__setup_request_basic_auth,
-        default_auth_response_handler,
-    },
-    {
-        407,
         "Basic",
         SERF_AUTHN_BASIC,
         serf__init_basic,
@@ -168,12 +128,11 @@ static int handle_auth_headers(int code,
     /* Find the matching authentication handler.
        Note that we don't reuse the auth scheme stored in the context,
        as that may have changed. (ex. fallback from ntlm to basic.) */
-    for (scheme = serf_authn_schemes; scheme->code != 0; ++scheme) {
+    for (scheme = serf_authn_schemes; scheme->name != 0; ++scheme) {
         const char *auth_hdr;
         serf__auth_handler_func_t handler;
 
-        if (! (code == scheme->code &&
-               ctx->authn_types & scheme->type))
+        if (! (ctx->authn_types & scheme->type))
             continue;
 
         serf__log_skt(AUTH_VERBOSE, __FILE__, conn->skt,

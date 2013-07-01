@@ -343,11 +343,6 @@ typedef apr_status_t
  * serf__authn_scheme_t: vtable for an authn scheme provider.
  */
 struct serf__authn_scheme_t {
-    /* The http status code that's handled by this authentication scheme.
-       Normal values are 401 for server authentication and 407 for proxy
-       authentication */
-    int code;
-
     /* The name of this authentication scheme. This should be a case
        sensitive match of the string sent in the HTTP authentication header. */
     const char *name;

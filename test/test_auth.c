@@ -18,6 +18,111 @@
 
 
 static apr_status_t
+authn_callback_expect_not_called(char **username,
+                                 char **password,
+                                 serf_request_t *request, void *baton,
+                                 int code, const char *authn_type,
+                                 const char *realm,
+                                 apr_pool_t *pool)
+{
+    handler_baton_t *handler_ctx = baton;
+    test_baton_t *tb = handler_ctx->tb;
+
+    tb->result_flags |= TEST_RESULT_AUTHNCB_CALLED;
+
+    /* Should not have been called. */
+    return SERF_ERROR_ISSUE_IN_TESTSUITE;
+}
+
+/* Tests that authn fails if all authn schemes are disabled. */
+static void test_authentication_disabled(CuTest *tc)
+{
+    test_baton_t *tb;
+    handler_baton_t handler_ctx[2];
+    int num_requests_sent, num_requests_recvd;
+
+    test_server_message_t message_list[] = {
+        {CHUNKED_REQUEST(1, "1")} };
+    test_server_action_t action_list[] = {
+        {SERVER_RESPOND, "HTTP/1.1 401 Unauthorized" CRLF
+            "Transfer-Encoding: chunked" CRLF
+            "WWW-Authenticate: Basic realm=""Test Suite""" CRLF
+            CRLF
+            "1" CRLF CRLF
+            "0" CRLF CRLF},
+    };
+    apr_status_t status;
+
+    apr_pool_t *test_pool = tc->testBaton;
+
+    /* Set up a test context with a server */
+    status = test_http_server_setup(&tb,
+                                    message_list, 1,
+                                    action_list, 1, 0, NULL,
+                                    test_pool);
+    CuAssertIntEquals(tc, APR_SUCCESS, status);
+
+    serf_config_authn_types(tb->context, SERF_AUTHN_NONE);
+    serf_config_credentials_callback(tb->context,
+                                     authn_callback_expect_not_called);
+
+    create_new_request(tb, &handler_ctx[0], "GET", "/", 1);
+
+    status = test_helper_run_requests_no_check(tc, tb, 1,
+                                               handler_ctx, test_pool);
+    CuAssertIntEquals(tc, SERF_ERROR_AUTHN_NOT_SUPPORTED, status);
+    CuAssertIntEquals(tc, 1, tb->sent_requests->nelts);
+    CuAssertIntEquals(tc, 1, tb->accepted_requests->nelts);
+    CuAssertIntEquals(tc, 0, tb->handled_requests->nelts);
+
+    CuAssertTrue(tc, !(tb->result_flags & TEST_RESULT_AUTHNCB_CALLED));
+}
+
+/* Tests that authn fails if encountered an unsupported scheme. */
+static void test_unsupported_authentication(CuTest *tc)
+{
+    test_baton_t *tb;
+    handler_baton_t handler_ctx[2];
+    int num_requests_sent, num_requests_recvd;
+
+    test_server_message_t message_list[] = {
+        {CHUNKED_REQUEST(1, "1")} };
+    test_server_action_t action_list[] = {
+        {SERVER_RESPOND, "HTTP/1.1 401 Unauthorized" CRLF
+            "Transfer-Encoding: chunked" CRLF
+            "WWW-Authenticate: NotExistent realm=""Test Suite""" CRLF
+            CRLF
+            "1" CRLF CRLF
+            "0" CRLF CRLF},
+    };
+    apr_status_t status;
+
+    apr_pool_t *test_pool = tc->testBaton;
+
+    /* Set up a test context with a server */
+    status = test_http_server_setup(&tb,
+                                    message_list, 1,
+                                    action_list, 1, 0, NULL,
+                                    test_pool);
+    CuAssertIntEquals(tc, APR_SUCCESS, status);
+
+    serf_config_authn_types(tb->context, SERF_AUTHN_ALL);
+    serf_config_credentials_callback(tb->context,
+                                     authn_callback_expect_not_called);
+
+    create_new_request(tb, &handler_ctx[0], "GET", "/", 1);
+
+    status = test_helper_run_requests_no_check(tc, tb, 1,
+                                               handler_ctx, test_pool);
+    CuAssertIntEquals(tc, SERF_ERROR_AUTHN_NOT_SUPPORTED, status);
+    CuAssertIntEquals(tc, 1, tb->sent_requests->nelts);
+    CuAssertIntEquals(tc, 1, tb->accepted_requests->nelts);
+    CuAssertIntEquals(tc, 0, tb->handled_requests->nelts);
+
+    CuAssertTrue(tc, !(tb->result_flags & TEST_RESULT_AUTHNCB_CALLED));
+}
+
+static apr_status_t
 basic_authn_callback(char **username,
                      char **password,
                      serf_request_t *request, void *baton,
@@ -222,6 +327,8 @@ CuSuite *test_auth(void)
 
     CuSuiteSetSetupTeardownCallbacks(suite, test_setup, test_teardown);
 
+    SUITE_ADD_TEST(suite, test_authentication_disabled);
+    SUITE_ADD_TEST(suite, test_unsupported_authentication);
     SUITE_ADD_TEST(suite, test_basic_authentication);
     SUITE_ADD_TEST(suite, test_digest_authentication);
 
