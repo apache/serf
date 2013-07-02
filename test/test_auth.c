@@ -147,46 +147,54 @@ basic_authn_callback(char **username,
     return APR_SUCCESS;
 }
 
-static void test_basic_authentication(CuTest *tc)
+/* Test template, used for KeepAlive Off and KeepAlive On test */
+static void basic_authentication(CuTest *tc, const char *resp_hdrs)
 {
     test_baton_t *tb;
     handler_baton_t handler_ctx[2];
     int num_requests_sent, num_requests_recvd;
-
-    /* Expected string relies on strict order of headers, which is not
-       guaranteed. c2VyZjpzZXJmdGVzdA== is base64 encoded serf:serftest . */
-    test_server_message_t message_list[] = {
-        {CHUNKED_REQUEST(1, "1")},
-        {"GET / HTTP/1.1" CRLF
-            "Host: localhost:12345" CRLF
-            "Authorization: Basic c2VyZjpzZXJmdGVzdA==" CRLF
-            "Transfer-Encoding: chunked" CRLF
-            CRLF
-            "1" CRLF
-            "1" CRLF
-            "0" CRLF CRLF},
-        {"GET / HTTP/1.1" CRLF
-            "Host: localhost:12345" CRLF
-            "Authorization: Basic c2VyZjpzZXJmdGVzdA==" CRLF
-            "Transfer-Encoding: chunked" CRLF
-            CRLF
-            "1" CRLF
-            "2" CRLF
-            "0" CRLF CRLF}, };
-    test_server_action_t action_list[] = {
-        /* Non-standard case usage for scheme name */
-        {SERVER_RESPOND, "HTTP/1.1 401 Unauthorized" CRLF
-            "Transfer-Encoding: chunked" CRLF
-            "WWW-Authenticate: bAsIc realm=""Test Suite""" CRLF
-            CRLF
-            "1" CRLF CRLF
-            "0" CRLF CRLF},
-        {SERVER_RESPOND, CHUNKED_EMPTY_RESPONSE},
-        {SERVER_RESPOND, CHUNKED_EMPTY_RESPONSE},
-    };
+    test_server_message_t message_list[3];
+    test_server_action_t action_list[3];
     apr_status_t status;
 
     apr_pool_t *test_pool = tc->testBaton;
+    
+    /* Expected string relies on strict order of headers, which is not
+       guaranteed. c2VyZjpzZXJmdGVzdA== is base64 encoded serf:serftest . */
+    message_list[0].text = CHUNKED_REQUEST(1, "1");
+    message_list[1].text = apr_psprintf(test_pool,
+        "GET / HTTP/1.1" CRLF
+        "Host: localhost:12345" CRLF
+        "Authorization: Basic c2VyZjpzZXJmdGVzdA==" CRLF
+        "Transfer-Encoding: chunked" CRLF
+        CRLF
+        "1" CRLF
+        "1" CRLF
+        "0" CRLF CRLF);
+    message_list[2].text = apr_psprintf(test_pool,
+        "GET / HTTP/1.1" CRLF
+        "Host: localhost:12345" CRLF
+        "Authorization: Basic c2VyZjpzZXJmdGVzdA==" CRLF
+        "Transfer-Encoding: chunked" CRLF
+        CRLF
+        "1" CRLF
+        "2" CRLF
+        "0" CRLF CRLF);
+
+    action_list[0].kind = SERVER_RESPOND;
+    /* Non-standard case usage for scheme name */
+    action_list[0].text = apr_psprintf(test_pool,
+        "HTTP/1.1 401 Unauthorized" CRLF
+        "Transfer-Encoding: chunked" CRLF
+        "WWW-Authenticate: bAsIc realm=""Test Suite""" CRLF
+        "%s"
+        CRLF
+        "1" CRLF CRLF
+        "0" CRLF CRLF, resp_hdrs);
+    action_list[1].kind = SERVER_RESPOND;
+    action_list[1].text = CHUNKED_EMPTY_RESPONSE;
+    action_list[2].kind = SERVER_RESPOND;
+    action_list[2].text = CHUNKED_EMPTY_RESPONSE;
 
     /* Set up a test context with a server */
     status = test_http_server_setup(&tb,
@@ -225,6 +233,16 @@ static void test_basic_authentication(CuTest *tc)
     CuAssertTrue(tc, !(tb->result_flags & TEST_RESULT_AUTHNCB_CALLED));
 }
 
+static void test_basic_authentication(CuTest *tc)
+{
+    basic_authentication(tc, "");
+}
+
+static void test_basic_authentication_keepalive_off(CuTest *tc)
+{
+    basic_authentication(tc, "Connection: close" CRLF);
+}
+
 static apr_status_t
 digest_authn_callback(char **username,
                       char **password,
@@ -253,7 +271,6 @@ digest_authn_callback(char **username,
 
 /* Test template, used for KeepAlive Off and KeepAlive On test */
 static void digest_authentication(CuTest *tc, const char *resp_hdrs)
-
 {
     test_baton_t *tb;
     handler_baton_t handler_ctx[2];
@@ -537,10 +554,11 @@ CuSuite *test_auth(void)
     SUITE_ADD_TEST(suite, test_authentication_disabled);
     SUITE_ADD_TEST(suite, test_unsupported_authentication);
     SUITE_ADD_TEST(suite, test_basic_authentication);
+    SUITE_ADD_TEST(suite, test_basic_authentication_keepalive_off);
     SUITE_ADD_TEST(suite, test_digest_authentication);
+    SUITE_ADD_TEST(suite, test_digest_authentication_keepalive_off);
     SUITE_ADD_TEST(suite, test_basic_switch_realms);
     SUITE_ADD_TEST(suite, test_digest_switch_realms);
-    SUITE_ADD_TEST(suite, test_digest_authentication_keepalive_off);
 
     return suite;
 }
