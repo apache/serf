@@ -293,7 +293,6 @@ apr_status_t serf__open_connections(serf_context_t *ctx)
 
     for (i = ctx->conns->nelts; i--; ) {
         serf_connection_t *conn = GET_CONN(ctx, i);
-        serf_bucket_t *dummy1, *dummy2;
         apr_status_t status;
         apr_socket_t *skt;
 
@@ -376,6 +375,8 @@ apr_status_t serf__open_connections(serf_context_t *ctx)
         if (ctx->proxy_address && strcmp(conn->host_info.scheme, "https") == 0)
             serf__ssltunnel_connect(conn);
         else {
+            serf_bucket_t *dummy1, *dummy2;
+
             conn->state = SERF_CONN_CONNECTED;
 
             status = prepare_conn_streams(conn, &conn->stream,
