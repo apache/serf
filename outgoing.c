@@ -114,30 +114,34 @@ apr_status_t serf__conn_update_pollset(serf_connection_t *conn)
         /* ### not true. we only want to read IF we have sent some data */
         desc.reqevents |= APR_POLLIN;
 
-        /* If the connection is not closing down and
-         *   has unwritten data or
-         *   there are any requests that still have buckets to write out,
-         *     then we want to write.
-         */
-        if (conn->vec_len &&
-            conn->state != SERF_CONN_CLOSING)
-            desc.reqevents |= APR_POLLOUT;
-        else {
-            serf_request_t *request = conn->requests;
+        /* Don't write if OpenSSL told us that it needs to read data first. */
+        if (conn->stop_writing != 1) {
 
-            if ((conn->probable_keepalive_limit &&
-                 conn->completed_requests > conn->probable_keepalive_limit) ||
-                (conn->max_outstanding_requests &&
-                 conn->completed_requests - conn->completed_responses >=
-                     conn->max_outstanding_requests)) {
-                /* we wouldn't try to write any way right now. */
-            }
+            /* If the connection is not closing down and
+             *   has unwritten data or
+             *   there are any requests that still have buckets to write out,
+             *     then we want to write.
+             */
+            if (conn->vec_len &&
+                conn->state != SERF_CONN_CLOSING)
+                desc.reqevents |= APR_POLLOUT;
             else {
-                while (request != NULL && request->req_bkt == NULL &&
-                       request->written)
-                    request = request->next;
-                if (request != NULL)
-                    desc.reqevents |= APR_POLLOUT;
+                serf_request_t *request = conn->requests;
+
+                if ((conn->probable_keepalive_limit &&
+                     conn->completed_requests > conn->probable_keepalive_limit) ||
+                    (conn->max_outstanding_requests &&
+                     conn->completed_requests - conn->completed_responses >=
+                     conn->max_outstanding_requests)) {
+                        /* we wouldn't try to write any way right now. */
+                    }
+                else {
+                    while (request != NULL && request->req_bkt == NULL &&
+                           request->written)
+                        request = request->next;
+                    if (request != NULL)
+                        desc.reqevents |= APR_POLLOUT;
+                }
             }
         }
     }
@@ -771,6 +775,9 @@ static apr_status_t write_to_connection(serf_connection_t *conn)
                 read_status == SERF_ERROR_WAIT_CONN) {
                 /* We read some stuff, but should not try to read again. */
                 stop_reading = 1;
+                conn->stop_writing = 1;
+                conn->dirty_conn = 1;
+                conn->ctx->dirty_pollset = 1;
 
                 /* ### we should avoid looking for writability for a while so
                    ### that (hopefully) something will appear in the bucket so
@@ -807,6 +814,9 @@ static apr_status_t write_to_connection(serf_connection_t *conn)
 
         if (read_status == SERF_ERROR_WAIT_CONN) {
             stop_reading = 1;
+            conn->stop_writing = 1;
+            conn->dirty_conn = 1;
+            conn->ctx->dirty_pollset = 1;
         }
         else if (read_status && conn->hit_eof && conn->vec_len == 0) {
             /* If we hit the end of the request bucket and all of its data has
@@ -974,6 +984,14 @@ static apr_status_t read_from_connection(serf_connection_t *conn)
      * on our chain.
      */
     serf_request_t *request = conn->requests;
+
+    /* If the stop_writing flag was set on the connection, reset it now because
+       there is some data to read. */
+    if (conn->stop_writing) {
+        conn->stop_writing = 0;
+        conn->dirty_conn = 1;
+        conn->ctx->dirty_pollset = 1;
+    }
 
     /* assert: request != NULL */
 

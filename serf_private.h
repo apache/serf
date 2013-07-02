@@ -256,6 +256,9 @@ struct serf_connection_t {
 
     /* Calculated connection latency. Negative value if latency is unknown. */
     apr_interval_time_t latency;
+
+    /* Needs to read first before we can write again. */
+    int stop_writing;
 };
 
 /*** Internal bucket functions ***/
