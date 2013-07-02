@@ -225,10 +225,8 @@ serf__handle_digest_auth(int code,
     const char *key;
     serf_connection_t *conn = request->conn;
     serf_context_t *ctx = conn->ctx;
-    serf__authn_info_t *authn_info = (code == 401) ? &ctx->authn_info :
-        &ctx->proxy_authn_info;
-    digest_authn_info_t *digest_info = (code == 401) ? conn->authn_baton :
-        conn->proxy_authn_baton;
+    serf__authn_info_t *authn_info;
+    digest_authn_info_t *digest_info;
     apr_status_t status;
     apr_pool_t *cred_pool;
     char *username, *password;
@@ -238,6 +236,13 @@ serf__handle_digest_auth(int code,
     if (!ctx->cred_cb) {
         return SERF_ERROR_AUTHN_FAILED;
     }
+
+    if (code == 401) {
+        authn_info = serf__get_authn_info_for_server(conn);
+    } else {
+        authn_info = &ctx->proxy_authn_info;
+    }
+    digest_info = authn_info->baton;
 
     /* Need a copy cuz we're going to write NUL characters into the string.  */
     attrs = apr_pstrdup(pool, auth_attr);
@@ -344,12 +349,17 @@ serf__init_digest_connection(const serf__authn_scheme_t *scheme,
                              serf_connection_t *conn,
                              apr_pool_t *pool)
 {
-    /* Digest authentication is done per connection, so keep all progress
-       information per connection. */
+    serf_context_t *ctx = conn->ctx;
+    serf__authn_info_t *authn_info;
+
     if (code == 401) {
-        conn->authn_baton = apr_pcalloc(pool, sizeof(digest_authn_info_t));
+        authn_info = serf__get_authn_info_for_server(conn);
     } else {
-        conn->proxy_authn_baton = apr_pcalloc(pool, sizeof(digest_authn_info_t));
+        authn_info = &ctx->proxy_authn_info;
+    }
+
+    if (!authn_info->baton) {
+        authn_info->baton = apr_pcalloc(pool, sizeof(digest_authn_info_t));
     }
 
     /* Make serf send the initial requests one by one */
@@ -367,9 +377,17 @@ serf__setup_request_digest_auth(peer_t peer,
                                 const char *uri,
                                 serf_bucket_t *hdrs_bkt)
 {
-    digest_authn_info_t *digest_info = (peer == HOST) ? conn->authn_baton :
-        conn->proxy_authn_baton;
+    serf_context_t *ctx = conn->ctx;
+    serf__authn_info_t *authn_info;
+    digest_authn_info_t *digest_info;
     apr_status_t status = APR_SUCCESS;
+
+    if (peer == HOST) {
+        authn_info = serf__get_authn_info_for_server(conn);
+    } else {
+        authn_info = &ctx->proxy_authn_info;
+    }
+    digest_info = authn_info->baton;
 
     if (digest_info && digest_info->realm) {
         const char *value;
@@ -426,8 +444,7 @@ serf__validate_response_digest_auth(peer_t peer,
     const char *qop = NULL;
     const char *nc_str = NULL;
     serf_bucket_t *hdrs;
-    digest_authn_info_t *digest_info = (peer == HOST) ? conn->authn_baton :
-        conn->proxy_authn_baton;
+    serf_context_t *ctx = conn->ctx;
 
     hdrs = serf_bucket_response_get_headers(response);
 
@@ -481,6 +498,15 @@ serf__validate_response_digest_auth(peer_t peer,
         const char *ha2, *tmp, *resp_hdr_hex;
         unsigned char resp_hdr[APR_MD5_DIGESTSIZE];
         const char *req_uri = request->auth_baton;
+        serf__authn_info_t *authn_info;
+        digest_authn_info_t *digest_info;
+
+        if (peer == HOST) {
+            authn_info = serf__get_authn_info_for_server(conn);
+        } else {
+            authn_info = &ctx->proxy_authn_info;
+        }
+        digest_info = authn_info->baton;
 
         ha2 = build_digest_ha2(req_uri, "", qop, pool);
         tmp = apr_psprintf(pool, "%s:%s:%s:%s:%s:%s",

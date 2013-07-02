@@ -246,12 +246,17 @@ do_auth(peer_t peer,
         apr_pool_t *pool)
 {
     serf_context_t *ctx = conn->ctx;
-    serf__authn_info_t *authn_info = (peer == HOST) ? &ctx->authn_info :
-        &ctx->proxy_authn_info;
+    serf__authn_info_t *authn_info;
     const char *tmp = NULL;
     char *token = NULL;
     apr_size_t tmp_len = 0, token_len = 0;
     apr_status_t status;
+
+    if (peer == HOST) {
+        authn_info = serf__get_authn_info_for_server(conn);
+    } else {
+        authn_info = &ctx->proxy_authn_info;
+    }
 
     /* Is this a response from a host/proxy? auth_hdr should always be set. */
     if (code && auth_hdr) {

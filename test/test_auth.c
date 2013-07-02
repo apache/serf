@@ -251,11 +251,17 @@ digest_authn_callback(char **username,
     return APR_SUCCESS;
 }
 
-static void test_digest_authentication(CuTest *tc)
+/* Test template, used for KeepAlive Off and KeepAlive On test */
+static void digest_authentication(CuTest *tc, const char *resp_hdrs)
+
 {
     test_baton_t *tb;
     handler_baton_t handler_ctx[2];
     int num_requests_sent, num_requests_recvd;
+    test_server_message_t message_list[2];
+    test_server_action_t action_list[2];
+    apr_pool_t *test_pool = tc->testBaton;
+    apr_status_t status;
 
     /* Expected string relies on strict order of headers and attributes of
        Digest, both are not guaranteed.
@@ -264,33 +270,35 @@ static void test_digest_authentication(CuTest *tc)
                 md5hex("ABCDEF1234567890") & ":" &
                 md5hex("GET:/test/index.html"))
      */
-    const test_server_message_t message_list[] = {
-        {CHUNKED_REQUEST_URI("/test/index.html", 1, "1")},
-        {"GET /test/index.html HTTP/1.1" CRLF
-            "Host: localhost:12345" CRLF
-            "Authorization: Digest realm=\"Test Suite\", username=\"serf\", "
-            "nonce=\"ABCDEF1234567890\", uri=\"/test/index.html\", "
-            "response=\"6ff0d4cc201513ce970d5c6b25e1043b\", opaque=\"myopaque\", "
-            "algorithm=\"MD5\"" CRLF
-            "Transfer-Encoding: chunked" CRLF
-            CRLF
-            "1" CRLF
-            "1" CRLF
-            "0" CRLF CRLF}, };
-    const test_server_action_t action_list[] = {
-        {SERVER_RESPOND, "HTTP/1.1 401 Unauthorized" CRLF
-            "Transfer-Encoding: chunked" CRLF
-            "WWW-Authenticate: Digest realm=\"Test Suite\","
-            "nonce=\"ABCDEF1234567890\",opaque=\"myopaque\","
-            "algorithm=\"MD5\",qop-options=\"auth\"" CRLF
-            CRLF
-            "1" CRLF CRLF
-            "0" CRLF CRLF},
-        {SERVER_RESPOND, CHUNKED_EMPTY_RESPONSE},
-    };
-    apr_status_t status;
-
-    apr_pool_t *test_pool = tc->testBaton;
+    message_list[0].text = CHUNKED_REQUEST_URI("/test/index.html", 1, "1");
+    message_list[1].text = apr_psprintf(test_pool,
+        "GET /test/index.html HTTP/1.1" CRLF
+        "Host: localhost:12345" CRLF
+        "Authorization: Digest realm=\"Test Suite\", username=\"serf\", "
+        "nonce=\"ABCDEF1234567890\", uri=\"/test/index.html\", "
+        "response=\"6ff0d4cc201513ce970d5c6b25e1043b\", opaque=\"myopaque\", "
+        "algorithm=\"MD5\"" CRLF
+        "Transfer-Encoding: chunked" CRLF
+        CRLF
+        "1" CRLF
+        "1" CRLF
+        "0" CRLF CRLF);
+    action_list[0].kind = SERVER_RESPOND;
+    action_list[0].text = apr_psprintf(test_pool,
+        "HTTP/1.1 401 Unauthorized" CRLF
+        "Transfer-Encoding: chunked" CRLF
+        "WWW-Authenticate: Digest realm=\"Test Suite\","
+        "nonce=\"ABCDEF1234567890\",opaque=\"myopaque\","
+        "algorithm=\"MD5\",qop-options=\"auth\"" CRLF
+        "%s"
+        CRLF
+        "1" CRLF CRLF
+        "0" CRLF CRLF, resp_hdrs);
+    /* If the resp_hdrs includes "Connection: close", serf will automatically
+       reset the connection from the client side, no need to use 
+       SERVER_KILL_CONNECTION. */
+    action_list[1].kind = SERVER_RESPOND;
+    action_list[1].text = CHUNKED_EMPTY_RESPONSE;
 
     /* Set up a test context with a server */
     status = test_http_server_setup(&tb,
@@ -318,6 +326,19 @@ static void test_digest_authentication(CuTest *tc)
     CuAssertIntEquals(tc, num_requests_sent, tb->handled_requests->nelts);
 
     CuAssertTrue(tc, tb->result_flags & TEST_RESULT_AUTHNCB_CALLED);
+}
+
+static void test_digest_authentication(CuTest *tc)
+{
+    digest_authentication(tc, "");
+}
+
+static void test_digest_authentication_keepalive_off(CuTest *tc)
+{
+    /* Add the Connection: close header to the response with the Digest headers.
+       This to test that the Digest headers will be added to the retry of the
+       request on the new connection. */
+    digest_authentication(tc, "Connection: close" CRLF);
 }
 
 static apr_status_t
@@ -350,6 +371,7 @@ switched_realm_authn_callback(char **username,
     return APR_SUCCESS;
 }
 
+/* Test template, used for both Basic and Digest switch realms test */
 static void authentication_switch_realms(CuTest *tc,
                                          const char *scheme,
                                          const char *authn_attr,
@@ -518,6 +540,7 @@ CuSuite *test_auth(void)
     SUITE_ADD_TEST(suite, test_digest_authentication);
     SUITE_ADD_TEST(suite, test_basic_switch_realms);
     SUITE_ADD_TEST(suite, test_digest_switch_realms);
+    SUITE_ADD_TEST(suite, test_digest_authentication_keepalive_off);
 
     return suite;
 }

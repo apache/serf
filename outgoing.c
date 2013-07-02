@@ -293,6 +293,7 @@ apr_status_t serf__open_connections(serf_context_t *ctx)
 
     for (i = ctx->conns->nelts; i--; ) {
         serf_connection_t *conn = GET_CONN(ctx, i);
+        serf__authn_info_t *authn_info;
         apr_status_t status;
         apr_socket_t *skt;
 
@@ -360,15 +361,17 @@ apr_status_t serf__open_connections(serf_context_t *ctx)
            prepare this connection (it might be possible to skip some
            part of the handshaking). */
         if (ctx->proxy_address) {
-            if (conn->ctx->proxy_authn_info.scheme) {
-                conn->ctx->proxy_authn_info.scheme->init_conn_func(
-                    conn->ctx->proxy_authn_info.scheme, 407, conn, conn->pool);
+            authn_info = &ctx->proxy_authn_info;
+            if (authn_info->scheme) {
+                authn_info->scheme->init_conn_func(authn_info->scheme, 407,
+                                                   conn, conn->pool);
             }
         }
 
-        if (conn->ctx->authn_info.scheme) {
-            conn->ctx->authn_info.scheme->init_conn_func(
-                conn->ctx->authn_info.scheme, 401, conn, conn->pool);
+        authn_info = serf__get_authn_info_for_server(conn);
+        if (authn_info->scheme) {
+            authn_info->scheme->init_conn_func(authn_info->scheme, 401,
+                                               conn, conn->pool);
         }
 
         /* Does this connection require a SSL tunnel over the proxy? */
@@ -1623,10 +1626,14 @@ serf_bucket_t *serf_request_bucket_request_create(
                                  conn->host_info.hostinfo);
 
     /* Setup server authorization headers, unless this is a CONNECT request. */
-    if (ctx->authn_info.scheme && !request->ssltunnel)
-        ctx->authn_info.scheme->setup_request_func(HOST, 0, conn, request,
+    if (!request->ssltunnel) {
+        serf__authn_info_t *authn_info;
+        authn_info = serf__get_authn_info_for_server(conn);
+        if (authn_info->scheme)
+            authn_info->scheme->setup_request_func(HOST, 0, conn, request,
                                                    method, uri,
                                                    hdrs_bkt);
+    }
 
     /* Setup proxy authorization headers.
        Don't set these headers on the requests to the server if we're using
