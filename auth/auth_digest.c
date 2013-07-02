@@ -27,8 +27,12 @@
 
 /** Digest authentication, implements RFC 2617. **/
 
+/* TODO: add support for the domain attribute. This defines the protection
+   space, so that serf can decide per URI if it should reuse the cached
+   credentials for the server, or not. */
+
 /* Stores the context information related to Digest authentication.
-   The context is per connection. */
+   This information is stored in the per server cache in the serf context. */
 typedef struct digest_authn_info_t {
     /* nonce-count for digest authentication */
     unsigned int digest_nc;
@@ -310,9 +314,12 @@ serf__handle_digest_auth(int code,
     digest_info->header = (code == 401) ? "Authorization" :
                                           "Proxy-Authorization";
 
-    /* Store the digest authentication parameters in the context relative
-       to this connection, so we can use it to create the Authorization header
-       when setting up requests. */
+    /* Store the digest authentication parameters in the context cached for
+       this server in the serf context, so we can use it to create the
+       Authorization header when setting up requests on the same or different
+       connections (e.g. in case of KeepAlive off on the server).
+       TODO: we currently don't cache this info per realm, so each time a request
+       'switches realms', we have to ask the application for new credentials. */
     digest_info->pool = conn->pool;
     digest_info->qop = apr_pstrdup(digest_info->pool, qop);
     digest_info->nonce = apr_pstrdup(digest_info->pool, nonce);

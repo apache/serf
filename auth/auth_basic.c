@@ -23,6 +23,8 @@
 #include <apr_base64.h>
 #include <apr_strings.h>
 
+/* Stores the context information related to Basic authentication.
+   This information is stored in the per server cache in the serf context. */
 typedef struct basic_authn_info_t {
     const char *header;
     const char *value;
@@ -120,7 +122,9 @@ serf__init_basic(int code,
 /* For Basic authentication we expect all authn info to be the same for all
    connections in the context to the same server (same realm, username,
    password). Therefore we can keep the header value in the per-server store
-   context instead of per connection. */
+   context instead of per connection.
+   TODO: we currently don't cache this info per realm, so each time a request
+   'switches realms', we have to ask the application for new credentials. */
 apr_status_t
 serf__init_basic_connection(const serf__authn_scheme_t *scheme,
                             int code,
