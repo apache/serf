@@ -52,14 +52,6 @@
 #include <openssl/pkcs12.h>
 #include <openssl/x509v3.h>
 
-#ifndef APR_VERSION_AT_LEAST /* Introduced in APR 1.3.0 */
-#define APR_VERSION_AT_LEAST(major,minor,patch)                           \
-    (((major) < APR_MAJOR_VERSION)                                        \
-      || ((major) == APR_MAJOR_VERSION && (minor) < APR_MINOR_VERSION)    \
-      || ((major) == APR_MAJOR_VERSION && (minor) == APR_MINOR_VERSION && \
-               (patch) <= APR_PATCH_VERSION))
-#endif /* APR_VERSION_AT_LEAST */
-
 #ifndef APR_ARRAY_PUSH
 #define APR_ARRAY_PUSH(ary,type) (*((type *)apr_array_push(ary)))
 #endif

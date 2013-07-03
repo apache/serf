@@ -33,6 +33,14 @@
 #define REQUESTED_MAX (~((apr_size_t)0))
 #endif
 
+#ifndef APR_VERSION_AT_LEAST /* Introduced in APR 1.3.0 */
+#define APR_VERSION_AT_LEAST(major,minor,patch)                           \
+    (((major) < APR_MAJOR_VERSION)                                        \
+      || ((major) == APR_MAJOR_VERSION && (minor) < APR_MINOR_VERSION)    \
+      || ((major) == APR_MAJOR_VERSION && (minor) == APR_MINOR_VERSION && \
+               (patch) <= APR_PATCH_VERSION))
+#endif /* APR_VERSION_AT_LEAST */
+
 #define SERF_IO_CLIENT (1)
 #define SERF_IO_CONN (2)
 #define SERF_IO_LISTENER (3)

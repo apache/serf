@@ -635,7 +635,12 @@ int main(int argc, const char **argv)
 
     handler_ctx.completed_requests = 0;
     handler_ctx.print_headers = print_headers;
+
+#if APR_VERSION_AT_LEAST(1, 3, 0)
+    apr_file_open_flags_stdout(&handler_ctx.output_file, APR_BUFFERED, pool);
+#else
     apr_file_open_stdout(&handler_ctx.output_file, pool);
+#endif
 
     handler_ctx.host = url.hostinfo;
     handler_ctx.method = method;
@@ -679,6 +684,8 @@ int main(int argc, const char **argv)
         /* Debugging purposes only! */
         serf_debug__closed_conn(app_ctx.bkt_alloc);
     }
+
+    apr_file_close(handler_ctx.output_file);
 
     serf_connection_close(connection);
 
