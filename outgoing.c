@@ -1493,18 +1493,18 @@ serf_request_t *serf_connection_request_create(
     return request;
 }
 
-
-serf_request_t *serf_connection_priority_request_create(
-    serf_connection_t *conn,
-    serf_request_setup_t setup,
-    void *setup_baton)
+static serf_request_t *
+priority_request_create(serf_connection_t *conn,
+                        int ssltunnelreq,
+                        serf_request_setup_t setup,
+                        void *setup_baton)
 {
     serf_request_t *request;
     serf_request_t *iter, *prev;
 
     request = create_request(conn, setup, setup_baton,
                              1, /* priority */
-                             0  /* ssl tunnel */);
+                             ssltunnelreq);
 
     /* Link the new request after the last written request. */
     iter = conn->requests;
@@ -1516,10 +1516,17 @@ serf_request_t *serf_connection_priority_request_create(
         iter = iter->next;
     }
 
-    /* Advance to next non priority request */
-    while (iter != NULL && iter->priority) {
-        prev = iter;
-        iter = iter->next;
+    /* A CONNECT request to setup an ssltunnel has absolute priority over all
+       other requests on the connection, so:
+       a. add it first to the queue 
+       b. ensure that other priority requests are added after the CONNECT
+          request */
+    if (!request->ssltunnel) {
+        /* Advance to next non priority request */
+        while (iter != NULL && iter->priority) {
+            prev = iter;
+            iter = iter->next;
+        }
     }
 
     if (prev) {
@@ -1537,19 +1544,23 @@ serf_request_t *serf_connection_priority_request_create(
     return request;
 }
 
+serf_request_t *serf_connection_priority_request_create(
+    serf_connection_t *conn,
+    serf_request_setup_t setup,
+    void *setup_baton)
+{
+    return priority_request_create(conn,
+                                   0, /* not a ssltunnel CONNECT request */
+                                   setup, setup_baton);
+}
 
 serf_request_t *serf__ssltunnel_request_create(serf_connection_t *conn,
                                                serf_request_setup_t setup,
                                                void *setup_baton)
 {
-    serf_request_t *request;
-
-    request = serf_connection_priority_request_create(conn,
-                                                      setup,
-                                                      setup_baton);
-    request->ssltunnel = 1;
-    
-    return request;
+    return priority_request_create(conn,
+                                   1, /* This is a ssltunnel CONNECT request */
+                                   setup, setup_baton);
 }
 
 apr_status_t serf_request_cancel(serf_request_t *request)
