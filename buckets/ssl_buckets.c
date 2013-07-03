@@ -1235,7 +1235,7 @@ apr_status_t serf_ssl_session_export(void **data_p,
 {
     int sess_len;
     void *sess_data;
-    unsigned char *p;
+    unsigned char *unused;
 
     sess_len = i2d_SSL_SESSION(session->session_obj, NULL);
     if (!sess_len) {
@@ -1243,8 +1243,10 @@ apr_status_t serf_ssl_session_export(void **data_p,
     }
 
     sess_data = apr_palloc(pool, sess_len);
-    p = sess_data;
-    sess_len = i2d_SSL_SESSION(session->session_obj, &p);
+
+    unused = sess_data;
+    /* unused is incremented  */
+    sess_len = i2d_SSL_SESSION(session->session_obj, &unused); 
     if (!sess_len) {
         return APR_EGENERAL;
     }
@@ -1271,9 +1273,10 @@ apr_status_t serf_ssl_session_import(const serf_ssl_session_t **session_p,
 {
     SSL_SESSION *sess;
     serf_ssl_session_t *session;
-    const unsigned char *p = data;
+    const unsigned char *unused;
 
-    sess = d2i_SSL_SESSION(NULL, &p, len);
+    unused = data;
+    sess = d2i_SSL_SESSION(NULL, &unused, len); /* unused is incremented  */
 
     if (!sess) {
         return APR_EGENERAL;
