@@ -585,7 +585,7 @@ void serf_ssl_new_session_callback_set(
     void *baton);
 
 /* Configure @a ssl_ctx to attempt resume exisiting @a ssl_session. */
-apr_status_t ssl_resume_session(
+apr_status_t serf_ssl_resume_session(
     serf_ssl_context_t *ssl_ctx,
     const serf_ssl_session_t *ssl_session,
     apr_pool_t *pool);

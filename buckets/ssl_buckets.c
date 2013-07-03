@@ -1364,10 +1364,9 @@ static serf_ssl_context_t *ssl_init_context(void)
     return ssl_ctx;
 }
 
-apr_status_t ssl_resume_session(
-    serf_ssl_context_t *ssl_ctx,
-    const serf_ssl_session_t *session,
-    apr_pool_t *pool)
+apr_status_t serf_ssl_resume_session(serf_ssl_context_t *ssl_ctx,
+                                     const serf_ssl_session_t *session,
+                                     apr_pool_t *pool)
 {
     SSL_set_session(ssl_ctx->ssl, session->session_obj);
     return APR_SUCCESS;

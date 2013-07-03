@@ -226,7 +226,7 @@ static apr_status_t conn_setup(apr_socket_t *skt,
             if (status == APR_SUCCESS) {
                 fprintf(stderr, "Using SSL session from '%s'\n",
                         ctx->session_filename);
-                ssl_resume_session(ctx->ssl_ctx, session, pool);
+                serf_ssl_resume_session(ctx->ssl_ctx, session, pool);
             }
             else {
                 fprintf(stderr, "Cannot read SSL session from '%s': %d\n",
