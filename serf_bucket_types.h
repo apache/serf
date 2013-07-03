@@ -553,9 +553,6 @@ void serf_ssl_server_cert_chain_callback_set(
     serf_ssl_server_cert_chain_cb_t cert_chain_callback,
     void *data);
 
-/* Define preprocessor macro for easy detection of serf capability.*/
-#define SERF_HAS_SSL_SESSION_API 1
-
 typedef struct serf_ssl_session_t serf_ssl_session_t;
 
 /* Exports @a session to continous memory block. */
