@@ -138,6 +138,7 @@ static int handle_auth_headers(int code,
     for (scheme = serf_authn_schemes; scheme->name != 0; ++scheme) {
         const char *auth_hdr;
         serf__auth_handler_func_t handler;
+        serf__authn_info_t *authn_info;
 
         if (! (ctx->authn_types & scheme->type))
             continue;
@@ -158,30 +159,23 @@ static int handle_auth_headers(int code,
         serf__log_skt(AUTH_VERBOSE, __FILE__, conn->skt,
                       "... matched: %s\n", scheme->name);
 
-        /* If this is the first time we use this scheme on this connection,
-         make sure to initialize the authentication handler first. */
-        if (code == 401 && ctx->authn_info.scheme != scheme) {
-            status = scheme->init_ctx_func(code, ctx, ctx->pool);
-            if (!status) {
-                status = scheme->init_conn_func(scheme, code, conn,
-                                                conn->pool);
-
-                if (!status)
-                    ctx->authn_info.scheme = scheme;
-                else
-                    ctx->authn_info.scheme = NULL;
-            }
+        if (code == 401) {
+            authn_info = serf__get_authn_info_for_server(conn);
+        } else {
+            authn_info = &ctx->proxy_authn_info;
         }
-        else if (code == 407 && ctx->proxy_authn_info.scheme != scheme) {
+        /* If this is the first time we use this scheme on this context and/or
+           this connection, make sure to initialize the authentication handler 
+           first. */
+        if (authn_info->scheme != scheme) {
             status = scheme->init_ctx_func(code, ctx, ctx->pool);
             if (!status) {
                 status = scheme->init_conn_func(scheme, code, conn,
                                                 conn->pool);
-
                 if (!status)
-                    ctx->proxy_authn_info.scheme = scheme;
+                    authn_info->scheme = scheme;
                 else
-                    ctx->proxy_authn_info.scheme = NULL;
+                    authn_info->scheme = NULL;
             }
         }
 
@@ -373,22 +367,29 @@ apr_status_t serf__handle_auth_response(int *consumed_response,
 
         return APR_EOF;
     } else {
-        /* Validate the response authn headers if needed. */
         serf__validate_response_func_t validate_resp;
         serf_connection_t *conn = request->conn;
         serf_context_t *ctx = conn->ctx;
+        serf__authn_info_t *authn_info;
         apr_status_t resp_status = APR_SUCCESS;
-        
-        if (ctx->authn_info.scheme) {
-            validate_resp = ctx->authn_info.scheme->validate_response_func;
+
+
+        /* Validate the response server authn headers. */
+        authn_info = serf__get_authn_info_for_server(conn);
+        if (authn_info->scheme) {
+            validate_resp = authn_info->scheme->validate_response_func;
             resp_status = validate_resp(HOST, sl.code, conn, request, response,
                                         pool);
         }
-        if (!resp_status && ctx->proxy_authn_info.scheme) {
-            validate_resp = ctx->proxy_authn_info.scheme->validate_response_func;
+
+        /* Validate the response proxy authn headers. */
+        authn_info = &ctx->proxy_authn_info;
+        if (!resp_status && authn_info->scheme) {
+            validate_resp = authn_info->scheme->validate_response_func;
             resp_status = validate_resp(PROXY, sl.code, conn, request, response,
                                         pool);
         }
+
         if (resp_status) {
             /* If there was an error in the final step of the authentication,
                consider the reponse body as invalid and discard it. */
@@ -450,4 +451,22 @@ const char *serf__construct_realm(peer_t peer,
                             ctx->proxy_address->port,
                             realm_name);
     }
+}
+
+serf__authn_info_t *serf__get_authn_info_for_server(serf_connection_t *conn)
+{
+    serf_context_t *ctx = conn->ctx;
+    serf__authn_info_t *authn_info;
+
+    authn_info = apr_hash_get(ctx->server_authn_info, conn->host_url,
+                              APR_HASH_KEY_STRING);
+
+    if (!authn_info) {
+        authn_info = apr_pcalloc(ctx->pool, sizeof(serf__authn_info_t));
+        apr_hash_set(ctx->server_authn_info,
+                     apr_pstrdup(ctx->pool, conn->host_url),
+                     APR_HASH_KEY_STRING, authn_info);
+    }
+
+    return authn_info;
 }

@@ -131,8 +131,15 @@ struct serf_context_t {
     apr_off_t progress_read;
     apr_off_t progress_written;
 
-    /* authentication info for this context, shared by all connections. */
-    serf__authn_info_t authn_info;
+    /* authentication info for the servers used in this context. Shared by all
+       connections to the same server.
+       Structure of the hashtable:  key: host url, e.g. https://localhost:80
+                                  value: serf__authn_info_t *
+     */
+    apr_hash_t *server_authn_info;
+
+    /* authentication info for the proxy configured in this context, shared by
+       all connections. */
     serf__authn_info_t proxy_authn_info;
 
     /* List of authn types supported by the client.*/
@@ -256,6 +263,9 @@ struct serf_connection_t {
 
     /* Calculated connection latency. Negative value if latency is unknown. */
     apr_interval_time_t latency;
+
+    /* Needs to read first before we can write again. */
+    int stop_writing;
 };
 
 /*** Internal bucket functions ***/
@@ -377,6 +387,14 @@ apr_status_t serf__handle_auth_response(int *consumed_response,
                                         serf_bucket_t *response,
                                         void *baton,
                                         apr_pool_t *pool);
+
+/* Get the cached serf__authn_info_t object for the target server, or create one
+   when this is the first connection to the server.
+   TODO: The serf__authn_info_t objects are allocated in the context pool, so
+   a context that's used to connect to many different servers using Basic or 
+   Digest authencation will hold on to many objects indefinitely. We should be
+   able to cleanup stale objects from time to time. */
+serf__authn_info_t *serf__get_authn_info_for_server(serf_connection_t *conn);
 
 /* fromt context.c */
 void serf__context_progress_delta(void *progress_baton, apr_off_t read,

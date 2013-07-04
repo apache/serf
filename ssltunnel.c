@@ -166,7 +166,6 @@ apr_status_t serf__ssltunnel_connect(serf_connection_t *conn)
                                                          detect_eof,
                                                          conn);
 
-    /* TODO: should be the first request on the connection. */
     serf__ssltunnel_request_create(conn,
                                    setup_request,
                                    ctx);

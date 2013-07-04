@@ -23,6 +23,8 @@
 #include <apr_base64.h>
 #include <apr_strings.h>
 
+/* Stores the context information related to Basic authentication.
+   This information is stored in the per server cache in the serf context. */
 typedef struct basic_authn_info_t {
     const char *header;
     const char *value;
@@ -41,9 +43,8 @@ serf__handle_basic_auth(int code,
     apr_size_t tmp_len;
     serf_connection_t *conn = request->conn;
     serf_context_t *ctx = conn->ctx;
-    serf__authn_info_t *authn_info = (code == 401) ? &ctx->authn_info :
-        &ctx->proxy_authn_info;
-    basic_authn_info_t *basic_info = authn_info->baton;
+    serf__authn_info_t *authn_info;
+    basic_authn_info_t *basic_info;
     apr_status_t status;
     apr_pool_t *cred_pool;
     char *username, *password, *realm_name;
@@ -54,6 +55,13 @@ serf__handle_basic_auth(int code,
     if (!ctx->cred_cb) {
         return SERF_ERROR_AUTHN_FAILED;
     }
+
+    if (code == 401) {
+        authn_info = serf__get_authn_info_for_server(conn);
+    } else {
+        authn_info = &ctx->proxy_authn_info;
+    }
+    basic_info = authn_info->baton;
 
     realm_name = NULL;
     eq = strchr(auth_attr, '=');
@@ -103,29 +111,39 @@ serf__handle_basic_auth(int code,
     return APR_SUCCESS;
 }
 
-/* For Basic authentication we expect all authn info to be the same for all
-   connections in the context (same realm, username, password). Therefore we
-   can keep the header value in the context instead of per connection. */
 apr_status_t
 serf__init_basic(int code,
                  serf_context_t *ctx,
                  apr_pool_t *pool)
 {
-    if (code == 401) {
-        ctx->authn_info.baton = apr_pcalloc(pool, sizeof(basic_authn_info_t));
-    } else {
-        ctx->proxy_authn_info.baton = apr_pcalloc(pool, sizeof(basic_authn_info_t));
-    }
-
     return APR_SUCCESS;
 }
 
+/* For Basic authentication we expect all authn info to be the same for all
+   connections in the context to the same server (same realm, username,
+   password). Therefore we can keep the header value in the per-server store
+   context instead of per connection.
+   TODO: we currently don't cache this info per realm, so each time a request
+   'switches realms', we have to ask the application for new credentials. */
 apr_status_t
 serf__init_basic_connection(const serf__authn_scheme_t *scheme,
                             int code,
                             serf_connection_t *conn,
                             apr_pool_t *pool)
 {
+    serf_context_t *ctx = conn->ctx;
+    serf__authn_info_t *authn_info;
+
+    if (code == 401) {
+        authn_info = serf__get_authn_info_for_server(conn);
+    } else {
+        authn_info = &ctx->proxy_authn_info;
+    }
+
+    if (!authn_info->baton) {
+        authn_info->baton = apr_pcalloc(pool, sizeof(basic_authn_info_t));
+    }
+
     return APR_SUCCESS;
 }
 
@@ -139,13 +157,15 @@ serf__setup_request_basic_auth(peer_t peer,
                                serf_bucket_t *hdrs_bkt)
 {
     serf_context_t *ctx = conn->ctx;
+    serf__authn_info_t *authn_info;
     basic_authn_info_t *basic_info;
 
     if (peer == HOST) {
-        basic_info = ctx->authn_info.baton;
+        authn_info = serf__get_authn_info_for_server(conn);
     } else {
-        basic_info = ctx->proxy_authn_info.baton;
+        authn_info = &ctx->proxy_authn_info;
     }
+    basic_info = authn_info->baton;
 
     if (basic_info && basic_info->header && basic_info->value) {
         serf_bucket_headers_setn(hdrs_bkt, basic_info->header,

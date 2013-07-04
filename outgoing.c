@@ -114,30 +114,34 @@ apr_status_t serf__conn_update_pollset(serf_connection_t *conn)
         /* ### not true. we only want to read IF we have sent some data */
         desc.reqevents |= APR_POLLIN;
 
-        /* If the connection is not closing down and
-         *   has unwritten data or
-         *   there are any requests that still have buckets to write out,
-         *     then we want to write.
-         */
-        if (conn->vec_len &&
-            conn->state != SERF_CONN_CLOSING)
-            desc.reqevents |= APR_POLLOUT;
-        else {
-            serf_request_t *request = conn->requests;
+        /* Don't write if OpenSSL told us that it needs to read data first. */
+        if (conn->stop_writing != 1) {
 
-            if ((conn->probable_keepalive_limit &&
-                 conn->completed_requests > conn->probable_keepalive_limit) ||
-                (conn->max_outstanding_requests &&
-                 conn->completed_requests - conn->completed_responses >=
-                     conn->max_outstanding_requests)) {
-                /* we wouldn't try to write any way right now. */
-            }
+            /* If the connection is not closing down and
+             *   has unwritten data or
+             *   there are any requests that still have buckets to write out,
+             *     then we want to write.
+             */
+            if (conn->vec_len &&
+                conn->state != SERF_CONN_CLOSING)
+                desc.reqevents |= APR_POLLOUT;
             else {
-                while (request != NULL && request->req_bkt == NULL &&
-                       request->written)
-                    request = request->next;
-                if (request != NULL)
-                    desc.reqevents |= APR_POLLOUT;
+                serf_request_t *request = conn->requests;
+
+                if ((conn->probable_keepalive_limit &&
+                     conn->completed_requests > conn->probable_keepalive_limit) ||
+                    (conn->max_outstanding_requests &&
+                     conn->completed_requests - conn->completed_responses >=
+                     conn->max_outstanding_requests)) {
+                        /* we wouldn't try to write any way right now. */
+                    }
+                else {
+                    while (request != NULL && request->req_bkt == NULL &&
+                           request->written)
+                        request = request->next;
+                    if (request != NULL)
+                        desc.reqevents |= APR_POLLOUT;
+                }
             }
         }
     }
@@ -178,6 +182,108 @@ static void check_buckets_drained(serf_connection_t *conn)
 
 #endif
 
+static void destroy_ostream(serf_connection_t *conn)
+{
+    if (conn->ostream_head != NULL) {
+        serf_bucket_destroy(conn->ostream_head);
+        conn->ostream_head = NULL;
+        conn->ostream_tail = NULL;
+    }
+}
+
+static apr_status_t detect_eof(void *baton, serf_bucket_t *aggregate_bucket)
+{
+    serf_connection_t *conn = baton;
+    conn->hit_eof = 1;
+    return APR_EAGAIN;
+}
+
+static apr_status_t do_conn_setup(serf_connection_t *conn)
+{
+    apr_status_t status;
+    serf_bucket_t *ostream;
+
+    if (conn->ostream_head == NULL) {
+        conn->ostream_head = serf_bucket_aggregate_create(conn->allocator);
+    }
+
+    if (conn->ostream_tail == NULL) {
+        conn->ostream_tail = serf__bucket_stream_create(conn->allocator,
+                                                        detect_eof,
+                                                        conn);
+    }
+
+    ostream = conn->ostream_tail;
+
+    status = (*conn->setup)(conn->skt,
+                            &conn->stream,
+                            &ostream,
+                            conn->setup_baton,
+                            conn->pool);
+    if (status) {
+        /* extra destroy here since it wasn't added to the head bucket yet. */
+        serf_bucket_destroy(conn->ostream_tail);
+        destroy_ostream(conn);
+        return status;
+    }
+
+    serf_bucket_aggregate_append(conn->ostream_head,
+                                 ostream);
+
+    return status;
+}
+
+/* Set up the input and output stream buckets.
+ When a tunnel over an http proxy is needed, create a socket bucket and
+ empty aggregate bucket for sending and receiving unencrypted requests
+ over the socket.
+
+ After the tunnel is there, or no tunnel was needed, ask the application
+ to create the input and output buckets, which should take care of the
+ [en/de]cryption.
+ */
+
+static apr_status_t prepare_conn_streams(serf_connection_t *conn,
+                                         serf_bucket_t **istream,
+                                         serf_bucket_t **ostreamt,
+                                         serf_bucket_t **ostreamh)
+{
+    apr_status_t status;
+
+    if (conn->stream == NULL) {
+        conn->latency = apr_time_now() - conn->connect_time;
+    }
+
+    /* Do we need a SSL tunnel first? */
+    if (conn->state == SERF_CONN_CONNECTED) {
+        /* If the connection does not have an associated bucket, then
+         * call the setup callback to get one.
+         */
+        if (conn->stream == NULL) {
+            status = do_conn_setup(conn);
+            if (status) {
+                return status;
+            }
+        }
+        *ostreamt = conn->ostream_tail;
+        *ostreamh = conn->ostream_head;
+        *istream = conn->stream;
+    } else {
+        /* SSL tunnel needed and not set up yet, get a direct unencrypted
+         stream for this socket */
+        if (conn->stream == NULL) {
+            *istream = serf_bucket_socket_create(conn->skt,
+                                                 conn->allocator);
+        }
+        /* Don't create the ostream bucket chain including the ssl_encrypt
+         bucket yet. This ensure the CONNECT request is sent unencrypted
+         to the proxy. */
+        *ostreamt = *ostreamh = conn->ssltunnel_ostream;
+    }
+
+    return APR_SUCCESS;
+}
+
 /* Create and connect sockets for any connections which don't have them
  * yet. This is the core of our lazy-connect behavior.
  */
@@ -187,6 +293,7 @@ apr_status_t serf__open_connections(serf_context_t *ctx)
 
     for (i = ctx->conns->nelts; i--; ) {
         serf_connection_t *conn = GET_CONN(ctx, i);
+        serf__authn_info_t *authn_info;
         apr_status_t status;
         apr_socket_t *skt;
 
@@ -254,23 +361,33 @@ apr_status_t serf__open_connections(serf_context_t *ctx)
            prepare this connection (it might be possible to skip some
            part of the handshaking). */
         if (ctx->proxy_address) {
-            if (conn->ctx->proxy_authn_info.scheme) {
-                conn->ctx->proxy_authn_info.scheme->init_conn_func(
-                    conn->ctx->proxy_authn_info.scheme, 407, conn, conn->pool);
+            authn_info = &ctx->proxy_authn_info;
+            if (authn_info->scheme) {
+                authn_info->scheme->init_conn_func(authn_info->scheme, 407,
+                                                   conn, conn->pool);
             }
         }
 
-        if (conn->ctx->authn_info.scheme) {
-            conn->ctx->authn_info.scheme->init_conn_func(
-                conn->ctx->authn_info.scheme, 401, conn, conn->pool);
+        authn_info = serf__get_authn_info_for_server(conn);
+        if (authn_info->scheme) {
+            authn_info->scheme->init_conn_func(authn_info->scheme, 401,
+                                               conn, conn->pool);
         }
 
         /* Does this connection require a SSL tunnel over the proxy? */
         if (ctx->proxy_address && strcmp(conn->host_info.scheme, "https") == 0)
             serf__ssltunnel_connect(conn);
-        else
+        else {
+            serf_bucket_t *dummy1, *dummy2;
+
             conn->state = SERF_CONN_CONNECTED;
 
+            status = prepare_conn_streams(conn, &conn->stream,
+                                          &dummy1, &dummy2);
+            if (status) {
+                return status;
+            }
+        }
     }
 
     return APR_SUCCESS;
@@ -397,15 +514,6 @@ static apr_status_t remove_connection(serf_context_t *ctx,
 
     return ctx->pollset_rm(ctx->pollset_baton,
                            &desc, conn);
-}
-
-static void destroy_ostream(serf_connection_t *conn)
-{
-    if (conn->ostream_head != NULL) {
-        serf_bucket_destroy(conn->ostream_head);
-        conn->ostream_head = NULL;
-        conn->ostream_tail = NULL;
-    }
 }
 
 /* A socket was closed, inform the application. */
@@ -536,99 +644,6 @@ static apr_status_t socket_writev(serf_connection_t *conn)
     }
 
     return status;
-}
-
-static apr_status_t detect_eof(void *baton, serf_bucket_t *aggregate_bucket)
-{
-    serf_connection_t *conn = baton;
-    conn->hit_eof = 1;
-    return APR_EAGAIN;
-}
-
-static apr_status_t do_conn_setup(serf_connection_t *conn)
-{
-    apr_status_t status;
-    serf_bucket_t *ostream;
-
-    if (conn->ostream_head == NULL) {
-        conn->ostream_head = serf_bucket_aggregate_create(conn->allocator);
-    }
-
-    if (conn->ostream_tail == NULL) {
-        conn->ostream_tail = serf__bucket_stream_create(conn->allocator,
-                                                        detect_eof,
-                                                        conn);
-    }
-
-    ostream = conn->ostream_tail;
-
-    status = (*conn->setup)(conn->skt,
-                            &conn->stream,
-                            &ostream,
-                            conn->setup_baton,
-                            conn->pool);
-    if (status) {
-        /* extra destroy here since it wasn't added to the head bucket yet. */
-        serf_bucket_destroy(conn->ostream_tail);
-        destroy_ostream(conn);
-        return status;
-    }
-
-    serf_bucket_aggregate_append(conn->ostream_head,
-                                 ostream);
-
-    return status;
-}
-
-/* Set up the input and output stream buckets.
-   When a tunnel over an http proxy is needed, create a socket bucket and
-   empty aggregate bucket for sending and receiving unencrypted requests
-   over the socket.
-
-   After the tunnel is there, or no tunnel was needed, ask the application
-   to create the input and output buckets, which should take care of the
-   [en/de]cryption.
-*/
-
-static apr_status_t prepare_conn_streams(serf_connection_t *conn,
-                                         serf_bucket_t **istream,
-                                         serf_bucket_t **ostreamt,
-                                         serf_bucket_t **ostreamh)
-{
-    apr_status_t status;
-
-    if (conn->stream == NULL) {
-        conn->latency = apr_time_now() - conn->connect_time;
-    }
-
-    /* Do we need a SSL tunnel first? */
-    if (conn->state == SERF_CONN_CONNECTED) {
-        /* If the connection does not have an associated bucket, then
-         * call the setup callback to get one.
-         */
-        if (conn->stream == NULL) {
-            status = do_conn_setup(conn);
-            if (status) {
-                return status;
-            }
-        }
-        *ostreamt = conn->ostream_tail;
-        *ostreamh = conn->ostream_head;
-        *istream = conn->stream;
-    } else {
-        /* SSL tunnel needed and not set up yet, get a direct unencrypted
-           stream for this socket */
-        if (conn->stream == NULL) {
-            *istream = serf_bucket_socket_create(conn->skt,
-                                                 conn->allocator);
-        }
-        /* Don't create the ostream bucket chain including the ssl_encrypt
-           bucket yet. This ensure the CONNECT request is sent unencrypted
-           to the proxy. */
-        *ostreamt = *ostreamh = conn->ssltunnel_ostream;
-    }
-
-    return APR_SUCCESS;
 }
 
 static apr_status_t setup_request(serf_request_t *request)
@@ -771,6 +786,9 @@ static apr_status_t write_to_connection(serf_connection_t *conn)
                 read_status == SERF_ERROR_WAIT_CONN) {
                 /* We read some stuff, but should not try to read again. */
                 stop_reading = 1;
+                conn->stop_writing = 1;
+                conn->dirty_conn = 1;
+                conn->ctx->dirty_pollset = 1;
 
                 /* ### we should avoid looking for writability for a while so
                    ### that (hopefully) something will appear in the bucket so
@@ -807,6 +825,9 @@ static apr_status_t write_to_connection(serf_connection_t *conn)
 
         if (read_status == SERF_ERROR_WAIT_CONN) {
             stop_reading = 1;
+            conn->stop_writing = 1;
+            conn->dirty_conn = 1;
+            conn->ctx->dirty_pollset = 1;
         }
         else if (read_status && conn->hit_eof && conn->vec_len == 0) {
             /* If we hit the end of the request bucket and all of its data has
@@ -974,6 +995,14 @@ static apr_status_t read_from_connection(serf_connection_t *conn)
      * on our chain.
      */
     serf_request_t *request = conn->requests;
+
+    /* If the stop_writing flag was set on the connection, reset it now because
+       there is some data to read. */
+    if (conn->stop_writing) {
+        conn->stop_writing = 0;
+        conn->dirty_conn = 1;
+        conn->ctx->dirty_pollset = 1;
+    }
 
     /* assert: request != NULL */
 
@@ -1464,18 +1493,18 @@ serf_request_t *serf_connection_request_create(
     return request;
 }
 
-
-serf_request_t *serf_connection_priority_request_create(
-    serf_connection_t *conn,
-    serf_request_setup_t setup,
-    void *setup_baton)
+static serf_request_t *
+priority_request_create(serf_connection_t *conn,
+                        int ssltunnelreq,
+                        serf_request_setup_t setup,
+                        void *setup_baton)
 {
     serf_request_t *request;
     serf_request_t *iter, *prev;
 
     request = create_request(conn, setup, setup_baton,
                              1, /* priority */
-                             0  /* ssl tunnel */);
+                             ssltunnelreq);
 
     /* Link the new request after the last written request. */
     iter = conn->requests;
@@ -1487,10 +1516,17 @@ serf_request_t *serf_connection_priority_request_create(
         iter = iter->next;
     }
 
-    /* Advance to next non priority request */
-    while (iter != NULL && iter->priority) {
-        prev = iter;
-        iter = iter->next;
+    /* A CONNECT request to setup an ssltunnel has absolute priority over all
+       other requests on the connection, so:
+       a. add it first to the queue 
+       b. ensure that other priority requests are added after the CONNECT
+          request */
+    if (!request->ssltunnel) {
+        /* Advance to next non priority request */
+        while (iter != NULL && iter->priority) {
+            prev = iter;
+            iter = iter->next;
+        }
     }
 
     if (prev) {
@@ -1508,19 +1544,23 @@ serf_request_t *serf_connection_priority_request_create(
     return request;
 }
 
+serf_request_t *serf_connection_priority_request_create(
+    serf_connection_t *conn,
+    serf_request_setup_t setup,
+    void *setup_baton)
+{
+    return priority_request_create(conn,
+                                   0, /* not a ssltunnel CONNECT request */
+                                   setup, setup_baton);
+}
 
 serf_request_t *serf__ssltunnel_request_create(serf_connection_t *conn,
                                                serf_request_setup_t setup,
                                                void *setup_baton)
 {
-    serf_request_t *request;
-
-    request = serf_connection_priority_request_create(conn,
-                                                      setup,
-                                                      setup_baton);
-    request->ssltunnel = 1;
-    
-    return request;
+    return priority_request_create(conn,
+                                   1, /* This is a ssltunnel CONNECT request */
+                                   setup, setup_baton);
 }
 
 apr_status_t serf_request_cancel(serf_request_t *request)
@@ -1597,10 +1637,14 @@ serf_bucket_t *serf_request_bucket_request_create(
                                  conn->host_info.hostinfo);
 
     /* Setup server authorization headers, unless this is a CONNECT request. */
-    if (ctx->authn_info.scheme && !request->ssltunnel)
-        ctx->authn_info.scheme->setup_request_func(HOST, 0, conn, request,
+    if (!request->ssltunnel) {
+        serf__authn_info_t *authn_info;
+        authn_info = serf__get_authn_info_for_server(conn);
+        if (authn_info->scheme)
+            authn_info->scheme->setup_request_func(HOST, 0, conn, request,
                                                    method, uri,
                                                    hdrs_bkt);
+    }
 
     /* Setup proxy authorization headers.
        Don't set these headers on the requests to the server if we're using
