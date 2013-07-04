@@ -36,6 +36,7 @@ typedef apr_status_t (*receive_func_t)(serv_ctx_t *serv_ctx, char *data,
                                        apr_size_t *len);
 
 typedef apr_status_t (*handshake_func_t)(serv_ctx_t *serv_ctx);
+typedef apr_status_t (*reset_conn_func_t)(serv_ctx_t *serv_ctx);
 
 typedef struct
 {
@@ -104,6 +105,8 @@ struct serv_ctx_t {
 
     /* SSL related variables */
     handshake_func_t handshake;
+    reset_conn_func_t reset;
+
     void *ssl_ctx;
     const char *client_cn;
     apr_status_t bio_read_status;

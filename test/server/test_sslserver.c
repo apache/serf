@@ -90,10 +90,10 @@ static int bio_apr_socket_read(BIO *bio, char *in, int inlen)
 
     status = apr_socket_recv(serv_ctx->client_sock, in, &len);
     serv_ctx->bio_read_status = status;
+    serf__log_skt(TEST_VERBOSE, __FILE__, serv_ctx->client_sock,
+                  "Read %d bytes from socket with status %d.\n", len, status);
 
     if (status == APR_EAGAIN) {
-        serf__log(TEST_VERBOSE, __FILE__, "Read %d bytes from socket with "
-                  "status %d.\n", len, status);
         BIO_set_retry_read(bio);
         if (len == 0)
             return -1;
@@ -101,9 +101,6 @@ static int bio_apr_socket_read(BIO *bio, char *in, int inlen)
 
     if (SERF_BUCKET_READ_ERROR(status))
         return -1;
-
-    serf__log(TEST_VERBOSE, __FILE__, "Read %d bytes from socket with status %d.\n",
-              len, status);
 
     return len;
 }
@@ -116,11 +113,12 @@ static int bio_apr_socket_write(BIO *bio, const char *in, int inlen)
 
     apr_status_t status = apr_socket_send(serv_ctx->client_sock, in, &len);
 
+    serf__log_skt(TEST_VERBOSE, __FILE__, serv_ctx->client_sock,
+                  "Wrote %d of %d bytes to socket with status %d.\n",
+                  len, inlen, status);
+
     if (SERF_BUCKET_READ_ERROR(status))
         return -1;
-
-    serf__log(TEST_VERBOSE, __FILE__, "Wrote %d of %d bytes to socket.\n",
-              len, inlen);
 
     return len;
 }
@@ -147,6 +145,17 @@ static int validate_client_certificate(int preverify_ok, X509_STORE_CTX *ctx)
               "preverify code: %d.\n", preverify_ok);
 
     return preverify_ok;
+}
+
+static apr_status_t init_ssl(serv_ctx_t *serv_ctx)
+{
+    ssl_context_t *ssl_ctx = serv_ctx->ssl_ctx;
+
+    ssl_ctx->ssl = SSL_new(ssl_ctx->ctx);
+    SSL_set_cipher_list(ssl_ctx->ssl, "ALL");
+    SSL_set_bio(ssl_ctx->ssl, ssl_ctx->bio, ssl_ctx->bio);
+
+    return APR_SUCCESS;
 }
 
 static apr_status_t
@@ -178,15 +187,12 @@ init_ssl_context(serv_ctx_t *serv_ctx,
         int i;
 
         ssl_ctx->ctx = SSL_CTX_new(SSLv23_server_method());
-        SSL_CTX_set_cipher_list(ssl_ctx->ctx, "ALL");
         SSL_CTX_set_default_passwd_cb(ssl_ctx->ctx, pem_passwd_cb);
-
-        ssl_ctx->ssl = SSL_new(ssl_ctx->ctx);
-        SSL_use_PrivateKey_file(ssl_ctx->ssl, keyfile, SSL_FILETYPE_PEM);
+        SSL_CTX_use_PrivateKey_file(ssl_ctx->ctx, keyfile, SSL_FILETYPE_PEM);
 
         /* Set server certificate, add ca certificates if provided. */
         certfile = certfiles[0];
-        SSL_use_certificate_file(ssl_ctx->ssl, certfile, SSL_FILETYPE_PEM);
+        SSL_CTX_use_certificate_file(ssl_ctx->ctx, certfile, SSL_FILETYPE_PEM);
 
         i = 1;
         certfile = certfiles[i++];
@@ -208,16 +214,29 @@ init_ssl_context(serv_ctx_t *serv_ctx,
         /* This makes the server send a client certificate request during
            handshake. The client certificate is optional (most tests don't
            send one) by default, but mandatory if client_cn was specified. */
-        SSL_set_verify(ssl_ctx->ssl, SSL_VERIFY_PEER,
-                       validate_client_certificate);
+        SSL_CTX_set_verify(ssl_ctx->ctx, SSL_VERIFY_PEER,
+                           validate_client_certificate);
 
-        SSL_set_mode(ssl_ctx->ssl, SSL_MODE_ENABLE_PARTIAL_WRITE);
+        SSL_CTX_set_mode(ssl_ctx->ctx, SSL_MODE_ENABLE_PARTIAL_WRITE);
+
         ssl_ctx->bio = BIO_new(&bio_apr_socket_method);
         ssl_ctx->bio->ptr = serv_ctx;
-        SSL_set_bio(ssl_ctx->ssl, ssl_ctx->bio, ssl_ctx->bio);
+        init_ssl(serv_ctx);
     }
 
     return APR_SUCCESS;
+}
+
+static apr_status_t ssl_reset(serv_ctx_t *serv_ctx)
+{
+    ssl_context_t *ssl_ctx = serv_ctx->ssl_ctx;
+
+    serf__log(TEST_VERBOSE, __FILE__, "Reset ssl context.\n");
+
+    ssl_ctx->handshake_done = 0;
+    if (ssl_ctx)
+        SSL_clear(ssl_ctx->ssl);
+    init_ssl(serv_ctx);
 }
 
 static apr_status_t ssl_handshake(serv_ctx_t *serv_ctx)
@@ -301,7 +320,9 @@ ssl_socket_write(serv_ctx_t *serv_ctx, const char *data,
 
     if (result == 0)
         return APR_EAGAIN;
-    
+
+    serf__log(TEST_VERBOSE, __FILE__, "ssl_socket_write: ssl error?\n");
+
     return SERF_ERROR_ISSUE_IN_TESTSUITE;
 }
 
@@ -330,6 +351,10 @@ ssl_socket_read(serv_ctx_t *serv_ctx, char *data,
             case SSL_ERROR_SSL:
             default:
                 *len = 0;
+                serf__log(TEST_VERBOSE, __FILE__,
+                          "ssl_socket_read SSL Error %d: ", ssl_err);
+                ERR_print_errors_fp(stderr);
+                serf__log_nopref(TEST_VERBOSE, "\n");
                 return SERF_ERROR_ISSUE_IN_TESTSUITE;
         }
     }
@@ -374,6 +399,8 @@ void setup_https_test_server(serv_ctx_t **servctx_p,
                               apr_pool_cleanup_null);
 
     servctx->handshake = ssl_handshake;
+    servctx->reset = ssl_reset;
+
     /* Override with SSL encrypt/decrypt functions */
     servctx->read = ssl_socket_read;
     servctx->send = ssl_socket_write;

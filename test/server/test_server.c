@@ -188,11 +188,16 @@ static apr_status_t replay(serv_ctx_t *servctx,
                 len = msg_len - servctx->message_buf_pos;
                 if (len > sizeof(buf))
                     len = sizeof(buf);
-                
+
                 status = servctx->read(servctx, buf, &len);
                 if (SERF_BUCKET_READ_ERROR(status))
                     return status;
 
+                if (status == APR_EOF) {
+                    serf__log(TEST_VERBOSE, __FILE__,
+                              "Server: Client hung up the connection.\n");
+                    break;
+                }
                 if (servctx->options & TEST_SERVER_DUMP)
                     fwrite(buf, len, 1, stdout);
 
@@ -240,11 +245,24 @@ static apr_status_t replay(serv_ctx_t *servctx,
                     return status;
 
                 serf__log(TEST_VERBOSE, __FILE__,
-                          "proxy: reading %d bytes %.*s from client.\n",
-                          len, len, buf);
-                tmp = serf_bucket_simple_copy_create(buf, len,
-                                                     servctx->allocator);
-                serf_bucket_aggregate_append(servctx->servstream, tmp);
+                          "proxy: reading %d bytes %.*s from client with "
+                          "status %d.\n",
+                          len, len, buf, status);
+
+                if (status == APR_EOF) {
+                    serf__log(TEST_VERBOSE, __FILE__,
+                              "Proxy: client hung up the connection. Reset the "
+                              "connection to the server.\n");
+                    /* We have to stop forwarding, if a new connection opens
+                       the CONNECT request should not be forwarded to the
+                       server. */
+                    next_action(servctx);
+                }
+                if (len) {
+                    tmp = serf_bucket_simple_copy_create(buf, len,
+                                                         servctx->allocator);
+                    serf_bucket_aggregate_append(servctx->servstream, tmp);
+                }
             } while (!status);
         }
     }
@@ -291,13 +309,18 @@ static apr_status_t replay(serv_ctx_t *servctx,
             char *buf;
 
             if (!servctx->proxy_client_sock) {
+                serf__log(TEST_VERBOSE, __FILE__, "Proxy: setting up connection "
+                          "to server.\n");
                 status = create_client_socket(&servctx->proxy_client_sock,
                                               servctx, action->text);
-
-                servctx->servstream = serf__bucket_stream_create(
-                                        servctx->allocator, detect_eof,servctx);
-                servctx->clientstream = serf__bucket_stream_create(
-                                        servctx->allocator, detect_eof,servctx);
+                if (!servctx->servstream)
+                    servctx->servstream = serf__bucket_stream_create(
+                                              servctx->allocator,
+                                              detect_eof,servctx);
+                if (!servctx->clientstream)
+                    servctx->clientstream = serf__bucket_stream_create(
+                                                servctx->allocator,
+                                                detect_eof,servctx);
             }
 
             /* Send all data received from the server to the client. */
@@ -352,6 +375,7 @@ static apr_status_t proxy_replay(serv_ctx_t *servctx,
         char buf[BUFSIZE];
         serf_bucket_t *tmp;
 
+        serf__log(TEST_VERBOSE, __FILE__, "proxy_replay: POLLIN\n");
         /* Read all incoming data from the server to forward it to the
            client later. */
         do
@@ -375,6 +399,7 @@ static apr_status_t proxy_replay(serv_ctx_t *servctx,
         apr_size_t len;
         char *buf;
 
+        serf__log(TEST_VERBOSE, __FILE__, "proxy_replay: POLLOUT\n");
         /* Send all data received from the client to the server. */
         do
         {
@@ -391,14 +416,14 @@ static apr_status_t proxy_replay(serv_ctx_t *servctx,
 
             len = readlen;
 
+            serf__log(TEST_VERBOSE, __FILE__,
+                      "proxy: sending %d bytes %.*s to server.\n",
+                      len, len, buf);
             status = apr_socket_send(servctx->proxy_client_sock, buf, &len);
             if (status != APR_SUCCESS) {
                 return status;
             }
 
-            serf__log(TEST_VERBOSE, __FILE__,
-                      "proxy: sending %d bytes %.*s to server.\n",
-                      len, len, buf);
             if (len != readlen) /* abort for now */
                 return APR_EGENERAL;
         } while (!status);
@@ -482,6 +507,10 @@ apr_status_t run_test_server(serv_ctx_t *servctx,
             if (status != APR_SUCCESS)
                 goto cleanup;
 
+            serf__log_skt(TEST_VERBOSE, __FILE__, servctx->client_sock,
+                          "server/proxy accepted incoming connection.\n");
+
+
             apr_socket_opt_set(servctx->client_sock, APR_SO_NONBLOCK, 1);
             apr_socket_timeout_set(servctx->client_sock, 0);
 
@@ -492,10 +521,9 @@ apr_status_t run_test_server(serv_ctx_t *servctx,
         if (desc->desc.s == servctx->client_sock) {
             if (servctx->handshake) {
                 status = servctx->handshake(servctx);
+                if (status)
+                    goto cleanup;
             }
-
-            if (status)
-                goto cleanup;
 
             /* Replay data to socket. */
             status = replay(servctx, desc->rtnevents, pool);
@@ -503,6 +531,16 @@ apr_status_t run_test_server(serv_ctx_t *servctx,
             if (APR_STATUS_IS_EOF(status)) {
                 apr_socket_close(servctx->client_sock);
                 servctx->client_sock = NULL;
+                if (servctx->reset)
+                    servctx->reset(servctx);
+
+                /* If this is a proxy and the client closed the connection, also
+                   close the connection to the server. */
+                if (servctx->proxy_client_sock) {
+                    apr_socket_close(servctx->proxy_client_sock);
+                    servctx->proxy_client_sock = NULL;
+                    goto cleanup;
+                }
             }
             else if (APR_STATUS_IS_EAGAIN(status)) {
                 status = APR_SUCCESS;
