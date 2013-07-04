@@ -71,6 +71,10 @@ match = re.search('SERF_MAJOR_VERSION ([0-9]+).*'
 MAJOR, MINOR, PATCH = [int(x) for x in match.groups()]
 env.Append(MAJOR=str(MAJOR))
 
+# Calling external programs is okay if we're not cleaning or printing help.
+# (cleaning: no sense in fetching information; help: we may not know where they are)
+CALLOUT_OKAY = not (env.GetOption('clean') or env.GetOption('help'))
+
 
 # HANDLING OF OPTION VARIABLES
 
@@ -84,9 +88,12 @@ apu = str(env['APU'])
 zlib = str(env['ZLIB'])
 gssapi = env.get('GSSAPI', None)
 
-if gssapi and os.path.isdir(str(gssapi)):
-  gssapi = os.path.join(gssapi, 'bin', 'krb5-config')
-  env['GSSAPI'] = gssapi
+if gssapi and os.path.isdir(gssapi):
+  krb5_config = os.path.join(gssapi, 'bin', 'krb5-config')
+  if os.path.isfile(krb5_config):
+    gssapi = krb5_config
+    env['GSSAPI'] = krb5_config
+
 debug = env.get('DEBUG', None)
 
 Help(opts.GenerateHelpText(env))
@@ -185,21 +192,26 @@ else:
   ### we should use --cc, but that is giving some scons error about an implict
   ### dependency upon gcc. probably ParseConfig doesn't know what to do with
   ### the apr-1-config output
-  env.ParseConfig('$APR --cflags --cppflags --ldflags --includes'
-                  ' --link-ld --libs')
-  env.ParseConfig('$APU --ldflags --includes --link-ld --libs')
+  if CALLOUT_OKAY:
+    env.ParseConfig('$APR --cflags --cppflags --ldflags --includes'
+                    ' --link-ld --libs')
+    env.ParseConfig('$APU --ldflags --includes --link-ld --libs')
 
   ### there is probably a better way to run/capture output.
   ### env.ParseConfig() may be handy for getting this stuff into the build
-  apr_libs = os.popen(env.subst('$APR --link-libtool --libs')).read().strip()
-  apu_libs = os.popen(env.subst('$APU --link-libtool --libs')).read().strip()
+  if CALLOUT_OKAY:
+    apr_libs = os.popen(env.subst('$APR --link-libtool --libs')).read().strip()
+    apu_libs = os.popen(env.subst('$APU --link-libtool --libs')).read().strip()
+  else:
+    apr_libs = ''
+    apu_libs = ''
   
   env.Append(CPPPATH='$OPENSSL/include')
   env.Append(LIBPATH='$OPENSSL/lib')
 
 
 # If build with gssapi, get its information and define SERF_HAVE_GSSAPI
-if gssapi:
+if gssapi and CALLOUT_OKAY:
     env.ParseConfig('$GSSAPI --libs gssapi')
     env.Append(CFLAGS='-DSERF_HAVE_GSSAPI')
 
@@ -224,7 +236,7 @@ pkgconfig = env.Textfile('serf-%d.pc' % (MAJOR,),
 
 env.Default(lib_static, lib_shared, pkgconfig)
 
-if not (env.GetOption('clean') or env.GetOption('help')):
+if CALLOUT_OKAY:
   conf = Configure(env)
 
   ### some configuration stuffs
