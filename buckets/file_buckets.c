@@ -39,10 +39,10 @@ serf_bucket_t *serf_bucket_file_create(
     apr_file_t *file,
     serf_bucket_alloc_t *allocator)
 {
+    apr_status_t status;
     file_context_t *ctx;
 #if APR_HAS_MMAP
     apr_finfo_t finfo;
-    const char *file_path;
 
     /* See if we'd be better off mmap'ing this file instead.
      *
@@ -51,11 +51,9 @@ serf_bucket_t *serf_bucket_file_create(
      * versions of APR, we have no way of knowing this - but apr_mmap_create
      * will check for this and return APR_EBADF.
      */
-    apr_file_name_get(&file_path, file);
-    apr_stat(&finfo, file_path, APR_FINFO_SIZE,
-             serf_bucket_allocator_get_pool(allocator));
-    if (APR_MMAP_CANDIDATE(finfo.size)) {
-        apr_status_t status;
+    status = apr_file_info_get(&finfo, APR_FINFO_SIZE, file);
+
+    if (status == APR_SUCCESS && APR_MMAP_CANDIDATE(finfo.size)) {
         apr_mmap_t *file_mmap;
         status = apr_mmap_create(&file_mmap, file, 0, finfo.size,
                                  APR_MMAP_READ,
