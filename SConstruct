@@ -281,6 +281,7 @@ TEST_PROGRAMS = [
   'test/serf_request',
   'test/serf_spider',
   'test/test_all',
+  'test/serf_bwtp',
 ]
 
 env.AlwaysBuild(env.Alias('check', TEST_PROGRAMS, 'build/check.sh'))
