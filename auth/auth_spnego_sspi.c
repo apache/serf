@@ -138,7 +138,7 @@ serf__spnego_create_sec_context(serf__spnego_context_t **ctx_p,
     else
         sspi_package = "NTLM";
 
-    sspi_status = AcquireCredentialsHandle(
+    sspi_status = AcquireCredentialsHandleA(
         NULL, sspi_package, SECPKG_CRED_OUTBOUND,
         NULL, NULL, NULL, NULL,
         &ctx->sspi_credentials, NULL);
@@ -246,7 +246,7 @@ serf__spnego_init_sec_context(serf__spnego_context_t *ctx,
     sspi_out_buffer_desc.pBuffers = &sspi_out_buffer;
     sspi_out_buffer_desc.ulVersion = SECBUFFER_VERSION;
 
-    status = InitializeSecurityContext(
+    status = InitializeSecurityContextA(
         &ctx->sspi_credentials,
         ctx->initalized ? &ctx->sspi_context : NULL,
         ctx->target_name,
