@@ -988,6 +988,70 @@ static void test_linebuf_crlf_split(CuTest *tc)
     CuAssert(tc, "Read less data than expected.", strlen(expected) == 0);
 }
 
+/* Test that the Content-Length header will be ignored when the response
+   should not have returned a body. See RFC2616, section 4.4, nbr. 1. */
+static void test_response_no_body_expected(CuTest *tc)
+{
+    serf_bucket_t *bkt, *tmp;
+    apr_pool_t *test_pool = tc->testBaton;
+    char buf[1024];
+    apr_size_t len;
+    serf_bucket_alloc_t *alloc;
+    int i;
+    apr_status_t status;
+
+    /* response bucket should consider the blablablablabla as start of the
+       next response, in all these cases it should APR_EOF after the empty
+       line. */
+    test_server_message_t message_list[] = {
+        { "HTTP/1.1 100 Continue" CRLF
+          "Content-Type: text/plain" CRLF
+          "Content-Length: 6500000" CRLF
+          CRLF
+          "blablablablabla" CRLF },
+        { "HTTP/1.1 204 No Content" CRLF
+            "Content-Type: text/plain" CRLF
+            "Content-Length: 6500000" CRLF
+            CRLF
+            "blablablablabla" CRLF },
+        { "HTTP/1.1 304 Not Modified" CRLF
+            "Content-Type: text/plain" CRLF
+            "Content-Length: 6500000" CRLF
+            CRLF
+            "blablablablabla" CRLF },
+    };
+
+    alloc = serf_bucket_allocator_create(test_pool, NULL, NULL);
+
+    /* Test 1: a response to a HEAD request. */
+    tmp = SERF_BUCKET_SIMPLE_STRING("HTTP/1.1 200 OK" CRLF
+                                    "Content-Type: text/plain" CRLF
+                                    "Content-Length: 6500000" CRLF
+                                    CRLF
+                                    "blablablablabla" CRLF,
+                                    alloc);
+
+    bkt = serf_bucket_response_create(tmp, alloc);
+    serf_bucket_response_set_head(bkt);
+
+    status = read_all(bkt, buf, sizeof(buf), &len);
+
+    CuAssertIntEquals(tc, APR_EOF, status);
+    CuAssertIntEquals(tc, 0, len);
+
+    /* Test 2: a response with status for which server must not send a body. */
+    for (i = 0; i < sizeof(message_list) / sizeof(test_server_message_t); i++) {
+
+        tmp = SERF_BUCKET_SIMPLE_STRING(message_list[i].text, alloc);
+        bkt = serf_bucket_response_create(tmp, alloc);
+
+        status = read_all(bkt, buf, sizeof(buf), &len);
+
+        CuAssertIntEquals(tc, APR_EOF, status);
+        CuAssertIntEquals(tc, 0, len);
+    }
+}
+
 CuSuite *test_buckets(void)
 {
     CuSuite *suite = CuSuiteNew();
@@ -1010,6 +1074,7 @@ CuSuite *test_buckets(void)
     SUITE_ADD_TEST(suite, test_aggregate_bucket_readline);
     SUITE_ADD_TEST(suite, test_header_buckets);
     SUITE_ADD_TEST(suite, test_linebuf_crlf_split);
+    SUITE_ADD_TEST(suite, test_response_no_body_expected);
 #if 0
     SUITE_ADD_TEST(suite, test_serf_default_read_iovec);
 #endif
