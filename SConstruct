@@ -115,7 +115,11 @@ incdir = '$PREFIX/include/serf-$MAJOR'
 
 LIBNAME = 'libserf-${MAJOR}'
 
-linkflags = [link_rpath(libdir,), ]
+linkflags = []
+
+if sys.platform != 'win32':
+  linkflags.append(link_rpath(libdir))
+
 if sys.platform == 'darwin':
 #  linkflags.append('-Wl,-install_name,@executable_path/%s.dylib' % (LIBNAME,))
   linkflags.append('-Wl,-install_name,%s/%s.dylib' % (thisdir, LIBNAME,))
@@ -277,7 +281,6 @@ TEST_PROGRAMS = [
   'test/serf_request',
   'test/serf_spider',
   'test/test_all',
-  'test/serf_bwtp',
 ]
 
 env.AlwaysBuild(env.Alias('check', TEST_PROGRAMS, 'build/check.sh'))
