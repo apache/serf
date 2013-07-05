@@ -475,6 +475,28 @@ static serf_bucket_t * serf_aggregate_read_bucket(
     return serf_bucket_read_bucket(ctx->list->bucket, type);
 }
 
+static apr_uint64_t serf_aggregate_get_remaining(serf_bucket_t *bucket)
+{
+    aggregate_context_t *ctx = bucket->data;
+    apr_uint64_t remaining = 0;
+    bucket_list_t *cur;
+
+    if (ctx->hold_open) {
+        return SERF_LENGTH_UNKNOWN;
+    }
+
+    for(cur = ctx->list; cur != NULL; cur = cur->next) {
+        apr_uint64_t bucket_remaining = serf_bucket_get_remaining(cur->bucket);
+
+        if (bucket_remaining == SERF_LENGTH_UNKNOWN) {
+            return SERF_LENGTH_UNKNOWN;
+        }
+
+        remaining += bucket_remaining;
+    }
+
+    return remaining;
+}
 
 const serf_bucket_type_t serf_bucket_type_aggregate = {
     "AGGREGATE",
@@ -482,7 +504,9 @@ const serf_bucket_type_t serf_bucket_type_aggregate = {
     serf_aggregate_readline,
     serf_aggregate_read_iovec,
     serf_default_read_for_sendfile,
-    serf_aggregate_read_bucket,
+    serf_buckets_are_v2,
     serf_aggregate_peek,
     serf_aggregate_destroy_and_data,
+    serf_aggregate_read_bucket,
+    serf_aggregate_get_remaining,
 };

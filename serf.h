@@ -740,6 +740,10 @@ serf_bucket_t *serf_request_bucket_request_create(
  */
 #define SERF_NEWLINE_CRLF_SPLIT 0x0010
 
+/** Used to indicate that length of remaining data in bucket is unknown. See 
+ * serf_bucket_type_t->get_remaining().
+ */
+#define SERF_LENGTH_UNKNOWN ((apr_uint64_t) -1)
 
 struct serf_bucket_type_t {
 
@@ -877,6 +881,21 @@ struct serf_bucket_type_t {
      */
     void (*destroy)(serf_bucket_t *bucket);
 
+    /* The following members are valid only if read_bucket equals to
+     * serf_buckets_are_v2().
+
+    /* Real pointer to read_bucket() method when read_bucket is
+     * serf_buckets_are_v2(). */
+    serf_bucket_t * (*read_bucket_v2)(serf_bucket_t *bucket,
+                                      const serf_bucket_type_t *type);
+
+    /* Returns length of remaining data to be read in @a bucket. Returns
+     * SERF_LENGTH_UNKNOWN if length is unknown.
+     *
+     * @since New in 1.4.
+     */
+    apr_uint64_t (*get_remaining)(serf_bucket_t *bucket);
+
     /* ### apr buckets have 'copy', 'split', and 'setaside' functions.
        ### not sure whether those will be needed in this bucket model.
     */
@@ -903,6 +922,13 @@ struct serf_bucket_type_t {
  */
 /* #define SERF_DEBUG_BUCKET_USE */
 
+/* Predefined value for read_bucket vtable member to declare v2 buckets
+ * vtable.
+ *
+ * @since New in 1.4.
+ */
+serf_bucket_t * serf_buckets_are_v2(serf_bucket_t *bucket,
+                                    const serf_bucket_type_t *type);
 
 /* Internal macros for tracking bucket use. */
 #ifdef SERF_DEBUG_BUCKET_USE
@@ -921,6 +947,10 @@ struct serf_bucket_type_t {
 #define serf_bucket_read_bucket(b,t) ((b)->type->read_bucket(b,t))
 #define serf_bucket_peek(b,d,l) ((b)->type->peek(b,d,l))
 #define serf_bucket_destroy(b) ((b)->type->destroy(b))
+#define serf_bucket_get_remaining(b) \
+            ((b)->type->read_bucket == serf_buckets_are_v2 ? \
+             (b)->type->get_remaining(b) : \
+             SERF_LENGTH_UNKNOWN)
 
 /**
  * Check whether a real error occurred. Note that bucket read functions
