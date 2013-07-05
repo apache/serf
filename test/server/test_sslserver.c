@@ -237,6 +237,8 @@ static apr_status_t ssl_reset(serv_ctx_t *serv_ctx)
     if (ssl_ctx)
         SSL_clear(ssl_ctx->ssl);
     init_ssl(serv_ctx);
+
+    return APR_SUCCESS;
 }
 
 static apr_status_t ssl_handshake(serv_ctx_t *serv_ctx)
