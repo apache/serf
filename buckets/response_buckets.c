@@ -261,7 +261,8 @@ static apr_status_t run_machine(serf_bucket_t *bkt, response_context_t *ctx)
             /* Advance the state. */
             ctx->state = STATE_BODY;
 
-            /* If we're a HEAD request, we don't receive a body. */
+            /* If this is a response to a HEAD request, or code == 1xx,204 or304
+               then we should not receive a body. */
             if (!expect_body(ctx)) {
                 ctx->state = STATE_DONE;
                 break;
@@ -289,10 +290,6 @@ static apr_status_t run_machine(serf_bucket_t *bkt, response_context_t *ctx)
                     ctx->chunked = 1;
                     ctx->body = serf_bucket_dechunk_create(ctx->body,
                                                            bkt->allocator);
-                }
-
-                if (!v && (ctx->sl.code == 204 || ctx->sl.code == 304)) {
-                    ctx->state = STATE_DONE;
                 }
             }
             v = serf_bucket_headers_get(ctx->headers, "Content-Encoding");
