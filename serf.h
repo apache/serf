@@ -882,7 +882,7 @@ struct serf_bucket_type_t {
     void (*destroy)(serf_bucket_t *bucket);
 
     /* The following members are valid only if read_bucket equals to
-     * serf_buckets_are_v2().
+     * serf_buckets_are_v2(). */
 
     /* Real pointer to read_bucket() method when read_bucket is
      * serf_buckets_are_v2(). */
