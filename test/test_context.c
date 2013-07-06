@@ -1719,14 +1719,14 @@ static apr_status_t identity_cb(void *data,
 
        How to test:
        1. Import file test/server/serfclientcert.p12 in a keychain.
-       -> run the test test_serf_ssl_identity now, you should get a dialog
+       -> run the test test_ssl_identity now, you should get a dialog
           where you can select "Serf Client".
        2. If you have a smart card with a client identity, plug it in.
        -> run the test again, the dialog should show both the "Serf Client"
           identity as your personal (stored on the smart card) identity.
        3. Add an identity preferences for 'https://localhost' to the
            "Serf Client" certificate in the login keychain.
-       -> run the test test_serf_ssl_identity now. It should continue without
+       -> run the test test_ssl_identity now. It should continue without
           showing a dialog.
      
        Note: in all these cases the test will fail, because the identity
@@ -1784,7 +1784,7 @@ identity_conn_setup(apr_socket_t *skt,
     return APR_SUCCESS;
 }
 
-static void test_serf_ssl_identity(CuTest *tc)
+static void test_ssl_identity(CuTest *tc)
 {
     test_baton_t *tb;
     handler_baton_t handler_ctx[1];
@@ -2355,18 +2355,6 @@ CuSuite *test_context(void)
     SUITE_ADD_TEST(suite, test_request_timeout);
     SUITE_ADD_TEST(suite, test_connection_large_response);
     SUITE_ADD_TEST(suite, test_connection_large_request);
-    SUITE_ADD_TEST(suite, test_ssl_handshake);
-    SUITE_ADD_TEST(suite, test_ssl_trust_rootca);
-    SUITE_ADD_TEST(suite, test_ssl_application_rejects_cert);
-    SUITE_ADD_TEST(suite, test_ssl_certificate_chain_with_anchor);
-    SUITE_ADD_TEST(suite, test_ssl_certificate_chain_all_from_server);
-    SUITE_ADD_TEST(suite, test_ssl_no_servercert_callback_allok);
-    SUITE_ADD_TEST(suite, test_ssl_no_servercert_callback_fail);
-    SUITE_ADD_TEST(suite, test_ssl_large_response);
-    SUITE_ADD_TEST(suite, test_ssl_large_request);
-    SUITE_ADD_TEST(suite, test_ssl_client_certificate);
-    SUITE_ADD_TEST(suite, test_ssl_expired_server_cert);
-    SUITE_ADD_TEST(suite, test_ssl_future_server_cert);
     SUITE_ADD_TEST(suite, test_setup_ssltunnel);
     SUITE_ADD_TEST(suite, test_ssltunnel_no_creds_cb);
     SUITE_ADD_TEST(suite, test_ssltunnel_basic_auth);
@@ -2379,19 +2367,19 @@ CuSuite *test_context(void)
     CuSuiteSetSetupTeardownCallbacks(openssl_suite, test_openssl_setup,
                                      test_openssl_teardown);
 
-    SUITE_ADD_TEST(openssl_suite, test_serf_ssl_handshake);
-    SUITE_ADD_TEST(openssl_suite, test_serf_ssl_trust_rootca);
-    SUITE_ADD_TEST(openssl_suite, test_serf_ssl_application_rejects_cert);
-    SUITE_ADD_TEST(openssl_suite, test_serf_ssl_certificate_chain_with_anchor);
-    SUITE_ADD_TEST(openssl_suite, test_serf_ssl_certificate_chain_all_from_server);
-    SUITE_ADD_TEST(openssl_suite, test_serf_ssl_no_servercert_callback_allok);
-    SUITE_ADD_TEST(openssl_suite, test_serf_ssl_no_servercert_callback_fail);
-    SUITE_ADD_TEST(openssl_suite, test_serf_ssl_large_response);
-    SUITE_ADD_TEST(openssl_suite, test_serf_ssl_large_request);
-    SUITE_ADD_TEST(openssl_suite, test_serf_ssl_client_certificate);
-    SUITE_ADD_TEST(openssl_suite, test_serf_ssl_identity);
-    SUITE_ADD_TEST(openssl_suite, test_serf_ssl_expired_server_cert);
-    SUITE_ADD_TEST(openssl_suite, test_serf_ssl_future_server_cert);
+    SUITE_ADD_TEST(openssl_suite, test_ssl_handshake);
+    SUITE_ADD_TEST(openssl_suite, test_ssl_trust_rootca);
+    SUITE_ADD_TEST(openssl_suite, test_ssl_application_rejects_cert);
+    SUITE_ADD_TEST(openssl_suite, test_ssl_certificate_chain_with_anchor);
+    SUITE_ADD_TEST(openssl_suite, test_ssl_certificate_chain_all_from_server);
+    SUITE_ADD_TEST(openssl_suite, test_ssl_no_servercert_callback_allok);
+    SUITE_ADD_TEST(openssl_suite, test_ssl_no_servercert_callback_fail);
+    SUITE_ADD_TEST(openssl_suite, test_ssl_large_response);
+    SUITE_ADD_TEST(openssl_suite, test_ssl_large_request);
+    SUITE_ADD_TEST(openssl_suite, test_ssl_client_certificate);
+    SUITE_ADD_TEST(openssl_suite, test_ssl_identity);
+    SUITE_ADD_TEST(openssl_suite, test_ssl_expired_server_cert);
+    SUITE_ADD_TEST(openssl_suite, test_ssl_future_server_cert);
 
     CuSuiteAddSuite(suite, openssl_suite);
 #endif
@@ -2401,22 +2389,19 @@ CuSuite *test_context(void)
     CuSuiteSetSetupTeardownCallbacks(sectransssl_suite, test_sectransssl_setup,
                                      test_sectransssl_teardown);
 
-    SUITE_ADD_TEST(sectransssl_suite, test_serf_ssl_handshake);
-    SUITE_ADD_TEST(sectransssl_suite, test_serf_ssl_trust_rootca);
-    SUITE_ADD_TEST(sectransssl_suite, test_serf_ssl_application_rejects_cert);
-    SUITE_ADD_TEST(sectransssl_suite,
-                   test_serf_ssl_certificate_chain_with_anchor);
-    SUITE_ADD_TEST(sectransssl_suite,
-                   test_serf_ssl_certificate_chain_all_from_server);
-    SUITE_ADD_TEST(sectransssl_suite,
-                   test_serf_ssl_no_servercert_callback_allok);
-    SUITE_ADD_TEST(sectransssl_suite, test_serf_ssl_no_servercert_callback_fail);
-    SUITE_ADD_TEST(sectransssl_suite, test_serf_ssl_large_response);
-    SUITE_ADD_TEST(sectransssl_suite, test_serf_ssl_large_request);
-    SUITE_ADD_TEST(sectransssl_suite, test_serf_ssl_client_certificate);
-    SUITE_ADD_TEST(sectransssl_suite, test_serf_ssl_identity);
-    SUITE_ADD_TEST(sectransssl_suite, test_serf_ssl_expired_server_cert);
-    SUITE_ADD_TEST(sectransssl_suite, test_serf_ssl_future_server_cert);
+    SUITE_ADD_TEST(sectransssl_suite, test_ssl_handshake);
+    SUITE_ADD_TEST(sectransssl_suite, test_ssl_trust_rootca);
+    SUITE_ADD_TEST(sectransssl_suite, test_ssl_application_rejects_cert);
+    SUITE_ADD_TEST(sectransssl_suite, test_ssl_certificate_chain_with_anchor);
+    SUITE_ADD_TEST(sectransssl_suite, test_ssl_certificate_chain_all_from_server);
+    SUITE_ADD_TEST(sectransssl_suite, test_ssl_no_servercert_callback_allok);
+    SUITE_ADD_TEST(sectransssl_suite, test_ssl_no_servercert_callback_fail);
+    SUITE_ADD_TEST(sectransssl_suite, test_ssl_large_response);
+    SUITE_ADD_TEST(sectransssl_suite, test_ssl_large_request);
+    SUITE_ADD_TEST(sectransssl_suite, test_ssl_client_certificate);
+    SUITE_ADD_TEST(sectransssl_suite, test_ssl_identity);
+    SUITE_ADD_TEST(sectransssl_suite, test_ssl_expired_server_cert);
+    SUITE_ADD_TEST(sectransssl_suite, test_ssl_future_server_cert);
 
     CuSuiteAddSuite(suite, sectransssl_suite);
 #endif
