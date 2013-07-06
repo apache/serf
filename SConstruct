@@ -114,11 +114,17 @@ libdir = '$PREFIX/lib'
 incdir = '$PREFIX/include/serf-$MAJOR'
 
 LIBNAME = 'libserf-${MAJOR}'
+if sys.platform != 'win32':
+  LIBNAMESTATIC = LIBNAME
+else:
+  LIBNAMESTATIC = 'serf-${MAJOR}'
 
 linkflags = []
 
 if sys.platform != 'win32':
   linkflags.append(link_rpath(libdir))
+else:
+  linkflags.append(['/nologo'])
 
 if sys.platform == 'darwin':
 #  linkflags.append('-Wl,-install_name,@executable_path/%s.dylib' % (LIBNAME,))
@@ -134,7 +140,7 @@ if sys.platform == 'win32':
   pass
 
 ccflags = [ ]
-if 1:
+if sys.platform != 'win32':
   ### gcc only. figure out appropriate test / better way to check these
   ### flags, and check for gcc.
   ### -Wall is not available on Solaris
@@ -146,6 +152,13 @@ if 1:
     ccflags.append(['-g'])
   else:
     ccflags.append('-O2')
+else:
+  ccflags.append(['/nologo', '/W4', '/Zi'])
+  if debug:
+    ccflags.append(['/Od'])
+  else:
+    ccflags.append(['/O2'])
+  
 libs = [ ]
 if sys.platform != 'win32':
   ### works for Mac OS. probably needs to change
@@ -164,14 +177,23 @@ env.Replace(LINKFLAGS=linkflags,
 
 SOURCES = Glob('*.c') + Glob('buckets/*.c') + Glob('auth/*.c')
 
-lib_static = env.StaticLibrary(LIBNAME, SOURCES)
+lib_static = env.StaticLibrary(LIBNAMESTATIC, SOURCES)
 lib_shared = env.SharedLibrary(LIBNAME, SOURCES)
 
 if sys.platform == 'win32':
-  env.Append(CFLAGS='/MD')
+  if debug:
+    env.Append(CFLAGS='/MDd')
+  else:
+    env.Append(CFLAGS='/MD')
+  
+  env.Append(LIBS=['user32.lib', 'advapi32.lib', 'gdi32.lib', 'ws2_32.lib',
+                   'crypt32.lib', 'mswsock.lib', 'rpcrt4.lib', 'secur32.lib'])
 
   # Get apr/apu information into our build
-  env.Append(CFLAGS='-D WIN32 /I "$APR/include" /I "$APU/include"')
+  env.Append(CFLAGS='-DWIN32 ' + \
+                    '/I "$APR/include" /I "$APU/include" ' + \
+                    '-DWIN32 -DWIN32_LEAN_AND_MEAN -DNOUSER' + \
+                    '-DNOGDI -DNONLS -DNOCRYPT')
   env.Append(LIBPATH=['$APR/Release','$APU/Release'],
              LIBS=['libapr-1.lib', 'libaprutil-1.lib'])
   apr_libs='libapr-1.lib'
@@ -218,6 +240,8 @@ else:
 if gssapi and CALLOUT_OKAY:
     env.ParseConfig('$GSSAPI --libs gssapi')
     env.Append(CFLAGS='-DSERF_HAVE_GSSAPI')
+if sys.platform == 'win32':
+  env.Append(CFLAGS='-DSERF_HAVE_SPNEGO -DSERF_HAVE_SSPI')
 
 # On Solaris, the -R values that APR describes never make it into actual
 # RPATH flags. We'll manually map all directories in LIBPATH into new
