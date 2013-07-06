@@ -48,6 +48,10 @@ typedef struct serf_incoming_request_t serf_incoming_request_t;
 
 typedef struct serf_request_t serf_request_t;
 
+typedef struct serf_connection_type_t serf_connection_type_t;
+typedef struct serf_protocol_t serf_protocol_t;
+typedef struct serf_protocol_type_t serf_protocol_type_t;
+
 
 /**
  * @defgroup serf high-level constructs
@@ -757,6 +761,10 @@ serf_bucket_t *serf_request_bucket_request_create(
  */
 #define SERF_NEWLINE_CRLF_SPLIT 0x0010
 
+/** Used to indicate that length of remaining data in bucket is unknown. See 
+ * serf_bucket_type_t->get_remaining().
+ */
+#define SERF_LENGTH_UNKNOWN ((apr_uint64_t) -1)
 
 struct serf_bucket_type_t {
 
@@ -894,6 +902,21 @@ struct serf_bucket_type_t {
      */
     void (*destroy)(serf_bucket_t *bucket);
 
+    /* The following members are valid only if read_bucket equals to
+     * serf_buckets_are_v2(). */
+
+    /* Real pointer to read_bucket() method when read_bucket is
+     * serf_buckets_are_v2(). */
+    serf_bucket_t * (*read_bucket_v2)(serf_bucket_t *bucket,
+                                      const serf_bucket_type_t *type);
+
+    /* Returns length of remaining data to be read in @a bucket. Returns
+     * SERF_LENGTH_UNKNOWN if length is unknown.
+     *
+     * @since New in 1.4.
+     */
+    apr_uint64_t (*get_remaining)(serf_bucket_t *bucket);
+
     /* ### apr buckets have 'copy', 'split', and 'setaside' functions.
        ### not sure whether those will be needed in this bucket model.
     */
@@ -920,6 +943,13 @@ struct serf_bucket_type_t {
  */
 /* #define SERF_DEBUG_BUCKET_USE */
 
+/* Predefined value for read_bucket vtable member to declare v2 buckets
+ * vtable.
+ *
+ * @since New in 1.4.
+ */
+serf_bucket_t * serf_buckets_are_v2(serf_bucket_t *bucket,
+                                    const serf_bucket_type_t *type);
 
 /* Internal macros for tracking bucket use. */
 #ifdef SERF_DEBUG_BUCKET_USE
@@ -938,6 +968,10 @@ struct serf_bucket_type_t {
 #define serf_bucket_read_bucket(b,t) ((b)->type->read_bucket(b,t))
 #define serf_bucket_peek(b,d,l) ((b)->type->peek(b,d,l))
 #define serf_bucket_destroy(b) ((b)->type->destroy(b))
+#define serf_bucket_get_remaining(b) \
+            ((b)->type->read_bucket == serf_buckets_are_v2 ? \
+             (b)->type->get_remaining(b) : \
+             SERF_LENGTH_UNKNOWN)
 
 /**
  * Check whether a real error occurred. Note that bucket read functions
@@ -967,6 +1001,9 @@ struct serf_bucket_t {
  * Generic macro to construct "is TYPE" macros.
  */
 #define SERF_BUCKET_CHECK(b, btype) ((b)->type == &serf_bucket_type_ ## btype)
+
+
+/** @} */
 
 
 /**
@@ -1063,6 +1100,151 @@ apr_status_t serf_linebuf_fetch(
     serf_linebuf_t *linebuf,
     serf_bucket_t *bucket,
     int acceptable);
+
+
+/**
+ * ### rationalize against "serf connections and request" group above
+ *
+ * @defgroup serf connections
+ * @ingroup serf
+ * @{
+ */
+
+struct serf_connection_type_t {
+    /** Name of this connection type.  */
+    const char *name;
+
+    /**
+     * Returns a bucket for reading from this connection.
+     *
+     * This bucket remains constant for the lifetime of the connection. It has
+     * built-in BARRIER bucket protection, so it can safely be "destroyed" without
+     * problem (and a later call to this vtable function will return the same
+     * bucket again).
+     *
+     * For all intents and purposes, this bucket is borrowed by the caller.
+     *
+     * This bucket effectively maps to the underlying socket, or possibly to
+     * a decrypting bucket layered over the socket.
+     */
+    serf_bucket_t * (*get_read_bucket)(serf_connection_t *conn);
+
+    /**
+     * Write some data into into the connection.
+     *
+     * Attempt to write a number of iovecs into the connection. The number of
+     * vectors *completely* written will be returned in @a vecs_written. If that
+     * equals @a vecs_size, then @a last_written will be set to 0. If it is less
+     * (not all iovecs were written), then the amount written from the next,
+     * incompletely written iovec is returned in @a last_written.
+     *
+     * In other words, the first byte of unwritten content is located at:
+     *
+     * <pre>
+     *   first = vecs[vecs_written][last_written];
+     * </pre>
+     *
+     * If all bytes are written, then APR_SUCCESS is returned. If only a portion
+     * was written, then APR_EAGAIN will be returned.
+     */
+    apr_status_t (*writev)(serf_connection_t *conn,
+                           int vecs_size, struct iovec *vecs,
+                           int *vecs_written, apr_size_t *last_written);
+};
+
+
+/* ### docco.  */
+apr_status_t serf_connection_switch_protocol(
+    serf_connection_t *conn,
+    serf_protocol_t *proto
+    /* ### other params?  */
+    );
+
+
+/**
+ * Present a response to the application.
+ *
+ * Called when a response has been processed by the current protocol (to any
+ * extent necessary) and is ready for the application to handle.
+ *
+ * Note: @a request may be NULL if this response is server-pushed rather than
+ *       specifically requested.
+ */
+typedef apr_status_t (*serf_begin_response_t)(
+    /* ### args not settled  */
+    void **handler_baton,
+    serf_request_t *request,
+    serf_bucket_t *response,
+    apr_pool_t *scratch_pool);
+
+
+/* ### better name?  */
+typedef apr_status_t (*serf_handler_t)(
+    /* ### args not settled  */
+    void *handler_baton,
+    serf_bucket_t *response,
+    apr_pool_t *scratch_pool);
+
+
+struct serf_protocol_type_t {
+    /** Name of this protocol type.  */
+    const char *name;
+
+    /**
+     * Construct a protocol parsing bucket, for passing to the processing callback.
+     *
+     * When data arrives on the connection, and a parser is not already
+     * processing the connection's data, then build a new bucket to parse
+     * this incoming data (according to the protocol).
+     */
+    serf_bucket_t * (*build_parser)(serf_protocol_t *proto,
+                                    apr_pool_t *scratch_pool);
+
+    /**
+     * The protocol should parse all available response data, per the protocol.
+     *
+     * This is called when data has become available to the parser. The protocol
+     * should read all available data before return
+     */
+    apr_status_t (*process_data)(serf_protocol_t *proto,
+                                 serf_bucket_t *parser,
+                                 apr_pool_t *scratch_pool);
+};
+
+
+/* ### docco. create http proto parser with a plain connection.  */
+apr_status_t serf_http_protocol_create(
+    serf_protocol_t **proto,
+    serf_context_t *ctx,
+    const char *hostname,
+    int port,
+    serf_connection_closed_t closed,
+    void *closed_baton,
+    apr_pool_t *result_pool,
+    apr_pool_t *scratch_pool);
+
+
+/* ### docco. create http proto parser with an encrypted connection.  */
+apr_status_t serf_https_protocol_create(
+    serf_protocol_t **proto,
+    serf_context_t *ctx,
+    const char *hostname,
+    int port,
+    /* ### client certs, credential validation callbacks, etc  */
+    serf_connection_closed_t closed,
+    void *closed_baton,
+    apr_pool_t *result_pool,
+    apr_pool_t *scratch_pool);
+
+
+/* ### docco. queue up an http request. SETUP isn't quite right since the
+   ### protocol will construct the appropriate stack of buckets. the app
+   ### effectively just gets a body bucket (which may deflate/dechunk/etc).  */
+serf_request_t *serf_http_request_create(
+    serf_protocol_t *proto,
+    serf_request_setup_t setup,
+    void *setup_baton);
+
 
 /** @} */
 

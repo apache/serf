@@ -42,6 +42,10 @@ opts.AddVariables(
                "Path to apu-1-config, or to APR's install area",
                '/usr',
                PathVariable.PathAccept),
+  PathVariable('ZLIB',
+               "Path to zlib's install area",
+               '/usr',
+               PathVariable.PathIsDir),
   PathVariable('GSSAPI',
                "Path to GSSAPI's install area",
                None,
@@ -77,6 +81,10 @@ match = re.search('SERF_MAJOR_VERSION ([0-9]+).*'
 MAJOR, MINOR, PATCH = [int(x) for x in match.groups()]
 env.Append(MAJOR=str(MAJOR))
 
+# Calling external programs is okay if we're not cleaning or printing help.
+# (cleaning: no sense in fetching information; help: we may not know where they are)
+CALLOUT_OKAY = not (env.GetOption('clean') or env.GetOption('help'))
+
 
 # HANDLING OF OPTION VARIABLES
 
@@ -86,17 +94,16 @@ if unknown:
   Exit(1)
 
 apr = str(env['APR'])
-if os.path.isdir(apr):
-  apr = os.path.join(apr, 'bin', 'apr-1-config')
-  env['APR'] = apr
 apu = str(env['APU'])
-if os.path.isdir(apu):
-  apu = os.path.join(apu, 'bin', 'apu-1-config')
-  env['APU'] = apu
+zlib = str(env['ZLIB'])
 gssapi = env.get('GSSAPI', None)
-if gssapi and os.path.isdir(str(gssapi)):
-  gssapi = os.path.join(gssapi, 'bin', 'krb5-config')
-  env['GSSAPI'] = gssapi
+
+if gssapi and os.path.isdir(gssapi):
+  krb5_config = os.path.join(gssapi, 'bin', 'krb5-config')
+  if os.path.isfile(krb5_config):
+    gssapi = krb5_config
+    env['GSSAPI'] = krb5_config
+
 openssl = env.get('OPENSSL', None)
 if openssl and os.path.isdir(str(openssl)):
   env.Append(CPPPATH='$OPENSSL/include')
@@ -122,7 +129,11 @@ incdir = '$PREFIX/include/serf-$MAJOR'
 
 LIBNAME = 'libserf-${MAJOR}'
 
-linkflags = [link_rpath(libdir,), ]
+linkflags = []
+
+if sys.platform != 'win32':
+  linkflags.append(link_rpath(libdir))
+
 if sys.platform == 'darwin':
 #  linkflags.append('-Wl,-install_name,@executable_path/%s.dylib' % (LIBNAME,))
   linkflags.append('-Wl,-install_name,%s/%s.dylib' % (thisdir, LIBNAME,))
@@ -149,15 +160,16 @@ if 1:
   ### gcc only. figure out appropriate test / better way to check these
   ### flags, and check for gcc.
   ### -Wall is not available on Solaris
-  ccflags = ['-std=c89', '-Wdeclaration-after-statement', ]
-  if sys.platform != 'sunos5':
-    ccflags.append(['-Wall', '-Wmissing-prototypes'])
+  if sys.platform != 'win32':
+    ccflags = ['-std=c89', '-Wdeclaration-after-statement', '-Wmissing-prototypes']
+  if sys.platform != 'sunos5': 
+    ccflags.append(['-Wall', ])
   if debug:
     ccflags.append(['-g'])
   else:
     ccflags.append('-O2')
 libs = [ ]
-if 1:
+if sys.platform != 'win32':
   ### works for Mac OS. probably needs to change
   libs = ['ssl', 'crypto', 'z', ]
 
@@ -184,23 +196,57 @@ if securetransport:
 lib_static = env.StaticLibrary(LIBNAME, SOURCES)
 lib_shared = env.SharedLibrary(LIBNAME, SOURCES)
 
-# Get apr/apu information into our build
-### we should use --cc, but that is giving some scons error about an implict
-### dependency upon gcc. probably ParseConfig doesn't know what to do with
-### the apr-1-config output
-env.ParseConfig('$APR --cflags --cppflags --ldflags --includes'
-                ' --link-ld --libs')
-env.ParseConfig('$APU --ldflags --includes --link-ld --libs')
+if sys.platform == 'win32':
+  env.Append(CFLAGS='/MD')
+
+  # Get apr/apu information into our build
+  env.Append(CFLAGS='-D WIN32 /I "$APR/include" /I "$APU/include"')
+  env.Append(LIBPATH=['$APR/Release','$APU/Release'],
+             LIBS=['libapr-1.lib', 'libaprutil-1.lib'])
+  apr_libs='libapr-1.lib'
+  apu_libs='libaprutil-1.lib'
+
+  # zlib
+  env.Append(CFLAGS='/I "$ZLIB"')
+  env.Append(LIBPATH='$ZLIB', LIBS='zlib.lib')
+
+  # openssl
+  env.Append(CPPPATH='$OPENSSL/inc32')
+  env.Append(LIBPATH='$OPENSSL/out32dll', LIBS=['libeay32.lib', 'ssleay32.lib'])
+
+else:
+  if os.path.isdir(apr):
+    apr = os.path.join(apr, 'bin', 'apr-1-config')
+    env['APR'] = apr
+  if os.path.isdir(apu):
+    apu = os.path.join(apu, 'bin', 'apu-1-config')
+    env['APU'] = apu
+
+  ### we should use --cc, but that is giving some scons error about an implict
+  ### dependency upon gcc. probably ParseConfig doesn't know what to do with
+  ### the apr-1-config output
+  if CALLOUT_OKAY:
+    env.ParseConfig('$APR --cflags --cppflags --ldflags --includes'
+                    ' --link-ld --libs')
+    env.ParseConfig('$APU --ldflags --includes --link-ld --libs')
+
+  ### there is probably a better way to run/capture output.
+  ### env.ParseConfig() may be handy for getting this stuff into the build
+  if CALLOUT_OKAY:
+    apr_libs = os.popen(env.subst('$APR --link-libtool --libs')).read().strip()
+    apu_libs = os.popen(env.subst('$APU --link-libtool --libs')).read().strip()
+  else:
+    apr_libs = ''
+    apu_libs = ''
+  
+  env.Append(CPPPATH='$OPENSSL/include')
+  env.Append(LIBPATH='$OPENSSL/lib')
+
 
 # If build with gssapi, get its information and define SERF_HAVE_GSSAPI
-if gssapi:
+if gssapi and CALLOUT_OKAY:
     env.ParseConfig('$GSSAPI --libs gssapi')
     env.Append(CFLAGS='-DSERF_HAVE_GSSAPI')
-
-### there is probably a better way to run/capture output.
-### env.ParseConfig() may be handy for getting this stuff into the build
-apr_libs = os.popen(env.subst('$APR --link-libtool --libs')).read().strip()
-apu_libs = os.popen(env.subst('$APU --link-libtool --libs')).read().strip()
 
 # On Solaris, the -R values that APR describes never make it into actual
 # RPATH flags. We'll manually map all directories in LIBPATH into new
@@ -223,7 +269,7 @@ pkgconfig = env.Textfile('serf-%d.pc' % (MAJOR,),
 
 env.Default(lib_static, lib_shared, pkgconfig)
 
-if not (env.GetOption('clean') or env.GetOption('help')):
+if CALLOUT_OKAY:
   conf = Configure(env)
 
   ### some configuration stuffs
@@ -264,6 +310,7 @@ TEST_PROGRAMS = [
   'test/serf_request',
   'test/serf_spider',
   'test/test_all',
+  'test/serf_bwtp',
 ]
 
 env.AlwaysBuild(env.Alias('check', TEST_PROGRAMS, 'build/check.sh'))
@@ -282,6 +329,7 @@ for proggie in TEST_PROGRAMS:
         'test/test_util.c',
         'test/test_context.c',
         'test/test_buckets.c',
+        'test/test_auth.c',
         'test/mock_buckets.c',
         'test/test_ssl.c',
         'test/server/test_server.c',

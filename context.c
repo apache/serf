@@ -182,6 +182,7 @@ serf_context_t *serf_context_create_ex(
     ctx->progress_written = 0;
 
     ctx->authn_types = SERF_AUTHN_ALL;
+    ctx->server_authn_info = apr_hash_make(pool);
 
     return ctx;
 }

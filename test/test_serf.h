@@ -45,6 +45,7 @@ CuSuite *getsuite(void);
 CuSuite *test_context(void);
 CuSuite *test_buckets(void);
 CuSuite *test_ssl(void);
+CuSuite *test_auth(void);
 CuSuite *test_mock_bucket(void);
 
 /* Test setup declarations */
@@ -54,6 +55,16 @@ CuSuite *test_mock_bucket(void);
 
 #define CHUNKED_REQUEST(len, body)\
         "GET / HTTP/1.1" CRLF\
+        "Host: localhost:12345" CRLF\
+        "Transfer-Encoding: chunked" CRLF\
+        CRLF\
+        #len CRLF\
+        body CRLF\
+        "0" CRLF\
+        CRLF
+
+#define CHUNKED_REQUEST_URI(uri, len, body)\
+        "GET " uri " HTTP/1.1" CRLF\
         "Host: localhost:12345" CRLF\
         "Transfer-Encoding: chunked" CRLF\
         CRLF\
@@ -92,6 +103,11 @@ typedef struct {
     serv_ctx_t *proxy_ctx;
     apr_sockaddr_t *proxy_addr;
 
+    /* Cache connection params here so it gets user for a test to switch to a
+       new connection. */
+    const char *serv_url;
+    serf_connection_setup_t conn_setup;
+
     /* An extra baton which can be freely used by tests. */
     void *user_baton;
 
@@ -110,6 +126,9 @@ apr_status_t default_https_conn_setup(apr_socket_t *skt,
                                       serf_bucket_t **output_bkt,
                                       void *setup_baton,
                                       apr_pool_t *pool);
+
+apr_status_t use_new_connection(test_baton_t *tb,
+                                apr_pool_t *pool);
 
 apr_status_t test_https_server_setup(test_baton_t **tb_p,
                                      test_server_message_t *message_list,
@@ -147,12 +166,102 @@ apr_status_t test_server_proxy_setup(
                  serf_connection_setup_t conn_setup,
                  apr_pool_t *pool);
 
+apr_status_t test_https_server_proxy_setup(
+                 test_baton_t **tb_p,
+                 test_server_message_t *serv_message_list,
+                 apr_size_t serv_message_count,
+                 test_server_action_t *serv_action_list,
+                 apr_size_t serv_action_count,
+                 test_server_message_t *proxy_message_list,
+                 apr_size_t proxy_message_count,
+                 test_server_action_t *proxy_action_list,
+                 apr_size_t proxy_action_count,
+                 apr_int32_t options,
+                 serf_connection_setup_t conn_setup,
+                 const char *keyfile,
+                 const char **certfiles,
+                 const char *client_cn,
+                 serf_ssl_need_server_cert_t server_cert_cb,
+                 apr_pool_t *pool);
+
 void *test_setup(void *baton);
 void *test_teardown(void *baton);
 void *test_openssl_setup(void *baton);
 void *test_openssl_teardown(void *baton);
 void *test_sectransssl_setup(void *baton);
 void *test_sectransssl_teardown(void *baton);
+
+typedef struct {
+    serf_response_acceptor_t acceptor;
+    void *acceptor_baton;
+
+    serf_response_handler_t handler;
+
+    apr_array_header_t *sent_requests;
+    apr_array_header_t *accepted_requests;
+    apr_array_header_t *handled_requests;
+    int req_id;
+
+    const char *method;
+    const char *path;
+    /* Use this for a raw request message */
+    const char *request;
+    int done;
+
+    test_baton_t *tb;
+} handler_baton_t;
+
+/* These defines are used with the test_baton_t result_flags variable. */
+#define TEST_RESULT_SERVERCERTCB_CALLED      0x0001
+#define TEST_RESULT_SERVERCERTCHAINCB_CALLED 0x0002
+#define TEST_RESULT_CLIENT_CERTCB_CALLED     0x0004
+#define TEST_RESULT_CLIENT_CERTPWCB_CALLED   0x0008
+#define TEST_RESULT_AUTHNCB_CALLED           0x001A
+
+apr_status_t
+test_helper_run_requests_no_check(CuTest *tc, test_baton_t *tb,
+                                  int num_requests,
+                                  handler_baton_t handler_ctx[],
+                                  apr_pool_t *pool);
+void
+test_helper_run_requests_expect_ok(CuTest *tc, test_baton_t *tb,
+                                   int num_requests,
+                                   handler_baton_t handler_ctx[],
+                                   apr_pool_t *pool);
+serf_bucket_t* accept_response(serf_request_t *request,
+                               serf_bucket_t *stream,
+                               void *acceptor_baton,
+                               apr_pool_t *pool);
+apr_status_t setup_request(serf_request_t *request,
+                           void *setup_baton,
+                           serf_bucket_t **req_bkt,
+                           serf_response_acceptor_t *acceptor,
+                           void **acceptor_baton,
+                           serf_response_handler_t *handler,
+                           void **handler_baton,
+                           apr_pool_t *pool);
+apr_status_t handle_response(serf_request_t *request,
+                             serf_bucket_t *response,
+                             void *handler_baton,
+                             apr_pool_t *pool);
+void setup_handler(test_baton_t *tb, handler_baton_t *handler_ctx,
+                   const char *method, const char *path,
+                   int req_id,
+                   serf_response_handler_t handler);
+void create_new_prio_request(test_baton_t *tb,
+                             handler_baton_t *handler_ctx,
+                             const char *method, const char *path,
+                             int req_id);
+void create_new_request(test_baton_t *tb,
+                        handler_baton_t *handler_ctx,
+                        const char *method, const char *path,
+                        int req_id);
+void
+create_new_request_with_resp_hdlr(test_baton_t *tb,
+                                  handler_baton_t *handler_ctx,
+                                  const char *method, const char *path,
+                                  int req_id,
+                                  serf_response_handler_t handler);
 
 /* Mock bucket type and constructor */
 typedef struct {

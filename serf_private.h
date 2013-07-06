@@ -33,6 +33,14 @@
 #define REQUESTED_MAX (~((apr_size_t)0))
 #endif
 
+#ifndef APR_VERSION_AT_LEAST /* Introduced in APR 1.3.0 */
+#define APR_VERSION_AT_LEAST(major,minor,patch)                           \
+    (((major) < APR_MAJOR_VERSION)                                        \
+      || ((major) == APR_MAJOR_VERSION && (minor) < APR_MINOR_VERSION)    \
+      || ((major) == APR_MAJOR_VERSION && (minor) == APR_MINOR_VERSION && \
+               (patch) <= APR_PATCH_VERSION))
+#endif /* APR_VERSION_AT_LEAST */
+
 #define SERF_IO_CLIENT (1)
 #define SERF_IO_CONN (2)
 #define SERF_IO_LISTENER (3)
@@ -83,6 +91,8 @@ struct serf_request_t {
 
     int written;
     int priority;
+    /* 1 if this is a request to setup a SSL tunnel, 0 for normal requests. */
+    int ssltunnel;
 
     /* This baton is currently only used for digest authentication, which
        needs access to the uri of the request in the response handler.
@@ -100,8 +110,6 @@ typedef struct serf_pollset_t {
 } serf_pollset_t;
 
 typedef struct serf__authn_info_t {
-    const char *realm;
-
     const serf__authn_scheme_t *scheme;
 
     void *baton;
@@ -131,8 +139,15 @@ struct serf_context_t {
     apr_off_t progress_read;
     apr_off_t progress_written;
 
-    /* authentication info for this context, shared by all connections. */
-    serf__authn_info_t authn_info;
+    /* authentication info for the servers used in this context. Shared by all
+       connections to the same server.
+       Structure of the hashtable:  key: host url, e.g. https://localhost:80
+                                  value: serf__authn_info_t *
+     */
+    apr_hash_t *server_authn_info;
+
+    /* authentication info for the proxy configured in this context, shared by
+       all connections. */
     serf__authn_info_t proxy_authn_info;
 
     /* List of authn types supported by the client.*/
@@ -165,7 +180,7 @@ typedef enum {
     SERF_CONN_INIT,             /* no socket created yet */
     SERF_CONN_SETUP_SSLTUNNEL,  /* ssl tunnel being setup, no requests sent */
     SERF_CONN_CONNECTED,        /* conn is ready to send requests */
-    SERF_CONN_CLOSING,          /* conn is closing, no more requests,
+    SERF_CONN_CLOSING           /* conn is closing, no more requests,
                                    start a new socket */
 } serf__connection_state_t;
 
@@ -239,8 +254,12 @@ struct serf_connection_t {
     unsigned int max_outstanding_requests;
 
     int hit_eof;
-    /* Host info. */
+
+    /* Host url, path ommitted, syntax: https://svn.apache.org . */
     const char *host_url;
+    
+    /* Exploded host url, path ommitted. Only scheme, hostinfo, hostname &
+       port values are filled in. */
     apr_uri_t host_info;
 
     /* connection and authentication scheme specific information */ 
@@ -252,6 +271,9 @@ struct serf_connection_t {
 
     /* Calculated connection latency. Negative value if latency is unknown. */
     apr_interval_time_t latency;
+
+    /* Needs to read first before we can write again. */
+    int stop_writing;
 };
 
 /*** Internal bucket functions ***/
@@ -300,7 +322,8 @@ typedef apr_status_t
  * connection is opened.
  */
 typedef apr_status_t
-(*serf__init_conn_func_t)(int code,
+(*serf__init_conn_func_t)(const serf__authn_scheme_t *scheme,
+                          int code,
                           serf_connection_t *conn,
                           apr_pool_t *pool);
 
@@ -336,14 +359,13 @@ typedef apr_status_t
  * serf__authn_scheme_t: vtable for an authn scheme provider.
  */
 struct serf__authn_scheme_t {
-    /* The http status code that's handled by this authentication scheme.
-       Normal values are 401 for server authentication and 407 for proxy
-       authentication */
-    int code;
-
-    /* The name of this authentication scheme. This should be a case
-       sensitive match of the string sent in the HTTP authentication header. */
+    /* The name of this authentication scheme. Used in headers of requests and
+       for logging. */
     const char *name;
+
+    /* Key is the name of the authentication scheme in lower case, to
+       facilitate case insensitive matching of the response headers. */
+    const char *key;
 
     /* Internal code used for this authn type. */
     int type;
@@ -374,6 +396,14 @@ apr_status_t serf__handle_auth_response(int *consumed_response,
                                         void *baton,
                                         apr_pool_t *pool);
 
+/* Get the cached serf__authn_info_t object for the target server, or create one
+   when this is the first connection to the server.
+   TODO: The serf__authn_info_t objects are allocated in the context pool, so
+   a context that's used to connect to many different servers using Basic or 
+   Digest authencation will hold on to many objects indefinitely. We should be
+   able to cleanup stale objects from time to time. */
+serf__authn_info_t *serf__get_authn_info_for_server(serf_connection_t *conn);
+
 /* fromt context.c */
 void serf__context_progress_delta(void *progress_baton, apr_off_t read,
                                   apr_off_t written);
@@ -387,6 +417,17 @@ apr_status_t serf__open_connections(serf_context_t *ctx);
 apr_status_t serf__process_connection(serf_connection_t *conn,
                                        apr_int16_t events);
 apr_status_t serf__conn_update_pollset(serf_connection_t *conn);
+serf_request_t *serf__ssltunnel_request_create(serf_connection_t *conn,
+                                               serf_request_setup_t setup,
+                                               void *setup_baton);
+apr_status_t serf__provide_credentials(serf_context_t *ctx,
+                                       char **username,
+                                       char **password,
+                                       serf_request_t *request,
+                                       void *baton,
+                                       int code, const char *authn_type,
+                                       const char *realm,
+                                       apr_pool_t *pool);
 
 /* from ssltunnel.c */
 apr_status_t serf__ssltunnel_connect(serf_connection_t *conn);

@@ -25,243 +25,6 @@
 #include "test_serf.h"
 #include "server/test_server.h"
 
-typedef struct {
-    serf_response_acceptor_t acceptor;
-    void *acceptor_baton;
-
-    serf_response_handler_t handler;
-
-    apr_array_header_t *sent_requests;
-    apr_array_header_t *accepted_requests;
-    apr_array_header_t *handled_requests;
-    int req_id;
-
-    const char *method;
-    const char *path;
-    /* Use this for a raw request message */
-    const char *request;
-    int done;
-
-    test_baton_t *tb;
-} handler_baton_t;
-
-/* These defines are used with the test_baton_t result_flags variable. */
-#define TEST_RESULT_SERVERCERTCB_CALLED      0x0001
-#define TEST_RESULT_SERVERCERTCHAINCB_CALLED 0x0002
-#define TEST_RESULT_CLIENT_CERTCB_CALLED     0x0004
-#define TEST_RESULT_CLIENT_CERTPWCB_CALLED   0x0008
-
-/* Helper function, runs the client and server context loops and validates
-   that no errors were encountered, and all messages were sent and received. */
-static apr_status_t
-test_helper_run_requests_no_check(CuTest *tc, test_baton_t *tb,
-                                  int num_requests,
-                                  handler_baton_t handler_ctx[],
-                                  apr_pool_t *pool)
-{
-    apr_pool_t *iter_pool;
-    int i, done = 0;
-    apr_status_t status;
-
-    apr_pool_create(&iter_pool, pool);
-
-    while (!done)
-    {
-        apr_pool_clear(iter_pool);
-
-        status = run_test_server(tb->serv_ctx, 0, iter_pool);
-        if (!APR_STATUS_IS_TIMEUP(status) &&
-            SERF_BUCKET_READ_ERROR(status))
-            return status;
-
-        status = serf_context_run(tb->context, 0, iter_pool);
-        if (!APR_STATUS_IS_TIMEUP(status) &&
-            SERF_BUCKET_READ_ERROR(status))
-            return status;
-
-        done = 1;
-        for (i = 0; i < num_requests; i++)
-            done &= handler_ctx[i].done;
-    }
-    apr_pool_destroy(iter_pool);
-
-    return APR_SUCCESS;
-}
-
-static void
-test_helper_run_requests_expect_ok(CuTest *tc, test_baton_t *tb,
-                                   int num_requests,
-                                   handler_baton_t handler_ctx[],
-                                   apr_pool_t *pool)
-{
-    apr_status_t status;
-
-    status = test_helper_run_requests_no_check(tc, tb, num_requests,
-                                               handler_ctx, pool);
-    CuAssertIntEquals(tc, APR_SUCCESS, status);
-
-    /* Check that all requests were received */
-    CuAssertIntEquals(tc, num_requests, tb->sent_requests->nelts);
-    CuAssertIntEquals(tc, num_requests, tb->accepted_requests->nelts);
-    CuAssertIntEquals(tc, num_requests, tb->handled_requests->nelts);
-}
-
-static serf_bucket_t* accept_response(serf_request_t *request,
-                                      serf_bucket_t *stream,
-                                      void *acceptor_baton,
-                                      apr_pool_t *pool)
-{
-    serf_bucket_t *c;
-    serf_bucket_alloc_t *bkt_alloc;
-    handler_baton_t *ctx = acceptor_baton;
-
-    /* get the per-request bucket allocator */
-    bkt_alloc = serf_request_get_alloc(request);
-
-    /* Create a barrier so the response doesn't eat us! */
-    c = serf_bucket_barrier_create(stream, bkt_alloc);
-
-    APR_ARRAY_PUSH(ctx->accepted_requests, int) = ctx->req_id;
-
-    return serf_bucket_response_create(c, bkt_alloc);
-}
-
-static apr_status_t setup_request(serf_request_t *request,
-                                  void *setup_baton,
-                                  serf_bucket_t **req_bkt,
-                                  serf_response_acceptor_t *acceptor,
-                                  void **acceptor_baton,
-                                  serf_response_handler_t *handler,
-                                  void **handler_baton,
-                                  apr_pool_t *pool)
-{
-    handler_baton_t *ctx = setup_baton;
-    serf_bucket_t *body_bkt;
-
-    if (ctx->request)
-    {
-        /* Create a raw request bucket. */
-        *req_bkt = serf_bucket_simple_create(ctx->request, strlen(ctx->request),
-                                             NULL, NULL,
-                                             serf_request_get_alloc(request));
-    }
-    else
-    {
-        /* create a simple body text */
-        const char *str = apr_psprintf(pool, "%d", ctx->req_id);
-
-        body_bkt = serf_bucket_simple_create(str, strlen(str), NULL, NULL,
-                                             serf_request_get_alloc(request));
-        *req_bkt =
-            serf_request_bucket_request_create(request,
-                                               ctx->method, ctx->path,
-                                               body_bkt,
-                                               serf_request_get_alloc(request));
-    }
-
-    APR_ARRAY_PUSH(ctx->sent_requests, int) = ctx->req_id;
-
-    *acceptor = ctx->acceptor;
-    *acceptor_baton = ctx;
-    *handler = ctx->handler;
-    *handler_baton = ctx;
-
-    return APR_SUCCESS;
-}
-
-static apr_status_t handle_response(serf_request_t *request,
-                                    serf_bucket_t *response,
-                                    void *handler_baton,
-                                    apr_pool_t *pool)
-{
-    handler_baton_t *ctx = handler_baton;
-
-    if (! response) {
-        serf_connection_request_create(ctx->tb->connection,
-                                       setup_request,
-                                       ctx);
-        return APR_SUCCESS;
-    }
-
-    while (1) {
-        apr_status_t status;
-        const char *data;
-        apr_size_t len;
-
-        status = serf_bucket_read(response, 2048, &data, &len);
-        if (SERF_BUCKET_READ_ERROR(status))
-            return status;
-
-        if (APR_STATUS_IS_EOF(status)) {
-            APR_ARRAY_PUSH(ctx->handled_requests, int) = ctx->req_id;
-            ctx->done = TRUE;
-            return APR_EOF;
-        }
-
-        if (APR_STATUS_IS_EAGAIN(status)) {
-            return status;
-        }
-
-    }
-
-    return APR_SUCCESS;
-}
-
-static void setup_handler(test_baton_t *tb, handler_baton_t *handler_ctx,
-                          const char *method, const char *path,
-                          int req_id,
-                          serf_response_handler_t handler)
-{
-    handler_ctx->method = method;
-    handler_ctx->path = path;
-    handler_ctx->done = FALSE;
-
-    handler_ctx->acceptor = accept_response;
-    handler_ctx->acceptor_baton = NULL;
-    handler_ctx->handler = handler ? handler : handle_response;
-    handler_ctx->req_id = req_id;
-    handler_ctx->accepted_requests = tb->accepted_requests;
-    handler_ctx->sent_requests = tb->sent_requests;
-    handler_ctx->handled_requests = tb->handled_requests;
-    handler_ctx->tb = tb;
-    handler_ctx->request = NULL;
-}
-
-static void create_new_prio_request(test_baton_t *tb,
-                                    handler_baton_t *handler_ctx,
-                                    const char *method, const char *path,
-                                    int req_id)
-{
-    setup_handler(tb, handler_ctx, method, path, req_id, NULL);
-    serf_connection_priority_request_create(tb->connection,
-                                            setup_request,
-                                            handler_ctx);
-}
-
-static void create_new_request(test_baton_t *tb,
-                               handler_baton_t *handler_ctx,
-                               const char *method, const char *path,
-                               int req_id)
-{
-    setup_handler(tb, handler_ctx, method, path, req_id, NULL);
-    serf_connection_request_create(tb->connection,
-                                   setup_request,
-                                   handler_ctx);
-}
-
-static void
-create_new_request_with_resp_hdlr(test_baton_t *tb,
-                                  handler_baton_t *handler_ctx,
-                                  const char *method, const char *path,
-                                  int req_id,
-                                  serf_response_handler_t handler)
-{
-    setup_handler(tb, handler_ctx, method, path, req_id, handler);
-    serf_connection_request_create(tb->connection,
-                                   setup_request,
-                                   handler_ctx);
-}
-
 /* Validate that requests are sent and completed in the order of creation. */
 static void test_serf_connection_request_create(CuTest *tc)
 {
@@ -361,7 +124,7 @@ static void test_serf_connection_priority_request_create(CuTest *tc)
 
 /* Test that serf correctly handles the 'Connection:close' header when the
    server is planning to close the connection. */
-static void test_serf_closed_connection(CuTest *tc)
+static void test_closed_connection(CuTest *tc)
 {
     test_baton_t *tb;
     apr_status_t status;
@@ -459,7 +222,7 @@ static void test_serf_closed_connection(CuTest *tc)
 
 /* Test if serf is sending the request to the proxy, not to the server
    directly. */
-static void test_serf_setup_proxy(CuTest *tc)
+static void test_setup_proxy(CuTest *tc)
 {
     test_baton_t *tb;
     int i;
@@ -822,7 +585,7 @@ static apr_status_t progress_conn_setup(apr_socket_t *skt,
     return APR_SUCCESS;
 }
 
-static void test_serf_progress_callback(CuTest *tc)
+static void test_progress_callback(CuTest *tc)
 {
     test_baton_t *tb;
     apr_status_t status;
@@ -1010,7 +773,7 @@ static apr_status_t handle_response_timeout(
     return APR_SUCCESS;
 }
 
-static void test_serf_request_timeout(CuTest *tc)
+static void test_request_timeout(CuTest *tc)
 {
     test_baton_t *tb;
         apr_status_t status;
@@ -1095,7 +858,7 @@ static const char *create_large_response_message(apr_pool_t *pool)
 }
 
 /* Validate reading a large chunked response. */
-static void test_serf_connection_large_response(CuTest *tc)
+static void test_connection_large_response(CuTest *tc)
 {
     test_baton_t *tb;
     handler_baton_t handler_ctx[1];
@@ -1165,7 +928,7 @@ static const char *create_large_request_message(apr_pool_t *pool)
 }
 
 /* Validate sending a large chunked response. */
-static void test_serf_connection_large_request(CuTest *tc)
+static void test_connection_large_request(CuTest *tc)
 {
     test_baton_t *tb;
     handler_baton_t handler_ctx[1];
@@ -1355,7 +1118,7 @@ ssl_server_cert_cb_reject(void *baton, int failures,
 
 /* Validate that we can connect successfully to an https server. This
    certificate is not trusted, so a cert validation failure is expected. */
-static void test_serf_ssl_handshake(CuTest *tc)
+static void test_ssl_handshake(CuTest *tc)
 {
     test_baton_t *tb;
     handler_baton_t handler_ctx[1];
@@ -1432,7 +1195,7 @@ https_set_root_ca_conn_setup(apr_socket_t *skt,
 
 /* Validate that server certificate validation is ok when we
    explicitly trust our self-signed root ca. */
-static void test_serf_ssl_trust_rootca(CuTest *tc)
+static void test_ssl_trust_rootca(CuTest *tc)
 {
     test_baton_t *tb;
     handler_baton_t handler_ctx[1];
@@ -1467,7 +1230,7 @@ static void test_serf_ssl_trust_rootca(CuTest *tc)
 
 /* Validate that when the application rejects the cert, the context loop
    bails out with an error. */
-static void test_serf_ssl_application_rejects_cert(CuTest *tc)
+static void test_ssl_application_rejects_cert(CuTest *tc)
 {
     test_baton_t *tb;
     handler_baton_t handler_ctx[1];
@@ -1565,7 +1328,7 @@ chain_rootca_callback_conn_setup(apr_socket_t *skt,
 /* Make the server return a partial certificate chain (server cert, CA cert),
    the root CA cert is trusted explicitly in the client. Test the chain
    callback. */
-static void test_serf_ssl_certificate_chain_with_anchor(CuTest *tc)
+static void test_ssl_certificate_chain_with_anchor(CuTest *tc)
 {
     test_baton_t *tb;
     handler_baton_t handler_ctx[1];
@@ -1640,7 +1403,7 @@ chain_callback_conn_setup(apr_socket_t *skt,
 
 /* Make the server return the complete certificate chain (server cert, CA cert
    and root CA cert). Test the chain callback. */
-static void test_serf_ssl_certificate_chain_all_from_server(CuTest *tc)
+static void test_ssl_certificate_chain_all_from_server(CuTest *tc)
 {
     test_baton_t *tb;
     handler_baton_t handler_ctx[1];
@@ -1679,7 +1442,7 @@ static void test_serf_ssl_certificate_chain_all_from_server(CuTest *tc)
 
 /* Validate that the ssl handshake succeeds if no application callbacks
    are set, and the ssl server certificate chains is ok. */
-static void test_serf_ssl_no_servercert_callback_allok(CuTest *tc)
+static void test_ssl_no_servercert_callback_allok(CuTest *tc)
 {
     test_baton_t *tb;
     handler_baton_t handler_ctx[1];
@@ -1714,7 +1477,7 @@ static void test_serf_ssl_no_servercert_callback_allok(CuTest *tc)
 
 /* Validate that the ssl handshake fails if no application callbacks
  are set, and the ssl server certificate chains is NOT ok. */
-static void test_serf_ssl_no_servercert_callback_fail(CuTest *tc)
+static void test_ssl_no_servercert_callback_fail(CuTest *tc)
 {
     test_baton_t *tb;
     handler_baton_t handler_ctx[1];
@@ -1749,9 +1512,9 @@ static void test_serf_ssl_no_servercert_callback_fail(CuTest *tc)
     CuAssertIntEquals(tc, SERF_ERROR_SSL_CERT_FAILED, status);
 }
 
-/* Similar to test_serf_connection_large_response, validate reading a large
+/* Similar to test_connection_large_response, validate reading a large
    chunked response over SSL. */
-static void test_serf_ssl_large_response(CuTest *tc)
+static void test_ssl_large_response(CuTest *tc)
 {
     test_baton_t *tb;
     handler_baton_t handler_ctx[1];
@@ -1788,9 +1551,9 @@ static void test_serf_ssl_large_response(CuTest *tc)
                                        handler_ctx, test_pool);
 }
 
-/* Similar to test_serf_connection_large_request, validate sending a large
+/* Similar to test_connection_large_request, validate sending a large
    chunked request over SSL. */
-static void test_serf_ssl_large_request(CuTest *tc)
+static void test_ssl_large_request(CuTest *tc)
 {
     test_baton_t *tb;
     handler_baton_t handler_ctx[1];
@@ -1883,7 +1646,7 @@ client_cert_conn_setup(apr_socket_t *skt,
     return APR_SUCCESS;
 }
 
-static void test_serf_ssl_client_certificate(CuTest *tc)
+static void test_ssl_client_certificate(CuTest *tc)
 {
     test_baton_t *tb;
     handler_baton_t handler_ctx[1];
@@ -2061,7 +1824,7 @@ static void test_serf_ssl_identity(CuTest *tc)
 
 /* Validate that the expired certificate is reported as failure in the
    callback. */
-static void test_serf_ssl_expired_server_cert(CuTest *tc)
+static void test_ssl_expired_server_cert(CuTest *tc)
 {
     test_baton_t *tb;
     handler_baton_t handler_ctx[1];
@@ -2107,7 +1870,7 @@ static void test_serf_ssl_expired_server_cert(CuTest *tc)
 
 /* Validate that the expired certificate is reported as failure in the
  callback. */
-static void test_serf_ssl_future_server_cert(CuTest *tc)
+static void test_ssl_future_server_cert(CuTest *tc)
 {
     test_baton_t *tb;
     handler_baton_t handler_ctx[1];
@@ -2151,6 +1914,429 @@ static void test_serf_ssl_future_server_cert(CuTest *tc)
                                        test_pool);
 }
 
+
+/* Test if serf is sets up an SSL tunnel to the proxy and doesn't contact the
+ https server directly. */
+static void test_setup_ssltunnel(CuTest *tc)
+{
+    test_baton_t *tb;
+    int i;
+    handler_baton_t handler_ctx[1];
+    const int num_requests = sizeof(handler_ctx)/sizeof(handler_ctx[0]);
+    apr_status_t status;
+
+    /* TODO: issue 83: should be relative uri instead of absolute. */
+    test_server_message_t message_list_server[] = {
+        {"GET / HTTP/1.1" CRLF\
+            "Host: localhost:" SERV_PORT_STR CRLF\
+            "Transfer-Encoding: chunked" CRLF\
+            CRLF\
+            "1" CRLF\
+            "1" CRLF\
+            "0" CRLF\
+            CRLF}
+    };
+    test_server_action_t action_list_server[] = {
+        {SERVER_RESPOND, CHUNKED_EMPTY_RESPONSE},
+    };
+    test_server_message_t message_list_proxy[] = {
+        {"CONNECT localhost:" SERV_PORT_STR " HTTP/1.1" CRLF\
+         "Host: localhost:" SERV_PORT_STR CRLF\
+         CRLF },
+        { NULL }
+    };
+    test_server_action_t action_list_proxy[] = {
+        {SERVER_RESPOND, CHUNKED_EMPTY_RESPONSE},
+        /* Forward the remainder of the data to the server without validation */
+        {PROXY_FORWARD, "https://localhost:" SERV_PORT_STR},
+    };
+
+    apr_pool_t *test_pool = tc->testBaton;
+
+    /* Set up a test context with a server and a proxy. Serf should send a
+       CONNECT request to the server. */
+    status = test_https_server_proxy_setup(&tb,
+                                           /* server messages and actions */
+                                           message_list_server, 1,
+                                           action_list_server, 1,
+                                           /* proxy messages and actions */
+                                           message_list_proxy, 2,
+                                           action_list_proxy, 2,
+                                           0,
+                                           https_set_root_ca_conn_setup,
+                                           "test/server/serfserverkey.pem",
+                                           server_certs,
+                                           NULL, /* no client cert */
+                                           NULL, /* No server cert callback */
+                                           test_pool);
+                                     
+    CuAssertIntEquals(tc, APR_SUCCESS, status);
+
+    create_new_request(tb, &handler_ctx[0], "GET", "/", 1);
+
+    test_helper_run_requests_expect_ok(tc, tb, num_requests,
+                                       handler_ctx, test_pool);
+
+    /* Check that the requests were sent in the order we created them */
+    for (i = 0; i < tb->sent_requests->nelts; i++) {
+        int req_nr = APR_ARRAY_IDX(tb->sent_requests, i, int);
+        CuAssertIntEquals(tc, i + 1, req_nr);
+    }
+
+    /* Check that the requests were received in the order we created them */
+    for (i = 0; i < tb->handled_requests->nelts; i++) {
+        int req_nr = APR_ARRAY_IDX(tb->handled_requests, i, int);
+        CuAssertIntEquals(tc, i + 1, req_nr);
+    }
+}
+
+/* Test error if no creds callback */
+static void test_ssltunnel_no_creds_cb(CuTest *tc)
+{
+    test_baton_t *tb;
+    handler_baton_t handler_ctx[1];
+    const int num_requests = sizeof(handler_ctx)/sizeof(handler_ctx[0]);
+    apr_status_t status;
+
+    test_server_message_t message_list_proxy[] = {
+        {"CONNECT localhost:" SERV_PORT_STR " HTTP/1.1" CRLF\
+            "Host: localhost:" SERV_PORT_STR CRLF\
+            CRLF },
+    };
+    test_server_action_t action_list_proxy[] = {
+        {SERVER_RESPOND, "HTTP/1.1 407 Unauthorized" CRLF
+            "Transfer-Encoding: chunked" CRLF
+            "Proxy-Authenticate: Basic realm=""Test Suite Proxy""" CRLF
+            CRLF
+            "1" CRLF CRLF
+            "0" CRLF CRLF},
+    };
+
+    apr_pool_t *test_pool = tc->testBaton;
+
+    /* Set up a test context with a server and a proxy. Serf should send a
+     CONNECT request to the server. */
+    status = test_https_server_proxy_setup(&tb,
+                                           /* server messages and actions */
+                                           NULL, 0,
+                                           NULL, 0,
+                                           /* proxy messages and actions */
+                                           message_list_proxy, 1,
+                                           action_list_proxy, 1,
+                                           0,
+                                           https_set_root_ca_conn_setup,
+                                           "test/server/serfserverkey.pem",
+                                           server_certs,
+                                           NULL, /* no client cert */
+                                           NULL, /* No server cert callback */
+                                           test_pool);
+    CuAssertIntEquals(tc, APR_SUCCESS, status);
+
+    /* No credentials callback configured. */
+    create_new_request(tb, &handler_ctx[0], "GET", "/", 1);
+
+    status = test_helper_run_requests_no_check(tc, tb, num_requests,
+                                               handler_ctx, test_pool);
+    CuAssertIntEquals(tc, SERF_ERROR_SSLTUNNEL_SETUP_FAILED, status);
+}
+
+static apr_status_t
+ssltunnel_basic_authn_callback(char **username,
+                               char **password,
+                               serf_request_t *request, void *baton,
+                               int code, const char *authn_type,
+                               const char *realm,
+                               apr_pool_t *pool)
+{
+    handler_baton_t *handler_ctx = baton;
+    test_baton_t *tb = handler_ctx->tb;
+
+    serf__log(TEST_VERBOSE, __FILE__, "ssltunnel_basic_authn_callback\n");
+
+    tb->result_flags |= TEST_RESULT_AUTHNCB_CALLED;
+
+    if (strcmp("Basic", authn_type) != 0)
+        return SERF_ERROR_ISSUE_IN_TESTSUITE;
+
+    if (code == 401) {
+        if (strcmp("<https://localhost:12345> Test Suite", realm) != 0)
+            return SERF_ERROR_ISSUE_IN_TESTSUITE;
+
+        *username = "serf";
+        *password = "serftest";
+    }
+    else if (code == 407) {
+        if (strcmp("<http://localhost:23456> Test Suite Proxy", realm) != 0)
+            return SERF_ERROR_ISSUE_IN_TESTSUITE;
+
+        *username = "serfproxy";
+        *password = "serftest";
+    } else
+        return SERF_ERROR_ISSUE_IN_TESTSUITE;
+
+    serf__log(TEST_VERBOSE, __FILE__, "ssltunnel_basic_authn_callback finished successfully.\n");
+
+    return APR_SUCCESS;
+}
+
+/* Test if serf can successfully authenticate to a proxy used for an ssl
+   tunnel. Retry the authentication a few times to test requeueing of the 
+   CONNECT request. */
+static void ssltunnel_basic_auth(CuTest *tc, const char *resp_hdrs)
+{
+    test_baton_t *tb;
+    handler_baton_t handler_ctx[1];
+    int num_requests_sent, num_requests_recvd;
+    test_server_message_t message_list_server[2];
+    test_server_action_t action_list_server[2];
+    apr_status_t status;
+
+    test_server_message_t message_list_proxy[] = {
+        {"CONNECT localhost:" SERV_PORT_STR " HTTP/1.1" CRLF
+            "Host: localhost:" SERV_PORT_STR CRLF
+            CRLF },
+        {"CONNECT localhost:" SERV_PORT_STR " HTTP/1.1" CRLF
+            "Host: localhost:" SERV_PORT_STR CRLF
+            "Proxy-Authorization: Basic c2VyZnByb3h5OnNlcmZ0ZXN0" CRLF
+            CRLF },
+        {"CONNECT localhost:" SERV_PORT_STR " HTTP/1.1" CRLF
+            "Host: localhost:" SERV_PORT_STR CRLF
+            "Proxy-Authorization: Basic c2VyZnByb3h5OnNlcmZ0ZXN0" CRLF
+            CRLF },
+        {"CONNECT localhost:" SERV_PORT_STR " HTTP/1.1" CRLF
+            "Host: localhost:" SERV_PORT_STR CRLF
+            "Proxy-Authorization: Basic c2VyZnByb3h5OnNlcmZ0ZXN0" CRLF
+            CRLF },
+        {"CONNECT localhost:" SERV_PORT_STR " HTTP/1.1" CRLF
+            "Host: localhost:" SERV_PORT_STR CRLF
+            "Proxy-Authorization: Basic c2VyZnByb3h5OnNlcmZ0ZXN0" CRLF
+            CRLF },
+    };
+    test_server_action_t action_list_proxy[] = {
+        {SERVER_RESPOND, "HTTP/1.1 407 Unauthorized" CRLF
+            "Transfer-Encoding: chunked" CRLF
+            "Proxy-Authenticate: Basic realm=""Test Suite Proxy""" CRLF
+            CRLF
+            "1" CRLF CRLF
+            "0" CRLF CRLF},
+        {SERVER_RESPOND, "HTTP/1.1 407 Unauthorized" CRLF
+            "Transfer-Encoding: chunked" CRLF
+            "Proxy-Authenticate: Basic realm=""Test Suite Proxy""" CRLF
+            CRLF
+            "1" CRLF CRLF
+            "0" CRLF CRLF},
+        {SERVER_RESPOND, "HTTP/1.1 407 Unauthorized" CRLF
+            "Transfer-Encoding: chunked" CRLF
+            "Proxy-Authenticate: Basic realm=""Test Suite Proxy""" CRLF
+            CRLF
+            "1" CRLF CRLF
+            "0" CRLF CRLF},
+        {SERVER_RESPOND, CHUNKED_EMPTY_RESPONSE},
+        /* Forward the remainder of the data to the server without validation */
+        {PROXY_FORWARD, "https://localhost:" SERV_PORT_STR},
+        /* If the client or the server closes the connection, stop forwarding.*/
+        {SERVER_RESPOND, CHUNKED_EMPTY_RESPONSE},
+        /* Again after disconnect. */
+        {PROXY_FORWARD, "https://localhost:" SERV_PORT_STR},
+    };
+
+    apr_pool_t *test_pool = tc->testBaton;
+
+    /* Make the server also require Basic authentication */
+    message_list_server[0].text =
+        "GET / HTTP/1.1" CRLF
+        "Host: localhost:" SERV_PORT_STR CRLF
+        "Transfer-Encoding: chunked" CRLF
+        CRLF
+        "1" CRLF
+        "1" CRLF
+        "0" CRLF
+        CRLF;
+    message_list_server[1].text =
+        "GET / HTTP/1.1" CRLF
+        "Host: localhost:" SERV_PORT_STR CRLF
+        "Authorization: Basic c2VyZjpzZXJmdGVzdA==" CRLF
+        "Transfer-Encoding: chunked" CRLF
+        CRLF
+        "1" CRLF
+        "1" CRLF
+        "0" CRLF
+        CRLF;
+
+    action_list_server[0].kind = SERVER_RESPOND;
+    action_list_server[0].text = apr_psprintf(test_pool,
+        "HTTP/1.1 401 Unauthorized" CRLF
+        "Transfer-Encoding: chunked" CRLF
+        "WWW-Authenticate: Basic realm=""Test Suite""" CRLF
+        "%s"
+        CRLF
+        "1" CRLF CRLF
+        "0" CRLF CRLF, resp_hdrs);
+    action_list_server[1].kind = SERVER_RESPOND;
+    action_list_server[1].text = CHUNKED_EMPTY_RESPONSE;
+
+    /* Set up a test context with a server and a proxy. Serf should send a
+       CONNECT request to the server. */
+    status = test_https_server_proxy_setup(&tb,
+                                           /* server messages and actions */
+                                           message_list_server, 2,
+                                           action_list_server, 2,
+                                           /* proxy messages and actions */
+                                           message_list_proxy, 5,
+                                           action_list_proxy, 7,
+                                           0,
+                                           https_set_root_ca_conn_setup,
+                                           "test/server/serfserverkey.pem",
+                                           server_certs,
+                                           NULL, /* no client cert */
+                                           NULL, /* No server cert callback */
+                                           test_pool);
+
+    CuAssertIntEquals(tc, APR_SUCCESS, status);
+
+    serf_config_authn_types(tb->context, SERF_AUTHN_BASIC);
+    serf_config_credentials_callback(tb->context, ssltunnel_basic_authn_callback);
+
+    create_new_request(tb, &handler_ctx[0], "GET", "/", 1);
+
+    /* Test that a request is retried and authentication headers are set
+     correctly. */
+    num_requests_sent = 1;
+    num_requests_recvd = 2;
+
+    status = test_helper_run_requests_no_check(tc, tb, num_requests_sent,
+                                               handler_ctx, test_pool);
+    CuAssertIntEquals(tc, APR_SUCCESS, status);
+    CuAssertIntEquals(tc, num_requests_recvd, tb->sent_requests->nelts);
+    CuAssertIntEquals(tc, num_requests_recvd, tb->accepted_requests->nelts);
+    CuAssertIntEquals(tc, num_requests_sent, tb->handled_requests->nelts);
+
+    CuAssertTrue(tc, tb->result_flags & TEST_RESULT_AUTHNCB_CALLED);
+}
+
+static void test_ssltunnel_basic_auth(CuTest *tc)
+{
+    ssltunnel_basic_auth(tc, "");
+}
+
+static void test_ssltunnel_basic_auth_keepalive_off(CuTest *tc)
+{
+    ssltunnel_basic_auth(tc, "Connection: close" CRLF);
+}
+
+static apr_status_t
+proxy_digest_authn_callback(char **username,
+                            char **password,
+                            serf_request_t *request, void *baton,
+                            int code, const char *authn_type,
+                            const char *realm,
+                            apr_pool_t *pool)
+{
+    handler_baton_t *handler_ctx = baton;
+    test_baton_t *tb = handler_ctx->tb;
+
+    tb->result_flags |= TEST_RESULT_AUTHNCB_CALLED;
+
+    if (code != 407)
+        return SERF_ERROR_ISSUE_IN_TESTSUITE;
+    if (strcmp("Digest", authn_type) != 0)
+        return SERF_ERROR_ISSUE_IN_TESTSUITE;
+    if (strcmp("<http://localhost:23456> Test Suite Proxy", realm) != 0)
+        return SERF_ERROR_ISSUE_IN_TESTSUITE;
+
+    *username = "serf";
+    *password = "serftest";
+
+    return APR_SUCCESS;
+}
+
+/* Test if serf can successfully authenticate to a proxy used for an ssl
+   tunnel. */
+static void test_ssltunnel_digest_auth(CuTest *tc)
+{
+    test_baton_t *tb;
+    handler_baton_t handler_ctx[1];
+    const int num_requests = sizeof(handler_ctx)/sizeof(handler_ctx[0]);
+    apr_status_t status;
+
+    test_server_message_t message_list_server[] = {
+        {"GET /test/index.html HTTP/1.1" CRLF\
+            "Host: localhost:" SERV_PORT_STR CRLF\
+            "Transfer-Encoding: chunked" CRLF\
+            CRLF\
+            "1" CRLF\
+            "1" CRLF\
+            "0" CRLF\
+            CRLF}
+    };
+    test_server_action_t action_list_server[] = {
+        {SERVER_RESPOND, CHUNKED_EMPTY_RESPONSE},
+    };
+
+#define CONNECT_REQ\
+    "CONNECT localhost:" SERV_PORT_STR " HTTP/1.1" CRLF\
+    "Host: localhost:" SERV_PORT_STR CRLF
+
+    test_server_message_t message_list_proxy[] = {
+        { CONNECT_REQ CRLF },
+        { CONNECT_REQ
+            "Proxy-Authorization: Digest realm=\"Test Suite Proxy\", "
+            "username=\"serf\", "
+            "nonce=\"ABCDEF1234567890\", uri=\"localhost:" SERV_PORT_STR "\", "
+            "response=\"15b1841822273b0fd44d2f6457f64213\", opaque=\"myopaque\", "
+            "algorithm=\"MD5\"" CRLF
+          CRLF },
+    };
+    /* Add a Basic header before Digest header, to test that serf uses the most
+       secure authentication scheme first, instead of following the order of
+       the headers. */
+    test_server_action_t action_list_proxy[] = {
+        {SERVER_RESPOND, "HTTP/1.1 407 Unauthorized" CRLF
+            "Transfer-Encoding: chunked" CRLF
+            "Proxy-Authenticate: Basic c2VyZjpzZXJmdGVzdA==" CRLF
+            "Proxy-Authenticate: NonExistent blablablabla" CRLF
+            "Proxy-Authenticate: Digest realm=\"Test Suite Proxy\","
+            "nonce=\"ABCDEF1234567890\",opaque=\"myopaque\","
+            "algorithm=\"MD5\",qop-options=\"auth\"" CRLF
+            CRLF
+            "1" CRLF CRLF
+            "0" CRLF CRLF},
+        {SERVER_RESPOND, CHUNKED_EMPTY_RESPONSE},
+        /* Forward the remainder of the data to the server without validation */
+        {PROXY_FORWARD, "https://localhost:" SERV_PORT_STR},
+    };
+
+    apr_pool_t *test_pool = tc->testBaton;
+
+    /* Set up a test context with a server and a proxy. Serf should send a
+       CONNECT request to the server. */
+    status = test_https_server_proxy_setup(&tb,
+                                           /* server messages and actions */
+                                           message_list_server, 1,
+                                           action_list_server, 1,
+                                           /* proxy messages and actions */
+                                           message_list_proxy, 2,
+                                           action_list_proxy, 3,
+                                           0,
+                                           https_set_root_ca_conn_setup,
+                                           "test/server/serfserverkey.pem",
+                                           server_certs,
+                                           NULL, /* no client cert */
+                                           NULL, /* No server cert callback */
+                                           test_pool);
+
+    CuAssertIntEquals(tc, APR_SUCCESS, status);
+
+    serf_config_authn_types(tb->context, SERF_AUTHN_BASIC | SERF_AUTHN_DIGEST);
+    serf_config_credentials_callback(tb->context, proxy_digest_authn_callback);
+
+    create_new_request(tb, &handler_ctx[0], "GET", "/test/index.html", 1);
+    test_helper_run_requests_expect_ok(tc, tb, num_requests,
+                                       handler_ctx, test_pool);
+
+    CuAssertTrue(tc, tb->result_flags & TEST_RESULT_AUTHNCB_CALLED);
+}
+
 /*****************************************************************************/
 CuSuite *test_context(void)
 {
@@ -2161,14 +2347,31 @@ CuSuite *test_context(void)
 
     SUITE_ADD_TEST(suite, test_serf_connection_request_create);
     SUITE_ADD_TEST(suite, test_serf_connection_priority_request_create);
-    SUITE_ADD_TEST(suite, test_serf_closed_connection);
-    SUITE_ADD_TEST(suite, test_serf_setup_proxy);
+    SUITE_ADD_TEST(suite, test_closed_connection);
+    SUITE_ADD_TEST(suite, test_setup_proxy);
     SUITE_ADD_TEST(suite, test_keepalive_limit_one_by_one);
     SUITE_ADD_TEST(suite, test_keepalive_limit_one_by_one_and_burst);
-    SUITE_ADD_TEST(suite, test_serf_progress_callback);
-    SUITE_ADD_TEST(suite, test_serf_request_timeout);
-    SUITE_ADD_TEST(suite, test_serf_connection_large_response);
-    SUITE_ADD_TEST(suite, test_serf_connection_large_request);
+    SUITE_ADD_TEST(suite, test_progress_callback);
+    SUITE_ADD_TEST(suite, test_request_timeout);
+    SUITE_ADD_TEST(suite, test_connection_large_response);
+    SUITE_ADD_TEST(suite, test_connection_large_request);
+    SUITE_ADD_TEST(suite, test_ssl_handshake);
+    SUITE_ADD_TEST(suite, test_ssl_trust_rootca);
+    SUITE_ADD_TEST(suite, test_ssl_application_rejects_cert);
+    SUITE_ADD_TEST(suite, test_ssl_certificate_chain_with_anchor);
+    SUITE_ADD_TEST(suite, test_ssl_certificate_chain_all_from_server);
+    SUITE_ADD_TEST(suite, test_ssl_no_servercert_callback_allok);
+    SUITE_ADD_TEST(suite, test_ssl_no_servercert_callback_fail);
+    SUITE_ADD_TEST(suite, test_ssl_large_response);
+    SUITE_ADD_TEST(suite, test_ssl_large_request);
+    SUITE_ADD_TEST(suite, test_ssl_client_certificate);
+    SUITE_ADD_TEST(suite, test_ssl_expired_server_cert);
+    SUITE_ADD_TEST(suite, test_ssl_future_server_cert);
+    SUITE_ADD_TEST(suite, test_setup_ssltunnel);
+    SUITE_ADD_TEST(suite, test_ssltunnel_no_creds_cb);
+    SUITE_ADD_TEST(suite, test_ssltunnel_basic_auth);
+    SUITE_ADD_TEST(suite, test_ssltunnel_basic_auth_keepalive_off);
+    SUITE_ADD_TEST(suite, test_ssltunnel_digest_auth);
 
 #ifdef SERF_HAVE_OPENSSL
     openssl_suite = CuSuiteNew();

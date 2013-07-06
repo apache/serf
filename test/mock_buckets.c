@@ -221,7 +221,7 @@ static void test_basic_mock_bucket(CuTest *tc)
         apr_status_t status;
         const char *expected = "HTTP/1.1 200 OK" CRLF;
         mockbkt_action actions[]= {
-            { 1, expected, APR_EOF },
+            { 1, "HTTP/1.1 200 OK" CRLF, APR_EOF },
         };
         mock_bkt = serf_bucket_mock_create(actions, 1, alloc);
         do

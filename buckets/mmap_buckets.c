@@ -107,15 +107,23 @@ static apr_status_t serf_mmap_peek(serf_bucket_t *bucket,
     return APR_ENOTIMPL;
 }
 
+static apr_uint64_t serf_mmap_get_remaining(serf_bucket_t *bucket)
+{
+    mmap_context_t *ctx = bucket->data;
+    return ctx->remaining;
+}
+
 const serf_bucket_type_t serf_bucket_type_mmap = {
     "MMAP",
     serf_mmap_read,
     serf_mmap_readline,
     serf_default_read_iovec,
     serf_default_read_for_sendfile,
-    serf_default_read_bucket,
+    serf_buckets_are_v2,
     serf_mmap_peek,
     serf_default_destroy_and_data,
+    serf_default_read_bucket,
+    serf_mmap_get_remaining,
 };
 
 #else /* !APR_HAS_MMAP */

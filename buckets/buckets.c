@@ -189,6 +189,12 @@ void serf_default_destroy_and_data(serf_bucket_t *bucket)
 }
 
 
+serf_bucket_t * serf_buckets_are_v2(serf_bucket_t *bucket,
+                                    const serf_bucket_type_t *type)
+{
+    return bucket->type->read_bucket_v2(bucket, type);
+}
+
 /* ==================================================================== */
 
 

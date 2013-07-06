@@ -25,11 +25,15 @@
 
 #include "serf.h"
 
+/* Add Connection: close header to each request. */
+/* #define CONNECTION_CLOSE_HDR */
+
 typedef struct {
     const char *hostinfo;
     int using_ssl;
     serf_ssl_context_t *ssl_ctx;
     serf_bucket_alloc_t *bkt_alloc;
+    const char *session_filename;
 } app_baton_t;
 
 static void closed_connection(serf_connection_t *conn,
@@ -37,6 +41,10 @@ static void closed_connection(serf_connection_t *conn,
                               apr_status_t why,
                               apr_pool_t *pool)
 {
+    app_baton_t *ctx = closed_baton;
+
+    ctx->ssl_ctx = NULL;
+
     if (why) {
         abort();
     }
@@ -135,6 +143,67 @@ static apr_status_t print_certs(void *data, int failures, int error_depth,
     return APR_SUCCESS;
 }
 
+static apr_status_t
+new_ssl_session(const serf_ssl_session_t *session,
+                void *baton,
+                apr_pool_t *pool)
+{
+    void *data;
+    apr_size_t len;
+    apr_status_t status;
+    apr_file_t *file;
+    app_baton_t *ctx = baton;
+
+    if (ctx->session_filename) {
+        status = serf_ssl_session_export(&data, &len, session, pool);
+
+        if (status) {
+            return status;
+        }
+
+        status = apr_file_open(&file, ctx->session_filename,
+                               APR_WRITE|APR_CREATE, APR_OS_DEFAULT, pool);
+        if (status) {
+            return status;
+        }
+
+        apr_file_write_full(file, data, len, NULL);
+        apr_file_close(file);
+
+        fprintf(stderr, "Saved SSL session to '%s'\n", ctx->session_filename);
+    }
+
+    return APR_SUCCESS;
+}
+
+static apr_status_t read_ssl_session(const serf_ssl_session_t **session,
+                                     const char *filename,
+                                     apr_pool_t *pool)
+{
+    apr_status_t status;
+    char buf[32*1014];
+    apr_file_t *file;
+    apr_size_t len;
+
+    status = apr_file_open(&file, filename, APR_READ, APR_OS_DEFAULT, pool);
+    if (status) {
+        return status;
+    }
+
+    status  = apr_file_read_full(file, buf, sizeof(buf), &len);
+
+    /* We should reach EOF. */
+    if (status == APR_EOF) {
+        status = serf_ssl_session_import(session, buf, len, pool);
+    } else {
+        status = APR_EGENERAL;
+    }
+
+    apr_file_close(file);
+
+    return status;
+}
+
 static apr_status_t conn_setup(apr_socket_t *skt,
                                 serf_bucket_t **input_bkt,
                                 serf_bucket_t **output_bkt,
@@ -154,6 +223,23 @@ static apr_status_t conn_setup(apr_socket_t *skt,
                                                 ignore_all_cert_errors, 
                                                 print_certs, NULL);
         serf_ssl_set_hostname(ctx->ssl_ctx, ctx->hostinfo);
+
+        if (ctx->session_filename) {
+            serf_ssl_session_t *session;
+            apr_status_t status;
+
+            serf_ssl_new_session_callback_set(ctx->ssl_ctx, new_ssl_session, ctx);
+            status = read_ssl_session(&session, ctx->session_filename, pool);
+            if (status == APR_SUCCESS) {
+                fprintf(stderr, "Using SSL session from '%s'\n",
+                        ctx->session_filename);
+                serf_ssl_resume_session(ctx->ssl_ctx, session, pool);
+            }
+            else {
+                fprintf(stderr, "Cannot read SSL session from '%s': %d\n",
+                        ctx->session_filename, status);
+            }
+        }
 
         *output_bkt = serf_bucket_ssl_encrypt_create(*output_bkt, ctx->ssl_ctx,
                                                     ctx->bkt_alloc);
@@ -199,7 +285,9 @@ typedef struct {
     const char *method;
     const char *path;
     const char *req_body_path;
-    const char *authn;
+    const char *username;
+    const char *password;
+    int auth_attempts;
 } handler_baton_t;
 
 /* Kludges for APR 0.9 support. */
@@ -208,6 +296,61 @@ typedef struct {
 #define apr_atomic_dec32 apr_atomic_dec
 #define apr_atomic_read32 apr_atomic_read
 #endif
+
+
+static apr_status_t setup_request(serf_request_t *request,
+                                  void *setup_baton,
+                                  serf_bucket_t **req_bkt,
+                                  serf_response_acceptor_t *acceptor,
+                                  void **acceptor_baton,
+                                  serf_response_handler_t *handler,
+                                  void **handler_baton,
+                                  apr_pool_t *pool)
+{
+    handler_baton_t *ctx = setup_baton;
+    serf_bucket_t *hdrs_bkt;
+    serf_bucket_t *body_bkt;
+
+    if (ctx->req_body_path) {
+        apr_file_t *file;
+        apr_status_t status;
+
+        status = apr_file_open(&file, ctx->req_body_path, APR_READ,
+                               APR_OS_DEFAULT, pool);
+
+        if (status) {
+            printf("Error opening file (%s)\n", ctx->req_body_path);
+            return status;
+        }
+
+        body_bkt = serf_bucket_file_create(file,
+                                           serf_request_get_alloc(request));
+    }
+    else {
+        body_bkt = NULL;
+    }
+
+    *req_bkt = serf_request_bucket_request_create(request, ctx->method,
+                                                  ctx->path, body_bkt,
+                                                  serf_request_get_alloc(request));
+
+    hdrs_bkt = serf_bucket_request_get_headers(*req_bkt);
+
+    serf_bucket_headers_setn(hdrs_bkt, "User-Agent",
+                             "Serf/" SERF_VERSION_STRING);
+    /* Shouldn't serf do this for us? */
+    serf_bucket_headers_setn(hdrs_bkt, "Accept-Encoding", "gzip");
+#ifdef CONNECTION_CLOSE_HDR
+    serf_bucket_headers_setn(hdrs_bkt, "Connection", "close");
+#endif
+
+    *acceptor = ctx->acceptor;
+    *acceptor_baton = ctx->acceptor_baton;
+    *handler = ctx->handler;
+    *handler_baton = ctx;
+    
+    return APR_SUCCESS;
+}
 
 static apr_status_t handle_response(serf_request_t *request,
                                     serf_bucket_t *response,
@@ -219,9 +362,14 @@ static apr_status_t handle_response(serf_request_t *request,
     handler_baton_t *ctx = handler_baton;
 
     if (!response) {
-        /* A NULL response can come back if the request failed completely */
-        return APR_EGENERAL;
+        /* A NULL response probably means that the connection was closed while
+           this request was already written. Just requeue it. */
+        serf_connection_t *conn = serf_request_get_conn(request);
+
+        serf_connection_request_create(conn, setup_request, handler_baton);
+        return APR_SUCCESS;
     }
+
     status = serf_bucket_response_status(response, &sl);
     if (status) {
         return status;
@@ -276,59 +424,28 @@ static apr_status_t handle_response(serf_request_t *request,
     /* NOTREACHED */
 }
 
-static apr_status_t setup_request(serf_request_t *request,
-                                  void *setup_baton,
-                                  serf_bucket_t **req_bkt,
-                                  serf_response_acceptor_t *acceptor,
-                                  void **acceptor_baton,
-                                  serf_response_handler_t *handler,
-                                  void **handler_baton,
-                                  apr_pool_t *pool)
+static apr_status_t
+credentials_callback(char **username,
+                     char **password,
+                     serf_request_t *request, void *baton,
+                     int code, const char *authn_type,
+                     const char *realm,
+                     apr_pool_t *pool)
 {
-    handler_baton_t *ctx = setup_baton;
-    serf_bucket_t *hdrs_bkt;
-    serf_bucket_t *body_bkt;
+    handler_baton_t *ctx = baton;
 
-    if (ctx->req_body_path) {
-        apr_file_t *file;
-        apr_status_t status;
-
-        status = apr_file_open(&file, ctx->req_body_path, APR_READ,
-                               APR_OS_DEFAULT, pool);
-
-        if (status) {
-            printf("Error opening file (%s)\n", ctx->req_body_path);
-            return status;
-        }
-
-        body_bkt = serf_bucket_file_create(file,
-                                           serf_request_get_alloc(request));
+    if (ctx->auth_attempts > 0)
+    {
+        return SERF_ERROR_AUTHN_FAILED;
     }
-    else {
-        body_bkt = NULL;
+    else
+    {
+        *username = ctx->username;
+        *password = ctx->password;
+        ctx->auth_attempts++;
+
+        return APR_SUCCESS;
     }
-
-    *req_bkt = serf_request_bucket_request_create(request, ctx->method,
-                                                  ctx->path, body_bkt,
-                                                  serf_request_get_alloc(request));
-
-    hdrs_bkt = serf_bucket_request_get_headers(*req_bkt);
-
-    serf_bucket_headers_setn(hdrs_bkt, "User-Agent",
-                             "Serf/" SERF_VERSION_STRING);
-    /* Shouldn't serf do this for us? */
-    serf_bucket_headers_setn(hdrs_bkt, "Accept-Encoding", "gzip");
-
-    if (ctx->authn != NULL) {
-        serf_bucket_headers_setn(hdrs_bkt, "Authorization", ctx->authn);
-    }
-
-    *acceptor = ctx->acceptor;
-    *acceptor_baton = ctx->acceptor_baton;
-    *handler = ctx->handler;
-    *handler_baton = ctx;
-
-    return APR_SUCCESS;
 }
 
 static void print_usage(apr_pool_t *pool)
@@ -339,10 +456,12 @@ static void print_usage(apr_pool_t *pool)
     puts("-H\tPrint response headers");
     puts("-n <count> Fetch URL <count> times");
     puts("-x <count> Number of maximum outstanding requests inflight");
-    puts("-a <user:password> Present Basic authentication credentials");
+    puts("-U <user> Username for Basic/Digest authentication");
+    puts("-P <password> Password for Basic/Digest authentication");
     puts("-m <method> Use the <method> HTTP Method");
     puts("-f <file> Use the <file> as the request body");
     puts("-p <hostname:port> Use the <host:port> as proxy server");
+    puts("-s <filename> Read and write SSL session to specified file");
 }
 
 int main(int argc, const char **argv)
@@ -360,7 +479,8 @@ int main(int argc, const char **argv)
     int count, inflight;
     int i;
     int print_headers;
-    char *authn = NULL;
+    char *username = NULL;
+    char *password = "";
     apr_getopt_t *opt;
     char opt_c;
     const char *opt_arg;
@@ -378,20 +498,19 @@ int main(int argc, const char **argv)
     method = "GET";
     /* Do not print headers by default. */
     print_headers = 0;
+    app_ctx.session_filename = NULL;
 
     apr_getopt_init(&opt, pool, argc, argv);
 
-    while ((status = apr_getopt(opt, "a:f:hHm:n:vp:x:", &opt_c, &opt_arg)) ==
+    while ((status = apr_getopt(opt, "U:P:f:hHm:n:vp:x:s:", &opt_c, &opt_arg)) ==
            APR_SUCCESS) {
-        int srclen, enclen;
 
         switch (opt_c) {
-        case 'a':
-            srclen = strlen(opt_arg);
-            enclen = apr_base64_encode_len(srclen);
-            authn = apr_palloc(pool, enclen + 6);
-            strcpy(authn, "Basic ");
-            (void) apr_base64_encode(&authn[6], opt_arg, srclen);
+        case 'U':
+            username = opt_arg;
+            break;
+        case 'P':
+            password = opt_arg;
             break;
         case 'f':
             req_body_path = opt_arg;
@@ -430,6 +549,8 @@ int main(int argc, const char **argv)
         case 'v':
             puts("Serf version: " SERF_VERSION_STRING);
             exit(0);
+        case 's':
+            app_ctx.session_filename = opt_arg;
         default:
             break;
         }
@@ -503,6 +624,17 @@ int main(int argc, const char **argv)
         serf_config_proxy(context, proxy_address);
     }
 
+    if (username)
+    {
+        serf_config_authn_types(context, SERF_AUTHN_ALL);
+    }
+    else
+    {
+        serf_config_authn_types(context, SERF_AUTHN_NTLM | SERF_AUTHN_NEGOTIATE);
+    }
+
+    serf_config_credentials_callback(context, credentials_callback);
+
     /* ### Connection or Context should have an allocator? */
     app_ctx.bkt_alloc = serf_bucket_allocator_create(pool, NULL, NULL);
     app_ctx.ssl_ctx = NULL;
@@ -519,12 +651,19 @@ int main(int argc, const char **argv)
 
     handler_ctx.completed_requests = 0;
     handler_ctx.print_headers = print_headers;
+
+#if APR_VERSION_AT_LEAST(1, 3, 0)
+    apr_file_open_flags_stdout(&handler_ctx.output_file, APR_BUFFERED, pool);
+#else
     apr_file_open_stdout(&handler_ctx.output_file, pool);
+#endif
 
     handler_ctx.host = url.hostinfo;
     handler_ctx.method = method;
     handler_ctx.path = url.path;
-    handler_ctx.authn = authn;
+    handler_ctx.username = username;
+    handler_ctx.password = password;
+    handler_ctx.auth_attempts = 0;
 
     handler_ctx.req_body_path = req_body_path;
 
@@ -545,9 +684,13 @@ int main(int argc, const char **argv)
             continue;
         if (status) {
             char buf[200];
+            const char *err_string;
+            err_string = serf_error_string(status);
+            if (!err_string) {
+                err_string = apr_strerror(status, buf, sizeof(buf));
+            }
 
-            printf("Error running context: (%d) %s\n", status,
-                   apr_strerror(status, buf, sizeof(buf)));
+            printf("Error running context: (%d) %s\n", status, err_string);
             apr_pool_destroy(pool);
             exit(1);
         }
@@ -557,6 +700,8 @@ int main(int argc, const char **argv)
         /* Debugging purposes only! */
         serf_debug__closed_conn(app_ctx.bkt_alloc);
     }
+
+    apr_file_close(handler_ctx.output_file);
 
     serf_connection_close(connection);
 
