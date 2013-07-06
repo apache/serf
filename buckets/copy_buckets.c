@@ -57,8 +57,6 @@ static apr_status_t serf_copy_read(serf_bucket_t *bucket,
                                    apr_size_t requested,
                                    const char **data, apr_size_t *len)
 {
-    copy_context_t *ctx = bucket->data;
-
     /* ### peek to see how much is easily available. if it is MIN_SIZE,
        ### then a read() would (likely) get that same amount. otherwise,
        ### we should read an iovec and concatenate the result.  */
