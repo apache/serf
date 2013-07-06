@@ -572,7 +572,7 @@ apr_status_t serf_ssl_session_import(const serf_ssl_session_t **session,
  * Callback to notify when new SSL session is negotiated.
  */
 typedef apr_status_t (*serf_ssl_new_session_t)(
-    serf_ssl_session_t *ssl_session,
+    const serf_ssl_session_t *ssl_session,
     void *baton,
     apr_pool_t *pool);
 
