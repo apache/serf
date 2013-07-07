@@ -634,14 +634,16 @@ void serf_ssl_server_cert_chain_callback_set(
 typedef struct serf_ssl_session_t serf_ssl_session_t;
 
 /* Exports @a session to continous memory block. */
-apr_status_t serf_ssl_session_export(void **data,
+apr_status_t serf_ssl_session_export(serf_ssl_context_t *ssl_ctx,
+                                     void **data,
                                      apr_size_t *len,
                                      const serf_ssl_session_t *session,
                                      apr_pool_t *pool);
 
 /* Restores previously saved session from continuous memory block @a data with
  * @a len length. */
-apr_status_t serf_ssl_session_import(const serf_ssl_session_t **session,
+apr_status_t serf_ssl_session_import(serf_ssl_context_t *ssl_ctx,
+                                     const serf_ssl_session_t **session,
                                      void *data,
                                      apr_size_t len,
                                      apr_pool_t *pool);

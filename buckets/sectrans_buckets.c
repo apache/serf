@@ -2447,6 +2447,10 @@ const serf_ssl_bucket_type_t serf_ssl_bucket_type_securetransport = {
     serf__sectrans_cert_certificate,
     serf__sectrans_cert_export,
     serf__sectrans_use_compression,
+    NULL,
+    NULL,
+    NULL,
+    NULL,
 };
 
 #else

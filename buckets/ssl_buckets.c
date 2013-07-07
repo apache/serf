@@ -347,6 +347,41 @@ apr_status_t serf_ssl_load_cert_file(serf_ssl_certificate_t **cert,
     return type->load_CA_cert_from_file(cert, file_path, pool);
 }
 
+/* SSL Session Resumption API's */
+void serf_ssl_new_session_callback_set(serf_ssl_context_t *ssl_ctx,
+                                       serf_ssl_new_session_t new_session_cb,
+                                       void *baton)
+{
+    ssl_ctx->type->new_session_callback_set(ssl_ctx->impl_ctx,
+                                            new_session_cb, baton);
+}
+
+apr_status_t serf_ssl_resume_session(serf_ssl_context_t *ssl_ctx,
+                                     const serf_ssl_session_t *ssl_session,
+                                     apr_pool_t *pool)
+{
+    return ssl_ctx->type->resume_session(ssl_ctx->impl_ctx, ssl_session,
+                                         pool);
+}
+
+apr_status_t serf_ssl_session_export(serf_ssl_context_t *ssl_ctx,
+                                     void **data,
+                                     apr_size_t *len,
+                                     const serf_ssl_session_t *ssl_session,
+                                     apr_pool_t *pool)
+{
+    return ssl_ctx->type->session_export(data, len, ssl_session, pool);
+}
+
+apr_status_t serf_ssl_session_import(serf_ssl_context_t *ssl_ctx,
+                                     const serf_ssl_session_t **ssl_session,
+                                     void *data,
+                                     apr_size_t len,
+                                     apr_pool_t *pool)
+{
+    return ssl_ctx->type->session_import(ssl_session, data, len, pool);
+}
+
 /* Define dummy ssl_decrypt and ssl_encrypt buckets. These are needed because
    they are exported symbols, previously (not anymore) used in the
    SERF_BUCKET_IS_SSL_DECRYPT and SERF_BUCKET_IS_SSL_ENCRYPT macro's. */

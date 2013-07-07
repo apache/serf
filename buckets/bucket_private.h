@@ -131,6 +131,35 @@ struct serf_ssl_bucket_type_t {
      */
     apr_status_t (*use_compression)(void *impl_ctx,
                                     int enabled);
+
+    /**
+     * Exports @a session to continous memory block.
+     */
+    apr_status_t (*session_export)(void **data,
+                                   apr_size_t *len,
+                                   const serf_ssl_session_t *session,
+                                   apr_pool_t *pool);
+
+    /**
+     * Restores previously saved session from continuous memory block @a data
+     * with @a len length.
+     */
+    apr_status_t (*session_import)(const serf_ssl_session_t **session,
+                                   void *data,
+                                   apr_size_t len,
+                                   apr_pool_t *pool);
+
+    /**
+     * TODO: comment
+     */
+    void (*new_session_callback_set)(void *impl_ctx,
+                                     serf_ssl_new_session_t new_session_cb,
+                                     void *baton);
+
+    /* Configure @a ssl_ctx to attempt resume exisiting @a ssl_session. */
+    apr_status_t (*resume_session)(void *impl_ctx,
+                                   const serf_ssl_session_t *ssl_session,
+                                   apr_pool_t *pool);
 };
 
 /* Implementation independent certificate object. */
@@ -182,6 +211,19 @@ serf__create_identity(const serf_ssl_bucket_type_t *type,
                       apr_pool_t *pool);
 
 void *serf__ssl_get_impl_context(serf_ssl_context_t *ssl_ctx);
+
+/* Implementation independent serialized SSL session object */
+struct serf_ssl_session_t {
+#if 0
+    /* Not needed as long as each API takes a serf_ssl_context_t. */
+    /** bucket implementation that can parse this session object. */
+    const serf_ssl_bucket_type_t *type;
+#endif
+
+    /** implementation specific serialized SSL session object. */
+    void *impl_session_obj;
+};
+
 
 /* sectrans_bucket internal functions */
 #ifdef SERF_HAVE_SECURETRANSPORT

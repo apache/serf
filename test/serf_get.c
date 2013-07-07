@@ -155,7 +155,8 @@ new_ssl_session(const serf_ssl_session_t *session,
     app_baton_t *ctx = baton;
 
     if (ctx->session_filename) {
-        status = serf_ssl_session_export(&data, &len, session, pool);
+        status = serf_ssl_session_export(ctx->ssl_ctx,
+                                         &data, &len, session, pool);
 
         if (status) {
             return status;
@@ -176,7 +177,8 @@ new_ssl_session(const serf_ssl_session_t *session,
     return APR_SUCCESS;
 }
 
-static apr_status_t read_ssl_session(const serf_ssl_session_t **session,
+static apr_status_t read_ssl_session(serf_ssl_context_t *ssl_ctx,
+                                     const serf_ssl_session_t **session,
                                      const char *filename,
                                      apr_pool_t *pool)
 {
@@ -194,7 +196,7 @@ static apr_status_t read_ssl_session(const serf_ssl_session_t **session,
 
     /* We should reach EOF. */
     if (status == APR_EOF) {
-        status = serf_ssl_session_import(session, buf, len, pool);
+        status = serf_ssl_session_import(ssl_ctx, session, buf, len, pool);
     } else {
         status = APR_EGENERAL;
     }
@@ -230,7 +232,8 @@ static apr_status_t conn_setup(apr_socket_t *skt,
 
             serf_ssl_new_session_callback_set(ctx->ssl_ctx, new_ssl_session,
                                               ctx);
-            status = read_ssl_session(&session, ctx->session_filename, pool);
+            status = read_ssl_session(ctx->ssl_ctx, &session,
+                                      ctx->session_filename, pool);
             if (status == APR_SUCCESS) {
                 fprintf(stderr, "Using SSL session from '%s'\n",
                         ctx->session_filename);

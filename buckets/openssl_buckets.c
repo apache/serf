@@ -201,10 +201,6 @@ typedef struct {
     serf_bucket_t **our_stream;
 } ssl_context_t;
 
-struct serf_ssl_session_t {
-    SSL_SESSION *session_obj;
-};
-
 static void disable_compression(openssl_context_t *ssl_ctx);
 static apr_status_t serf__openssl_load_identity_from_file(void *impl_ctx,
                         const serf_ssl_identity_t **identity,
@@ -1196,27 +1192,31 @@ static void serf__openssl_server_cert_chain_callback_set(
     ssl_ctx->server_cert_userdata = data;
 }
 
-void serf_ssl_new_session_callback_set(
-                                       serf_ssl_context_t *context,
-                                       serf_ssl_new_session_t new_session_cb,
-                                       void *baton)
+static void serf__openssl_new_session_callback_set(
+                void *impl_ctx,
+                serf_ssl_new_session_t new_session_cb,
+                void *baton)
 {
-    context->new_session_cb = new_session_cb;
-    context->new_session_cb_baton = baton;
+    openssl_context_t *ssl_ctx = impl_ctx;
+
+    ssl_ctx->new_session_cb = new_session_cb;
+    ssl_ctx->new_session_cb_baton = baton;
 }
 
 static int new_session(SSL *ssl, SSL_SESSION *sess)
 {
-    serf_ssl_context_t *ctx = SSL_get_app_data(ssl);
+    openssl_context_t *ssl_ctx = SSL_get_app_data(ssl);
 
-    if (ctx->new_session_cb) {
+    if (ssl_ctx->new_session_cb) {
         serf_ssl_session_t session;
         apr_pool_t *subpool;
 
-        session.session_obj = sess;
-        apr_pool_create(&subpool, ctx->pool);
+/*        session.type = &serf_ssl_bucket_type_openssl;*/
+        session.impl_session_obj = sess;
+        apr_pool_create(&subpool, ssl_ctx->pool);
 
-        ctx->new_session_cb(&session, ctx->new_session_cb_baton, subpool);
+        ssl_ctx->new_session_cb(&session, ssl_ctx->new_session_cb_baton,
+                                subpool);
 
         apr_pool_destroy(subpool);
     }
@@ -1224,16 +1224,17 @@ static int new_session(SSL *ssl, SSL_SESSION *sess)
     return 0;
 }
 
-apr_status_t serf_ssl_session_export(void **data_p,
-                                     apr_size_t *len_p,
-                                     const serf_ssl_session_t *session,
-                                     apr_pool_t *pool)
+static apr_status_t
+serf__openssl_session_export(void **data_p,
+                             apr_size_t *len_p,
+                             const serf_ssl_session_t *session,
+                             apr_pool_t *pool)
 {
     int sess_len;
     void *sess_data;
     unsigned char *unused;
 
-    sess_len = i2d_SSL_SESSION(session->session_obj, NULL);
+    sess_len = i2d_SSL_SESSION(session->impl_session_obj, NULL);
     if (!sess_len) {
         return APR_EGENERAL;
     }
@@ -1242,7 +1243,7 @@ apr_status_t serf_ssl_session_export(void **data_p,
 
     unused = sess_data;
     /* unused is incremented  */
-    sess_len = i2d_SSL_SESSION(session->session_obj, &unused);
+    sess_len = i2d_SSL_SESSION(session->impl_session_obj, &unused);
     if (!sess_len) {
         return APR_EGENERAL;
     }
@@ -1256,16 +1257,17 @@ static apr_status_t cleanup_session(void *data)
 {
     serf_ssl_session_t *session = data;
 
-    SSL_SESSION_free(session->session_obj);
-    session->session_obj = NULL;
+    SSL_SESSION_free(session->impl_session_obj);
+    session->impl_session_obj = NULL;
 
     return APR_SUCCESS;
 }
 
-apr_status_t serf_ssl_session_import(const serf_ssl_session_t **session_p,
-                                     void *data,
-                                     apr_size_t len,
-                                     apr_pool_t *pool)
+static apr_status_t
+serf__openssl_session_import(const serf_ssl_session_t **session_p,
+                             void *data,
+                             apr_size_t len,
+                             apr_pool_t *pool)
 {
     SSL_SESSION *sess;
     serf_ssl_session_t *session;
@@ -1279,7 +1281,8 @@ apr_status_t serf_ssl_session_import(const serf_ssl_session_t **session_p,
     }
 
     session = apr_pcalloc(pool, sizeof(serf_ssl_session_t));
-    session->session_obj = sess;
+/*    session->type = &serf_ssl_bucket_type_openssl;*/
+    session->impl_session_obj = sess;
     apr_pool_cleanup_register(pool, session, cleanup_session, cleanup_session);
     
     *session_p = session;
@@ -1363,11 +1366,13 @@ static openssl_context_t *ssl_init_context(void)
     return ssl_ctx;
 }
 
-apr_status_t serf_ssl_resume_session(serf_ssl_context_t *ssl_ctx,
-                                     const serf_ssl_session_t *session,
-                                     apr_pool_t *pool)
+apr_status_t serf__openssl_resume_session(void *impl_ctx,
+                                          const serf_ssl_session_t *session,
+                                          apr_pool_t *pool)
 {
-    SSL_set_session(ssl_ctx->ssl, session->session_obj);
+    openssl_context_t *ssl_ctx = impl_ctx;
+
+    SSL_set_session(ssl_ctx->ssl, session->impl_session_obj);
     return APR_SUCCESS;
 }
 
@@ -2045,6 +2050,10 @@ const serf_ssl_bucket_type_t serf_ssl_bucket_type_openssl = {
     serf__openssl_cert_certificate,
     serf__openssl_cert_export,
     serf__openssl_use_compression,
+    serf__openssl_session_export,
+    serf__openssl_session_import,
+    serf__openssl_new_session_callback_set,
+    serf__openssl_resume_session,
 };
 #else
 
