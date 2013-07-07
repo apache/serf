@@ -72,7 +72,8 @@ MAJOR, MINOR, PATCH = [int(x) for x in match.groups()]
 env.Append(MAJOR=str(MAJOR))
 
 # Calling external programs is okay if we're not cleaning or printing help.
-# (cleaning: no sense in fetching information; help: we may not know where they are)
+# (cleaning: no sense in fetching information; help: we may not know where
+# they are)
 CALLOUT_OKAY = not (env.GetOption('clean') or env.GetOption('help'))
 
 
@@ -98,7 +99,6 @@ debug = env.get('DEBUG', None)
 
 Help(opts.GenerateHelpText(env))
 opts.Save(SAVED_CONFIG, env)
-
 
 
 # PLATFORM-SPECIFIC BUILD TWEAKS
@@ -143,11 +143,15 @@ ccflags = [ ]
 if sys.platform != 'win32':
   ### gcc only. figure out appropriate test / better way to check these
   ### flags, and check for gcc.
+  ccflags = ['-std=c89',
+             '-Wdeclaration-after-statement',
+             '-Wmissing-prototypes',
+             ]
+
   ### -Wall is not available on Solaris
-  if sys.platform != 'win32':
-    ccflags = ['-std=c89', '-Wdeclaration-after-statement', '-Wmissing-prototypes']
   if sys.platform != 'sunos5': 
     ccflags.append(['-Wall', ])
+
   if debug:
     ccflags.append(['-g'])
   else:
