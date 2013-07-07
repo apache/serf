@@ -785,7 +785,6 @@ static apr_status_t write_to_connection(serf_connection_t *conn)
             if (APR_STATUS_IS_EAGAIN(read_status)) {
                 /* We read some stuff, but should not try to read again. */
                 stop_reading = 1;
-                serf__log(1, __FILE__, "stop reading.\n");
             }
             else if (read_status == SERF_ERROR_WAIT_CONN) {
                 /* The bucket told us that it can't provide more data until
@@ -798,7 +797,6 @@ static apr_status_t write_to_connection(serf_connection_t *conn)
                    end up in a CPU spin: socket wants something, but we
                    don't have anything (and keep returning EAGAIN)
                  */
-                serf__log(1, __FILE__, "stop writing.\n");
                 conn->stop_writing = 1;
                 conn->dirty_conn = 1;
                 conn->ctx->dirty_pollset = 1;
