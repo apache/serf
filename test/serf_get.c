@@ -225,10 +225,11 @@ static apr_status_t conn_setup(apr_socket_t *skt,
         serf_ssl_set_hostname(ctx->ssl_ctx, ctx->hostinfo);
 
         if (ctx->session_filename) {
-            serf_ssl_session_t *session;
+            const serf_ssl_session_t *session;
             apr_status_t status;
 
-            serf_ssl_new_session_callback_set(ctx->ssl_ctx, new_ssl_session, ctx);
+            serf_ssl_new_session_callback_set(ctx->ssl_ctx, new_ssl_session,
+                                              ctx);
             status = read_ssl_session(&session, ctx->session_filename, pool);
             if (status == APR_SUCCESS) {
                 fprintf(stderr, "Using SSL session from '%s'\n",
@@ -440,8 +441,8 @@ credentials_callback(char **username,
     }
     else
     {
-        *username = ctx->username;
-        *password = ctx->password;
+        *username = (char*)ctx->username;
+        *password = (char*)ctx->password;
         ctx->auth_attempts++;
 
         return APR_SUCCESS;
@@ -479,8 +480,8 @@ int main(int argc, const char **argv)
     int count, inflight;
     int i;
     int print_headers;
-    char *username = NULL;
-    char *password = "";
+    const char *username = NULL;
+    const char *password = "";
     apr_getopt_t *opt;
     char opt_c;
     const char *opt_arg;
