@@ -225,28 +225,28 @@ struct serf_ssl_session_t {
 };
 
 
-/* sectrans_bucket internal functions */
-#ifdef SERF_HAVE_SECURETRANSPORT
+/* macosxssl_bucket internal functions */
+#ifdef SERF_HAVE_MACOSXSSL
 
 #include <Security/SecCertificate.h>
 
-/* sectrans_bucket private certificate structure. Wrapper around the 
+/* macosxssl_bucket private certificate structure. Wrapper around the 
    SecCertificateRef ptr, with content the cached parsed information from the
    certificate. */
-typedef struct sectrans_certificate_t {
+typedef struct macosxssl_certificate_t {
     SecCertificateRef certref;
 
     apr_hash_t *content;
-} sectrans_certificate_t;
+} macosxssl_certificate_t;
 
 apr_status_t
-serf__sectrans_read_X509_DER_DN(apr_hash_t **o, CFDataRef ptr,
-                                apr_pool_t *pool);
+serf__macosxssl_read_X509_DER_DN(apr_hash_t **o, CFDataRef ptr,
+                                 apr_pool_t *pool);
 
 apr_status_t
-serf__sectrans_read_X509_DER_certificate(apr_hash_t **o,
-                                         const sectrans_certificate_t *cert,
-                                         apr_pool_t *pool);
+serf__macosxssl_read_X509_DER_certificate(apr_hash_t **o,
+                                          const macosxssl_certificate_t *cert,
+                                          apr_pool_t *pool);
 
 #endif
 
@@ -260,11 +260,11 @@ extern const serf_ssl_bucket_type_t serf_ssl_bucket_type_openssl;
 
 /* ==================================================================== */
 
-#if SERF_HAVE_SECURETRANSPORT
+#if SERF_HAVE_MACOSXSSL
 
-extern const serf_ssl_bucket_type_t serf_ssl_bucket_type_securetransport;
+extern const serf_ssl_bucket_type_t serf_ssl_bucket_type_macosxssl;
 
-#endif /* SERF_HAVE_SECURETRANSPORT */
+#endif /* SERF_HAVE_MACOSXSSL */
 
 /* ==================================================================== */
 

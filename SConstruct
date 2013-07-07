@@ -149,13 +149,13 @@ if sys.platform == 'darwin':
   linkflags.append('-Wl,-compatibility_version,%d' % (MINOR+1,))
   linkflags.append('-Wl,-current_version,%d.%d' % (MINOR+1, PATCH,))
 
-  # enable sectans_buckets only on Mac OS X 10.7+
-  securetransport = False
+  # enable macosxssl_buckets only on Mac OS X 10.7+
+  macosxssl = False
   ver, _, _ = platform.mac_ver()
   ver = float('.'.join(ver.split('.')[:2]))
   if ver >= 10.7:
-    securetransport = True
-    env.Append(CFLAGS='-DSERF_HAVE_SECURETRANSPORT')
+    macosxssl = True
+    env.Append(CFLAGS='-DSERF_HAVE_MACOSXSSL')
 
 if sys.platform == 'win32':
   ### we should create serf.def for Windows DLLs and add it into the link
@@ -191,7 +191,7 @@ if sys.platform != 'win32':
   ### works for Mac OS. probably needs to change
   libs = ['ssl', 'crypto', 'z', ]
 
-  if securetransport:
+  if macosxssl:
     env.Append(FRAMEWORKS=['Security', 'SecurityInterface', 'CoreFoundation',
                            'AppKit'])
     libs.append('objc')
@@ -208,8 +208,8 @@ env.Replace(LINKFLAGS=linkflags,
 # PLAN THE BUILD
 
 SOURCES = Glob('*.c') + Glob('buckets/*.c') + Glob('auth/*.c')
-if securetransport:
-    SOURCES += ['buckets/sectrans_helper.m']
+if macosxssl:
+    SOURCES += ['buckets/macosxssl_helper.m']
 
 lib_static = env.StaticLibrary(LIBNAMESTATIC, SOURCES)
 lib_shared = env.SharedLibrary(LIBNAME, SOURCES)

@@ -34,14 +34,14 @@
    https://github.com/lorentey/LKSecurity/blob/master/Framework%20Bugs.markdown
  
  
-   A secure transport bucket implements following API's
+   A macosxssl_bucket implements following API's
    - a serf_bucket_t for encryption
    - a serf_bucket_t for decryption
    - a serf_ssl_bucket_type_t for certificate handling, general SSL/TLS stuff.
-   - extra serf_sectrans_ functions to integrate with Keychain.
+   - extra serf_macosxssl_ functions to integrate with Keychain.
  */
 
-#ifdef SERF_HAVE_SECURETRANSPORT
+#ifdef SERF_HAVE_MACOSXSSL
 
 #include "serf.h"
 #include "serf_private.h"
@@ -63,7 +63,7 @@
 /* The minimum amount of data we try to read and decrypt in one pass. */
 #define READ_BUFSIZE 8096
 
-typedef struct sectrans_ssl_stream_t {
+typedef struct macosxssl_ssl_stream_t {
     /* For an encrypt stream: data encrypted & not yet written to the network.
        For a decrypt stream: data decrypted & not yet read by the application.*/
     serf_bucket_t *pending;
@@ -71,18 +71,18 @@ typedef struct sectrans_ssl_stream_t {
     /* For an encrypt stream: the outgoing data provided by the application.
        For a decrypt stream: encrypted data read from the network. */
     serf_bucket_t *stream;
-} sectrans_ssl_stream_t;
+} macosxssl_ssl_stream_t;
 
 
 /* States for the different stages in the lifecyle of an SSL session. */
 typedef enum {
-    SERF_SECTRANS_INIT,       /* no SSL handshake yet */
-    SERF_SECTRANS_HANDSHAKE,  /* SSL handshake in progress */
-    SERF_SECTRANS_CONNECTED,  /* SSL handshake successfully finished */
-    SERF_SECTRANS_CLOSING,    /* SSL session closing */
-} sectrans_session_state_t;
+    SERF_MACOSXSSL_INIT,       /* no SSL handshake yet */
+    SERF_MACOSXSSL_HANDSHAKE,  /* SSL handshake in progress */
+    SERF_MACOSXSSL_CONNECTED,  /* SSL handshake successfully finished */
+    SERF_MACOSXSSL_CLOSING,    /* SSL session closing */
+} macosxssl_session_state_t;
 
-typedef struct sectrans_context_t {
+typedef struct macosxssl_context_t {
     /* How many open buckets refer to this context. */
     int refcount;
 
@@ -104,12 +104,12 @@ typedef struct sectrans_context_t {
     SecTrustRef trust;
 
     /* stream of (to be) encrypted data, outgoing to the network. */
-    sectrans_ssl_stream_t encrypt;
+    macosxssl_ssl_stream_t encrypt;
 
     /* stream of (to be) decrypted data, read from the network. */
-    sectrans_ssl_stream_t decrypt;
+    macosxssl_ssl_stream_t decrypt;
 
-    sectrans_session_state_t state;
+    macosxssl_session_state_t state;
 
     /* name of the peer, used with TLS's Server Name Indication extension. */
     char *hostname;
@@ -150,14 +150,14 @@ typedef struct sectrans_context_t {
 
     /* Result of the evaluation of the server certificate chain. */
     SecTrustResultType result;
-} sectrans_context_t;
+} macosxssl_context_t;
 
 /* Some forward declarations */
 static apr_status_t
-serf__sectrans_load_identity_from_file(void *impl_ctx,
-                                       const serf_ssl_identity_t **identity,
-                                       const char *file_path,
-                                       apr_pool_t *pool);
+serf__macosxssl_load_identity_from_file(void *impl_ctx,
+                                        const serf_ssl_identity_t **identity,
+                                        const char *file_path,
+                                        apr_pool_t *pool);
 
 
 /* Copies the unicode string from a CFStringRef to a new buffer allocated
@@ -180,7 +180,7 @@ CFStringToChar(CFStringRef str, apr_pool_t *pool)
 }
 
 static apr_status_t
-translate_sectrans_status(OSStatus osstatus)
+translate_macosxssl_status(OSStatus osstatus)
 {
     apr_status_t status;
 
@@ -229,7 +229,7 @@ static apr_status_t cfrelease_ref(void *data)
 
 static apr_status_t cfrelease_trust(void *data)
 {
-    sectrans_context_t *ssl_ctx = data;
+    macosxssl_context_t *ssl_ctx = data;
 
     if (ssl_ctx->trust)
         CFRelease(ssl_ctx->trust);
@@ -249,17 +249,17 @@ static apr_status_t cfrelease_trust(void *data)
 /** Secure Transport callback function.
     Reads encrypted data from the network. **/
 static OSStatus
-sectrans_read_cb(SSLConnectionRef connection,
-                 void *data,
-                 size_t *dataLength)
+macosxssl_read_cb(SSLConnectionRef connection,
+                  void *data,
+                  size_t *dataLength)
 {
-    const sectrans_context_t *ssl_ctx = connection;
+    const macosxssl_context_t *ssl_ctx = connection;
     apr_status_t status = 0;
     const char *buf;
     char *outbuf = data;
     size_t requested = *dataLength, buflen = 0;
 
-    serf__log(SSL_VERBOSE, __FILE__, "sectrans_read_cb called for "
+    serf__log(SSL_VERBOSE, __FILE__, "macosxssl_read_cb called for "
               "%d bytes.\n", requested);
 
     *dataLength = 0;
@@ -297,14 +297,14 @@ sectrans_read_cb(SSLConnectionRef connection,
 /** Secure Transport callback function.
     Writes encrypted data to the network. **/
 static OSStatus
-sectrans_write_cb(SSLConnectionRef connection,
-                  const void *data,
-                  size_t *dataLength)
+macosxssl_write_cb(SSLConnectionRef connection,
+                   const void *data,
+                   size_t *dataLength)
 {
     serf_bucket_t *tmp;
-    const sectrans_context_t *ctx = connection;
+    const macosxssl_context_t *ctx = connection;
 
-    serf__log(SSL_VERBOSE, __FILE__, "sectrans_write_cb called for "
+    serf__log(SSL_VERBOSE, __FILE__, "macosxssl_write_cb called for "
               "%d bytes.\n", *dataLength);
 
     tmp = serf_bucket_simple_copy_create(data, *dataLength,
@@ -318,24 +318,25 @@ sectrans_write_cb(SSLConnectionRef connection,
 #pragma mark VALIDATE SERVER CERTIFICATES
 #pragma mark -
 
-/* Creates a sectrans_certificate_t allocated on pool. */
+/* Creates a macosxssl_certificate_t allocated on pool. */
 static apr_status_t
-create_sectrans_certificate(sectrans_certificate_t **out_sectrans_cert,
-                            SecCertificateRef certref,
-                            int parse_content,
-                            apr_pool_t *pool)
+create_macosxssl_certificate(macosxssl_certificate_t **out_macosxssl_cert,
+                             SecCertificateRef certref,
+                             int parse_content,
+                             apr_pool_t *pool)
 {
-    sectrans_certificate_t *sectrans_cert;
+    macosxssl_certificate_t *macosxssl_cert;
     apr_status_t status = APR_SUCCESS;
 
-    sectrans_cert = apr_pcalloc(pool, sizeof(sectrans_certificate_t));
-    sectrans_cert->certref = certref;
+    macosxssl_cert = apr_pcalloc(pool, sizeof(macosxssl_certificate_t));
+    macosxssl_cert->certref = certref;
 
     if (parse_content)
-        status = serf__sectrans_read_X509_DER_certificate(&sectrans_cert->content,
-                                                          sectrans_cert,
-                                                          pool);
-    *out_sectrans_cert = sectrans_cert;
+        status = serf__macosxssl_read_X509_DER_certificate(
+                           &macosxssl_cert->content,
+                           macosxssl_cert,
+                           pool);
+    *out_macosxssl_cert = macosxssl_cert;
 
     return status;
 }
@@ -346,16 +347,16 @@ create_ssl_certificate(SecCertificateRef certref,
                        int depth,
                        apr_pool_t *pool)
 {
-    sectrans_certificate_t *sectrans_cert;
+    macosxssl_certificate_t *macosxssl_cert;
     serf_bucket_alloc_t *allocator;
 
     /* Since we're not asking to parse the content we can ignore the status. */
-    (void) create_sectrans_certificate(&sectrans_cert, certref, 0, pool);
+    (void) create_macosxssl_certificate(&macosxssl_cert, certref, 0, pool);
 
     allocator = serf_bucket_allocator_create(pool, NULL, NULL);
     return serf__create_certificate(allocator,
-                                    &serf_ssl_bucket_type_securetransport,
-                                    sectrans_cert,
+                                    &serf_ssl_bucket_type_macosxssl,
+                                    macosxssl_cert,
                                     depth);
 }
 
@@ -423,7 +424,7 @@ load_certificate_from_databuf(CFDataRef databuf,
 
 /* Logs the issuer and subject of cert. */
 static void
-log_certificate(sectrans_certificate_t *cert, const char *msg)
+log_certificate(macosxssl_certificate_t *cert, const char *msg)
 {
 #if SSL_VERBOSE
     apr_hash_t *subject, *issuer;
@@ -432,9 +433,9 @@ log_certificate(sectrans_certificate_t *cert, const char *msg)
     apr_pool_create(&tmppool, NULL);
     if (!cert->content) {
         apr_status_t status;
-        status = serf__sectrans_read_X509_DER_certificate(&cert->content,
-                                                          cert,
-                                                          tmppool);
+        status = serf__macosxssl_read_X509_DER_certificate(&cert->content,
+                                                           cert,
+                                                           tmppool);
         if (status)
             goto cleanup;
     }
@@ -487,7 +488,7 @@ cleanup:
    SecCertificateRef's. *outcert is allocated in pool. */
 static apr_status_t
 find_issuer_cert_in_array(serf_ssl_certificate_t **outcert,
-                          sectrans_certificate_t *cert,
+                          macosxssl_certificate_t *cert,
                           CFArrayRef certref_list,
                           apr_pool_t *pool)
 {
@@ -508,13 +509,13 @@ find_issuer_cert_in_array(serf_ssl_certificate_t **outcert,
        compare it with the issuer data buffer. */
     for (i = 0; i < CFArrayGetCount(certref_list); i++)
     {
-        sectrans_certificate_t *list_cert;
+        macosxssl_certificate_t *list_cert;
         CFDataRef subject;
         SecCertificateRef certref;
 
         certref = (SecCertificateRef)CFArrayGetValueAtIndex(certref_list, i);
-        status = create_sectrans_certificate(&list_cert, certref, 1,
-                                             tmppool);
+        status = create_macosxssl_certificate(&list_cert, certref, 1,
+                                              tmppool);
         if (status)
             goto cleanup;
 
@@ -567,7 +568,7 @@ convert_certerr_to_failure(const char *errstr)
    Otherwise returns an error.
  */
 static int
-validate_server_certificate(sectrans_context_t *ssl_ctx)
+validate_server_certificate(macosxssl_context_t *ssl_ctx)
 {
     CFArrayRef anchor_certrefs = NULL;
     size_t depth_of_error, chain_depth;
@@ -578,7 +579,7 @@ validate_server_certificate(sectrans_context_t *ssl_ctx)
     serf__log(SSL_VERBOSE, __FILE__, "validate_server_certificate called.\n");
     osstatus = SSLCopyPeerTrust(ssl_ctx->st_ctxr, &ssl_ctx->trust);
     if (osstatus != noErr) {
-        status = translate_sectrans_status(osstatus);
+        status = translate_macosxssl_status(osstatus);
         goto cleanup;
     }
     apr_pool_cleanup_register(ssl_ctx->handshake_pool, ssl_ctx,
@@ -587,7 +588,7 @@ validate_server_certificate(sectrans_context_t *ssl_ctx)
     if (!ssl_ctx->evaluate_in_progress)
     {
         CFArrayRef root_certrefs = NULL;
-        void *sectrans_cls;
+        void *macosxssl_cls;
         id tmp;
 
         /* If the application provided certificates to trust, use them here. */
@@ -614,7 +615,7 @@ validate_server_certificate(sectrans_context_t *ssl_ctx)
         {
             osstatus = SecTrustCopyAnchorCertificates(&root_certrefs);
             if (osstatus != noErr) {
-                status = translate_sectrans_status(osstatus);
+                status = translate_macosxssl_status(osstatus);
                 goto cleanup;
             }
         }
@@ -642,21 +643,21 @@ validate_server_certificate(sectrans_context_t *ssl_ctx)
             osstatus = SecTrustSetAnchorCertificates(ssl_ctx->trust,
                                                      all_certrefs);
             if (osstatus != noErr) {
-                status = translate_sectrans_status(osstatus);
+                status = translate_macosxssl_status(osstatus);
                 goto cleanup;
             }
         }
 
         ssl_ctx->evaluate_in_progress = 1;
 
-        sectrans_cls = objc_getClass("SecTrans_Buckets");
-        tmp = objc_msgSend(sectrans_cls,
+        macosxssl_cls = objc_getClass("macosxssl_Buckets");
+        tmp = objc_msgSend(macosxssl_cls,
                            sel_getUid("evaluate:trustResult:"),
                            ssl_ctx->trust,
                            &ssl_ctx->result);
         osstatus = (OSStatus)(SInt64)tmp;
         if (osstatus != noErr) {
-            status = translate_sectrans_status(osstatus);
+            status = translate_macosxssl_status(osstatus);
             goto cleanup;
         }
     }
@@ -855,7 +856,7 @@ validate_server_certificate(sectrans_context_t *ssl_ctx)
                list of trusted anchor certificates.
              */
             SecCertificateRef certref;
-            sectrans_certificate_t *cert;
+            macosxssl_certificate_t *cert;
 
             serf__log(SSL_VERBOSE, __FILE__, "Chain length (%d) is longer than "
                       "what we received from the server (%d). Search the "
@@ -866,8 +867,8 @@ validate_server_certificate(sectrans_context_t *ssl_ctx)
                list of trusted anchor certificates. */
             certref = SecTrustGetCertificateAtIndex(ssl_ctx->trust,
                                                     certs_len - 1);
-            status = create_sectrans_certificate(&cert, certref, 1,
-                                                 ssl_ctx->handshake_pool);
+            status = create_macosxssl_certificate(&cert, certref, 1,
+                                                  ssl_ctx->handshake_pool);
 
             status = find_issuer_cert_in_array(&certs[certs_len],
                                                cert,
@@ -908,7 +909,7 @@ cleanup:
 
 static apr_status_t delete_temp_keychain(void *data)
 {
-    sectrans_context_t *ssl_ctx = data;
+    macosxssl_context_t *ssl_ctx = data;
     apr_status_t status = APR_SUCCESS;
     OSStatus osstatus;
 
@@ -917,14 +918,14 @@ static apr_status_t delete_temp_keychain(void *data)
 
     osstatus = SecKeychainDelete(ssl_ctx->tempKeyChainRef);
     if (osstatus != errSecSuccess) {
-        status = translate_sectrans_status(osstatus);
+        status = translate_macosxssl_status(osstatus);
     }
     ssl_ctx->tempKeyChainRef = NULL;
 
     return status;
 }
 
-static apr_status_t create_temp_keychain(sectrans_context_t *ssl_ctx,
+static apr_status_t create_temp_keychain(macosxssl_context_t *ssl_ctx,
                                          apr_pool_t *pool)
 {
     apr_file_t *tmpfile;
@@ -985,7 +986,7 @@ static apr_status_t create_temp_keychain(sectrans_context_t *ssl_ctx,
                                  NULL, /* Standard access rights */
                                  &ssl_ctx->tempKeyChainRef);
     if (osstatus != errSecSuccess) {
-        return translate_sectrans_status(osstatus);
+        return translate_macosxssl_status(osstatus);
     }
     apr_pool_cleanup_register(pool, ssl_ctx,
                               delete_temp_keychain, delete_temp_keychain);
@@ -995,7 +996,7 @@ static apr_status_t create_temp_keychain(sectrans_context_t *ssl_ctx,
 
 /* Find the certificate of the issuer of certref in the keychains. */
 static apr_status_t
-find_issuer_certificate_in_keychain(sectrans_certificate_t **out_cert,
+find_issuer_certificate_in_keychain(macosxssl_certificate_t **out_cert,
                                     SecCertificateRef certref,
                                     apr_pool_t *pool)
 {
@@ -1021,7 +1022,7 @@ find_issuer_certificate_in_keychain(sectrans_certificate_t **out_cert,
     else
     {
         CFDictionaryRef query;
-        sectrans_certificate_t *cert, *issuer_cert;
+        macosxssl_certificate_t *cert, *issuer_cert;
         SecCertificateRef issuer_certref;
         CFDataRef cert_issuer, issuer_subject;
         OSStatus osstatus;
@@ -1039,23 +1040,23 @@ find_issuer_certificate_in_keychain(sectrans_certificate_t **out_cert,
         CFRelease(query);
         CFRelease(issuer);
         if (osstatus != errSecSuccess) {
-            return translate_sectrans_status(osstatus);
+            return translate_macosxssl_status(osstatus);
         }
 
         /* if SecItemCopyMatching doesn't find a matching certificate, it is
            known that it returns another (no kidding), so check that we received
            the right certificate.
          */
-        status = create_sectrans_certificate(&cert,
-                                             certref,
-                                             1,
-                                             pool);
+        status = create_macosxssl_certificate(&cert,
+                                              certref,
+                                              1,
+                                              pool);
         if (status)
             return status;
-        status = create_sectrans_certificate(&issuer_cert,
-                                             issuer_certref,
-                                             1,
-                                             pool);
+        status = create_macosxssl_certificate(&issuer_cert,
+                                              issuer_certref,
+                                              1,
+                                              pool);
         if (status)
             return status;
 
@@ -1085,7 +1086,7 @@ find_intermediate_cas(CFArrayRef *intermediate_ca_certrefs,
                       CFArrayRef peer_certrefs,
                       apr_pool_t *pool)
 {
-    sectrans_certificate_t *prevcert;
+    macosxssl_certificate_t *prevcert;
     CFMutableArrayRef ca_certrefs;
     apr_pool_t *tmppool;
     apr_status_t status;
@@ -1103,14 +1104,14 @@ find_intermediate_cas(CFArrayRef *intermediate_ca_certrefs,
 
     apr_pool_create(&tmppool, pool);
 
-    status = create_sectrans_certificate(&prevcert, certref, 1, tmppool);
+    status = create_macosxssl_certificate(&prevcert, certref, 1, tmppool);
     if (status)
         goto cleanup;
 
     /* Get the issuer DER encoded data buffer of the provided certificate. */
     while (1)
     {
-        sectrans_certificate_t *issuer_cert;
+        macosxssl_certificate_t *issuer_cert;
         CFDataRef issuer, subject;
         serf_ssl_certificate_t *dummy_cert;
 
@@ -1174,7 +1175,7 @@ cleanup:
 }
 
 static apr_status_t
-callback_for_identity_password(sectrans_context_t *ssl_ctx,
+callback_for_identity_password(macosxssl_context_t *ssl_ctx,
                                const char *cert_path,
                                const char **passphrase)
 {
@@ -1192,7 +1193,7 @@ callback_for_identity_password(sectrans_context_t *ssl_ctx,
 }
 
 static apr_status_t
-callback_for_identity(sectrans_context_t *ssl_ctx,
+callback_for_identity(macosxssl_context_t *ssl_ctx,
                       apr_hash_t **dnlist,
                       apr_size_t dnlen,
                       SecIdentityRef *identityref,
@@ -1210,8 +1211,8 @@ callback_for_identity(sectrans_context_t *ssl_ctx,
         if (status)
             return status;
 
-        status = serf__sectrans_load_identity_from_file(ssl_ctx, &identity,
-                                                        cert_path, pool);
+        status = serf__macosxssl_load_identity_from_file(ssl_ctx, &identity,
+                                                         cert_path, pool);
         if (status)
             return status;
     } else if (ssl_ctx->identity_callback)
@@ -1229,7 +1230,7 @@ callback_for_identity(sectrans_context_t *ssl_ctx,
 
 /* Get a client certificate for this server from the application. */
 static apr_status_t
-provide_client_certificate(sectrans_context_t *ssl_ctx)
+provide_client_certificate(macosxssl_context_t *ssl_ctx)
 {
     SecIdentityRef identityref = NULL;
     CFArrayRef dnlistrefs = NULL;
@@ -1257,7 +1258,7 @@ provide_client_certificate(sectrans_context_t *ssl_ctx)
        client certificates issued by one of these DN's are acceptable. */
     osstatus = SSLCopyDistinguishedNames(ssl_ctx->st_ctxr, &dnlistrefs);
     if (osstatus != noErr) {
-        return translate_sectrans_status(osstatus);
+        return translate_macosxssl_status(osstatus);
     }
 
     apr_pool_create(&tmppool, ssl_ctx->pool);
@@ -1272,7 +1273,7 @@ provide_client_certificate(sectrans_context_t *ssl_ctx)
             CFDataRef cader = CFArrayGetValueAtIndex(dnlistrefs, i);
             apr_hash_t *ca;
 
-            status = serf__sectrans_read_X509_DER_DN(&ca, cader, tmppool);
+            status = serf__macosxssl_read_X509_DER_DN(&ca, cader, tmppool);
             if (status)
                 goto cleanup;
 
@@ -1312,14 +1313,14 @@ provide_client_certificate(sectrans_context_t *ssl_ctx)
 
         osstatus = SecIdentityCopyCertificate(identityref, &cert);
         if (osstatus != noErr) {
-            status = translate_sectrans_status(osstatus);
+            status = translate_macosxssl_status(osstatus);
             goto cleanup;
         }
 
         osstatus = SSLCopyPeerCertificates(ssl_ctx->st_ctxr,
                                            &peer_certrefs);
         if (osstatus != noErr) {
-            status = translate_sectrans_status(osstatus);
+            status = translate_macosxssl_status(osstatus);
             goto cleanup;
         }
 
@@ -1341,7 +1342,7 @@ provide_client_certificate(sectrans_context_t *ssl_ctx)
            allowed to use the signing key. */
         osstatus = SSLSetCertificate(ssl_ctx->st_ctxr, items);
         if (osstatus != noErr) {
-            status = translate_sectrans_status(osstatus);
+            status = translate_macosxssl_status(osstatus);
             goto cleanup;
         }
 
@@ -1361,7 +1362,7 @@ cleanup:
    Caller is responsible to clean up items.
  */
 static apr_status_t
-load_identity_from_databuf(sectrans_context_t *ssl_ctx,
+load_identity_from_databuf(macosxssl_context_t *ssl_ctx,
                            const serf_ssl_identity_t **identity,
                            const char *label,
                            CFDataRef databuf,
@@ -1409,8 +1410,7 @@ load_identity_from_databuf(sectrans_context_t *ssl_ctx,
                 if (!identityref)
                     return SERF_ERROR_SSL_CERT_FAILED;
 
-                *identity = serf__create_identity(
-                                                  &serf_ssl_bucket_type_securetransport,
+                *identity = serf__create_identity(&serf_ssl_bucket_type_macosxssl,
                                                   identityref, NULL, pool);
 
                 return APR_SUCCESS;
@@ -1446,15 +1446,15 @@ load_identity_from_databuf(sectrans_context_t *ssl_ctx,
 /********************************/
 #pragma mark HANDSHAKE AND INITIALIZATION
 #pragma mark -
-static apr_status_t do_handshake(sectrans_context_t *ssl_ctx)
+static apr_status_t do_handshake(macosxssl_context_t *ssl_ctx)
 {
     OSStatus osstatus;
     apr_status_t status = APR_SUCCESS;
 
-    if (ssl_ctx->state == SERF_SECTRANS_INIT ||
-        ssl_ctx->state == SERF_SECTRANS_HANDSHAKE)
+    if (ssl_ctx->state == SERF_MACOSXSSL_INIT ||
+        ssl_ctx->state == SERF_MACOSXSSL_HANDSHAKE)
     {
-        ssl_ctx->state = SERF_SECTRANS_HANDSHAKE;
+        ssl_ctx->state = SERF_MACOSXSSL_HANDSHAKE;
 
         serf__log(SSL_VERBOSE, __FILE__, "do_handshake called.\n");
 
@@ -1494,14 +1494,14 @@ static apr_status_t do_handshake(sectrans_context_t *ssl_ctx)
                     return APR_EAGAIN;
                 break;
             default:
-                status = translate_sectrans_status(osstatus);
+                status = translate_macosxssl_status(osstatus);
                 break;
         }
 
         if (!status)
         {
             serf__log(SSL_VERBOSE, __FILE__, "ssl/tls handshake successful.\n");
-            ssl_ctx->state = SERF_SECTRANS_CONNECTED;
+            ssl_ctx->state = SERF_MACOSXSSL_CONNECTED;
 
             /* We can now safely cleanup the temporary resources created during
                handshake (i.e. the temporary keychain used to load the client
@@ -1529,10 +1529,10 @@ pending_stream_eof(void *baton,
     return APR_EAGAIN;
 }
 
-static sectrans_context_t *
-sectrans_init_context(serf_bucket_alloc_t *allocator)
+static macosxssl_context_t *
+macosxssl_init_context(serf_bucket_alloc_t *allocator)
 {
-    sectrans_context_t *ssl_ctx;
+    macosxssl_context_t *ssl_ctx;
 
     ssl_ctx = serf_bucket_mem_calloc(allocator, sizeof(*ssl_ctx));
     ssl_ctx->refcount = 0;
@@ -1549,15 +1549,15 @@ sectrans_init_context(serf_bucket_alloc_t *allocator)
                                                           NULL);
 
     /* Set up a Secure Transport session. */
-    ssl_ctx->state = SERF_SECTRANS_INIT;
+    ssl_ctx->state = SERF_MACOSXSSL_INIT;
 
     if (SSLNewContext(FALSE, &ssl_ctx->st_ctxr))
         return NULL;
 
-    if (SSLSetIOFuncs(ssl_ctx->st_ctxr, sectrans_read_cb, sectrans_write_cb))
+    if (SSLSetIOFuncs(ssl_ctx->st_ctxr, macosxssl_read_cb, macosxssl_write_cb))
         return NULL;
 
-    /* Ensure the sectrans_context will be passed to the read and write callback
+    /* Ensure the macosxssl_context will be passed to the read and write callback
      functions. */
     if (SSLSetConnection(ssl_ctx->st_ctxr, ssl_ctx))
         return NULL;
@@ -1583,8 +1583,8 @@ sectrans_init_context(serf_bucket_alloc_t *allocator)
 }
 
 static apr_status_t
-sectrans_free_context(sectrans_context_t *ssl_ctx,
-                      serf_bucket_alloc_t *allocator)
+macosxssl_free_context(macosxssl_context_t *ssl_ctx,
+                       serf_bucket_alloc_t *allocator)
 {
     apr_status_t status = APR_SUCCESS;
 
@@ -1608,19 +1608,19 @@ sectrans_free_context(sectrans_context_t *ssl_ctx,
 #pragma mark SSL_BUCKET API
 #pragma mark -
 static void *
-serf__sectrans_decrypt_create(serf_bucket_t *bucket,
-                              serf_bucket_t *stream,
-                              void *impl_ctx,
-                              serf_bucket_alloc_t *allocator)
+serf__macosxssl_decrypt_create(serf_bucket_t *bucket,
+                               serf_bucket_t *stream,
+                               void *impl_ctx,
+                               serf_bucket_alloc_t *allocator)
 {
-    sectrans_context_t *ssl_ctx;
-    bucket->type = &serf_bucket_type_sectrans_decrypt;
+    macosxssl_context_t *ssl_ctx;
+    bucket->type = &serf_bucket_type_macosxssl_decrypt;
     bucket->allocator = allocator;
 
     if (impl_ctx)
         bucket->data = impl_ctx;
     else
-        bucket->data = sectrans_init_context(allocator);
+        bucket->data = macosxssl_init_context(allocator);
 
     ssl_ctx = bucket->data;
     ssl_ctx->refcount++;
@@ -1631,19 +1631,19 @@ serf__sectrans_decrypt_create(serf_bucket_t *bucket,
 }
 
 static void *
-serf__sectrans_encrypt_create(serf_bucket_t *bucket,
-                              serf_bucket_t *stream,
-                              void *impl_ctx,
-                              serf_bucket_alloc_t *allocator)
+serf__macosxssl_encrypt_create(serf_bucket_t *bucket,
+                               serf_bucket_t *stream,
+                               void *impl_ctx,
+                               serf_bucket_alloc_t *allocator)
 {
-    sectrans_context_t *ssl_ctx;
-    bucket->type = &serf_bucket_type_sectrans_encrypt;
+    macosxssl_context_t *ssl_ctx;
+    bucket->type = &serf_bucket_type_macosxssl_encrypt;
     bucket->allocator = allocator;
 
     if (impl_ctx)
         bucket->data = impl_ctx;
     else
-        bucket->data = sectrans_init_context(allocator);
+        bucket->data = macosxssl_init_context(allocator);
 
     ssl_ctx = bucket->data;
     ssl_ctx->refcount++;
@@ -1654,76 +1654,76 @@ serf__sectrans_encrypt_create(serf_bucket_t *bucket,
 }
 
 static void *
-serf__sectrans_decrypt_context_get(serf_bucket_t *bucket)
+serf__macosxssl_decrypt_context_get(serf_bucket_t *bucket)
 {
     return NULL;
 }
 
 static void *
-serf__sectrans_encrypt_context_get(serf_bucket_t *bucket)
+serf__macosxssl_encrypt_context_get(serf_bucket_t *bucket)
 {
     return NULL;
 }
 
 
 static void
-serf__sectrans_client_cert_provider_set(
+serf__macosxssl_client_cert_provider_set(
         void *impl_ctx,
         serf_ssl_need_client_cert_t callback,
         void *data,
         void *cache_pool)
 {
-    sectrans_context_t *ssl_ctx = impl_ctx;
+    macosxssl_context_t *ssl_ctx = impl_ctx;
 
     ssl_ctx->client_cert_callback = callback;
     ssl_ctx->identity_userdata = data;
 }
 
 static void
-serf__sectrans_identity_provider_set(void *impl_ctx,
-                                     serf_ssl_need_identity_t callback,
-                                     void *data,
-                                     void *cache_pool)
+serf__macosxssl_identity_provider_set(void *impl_ctx,
+                                      serf_ssl_need_identity_t callback,
+                                      void *data,
+                                      void *cache_pool)
 {
-    sectrans_context_t *ssl_ctx = impl_ctx;
+    macosxssl_context_t *ssl_ctx = impl_ctx;
 
     ssl_ctx->identity_callback = callback;
     ssl_ctx->identity_userdata = data;
 }
 
 static void
-serf__sectrans_client_cert_password_set(
+serf__macosxssl_client_cert_password_set(
         void *impl_ctx,
         serf_ssl_need_cert_password_t callback,
         void *data,
         void *cache_pool)
 {
-    sectrans_context_t *ssl_ctx = impl_ctx;
+    macosxssl_context_t *ssl_ctx = impl_ctx;
 
     ssl_ctx->identity_pw_callback = callback;
     ssl_ctx->identity_pw_userdata = data;
 }
 
 static void
-serf__sectrans_server_cert_callback_set(
+serf__macosxssl_server_cert_callback_set(
         void *impl_ctx,
         serf_ssl_need_server_cert_t callback,
         void *data)
 {
-    sectrans_context_t *ssl_ctx = impl_ctx;
+    macosxssl_context_t *ssl_ctx = impl_ctx;
 
     ssl_ctx->server_cert_callback = callback;
     ssl_ctx->server_cert_userdata = data;
 }
 
 static void
-serf__sectrans_server_cert_chain_callback_set(
+serf__macosxssl_server_cert_chain_callback_set(
         void *impl_ctx,
         serf_ssl_need_server_cert_t cert_callback,
         serf_ssl_server_cert_chain_cb_t cert_chain_callback,
         void *data)
 {
-    sectrans_context_t *ssl_ctx = impl_ctx;
+    macosxssl_context_t *ssl_ctx = impl_ctx;
 
     ssl_ctx->server_cert_callback = cert_callback;
     ssl_ctx->server_cert_chain_callback = cert_chain_callback;
@@ -1731,9 +1731,9 @@ serf__sectrans_server_cert_chain_callback_set(
 }
 
 static apr_status_t
-serf__sectrans_set_hostname(void *impl_ctx, const char * hostname)
+serf__macosxssl_set_hostname(void *impl_ctx, const char * hostname)
 {
-    sectrans_context_t *ssl_ctx = impl_ctx;
+    macosxssl_context_t *ssl_ctx = impl_ctx;
     OSStatus osstatus;
 
     ssl_ctx->hostname = serf_bstrdup(ssl_ctx->allocator, hostname);
@@ -1741,13 +1741,13 @@ serf__sectrans_set_hostname(void *impl_ctx, const char * hostname)
                                    ssl_ctx->hostname,
                                    strlen(hostname));
 
-    return translate_sectrans_status(osstatus);
+    return translate_macosxssl_status(osstatus);
 }
 
 static apr_status_t
-serf__sectrans_use_default_certificates(void *impl_ctx)
+serf__macosxssl_use_default_certificates(void *impl_ctx)
 {
-    sectrans_context_t *ssl_ctx = impl_ctx;
+    macosxssl_context_t *ssl_ctx = impl_ctx;
 
     /* When constructing the trust object to validate the server certificate
        chain, extract all root certificates from the System keychain first
@@ -1794,9 +1794,9 @@ load_CA_cert_from_buffer(serf_ssl_certificate_t **cert,
 }
 
 static apr_status_t
-serf__sectrans_load_CA_cert_from_file(serf_ssl_certificate_t **cert,
-                                      const char *file_path,
-                                      apr_pool_t *pool)
+serf__macosxssl_load_CA_cert_from_file(serf_ssl_certificate_t **cert,
+                                       const char *file_path,
+                                       apr_pool_t *pool)
 {
     CFArrayRef items;
     CFDataRef databuf;
@@ -1826,14 +1826,14 @@ serf__sectrans_load_CA_cert_from_file(serf_ssl_certificate_t **cert,
 }
 
 static apr_status_t
-serf__sectrans_load_identity_from_file(void *impl_ctx,
-                                       const serf_ssl_identity_t **identity,
-                                       const char *file_path,
-                                       apr_pool_t *pool)
+serf__macosxssl_load_identity_from_file(void *impl_ctx,
+                                        const serf_ssl_identity_t **identity,
+                                        const char *file_path,
+                                        apr_pool_t *pool)
 {
     apr_status_t status;
     CFDataRef databuf;
-    sectrans_context_t *ssl_ctx = impl_ctx;
+    macosxssl_context_t *ssl_ctx = impl_ctx;
 
     status = load_data_from_file(file_path, &databuf, pool);
     if (status)
@@ -1850,48 +1850,51 @@ serf__sectrans_load_identity_from_file(void *impl_ctx,
 }
 
 static apr_status_t
-serf__sectrans_trust_cert(void *impl_ctx,
-                          serf_ssl_certificate_t *cert)
+serf__macosxssl_trust_cert(void *impl_ctx,
+                           serf_ssl_certificate_t *cert)
 {
-    sectrans_context_t *ssl_ctx = impl_ctx;
-    sectrans_certificate_t *sectrans_cert = cert->impl_cert;
+    macosxssl_context_t *ssl_ctx = impl_ctx;
+    macosxssl_certificate_t *macosxssl_cert = cert->impl_cert;
 
     if (!ssl_ctx->anchor_certs)
         ssl_ctx->anchor_certs = apr_array_make(ssl_ctx->pool, 1,
                                                sizeof(SecCertificateRef));
     APR_ARRAY_PUSH(ssl_ctx->anchor_certs,
-                   SecCertificateRef) = sectrans_cert->certref;
+                   SecCertificateRef) = macosxssl_cert->certref;
 
     return APR_SUCCESS;
 }
 
 static apr_hash_t *
-serf__sectrans_cert_certificate(const serf_ssl_certificate_t *cert,
-                                apr_pool_t *pool)
+serf__macosxssl_cert_certificate(const serf_ssl_certificate_t *cert,
+                                 apr_pool_t *pool)
 {
     apr_hash_t *tgt;
     const char *date_str, *sha1;
 
-    sectrans_certificate_t *sectrans_cert = cert->impl_cert;
+    macosxssl_certificate_t *macosxssl_cert = cert->impl_cert;
 
-    if (!sectrans_cert->content) {
+    if (!macosxssl_cert->content) {
         apr_status_t status;
-        status = serf__sectrans_read_X509_DER_certificate(&sectrans_cert->content,
-                                                          sectrans_cert,
-                                                          pool);
+        status = serf__macosxssl_read_X509_DER_certificate(
+                           &macosxssl_cert->content,
+                           macosxssl_cert,
+                           pool);
         if (status)
             return NULL;
     }
 
     tgt = apr_hash_make(pool);
 
-    date_str = apr_hash_get(sectrans_cert->content, "notBefore", APR_HASH_KEY_STRING);
+    date_str = apr_hash_get(macosxssl_cert->content, "notBefore",
+                            APR_HASH_KEY_STRING);
     apr_hash_set(tgt, "notBefore", APR_HASH_KEY_STRING, date_str);
 
-    date_str = apr_hash_get(sectrans_cert->content, "notAfter", APR_HASH_KEY_STRING);
+    date_str = apr_hash_get(macosxssl_cert->content, "notAfter",
+                            APR_HASH_KEY_STRING);
     apr_hash_set(tgt, "notAfter", APR_HASH_KEY_STRING, date_str);
 
-    sha1 = apr_hash_get(sectrans_cert->content, "sha1", APR_HASH_KEY_STRING);
+    sha1 = apr_hash_get(macosxssl_cert->content, "sha1", APR_HASH_KEY_STRING);
     apr_hash_set(tgt, "sha1", APR_HASH_KEY_STRING, sha1);
 
     /* TODO: array of subjectAltName's */
@@ -1901,49 +1904,51 @@ serf__sectrans_cert_certificate(const serf_ssl_certificate_t *cert,
 
 
 static apr_hash_t *
-serf__sectrans_cert_issuer(const serf_ssl_certificate_t *cert,
-                           apr_pool_t *pool)
+serf__macosxssl_cert_issuer(const serf_ssl_certificate_t *cert,
+                            apr_pool_t *pool)
 {
-    sectrans_certificate_t *sectrans_cert = cert->impl_cert;
+    macosxssl_certificate_t *macosxssl_cert = cert->impl_cert;
 
-    if (!sectrans_cert->content) {
+    if (!macosxssl_cert->content) {
         apr_status_t status;
-        status = serf__sectrans_read_X509_DER_certificate(&sectrans_cert->content,
-                                                          sectrans_cert,
-                                                          pool);
+        status = serf__macosxssl_read_X509_DER_certificate(
+                           &macosxssl_cert->content,
+                           macosxssl_cert,
+                           pool);
         if (status)
             return NULL;
     }
 
-    return (apr_hash_t *)apr_hash_get(sectrans_cert->content,
+    return (apr_hash_t *)apr_hash_get(macosxssl_cert->content,
                                       "issuer", APR_HASH_KEY_STRING);
 }
 
 static apr_hash_t *
-serf__sectrans_cert_subject(const serf_ssl_certificate_t *cert,
-                            apr_pool_t *pool)
+serf__macosxssl_cert_subject(const serf_ssl_certificate_t *cert,
+                             apr_pool_t *pool)
 {
-    sectrans_certificate_t *sectrans_cert = cert->impl_cert;
+    macosxssl_certificate_t *macosxssl_cert = cert->impl_cert;
 
-    if (!sectrans_cert->content) {
+    if (!macosxssl_cert->content) {
         apr_status_t status;
-        status = serf__sectrans_read_X509_DER_certificate(&sectrans_cert->content,
-                                                 sectrans_cert,
-                                                 pool);
+        status = serf__macosxssl_read_X509_DER_certificate(
+                           &macosxssl_cert->content,
+                           macosxssl_cert,
+                           pool);
         if (status)
             return NULL;
     }
 
-    return (apr_hash_t *)apr_hash_get(sectrans_cert->content,
+    return (apr_hash_t *)apr_hash_get(macosxssl_cert->content,
                                       "subject", APR_HASH_KEY_STRING);
 }
 
 static const char *
-serf__sectrans_cert_export(const serf_ssl_certificate_t *cert,
-                           apr_pool_t *pool)
+serf__macosxssl_cert_export(const serf_ssl_certificate_t *cert,
+                            apr_pool_t *pool)
 {
-    sectrans_certificate_t *sectrans_cert = cert->impl_cert;
-    SecCertificateRef certref = sectrans_cert->certref;
+    macosxssl_certificate_t *macosxssl_cert = cert->impl_cert;
+    SecCertificateRef certref = macosxssl_cert->certref;
     CFDataRef dataref = SecCertificateCopyData(certref);
     const unsigned char *data = CFDataGetBytePtr(dataref);
     char *encoded_cert;
@@ -1961,7 +1966,7 @@ serf__sectrans_cert_export(const serf_ssl_certificate_t *cert,
 }
 
 static apr_status_t
-serf__sectrans_use_compression(void *impl_ctx, int enabled)
+serf__macosxssl_use_compression(void *impl_ctx, int enabled)
 {
     if (enabled) {
         serf__log(SSL_VERBOSE, __FILE__,
@@ -1978,18 +1983,18 @@ serf__sectrans_use_compression(void *impl_ctx, int enabled)
 #pragma mark ENCRYPTION BUCKET API
 #pragma mark -
 static apr_status_t
-serf_sectrans_encrypt_read(serf_bucket_t *bucket,
-                           apr_size_t requested,
-                           const char **data, apr_size_t *len)
+serf_macosxssl_encrypt_read(serf_bucket_t *bucket,
+                            apr_size_t requested,
+                            const char **data, apr_size_t *len)
 {
-    sectrans_context_t *ssl_ctx = bucket->data;
+    macosxssl_context_t *ssl_ctx = bucket->data;
     apr_status_t status, status_unenc_stream;
     const char *unenc_data;
     struct iovec vecs[32];
     int vecs_used;
     size_t unenc_len;
 
-    serf__log(SSL_VERBOSE, __FILE__, "serf_sectrans_encrypt_read called for "
+    serf__log(SSL_VERBOSE, __FILE__, "serf_macosxssl_encrypt_read called for "
               "%d bytes.\n", requested);
 
     /* Pending handshake? */
@@ -2044,7 +2049,7 @@ serf_sectrans_encrypt_read(serf_bucket_t *bucket,
 
         osstatus = SSLWrite(ssl_ctx->st_ctxr, unenc_data, unenc_len,
                             &written);
-        status = translate_sectrans_status(osstatus);
+        status = translate_macosxssl_status(osstatus);
         if (SERF_BUCKET_READ_ERROR(status))
             return status;
 
@@ -2053,7 +2058,7 @@ serf_sectrans_encrypt_read(serf_bucket_t *bucket,
                   status_unenc_stream, written, written, unenc_data, written);
 
         /* Less data written than available! This situation can never happen,
-           because SSLWrite loops until all data is sent or sectrans_write_cb
+           because SSLWrite loops until all data is sent or macosxssl_write_cb
            returns errSSLWouldBlock, and the callback will never return this
            error because it can process all data that it's given. */
         if (written < unenc_len)
@@ -2079,34 +2084,34 @@ serf_sectrans_encrypt_read(serf_bucket_t *bucket,
 }
 
 static apr_status_t
-serf_sectrans_encrypt_readline(serf_bucket_t *bucket,
-                               int acceptable, int *found,
-                               const char **data,
-                               apr_size_t *len)
+serf_macosxssl_encrypt_readline(serf_bucket_t *bucket,
+                                int acceptable, int *found,
+                                const char **data,
+                                apr_size_t *len)
 {
     serf__log(SSL_VERBOSE, __FILE__,
-              "function serf_sectrans_encrypt_readline not implemented.\n");
+              "function serf_macosxssl_encrypt_readline not implemented.\n");
     return APR_ENOTIMPL;
 }
 
 
 static apr_status_t
-serf_sectrans_encrypt_peek(serf_bucket_t *bucket,
-                           const char **data,
-                           apr_size_t *len)
+serf_macosxssl_encrypt_peek(serf_bucket_t *bucket,
+                            const char **data,
+                            apr_size_t *len)
 {
-    sectrans_context_t *ssl_ctx = bucket->data;
+    macosxssl_context_t *ssl_ctx = bucket->data;
 
     return serf_bucket_peek(ssl_ctx->encrypt.pending, data, len);
 }
 
 static void
-serf_sectrans_encrypt_destroy_and_data(serf_bucket_t *bucket)
+serf_macosxssl_encrypt_destroy_and_data(serf_bucket_t *bucket)
 {
-    sectrans_context_t *ssl_ctx = bucket->data;
+    macosxssl_context_t *ssl_ctx = bucket->data;
 
     if (!--ssl_ctx->refcount) {
-        sectrans_free_context(ssl_ctx, bucket->allocator);
+        macosxssl_free_context(ssl_ctx, bucket->allocator);
     }
 
     serf_bucket_ssl_destroy_and_data(bucket);
@@ -2117,11 +2122,11 @@ serf_sectrans_encrypt_destroy_and_data(serf_bucket_t *bucket)
 #pragma mark DECRYPTION BUCKET API
 #pragma mark -
 static apr_status_t
-serf_sectrans_decrypt_peek(serf_bucket_t *bucket,
-                           const char **data,
-                           apr_size_t *len)
+serf_macosxssl_decrypt_peek(serf_bucket_t *bucket,
+                            const char **data,
+                            apr_size_t *len)
 {
-    sectrans_context_t *ssl_ctx = bucket->data;
+    macosxssl_context_t *ssl_ctx = bucket->data;
     
     return serf_bucket_peek(ssl_ctx->decrypt.pending, data, len);
 }
@@ -2131,7 +2136,7 @@ serf_sectrans_decrypt_peek(serf_bucket_t *bucket,
    This function will read and decrypt all available data.
  */
 static apr_status_t
-decrypt_more_data(sectrans_context_t *ssl_ctx)
+decrypt_more_data(macosxssl_context_t *ssl_ctx)
 {
     /* Decrypt more data. */
     serf_bucket_t *tmp;
@@ -2153,7 +2158,7 @@ decrypt_more_data(sectrans_context_t *ssl_ctx)
            default (minimum) size READ_BUFSIZE. */
         osstatus = SSLGetBufferedReadSize(ssl_ctx->st_ctxr, &available_len);
         if (osstatus != noErr)
-            return translate_sectrans_status(osstatus);
+            return translate_macosxssl_status(osstatus);
         else {
             if (available_len < READ_BUFSIZE)
                 available_len = READ_BUFSIZE;
@@ -2167,7 +2172,7 @@ decrypt_more_data(sectrans_context_t *ssl_ctx)
         osstatus = SSLRead(ssl_ctx->st_ctxr, dec_data,
                            available_len,
                            &dec_len);
-        status = translate_sectrans_status(osstatus);
+        status = translate_macosxssl_status(osstatus);
 
         /* SSLRead can put data in dec_data while returning an error status. */
         if (SERF_BUCKET_READ_ERROR(status) && !dec_len)
@@ -2187,15 +2192,15 @@ decrypt_more_data(sectrans_context_t *ssl_ctx)
 }
 
 static apr_status_t
-serf_sectrans_decrypt_read(serf_bucket_t *bucket,
-                           apr_size_t requested,
-                           const char **data, apr_size_t *len)
+serf_macosxssl_decrypt_read(serf_bucket_t *bucket,
+                            apr_size_t requested,
+                            const char **data, apr_size_t *len)
 {
-    sectrans_context_t *ssl_ctx = bucket->data;
+    macosxssl_context_t *ssl_ctx = bucket->data;
     apr_status_t status;
 
     serf__log(SSL_VERBOSE, __FILE__,
-              "serf_sectrans_decrypt_read called for %d bytes.\n", requested);
+              "serf_macosxssl_decrypt_read called for %d bytes.\n", requested);
 
     /* Pending handshake? */
     status = do_handshake(ssl_ctx);
@@ -2224,12 +2229,12 @@ serf_sectrans_decrypt_read(serf_bucket_t *bucket,
 }
 
 static apr_status_t
-serf_sectrans_decrypt_readline(serf_bucket_t *bucket,
-                               int acceptable, int *found,
-                               const char **data,
-                               apr_size_t *len)
+serf_macosxssl_decrypt_readline(serf_bucket_t *bucket,
+                                int acceptable, int *found,
+                                const char **data,
+                                apr_size_t *len)
 {
-    sectrans_context_t *ssl_ctx = bucket->data;
+    macosxssl_context_t *ssl_ctx = bucket->data;
     apr_status_t status;
 
     /* Pending handshake? */
@@ -2264,12 +2269,12 @@ serf_sectrans_decrypt_readline(serf_bucket_t *bucket,
 }
 
 static void
-serf_sectrans_decrypt_destroy_and_data(serf_bucket_t *bucket)
+serf_macosxssl_decrypt_destroy_and_data(serf_bucket_t *bucket)
 {
-    sectrans_context_t *ssl_ctx = bucket->data;
+    macosxssl_context_t *ssl_ctx = bucket->data;
 
     if (!--ssl_ctx->refcount) {
-        sectrans_free_context(ssl_ctx, bucket->allocator);
+        macosxssl_free_context(ssl_ctx, bucket->allocator);
     }
 
     serf_bucket_ssl_destroy_and_data(bucket);
@@ -2280,18 +2285,18 @@ serf_sectrans_decrypt_destroy_and_data(serf_bucket_t *bucket)
 #pragma mark KEYCHAIN HELPER FUNCTIONS
 #pragma mark -
 apr_status_t
-serf_sectrans_show_trust_certificate_panel(serf_ssl_context_t *ctx,
-                                           const char *message,
-                                           const char *ok_button,
-                                           const char *cancel_button)
+serf_macosxssl_show_trust_certificate_panel(serf_ssl_context_t *ctx,
+                                            const char *message,
+                                            const char *ok_button,
+                                            const char *cancel_button)
 {
-#ifdef SERF_HAVE_SECURETRANSPORT
-    sectrans_context_t *ssl_ctx = serf__ssl_get_impl_context(ctx);
+#ifdef SERF_HAVE_MACOSXSSL
+    macosxssl_context_t *ssl_ctx = serf__ssl_get_impl_context(ctx);
     SecTrustRef trust = ssl_ctx->trust;
     apr_status_t status;
 
-    void *sectrans_cls = objc_getClass("SecTrans_Buckets");
-    id tmp = objc_msgSend(sectrans_cls,
+    void *macosxssl_cls = objc_getClass("macosxssl_Buckets");
+    id tmp = objc_msgSend(macosxssl_cls,
                           sel_getUid("showTrustCertificateDialog:message:"
                                      "ok_button:cancel_button:"),
                           trust, message, ok_button, cancel_button);
@@ -2304,20 +2309,19 @@ serf_sectrans_show_trust_certificate_panel(serf_ssl_context_t *ctx,
 }
 
 apr_status_t
-serf_sectrans_show_select_identity_panel(
-                                         serf_ssl_context_t *ctx,
-                                         const serf_ssl_identity_t **identity,
-                                         const char *message,
-                                         const char *ok_button,
-                                         const char *cancel_button,
-                                         apr_pool_t *pool)
+serf_macosxssl_show_select_identity_panel(serf_ssl_context_t *ctx,
+                                          const serf_ssl_identity_t **identity,
+                                          const char *message,
+                                          const char *ok_button,
+                                          const char *cancel_button,
+                                          apr_pool_t *pool)
 {
-#ifdef SERF_HAVE_SECURETRANSPORT
+#ifdef SERF_HAVE_MACOSXSSL
     SecIdentityRef identityref;
     OSStatus osstatus;
 
-    void *sectrans_cls = objc_getClass("SecTrans_Buckets");
-    id tmp = objc_msgSend(sectrans_cls,
+    void *macosxssl_cls = objc_getClass("MacOSXSSL_Buckets");
+    id tmp = objc_msgSend(macosxssl_cls,
                           sel_getUid("showSelectIdentityDialog:message:"
                                      "ok_button:cancel_button:"),
                           &identityref, message, ok_button, cancel_button);
@@ -2327,13 +2331,13 @@ serf_sectrans_show_select_identity_panel(
         /* There is no single identity in the keychains. */
         return SERF_ERROR_SSL_NO_IDENTITIES_AVAILABLE;
     } else if (osstatus != noErr) {
-        return translate_sectrans_status(osstatus);
+        return translate_macosxssl_status(osstatus);
     }
 
     if (!identityref)
         return SERF_ERROR_SSL_CERT_FAILED;
 
-    *identity = serf__create_identity(&serf_ssl_bucket_type_securetransport,
+    *identity = serf__create_identity(&serf_ssl_bucket_type_macosxssl,
                                       identityref, NULL,
                                       pool);
     return APR_SUCCESS;
@@ -2343,14 +2347,14 @@ serf_sectrans_show_select_identity_panel(
 }
 
 apr_status_t
-serf_sectrans_find_preferred_identity_in_keychain(
+serf_macosxssl_find_preferred_identity_in_keychain(
     serf_ssl_context_t *ctx,
     const serf_ssl_identity_t **identity,
     apr_pool_t *pool)
 {
-#ifdef SERF_HAVE_SECURETRANSPORT
+#ifdef SERF_HAVE_MACOSXSSL
     apr_pool_t *tmppool;
-    sectrans_context_t *ssl_ctx = serf__ssl_get_impl_context(ctx);
+    macosxssl_context_t *ssl_ctx = serf__ssl_get_impl_context(ctx);
     SecIdentityRef identityref = NULL;
     CFStringRef labelref;
     const char *label;
@@ -2386,7 +2390,7 @@ serf_sectrans_find_preferred_identity_in_keychain(
     if (identityref)
     {
 
-        *identity = serf__create_identity(&serf_ssl_bucket_type_securetransport,
+        *identity = serf__create_identity(&serf_ssl_bucket_type_macosxssl,
                                           identityref, NULL, pool);
         status = APR_SUCCESS;
     } else {
@@ -2405,48 +2409,48 @@ serf_sectrans_find_preferred_identity_in_keychain(
 }
 
 /*****************************************************************************/
-const serf_bucket_type_t serf_bucket_type_sectrans_encrypt = {
-    "SECURETRANSPORTENCRYPT",
-    serf_sectrans_encrypt_read,
-    serf_sectrans_encrypt_readline,
+const serf_bucket_type_t serf_bucket_type_macosxssl_encrypt = {
+    "MACOSXSSLENCRYPT",
+    serf_macosxssl_encrypt_read,
+    serf_macosxssl_encrypt_readline,
     serf_default_read_iovec,
     serf_default_read_for_sendfile,
     serf_default_read_bucket,
-    serf_sectrans_encrypt_peek,
-    serf_sectrans_encrypt_destroy_and_data,
+    serf_macosxssl_encrypt_peek,
+    serf_macosxssl_encrypt_destroy_and_data,
 };
 
-const serf_bucket_type_t serf_bucket_type_sectrans_decrypt = {
-    "SECURETRANSPORTDECRYPT",
-    serf_sectrans_decrypt_read,
-    serf_sectrans_decrypt_readline,
+const serf_bucket_type_t serf_bucket_type_macosxssl_decrypt = {
+    "MACOSXSSLDECRYPT",
+    serf_macosxssl_decrypt_read,
+    serf_macosxssl_decrypt_readline,
     serf_default_read_iovec,
     serf_default_read_for_sendfile,
     serf_default_read_bucket,
-    serf_sectrans_decrypt_peek,
-    serf_sectrans_decrypt_destroy_and_data,
+    serf_macosxssl_decrypt_peek,
+    serf_macosxssl_decrypt_destroy_and_data,
 };
 
-const serf_ssl_bucket_type_t serf_ssl_bucket_type_securetransport = {
-    serf__sectrans_decrypt_create,
-    serf__sectrans_decrypt_context_get,
-    serf__sectrans_encrypt_create,
-    serf__sectrans_encrypt_context_get,
-    serf__sectrans_set_hostname,
-    serf__sectrans_client_cert_provider_set,
-    serf__sectrans_identity_provider_set,
-    serf__sectrans_client_cert_password_set,
-    serf__sectrans_server_cert_callback_set,
-    serf__sectrans_server_cert_chain_callback_set,
-    serf__sectrans_use_default_certificates,
-    serf__sectrans_load_CA_cert_from_file,
-    serf__sectrans_load_identity_from_file,
-    serf__sectrans_trust_cert,
-    serf__sectrans_cert_issuer,
-    serf__sectrans_cert_subject,
-    serf__sectrans_cert_certificate,
-    serf__sectrans_cert_export,
-    serf__sectrans_use_compression,
+const serf_ssl_bucket_type_t serf_ssl_bucket_type_macosxssl = {
+    serf__macosxssl_decrypt_create,
+    serf__macosxssl_decrypt_context_get,
+    serf__macosxssl_encrypt_create,
+    serf__macosxssl_encrypt_context_get,
+    serf__macosxssl_set_hostname,
+    serf__macosxssl_client_cert_provider_set,
+    serf__macosxssl_identity_provider_set,
+    serf__macosxssl_client_cert_password_set,
+    serf__macosxssl_server_cert_callback_set,
+    serf__macosxssl_server_cert_chain_callback_set,
+    serf__macosxssl_use_default_certificates,
+    serf__macosxssl_load_CA_cert_from_file,
+    serf__macosxssl_load_identity_from_file,
+    serf__macosxssl_trust_cert,
+    serf__macosxssl_cert_issuer,
+    serf__macosxssl_cert_subject,
+    serf__macosxssl_cert_certificate,
+    serf__macosxssl_cert_export,
+    serf__macosxssl_use_compression,
     NULL,
     NULL,
     NULL,
@@ -2455,13 +2459,13 @@ const serf_ssl_bucket_type_t serf_ssl_bucket_type_securetransport = {
 
 #else
 
-const serf_bucket_type_t serf_bucket_type_sectrans_encrypt = {
-    "SECURETRANSPORTENCRYPT",
+const serf_bucket_type_t serf_bucket_type_macosxssl_encrypt = {
+    "MACOSXSSLENCRYPT",
     NULL, NULL, NULL, NULL, NULL, NULL, NULL,
 };
-const serf_bucket_type_t serf_bucket_type_sectrans_decrypt = {
-    "SECURETRANSPORTDECRYPT",
+const serf_bucket_type_t serf_bucket_type_macosxssl_decrypt = {
+    "MACOSXSSLDECRYPT",
     NULL, NULL, NULL, NULL, NULL, NULL, NULL,
 };
 
-#endif /* SERF_HAVE_SECURETRANSPORT */
+#endif /* SERF_HAVE_MACOSXSSL */

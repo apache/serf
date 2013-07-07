@@ -26,7 +26,7 @@
 #include "serf.h"
 
 /* Add Connection: close header to each request. */
-/* #define CONNECTION_CLOSE_HDR */
+#define CONNECTION_CLOSE_HDR
 
 typedef struct {
     const char *hostinfo;

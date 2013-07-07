@@ -442,9 +442,9 @@ const test_cert_t test_certs[] =
     },
 };
 
-static void test_sectrans_DER_decoding(CuTest *tc)
+static void test_macosxssl_DER_decoding(CuTest *tc)
 {
-#ifdef SERF_HAVE_SECURETRANSPORT
+#ifdef SERF_HAVE_MACOSXSSL
     serf_bucket_t *filebkt;
     apr_file_t *fp;
     char buf[16384];
@@ -483,9 +483,9 @@ static void test_sectrans_DER_decoding(CuTest *tc)
             status = load_CA_cert_from_buffer(&cert, pemdata, pemlen, test_pool);
             CuAssertIntEquals(tc, APR_SUCCESS, status);
 
-            status = serf__sectrans_read_X509_DER_certificate(&actual,
-                                                              cert->impl_cert,
-                                                              test_pool);
+            status = serf__macosxssl_read_X509_DER_certificate(&actual,
+                                                               cert->impl_cert,
+                                                               test_pool);
             CuAssertIntEquals(tc, APR_SUCCESS, status);
 
             validate_cert(tc, &thiscert, actual);
@@ -522,7 +522,7 @@ static void test_ssl_no_implementations(CuTest *tc)
 CuSuite *test_ssl(void)
 {
     CuSuite *suite = CuSuiteNew();
-    CuSuite *openssl_suite, *sectransssl_suite;
+    CuSuite *openssl_suite, *macosxssl_suite;
 
     CuSuiteSetSetupTeardownCallbacks(suite, test_setup, test_teardown);
 
@@ -539,26 +539,26 @@ CuSuite *test_ssl(void)
     SUITE_ADD_TEST(openssl_suite, test_ssl_cert_certificate);
     SUITE_ADD_TEST(openssl_suite, test_ssl_load_CA_cert_from_file);
     SUITE_ADD_TEST(openssl_suite, test_ssl_cert_export);
-    SUITE_ADD_TEST(openssl_suite, test_sectrans_DER_decoding);
+    SUITE_ADD_TEST(openssl_suite, test_macosxssl_DER_decoding);
 
     CuSuiteAddSuite(suite, openssl_suite);
 #endif
-#ifdef SERF_HAVE_SECURETRANSPORT
-    sectransssl_suite = CuSuiteNew();
+#ifdef SERF_HAVE_MACOSXSSL
+    macosxssl_suite = CuSuiteNew();
 
-    CuSuiteSetSetupTeardownCallbacks(sectransssl_suite, test_sectransssl_setup,
-                                     test_sectransssl_teardown);
+    CuSuiteSetSetupTeardownCallbacks(macosxssl_suite, test_macosxssl_setup,
+                                     test_macosxssl_teardown);
 
-    SUITE_ADD_TEST(sectransssl_suite, test_ssl_init);
-    SUITE_ADD_TEST(sectransssl_suite, test_ssl_load_cert_file);
-    SUITE_ADD_TEST(sectransssl_suite, test_ssl_cert_subject);
-    SUITE_ADD_TEST(sectransssl_suite, test_ssl_cert_issuer);
-    SUITE_ADD_TEST(sectransssl_suite, test_ssl_cert_certificate);
-    SUITE_ADD_TEST(sectransssl_suite, test_ssl_load_CA_cert_from_file);
-    SUITE_ADD_TEST(sectransssl_suite, test_ssl_cert_export);
-    SUITE_ADD_TEST(sectransssl_suite, test_sectrans_DER_decoding);
+    SUITE_ADD_TEST(macosxssl_suite, test_ssl_init);
+    SUITE_ADD_TEST(macosxssl_suite, test_ssl_load_cert_file);
+    SUITE_ADD_TEST(macosxssl_suite, test_ssl_cert_subject);
+    SUITE_ADD_TEST(macosxssl_suite, test_ssl_cert_issuer);
+    SUITE_ADD_TEST(macosxssl_suite, test_ssl_cert_certificate);
+    SUITE_ADD_TEST(macosxssl_suite, test_ssl_load_CA_cert_from_file);
+    SUITE_ADD_TEST(macosxssl_suite, test_ssl_cert_export);
+    SUITE_ADD_TEST(macosxssl_suite, test_macosxssl_DER_decoding);
 
-    CuSuiteAddSuite(suite, sectransssl_suite);
+    CuSuiteAddSuite(suite, macosxssl_suite);
 #endif
 
     SUITE_ADD_TEST(suite, test_ssl_no_implementations);

@@ -1079,7 +1079,7 @@ ssl_server_cert_cb_expect_failures(void *baton, int failures,
     if (failures) {
         apr_status_t status;
 
-        status = serf_sectrans_show_trust_certificate_panel(tb->ssl_context,
+        status = serf_macosxssl_show_trust_certificate_panel(tb->ssl_context,
                      "Server certificate requires validation",
                      "Accept",
                      "Cancel");
@@ -1734,14 +1734,14 @@ static apr_status_t identity_cb(void *data,
      */
 
     /* First check if the user has set a preferred identity for this server. */
-    status = serf_sectrans_find_preferred_identity_in_keychain(tb->ssl_context,
-                                                               identity,
-                                                               pool);
+    status = serf_macosxssl_find_preferred_identity_in_keychain(tb->ssl_context,
+                                                                identity,
+                                                                pool);
     if (status == APR_SUCCESS)
         return APR_SUCCESS;
 
     /* Choose an identity from the available identities in the keychains. */
-    status = serf_sectrans_show_select_identity_panel(tb->ssl_context,
+    status = serf_macosxssl_show_select_identity_panel(tb->ssl_context,
                  identity,
                  "Select client identity.", "Accept", "Cancel",
                  pool);
@@ -2341,7 +2341,7 @@ static void test_ssltunnel_digest_auth(CuTest *tc)
 CuSuite *test_context(void)
 {
     CuSuite *suite = CuSuiteNew();
-    CuSuite *openssl_suite, *sectransssl_suite;
+    CuSuite *openssl_suite, *macosxssl_suite;
 
     CuSuiteSetSetupTeardownCallbacks(suite, test_setup, test_teardown);
 
@@ -2383,27 +2383,27 @@ CuSuite *test_context(void)
 
     CuSuiteAddSuite(suite, openssl_suite);
 #endif
-#ifdef SERF_HAVE_SECURETRANSPORT
-    sectransssl_suite = CuSuiteNew();
+#ifdef SERF_HAVE_MACOSXSSL
+    macosxssl_suite = CuSuiteNew();
 
-    CuSuiteSetSetupTeardownCallbacks(sectransssl_suite, test_sectransssl_setup,
-                                     test_sectransssl_teardown);
+    CuSuiteSetSetupTeardownCallbacks(macosxssl_suite, test_macosxssl_setup,
+                                     test_macosxssl_teardown);
 
-    SUITE_ADD_TEST(sectransssl_suite, test_ssl_handshake);
-    SUITE_ADD_TEST(sectransssl_suite, test_ssl_trust_rootca);
-    SUITE_ADD_TEST(sectransssl_suite, test_ssl_application_rejects_cert);
-    SUITE_ADD_TEST(sectransssl_suite, test_ssl_certificate_chain_with_anchor);
-    SUITE_ADD_TEST(sectransssl_suite, test_ssl_certificate_chain_all_from_server);
-    SUITE_ADD_TEST(sectransssl_suite, test_ssl_no_servercert_callback_allok);
-    SUITE_ADD_TEST(sectransssl_suite, test_ssl_no_servercert_callback_fail);
-    SUITE_ADD_TEST(sectransssl_suite, test_ssl_large_response);
-    SUITE_ADD_TEST(sectransssl_suite, test_ssl_large_request);
-    SUITE_ADD_TEST(sectransssl_suite, test_ssl_client_certificate);
-    SUITE_ADD_TEST(sectransssl_suite, test_ssl_identity);
-    SUITE_ADD_TEST(sectransssl_suite, test_ssl_expired_server_cert);
-    SUITE_ADD_TEST(sectransssl_suite, test_ssl_future_server_cert);
+    SUITE_ADD_TEST(macosxssl_suite, test_ssl_handshake);
+    SUITE_ADD_TEST(macosxssl_suite, test_ssl_trust_rootca);
+    SUITE_ADD_TEST(macosxssl_suite, test_ssl_application_rejects_cert);
+    SUITE_ADD_TEST(macosxssl_suite, test_ssl_certificate_chain_with_anchor);
+    SUITE_ADD_TEST(macosxssl_suite, test_ssl_certificate_chain_all_from_server);
+    SUITE_ADD_TEST(macosxssl_suite, test_ssl_no_servercert_callback_allok);
+    SUITE_ADD_TEST(macosxssl_suite, test_ssl_no_servercert_callback_fail);
+    SUITE_ADD_TEST(macosxssl_suite, test_ssl_large_response);
+    SUITE_ADD_TEST(macosxssl_suite, test_ssl_large_request);
+    SUITE_ADD_TEST(macosxssl_suite, test_ssl_client_certificate);
+    SUITE_ADD_TEST(macosxssl_suite, test_ssl_identity);
+    SUITE_ADD_TEST(macosxssl_suite, test_ssl_expired_server_cert);
+    SUITE_ADD_TEST(macosxssl_suite, test_ssl_future_server_cert);
 
-    CuSuiteAddSuite(suite, sectransssl_suite);
+    CuSuiteAddSuite(suite, macosxssl_suite);
 #endif
 
     return suite;

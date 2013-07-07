@@ -20,7 +20,7 @@
 
 #import "serf.h"
 
-@interface SecTrans_Buckets : NSObject
+@interface MacOSXSSL_Buckets : NSObject
 {
 }
 + (OSStatus) evaluate:(SecTrustRef)trust
@@ -32,7 +32,7 @@
                               cancel_button:(const char *)cancel_button;
 @end
 
-@implementation SecTrans_Buckets
+@implementation MacOSXSSL_Buckets
 
 /* Evaluate the trust object asynchronously. When the results are received,
    store them in the provided resultPtr address. */

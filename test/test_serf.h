@@ -188,8 +188,8 @@ void *test_setup(void *baton);
 void *test_teardown(void *baton);
 void *test_openssl_setup(void *baton);
 void *test_openssl_teardown(void *baton);
-void *test_sectransssl_setup(void *baton);
-void *test_sectransssl_teardown(void *baton);
+void *test_macosxssl_setup(void *baton);
+void *test_macosxssl_teardown(void *baton);
 
 typedef struct {
     serf_response_acceptor_t acceptor;

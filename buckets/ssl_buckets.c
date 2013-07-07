@@ -52,9 +52,9 @@ static const serf_ssl_bucket_type_t *decide_ssl_bucket_type(void)
 
     /* Prefer SSL implementation integrated in host platform, depending
        on what's builtin and what the application allows. */
-#ifdef SERF_HAVE_SECURETRANSPORT
-    if (bucket_impls & SERF_IMPL_SSL_SECTRANS)
-        return &serf_ssl_bucket_type_securetransport;
+#ifdef SERF_HAVE_MACOSXSSL
+    if (bucket_impls & SERF_IMPL_SSL_MACOSXSSL)
+        return &serf_ssl_bucket_type_macosxssl;
 #endif
 #ifdef SERF_HAVE_OPENSSL
     if (bucket_impls & SERF_IMPL_SSL_OPENSSL)

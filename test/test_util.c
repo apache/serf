@@ -392,14 +392,14 @@ void *test_openssl_teardown(void *baton)
     return test_teardown(baton);
 }
 
-void *test_sectransssl_setup(void *dummy)
+void *test_macosxssl_setup(void *dummy)
 {
     serf_config_disable_bucket_impls(SERF_IMPL_SSL_ALL);
-    serf_config_enable_bucket_impls(SERF_IMPL_SSL_SECTRANS);
+    serf_config_enable_bucket_impls(SERF_IMPL_SSL_MACOSXSSL);
     return test_setup(dummy);
 }
 
-void *test_sectransssl_teardown(void *baton)
+void *test_macosxssl_teardown(void *baton)
 {
     serf_config_enable_bucket_impls(SERF_IMPL_SSL_ALL);
     return test_teardown(baton);

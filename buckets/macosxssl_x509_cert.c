@@ -13,7 +13,7 @@
  * limitations under the License.
  */
 
-#ifdef SERF_HAVE_SECURETRANSPORT
+#ifdef SERF_HAVE_MACOSXSSL
 
 #include <stdlib.h>
 
@@ -432,8 +432,8 @@ static apr_status_t dataref_cleanup(void *data)
  */
 
 apr_status_t
-serf__sectrans_read_X509_DER_DN(apr_hash_t **o, CFDataRef dndata,
-                                apr_pool_t *pool)
+serf__macosxssl_read_X509_DER_DN(apr_hash_t **o, CFDataRef dndata,
+                                 apr_pool_t *pool)
 {
     CFDataRef dnder;
     apr_hash_t *dn;
@@ -465,9 +465,9 @@ cleanup:
    - _subject_der
  */
 apr_status_t
-serf__sectrans_read_X509_DER_certificate(apr_hash_t **o,
-                                         const sectrans_certificate_t *cert,
-                                         apr_pool_t *pool)
+serf__macosxssl_read_X509_DER_certificate(apr_hash_t **o,
+                                          const macosxssl_certificate_t *cert,
+                                          apr_pool_t *pool)
 {
     apr_hash_t *x509_cert, *issuer, *subject;
     CFDataRef issuer_der, subject_der;
@@ -618,4 +618,4 @@ cleanup:
     return status;
 }
 
-#endif /* SERF_HAVE_SECURETRANSPORT */
+#endif /* SERF_HAVE_MACOSXSSL */

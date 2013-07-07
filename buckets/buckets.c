@@ -49,8 +49,8 @@ static void init_bucket_impls()
 #ifdef SERF_HAVE_OPENSSL
         available_bucket_impls |= SERF_IMPL_SSL_OPENSSL;
 #endif
-#ifdef SERF_HAVE_SECURETRANSPORT
-        available_bucket_impls |= SERF_IMPL_SSL_SECTRANS;
+#ifdef SERF_HAVE_MACOSXSSL
+        available_bucket_impls |= SERF_IMPL_SSL_MACOSXSSL;
 #endif
 
         bucket_impls = available_bucket_impls;

@@ -36,7 +36,7 @@ extern "C" {
 #endif
 
 
-#define SERF_IMPL_SSL_SECTRANS    0x0001
+#define SERF_IMPL_SSL_MACOSXSSL   0x0001
 #define SERF_IMPL_SSL_OPENSSL     0x0002
 #define SERF_IMPL_SSL_ALL         0x0003
 
@@ -523,12 +523,12 @@ serf_bucket_t *serf_bucket_limit_create(
 #define SERF_SSL_CERT_CONFIRM_NEEDED   0x40
 
 extern const serf_bucket_type_t serf_bucket_type_openssl_encrypt;
-extern const serf_bucket_type_t serf_bucket_type_sectrans_encrypt;
+extern const serf_bucket_type_t serf_bucket_type_macosxssl_encrypt;
 
 extern const serf_bucket_type_t serf_bucket_type_ssl_encrypt;
 #define SERF_BUCKET_IS_SSL_ENCRYPT(b) \
     (((b)->type == &serf_bucket_type_openssl_encrypt) || \
-     ((b)->type == &serf_bucket_type_sectrans_encrypt))
+     ((b)->type == &serf_bucket_type_macosxssl_encrypt))
 
 typedef struct serf_ssl_context_t serf_ssl_context_t;
 typedef struct serf_ssl_certificate_t serf_ssl_certificate_t;
@@ -775,18 +775,18 @@ apr_status_t serf_ssl_use_compression(
    also gives the option to store the user's decision for this certificate
    permanently in the Keychain (requires password).
  
-   This function will return APR_ENOTIMPL when SERF_HAVE_SECURETRANSPORT is not 
+   This function will return APR_ENOTIMPL when SERF_HAVE_MACOSXSSL is not 
    defined.
  */
 apr_status_t
-serf_sectrans_show_trust_certificate_panel(serf_ssl_context_t *ssl_ctx,
-                                           const char *message,
-                                           const char *ok_button_label,
-                                           const char *cancel_button_label);
+serf_macosxssl_show_trust_certificate_panel(serf_ssl_context_t *ssl_ctx,
+                                            const char *message,
+                                            const char *ok_button_label,
+                                            const char *cancel_button_label);
 
-    
-/* Note: both serf_sectrans_show_select_identity_panel and
-   serf_sectrans_find_preferred_identity_in_keychain support smart cards.
+
+/* Note: both serf_macosxssl_show_select_identity_panel and
+   serf_macosxssl_find_preferred_identity_in_keychain support smart cards.
  
    As soon as the card is inserted in the reader, an extra keychain will be 
    created containing the certificate(s) and private key(s) stored on the smart 
@@ -804,25 +804,25 @@ serf_sectrans_show_trust_certificate_panel(serf_ssl_context_t *ssl_ctx,
 
    TODO: should take list of acceptable CA's.
 
-   This function will return APR_ENOTIMPL when SERF_HAVE_SECURETRANSPORT is not
+   This function will return APR_ENOTIMPL when SERF_HAVE_MACOSXSSL is not
    defined.
  */
 apr_status_t
-serf_sectrans_show_select_identity_panel(serf_ssl_context_t *ssl_ctx,
-                                         const serf_ssl_identity_t **identity,
-                                         const char *message,
-                                         const char *ok_button_label,
-                                         const char *cancel_button_label,
-                                         apr_pool_t *pool);
+serf_macosxssl_show_select_identity_panel(serf_ssl_context_t *ssl_ctx,
+                                          const serf_ssl_identity_t **identity,
+                                          const char *message,
+                                          const char *ok_button_label,
+                                          const char *cancel_button_label,
+                                          apr_pool_t *pool);
 
 /* Find a preferred identity for this hostname in the kechains.
    (identity preference entry).
  
-   This function will return APR_ENOTIMPL when SERF_HAVE_SECURETRANSPORT is not
+   This function will return APR_ENOTIMPL when SERF_HAVE_MACOSXSSL is not
    defined.
  */
 apr_status_t
-serf_sectrans_find_preferred_identity_in_keychain(
+serf_macosxssl_find_preferred_identity_in_keychain(
         serf_ssl_context_t *ssl_ctx,
         const serf_ssl_identity_t **identity,
         apr_pool_t *pool);
@@ -842,12 +842,12 @@ serf_ssl_context_t *serf_bucket_ssl_encrypt_context_get(
 /* ==================================================================== */
 
 extern const serf_bucket_type_t serf_bucket_type_openssl_decrypt;
-extern const serf_bucket_type_t serf_bucket_type_sectrans_decrypt;
+extern const serf_bucket_type_t serf_bucket_type_macosxssl_decrypt;
 
 extern const serf_bucket_type_t serf_bucket_type_ssl_decrypt;
 #define SERF_BUCKET_IS_SSL_DECRYPT(b) \
     (((b)->type == &serf_bucket_type_openssl_decrypt) || \
-     ((b)->type == &serf_bucket_type_sectrans_decrypt))
+     ((b)->type == &serf_bucket_type_macosxssl_decrypt))
 
 serf_bucket_t *serf_bucket_ssl_decrypt_create(
     serf_bucket_t *stream,
