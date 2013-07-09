@@ -56,6 +56,9 @@ opts.AddVariables(
   BoolVariable('DEBUG',
                "Enable debugging info and strict compile warnings",
                False),
+  BoolVariable('APR_STATIC',
+               "Enable using a static compiled APR",
+               False),
   )
 
 env = Environment(variables=opts,
@@ -102,6 +105,7 @@ if gssapi and os.path.isdir(gssapi):
     env['GSSAPI'] = krb5_config
 
 debug = env.get('DEBUG', None)
+aprstatic = env.get('APR_STATIC', None)
 
 Help(opts.GenerateHelpText(env))
 opts.Save(SAVED_CONFIG, env)
@@ -189,6 +193,9 @@ SOURCES = Glob('*.c') + Glob('buckets/*.c') + Glob('auth/*.c')
 lib_static = env.StaticLibrary(LIBNAMESTATIC, SOURCES)
 lib_shared = env.SharedLibrary(LIBNAME, SOURCES + SHARED_SOURCES)
 
+if aprstatic:
+  env.Append(CFLAGS='-DAPR_DECLARE_STATIC -DAPU_DECLARE_STATIC')
+
 if sys.platform == 'win32':
   if debug:
     env.Append(CFLAGS='/MDd')
@@ -203,8 +210,12 @@ if sys.platform == 'win32':
                     '/I "$APR/include" /I "$APU/include" ' + \
                     '-DWIN32 -DWIN32_LEAN_AND_MEAN -DNOUSER' + \
                     '-DNOGDI -DNONLS -DNOCRYPT')
-  env.Append(LIBPATH=['$APR/Release','$APU/Release'],
-             LIBS=['libapr-1.lib', 'libaprutil-1.lib'])
+  if aprstatic:
+    env.Append(LIBPATH=['$APR/LibR','$APU/LibR'],
+               LIBS=['apr-1.lib', 'aprutil-1.lib'])
+  else:
+    env.Append(LIBPATH=['$APR/Release','$APU/Release'],
+               LIBS=['libapr-1.lib', 'libaprutil-1.lib'])
   apr_libs='libapr-1.lib'
   apu_libs='libaprutil-1.lib'
 
