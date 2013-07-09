@@ -63,6 +63,12 @@ env = Environment(variables=opts,
                   CPPPATH=['.', ],
                   )
 
+env.Append(BUILDERS = {
+    'GenDef' : 
+      Builder(action = sys.executable + ' build/gen_def.py $SOURCE > $TARGET',
+              suffix='.def', src_suffix='.h')
+  })
+
 match = re.search('SERF_MAJOR_VERSION ([0-9]+).*'
                   'SERF_MINOR_VERSION ([0-9]+).*'
                   'SERF_PATCH_VERSION ([0-9]+)',
@@ -134,11 +140,6 @@ if sys.platform == 'darwin':
   linkflags.append('-Wl,-compatibility_version,%d' % (MINOR+1,))
   linkflags.append('-Wl,-current_version,%d.%d' % (MINOR+1, PATCH,))
 
-if sys.platform == 'win32':
-  ### we should create serf.def for Windows DLLs and add it into the link
-  ### step somehow.
-  pass
-
 ccflags = [ ]
 if sys.platform != 'win32':
   ### gcc only. figure out appropriate test / better way to check these
@@ -178,11 +179,15 @@ env.Replace(LINKFLAGS=linkflags,
 
 
 # PLAN THE BUILD
+SHARED_SOURCES = []
+if sys.platform == 'win32':
+  env.GenDef('serf.h')
+  SHARED_SOURCES.append(['serf.def'])
 
 SOURCES = Glob('*.c') + Glob('buckets/*.c') + Glob('auth/*.c')
 
 lib_static = env.StaticLibrary(LIBNAMESTATIC, SOURCES)
-lib_shared = env.SharedLibrary(LIBNAME, SOURCES)
+lib_shared = env.SharedLibrary(LIBNAME, SOURCES + SHARED_SOURCES)
 
 if sys.platform == 'win32':
   if debug:
