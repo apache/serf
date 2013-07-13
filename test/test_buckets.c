@@ -1186,12 +1186,18 @@ static void test_dechunk_buckets(CuTest *tc)
         { 1,  LF "blabla" CRLF, APR_SUCCESS },
         /* empty chunk */
         { 1, "", APR_SUCCESS },
+        /* two chunks */
+        { 1, "6" CRLF "blabla" CRLF "6" CRLF "blabla" CRLF, APR_SUCCESS },
+        /* three chunks */
+        { 1, "6" CRLF "blabla" CRLF "6" CRLF "blabla" CRLF
+             "0" CRLF "" CRLF, APR_SUCCESS },
     };
     const int nr_of_actions = sizeof(actions) / sizeof(mockbkt_action);
     apr_status_t status;
     const char *body = "blabla";
-    const char *expected = apr_psprintf(test_pool, "%s%s%s%s%s", body, body,
-                                        body, body, body);
+    const char *expected = apr_psprintf(test_pool, "%s%s%s%s%s%s%s%s%s", body,
+                                        body, body, body, body, body, body,
+                                        body, body);
 
     mock_bkt = serf_bucket_mock_create(actions, nr_of_actions, alloc);
     bkt = serf_bucket_dechunk_create(mock_bkt, alloc);
