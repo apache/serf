@@ -56,12 +56,21 @@ opts.AddVariables(
   BoolVariable('DEBUG',
                "Enable debugging info and strict compile warnings",
                False),
+  BoolVariable('APR_STATIC',
+               "Enable using a static compiled APR",
+               False),
   )
 
 env = Environment(variables=opts,
                   tools=('default', 'textfile',),
                   CPPPATH=['.', ],
                   )
+
+env.Append(BUILDERS = {
+    'GenDef' : 
+      Builder(action = sys.executable + ' build/gen_def.py $SOURCE > $TARGET',
+              suffix='.def', src_suffix='.h')
+  })
 
 match = re.search('SERF_MAJOR_VERSION ([0-9]+).*'
                   'SERF_MINOR_VERSION ([0-9]+).*'
@@ -72,7 +81,8 @@ MAJOR, MINOR, PATCH = [int(x) for x in match.groups()]
 env.Append(MAJOR=str(MAJOR))
 
 # Calling external programs is okay if we're not cleaning or printing help.
-# (cleaning: no sense in fetching information; help: we may not know where they are)
+# (cleaning: no sense in fetching information; help: we may not know where
+# they are)
 CALLOUT_OKAY = not (env.GetOption('clean') or env.GetOption('help'))
 
 
@@ -95,10 +105,10 @@ if gssapi and os.path.isdir(gssapi):
     env['GSSAPI'] = krb5_config
 
 debug = env.get('DEBUG', None)
+aprstatic = env.get('APR_STATIC', None)
 
 Help(opts.GenerateHelpText(env))
 opts.Save(SAVED_CONFIG, env)
-
 
 
 # PLATFORM-SPECIFIC BUILD TWEAKS
@@ -114,8 +124,18 @@ libdir = '$PREFIX/lib'
 incdir = '$PREFIX/include/serf-$MAJOR'
 
 LIBNAME = 'libserf-${MAJOR}'
+if sys.platform != 'win32':
+  LIBNAMESTATIC = LIBNAME
+else:
+  LIBNAMESTATIC = 'serf-${MAJOR}'
 
-linkflags = [link_rpath(libdir,), ]
+linkflags = []
+
+if sys.platform != 'win32':
+  linkflags.append(link_rpath(libdir))
+else:
+  linkflags.append(['/nologo'])
+
 if sys.platform == 'darwin':
 #  linkflags.append('-Wl,-install_name,@executable_path/%s.dylib' % (LIBNAME,))
   linkflags.append('-Wl,-install_name,%s/%s.dylib' % (thisdir, LIBNAME,))
@@ -124,24 +144,30 @@ if sys.platform == 'darwin':
   linkflags.append('-Wl,-compatibility_version,%d' % (MINOR+1,))
   linkflags.append('-Wl,-current_version,%d.%d' % (MINOR+1, PATCH,))
 
-if sys.platform == 'win32':
-  ### we should create serf.def for Windows DLLs and add it into the link
-  ### step somehow.
-  pass
-
 ccflags = [ ]
-if 1:
+if sys.platform != 'win32':
   ### gcc only. figure out appropriate test / better way to check these
   ### flags, and check for gcc.
+  ccflags = ['-std=c89',
+             '-Wdeclaration-after-statement',
+             '-Wmissing-prototypes',
+             ]
+
   ### -Wall is not available on Solaris
-  if sys.platform != 'win32':
-    ccflags = ['-std=c89', '-Wdeclaration-after-statement', '-Wmissing-prototypes']
   if sys.platform != 'sunos5': 
     ccflags.append(['-Wall', ])
+
   if debug:
     ccflags.append(['-g'])
   else:
     ccflags.append('-O2')
+else:
+  ccflags.append(['/nologo', '/W4', '/Zi'])
+  if debug:
+    ccflags.append(['/Od'])
+  else:
+    ccflags.append(['/O2'])
+  
 libs = [ ]
 if sys.platform != 'win32':
   ### works for Mac OS. probably needs to change
@@ -157,19 +183,39 @@ env.Replace(LINKFLAGS=linkflags,
 
 
 # PLAN THE BUILD
+SHARED_SOURCES = []
+if sys.platform == 'win32':
+  env.GenDef('serf.h')
+  SHARED_SOURCES.append(['serf.def'])
 
 SOURCES = Glob('*.c') + Glob('buckets/*.c') + Glob('auth/*.c')
 
-lib_static = env.StaticLibrary(LIBNAME, SOURCES)
-lib_shared = env.SharedLibrary(LIBNAME, SOURCES)
+lib_static = env.StaticLibrary(LIBNAMESTATIC, SOURCES)
+lib_shared = env.SharedLibrary(LIBNAME, SOURCES + SHARED_SOURCES)
+
+if aprstatic:
+  env.Append(CFLAGS='-DAPR_DECLARE_STATIC -DAPU_DECLARE_STATIC')
 
 if sys.platform == 'win32':
-  env.Append(CFLAGS='/MD')
+  if debug:
+    env.Append(CFLAGS='/MDd')
+  else:
+    env.Append(CFLAGS='/MD')
+  
+  env.Append(LIBS=['user32.lib', 'advapi32.lib', 'gdi32.lib', 'ws2_32.lib',
+                   'crypt32.lib', 'mswsock.lib', 'rpcrt4.lib', 'secur32.lib'])
 
   # Get apr/apu information into our build
-  env.Append(CFLAGS='-D WIN32 /I "$APR/include" /I "$APU/include"')
-  env.Append(LIBPATH=['$APR/Release','$APU/Release'],
-             LIBS=['libapr-1.lib', 'libaprutil-1.lib'])
+  env.Append(CFLAGS='-DWIN32 ' + \
+                    '/I "$APR/include" /I "$APU/include" ' + \
+                    '-DWIN32 -DWIN32_LEAN_AND_MEAN -DNOUSER' + \
+                    '-DNOGDI -DNONLS -DNOCRYPT')
+  if aprstatic:
+    env.Append(LIBPATH=['$APR/LibR','$APU/LibR'],
+               LIBS=['apr-1.lib', 'aprutil-1.lib'])
+  else:
+    env.Append(LIBPATH=['$APR/Release','$APU/Release'],
+               LIBS=['libapr-1.lib', 'libaprutil-1.lib'])
   apr_libs='libapr-1.lib'
   apu_libs='libaprutil-1.lib'
 
@@ -214,6 +260,8 @@ else:
 if gssapi and CALLOUT_OKAY:
     env.ParseConfig('$GSSAPI --libs gssapi')
     env.Append(CFLAGS='-DSERF_HAVE_GSSAPI')
+if sys.platform == 'win32':
+  env.Append(CFLAGS='-DSERF_HAVE_SPNEGO -DSERF_HAVE_SSPI')
 
 # On Solaris, the -R values that APR describes never make it into actual
 # RPATH flags. We'll manually map all directories in LIBPATH into new
@@ -277,6 +325,7 @@ TEST_PROGRAMS = [
   'test/serf_request',
   'test/serf_spider',
   'test/test_all',
+  'test/serf_bwtp',
 ]
 
 env.AlwaysBuild(env.Alias('check', TEST_PROGRAMS, 'build/check.sh'))
