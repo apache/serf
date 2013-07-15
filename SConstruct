@@ -45,28 +45,35 @@ def RawListVariable(key, help, default):
     """
     return (key, '%s' % (help), default, None, lambda val: _converter(val))
 
+# default directories
+if sys.platform == 'win32':
+  default_libdir='..'
+  default_prefix='Debug'
+else:
+  default_libdir='/usr'
+  default_prefix='/usr/local'
 
 opts = Variables(files=[SAVED_CONFIG])
 opts.AddVariables(
   PathVariable('PREFIX',
                'Directory to install under',
-               '/usr/local',
+               default_prefix,
                PathVariable.PathIsDir),
   PathVariable('APR',
                "Path to apr-1-config, or to APR's install area",
-               '/usr',
+               default_libdir,
                PathVariable.PathAccept),
   PathVariable('APU',
                "Path to apu-1-config, or to APR's install area",
-               '/usr',
+               default_libdir,
                PathVariable.PathAccept),
   PathVariable('OPENSSL',
                "Path to OpenSSL's install area",
-               '/usr',
+               default_libdir,
                PathVariable.PathIsDir),
   PathVariable('ZLIB',
                "Path to zlib's install area",
-               '/usr',
+               default_libdir,
                PathVariable.PathIsDir),
   PathVariable('GSSAPI',
                "Path to GSSAPI's install area",
