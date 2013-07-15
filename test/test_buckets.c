@@ -686,12 +686,15 @@ static void test_response_body_too_small_cl(CuTest *tc)
 
         status = serf_bucket_read(bkt, SERF_READ_ALL_AVAIL, &data, &len);
 
-        CuAssert(tc, "Read more data than expected.",
-                 strlen(BODY) >= len);
-        CuAssert(tc, "Read data is not equal to expected.",
-                 strncmp(BODY, data, len) == 0);
-        CuAssert(tc, "Error expected due to response body too short!",
-                 SERF_BUCKET_READ_ERROR(status));
+        /* On error data and len is undefined.*/
+        if (!SERF_BUCKET_READ_ERROR(status)) {
+            CuAssert(tc, "Read more data than expected.",
+                     strlen(BODY) >= len);
+            CuAssert(tc, "Read data is not equal to expected.",
+                     strncmp(BODY, data, len) == 0);
+            CuAssert(tc, "Error expected due to response body too short!",
+                     SERF_BUCKET_READ_ERROR(status));
+        }
         CuAssertIntEquals(tc, SERF_ERROR_TRUNCATED_HTTP_RESPONSE, status);
     }
 }
@@ -729,12 +732,15 @@ static void test_response_body_too_small_chunked(CuTest *tc)
 
         status = serf_bucket_read(bkt, SERF_READ_ALL_AVAIL, &data, &len);
 
-        CuAssert(tc, "Read more data than expected.",
-                 strlen(BODY) >= len);
-        CuAssert(tc, "Read data is not equal to expected.",
-                 strncmp(BODY, data, len) == 0);
-        CuAssert(tc, "Error expected due to response body too short!",
-                 SERF_BUCKET_READ_ERROR(status));
+        /* On error data and len is undefined.*/
+        if (!SERF_BUCKET_READ_ERROR(status)) {
+            CuAssert(tc, "Read more data than expected.",
+                     strlen(BODY) >= len);
+            CuAssert(tc, "Read data is not equal to expected.",
+                     strncmp(BODY, data, len) == 0);
+            CuAssert(tc, "Error expected due to response body too short!",
+                     SERF_BUCKET_READ_ERROR(status));
+        }
         CuAssertIntEquals(tc, SERF_ERROR_TRUNCATED_HTTP_RESPONSE, status);
     }
 }
