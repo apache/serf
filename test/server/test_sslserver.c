@@ -185,14 +185,24 @@ init_ssl_context(serv_ctx_t *serv_ctx,
         X509_STORE *store;
         const char *certfile;
         int i;
+        int rv;
 
         ssl_ctx->ctx = SSL_CTX_new(SSLv23_server_method());
         SSL_CTX_set_default_passwd_cb(ssl_ctx->ctx, pem_passwd_cb);
-        SSL_CTX_use_PrivateKey_file(ssl_ctx->ctx, keyfile, SSL_FILETYPE_PEM);
+        rv = SSL_CTX_use_PrivateKey_file(ssl_ctx->ctx, keyfile,
+                                         SSL_FILETYPE_PEM);
+        if (rv != 1) {
+            fprintf(stderr, "Cannot load private key from file '%s'\n", keyfile);
+            exit(1);
+        }
 
         /* Set server certificate, add ca certificates if provided. */
         certfile = certfiles[0];
-        SSL_CTX_use_certificate_file(ssl_ctx->ctx, certfile, SSL_FILETYPE_PEM);
+        rv = SSL_CTX_use_certificate_file(ssl_ctx->ctx, certfile, SSL_FILETYPE_PEM);
+        if (rv != 1) {
+            fprintf(stderr, "Cannot load certficate from file '%s'\n", keyfile);
+            exit(1);
+        }
 
         i = 1;
         certfile = certfiles[i++];
