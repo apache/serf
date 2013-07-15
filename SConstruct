@@ -103,7 +103,7 @@ env = Environment(variables=opts,
 
 env.Append(BUILDERS = {
     'GenDef' : 
-      Builder(action = sys.executable + ' build/gen_def.py $SOURCE > $TARGET',
+      Builder(action = sys.executable + ' build/gen_def.py $SOURCES > $TARGET',
               suffix='.def', src_suffix='.h')
   })
 
@@ -151,8 +151,10 @@ opts.Save(SAVED_CONFIG, env)
 def link_rpath(d):
   if sys.platform == 'sunos5':
     return '-Wl,-R,%s' % (d,)
-  return '-Wl,-rpath,%s' % (d,)
+  elif sys.platform == 'win32':
+    return ''
 
+  return '-Wl','-rpath,','%s' % (d,)
 
 thisdir = os.getcwd()
 libdir = '$PREFIX/lib'
@@ -197,7 +199,7 @@ if sys.platform != 'win32':
   else:
     ccflags.append('-O2')
 else:
-  ccflags.append(['/nologo', '/W4', '/Zi'])
+  ccflags.append(['/nologo', '/W4', '/Zi', '/wd4100'])
   if debug:
     ccflags.append(['/Od'])
   else:
@@ -220,7 +222,7 @@ env.Append(LINKFLAGS=linkflags,
 # PLAN THE BUILD
 SHARED_SOURCES = []
 if sys.platform == 'win32':
-  env.GenDef('serf.h')
+  env.GenDef(['serf.h','serf_bucket_types.h', 'serf_bucket_util.h'])
   SHARED_SOURCES.append(['serf.def'])
 
 SOURCES = Glob('*.c') + Glob('buckets/*.c') + Glob('auth/*.c')
@@ -241,10 +243,9 @@ if sys.platform == 'win32':
                    'crypt32.lib', 'mswsock.lib', 'rpcrt4.lib', 'secur32.lib'])
 
   # Get apr/apu information into our build
-  env.Append(CFLAGS='-DWIN32 ' + \
-                    '/I "$APR/include" /I "$APU/include" ' + \
-                    '-DWIN32 -DWIN32_LEAN_AND_MEAN -DNOUSER' + \
-                    '-DNOGDI -DNONLS -DNOCRYPT')
+  env.Append(CFLAGS=['/I"$APR/include"','/I"$APU/include"',
+                     '-DWIN32','-DWIN32_LEAN_AND_MEAN','-DNOUSER',
+                     '-DNOGDI','-DNONLS','-DNOCRYPT'])
   if aprstatic:
     env.Append(LIBPATH=['$APR/LibR','$APU/LibR'],
                LIBS=['apr-1.lib', 'aprutil-1.lib'])
@@ -255,7 +256,7 @@ if sys.platform == 'win32':
   apu_libs='libaprutil-1.lib'
 
   # zlib
-  env.Append(CFLAGS='/I "$ZLIB"')
+  env.Append(CFLAGS='/I"$ZLIB"')
   env.Append(LIBPATH='$ZLIB', LIBS='zlib.lib')
 
   # openssl
@@ -354,16 +355,14 @@ env.Alias('install', ['install-lib', 'install-inc', 'install-pc', ])
 
 tenv = env.Clone()
 
-TEST_PROGRAMS = [
-  'test/serf_get',
-  'test/serf_response',
-  'test/serf_request',
-  'test/serf_spider',
-  'test/test_all',
-  'test/serf_bwtp',
-]
+TEST_PROGRAMS = [ 'serf_get', 'serf_response', 'serf_request', 'serf_spider',
+                  'test_all', 'serf_bwtp' ]
+if sys.platform == 'win32':
+  TEST_EXES = [ os.path.join('test', '%s.exe' % (prog)) for prog in TEST_PROGRAMS ]
+else:
+  TEST_EXES = [ os.path.join('test', '%s' % (prog)) for prog in TEST_PROGRAMS ]
 
-env.AlwaysBuild(env.Alias('check', TEST_PROGRAMS, 'build/check.sh'))
+env.AlwaysBuild(env.Alias('check', TEST_EXES, 'build/check.bat'))
 
 # Find the (dynamic) library in this directory
 linkflags = [link_rpath(thisdir,), ]
@@ -371,9 +370,7 @@ tenv.Replace(LINKFLAGS=linkflags)
 tenv.Prepend(LIBS=[LIBNAME, ],
              LIBPATH=[thisdir, ])
 
-for proggie in TEST_PROGRAMS:
-  if proggie.endswith('test_all'):
-    tenv.Program('test/test_all', [
+testall_files = [
         'test/test_all.c',
         'test/CuTest.c',
         'test/test_util.c',
@@ -384,9 +381,25 @@ for proggie in TEST_PROGRAMS:
         'test/test_ssl.c',
         'test/server/test_server.c',
         'test/server/test_sslserver.c',
-        ])
+        ]
+
+# test_all uses some private functions. Rather then adding them to serf.def,
+# include the files implementing these functions as dependencies for test_all.
+# This only impacts the Windows build, on all other platforms these functions
+# are public in the serf library.
+if sys.platform == 'win32':
+  testall_files += [
+        env.Object('buckets/buckets.c'),
+        env.Object('buckets/aggregate_buckets.c'),
+        env.Object('buckets/response_buckets.c'),
+        ]
+
+for proggie in TEST_EXES:
+  if proggie.find('test_all'):
+    print "found %s" %(proggie)
+    tenv.Program(proggie, testall_files )
   else:
-    tenv.Program(proggie, [proggie + '.c'])
+    tenv.Program(target = proggie, source = [proggie.replace('.exe','') + '.c'])
 
 
 # HANDLE CLEANING
