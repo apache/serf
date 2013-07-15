@@ -172,6 +172,7 @@ static apr_status_t serf_dechunk_read(serf_bucket_t *bucket,
 
         case STATE_DONE:
             /* Just keep returning EOF */
+            *len = 0;
             return APR_EOF;
 
         default:
