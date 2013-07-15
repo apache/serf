@@ -398,7 +398,6 @@ serf__setup_request_digest_auth(peer_t peer,
 
     if (digest_info && digest_info->realm) {
         const char *value;
-        apr_uri_t parsed_uri;
         const char *path;
 
         /* TODO: per request pool? */
@@ -409,6 +408,8 @@ serf__setup_request_digest_auth(peer_t peer,
         if (strcmp(method, "CONNECT") == 0)
             path = uri;
         else {
+            apr_uri_t parsed_uri;
+
             /* Extract path from uri. */
             status = apr_uri_parse(conn->pool, uri, &parsed_uri);
             if (status)
@@ -430,7 +431,7 @@ serf__setup_request_digest_auth(peer_t peer,
         /* Store the uri of this request on the serf_request_t object, to make
            it available when validating the Authentication-Info header of the
            matching response. */
-        request->auth_baton = parsed_uri.path;
+        request->auth_baton = path;
     }
 
     return status;
