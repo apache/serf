@@ -27,6 +27,25 @@ HEADER_FILES = ['serf.h',
 # where we save the configuration variables
 SAVED_CONFIG = '.saved_config'
 
+# Variable class that does no validation on the input
+def _converter(val):
+    """
+    """
+    if val == 'none':
+      val = []
+    else:
+      val = val.split(',')
+    return val
+
+def RawListVariable(key, help, default):
+    """
+    The input parameters describe a 'raw string list' option. This class
+    accepts a comma separated list and converts it to a space separated
+    list.
+    """
+    return (key, '%s' % (help), default, None, lambda val: _converter(val))
+
+
 opts = Variables(files=[SAVED_CONFIG])
 opts.AddVariables(
   PathVariable('PREFIX',
@@ -59,6 +78,15 @@ opts.AddVariables(
   BoolVariable('APR_STATIC',
                "Enable using a static compiled APR",
                False),
+  RawListVariable('CC', "Command name or path of the C compiler", None),
+  RawListVariable('CFLAGS', "Extra flags for the C compiler (comma separated)",
+                  ''),
+  RawListVariable('LINKFLAGS', "Extra flags for the linker (comma separated)",
+                  ''),
+  RawListVariable('LIBS', "Extra libraries passed to the linker, "
+                  "e.g. -l<library> (comma separated)", ''),
+  RawListVariable('CPPFLAGS', "Extra flags for the C preprocessor "
+                  "(comma separated)", ''), 
   )
 
 env = Environment(variables=opts,
@@ -176,10 +204,10 @@ if sys.platform != 'win32':
   if sys.platform == 'sunos5':
     libs.append('m')
 
-env.Replace(LINKFLAGS=linkflags,
-            CCFLAGS=ccflags,
-            LIBS=libs,
-            )
+env.Append(LINKFLAGS=linkflags,
+           CCFLAGS=ccflags,
+           LIBS=libs,
+           )
 
 
 # PLAN THE BUILD
