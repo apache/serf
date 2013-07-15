@@ -154,7 +154,7 @@ def link_rpath(d):
   elif sys.platform == 'win32':
     return ''
 
-  return '-Wl','-rpath,','%s' % (d,)
+  return '-Wl,-rpath,%s' % (d,)
 
 thisdir = os.getcwd()
 libdir = '$PREFIX/lib'
@@ -362,7 +362,7 @@ if sys.platform == 'win32':
 else:
   TEST_EXES = [ os.path.join('test', '%s' % (prog)) for prog in TEST_PROGRAMS ]
 
-env.AlwaysBuild(env.Alias('check', TEST_EXES, 'build/check.bat'))
+env.AlwaysBuild(env.Alias('check', TEST_EXES, 'build/check.sh'))
 
 # Find the (dynamic) library in this directory
 linkflags = [link_rpath(thisdir,), ]
@@ -395,8 +395,7 @@ if sys.platform == 'win32':
         ]
 
 for proggie in TEST_EXES:
-  if proggie.find('test_all'):
-    print "found %s" %(proggie)
+  if 'test_all' in proggie:
     tenv.Program(proggie, testall_files )
   else:
     tenv.Program(target = proggie, source = [proggie.replace('.exe','') + '.c'])
