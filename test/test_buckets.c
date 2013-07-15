@@ -982,6 +982,178 @@ static void test_linebuf_crlf_split(CuTest *tc)
     CuAssert(tc, "Read less data than expected.", strlen(expected) == 0);
 }
 
+/* Test that serf can handle lines that don't arrive completely in one go.
+   It doesn't really run random, it tries inserting APR_EAGAIN in all possible
+   places in the response message, only one currently. */
+static void test_random_eagain_in_response(CuTest *tc)
+{
+    apr_pool_t *test_pool = tc->testBaton;
+    apr_pool_t *iter_pool;
+
+#define BODY "12345678901234567890123456789012345678901234567890"\
+             "12345678901234567890123456789012345678901234567890"
+
+    const char *expected = apr_psprintf(test_pool, "%s%s", BODY, BODY);
+    const char *fullmsg = "HTTP/1.1 200 OK" CRLF
+    "Date: Fri, 12 Jul 2013 15:13:52 GMT" CRLF
+    "Server: Apache/2.2.17 (Unix) mod_ssl/2.2.17 OpenSSL/1.0.1e DAV/2 "
+    "mod_wsgi/3.4 Python/2.7.3 SVN/1.7.10" CRLF
+    "DAV: 1,2" CRLF
+    "DAV: version-control,checkout,working-resource" CRLF
+    "DAV: merge,baseline,activity,version-controlled-collection" CRLF
+    "DAV: http://subversion.tigris.org/xmlns/dav/svn/depth" CRLF
+    "DAV: http://subversion.tigris.org/xmlns/dav/svn/log-revprops" CRLF
+    "DAV: http://subversion.tigris.org/xmlns/dav/svn/atomic-revprops" CRLF
+    "DAV: http://subversion.tigris.org/xmlns/dav/svn/partial-replay" CRLF
+    "DAV: http://subversion.tigris.org/xmlns/dav/svn/mergeinfo" CRLF
+    "DAV: <http://apache.org/dav/propset/fs/1>" CRLF
+    "MS-Author-Via: DAV" CRLF
+    "Allow: OPTIONS,GET,HEAD,POST,DELETE,TRACE,PROPFIND,PROPPATCH,COPY,MOVE,"
+    "LOCK,UNLOCK,CHECKOUT" CRLF
+    "SVN-Youngest-Rev: 1502584" CRLF
+    "SVN-Repository-UUID: 13f79535-47bb-0310-9956-ffa450edef68" CRLF
+    "SVN-Repository-Root: /repos/asf" CRLF
+    "SVN-Me-Resource: /repos/asf/!svn/me" CRLF
+    "SVN-Rev-Root-Stub: /repos/asf/!svn/rvr" CRLF
+    "SVN-Rev-Stub: /repos/asf/!svn/rev" CRLF
+    "SVN-Txn-Root-Stub: /repos/asf/!svn/txr" CRLF
+    "SVN-Txn-Stub: /repos/asf/!svn/txn" CRLF
+    "SVN-VTxn-Root-Stub: /repos/asf/!svn/vtxr" CRLF
+    "SVN-VTxn-Stub: /repos/asf/!svn/vtxn" CRLF
+    "Vary: Accept-Encoding" CRLF
+    "Content-Type: text/plain" CRLF
+    "Content-Type: text/xml; charset=\"utf-8\"" CRLF
+    "Transfer-Encoding: chunked" CRLF
+    CRLF
+    "64" CRLF
+    BODY CRLF
+    "64" CRLF
+    BODY CRLF
+    "0" CRLF
+    CRLF;
+
+    const long nr_of_tests = strlen(fullmsg);
+    long i;
+
+    mockbkt_action actions[]= {
+        { 1, NULL, APR_EAGAIN },
+        { 1, NULL, APR_EAGAIN },
+    };
+
+    apr_pool_create(&iter_pool, test_pool);
+
+    for (i = 0; i < nr_of_tests; i++) {
+        serf_bucket_t *mock_bkt, *bkt;
+        serf_bucket_alloc_t *alloc;
+        const char *ptr = expected;
+        const char *part1, *part2;
+        apr_size_t cut;
+        apr_status_t status;
+
+        apr_pool_clear(iter_pool);
+
+        alloc = serf_bucket_allocator_create(iter_pool, NULL, NULL);
+
+        cut = i % strlen(fullmsg);
+        part1 = apr_pstrndup(iter_pool, fullmsg, cut);
+        part2 = apr_pstrdup(iter_pool, fullmsg + cut);
+
+        actions[0].data = part1;
+        actions[1].data = part2;
+
+        mock_bkt = serf_bucket_mock_create(actions, 2, alloc);
+        bkt = serf_bucket_response_create(mock_bkt, alloc);
+
+        do
+        {
+            const char *data, *errmsg;
+            apr_size_t len;
+
+            status = serf_bucket_read(bkt, SERF_READ_ALL_AVAIL, &data, &len);
+            CuAssert(tc, "Got error during bucket reading.",
+                     !SERF_BUCKET_READ_ERROR(status));
+            errmsg = apr_psprintf(iter_pool,
+                                  "Read more data than expected, EAGAIN"
+                                  " inserted at pos: %d, remainder: \"%s\"",
+                                  cut, fullmsg + cut);
+            CuAssert(tc, errmsg, strlen(ptr) >= len);
+            errmsg = apr_psprintf(iter_pool,
+                                  "Read data is not equal to expected, EAGAIN"
+                                  " inserted at pos: %d, remainder: \"%s\"",
+                                  cut, fullmsg + cut);
+            CuAssertStrnEquals_Msg(tc, errmsg, ptr, len, data);
+
+            ptr += len;
+
+            if (len == 0 && status == APR_EAGAIN)
+                serf_bucket_mock_more_data_arrived(mock_bkt);
+        } while(!APR_STATUS_IS_EOF(status));
+
+        CuAssert(tc, "Read less data than expected.", strlen(ptr) == 0);
+    }
+    apr_pool_destroy(iter_pool);
+
+}
+
+static void test_dechunk_buckets(CuTest *tc)
+{
+    serf_bucket_t *mock_bkt, *bkt;
+    apr_pool_t *test_pool = tc->testBaton;
+    serf_bucket_alloc_t *alloc = serf_bucket_allocator_create(test_pool, NULL,
+                                                              NULL);
+    mockbkt_action actions[]= {
+        /* one chunk */
+        { 1, "6" CRLF "blabla" CRLF, APR_SUCCESS },
+        /* EAGAIN after first chunk */
+        { 1, "6" CRLF "blabla" CRLF, APR_EAGAIN },
+        { 1, "6" CRLF "blabla" CRLF, APR_SUCCESS },
+        /* CRLF after body split */
+        { 1, "6" CRLF "blabla" CR, APR_EAGAIN },
+        { 1,  LF, APR_SUCCESS },
+        /* CRLF before body split */
+        { 1, "6" CR, APR_SUCCESS },
+        { 1, "", APR_EAGAIN },
+        { 1,  LF "blabla" CRLF, APR_SUCCESS },
+        /* empty chunk */
+        { 1, "", APR_SUCCESS },
+        /* two chunks */
+        { 1, "6" CRLF "blabla" CRLF "6" CRLF "blabla" CRLF, APR_SUCCESS },
+        /* three chunks */
+        { 1, "6" CRLF "blabla" CRLF "6" CRLF "blabla" CRLF
+             "0" CRLF "" CRLF, APR_SUCCESS },
+    };
+    const int nr_of_actions = sizeof(actions) / sizeof(mockbkt_action);
+    apr_status_t status;
+    const char *body = "blabla";
+    const char *expected = apr_psprintf(test_pool, "%s%s%s%s%s%s%s%s%s", body,
+                                        body, body, body, body, body, body,
+                                        body, body);
+
+    mock_bkt = serf_bucket_mock_create(actions, nr_of_actions, alloc);
+    bkt = serf_bucket_dechunk_create(mock_bkt, alloc);
+
+    do
+    {
+        const char *data;
+        apr_size_t len;
+
+        status = serf_bucket_read(bkt, SERF_READ_ALL_AVAIL, &data, &len);
+        CuAssert(tc, "Got error during bucket reading.",
+                 !SERF_BUCKET_READ_ERROR(status));
+        CuAssert(tc, "Read more data than expected.",
+                 strlen(expected) >= len);
+        CuAssert(tc, "Read data is not equal to expected.",
+                 strncmp(expected, data, len) == 0);
+
+        expected += len;
+
+        if (len == 0 && status == APR_EAGAIN)
+            serf_bucket_mock_more_data_arrived(mock_bkt);
+    } while(!APR_STATUS_IS_EOF(status));
+
+    CuAssert(tc, "Read less data than expected.", strlen(expected) == 0);
+}
+
 CuSuite *test_buckets(void)
 {
     CuSuite *suite = CuSuiteNew();
@@ -1004,6 +1176,8 @@ CuSuite *test_buckets(void)
     SUITE_ADD_TEST(suite, test_aggregate_bucket_readline);
     SUITE_ADD_TEST(suite, test_header_buckets);
     SUITE_ADD_TEST(suite, test_linebuf_crlf_split);
+    SUITE_ADD_TEST(suite, test_random_eagain_in_response);
+    SUITE_ADD_TEST(suite, test_dechunk_buckets);
 #if 0
     SUITE_ADD_TEST(suite, test_serf_default_read_iovec);
 #endif
