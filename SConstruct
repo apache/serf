@@ -88,13 +88,45 @@ opts.AddVariables(
   RawListVariable('CC', "Command name or path of the C compiler", None),
   RawListVariable('CFLAGS', "Extra flags for the C compiler (comma separated)",
                   ''),
-  RawListVariable('LINKFLAGS', "Extra flags for the linker (comma separated)",
-                  ''),
   RawListVariable('LIBS', "Extra libraries passed to the linker, "
                   "e.g. -l<library> (comma separated)", ''),
   RawListVariable('CPPFLAGS', "Extra flags for the C preprocessor "
                   "(comma separated)", ''), 
   )
+
+# Breaks default generated flags on win32, and probably also on other platforms
+# ### Need a way to truely add instead of overriding defaults
+if sys.platform != 'win32':
+  opts.AddVariables(
+    RawListVariable('LINKFLAGS', "Extra flags for the linker (comma separated)",
+                    ''),
+  )
+
+if sys.platform == 'win32':
+  opts.AddVariables(
+    # By default SCons builds for the host platform on Windows, when using
+    # a supported compiler (E.g. VS2010/VS2012). Allow overriding
+
+    # Note that Scons 1.3 only supports this on Windows and only when
+    # constructing Environment(). Later changes to TARGET_ARCH are ignored
+    EnumVariable('TARGET_ARCH',
+                 "Platform to build for (x86|x64|win32|x86_x64)",
+                 'x86',
+                 allowed_values=('x86', 'x86_64', 'ia64'),
+                 map={'X86'  : 'x86',
+                      'win32': 'x86',
+                      'Win32': 'x86',
+                      'x64'  : 'x86_64',
+                      'X64'  : 'x86_64'
+                     }),
+
+    # We always documented that we handle an install layout, but in fact we
+    # hardcoded source layouts. Allow disabling this behavior.
+    # ### Fix default?
+    BoolVariable('SOURCE_LAYOUT',
+                 "Assume a source layout instead of install layout",
+                 True),
+    )
 
 env = Environment(variables=opts,
                   tools=('default', 'textfile',),
@@ -158,7 +190,8 @@ if sys.platform != 'win32':
 else:
   LIBNAMESTATIC = 'serf-${MAJOR}'
 
-env.Append(RPATH=libdir)
+env.Append(RPATH=libdir,
+           PDB='${TARGET.filebase}.pdb')
 
 if sys.platform == 'darwin':
 #  linkflags.append('-Wl,-install_name,@executable_path/%s.dylib' % (LIBNAME,))
@@ -171,8 +204,8 @@ if sys.platform == 'darwin':
 if sys.platform != 'win32':
   ### gcc only. figure out appropriate test / better way to check these
   ### flags, and check for gcc.
+  env.Append(CFLAGS='-std=c89')
   env.Append(CCFLAGS=[
-               '-std=c89',
                '-Wdeclaration-after-statement',
                '-Wmissing-prototypes',
              ])
@@ -183,24 +216,29 @@ if sys.platform != 'win32':
 
   if debug:
     env.Append(CCFLAGS='-g')
+    env.Append(CPPDEFINES='DEBUG')
   else:
     env.Append(CCFLAGS='-O2')
-else:
-  # Warning level 4, no unused argument warnings
-  env.Append(CCFLAGS=['/W4', '/wd4100'])
-  if debug:
-    # Disable optimizations for debugging, use debug DLL runtime
-    env.Append(CCFLAGS=['/Od', '/MDd'])
-  else:
-    # Optimize for speed, use DLL runtime
-    env.Append(CCFLAGS=['/O2', '/MD'])
-  
-if sys.platform != 'win32':
+    env.Append(CPPDEFINES='NDEBUG')
+
   ### works for Mac OS. probably needs to change
   env.Append(LIBS=['ssl', 'crypto', 'z', ])
 
   if sys.platform == 'sunos5':
     env.Append(LIBS='m')
+else:
+  # Warning level 4, no unused argument warnings
+  env.Append(CCFLAGS=['/W4', '/wd4100'])
+
+  # Choose runtime and optimization
+  if debug:
+    # Disable optimizations for debugging, use debug DLL runtime
+    env.Append(CCFLAGS=['/Od', '/MDd'])
+    env.Append(CPPDEFINES='DEBUG')
+  else:
+    # Optimize for speed, use DLL runtime
+    env.Append(CCFLAGS=['/O2', '/MD'])
+    env.Append(CPPDEFINES='NDEBUG')
 
 # PLAN THE BUILD
 SHARED_SOURCES = []
@@ -221,28 +259,47 @@ if sys.platform == 'win32':
                    'crypt32.lib', 'mswsock.lib', 'rpcrt4.lib', 'secur32.lib'])
 
   # Get apr/apu information into our build
-  
-  env.Append(CPPPATH=['$APR/include','$APU/include'])
   env.Append(CPPDEFINES=['WIN32','WIN32_LEAN_AND_MEAN','NOUSER',
-                        'NOGDI','NONLS','NOCRYPT'])
+                         'NOGDI', 'NONLS','NOCRYPT'])
+
   if aprstatic:
+    apr_libs='apr-1.lib'
+    apu_libs='aprutil-1.lib'
+  else:
+    apr_libs='libapr-1.lib'
+    apu_libs='libaprutil-1.lib'
+
+  env.Append(LIBS=[apr_libs, apu_libs])
+  if not env.get('SOURCE_LAYOUT', None):
+    env.Append(LIBPATH=['$APR/lib', '$APU/lib'],
+               CPPPATH=['$APR/include/apr-1', '$APU/include/apr-1'])
+  elif aprstatic:
     env.Append(LIBPATH=['$APR/LibR','$APU/LibR'],
-               LIBS=['apr-1.lib', 'aprutil-1.lib'])
+               CPPPATH=['$APR/include', '$APU/include'])
   else:
     env.Append(LIBPATH=['$APR/Release','$APU/Release'],
-               LIBS=['libapr-1.lib', 'libaprutil-1.lib'])
-  apr_libs='libapr-1.lib'
-  apu_libs='libaprutil-1.lib'
+               CPPPATH=['$APR/include', '$APU/include'])
 
   # zlib
-  env.Append(CPPPATH='$ZLIB',
-             LIBPATH='$ZLIB',
-             LIBS='zlib.lib')
+  env.Append(LIBS='zlib.lib')
+  if not env.get('SOURCE_LAYOUT', None):
+    env.Append(CPPPATH='$ZLIB/include',
+               LIBPATH='$ZLIB/lib')
+  else:
+    env.Append(CPPPATH='$ZLIB',
+               LIBPATH='$ZLIB')
 
   # openssl
-  env.Append(CPPPATH='$OPENSSL/inc32')
-  env.Append(LIBPATH='$OPENSSL/out32dll', LIBS=['libeay32.lib', 'ssleay32.lib'])
-
+  env.Append(LIBS=['libeay32.lib', 'ssleay32.lib'])
+  if not env.get('SOURCE_LAYOUT', None):
+    env.Append(CPPPATH='$OPENSSL/include/openssl',
+               LIBPATH='$OPENSSL/lib')
+  elif 0: # opensslstatic:
+    env.Append(CPPPATH='$OPENSSL/inc32',
+               LIBPATH='$OPENSSL/out32')
+  else:
+    env.Append(CPPPATH='$OPENSSL/inc32',
+               LIBPATH='$OPENSSL/out32dll')
 else:
   if os.path.isdir(apr):
     apr = os.path.join(apr, 'bin', 'apr-1-config')
