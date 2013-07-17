@@ -258,6 +258,10 @@ static apr_status_t replay(serv_ctx_t *servctx,
                        server. */
                     next_action(servctx);
                 }
+                if (!servctx->servstream)
+                    servctx->servstream = serf__bucket_stream_create(
+                                              servctx->allocator,
+                                              detect_eof,servctx);
                 if (len) {
                     tmp = serf_bucket_simple_copy_create(buf, len,
                                                          servctx->allocator);
@@ -313,10 +317,6 @@ static apr_status_t replay(serv_ctx_t *servctx,
                           "to server.\n");
                 status = create_client_socket(&servctx->proxy_client_sock,
                                               servctx, action->text);
-                if (!servctx->servstream)
-                    servctx->servstream = serf__bucket_stream_create(
-                                              servctx->allocator,
-                                              detect_eof,servctx);
                 if (!servctx->clientstream)
                     servctx->clientstream = serf__bucket_stream_create(
                                                 servctx->allocator,
