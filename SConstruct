@@ -158,7 +158,7 @@ if sys.platform != 'win32':
 else:
   LIBNAMESTATIC = 'serf-${MAJOR}'
 
-env.append(RPATH=libdir)
+env.Append(RPATH=libdir)
 
 if sys.platform == 'darwin':
 #  linkflags.append('-Wl,-install_name,@executable_path/%s.dylib' % (LIBNAME,))
