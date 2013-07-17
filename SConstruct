@@ -399,8 +399,7 @@ if sys.platform == 'win32':
 else:
   TEST_EXES = [ os.path.join('test', '%s' % (prog)) for prog in TEST_PROGRAMS ]
 
-# ### Needs a Windows compatible implementation. Python file?
-env.AlwaysBuild(env.Alias('check', TEST_EXES, 'build/check.sh'))
+env.AlwaysBuild(env.Alias('check', TEST_EXES, sys.executable + ' build/check.py'))
 
 # Find the (dynamic) library in this directory
 tenv.Replace(RPATH=thisdir)
