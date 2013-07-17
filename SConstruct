@@ -87,19 +87,13 @@ opts.AddVariables(
                False),
   RawListVariable('CC', "Command name or path of the C compiler", None),
   RawListVariable('CFLAGS', "Extra flags for the C compiler (comma separated)",
-                  ''),
+                  None),
   RawListVariable('LIBS', "Extra libraries passed to the linker, "
-                  "e.g. -l<library> (comma separated)", ''),
+                  "e.g. -l<library> (comma separated)", None),
+  RawListVariable('LINKFLAGS', "Extra flags for the linker (comma separated)",
+                  None),
   RawListVariable('CPPFLAGS', "Extra flags for the C preprocessor "
-                  "(comma separated)", ''), 
-  )
-
-# Breaks default generated flags on win32, and probably also on other platforms
-# ### Need a way to truely add instead of overriding defaults
-if sys.platform != 'win32':
-  opts.AddVariables(
-    RawListVariable('LINKFLAGS', "Extra flags for the linker (comma separated)",
-                    ''),
+                  "(comma separated)", None), 
   )
 
 if sys.platform == 'win32':
@@ -119,6 +113,12 @@ if sys.platform == 'win32':
                       'x64'  : 'x86_64',
                       'X64'  : 'x86_64'
                      }),
+                     
+    EnumVariable('MSVC_VERSION',
+                 "Visual C++ to use for building (E.g. 11.0, 9.0)",
+                 None,
+                 allowed_values=('12.0', '11.0', '10.0', '9.0', '8.0', '6.0')
+                ),
 
     # We always documented that we handle an install layout, but in fact we
     # hardcoded source layouts. Allow disabling this behavior.
@@ -399,6 +399,7 @@ if sys.platform == 'win32':
 else:
   TEST_EXES = [ os.path.join('test', '%s' % (prog)) for prog in TEST_PROGRAMS ]
 
+# ### Needs a Windows compatible implementation. Python file?
 env.AlwaysBuild(env.Alias('check', TEST_EXES, 'build/check.sh'))
 
 # Find the (dynamic) library in this directory
