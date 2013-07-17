@@ -148,14 +148,6 @@ opts.Save(SAVED_CONFIG, env)
 
 # PLATFORM-SPECIFIC BUILD TWEAKS
 
-def link_rpath(d):
-  if sys.platform == 'sunos5':
-    return '-Wl,-R,%s' % (d,)
-  elif sys.platform == 'win32':
-    return ''
-
-  return '-Wl,-rpath,%s' % (d,)
-
 thisdir = os.getcwd()
 libdir = '$PREFIX/lib'
 incdir = '$PREFIX/include/serf-$MAJOR'
@@ -166,58 +158,49 @@ if sys.platform != 'win32':
 else:
   LIBNAMESTATIC = 'serf-${MAJOR}'
 
-linkflags = []
-
-if sys.platform != 'win32':
-  linkflags.append(link_rpath(libdir))
-else:
-  linkflags.append(['/nologo'])
+env.append(RPATH=libdir)
 
 if sys.platform == 'darwin':
 #  linkflags.append('-Wl,-install_name,@executable_path/%s.dylib' % (LIBNAME,))
-  linkflags.append('-Wl,-install_name,%s/%s.dylib' % (thisdir, LIBNAME,))
+  env.Append(LINKFLAGS='-Wl,-install_name,%s/%s.dylib' % (thisdir, LIBNAME,))
   # 'man ld' says positive non-zero for the first number, so we add one.
   # Mac's interpretation of compatibility is the same as our MINOR version.
-  linkflags.append('-Wl,-compatibility_version,%d' % (MINOR+1,))
-  linkflags.append('-Wl,-current_version,%d.%d' % (MINOR+1, PATCH,))
+  env.Append(LINKFLAGS='-Wl,-compatibility_version,%d' % (MINOR+1,))
+  env.Append(LINKFLAGS='-Wl,-current_version,%d.%d' % (MINOR+1, PATCH,))
 
-ccflags = [ ]
 if sys.platform != 'win32':
   ### gcc only. figure out appropriate test / better way to check these
   ### flags, and check for gcc.
-  ccflags = ['-std=c89',
-             '-Wdeclaration-after-statement',
-             '-Wmissing-prototypes',
-             ]
+  env.Append(CCFLAGS=[
+               '-std=c89',
+               '-Wdeclaration-after-statement',
+               '-Wmissing-prototypes',
+             ])
 
   ### -Wall is not available on Solaris
   if sys.platform != 'sunos5': 
-    ccflags.append(['-Wall', ])
+    env.Append(CCFLAGS='-Wall')
 
   if debug:
-    ccflags.append(['-g'])
+    env.Append(CCFLAGS='-g')
   else:
-    ccflags.append('-O2')
+    env.Append(CCFLAGS='-O2')
 else:
-  ccflags.append(['/nologo', '/W4', '/Zi', '/wd4100'])
+  # Warning level 4, no unused argument warnings
+  env.Append(CCFLAGS=['/W4', '/wd4100'])
   if debug:
-    ccflags.append(['/Od'])
+    # Disable optimizations for debugging, use debug DLL runtime
+    env.Append(CCFLAGS=['/Od', '/MDd'])
   else:
-    ccflags.append(['/O2'])
+    # Optimize for speed, use DLL runtime
+    env.Append(CCFLAGS=['/O2', '/MD'])
   
-libs = [ ]
 if sys.platform != 'win32':
   ### works for Mac OS. probably needs to change
-  libs = ['ssl', 'crypto', 'z', ]
+  env.Append(LIBS=['ssl', 'crypto', 'z', ])
 
   if sys.platform == 'sunos5':
-    libs.append('m')
-
-env.Append(LINKFLAGS=linkflags,
-           CCFLAGS=ccflags,
-           LIBS=libs,
-           )
-
+    env.Append(LIBS='m')
 
 # PLAN THE BUILD
 SHARED_SOURCES = []
@@ -231,21 +214,17 @@ lib_static = env.StaticLibrary(LIBNAMESTATIC, SOURCES)
 lib_shared = env.SharedLibrary(LIBNAME, SOURCES + SHARED_SOURCES)
 
 if aprstatic:
-  env.Append(CFLAGS='-DAPR_DECLARE_STATIC -DAPU_DECLARE_STATIC')
+  env.Append(CPPDEFINES=['APR_DECLARE_STATIC', 'APU_DECLARE_STATIC'])
 
 if sys.platform == 'win32':
-  if debug:
-    env.Append(CFLAGS='/MDd')
-  else:
-    env.Append(CFLAGS='/MD')
-  
   env.Append(LIBS=['user32.lib', 'advapi32.lib', 'gdi32.lib', 'ws2_32.lib',
                    'crypt32.lib', 'mswsock.lib', 'rpcrt4.lib', 'secur32.lib'])
 
   # Get apr/apu information into our build
-  env.Append(CFLAGS=['/I"$APR/include"','/I"$APU/include"',
-                     '-DWIN32','-DWIN32_LEAN_AND_MEAN','-DNOUSER',
-                     '-DNOGDI','-DNONLS','-DNOCRYPT'])
+  
+  env.Append(CPPPATH=['$APR/include','$APU/include'])
+  env.Append(CPPDEFINES=['WIN32','WIN32_LEAN_AND_MEAN','NOUSER',
+                        'NOGDI','NONLS','NOCRYPT'])
   if aprstatic:
     env.Append(LIBPATH=['$APR/LibR','$APU/LibR'],
                LIBS=['apr-1.lib', 'aprutil-1.lib'])
@@ -256,8 +235,9 @@ if sys.platform == 'win32':
   apu_libs='libaprutil-1.lib'
 
   # zlib
-  env.Append(CFLAGS='/I"$ZLIB"')
-  env.Append(LIBPATH='$ZLIB', LIBS='zlib.lib')
+  env.Append(CPPPATH='$ZLIB',
+             LIBPATH='$ZLIB',
+             LIBS='zlib.lib')
 
   # openssl
   env.Append(CPPPATH='$OPENSSL/inc32')
@@ -295,16 +275,16 @@ else:
 # If build with gssapi, get its information and define SERF_HAVE_GSSAPI
 if gssapi and CALLOUT_OKAY:
     env.ParseConfig('$GSSAPI --libs gssapi')
-    env.Append(CFLAGS='-DSERF_HAVE_GSSAPI')
+    env.Append(CPPDEFINES='SERF_HAVE_GSSAPI')
 if sys.platform == 'win32':
-  env.Append(CFLAGS='-DSERF_HAVE_SPNEGO -DSERF_HAVE_SSPI')
+  env.Append(CPPDEFINES=['SERF_HAVE_SPNEGO', 'SERF_HAVE_SSPI'])
 
 # On Solaris, the -R values that APR describes never make it into actual
 # RPATH flags. We'll manually map all directories in LIBPATH into new
 # flags to set RPATH values.
 if sys.platform == 'sunos5':
   for d in env['LIBPATH']:
-    env.Append(LINKFLAGS=link_rpath(d))
+    env.Append(RPATH=d)
 
 # Set up the construction of serf-*.pc
 # TODO: add gssapi libs
@@ -365,8 +345,7 @@ else:
 env.AlwaysBuild(env.Alias('check', TEST_EXES, 'build/check.sh'))
 
 # Find the (dynamic) library in this directory
-linkflags = [link_rpath(thisdir,), ]
-tenv.Replace(LINKFLAGS=linkflags)
+tenv.Replace(RPATH=thisdir)
 tenv.Prepend(LIBS=[LIBNAME, ],
              LIBPATH=[thisdir, ])
 
