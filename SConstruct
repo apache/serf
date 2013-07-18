@@ -334,7 +334,7 @@ if gssapi and CALLOUT_OKAY:
     env.ParseConfig('$GSSAPI --libs gssapi')
     env.Append(CPPDEFINES='SERF_HAVE_GSSAPI')
 if sys.platform == 'win32':
-  env.Append(CPPDEFINES=['SERF_HAVE_SPNEGO', 'SERF_HAVE_SSPI'])
+  env.Append(CPPDEFINES=['SERF_HAVE_SSPI'])
 
 # On Solaris, the -R values that APR describes never make it into actual
 # RPATH flags. We'll manually map all directories in LIBPATH into new
