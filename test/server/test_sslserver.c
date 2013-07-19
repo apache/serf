@@ -307,6 +307,8 @@ static apr_status_t ssl_handshake(serv_ctx_t *serv_ctx)
             case SSL_ERROR_WANT_READ:
             case SSL_ERROR_WANT_WRITE:
                 return APR_EAGAIN;
+            case SSL_ERROR_SYSCALL:
+                return serv_ctx->bio_read_status; /* Usually APR_EAGAIN */
             default:
                 serf__log(TEST_VERBOSE, __FILE__, "SSL Error %d: ", ssl_err);
                 ERR_print_errors_fp(stderr);
