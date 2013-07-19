@@ -410,6 +410,10 @@ static apr_status_t proxy_replay(serv_ctx_t *servctx,
 
             readlen = BUFSIZE;
 
+            if (!servctx->servstream)
+                servctx->servstream = serf__bucket_stream_create(
+                                          servctx->allocator,
+                                          detect_eof,servctx);
             status = serf_bucket_read(servctx->servstream, BUFSIZE,
                                       &buf, &readlen);
             if (SERF_BUCKET_READ_ERROR(status))
