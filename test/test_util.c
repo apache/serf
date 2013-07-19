@@ -389,6 +389,7 @@ test_helper_run_requests_no_check(CuTest *tc, test_baton_t *tb,
     apr_pool_t *iter_pool;
     int i, done = 0;
     apr_status_t status;
+    apr_time_t finish_time = apr_time_now() + apr_time_from_sec(15);
 
     apr_pool_create(&iter_pool, pool);
 
@@ -419,6 +420,9 @@ test_helper_run_requests_no_check(CuTest *tc, test_baton_t *tb,
         done = 1;
         for (i = 0; i < num_requests; i++)
             done &= handler_ctx[i].done;
+
+        if (!done && (apr_time_now() > finish_time))
+          return APR_ETIMEDOUT;
     }
     apr_pool_destroy(iter_pool);
 
