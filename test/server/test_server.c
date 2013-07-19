@@ -32,7 +32,10 @@ static apr_status_t cleanup_server(void *baton)
     serv_ctx_t *servctx = baton;
     apr_status_t status;
 
-    status = apr_socket_close(servctx->serv_sock);
+    if (servctx->serv_sock)
+      status = apr_socket_close(servctx->serv_sock);
+    else
+      status = APR_EGENERAL;
 
     if (servctx->client_sock) {
         apr_socket_close(servctx->client_sock);

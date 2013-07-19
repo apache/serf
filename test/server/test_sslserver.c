@@ -381,7 +381,8 @@ static apr_status_t cleanup_https_server(void *baton)
     ssl_context_t *ssl_ctx = servctx->ssl_ctx;
 
     if (ssl_ctx) {
-        SSL_clear(ssl_ctx->ssl);
+        if (ssl_ctx->ssl)
+          SSL_clear(ssl_ctx->ssl);
         SSL_CTX_free(ssl_ctx->ctx);
     }
 
