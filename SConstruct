@@ -402,11 +402,12 @@ if sys.platform == 'win32':
 else:
   TEST_EXES = [ os.path.join('test', '%s' % (prog)) for prog in TEST_PROGRAMS ]
 
-env.AlwaysBuild(env.Alias('check', TEST_EXES, sys.executable + ' build/check.py'))
+env.AlwaysBuild(env.Alias('check', TEST_EXES, sys.executable + ' build/check.py',
+                          ENV={'PATH' : os.environ['PATH']}))
 
 # Find the (dynamic) library in this directory
 tenv.Replace(RPATH=thisdir)
-tenv.Prepend(LIBS=[LIBNAME, ],
+tenv.Prepend(LIBS=[LIBNAMESTATIC, ],
              LIBPATH=[thisdir, ])
 
 testall_files = [
@@ -420,17 +421,6 @@ testall_files = [
         'test/test_ssl.c',
         'test/server/test_server.c',
         'test/server/test_sslserver.c',
-        ]
-
-# test_all uses some private functions. Rather then adding them to serf.def,
-# include the files implementing these functions as dependencies for test_all.
-# This only impacts the Windows build, on all other platforms these functions
-# are public in the serf library.
-if sys.platform == 'win32':
-  testall_files += [
-        env.Object('buckets/buckets.c'),
-        env.Object('buckets/aggregate_buckets.c'),
-        env.Object('buckets/response_buckets.c'),
         ]
 
 for proggie in TEST_EXES:
