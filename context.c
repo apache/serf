@@ -22,20 +22,6 @@
 
 #include "serf_private.h"
 
-/* Older versions of APR do not have the APR_VERSION_AT_LEAST macro. Those
-   implementations are safe.
-
-   If the macro *is* defined, and we're on WIN32, and APR is version 1.4.0,
-   then we have a broken WSAPoll() implementation.
-
-   See serf_context_create_ex() below.  */
-#if defined(APR_VERSION_AT_LEAST) && defined(WIN32)
-#if APR_VERSION_AT_LEAST(1,4,0)
-#define BROKEN_WSAPOLL
-#endif
-#endif
-
-
 /**
  * Callback function (implements serf_progress_t). Takes a number of bytes
  * read @a read and bytes written @a written, adds those to the total for this
