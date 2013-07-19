@@ -104,7 +104,7 @@ if sys.platform == 'win32':
     # Note that Scons 1.3 only supports this on Windows and only when
     # constructing Environment(). Later changes to TARGET_ARCH are ignored
     EnumVariable('TARGET_ARCH',
-                 "Platform to build for (x86|x64|win32|x86_x64)",
+                 "Platform to build for (x86|x64|win32|x86_64)",
                  'x86',
                  allowed_values=('x86', 'x86_64', 'ia64'),
                  map={'X86'  : 'x86',
@@ -216,7 +216,7 @@ if sys.platform != 'win32':
 
   if debug:
     env.Append(CCFLAGS='-g')
-    env.Append(CPPDEFINES='DEBUG')
+    env.Append(CPPDEFINES=['DEBUG', '_DEBUG'])
   else:
     env.Append(CCFLAGS='-O2')
     env.Append(CPPDEFINES='NDEBUG')
@@ -234,7 +234,7 @@ else:
   if debug:
     # Disable optimizations for debugging, use debug DLL runtime
     env.Append(CCFLAGS=['/Od', '/MDd'])
-    env.Append(CPPDEFINES='DEBUG')
+    env.Append(CPPDEFINES=['DEBUG', '_DEBUG'])
   else:
     # Optimize for speed, use DLL runtime
     env.Append(CCFLAGS=['/O2', '/MD'])
@@ -261,6 +261,9 @@ if sys.platform == 'win32':
   # Get apr/apu information into our build
   env.Append(CPPDEFINES=['WIN32','WIN32_LEAN_AND_MEAN','NOUSER',
                          'NOGDI', 'NONLS','NOCRYPT'])
+                         
+  if env.get('TARGET_ARCH', None) == 'x86_64':
+    env.Append(CPPDEFINES=['WIN64'])
 
   if aprstatic:
     apr_libs='apr-1.lib'
