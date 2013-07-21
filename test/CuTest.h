@@ -122,7 +122,7 @@ void CuAssertPtrEquals_LineMsg(CuTest* tc,
 #define CuAssertStrEquals(tc,ex,ac)           CuAssertStrEquals_LineMsg((tc),__FILE__,__LINE__,NULL,(ex),(ac))
 #define CuAssertStrEquals_Msg(tc,ms,ex,ac)    CuAssertStrEquals_LineMsg((tc),__FILE__,__LINE__,(ms),(ex),(ac))
 #define CuAssertStrnEquals(tc,ex,exlen,ac)        CuAssertStrnEquals_LineMsg((tc),__FILE__,__LINE__,NULL,(ex),(exlen),(ac))
-#define CuAssertStrnEquals_Msg(tc,ms,ex,exlen,ac) CuAssertStrnEquals_LineMsg((tc),__FILE__,__LINE__,(ms),(ex),(exlen),ac))
+#define CuAssertStrnEquals_Msg(tc,ms,ex,exlen,ac) CuAssertStrnEquals_LineMsg((tc),__FILE__,__LINE__,(ms),(ex),(exlen),(ac))
 #define CuAssertIntEquals(tc,ex,ac)           CuAssertIntEquals_LineMsg((tc),__FILE__,__LINE__,NULL,(ex),(ac))
 #define CuAssertIntEquals_Msg(tc,ms,ex,ac)    CuAssertIntEquals_LineMsg((tc),__FILE__,__LINE__,(ms),(ex),(ac))
 #define CuAssertDblEquals(tc,ex,ac,dl)        CuAssertDblEquals_LineMsg((tc),__FILE__,__LINE__,NULL,(ex),(ac),(dl))

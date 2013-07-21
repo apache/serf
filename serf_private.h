@@ -46,6 +46,18 @@
 #define CONN_VERBOSE 0
 #define AUTH_VERBOSE 0
 
+/* Older versions of APR do not have the APR_VERSION_AT_LEAST macro. Those
+   implementations are safe.
+
+   If the macro *is* defined, and we're on WIN32, and APR is version 1.4.0+,
+   then we have a broken WSAPoll() implementation.
+
+   See serf_context_create_ex() below.  */
+#if defined(APR_VERSION_AT_LEAST) && defined(WIN32)
+#if APR_VERSION_AT_LEAST(1,4,0)
+#define BROKEN_WSAPOLL
+#endif
+#endif
 
 typedef struct serf__authn_scheme_t serf__authn_scheme_t;
 
