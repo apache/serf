@@ -27,27 +27,53 @@ HEADER_FILES = ['serf.h',
 # where we save the configuration variables
 SAVED_CONFIG = '.saved_config'
 
+# Variable class that does no validation on the input
+def _converter(val):
+    """
+    """
+    if val == 'none':
+      val = []
+    else:
+      val = val.split(',')
+    return val
+
+def RawListVariable(key, help, default):
+    """
+    The input parameters describe a 'raw string list' option. This class
+    accepts a comma separated list and converts it to a space separated
+    list.
+    """
+    return (key, '%s' % (help), default, None, lambda val: _converter(val))
+
+# default directories
+if sys.platform == 'win32':
+  default_libdir='..'
+  default_prefix='Debug'
+else:
+  default_libdir='/usr'
+  default_prefix='/usr/local'
+
 opts = Variables(files=[SAVED_CONFIG])
 opts.AddVariables(
   PathVariable('PREFIX',
                'Directory to install under',
-               '/usr/local',
+               default_prefix,
                PathVariable.PathIsDir),
   PathVariable('APR',
                "Path to apr-1-config, or to APR's install area",
-               '/usr',
+               default_libdir,
                PathVariable.PathAccept),
   PathVariable('APU',
                "Path to apu-1-config, or to APR's install area",
-               '/usr',
+               default_libdir,
                PathVariable.PathAccept),
   PathVariable('OPENSSL',
                "Path to OpenSSL's install area",
-               '/usr',
+               default_libdir,
                PathVariable.PathIsDir),
   PathVariable('ZLIB',
                "Path to zlib's install area",
-               '/usr',
+               default_libdir,
                PathVariable.PathIsDir),
   PathVariable('GSSAPI',
                "Path to GSSAPI's install area",
@@ -59,7 +85,48 @@ opts.AddVariables(
   BoolVariable('APR_STATIC',
                "Enable using a static compiled APR",
                False),
+  RawListVariable('CC', "Command name or path of the C compiler", None),
+  RawListVariable('CFLAGS', "Extra flags for the C compiler (comma separated)",
+                  None),
+  RawListVariable('LIBS', "Extra libraries passed to the linker, "
+                  "e.g. -l<library> (comma separated)", None),
+  RawListVariable('LINKFLAGS', "Extra flags for the linker (comma separated)",
+                  None),
+  RawListVariable('CPPFLAGS', "Extra flags for the C preprocessor "
+                  "(comma separated)", None), 
   )
+
+if sys.platform == 'win32':
+  opts.AddVariables(
+    # By default SCons builds for the host platform on Windows, when using
+    # a supported compiler (E.g. VS2010/VS2012). Allow overriding
+
+    # Note that Scons 1.3 only supports this on Windows and only when
+    # constructing Environment(). Later changes to TARGET_ARCH are ignored
+    EnumVariable('TARGET_ARCH',
+                 "Platform to build for (x86|x64|win32|x86_64)",
+                 'x86',
+                 allowed_values=('x86', 'x86_64', 'ia64'),
+                 map={'X86'  : 'x86',
+                      'win32': 'x86',
+                      'Win32': 'x86',
+                      'x64'  : 'x86_64',
+                      'X64'  : 'x86_64'
+                     }),
+                     
+    EnumVariable('MSVC_VERSION',
+                 "Visual C++ to use for building (E.g. 11.0, 9.0)",
+                 None,
+                 allowed_values=('12.0', '11.0', '10.0', '9.0', '8.0', '6.0')
+                ),
+
+    # We always documented that we handle an install layout, but in fact we
+    # hardcoded source layouts. Allow disabling this behavior.
+    # ### Fix default?
+    BoolVariable('SOURCE_LAYOUT',
+                 "Assume a source layout instead of install layout",
+                 True),
+    )
 
 env = Environment(variables=opts,
                   tools=('default', 'textfile',),
@@ -68,7 +135,7 @@ env = Environment(variables=opts,
 
 env.Append(BUILDERS = {
     'GenDef' : 
-      Builder(action = sys.executable + ' build/gen_def.py $SOURCE > $TARGET',
+      Builder(action = sys.executable + ' build/gen_def.py $SOURCES > $TARGET',
               suffix='.def', src_suffix='.h')
   })
 
@@ -113,12 +180,6 @@ opts.Save(SAVED_CONFIG, env)
 
 # PLATFORM-SPECIFIC BUILD TWEAKS
 
-def link_rpath(d):
-  if sys.platform == 'sunos5':
-    return '-Wl,-R,%s' % (d,)
-  return '-Wl,-rpath,%s' % (d,)
-
-
 thisdir = os.getcwd()
 libdir = '$PREFIX/lib'
 incdir = '$PREFIX/include/serf-$MAJOR'
@@ -129,63 +190,60 @@ if sys.platform != 'win32':
 else:
   LIBNAMESTATIC = 'serf-${MAJOR}'
 
-linkflags = []
-
-if sys.platform != 'win32':
-  linkflags.append(link_rpath(libdir))
-else:
-  linkflags.append(['/nologo'])
+env.Append(RPATH=libdir,
+           PDB='${TARGET.filebase}.pdb')
 
 if sys.platform == 'darwin':
 #  linkflags.append('-Wl,-install_name,@executable_path/%s.dylib' % (LIBNAME,))
-  linkflags.append('-Wl,-install_name,%s/%s.dylib' % (thisdir, LIBNAME,))
+  env.Append(LINKFLAGS='-Wl,-install_name,%s/%s.dylib' % (thisdir, LIBNAME,))
   # 'man ld' says positive non-zero for the first number, so we add one.
   # Mac's interpretation of compatibility is the same as our MINOR version.
-  linkflags.append('-Wl,-compatibility_version,%d' % (MINOR+1,))
-  linkflags.append('-Wl,-current_version,%d.%d' % (MINOR+1, PATCH,))
+  env.Append(LINKFLAGS='-Wl,-compatibility_version,%d' % (MINOR+1,))
+  env.Append(LINKFLAGS='-Wl,-current_version,%d.%d' % (MINOR+1, PATCH,))
 
-ccflags = [ ]
 if sys.platform != 'win32':
   ### gcc only. figure out appropriate test / better way to check these
   ### flags, and check for gcc.
-  ccflags = ['-std=c89',
-             '-Wdeclaration-after-statement',
-             '-Wmissing-prototypes',
-             ]
+  env.Append(CFLAGS='-std=c89')
+  env.Append(CCFLAGS=[
+               '-Wdeclaration-after-statement',
+               '-Wmissing-prototypes',
+             ])
 
   ### -Wall is not available on Solaris
   if sys.platform != 'sunos5': 
-    ccflags.append(['-Wall', ])
+    env.Append(CCFLAGS='-Wall')
 
   if debug:
-    ccflags.append(['-g'])
+    env.Append(CCFLAGS='-g')
+    env.Append(CPPDEFINES=['DEBUG', '_DEBUG'])
   else:
-    ccflags.append('-O2')
-else:
-  ccflags.append(['/nologo', '/W4', '/Zi'])
-  if debug:
-    ccflags.append(['/Od'])
-  else:
-    ccflags.append(['/O2'])
-  
-libs = [ ]
-if sys.platform != 'win32':
+    env.Append(CCFLAGS='-O2')
+    env.Append(CPPDEFINES='NDEBUG')
+
   ### works for Mac OS. probably needs to change
-  libs = ['ssl', 'crypto', 'z', ]
+  env.Append(LIBS=['ssl', 'crypto', 'z', ])
 
   if sys.platform == 'sunos5':
-    libs.append('m')
+    env.Append(LIBS='m')
+else:
+  # Warning level 4, no unused argument warnings
+  env.Append(CCFLAGS=['/W4', '/wd4100'])
 
-env.Replace(LINKFLAGS=linkflags,
-            CCFLAGS=ccflags,
-            LIBS=libs,
-            )
-
+  # Choose runtime and optimization
+  if debug:
+    # Disable optimizations for debugging, use debug DLL runtime
+    env.Append(CCFLAGS=['/Od', '/MDd'])
+    env.Append(CPPDEFINES=['DEBUG', '_DEBUG'])
+  else:
+    # Optimize for speed, use DLL runtime
+    env.Append(CCFLAGS=['/O2', '/MD'])
+    env.Append(CPPDEFINES='NDEBUG')
 
 # PLAN THE BUILD
 SHARED_SOURCES = []
 if sys.platform == 'win32':
-  env.GenDef('serf.h')
+  env.GenDef(['serf.h','serf_bucket_types.h', 'serf_bucket_util.h'])
   SHARED_SOURCES.append(['serf.def'])
 
 SOURCES = Glob('*.c') + Glob('buckets/*.c') + Glob('auth/*.c')
@@ -194,39 +252,57 @@ lib_static = env.StaticLibrary(LIBNAMESTATIC, SOURCES)
 lib_shared = env.SharedLibrary(LIBNAME, SOURCES + SHARED_SOURCES)
 
 if aprstatic:
-  env.Append(CFLAGS='-DAPR_DECLARE_STATIC -DAPU_DECLARE_STATIC')
+  env.Append(CPPDEFINES=['APR_DECLARE_STATIC', 'APU_DECLARE_STATIC'])
 
 if sys.platform == 'win32':
-  if debug:
-    env.Append(CFLAGS='/MDd')
-  else:
-    env.Append(CFLAGS='/MD')
-  
   env.Append(LIBS=['user32.lib', 'advapi32.lib', 'gdi32.lib', 'ws2_32.lib',
                    'crypt32.lib', 'mswsock.lib', 'rpcrt4.lib', 'secur32.lib'])
 
   # Get apr/apu information into our build
-  env.Append(CFLAGS='-DWIN32 ' + \
-                    '/I "$APR/include" /I "$APU/include" ' + \
-                    '-DWIN32 -DWIN32_LEAN_AND_MEAN -DNOUSER' + \
-                    '-DNOGDI -DNONLS -DNOCRYPT')
+  env.Append(CPPDEFINES=['WIN32','WIN32_LEAN_AND_MEAN','NOUSER',
+                         'NOGDI', 'NONLS','NOCRYPT'])
+                         
+  if env.get('TARGET_ARCH', None) == 'x86_64':
+    env.Append(CPPDEFINES=['WIN64'])
+
   if aprstatic:
+    apr_libs='apr-1.lib'
+    apu_libs='aprutil-1.lib'
+  else:
+    apr_libs='libapr-1.lib'
+    apu_libs='libaprutil-1.lib'
+
+  env.Append(LIBS=[apr_libs, apu_libs])
+  if not env.get('SOURCE_LAYOUT', None):
+    env.Append(LIBPATH=['$APR/lib', '$APU/lib'],
+               CPPPATH=['$APR/include/apr-1', '$APU/include/apr-1'])
+  elif aprstatic:
     env.Append(LIBPATH=['$APR/LibR','$APU/LibR'],
-               LIBS=['apr-1.lib', 'aprutil-1.lib'])
+               CPPPATH=['$APR/include', '$APU/include'])
   else:
     env.Append(LIBPATH=['$APR/Release','$APU/Release'],
-               LIBS=['libapr-1.lib', 'libaprutil-1.lib'])
-  apr_libs='libapr-1.lib'
-  apu_libs='libaprutil-1.lib'
+               CPPPATH=['$APR/include', '$APU/include'])
 
   # zlib
-  env.Append(CFLAGS='/I "$ZLIB"')
-  env.Append(LIBPATH='$ZLIB', LIBS='zlib.lib')
+  env.Append(LIBS='zlib.lib')
+  if not env.get('SOURCE_LAYOUT', None):
+    env.Append(CPPPATH='$ZLIB/include',
+               LIBPATH='$ZLIB/lib')
+  else:
+    env.Append(CPPPATH='$ZLIB',
+               LIBPATH='$ZLIB')
 
   # openssl
-  env.Append(CPPPATH='$OPENSSL/inc32')
-  env.Append(LIBPATH='$OPENSSL/out32dll', LIBS=['libeay32.lib', 'ssleay32.lib'])
-
+  env.Append(LIBS=['libeay32.lib', 'ssleay32.lib'])
+  if not env.get('SOURCE_LAYOUT', None):
+    env.Append(CPPPATH='$OPENSSL/include/openssl',
+               LIBPATH='$OPENSSL/lib')
+  elif 0: # opensslstatic:
+    env.Append(CPPPATH='$OPENSSL/inc32',
+               LIBPATH='$OPENSSL/out32')
+  else:
+    env.Append(CPPPATH='$OPENSSL/inc32',
+               LIBPATH='$OPENSSL/out32dll')
 else:
   if os.path.isdir(apr):
     apr = os.path.join(apr, 'bin', 'apr-1-config')
@@ -259,16 +335,16 @@ else:
 # If build with gssapi, get its information and define SERF_HAVE_GSSAPI
 if gssapi and CALLOUT_OKAY:
     env.ParseConfig('$GSSAPI --libs gssapi')
-    env.Append(CFLAGS='-DSERF_HAVE_GSSAPI')
+    env.Append(CPPDEFINES='SERF_HAVE_GSSAPI')
 if sys.platform == 'win32':
-  env.Append(CFLAGS='-DSERF_HAVE_SPNEGO -DSERF_HAVE_SSPI')
+  env.Append(CPPDEFINES=['SERF_HAVE_SSPI'])
 
 # On Solaris, the -R values that APR describes never make it into actual
 # RPATH flags. We'll manually map all directories in LIBPATH into new
 # flags to set RPATH values.
 if sys.platform == 'sunos5':
   for d in env['LIBPATH']:
-    env.Append(LINKFLAGS=link_rpath(d))
+    env.Append(RPATH=d)
 
 # Set up the construction of serf-*.pc
 # TODO: add gssapi libs
@@ -319,26 +395,22 @@ env.Alias('install', ['install-lib', 'install-inc', 'install-pc', ])
 
 tenv = env.Clone()
 
-TEST_PROGRAMS = [
-  'test/serf_get',
-  'test/serf_response',
-  'test/serf_request',
-  'test/serf_spider',
-  'test/test_all',
-  'test/serf_bwtp',
-]
+TEST_PROGRAMS = [ 'serf_get', 'serf_response', 'serf_request', 'serf_spider',
+                  'test_all', 'serf_bwtp' ]
+if sys.platform == 'win32':
+  TEST_EXES = [ os.path.join('test', '%s.exe' % (prog)) for prog in TEST_PROGRAMS ]
+else:
+  TEST_EXES = [ os.path.join('test', '%s' % (prog)) for prog in TEST_PROGRAMS ]
 
-env.AlwaysBuild(env.Alias('check', TEST_PROGRAMS, 'build/check.sh'))
+env.AlwaysBuild(env.Alias('check', TEST_EXES, sys.executable + ' build/check.py',
+                          ENV={'PATH' : os.environ['PATH']}))
 
 # Find the (dynamic) library in this directory
-linkflags = [link_rpath(thisdir,), ]
-tenv.Replace(LINKFLAGS=linkflags)
-tenv.Prepend(LIBS=[LIBNAME, ],
+tenv.Replace(RPATH=thisdir)
+tenv.Prepend(LIBS=[LIBNAMESTATIC, ],
              LIBPATH=[thisdir, ])
 
-for proggie in TEST_PROGRAMS:
-  if proggie.endswith('test_all'):
-    tenv.Program('test/test_all', [
+testall_files = [
         'test/test_all.c',
         'test/CuTest.c',
         'test/test_util.c',
@@ -349,9 +421,13 @@ for proggie in TEST_PROGRAMS:
         'test/test_ssl.c',
         'test/server/test_server.c',
         'test/server/test_sslserver.c',
-        ])
+        ]
+
+for proggie in TEST_EXES:
+  if 'test_all' in proggie:
+    tenv.Program(proggie, testall_files )
   else:
-    tenv.Program(proggie, [proggie + '.c'])
+    tenv.Program(target = proggie, source = [proggie.replace('.exe','') + '.c'])
 
 
 # HANDLE CLEANING
