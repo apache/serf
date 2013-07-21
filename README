@@ -49,6 +49,11 @@ to apu-1-config.
 OPENSSL should specify the root of the install (eg. /opt/local). The
 includes will be found OPENSSL/include and libraries at OPENSSL/lib.
 
+If you wish to use VPATH-style builds (where objects are created in a
+distinct directory from the source), you can use:
+
+$ scons -Y /path/to/serf/source
+
 At any point, the current settings can be examined:
 
 $ scons --help

@@ -113,7 +113,7 @@ if sys.platform == 'win32':
                       'x64'  : 'x86_64',
                       'X64'  : 'x86_64'
                      }),
-                     
+
     EnumVariable('MSVC_VERSION',
                  "Visual C++ to use for building (E.g. 11.0, 9.0)",
                  None,
@@ -261,7 +261,7 @@ if sys.platform == 'win32':
   # Get apr/apu information into our build
   env.Append(CPPDEFINES=['WIN32','WIN32_LEAN_AND_MEAN','NOUSER',
                          'NOGDI', 'NONLS','NOCRYPT'])
-                         
+
   if env.get('TARGET_ARCH', None) == 'x86_64':
     env.Append(CPPDEFINES=['WIN64'])
 
@@ -327,7 +327,7 @@ else:
   else:
     apr_libs = ''
     apu_libs = ''
-  
+
   env.Append(CPPPATH='$OPENSSL/include')
   env.Append(LIBPATH='$OPENSSL/lib')
 
