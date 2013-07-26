@@ -1022,6 +1022,8 @@ static int ssl_need_client_cert(SSL *ssl, X509 **cert, EVP_PKEY **pkey)
     serf_ssl_context_t *ctx = SSL_get_app_data(ssl);
     apr_status_t status;
 
+    serf__log(SSL_VERBOSE, __FILE__, "Server requests a client certificate.\n");
+
     if (ctx->cached_cert) {
         *cert = ctx->cached_cert;
         *pkey = ctx->cached_cert_pw;
