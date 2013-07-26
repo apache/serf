@@ -334,7 +334,10 @@ else:
 
 # If build with gssapi, get its information and define SERF_HAVE_GSSAPI
 if gssapi and CALLOUT_OKAY:
-    env.ParseConfig('$GSSAPI --libs gssapi')
+    def parse_libs(env, cmd, unique=1):
+        env['GSSAPI_LIBS'] = cmd.strip()
+        return env.MergeFlags(cmd, unique)
+    env.ParseConfig('$GSSAPI --libs gssapi', parse_libs)
     env.Append(CPPDEFINES='SERF_HAVE_GSSAPI')
 if sys.platform == 'win32':
   env.Append(CPPDEFINES=['SERF_HAVE_SSPI'])
@@ -347,7 +350,6 @@ if sys.platform == 'sunos5':
     env.Append(RPATH=d)
 
 # Set up the construction of serf-*.pc
-# TODO: add gssapi libs
 pkgconfig = env.Textfile('serf-%d.pc' % (MAJOR,),
                          env.File('build/serf.pc.in'),
                          SUBST_DICT = {
@@ -355,7 +357,8 @@ pkgconfig = env.Textfile('serf-%d.pc' % (MAJOR,),
                            '@PREFIX@': '$PREFIX',
                            '@INCLUDE_SUBDIR@': 'serf-%d' % (MAJOR,),
                            '@VERSION@': '%d.%d.%d' % (MAJOR, MINOR, PATCH),
-                           '@LIBS@': '%s %s -lz' % (apu_libs, apr_libs),
+                           '@LIBS@': '%s %s %s -lz' % (apu_libs, apr_libs,
+                                                       env.get('GSSAPI_LIBS')),
                            })
 
 env.Default(lib_static, lib_shared, pkgconfig)
