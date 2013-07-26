@@ -81,6 +81,46 @@ static apr_status_t clean_conn(void *data)
     return APR_SUCCESS;
 }
 
+/* Check if there is data waiting to be sent over the socket. This can happen
+   in two situations:
+   - The connection queue has atleast one request with unwritten data.
+   - All requests are written and the ssl layer wrote some data while reading
+     the response. This can happen when the server triggers a renegotiation,
+     e.g. after the first and only request on that connection was received.
+   Returns 1 if data is pending on CONN, NULL if not.
+   If NEXT_REQ is not NULL, it will be filled in with the next available request
+   with unwritten data. */
+static int
+request_or_data_pending(serf_request_t **next_req, serf_connection_t *conn)
+{
+    serf_request_t *request = conn->requests;
+
+    while (request != NULL && request->req_bkt == NULL &&
+           request->written)
+        request = request->next;
+
+    if (next_req)
+        *next_req = request;
+
+    if (request != NULL) {
+        return 1;
+    } else if (conn->ostream_head) {
+        const char *dummy;
+        apr_size_t len;
+        apr_status_t status;
+
+        status = serf_bucket_peek(conn->ostream_head, &dummy,
+                                  &len);
+        if (!SERF_BUCKET_READ_ERROR(status) && len) {
+            serf__log_skt(CONN_VERBOSE, __FILE__, conn->skt,
+                          "All requests written but still data pending.\n");
+            return 1;
+        }
+    }
+
+    return 0;
+}
+
 /* Update the pollset for this connection. We tweak the pollset based on
  * whether we want to read and/or write, given conditions within the
  * connection. If the connection is not (yet) in the pollset, then it
@@ -126,7 +166,6 @@ apr_status_t serf__conn_update_pollset(serf_connection_t *conn)
                 conn->state != SERF_CONN_CLOSING)
                 desc.reqevents |= APR_POLLOUT;
             else {
-                serf_request_t *request = conn->requests;
 
                 if ((conn->probable_keepalive_limit &&
                      conn->completed_requests > conn->probable_keepalive_limit) ||
@@ -134,13 +173,9 @@ apr_status_t serf__conn_update_pollset(serf_connection_t *conn)
                      conn->completed_requests - conn->completed_responses >=
                      conn->max_outstanding_requests)) {
                         /* we wouldn't try to write any way right now. */
-                    }
-                else {
-                    while (request != NULL && request->req_bkt == NULL &&
-                           request->written)
-                        request = request->next;
-                    if (request != NULL)
-                        desc.reqevents |= APR_POLLOUT;
+                }
+                else if (request_or_data_pending(NULL, conn)) {
+                    desc.reqevents |= APR_POLLOUT;
                 }
             }
         }
@@ -689,7 +724,7 @@ static apr_status_t write_to_connection(serf_connection_t *conn)
            request->req_bkt == NULL && request->written)
         request = request->next;
 
-    /* assert: request != NULL || conn->vec_len */
+    /* assert: request != NULL || conn->vec_len || ostreamh pending data. */
 
     /* Keep reading and sending until we run out of stuff to read, or
      * writing would block.
@@ -738,14 +773,11 @@ static apr_status_t write_to_connection(serf_connection_t *conn)
         /* We may need to move forward to a request which has something
          * to write.
          */
-        while (request != NULL &&
-               request->req_bkt == NULL && request->written)
-            request = request->next;
-
-        if (request == NULL) {
+        if (!request_or_data_pending(&request, conn)) {
             /* No more requests (with data) are registered with the
-             * connection. Let's update the pollset so that we don't
-             * try to write to this socket again.
+             * connection, and no data is pending on the outgoing stream.
+             * Let's update the pollset so that we don't try to write to this
+             * socket again.
              */
             conn->dirty_conn = 1;
             conn->ctx->dirty_pollset = 1;
@@ -757,17 +789,19 @@ static apr_status_t write_to_connection(serf_connection_t *conn)
             return status;
         }
 
-        if (request->req_bkt == NULL) {
-            read_status = setup_request(request);
-            if (read_status) {
-                /* Something bad happened. Propagate any errors. */
-                return read_status;
+        if (request) {
+            if (request->req_bkt == NULL) {
+                read_status = setup_request(request);
+                if (read_status) {
+                    /* Something bad happened. Propagate any errors. */
+                    return read_status;
+                }
             }
-        }
 
-        if (!request->written) {
-            request->written = 1;
-            serf_bucket_aggregate_append(ostreamt, request->req_bkt);
+            if (!request->written) {
+                request->written = 1;
+                serf_bucket_aggregate_append(ostreamt, request->req_bkt);
+            }
         }
 
         /* ### optimize at some point by using read_for_sendfile */
@@ -833,7 +867,8 @@ static apr_status_t write_to_connection(serf_connection_t *conn)
             conn->dirty_conn = 1;
             conn->ctx->dirty_pollset = 1;
         }
-        else if (read_status && conn->hit_eof && conn->vec_len == 0) {
+        else if (request && read_status && conn->hit_eof &&
+                 conn->vec_len == 0) {
             /* If we hit the end of the request bucket and all of its data has
              * been written, then clear it out to signify that we're done
              * sending the request. On the next iteration through this loop:
@@ -1117,6 +1152,14 @@ static apr_status_t read_from_connection(serf_connection_t *conn)
          * treat that as a success.
          */
         if (APR_STATUS_IS_EAGAIN(status)) {
+            /* It is possible that while reading the response, the ssl layer
+               has prepared some data to send. If this was the last request,
+               serf will not check for socket writability, so force this here.
+             */
+            if (request_or_data_pending(&request, conn) && !request) {
+                conn->dirty_conn = 1;
+                conn->ctx->dirty_pollset = 1;
+            }
             status = APR_SUCCESS;
             goto error;
         }
