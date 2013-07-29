@@ -205,14 +205,12 @@ if sys.platform != 'win32':
   ### gcc only. figure out appropriate test / better way to check these
   ### flags, and check for gcc.
   env.Append(CFLAGS='-std=c89')
-  env.Append(CCFLAGS=[
-               '-Wdeclaration-after-statement',
-               '-Wmissing-prototypes',
-             ])
 
-  ### -Wall is not available on Solaris
+  ### These warnings are not available on Solaris
   if sys.platform != 'sunos5': 
-    env.Append(CCFLAGS='-Wall')
+    env.Append(CCFLAGS=['-Wdeclaration-after-statement',
+                        '-Wmissing-prototypes',
+                        '-Wall'])
 
   if debug:
     env.Append(CCFLAGS='-g')
