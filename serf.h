@@ -1097,9 +1097,9 @@ struct serf_connection_type_t {
      * Returns a bucket for reading from this connection.
      *
      * This bucket remains constant for the lifetime of the connection. It has
-     * built-in BARRIER bucket protection, so it can safely be "destroyed" without
-     * problem (and a later call to this vtable function will return the same
-     * bucket again).
+     * built-in BARRIER bucket protection, so it can safely be "destroyed"
+     * without problem (and a later call to this vtable function will return
+     * the same bucket again).
      *
      * For all intents and purposes, this bucket is borrowed by the caller.
      *
