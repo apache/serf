@@ -51,18 +51,21 @@ _types = re.compile(r'^extern const serf_bucket_type_t (serf_[a-z_]*);',
 
 def extract_exports(fname):
   content = open(fname).read()
-  exports = [ ]
+  exports = set()
   for name in _funcs.findall(content):
-    exports.append(name)
+    exports.add(name)
   for name in _types.findall(content):
-    exports.append(name)
+    exports.add(name)
   return exports
 
+
 # Blacklist the serf v2 API for now
-blacklist = ['serf_connection_switch_protocol',
-             'serf_http_protocol_create',
-             'serf_http_request_create',
-             'serf_https_protocol_create']
+BLACKLIST = set(['serf_connection_switch_protocol',
+                 'serf_http_protocol_create',
+                 'serf_https_protocol_create',
+                 'serf_http_request_queue',
+                 ])
+
 
 if __name__ == '__main__':
   # run the extraction over each file mentioned
@@ -70,7 +73,6 @@ if __name__ == '__main__':
   print("EXPORTS")
 
   for fname in sys.argv[1:]:
-    funclist = extract_exports(fname)
-    funclist = set(funclist) - set(blacklist)
+    funclist = extract_exports(fname) - BLACKLIST
     for func in funclist:
       print(func)
