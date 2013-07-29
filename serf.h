@@ -1140,6 +1140,10 @@ apr_status_t serf_connection_switch_protocol(
     );
 
 
+/* ### docco.  */
+typedef struct serf_queue_item_t serf_queue_item_t;
+
+
 /**
  * Present a response to the application.
  *
@@ -1170,7 +1174,22 @@ struct serf_protocol_type_t {
     const char *name;
 
     /**
-     * Construct a protocol parsing bucket, for passing to the processing callback.
+     * When a pending request reaches the front of the queue, then it becomes
+     * "active". This callback is used to build/provide the protocol-specific
+     * request bucket.
+     *
+     * ### more docco
+     */
+    apr_status_t (*serf_request_activate_t)(
+        serf_bucket_t **request_bkt,
+        serf_queue_item_t *request_qi,
+        void *request_baton,
+        serf_bucket_alloc_t *request_bktalloc,
+        apr_pool_t *scratch_pool);
+
+    /**
+     * Construct a protocol parsing bucket, for passing to the process_data
+     * vtable entry.
      *
      * When data arrives on the connection, and a parser is not already
      * processing the connection's data, then build a new bucket to parse
@@ -1183,7 +1202,7 @@ struct serf_protocol_type_t {
      * The protocol should parse all available response data, per the protocol.
      *
      * This is called when data has become available to the parser. The protocol
-     * should read all available data before return
+     * should read all available data before returning.
      */
     apr_status_t (*process_data)(serf_protocol_t *proto,
                                  serf_bucket_t *parser,
@@ -1191,14 +1210,60 @@ struct serf_protocol_type_t {
 };
 
 
-/* ### docco. create http proto parser with a plain connection.  */
+/**
+ * Activate an HTTP request when it reaches the front of the queue.
+ *
+ * ### more docco
+ */
+typedef apr_status_t (*serf_http_activate_t)(
+    serf_bucket_t **body_bkt,
+    serf_bucket_t *request_bkt,  /* type REQUEST  */
+    serf_queue_item_t *request_qi,
+    void *request_baton,
+    serf_bucket_alloc_t *request_bktalloc,
+    apr_pool_t *scratch_pool);
+
+
+/**
+ * Create a new connection and associated HTTP protocol parser.
+ *
+ * The new connection/protocol will be associated with @a ctx. It will be
+ * opened once a request is placed into its outgoing queue. The connection
+ * will use @a hostname and @a port for the origin server. If
+ * @a proxy_hostname is not NULL, then all requests will go through the
+ * proxy specified by @a proxy_hostname and @a proxy_port.
+ *
+ * DNS lookups for @a hostname and @a proxy_hostname will be performed
+ * when the connection first opened, then cached in case the connection
+ * ever needs to be re-opened.
+ *
+ * When a queued request reaches the front of the queue, and is ready for
+ * delivery, then @a activate_cb will be called to prepare the request.
+ *
+ * @a authn_types specifies the types of authentication allowed on this
+ * connection. Normally, it should be SERF_AUTHN_ALL. When authentication
+ * credentials are required (for the origin server or the proxy), then
+ * @a creds_cb will be called with @a app_baton.
+ *
+ * When the connection is closed (upon request or because of an error),
+ * then @a closed_cb will be called with @a app_baton.
+ *
+ * The connection and protocol paresr will be allocated in @a result_pool.
+ * This function will use @a scratch_pool for temporary allocations.
+ */
 apr_status_t serf_http_protocol_create(
     serf_protocol_t **proto,
     serf_context_t *ctx,
     const char *hostname,
     int port,
-    serf_connection_closed_t closed,
-    void *closed_baton,
+    const char *proxy_hostname,
+    int proxy_port,
+    int authn_types,
+    serf_http_activate_t activate_cb,
+    /* ### do we need different params for CREDS_CB and CLOSED_CB ?  */
+    serf_credentials_callback_t creds_cb,
+    serf_connection_closed_t closed_cb,
+    void *app_baton,
     apr_pool_t *result_pool,
     apr_pool_t *scratch_pool);
 
@@ -1216,13 +1281,11 @@ apr_status_t serf_https_protocol_create(
     apr_pool_t *scratch_pool);
 
 
-/* ### docco. queue up an http request. SETUP isn't quite right since the
-   ### protocol will construct the appropriate stack of buckets. the app
-   ### effectively just gets a body bucket (which may deflate/dechunk/etc).  */
-serf_request_t *serf_http_request_create(
+/* ### docco. queue up an http request.  */
+serf_queue_item_t *serf_http_request_queue(
     serf_protocol_t *proto,
-    serf_request_setup_t setup,
-    void *setup_baton);
+    int priority,
+    void *request_baton);
 
 
 /** @} */
