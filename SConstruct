@@ -347,7 +347,7 @@ if sys.platform == 'win32':
 # flags to set RPATH values.
 if sys.platform == 'sunos5':
   for d in env['LIBPATH']:
-    env.Append(RPATH=d)
+    env.Append(RPATH=':'+d)
 
 # Set up the construction of serf-*.pc
 pkgconfig = env.Textfile('serf-%d.pc' % (MAJOR,),
