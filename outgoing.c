@@ -706,8 +706,6 @@ static apr_status_t setup_request(serf_request_t *request)
 /* write data out to the connection */
 static apr_status_t write_to_connection(serf_connection_t *conn)
 {
-    serf_request_t *request = conn->requests;
-
     if (conn->probable_keepalive_limit &&
         conn->completed_requests > conn->probable_keepalive_limit) {
 
@@ -718,21 +716,16 @@ static apr_status_t write_to_connection(serf_connection_t *conn)
         return APR_SUCCESS;
     }
 
-    /* Find a request that has data which needs to be delivered. */
-    while (request != NULL &&
-           request->req_bkt == NULL && request->written)
-        request = request->next;
-
-    /* assert: request != NULL || conn->vec_len || ostreamh pending data. */
-
     /* Keep reading and sending until we run out of stuff to read, or
      * writing would block.
      */
     while (1) {
+        serf_request_t *request;
         int stop_reading = 0;
         apr_status_t status;
         apr_status_t read_status;
-        serf_bucket_t *ostreamt, *ostreamh;
+        serf_bucket_t *ostreamt;
+        serf_bucket_t *ostreamh;
         int max_outstanding_requests = conn->max_outstanding_requests;
 
         /* If we're setting up an ssl tunnel, we can't send real requests
