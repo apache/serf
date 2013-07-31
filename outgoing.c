@@ -1609,6 +1609,17 @@ serf_request_t *serf__ssltunnel_request_create(serf_connection_t *conn,
                                    setup, setup_baton);
 }
 
+
+serf_request_t *serf__request_requeue(const serf_request_t *request)
+{
+    /* ### in the future, maybe we could reset REQUEST and try again?  */
+    return priority_request_create(request->conn,
+                                   request->ssltunnel,
+                                   request->setup,
+                                   request->setup_baton);
+}
+
+
 apr_status_t serf_request_cancel(serf_request_t *request)
 {
     return cancel_request(request, &request->conn->requests, 0);

@@ -441,6 +441,9 @@ apr_status_t serf__provide_credentials(serf_context_t *ctx,
                                        const char *realm,
                                        apr_pool_t *pool);
 
+/* Requeue a request (at the front).  */
+serf_request_t *serf__request_requeue(const serf_request_t *request);
+
 /* from ssltunnel.c */
 apr_status_t serf__ssltunnel_connect(serf_connection_t *conn);
 
