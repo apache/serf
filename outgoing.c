@@ -238,6 +238,10 @@ static apr_status_t do_conn_setup(serf_connection_t *conn)
     apr_status_t status;
     serf_bucket_t *ostream;
 
+    /* ### dunno what the hell this is about. this latency stuff got
+       ### added, and who knows whether it should stay...  */
+    conn->latency = apr_time_now() - conn->connect_time;
+
     if (conn->ostream_head == NULL) {
         conn->ostream_head = serf_bucket_aggregate_create(conn->allocator);
     }
@@ -284,10 +288,6 @@ static apr_status_t prepare_conn_streams(serf_connection_t *conn,
                                          serf_bucket_t **ostreamh)
 {
     apr_status_t status;
-
-    if (conn->stream == NULL) {
-        conn->latency = apr_time_now() - conn->connect_time;
-    }
 
     /* Do we need a SSL tunnel first? */
     if (conn->state == SERF_CONN_CONNECTED) {
@@ -413,15 +413,10 @@ apr_status_t serf__open_connections(serf_context_t *ctx)
         if (ctx->proxy_address && strcmp(conn->host_info.scheme, "https") == 0)
             serf__ssltunnel_connect(conn);
         else {
-            serf_bucket_t *dummy1, *dummy2;
-
             conn->state = SERF_CONN_CONNECTED;
-
-            status = prepare_conn_streams(conn, &conn->stream,
-                                          &dummy1, &dummy2);
-            if (status) {
+            status = do_conn_setup(conn);
+            if (status)
                 return status;
-            }
         }
     }
 
