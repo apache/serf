@@ -283,7 +283,6 @@ static apr_status_t do_conn_setup(serf_connection_t *conn)
  */
 
 static apr_status_t prepare_conn_streams(serf_connection_t *conn,
-                                         serf_bucket_t **istream,
                                          serf_bucket_t **ostreamt,
                                          serf_bucket_t **ostreamh)
 {
@@ -302,14 +301,16 @@ static apr_status_t prepare_conn_streams(serf_connection_t *conn,
         }
         *ostreamt = conn->ostream_tail;
         *ostreamh = conn->ostream_head;
-        *istream = conn->stream;
     } else {
+        /* state == SERF_CONN_SETUP_SSLTUNNEL  */
+
         /* SSL tunnel needed and not set up yet, get a direct unencrypted
          stream for this socket */
         if (conn->stream == NULL) {
-            *istream = serf_bucket_socket_create(conn->skt,
-                                                 conn->allocator);
+            conn->stream = serf_bucket_socket_create(conn->skt,
+                                                     conn->allocator);
         }
+
         /* Don't create the ostream bucket chain including the ssl_encrypt
          bucket yet. This ensure the CONNECT request is sent unencrypted
          to the proxy. */
@@ -771,7 +772,7 @@ static apr_status_t write_to_connection(serf_connection_t *conn)
             return APR_SUCCESS;
         }
 
-        status = prepare_conn_streams(conn, &conn->stream, &ostreamt, &ostreamh);
+        status = prepare_conn_streams(conn, &ostreamt, &ostreamh);
         if (status) {
             return status;
         }
@@ -1033,7 +1034,7 @@ static apr_status_t read_from_connection(serf_connection_t *conn)
         apr_pool_clear(tmppool);
 
         /* Only interested in the input stream here. */
-        status = prepare_conn_streams(conn, &conn->stream, &dummy1, &dummy2);
+        status = prepare_conn_streams(conn, &dummy1, &dummy2);
         if (status) {
             goto error;
         }
