@@ -676,7 +676,7 @@ CRLF\
 "</body></html>"
 
 
-static apr_status_t detect_eof(void *baton, serf_bucket_t *aggregate_bucket)
+static apr_status_t queue_part2(void *baton, serf_bucket_t *aggregate_bucket)
 {
     serf_bucket_t *body_bkt;
     handler_baton_t *ctx = baton;
@@ -704,15 +704,16 @@ static apr_status_t setup_request_timeout(
     handler_baton_t *ctx = setup_baton;
     serf_bucket_t *body_bkt;
 
-    *req_bkt = serf__bucket_stream_create(serf_request_get_alloc(request),
-                                          detect_eof,
-                                          ctx);
+    *req_bkt = serf_bucket_aggregate_create(serf_request_get_alloc(request));
 
     /* create a simple body text */
     body_bkt = serf_bucket_simple_create(REQUEST_PART1, strlen(REQUEST_PART1),
                                          NULL, NULL,
                                          serf_request_get_alloc(request));
     serf_bucket_aggregate_append(*req_bkt, body_bkt);
+
+    /* When REQUEST_PART1 runs out, we will queue up PART2.  */
+    serf_bucket_aggregate_hold_open(*req_bkt, queue_part2, ctx);
 
     APR_ARRAY_PUSH(ctx->sent_requests, int) = ctx->req_id;
 
