@@ -722,18 +722,23 @@ static apr_status_t write_to_connection(serf_connection_t *conn)
         apr_status_t read_status;
         serf_bucket_t *ostreamt;
         serf_bucket_t *ostreamh;
-        int max_outstanding_requests = conn->max_outstanding_requests;
 
         /* If we're setting up an ssl tunnel, we can't send real requests
            at yet, as they need to be encrypted and our encrypt buckets
            aren't created yet as we still need to read the unencrypted
            response of the CONNECT request. */
-        if (conn->state != SERF_CONN_CONNECTED)
-            max_outstanding_requests = 1;
+        if (conn->state == SERF_CONN_SETUP_SSLTUNNEL
+            && conn->completed_requests > conn->completed_responses)
+        {
+            return APR_SUCCESS;
+        }
 
-        if (max_outstanding_requests &&
-            conn->completed_requests -
-                conn->completed_responses >= max_outstanding_requests) {
+        /* We try to limit the number of in-flight requests so that we
+           don't have to repeat too many if the connection drops.  */
+        if (conn->max_outstanding_requests
+            && (conn->completed_requests - conn->completed_responses
+                >= conn->max_outstanding_requests))
+        {
             /* backoff for now. */
             return APR_SUCCESS;
         }
@@ -747,9 +752,9 @@ static apr_status_t write_to_connection(serf_connection_t *conn)
              */
             if (APR_STATUS_IS_EAGAIN(status))
                 return APR_SUCCESS;
-            if (APR_STATUS_IS_EPIPE(status) ||
-                APR_STATUS_IS_ECONNRESET(status) ||
-                APR_STATUS_IS_ECONNABORTED(status))
+            if (APR_STATUS_IS_EPIPE(status)
+                || APR_STATUS_IS_ECONNRESET(status)
+                || APR_STATUS_IS_ECONNABORTED(status))
                 return no_more_writes(conn);
             if (status)
                 return status;
@@ -839,12 +844,10 @@ static apr_status_t write_to_connection(serf_connection_t *conn)
              */
             if (APR_STATUS_IS_EAGAIN(status))
                 return APR_SUCCESS;
-            if (APR_STATUS_IS_EPIPE(status))
+            if (APR_STATUS_IS_EPIPE(status)
+                || APR_STATUS_IS_ECONNRESET(status)
+                || APR_STATUS_IS_ECONNABORTED(status))
                 return no_more_writes(conn);
-            if (APR_STATUS_IS_ECONNRESET(status) ||
-                APR_STATUS_IS_ECONNABORTED(status)) {
-                return no_more_writes(conn);
-            }
             if (status)
                 return status;
         }
