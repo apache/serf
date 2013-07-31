@@ -1032,7 +1032,7 @@ static apr_status_t read_from_connection(serf_connection_t *conn)
     /* assert: request != NULL */
 
     if ((status = apr_pool_create(&tmppool, conn->pool)) != APR_SUCCESS)
-        goto error;
+        return status;
 
     /* Invoke response handlers until we have no more work. */
     while (1) {
@@ -1116,6 +1116,11 @@ static apr_status_t read_from_connection(serf_connection_t *conn)
 
         status = handle_response(request, tmppool);
 
+        /* If we received APR_SUCCESS, run this loop again. */
+        if (!status) {
+            continue;
+        }
+
         /* Some systems will not generate a HUP poll event so we have to
          * handle the ECONNRESET issue and ECONNABORT here.
          */
@@ -1149,11 +1154,6 @@ static apr_status_t read_from_connection(serf_connection_t *conn)
             }
             status = APR_SUCCESS;
             goto error;
-        }
-
-        /* If we received APR_SUCCESS, run this loop again. */
-        if (!status) {
-            continue;
         }
 
         close_connection = is_conn_closing(request->resp_bkt);
