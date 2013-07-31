@@ -96,7 +96,7 @@ request_or_data_pending(serf_request_t **next_req, serf_connection_t *conn)
     serf_request_t *request = conn->requests;
 
     while (request != NULL && request->req_bkt == NULL &&
-           request->written)
+           request->writing_started)
         request = request->next;
 
     if (next_req)
@@ -575,7 +575,7 @@ static apr_status_t reset_connection(serf_connection_t *conn,
         /* If we haven't started to write the connection, bring it over
          * unchanged to our new socket.
          */
-        if (requeue_requests && !old_reqs->written) {
+        if (requeue_requests && !old_reqs->writing_started) {
             serf_request_t *req = old_reqs;
             old_reqs = old_reqs->next;
             req->next = NULL;
@@ -786,8 +786,8 @@ static apr_status_t write_to_connection(serf_connection_t *conn)
                 }
             }
 
-            if (!request->written) {
-                request->written = 1;
+            if (!request->writing_started) {
+                request->writing_started = 1;
                 serf_bucket_aggregate_append(ostreamt, request->req_bkt);
             }
         }
@@ -1074,7 +1074,7 @@ static apr_status_t read_from_connection(serf_connection_t *conn)
          * sending the SSL 'close notify' shutdown alert), we'll reset the
          * connection and open a new one.
          */
-        if (request->req_bkt || !request->written) {
+        if (request->req_bkt || !request->writing_started) {
             const char *data;
             apr_size_t len;
 
@@ -1204,7 +1204,7 @@ static apr_status_t read_from_connection(serf_connection_t *conn)
          * update the pollset. We don't want to read from this socket any
          * more. We are definitely done with this loop, too.
          */
-        if (request == NULL || !request->written) {
+        if (request == NULL || !request->writing_started) {
             conn->dirty_conn = 1;
             conn->ctx->dirty_pollset = 1;
             status = APR_SUCCESS;
@@ -1491,7 +1491,7 @@ create_request(serf_connection_t *conn,
     request->req_bkt = NULL;
     request->resp_bkt = NULL;
     request->priority = priority;
-    request->written = 0;
+    request->writing_started = 0;
     request->ssltunnel = ssltunnel;
     request->next = NULL;
 
@@ -1537,7 +1537,7 @@ priority_request_create(serf_connection_t *conn,
     prev = NULL;
 
     /* Find a request that has data which needs to be delivered. */
-    while (iter != NULL && iter->req_bkt == NULL && iter->written) {
+    while (iter != NULL && iter->req_bkt == NULL && iter->writing_started) {
         prev = iter;
         iter = iter->next;
     }
@@ -1607,7 +1607,7 @@ apr_status_t serf_request_cancel(serf_request_t *request)
 
 apr_status_t serf_request_is_written(serf_request_t *request)
 {
-    if (request->written && !request->req_bkt)
+    if (request->writing_started && !request->req_bkt)
         return APR_SUCCESS;
 
     return APR_EBUSY;

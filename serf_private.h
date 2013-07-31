@@ -101,7 +101,7 @@ struct serf_request_t {
 
     serf_bucket_t *resp_bkt;
 
-    int written;
+    int writing_started;
     int priority;
     /* 1 if this is a request to setup a SSL tunnel, 0 for normal requests. */
     int ssltunnel;
