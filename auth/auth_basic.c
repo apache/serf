@@ -36,7 +36,6 @@ serf__handle_basic_auth(int code,
                         serf_bucket_t *response,
                         const char *auth_hdr,
                         const char *auth_attr,
-                        void *baton,
                         apr_pool_t *pool)
 {
     const char *tmp;
@@ -91,7 +90,7 @@ serf__handle_basic_auth(int code,
     apr_pool_create(&cred_pool, pool);
     status = serf__provide_credentials(ctx,
                                        &username, &password,
-                                       request, baton,
+                                       request,
                                        code, authn_info->scheme->name,
                                        realm, cred_pool);
     if (status) {

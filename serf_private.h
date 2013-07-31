@@ -315,7 +315,6 @@ typedef apr_status_t
                              serf_bucket_t *response,
                              const char *auth_hdr,
                              const char *auth_attr,
-                             void *baton,
                              apr_pool_t *pool);
 
 /**
@@ -405,7 +404,6 @@ struct serf__authn_scheme_t {
 apr_status_t serf__handle_auth_response(int *consumed_response,
                                         serf_request_t *request,
                                         serf_bucket_t *response,
-                                        void *baton,
                                         apr_pool_t *pool);
 
 /* Get the cached serf__authn_info_t object for the target server, or create one
@@ -436,7 +434,6 @@ apr_status_t serf__provide_credentials(serf_context_t *ctx,
                                        char **username,
                                        char **password,
                                        serf_request_t *request,
-                                       void *baton,
                                        int code, const char *authn_type,
                                        const char *realm,
                                        apr_pool_t *pool);

@@ -119,7 +119,6 @@ static apr_status_t discard_body(serf_bucket_t *response)
  * Returns a non-0 value of a matching handler was found.
  */
 static int handle_auth_headers(int code,
-                               void *baton,
                                apr_hash_t *hdrs,
                                serf_request_t *request,
                                serf_bucket_t *response,
@@ -186,7 +185,7 @@ static int handle_auth_headers(int code,
             }
 
             status = handler(code, request, response,
-                             auth_hdr, auth_attr, baton, ctx->pool);
+                             auth_hdr, auth_attr, ctx->pool);
         }
 
         if (status == APR_SUCCESS)
@@ -248,7 +247,6 @@ static int store_header_in_dict(void *baton,
 static apr_status_t dispatch_auth(int code,
                                   serf_request_t *request,
                                   serf_bucket_t *response,
-                                  void *baton,
                                   apr_pool_t *pool)
 {
     serf_bucket_t *hdrs;
@@ -291,7 +289,7 @@ static apr_status_t dispatch_auth(int code,
 
         /* Iterate over all authentication schemes, in order of decreasing
            security. Try to find a authentication schema the server support. */
-        return handle_auth_headers(code, baton, ab.hdrs,
+        return handle_auth_headers(code, ab.hdrs,
                                    request, response, pool);
     }
 
@@ -303,7 +301,6 @@ static apr_status_t dispatch_auth(int code,
 apr_status_t serf__handle_auth_response(int *consumed_response,
                                         serf_request_t *request,
                                         serf_bucket_t *response,
-                                        void *baton,
                                         apr_pool_t *pool)
 {
     apr_status_t status;
@@ -348,7 +345,7 @@ apr_status_t serf__handle_auth_response(int *consumed_response,
             return status;
         }
 
-        status = dispatch_auth(sl.code, request, response, baton, pool);
+        status = dispatch_auth(sl.code, request, response, pool);
         if (status != APR_SUCCESS) {
             return status;
         }

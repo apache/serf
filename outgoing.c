@@ -910,7 +910,6 @@ static apr_status_t handle_response(serf_request_t *request,
       status = serf__handle_auth_response(&consumed_response,
                                           request,
                                           request->resp_bkt,
-                                          request->handler_baton,
                                           pool);
 
       /* If there was an error reading the response (maybe there wasn't
@@ -963,7 +962,7 @@ apr_status_t
 serf__provide_credentials(serf_context_t *ctx,
                           char **username,
                           char **password,
-                          serf_request_t *request, void *baton,
+                          serf_request_t *request,
                           int code, const char *authn_type,
                           const char *realm,
                           apr_pool_t *pool)
