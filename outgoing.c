@@ -492,8 +492,9 @@ static apr_status_t destroy_request(serf_request_t *request)
         request->req_bkt = NULL;
     }
 
-    serf_debug__bucket_alloc_check(request->allocator);
     if (request->respool) {
+        serf_debug__bucket_alloc_check(request->allocator);
+
         /* ### unregister the pool cleanup for self?  */
         apr_pool_destroy(request->respool);
     }
