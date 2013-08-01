@@ -269,6 +269,24 @@ static apr_status_t do_conn_setup(serf_connection_t *conn)
     serf_bucket_aggregate_append(conn->ostream_head,
                                  ostream);
 
+    /* We typically have one of two scenarios, based on whether the
+       application decided to encrypt this connection:
+
+       PLAIN:
+
+         conn->stream = SOCKET(skt)
+         conn->ostream_head = AGGREGATE(ostream_tail)
+         conn->ostream_tail = STREAM(<detect_eof>, REQ1, REQ2, ...)
+
+       ENCRYPTED:
+
+         conn->stream = DECRYPT(SOCKET(skt))
+         conn->ostream_head = AGGREGATE(ENCRYPT(ostream_tail))
+         conn->ostream_tail = STREAM(<detect_eof>, REQ1, REQ2, ...)
+
+       where STREAM is an internal variant of AGGREGATE.
+    */
+
     return status;
 }
 
