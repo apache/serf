@@ -102,6 +102,7 @@ static apr_status_t handle_response(serf_request_t *request,
         /* Body is supposed to be empty. */
         apr_pool_destroy(ctx->pool);
         serf_bucket_destroy(request->conn->ssltunnel_ostream);
+        serf_bucket_destroy(request->conn->stream);
         request->conn->stream = NULL;
         ctx = NULL;
 
