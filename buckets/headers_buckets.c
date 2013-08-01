@@ -157,6 +157,9 @@ const char *serf_bucket_headers_get(
     while (found) {
         if (strcasecmp(found->header, header) == 0) {
             if (val) {
+                /* ### this is BROKEN. the caller doesn't know that it should
+                   ### free the result.  */
+
                 /* The header is already present.  RFC 2616, section 4.2
                    indicates that we should append the new value, separated by
                    a comma.  Reasoning: for headers whose values are known to

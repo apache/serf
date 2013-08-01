@@ -253,27 +253,31 @@ static apr_status_t dispatch_auth(int code,
 
     if (code == 401 || code == 407) {
         auth_baton_t ab = { 0 };
-        const char *auth_hdr;
 
         ab.hdrs = apr_hash_make(pool);
         ab.pool = pool;
 
-        /* Before iterating over all authn headers, check if there are any. */
         if (code == 401)
             ab.header = "WWW-Authenticate";
         else
             ab.header = "Proxy-Authenticate";
 
         hdrs = serf_bucket_response_get_headers(response);
-        auth_hdr = serf_bucket_headers_get(hdrs, ab.header);
 
-        if (!auth_hdr) {
-            return SERF_ERROR_AUTHN_FAILED;
+#if AUTH_VERBOSE
+        {
+            const char *auth_hdr;
+
+            /* ### headers_get() doesn't tell us whether to free this result
+               ### or not. but... meh. debug mode.  */
+            auth_hdr = serf_bucket_headers_get(hdrs, ab.header);
+            if (auth_hdr == NULL)
+                auth_hdr = "<missing>";
+            serf__log_skt(AUTH_VERBOSE, __FILE__, request->conn->skt,
+                          "%s authz required. Response header(s): %s\n",
+                          code == 401 ? "Server" : "Proxy", auth_hdr);
         }
-        serf__log_skt(AUTH_VERBOSE, __FILE__, request->conn->skt,
-                      "%s authz required. Response header(s): %s\n",
-                      code == 401 ? "Server" : "Proxy", auth_hdr);
-
+#endif /* AUTH_VERBOSE */
 
         /* Store all WWW- or Proxy-Authenticate headers in a dictionary.
 
@@ -286,6 +290,8 @@ static apr_status_t dispatch_auth(int code,
         serf_bucket_headers_do(hdrs,
                                store_header_in_dict,
                                &ab);
+        if (apr_hash_count(ab.hdrs) == 0)
+            return SERF_ERROR_AUTHN_FAILED;
 
         /* Iterate over all authentication schemes, in order of decreasing
            security. Try to find a authentication schema the server support. */
