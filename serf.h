@@ -1093,6 +1093,20 @@ struct serf_connection_type_t {
     /** Name of this connection type.  */
     const char *name;
 
+    /** Vtable version.  */
+    int version;
+#define SERF_CONNECTION_TYPE_VERSION 1
+
+    /**
+     * Initiate a connection to the server.
+     *
+     * ### docco. note async. note that request(s) may be queued.
+     * ### can we somehow defer the SSL tunnel's CONNECT to the higher
+     * ### layer? then have the HTTP protocol layer wrap a CONN_PLAIN
+     * ### into a CONN_TLS connection once the tunnel is established?
+     */
+    apr_status_t (*connect)(serf_connection_t *conn);
+
     /**
      * Returns a bucket for reading from this connection.
      *
@@ -1172,6 +1186,10 @@ typedef apr_status_t (*serf_handler_t)(
 struct serf_protocol_type_t {
     /** Name of this protocol type.  */
     const char *name;
+
+    /** Vtable version.  */
+    int version;
+#define SERF_PROTOCOL_TYPE_VERSION 1
 
     /**
      * When a pending request reaches the front of the queue, then it becomes
