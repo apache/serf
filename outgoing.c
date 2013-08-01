@@ -579,6 +579,9 @@ static apr_status_t reset_connection(serf_connection_t *conn,
     apr_status_t status;
     serf_request_t *old_reqs;
 
+    serf__log_skt(CONN_VERBOSE, __FILE__, conn->skt, "reset connection 0x%x\n",
+                  conn);
+
     conn->probable_keepalive_limit = conn->completed_responses;
     conn->completed_requests = 0;
     conn->completed_responses = 0;
@@ -634,8 +637,6 @@ static apr_status_t reset_connection(serf_connection_t *conn,
     conn->ctx->dirty_pollset = 1;
     conn->state = SERF_CONN_INIT;
 
-    serf__log(CONN_VERBOSE, __FILE__, "reset connection 0x%x\n", conn);
-
     conn->status = APR_SUCCESS;
 
     /* Let our context know that we've 'reset' the socket already. */
@@ -661,8 +662,8 @@ static apr_status_t socket_writev(serf_connection_t *conn)
         apr_size_t len = 0;
         int i;
 
-        serf__log_skt(SOCK_MSG_VERBOSE, __FILE__, conn->skt,
-                      "--- socket_sendv:\n");
+        serf__log_skt(SOCK_VERBOSE || SOCK_MSG_VERBOSE, __FILE__, conn->skt,
+                      "--- socket_sendv: %d bytes. --\n", written);
 
         for (i = 0; i < conn->vec_len; i++) {
             len += conn->vec[i].iov_len;
@@ -686,7 +687,7 @@ static apr_status_t socket_writev(serf_connection_t *conn)
         if (len == written) {
             conn->vec_len = 0;
         }
-        serf__log_nopref(SOCK_MSG_VERBOSE, "-(%d)-\n", written);
+        serf__log_nopref(SOCK_MSG_VERBOSE, "\n");
 
         /* Log progress information */
         serf__context_progress_delta(conn->ctx, 0, written);

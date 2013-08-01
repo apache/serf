@@ -46,11 +46,11 @@ static apr_status_t socket_reader(void *baton, apr_size_t bufsize,
                       "socket_recv error %d\n", status);
 
     if (*len) {
-        serf__log_skt(SOCK_VERBOSE, __FILE__, ctx->skt,
+        serf__log_skt(SOCK_VERBOSE || SOCK_MSG_VERBOSE, __FILE__, ctx->skt,
                       "--- socket_recv: %d bytes. --\n", *len);
         serf__log_skt(SOCK_MSG_VERBOSE, __FILE__, ctx->skt,
-                      "%.*s\n-(%d)-\n",
-                      buf, *len);
+                      "%.*s\n",
+                      *len, buf);
     }
 
     if (ctx->progress_func)
