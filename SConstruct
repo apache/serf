@@ -205,14 +205,12 @@ if sys.platform != 'win32':
   ### gcc only. figure out appropriate test / better way to check these
   ### flags, and check for gcc.
   env.Append(CFLAGS='-std=c89')
-  env.Append(CCFLAGS=[
-               '-Wdeclaration-after-statement',
-               '-Wmissing-prototypes',
-             ])
 
-  ### -Wall is not available on Solaris
+  ### These warnings are not available on Solaris
   if sys.platform != 'sunos5': 
-    env.Append(CCFLAGS='-Wall')
+    env.Append(CCFLAGS=['-Wdeclaration-after-statement',
+                        '-Wmissing-prototypes',
+                        '-Wall'])
 
   if debug:
     env.Append(CCFLAGS='-g')
@@ -334,7 +332,10 @@ else:
 
 # If build with gssapi, get its information and define SERF_HAVE_GSSAPI
 if gssapi and CALLOUT_OKAY:
-    env.ParseConfig('$GSSAPI --libs gssapi')
+    def parse_libs(env, cmd, unique=1):
+        env['GSSAPI_LIBS'] = cmd.strip()
+        return env.MergeFlags(cmd, unique)
+    env.ParseConfig('$GSSAPI --libs gssapi', parse_libs)
     env.Append(CPPDEFINES='SERF_HAVE_GSSAPI')
 if sys.platform == 'win32':
   env.Append(CPPDEFINES=['SERF_HAVE_SSPI'])
@@ -344,10 +345,9 @@ if sys.platform == 'win32':
 # flags to set RPATH values.
 if sys.platform == 'sunos5':
   for d in env['LIBPATH']:
-    env.Append(RPATH=d)
+    env.Append(RPATH=':'+d)
 
 # Set up the construction of serf-*.pc
-# TODO: add gssapi libs
 pkgconfig = env.Textfile('serf-%d.pc' % (MAJOR,),
                          env.File('build/serf.pc.in'),
                          SUBST_DICT = {
@@ -355,7 +355,8 @@ pkgconfig = env.Textfile('serf-%d.pc' % (MAJOR,),
                            '@PREFIX@': '$PREFIX',
                            '@INCLUDE_SUBDIR@': 'serf-%d' % (MAJOR,),
                            '@VERSION@': '%d.%d.%d' % (MAJOR, MINOR, PATCH),
-                           '@LIBS@': '%s %s -lz' % (apu_libs, apr_libs),
+                           '@LIBS@': '%s %s %s -lz' % (apu_libs, apr_libs,
+                                                       env.get('GSSAPI_LIBS')),
                            })
 
 env.Default(lib_static, lib_shared, pkgconfig)
@@ -374,9 +375,13 @@ install_static = env.Install(libdir, lib_static)
 install_shared = env.Install(libdir, lib_shared)
 
 if sys.platform == 'darwin':
+  # If --install-sandbox=<path> is specified, install_shared_path will point
+  # to a path in the sandbox. The shared library install name (id) should be the
+  # final targat path.
   install_shared_path = install_shared[0].abspath
+  target_install_shared_path = os.path.join(libdir, lib_shared[0].name)
   env.AddPostAction(install_shared, ('install_name_tool -id %s %s'
-                                     % (install_shared_path,
+                                     % (target_install_shared_path,
                                         install_shared_path)))
   ### construct shared lib symlinks. this also means install the lib
   ### as libserf-2.1.0.0.dylib, then add the symlinks.
