@@ -312,9 +312,6 @@ static apr_status_t replay(serv_ctx_t *servctx,
             next_action(servctx);
         }
         else if (action->kind == PROXY_FORWARD) {
-            apr_size_t len;
-            char *buf;
-
             if (!servctx->proxy_client_sock) {
                 serf__log(TEST_VERBOSE, __FILE__, "Proxy: setting up connection "
                           "to server.\n");
@@ -329,7 +326,8 @@ static apr_status_t replay(serv_ctx_t *servctx,
             /* Send all data received from the server to the client. */
             do
             {
-                apr_size_t readlen;
+                apr_size_t sendlen, readlen;
+                const char *buf;
 
                 readlen = BUFSIZE;
 
@@ -340,16 +338,16 @@ static apr_status_t replay(serv_ctx_t *servctx,
                 if (!readlen)
                     break;
 
-                len = readlen;
+                sendlen = readlen;
 
                 serf__log(TEST_VERBOSE, __FILE__,
-                          "proxy: sending %d bytes to client.\n", len);
-                status = servctx->send(servctx, buf, &len);
+                          "proxy: sending %d bytes to client.\n", sendlen);
+                status = servctx->send(servctx, buf, &sendlen);
                 if (status != APR_SUCCESS) {
                     return status;
                 }
                 
-                if (len != readlen) /* abort for now, return buf to aggregate
+                if (sendlen != readlen) /* abort for now, return buf to aggregate
                                        if not everything could be sent. */
                     return APR_EGENERAL;
             } while (!status);
@@ -399,14 +397,12 @@ static apr_status_t proxy_replay(serv_ctx_t *servctx,
     }
 
     if (rtnevents & APR_POLLOUT) {
-        apr_size_t len;
-        char *buf;
-
         serf__log(TEST_VERBOSE, __FILE__, "proxy_replay: POLLOUT\n");
         /* Send all data received from the client to the server. */
         do
         {
-            apr_size_t readlen;
+            apr_size_t readlen, sendlen;
+            const char *buf;
 
             readlen = BUFSIZE;
 
@@ -421,17 +417,17 @@ static apr_status_t proxy_replay(serv_ctx_t *servctx,
             if (!readlen)
                 break;
 
-            len = readlen;
+            sendlen = readlen;
 
             serf__log(TEST_VERBOSE, __FILE__,
                       "proxy: sending %d bytes %.*s to server.\n",
-                      len, len, buf);
-            status = apr_socket_send(servctx->proxy_client_sock, buf, &len);
+                      sendlen, sendlen, buf);
+            status = apr_socket_send(servctx->proxy_client_sock, buf, &sendlen);
             if (status != APR_SUCCESS) {
                 return status;
             }
 
-            if (len != readlen) /* abort for now */
+            if (sendlen != readlen) /* abort for now */
                 return APR_EGENERAL;
         } while (!status);
     }
