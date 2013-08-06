@@ -26,24 +26,6 @@
 
 #define BUFSIZE 8192
 
-/* Cleanup callback for a server. */
-static apr_status_t cleanup_server(void *baton)
-{
-    serv_ctx_t *servctx = baton;
-    apr_status_t status;
-
-    if (servctx->serv_sock)
-      status = apr_socket_close(servctx->serv_sock);
-    else
-      status = APR_EGENERAL;
-
-    if (servctx->client_sock) {
-        apr_socket_close(servctx->client_sock);
-    }
-
-    return status;
-}
-
 /* Replay support functions */
 static void next_message(serv_ctx_t *servctx)
 {
@@ -595,9 +577,6 @@ void setup_test_server(serv_ctx_t **servctx_p,
     serv_ctx_t *servctx;
 
     servctx = apr_pcalloc(pool, sizeof(*servctx));
-    apr_pool_cleanup_register(pool, servctx,
-                              cleanup_server,
-                              apr_pool_cleanup_null);
     *servctx_p = servctx;
 
     servctx->serv_addr = address;
