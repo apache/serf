@@ -212,7 +212,11 @@ gss_api_get_credentials(char *token, apr_size_t token_len,
 
     switch(status) {
     case APR_SUCCESS:
-        gss_info->state = gss_api_auth_completed;
+        if (output_buf.length == 0) {
+            gss_info->state = gss_api_auth_completed;
+        } else {
+            gss_info->state = gss_api_auth_in_progress;
+        }
         break;
     case APR_EAGAIN:
         gss_info->state = gss_api_auth_in_progress;
@@ -242,6 +246,7 @@ do_auth(peer_t peer,
         int code,
         gss_authn_info_t *gss_info,
         serf_connection_t *conn,
+        serf_request_t *request,
         const char *auth_hdr,
         apr_pool_t *pool)
 {
@@ -304,6 +309,14 @@ do_auth(peer_t peer,
         case pstate_stateless:
             /* Nothing to do here */
             break;
+    }
+
+    if (request->auth_baton && !token) {
+        /* We provided token with this request, but server responded with empty
+           authentication header. This means server rejected our credentials.
+           XXX: Probably we need separate error code for this case like
+           SERF_ERROR_AUTHN_CREDS_REJECTED? */
+        return SERF_ERROR_AUTHN_FAILED;
     }
 
     /* If the server didn't provide us with a token, start with a new initial
@@ -403,6 +416,7 @@ serf__handle_spnego_auth(int code,
                    code,
                    gss_info,
                    request->conn,
+                   request,
                    auth_hdr,
                    pool);
 }
@@ -429,6 +443,10 @@ serf__setup_request_spnego_auth(peer_t peer,
 
         serf_bucket_headers_setn(hdrs_bkt, gss_info->header,
                                  gss_info->value);
+
+        /* Remember that we're using this request for authentication
+           handshake. */
+        request->auth_baton = (void*) TRUE;
 
         /* We should send each token only once. */
         gss_info->header = NULL;
@@ -468,6 +486,7 @@ serf__setup_request_spnego_auth(peer_t peer,
                                  code,
                                  gss_info,
                                  conn,
+                                 request,
                                  0l,    /* no response authn header */
                                  conn->pool);
                 if (status)
@@ -475,6 +494,11 @@ serf__setup_request_spnego_auth(peer_t peer,
 
                 serf_bucket_headers_setn(hdrs_bkt, gss_info->header,
                                          gss_info->value);
+
+                /* Remember that we're using this request for authentication
+                   handshake. */
+                request->auth_baton = (void*) TRUE;
+
                 /* We should send each token only once. */
                 gss_info->header = NULL;
                 gss_info->value = NULL;
@@ -525,9 +549,20 @@ serf__validate_response_spnego_auth(peer_t peer,
         hdrs = serf_bucket_response_get_headers(response);
         auth_hdr_val = serf_bucket_headers_get(hdrs, auth_hdr_name);
 
-        status = do_auth(peer, code, gss_info, conn, auth_hdr_val, pool);
-        if (status)
-            return status;
+        if (auth_hdr_val) {
+            status = do_auth(peer, code, gss_info, conn, request, auth_hdr_val,
+                             pool);
+            if (status) {
+                return status;
+            }
+        } else {
+            /* No Authenticate headers, nothing to validate: authentication
+               completed.*/
+            gss_info->state = gss_api_auth_completed;
+
+            serf__log_skt(AUTH_VERBOSE, __FILE__, conn->skt,
+                          "SPNEGO handshake completed.\n");
+        }
     }
 
     if (gss_info->state == gss_api_auth_completed) {

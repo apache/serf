@@ -1517,6 +1517,7 @@ create_request(serf_connection_t *conn,
     request->writing_started = 0;
     request->ssltunnel = ssltunnel;
     request->next = NULL;
+    request->auth_baton = NULL;
 
     return request;
 }
