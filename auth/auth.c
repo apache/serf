@@ -198,6 +198,9 @@ static int handle_auth_headers(int code,
         */
         serf__log_skt(AUTH_VERBOSE, __FILE__, conn->skt,
                       "%s authentication failed.\n", scheme->name);
+
+        /* Clear per-request auth_baton when switching to next auth scheme. */
+        request->auth_baton = NULL;
     }
 
     return status;
