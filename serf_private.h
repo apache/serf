@@ -125,6 +125,8 @@ typedef struct serf__authn_info_t {
     const serf__authn_scheme_t *scheme;
 
     void *baton;
+
+    int failed_authn_types;
 } serf__authn_info_t;
 
 struct serf_context_t {
