@@ -456,7 +456,8 @@ serf__setup_request_digest_auth(peer_t peer,
 }
 
 apr_status_t
-serf__validate_response_digest_auth(peer_t peer,
+serf__validate_response_digest_auth(const serf__authn_scheme_t *scheme,
+                                    peer_t peer,
                                     int code,
                                     serf_connection_t *conn,
                                     serf_request_t *request,

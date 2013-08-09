@@ -23,7 +23,8 @@
 #include <apr_lib.h>
 
 static apr_status_t
-default_auth_response_handler(peer_t peer,
+default_auth_response_handler(const serf__authn_scheme_t *scheme,
+                              peer_t peer,
                               int code,
                               serf_connection_t *conn,
                               serf_request_t *request,
@@ -386,16 +387,16 @@ apr_status_t serf__handle_auth_response(int *consumed_response,
         authn_info = serf__get_authn_info_for_server(conn);
         if (authn_info->scheme) {
             validate_resp = authn_info->scheme->validate_response_func;
-            resp_status = validate_resp(HOST, sl.code, conn, request, response,
-                                        pool);
+            resp_status = validate_resp(authn_info->scheme, HOST, sl.code,
+                                        conn, request, response, pool);
         }
 
         /* Validate the response proxy authn headers. */
         authn_info = &ctx->proxy_authn_info;
         if (!resp_status && authn_info->scheme) {
             validate_resp = authn_info->scheme->validate_response_func;
-            resp_status = validate_resp(PROXY, sl.code, conn, request, response,
-                                        pool);
+            resp_status = validate_resp(authn_info->scheme, PROXY, sl.code,
+                                        conn, request, response, pool);
         }
 
         if (resp_status) {

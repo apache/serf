@@ -361,7 +361,8 @@ typedef apr_status_t
  * (if needed).
  */
 typedef apr_status_t
-(*serf__validate_response_func_t)(peer_t peer,
+(*serf__validate_response_func_t)(const serf__authn_scheme_t *scheme,
+                                  peer_t peer,
                                   int code,
                                   serf_connection_t *conn,
                                   serf_request_t *request,

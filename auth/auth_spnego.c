@@ -509,13 +509,63 @@ serf__setup_request_spnego_auth(peer_t peer,
     return APR_SUCCESS;
 }
 
+/**
+ * Baton passed to the get_auth_header callback function.
+ */
+typedef struct {
+    const char *hdr_name;
+    const char *auth_name;
+    const char *hdr_value;
+    apr_pool_t *pool;
+} get_auth_header_baton_t;
+
+static int
+get_auth_header_cb(void *baton,
+                   const char *key,
+                   const char *header)
+{
+    get_auth_header_baton_t *b = baton;
+
+    /* We're only interested in xxxx-Authenticate headers. */
+    if (strcasecmp(key, b->hdr_name) != 0)
+        return 0;
+
+    /* Check if header value starts with interesting auth name. */
+    if (strncmp(header, b->auth_name, strlen(b->auth_name)) == 0) {
+        /* Save interesting header value and stop iteration. */
+        b->hdr_value = apr_pstrdup(b->pool,  header);
+        return 1;
+    }
+
+    return 0;
+}
+
+static const char *
+get_auth_header(serf_bucket_t *hdrs,
+                const char *hdr_name,
+                const char *auth_name,
+                apr_pool_t *pool)
+{
+    get_auth_header_baton_t b;
+
+    b.auth_name = hdr_name;
+    b.hdr_name = auth_name;
+    b.hdr_value = NULL;
+    b.pool = pool;
+
+    serf_bucket_headers_do(hdrs, get_auth_header_cb, &b);
+
+    return b.hdr_value;
+}
+
 /* Function is called when 2xx responses are received. Normally we don't
  * have to do anything, except for the first response after the
  * authentication handshake. This specific response includes authentication
  * data which should be validated by the client (mutual authentication).
  */
 apr_status_t
-serf__validate_response_spnego_auth(peer_t peer,
+serf__validate_response_spnego_auth(const serf__authn_scheme_t *scheme,
+                                    peer_t peer,
                                     int code,
                                     serf_connection_t *conn,
                                     serf_request_t *request,
@@ -542,7 +592,8 @@ serf__validate_response_spnego_auth(peer_t peer,
         apr_status_t status;
 
         hdrs = serf_bucket_response_get_headers(response);
-        auth_hdr_val = serf_bucket_headers_get(hdrs, auth_hdr_name);
+        auth_hdr_val = get_auth_header(hdrs, auth_hdr_name, scheme->name,
+                                       pool);
 
         if (auth_hdr_val) {
             status = do_auth(peer, code, gss_info, conn, request, auth_hdr_val,
