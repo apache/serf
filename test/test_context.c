@@ -1931,7 +1931,7 @@ ssltunnel_basic_authn_callback(char **username,
 /* Test if serf can successfully authenticate to a proxy used for an ssl
    tunnel. Retry the authentication a few times to test requeueing of the 
    CONNECT request. */
-static void ssltunnel_basic_auth(CuTest *tc, const char *resp_hdrs)
+static void ssltunnel_basic_auth(CuTest *tc, const char *server_resp_hdrs)
 {
     test_baton_t *tb;
     handler_baton_t handler_ctx[1];
@@ -2020,7 +2020,7 @@ static void ssltunnel_basic_auth(CuTest *tc, const char *resp_hdrs)
         "%s"
         CRLF
         "1" CRLF CRLF
-        "0" CRLF CRLF, resp_hdrs);
+        "0" CRLF CRLF, server_resp_hdrs);
     action_list_server[1].kind = SERVER_RESPOND;
     action_list_server[1].text = CHUNKED_EMPTY_RESPONSE;
 
@@ -2068,7 +2068,7 @@ static void test_ssltunnel_basic_auth(CuTest *tc)
     ssltunnel_basic_auth(tc, "");
 }
 
-static void test_ssltunnel_basic_auth_keepalive_off(CuTest *tc)
+static void test_ssltunnel_basic_auth_server_has_keepalive_off(CuTest *tc)
 {
     ssltunnel_basic_auth(tc, "Connection: close" CRLF);
 }
@@ -2218,7 +2218,7 @@ CuSuite *test_context(void)
     SUITE_ADD_TEST(suite, test_setup_ssltunnel);
     SUITE_ADD_TEST(suite, test_ssltunnel_no_creds_cb);
     SUITE_ADD_TEST(suite, test_ssltunnel_basic_auth);
-    SUITE_ADD_TEST(suite, test_ssltunnel_basic_auth_keepalive_off);
+    SUITE_ADD_TEST(suite, test_ssltunnel_basic_auth_server_has_keepalive_off);
     SUITE_ADD_TEST(suite, test_ssltunnel_digest_auth);
 
     return suite;
