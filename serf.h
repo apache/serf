@@ -110,6 +110,9 @@ typedef struct serf_protocol_type_t serf_protocol_type_t;
 /* Authentication handler initialization related errors */
 #define SERF_ERROR_AUTHN_INITALIZATION_FAILED (SERF_ERROR_START + 93)
 
+/* The user credentials were rejected by the server */
+#define SERF_ERROR_AUTHN_CREDENTIALS_REJECTED (SERF_ERROR_START + 94)
+
 /* Error code reserved for use in the test suite. */
 #define SERF_ERROR_ISSUE_IN_TESTSUITE (SERF_ERROR_START + 99)
 
@@ -1321,6 +1324,11 @@ void serf_debug__bucket_destroy(
     const serf_bucket_t *bucket);
 void serf_debug__bucket_alloc_check(
     serf_bucket_alloc_t *allocator);
+
+apr_status_t serf_debug__bucket_read(serf_bucket_t *bucket,
+                                     apr_size_t requested,
+                                     const char **data,
+                                     apr_size_t *len);
 
 /* Version info */
 #define SERF_MAJOR_VERSION 2

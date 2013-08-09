@@ -368,6 +368,8 @@ const char *serf_error_string(apr_status_t errcode)
         return "An authentication attribute is missing";
     case SERF_ERROR_AUTHN_INITALIZATION_FAILED:
         return "Initialization of an authentication type failed";
+    case SERF_ERROR_AUTHN_CREDENTIALS_REJECTED:
+        return "The user credentials were rejected by the server";
     case SERF_ERROR_SSLTUNNEL_SETUP_FAILED:
         return "The proxy server returned an error while setting up the "
                "SSL tunnel.";

@@ -314,9 +314,8 @@ do_auth(peer_t peer,
     if (request->auth_baton && !token) {
         /* We provided token with this request, but server responded with empty
            authentication header. This means server rejected our credentials.
-           XXX: Probably we need separate error code for this case like
-           SERF_ERROR_AUTHN_CREDS_REJECTED? */
-        return SERF_ERROR_AUTHN_FAILED;
+         */
+        return SERF_ERROR_AUTHN_CREDENTIALS_REJECTED;
     }
 
     /* If the server didn't provide us with a token, start with a new initial
