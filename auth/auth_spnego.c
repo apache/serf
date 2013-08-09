@@ -525,11 +525,6 @@ serf__validate_response_spnego_auth(peer_t peer,
     gss_authn_info_t *gss_info;
     const char *auth_hdr_name;
 
-    /* TODO: currently this function is only called when a response includes
-       an Authenticate header. This header is optional. If the server does
-       not provide this header on the first 2xx response, we will not promote
-       the connection from undecided to stateful. This won't break anything,
-       but means we stay in non-pipelining mode. */
     serf__log_skt(AUTH_VERBOSE, __FILE__, conn->skt,
                   "Validate Negotiate response header.\n");
 
