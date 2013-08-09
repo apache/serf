@@ -513,7 +513,7 @@ apr_status_t serf_linebuf_fetch(
                out EOF state, so they'll return no data in that read. This
                means we're done reading, return what we got. */
             if (APR_STATUS_IS_EOF(status) && len == 0) {
-	        return status;
+                return status;
             }
             if (linebuf->used + len > sizeof(linebuf->line)) {
                 /* ### need a "line too long" error */
