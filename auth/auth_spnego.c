@@ -574,9 +574,6 @@ serf__validate_response_spnego_auth(const serf__authn_scheme_t *scheme,
     gss_authn_info_t *gss_info;
     const char *auth_hdr_name;
 
-    serf__log_skt(AUTH_VERBOSE, __FILE__, conn->skt,
-                  "Validate Negotiate response header.\n");
-
     if (peer == HOST) {
         gss_info = conn->authn_baton;
         auth_hdr_name = "WWW-Authenticate";
@@ -589,6 +586,9 @@ serf__validate_response_spnego_auth(const serf__authn_scheme_t *scheme,
         serf_bucket_t *hdrs;
         const char *auth_hdr_val;
         apr_status_t status;
+
+        serf__log_skt(AUTH_VERBOSE, __FILE__, conn->skt,
+                      "Validate SPNEGO response header.\n");
 
         hdrs = serf_bucket_response_get_headers(response);
         auth_hdr_val = get_auth_header(hdrs, auth_hdr_name, scheme->name,
