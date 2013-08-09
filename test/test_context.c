@@ -1931,13 +1931,16 @@ ssltunnel_basic_authn_callback(char **username,
 /* Test if serf can successfully authenticate to a proxy used for an ssl
    tunnel. Retry the authentication a few times to test requeueing of the 
    CONNECT request. */
-static void ssltunnel_basic_auth(CuTest *tc, const char *server_resp_hdrs)
+static void ssltunnel_basic_auth(CuTest *tc, const char *server_resp_hdrs,
+                                 const char *proxy_resp_hdrs)
 {
     test_baton_t *tb;
     handler_baton_t handler_ctx[1];
     int num_requests_sent, num_requests_recvd;
     test_server_message_t message_list_server[2];
+    test_server_action_t action_list_proxy[7];
     test_server_action_t action_list_server[2];
+    apr_pool_t *test_pool = tc->testBaton;
     apr_status_t status;
 
     test_server_message_t message_list_proxy[] = {
@@ -1961,35 +1964,47 @@ static void ssltunnel_basic_auth(CuTest *tc, const char *server_resp_hdrs)
             "Proxy-Authorization: Basic c2VyZnByb3h5OnNlcmZ0ZXN0" CRLF
             CRLF },
     };
-    test_server_action_t action_list_proxy[] = {
-        {SERVER_RESPOND, "HTTP/1.1 407 Unauthorized" CRLF
-            "Transfer-Encoding: chunked" CRLF
-            "Proxy-Authenticate: Basic realm=""Test Suite Proxy""" CRLF
-            CRLF
-            "1" CRLF CRLF
-            "0" CRLF CRLF},
-        {SERVER_RESPOND, "HTTP/1.1 407 Unauthorized" CRLF
-            "Transfer-Encoding: chunked" CRLF
-            "Proxy-Authenticate: Basic realm=""Test Suite Proxy""" CRLF
-            CRLF
-            "1" CRLF CRLF
-            "0" CRLF CRLF},
-        {SERVER_RESPOND, "HTTP/1.1 407 Unauthorized" CRLF
-            "Transfer-Encoding: chunked" CRLF
-            "Proxy-Authenticate: Basic realm=""Test Suite Proxy""" CRLF
-            CRLF
-            "1" CRLF CRLF
-            "0" CRLF CRLF},
-        {SERVER_RESPOND, CHUNKED_EMPTY_RESPONSE},
-        /* Forward the remainder of the data to the server without validation */
-        {PROXY_FORWARD, "https://localhost:" SERV_PORT_STR},
-        /* If the client or the server closes the connection, stop forwarding.*/
-        {SERVER_RESPOND, CHUNKED_EMPTY_RESPONSE},
-        /* Again after disconnect. */
-        {PROXY_FORWARD, "https://localhost:" SERV_PORT_STR},
-    };
 
-    apr_pool_t *test_pool = tc->testBaton;
+    action_list_proxy[0].kind = SERVER_RESPOND;
+    action_list_proxy[0].text = apr_psprintf(test_pool,
+        "HTTP/1.1 407 Unauthorized" CRLF
+        "Transfer-Encoding: chunked" CRLF
+        "Proxy-Authenticate: Basic realm=""Test Suite Proxy""" CRLF
+        "%s"
+        CRLF
+        "1" CRLF CRLF
+        "0" CRLF CRLF, proxy_resp_hdrs);
+    action_list_proxy[1].kind = SERVER_RESPOND;
+    action_list_proxy[1].text = apr_psprintf(test_pool,
+        "HTTP/1.1 407 Unauthorized" CRLF
+        "Transfer-Encoding: chunked" CRLF
+        "Proxy-Authenticate: Basic realm=""Test Suite Proxy""" CRLF
+        "%s"
+        CRLF
+        "1" CRLF CRLF
+        "0" CRLF CRLF, proxy_resp_hdrs);
+
+    action_list_proxy[2].kind = SERVER_RESPOND;
+    action_list_proxy[2].text = apr_psprintf(test_pool,
+        "HTTP/1.1 407 Unauthorized" CRLF
+        "Transfer-Encoding: chunked" CRLF
+        "Proxy-Authenticate: Basic realm=""Test Suite Proxy""" CRLF
+        "%s"
+        CRLF
+        "1" CRLF CRLF
+        "0" CRLF CRLF, proxy_resp_hdrs);
+
+    action_list_proxy[3].kind = SERVER_RESPOND;
+    action_list_proxy[3].text = CHUNKED_EMPTY_RESPONSE;
+    /* Forward the remainder of the data to the server without validation */
+    action_list_proxy[4].kind = PROXY_FORWARD;
+    action_list_proxy[4].text = "https://localhost:" SERV_PORT_STR;
+    /* If the client or the server closes the connection, stop forwarding.*/
+    action_list_proxy[5].kind = SERVER_RESPOND;
+    action_list_proxy[5].text = CHUNKED_EMPTY_RESPONSE;
+    /* Again after disconnect. */
+    action_list_proxy[6].kind = PROXY_FORWARD;
+    action_list_proxy[6].text = "https://localhost:" SERV_PORT_STR;
 
     /* Make the server also require Basic authentication */
     message_list_server[0].text =
@@ -2065,12 +2080,20 @@ static void ssltunnel_basic_auth(CuTest *tc, const char *server_resp_hdrs)
 
 static void test_ssltunnel_basic_auth(CuTest *tc)
 {
-    ssltunnel_basic_auth(tc, "");
+    /* KeepAlive On for both proxy and server */
+    ssltunnel_basic_auth(tc, "", "");
 }
 
 static void test_ssltunnel_basic_auth_server_has_keepalive_off(CuTest *tc)
 {
-    ssltunnel_basic_auth(tc, "Connection: close" CRLF);
+    /* Add Connection:Close header to server response */
+    ssltunnel_basic_auth(tc, "Connection: close" CRLF, "");
+}
+
+static void test_ssltunnel_basic_auth_proxy_has_keepalive_off(CuTest *tc)
+{
+    /* Add Connection:Close header to proxy response */
+    ssltunnel_basic_auth(tc, "", "Connection: close" CRLF);
 }
 
 static apr_status_t
@@ -2219,6 +2242,7 @@ CuSuite *test_context(void)
     SUITE_ADD_TEST(suite, test_ssltunnel_no_creds_cb);
     SUITE_ADD_TEST(suite, test_ssltunnel_basic_auth);
     SUITE_ADD_TEST(suite, test_ssltunnel_basic_auth_server_has_keepalive_off);
+    SUITE_ADD_TEST(suite, test_ssltunnel_basic_auth_proxy_has_keepalive_off);
     SUITE_ADD_TEST(suite, test_ssltunnel_digest_auth);
 
     return suite;

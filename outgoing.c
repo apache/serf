@@ -596,8 +596,12 @@ static apr_status_t reset_connection(serf_connection_t *conn,
     while (old_reqs) {
         /* If we haven't started to write the connection, bring it over
          * unchanged to our new socket.
+         * Do not copy a CONNECT request to the new connection, the ssl tunnel
+         * setup code will create a new CONNECT request already.
          */
-        if (requeue_requests && !old_reqs->writing_started) {
+        if (requeue_requests && !old_reqs->writing_started &&
+            !old_reqs->ssltunnel) {
+
             serf_request_t *req = old_reqs;
             old_reqs = old_reqs->next;
             req->next = NULL;
