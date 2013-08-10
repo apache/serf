@@ -152,6 +152,8 @@ match = re.search('SERF_MAJOR_VERSION ([0-9]+).*'
                   re.DOTALL)
 MAJOR, MINOR, PATCH = [int(x) for x in match.groups()]
 env.Append(MAJOR=str(MAJOR))
+env.Append(MINOR=str(MINOR))
+env.Append(PATCH=str(PATCH))
 
 # Calling external programs is okay if we're not cleaning or printing help.
 # (cleaning: no sense in fetching information; help: we may not know where
@@ -189,6 +191,8 @@ opts.Save(SAVED_CONFIG, env)
 thisdir = os.getcwd()
 libdir = '$LIBDIR'
 incdir = '$PREFIX/include/serf-$MAJOR'
+
+env['SHLIBVERSION']='${MINOR}.0.0'
 
 LIBNAME = 'libserf-${MAJOR}'
 if sys.platform != 'win32':
@@ -378,7 +382,7 @@ if CALLOUT_OKAY:
 # INSTALLATION STUFF
 
 install_static = env.Install(libdir, lib_static)
-install_shared = env.Install(libdir, lib_shared)
+install_shared = env.InstallVersionedLib(libdir, lib_shared)
 
 if sys.platform == 'darwin':
   # If --install-sandbox=<path> is specified, install_shared_path will point

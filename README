@@ -18,14 +18,14 @@ kept to a minimum to provide high performance operation.
 
 1.1. SCons build system
 
-serf uses SCons 2.x for its build system. If it is not installed on
+serf uses SCons 2.3 for its build system. If it is not installed on
 your system, then you can install it onto your system. If you do not
 have permissions, then you can download and install the "local"
 version into your home directory. When installed privately, simply
 create a symlink for 'scons' in your PATH to /path/to/scons/scons.py.
 
 Fetch the scons-local package:
-  http://prdownloads.sourceforge.net/scons/scons-local-2.0.1.tar.gz
+  http://prdownloads.sourceforge.net/scons/scons-local-2.3.0.tar.gz
 
 
 1.2 Building serf
