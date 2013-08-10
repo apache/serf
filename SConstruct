@@ -47,10 +47,12 @@ def RawListVariable(key, help, default):
 
 # default directories
 if sys.platform == 'win32':
+  default_incdir='..'
   default_libdir='..'
   default_prefix='Debug'
 else:
-  default_libdir='/usr'
+  default_incdir='/usr'
+  default_libdir='/usr/local/lib'
   default_prefix='/usr/local'
 
 opts = Variables(files=[SAVED_CONFIG])
@@ -59,21 +61,25 @@ opts.AddVariables(
                'Directory to install under',
                default_prefix,
                PathVariable.PathIsDir),
+  PathVariable('LIBDIR',
+               'Directory to install architecure dependent libraries under',
+               default_libdir,
+               PathVariable.PathIsDir),
   PathVariable('APR',
                "Path to apr-1-config, or to APR's install area",
-               default_libdir,
+               default_incdir,
                PathVariable.PathAccept),
   PathVariable('APU',
                "Path to apu-1-config, or to APR's install area",
-               default_libdir,
+               default_incdir,
                PathVariable.PathAccept),
   PathVariable('OPENSSL',
                "Path to OpenSSL's install area",
-               default_libdir,
+               default_incdir,
                PathVariable.PathIsDir),
   PathVariable('ZLIB',
                "Path to zlib's install area",
-               default_libdir,
+               default_incdir,
                PathVariable.PathIsDir),
   PathVariable('GSSAPI',
                "Path to GSSAPI's install area",
@@ -181,7 +187,7 @@ opts.Save(SAVED_CONFIG, env)
 # PLATFORM-SPECIFIC BUILD TWEAKS
 
 thisdir = os.getcwd()
-libdir = '$PREFIX/lib'
+libdir = '$LIBDIR'
 incdir = '$PREFIX/include/serf-$MAJOR'
 
 LIBNAME = 'libserf-${MAJOR}'
