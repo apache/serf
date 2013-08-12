@@ -51,7 +51,7 @@ if sys.platform == 'win32':
   default_prefix='Debug'
 else:
   default_incdir='/usr'
-  default_libdir='/usr/local/lib'
+  default_libdir='$PREFIX/lib'
   default_prefix='/usr/local'
 
 opts = Variables(files=[SAVED_CONFIG])
@@ -61,7 +61,7 @@ opts.AddVariables(
                default_prefix,
                PathVariable.PathIsDir),
   PathVariable('LIBDIR',
-               'Directory to install architecure dependent libraries under',
+               'Directory to install architecture dependent libraries under',
                default_libdir,
                PathVariable.PathIsDir),
   PathVariable('APR',
