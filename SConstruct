@@ -44,6 +44,17 @@ def RawListVariable(key, help, default):
     """
     return (key, '%s' % (help), default, None, lambda val: _converter(val))
 
+# Custom path validator, creates directory when a specified option is set.
+# To be used to ensure a PREFIX directory is only created when installing.
+def createPathIsDirCreateWithTarget(target):
+  def my_validator(key, val, env):
+    build_targets = (map(str, BUILD_TARGETS))
+    if target in build_targets:
+      return PathVariable.PathIsDirCreate(key, val, env)
+    else:
+      return PathVariable.PathAccept(key, val, env)
+  return my_validator
+
 # default directories
 if sys.platform == 'win32':
   default_incdir='..'
@@ -59,11 +70,11 @@ opts.AddVariables(
   PathVariable('PREFIX',
                'Directory to install under',
                default_prefix,
-               PathVariable.PathIsDir),
+               createPathIsDirCreateWithTarget('install')),
   PathVariable('LIBDIR',
                'Directory to install architecture dependent libraries under',
                default_libdir,
-               PathVariable.PathIsDir),
+               createPathIsDirCreateWithTarget('install')),
   PathVariable('APR',
                "Path to apr-1-config, or to APR's install area",
                default_incdir,
