@@ -34,14 +34,13 @@ def _converter(val):
     if val == 'none':
       val = []
     else:
-      val = val.split(',')
+      val = val.split(' ')
     return val
 
 def RawListVariable(key, help, default):
     """
     The input parameters describe a 'raw string list' option. This class
-    accepts a comma separated list and converts it to a space separated
-    list.
+    accepts a space-separated string and converts it to a list.
     """
     return (key, '%s' % (help), default, None, lambda val: _converter(val))
 
@@ -92,14 +91,14 @@ opts.AddVariables(
                "Enable using a static compiled APR",
                False),
   RawListVariable('CC', "Command name or path of the C compiler", None),
-  RawListVariable('CFLAGS', "Extra flags for the C compiler (comma separated)",
+  RawListVariable('CFLAGS', "Extra flags for the C compiler (space-separated)",
                   None),
   RawListVariable('LIBS', "Extra libraries passed to the linker, "
-                  "e.g. -l<library> (comma separated)", None),
-  RawListVariable('LINKFLAGS', "Extra flags for the linker (comma separated)",
+                  "e.g. \"-l<library1> -l<library2>\" (space separated)", None),
+  RawListVariable('LINKFLAGS', "Extra flags for the linker (space-separated)",
                   None),
   RawListVariable('CPPFLAGS', "Extra flags for the C preprocessor "
-                  "(comma separated)", None), 
+                  "(space separated)", None), 
   )
 
 if sys.platform == 'win32':
