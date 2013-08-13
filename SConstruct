@@ -19,6 +19,8 @@ import sys
 import os
 import re
 
+EnsureSConsVersion(2,3,0)
+
 HEADER_FILES = ['serf.h',
                 'serf_bucket_types.h',
                 'serf_bucket_util.h',
