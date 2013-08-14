@@ -1325,11 +1325,6 @@ void serf_debug__bucket_destroy(
 void serf_debug__bucket_alloc_check(
     serf_bucket_alloc_t *allocator);
 
-apr_status_t serf_debug__bucket_read(serf_bucket_t *bucket,
-                                     apr_size_t requested,
-                                     const char **data,
-                                     apr_size_t *len);
-
 /* Version info */
 #define SERF_MAJOR_VERSION 2
 #define SERF_MINOR_VERSION 0
