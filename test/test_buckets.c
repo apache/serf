@@ -1058,6 +1058,36 @@ static void test_response_no_body_expected(CuTest *tc)
     }
 }
 
+/* Test handling IIS 'extended' status codes (like 401.1) by response
+   buckets. */
+static void test_response_bucket_iis_status_code(CuTest *tc)
+{
+    serf_bucket_t *bkt, *tmp;
+    apr_pool_t *test_pool = tc->testBaton;
+    serf_status_line sline;
+    serf_bucket_alloc_t *alloc = serf_bucket_allocator_create(test_pool, NULL,
+                                                              NULL);
+
+    tmp = SERF_BUCKET_SIMPLE_STRING("HTTP/1.1 401.1 Logon failed." CRLF
+                                    "Content-Type: text/plain" CRLF
+                                    "Content-Length: 2" CRLF
+                                    CRLF
+                                    "AB",
+                                    alloc);
+
+    bkt = serf_bucket_response_create(tmp, alloc);
+
+    read_and_check_bucket(tc, bkt, "AB");
+
+    serf_bucket_response_status(bkt, &sline);
+    CuAssertTrue(tc, sline.version == SERF_HTTP_11);
+    CuAssertIntEquals(tc, 401, sline.code);
+
+    /* Probably better to have just "Logon failed" as reason. But current
+       behavior is also acceptable.*/
+    CuAssertStrEquals(tc, ".1 Logon failed.", sline.reason);
+}
+
 /* Test that serf can handle lines that don't arrive completely in one go.
    It doesn't really run random, it tries inserting APR_EAGAIN in all possible
    places in the response message, only one currently. */
@@ -1246,6 +1276,7 @@ CuSuite *test_buckets(void)
     SUITE_ADD_TEST(suite, test_response_body_chunked_incomplete_crlf);
     SUITE_ADD_TEST(suite, test_response_body_chunked_gzip_small);
     SUITE_ADD_TEST(suite, test_response_bucket_peek_at_headers);
+    SUITE_ADD_TEST(suite, test_response_bucket_iis_status_code);
     SUITE_ADD_TEST(suite, test_bucket_header_set);
     SUITE_ADD_TEST(suite, test_iovec_buckets);
     SUITE_ADD_TEST(suite, test_aggregate_buckets);
