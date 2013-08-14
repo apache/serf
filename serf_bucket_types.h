@@ -553,40 +553,6 @@ void serf_ssl_server_cert_chain_callback_set(
     serf_ssl_server_cert_chain_cb_t cert_chain_callback,
     void *data);
 
-typedef struct serf_ssl_session_t serf_ssl_session_t;
-
-/* Exports @a session to continous memory block. */
-apr_status_t serf_ssl_session_export(void **data,
-                                     apr_size_t *len,
-                                     const serf_ssl_session_t *session,
-                                     apr_pool_t *pool);
-
-/* Restores previously saved session from continuous memory block @a data with
- * @a len length. */
-apr_status_t serf_ssl_session_import(const serf_ssl_session_t **session,
-                                     void *data,
-                                     apr_size_t len,
-                                     apr_pool_t *pool);
-
-/**
- * Callback to notify when new SSL session is negotiated.
- */
-typedef apr_status_t (*serf_ssl_new_session_t)(
-    const serf_ssl_session_t *ssl_session,
-    void *baton,
-    apr_pool_t *pool);
-
-void serf_ssl_new_session_callback_set(
-    serf_ssl_context_t *context,
-    serf_ssl_new_session_t new_session_cb,
-    void *baton);
-
-/* Configure @a ssl_ctx to attempt resume exisiting @a ssl_session. */
-apr_status_t serf_ssl_resume_session(
-    serf_ssl_context_t *ssl_ctx,
-    const serf_ssl_session_t *ssl_session,
-    apr_pool_t *pool);
-
 /**
  * Use the default root CA certificates as included with the OpenSSL library.
  */

@@ -165,9 +165,6 @@ struct serf_ssl_context_t {
     serf_ssl_server_cert_chain_cb_t server_cert_chain_callback;
     void *server_cert_userdata;
 
-    serf_ssl_new_session_t new_session_cb;
-    void *new_session_cb_baton;
-
     const char *cert_path;
 
     X509 *cached_cert;
@@ -194,10 +191,6 @@ typedef struct {
 struct serf_ssl_certificate_t {
     X509 *ssl_cert;
     int depth;
-};
-
-struct serf_ssl_session_t {
-    SSL_SESSION *session_obj;
 };
 
 static void disable_compression(serf_ssl_context_t *ssl_ctx);
@@ -1199,96 +1192,6 @@ void serf_ssl_server_cert_chain_callback_set(
     context->server_cert_userdata = data;
 }
 
-void serf_ssl_new_session_callback_set(
-    serf_ssl_context_t *context,
-    serf_ssl_new_session_t new_session_cb,
-    void *baton)
-{
-    context->new_session_cb = new_session_cb;
-    context->new_session_cb_baton = baton;
-}
-
-static int new_session(SSL *ssl, SSL_SESSION *sess)
-{
-    serf_ssl_context_t *ctx = SSL_get_app_data(ssl);
-
-    if (ctx->new_session_cb) {
-        serf_ssl_session_t session;
-        apr_pool_t *subpool;
-
-        session.session_obj = sess;
-        apr_pool_create(&subpool, ctx->pool);
-
-        ctx->new_session_cb(&session, ctx->new_session_cb_baton, subpool);
-
-        apr_pool_destroy(subpool);
-    }
-
-    return 0;
-}
-
-apr_status_t serf_ssl_session_export(void **data_p,
-                                     apr_size_t *len_p,
-                                     const serf_ssl_session_t *session,
-                                     apr_pool_t *pool)
-{
-    int sess_len;
-    void *sess_data;
-    unsigned char *unused;
-
-    sess_len = i2d_SSL_SESSION(session->session_obj, NULL);
-    if (!sess_len) {
-        return APR_EGENERAL;
-    }
-
-    sess_data = apr_palloc(pool, sess_len);
-
-    unused = sess_data;
-    /* unused is incremented  */
-    sess_len = i2d_SSL_SESSION(session->session_obj, &unused); 
-    if (!sess_len) {
-        return APR_EGENERAL;
-    }
-
-    *data_p = sess_data;
-    *len_p = sess_len;
-    return APR_SUCCESS;
-}
-
-static apr_status_t cleanup_session(void *data)
-{
-    serf_ssl_session_t *session = data;
-
-    SSL_SESSION_free(session->session_obj);
-    session->session_obj = NULL;
-
-    return APR_SUCCESS;
-}
-
-apr_status_t serf_ssl_session_import(const serf_ssl_session_t **session_p,
-                                     void *data,
-                                     apr_size_t len,
-                                     apr_pool_t *pool)
-{
-    SSL_SESSION *sess;
-    serf_ssl_session_t *session;
-    const unsigned char *unused;
-
-    unused = data;
-    sess = d2i_SSL_SESSION(NULL, &unused, len); /* unused is incremented  */
-
-    if (!sess) {
-        return APR_EGENERAL;
-    }
-
-    session = apr_pcalloc(pool, sizeof(serf_ssl_session_t));
-    session->session_obj = sess;
-    apr_pool_cleanup_register(pool, session, cleanup_session, cleanup_session);
-
-    *session_p = session;
-    return APR_SUCCESS;
-}
-
 static serf_ssl_context_t *ssl_init_context(void)
 {
     serf_ssl_context_t *ssl_ctx;
@@ -1322,15 +1225,6 @@ static serf_ssl_context_t *ssl_init_context(void)
     SSL_CTX_set_verify(ssl_ctx->ctx, SSL_VERIFY_PEER,
                        validate_server_certificate);
     SSL_CTX_set_options(ssl_ctx->ctx, SSL_OP_ALL);
-
-    ssl_ctx->new_session_cb = NULL;
-
-    /* Enable SSL callback for new sessions and disable internal session
-       handling. */
-    SSL_CTX_set_session_cache_mode(
-        ssl_ctx->ctx, SSL_SESS_CACHE_CLIENT | SSL_SESS_CACHE_NO_INTERNAL);
-    SSL_CTX_sess_set_new_cb(ssl_ctx->ctx, new_session);
-
     /* Disable SSL compression by default. */
     disable_compression(ssl_ctx);
 
@@ -1364,14 +1258,6 @@ static serf_ssl_context_t *ssl_init_context(void)
     ssl_ctx->decrypt.databuf.read_baton = ssl_ctx;
 
     return ssl_ctx;
-}
-
-apr_status_t serf_ssl_resume_session(serf_ssl_context_t *ssl_ctx,
-                                     const serf_ssl_session_t *session,
-                                     apr_pool_t *pool)
-{
-    SSL_set_session(ssl_ctx->ssl, session->session_obj);
-    return APR_SUCCESS;
 }
 
 static apr_status_t ssl_free_context(
