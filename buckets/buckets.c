@@ -516,8 +516,7 @@ apr_status_t serf_linebuf_fetch(
                 return status;
             }
             if (linebuf->used + len > sizeof(linebuf->line)) {
-                /* ### need a "line too long" error */
-                return APR_EGENERAL;
+                return SERF_ERROR_LINE_TOO_LONG;
             }
 
             /* Note: our logic doesn't change for SERF_LINEBUF_PARTIAL. That

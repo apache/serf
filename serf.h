@@ -91,6 +91,12 @@ typedef struct serf_protocol_type_t serf_protocol_type_t;
 #define SERF_ERROR_SSLTUNNEL_SETUP_FAILED (SERF_ERROR_START + 7)
 /* The server unexpectedly closed the connection prematurely. */
 #define SERF_ERROR_ABORTED_CONNECTION (SERF_ERROR_START + 8)
+/* Generic 'The line too long'. Used internally. */
+#define SERF_ERROR_LINE_TOO_LONG (SERF_ERROR_START + 9)
+/* The HTTP response status line too long. */
+#define SERF_ERROR_STATUS_LINE_TOO_LONG (SERF_ERROR_START + 10)
+/* The HTTP response header too long. */
+#define SERF_ERROR_RESPONSE_HEADER_TOO_LONG (SERF_ERROR_START + 11)
 
 /* SSL certificates related errors */
 #define SERF_ERROR_SSL_CERT_FAILED (SERF_ERROR_START + 70)
