@@ -23,7 +23,8 @@
 #include <apr_lib.h>
 
 static apr_status_t
-default_auth_response_handler(peer_t peer,
+default_auth_response_handler(const serf__authn_scheme_t *scheme,
+                              peer_t peer,
                               int code,
                               serf_connection_t *conn,
                               serf_request_t *request,
@@ -151,6 +152,17 @@ static int handle_auth_headers(int code,
         if (!auth_hdr)
             continue;
 
+        if (code == 401) {
+            authn_info = serf__get_authn_info_for_server(conn);
+        } else {
+            authn_info = &ctx->proxy_authn_info;
+        }
+
+        if (authn_info->failed_authn_types & scheme->type) {
+            /* Skip this authn type since we already tried it before. */
+            continue;
+        }
+
         /* Found a matching scheme */
         status = APR_SUCCESS;
 
@@ -159,11 +171,6 @@ static int handle_auth_headers(int code,
         serf__log_skt(AUTH_VERBOSE, __FILE__, conn->skt,
                       "... matched: %s\n", scheme->name);
 
-        if (code == 401) {
-            authn_info = serf__get_authn_info_for_server(conn);
-        } else {
-            authn_info = &ctx->proxy_authn_info;
-        }
         /* If this is the first time we use this scheme on this context and/or
            this connection, make sure to initialize the authentication handler 
            first. */
@@ -201,6 +208,9 @@ static int handle_auth_headers(int code,
 
         /* Clear per-request auth_baton when switching to next auth scheme. */
         request->auth_baton = NULL;
+
+        /* Remember failed auth types to skip in future. */
+        authn_info->failed_authn_types |= scheme->type;
     }
 
     return status;
@@ -381,16 +391,16 @@ apr_status_t serf__handle_auth_response(int *consumed_response,
         authn_info = serf__get_authn_info_for_server(conn);
         if (authn_info->scheme) {
             validate_resp = authn_info->scheme->validate_response_func;
-            resp_status = validate_resp(HOST, sl.code, conn, request, response,
-                                        pool);
+            resp_status = validate_resp(authn_info->scheme, HOST, sl.code,
+                                        conn, request, response, pool);
         }
 
         /* Validate the response proxy authn headers. */
         authn_info = &ctx->proxy_authn_info;
         if (!resp_status && authn_info->scheme) {
             validate_resp = authn_info->scheme->validate_response_func;
-            resp_status = validate_resp(PROXY, sl.code, conn, request, response,
-                                        pool);
+            resp_status = validate_resp(authn_info->scheme, PROXY, sl.code,
+                                        conn, request, response, pool);
         }
 
         if (resp_status) {
