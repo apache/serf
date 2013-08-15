@@ -1,4 +1,4 @@
-Serf 1.3.1 [??-??-??, from /tags/1.3.1, r????]
+Serf 1.3.1 [2013-08-15, from /tags/1.3.1, r????]
   Fix issue 77: Endless loop if server doesn't accept Negotiate authentication.
   Fix issue 114: ssl/tls renegotiation fails
   Fix issue 120: error with ssl tunnel over proxy with KeepAlive off and
