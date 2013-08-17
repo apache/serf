@@ -428,8 +428,7 @@ apr_status_t serf__open_connections(serf_context_t *ctx)
     return APR_SUCCESS;
 }
 
-static apr_status_t no_more_writes(serf_connection_t *conn,
-                                   serf_request_t *request)
+static apr_status_t no_more_writes(serf_connection_t *conn)
 {
     /* Note that we should hold new requests until we open our new socket. */
     conn->state = SERF_CONN_CLOSING;
@@ -759,7 +758,7 @@ static apr_status_t write_to_connection(serf_connection_t *conn)
             if (APR_STATUS_IS_EPIPE(status) ||
                 APR_STATUS_IS_ECONNRESET(status) ||
                 APR_STATUS_IS_ECONNABORTED(status))
-                return no_more_writes(conn, request);
+                return no_more_writes(conn);
             if (status)
                 return status;
         }
@@ -849,10 +848,10 @@ static apr_status_t write_to_connection(serf_connection_t *conn)
             if (APR_STATUS_IS_EAGAIN(status))
                 return APR_SUCCESS;
             if (APR_STATUS_IS_EPIPE(status))
-                return no_more_writes(conn, request);
+                return no_more_writes(conn);
             if (APR_STATUS_IS_ECONNRESET(status) ||
                 APR_STATUS_IS_ECONNABORTED(status)) {
-                return no_more_writes(conn, request);
+                return no_more_writes(conn);
             }
             if (status)
                 return status;

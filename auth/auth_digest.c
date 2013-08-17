@@ -431,7 +431,7 @@ serf__setup_request_digest_auth(peer_t peer,
         /* Store the uri of this request on the serf_request_t object, to make
            it available when validating the Authentication-Info header of the
            matching response. */
-        request->auth_baton = path;
+        request->auth_baton = (void *)path;
     }
 
     return status;
