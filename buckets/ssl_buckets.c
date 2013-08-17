@@ -779,8 +779,6 @@ static apr_status_t ssl_encrypt(void *baton, apr_size_t bufsize,
                 serf__log(SSL_VERBOSE, __FILE__,
                           "ssl_encrypt: bucket read %d bytes; "\
                           "status %d\n", interim_len, status);
-                serf__log(SSL_MSG_VERBOSE, __FILE__, "---\n%.*s\n-(%d)-\n",
-                          interim_len, vecs_data, interim_len);
 
                 /* Stash our status away. */
                 ctx->encrypt.status = status;
@@ -834,6 +832,10 @@ static apr_status_t ssl_encrypt(void *baton, apr_size_t bufsize,
                 } else {
                     /* We're done with this data. */
                     serf_bucket_mem_free(ctx->allocator, vecs_data);
+
+                    serf__log(SSL_MSG_VERBOSE, __FILE__, "---\n%.*s\n-(%d)-\n",
+                              interim_len, vecs_data, interim_len);
+
                 }
             }
         }
