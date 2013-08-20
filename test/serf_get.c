@@ -209,6 +209,7 @@ typedef struct {
     const char *username;
     const char *password;
     int auth_attempts;
+    serf_bucket_t *req_hdrs;
 } handler_baton_t;
 
 /* Kludges for APR 0.9 support. */
@@ -218,6 +219,15 @@ typedef struct {
 #define apr_atomic_read32 apr_atomic_read
 #endif
 
+
+static int append_request_headers(void *baton,
+                                  const char *key,
+                                  const char *value)
+{
+    serf_bucket_t *hdrs_bkt = baton;
+    serf_bucket_headers_setc(hdrs_bkt, key, value);
+    return 0;
+}
 
 static apr_status_t setup_request(serf_request_t *request,
                                   void *setup_baton,
@@ -264,6 +274,11 @@ static apr_status_t setup_request(serf_request_t *request,
 #ifdef CONNECTION_CLOSE_HDR
     serf_bucket_headers_setn(hdrs_bkt, "Connection", "close");
 #endif
+
+    /* Add the extra headers from the command line */
+    if (ctx->req_hdrs != NULL) {
+        serf_bucket_headers_do(ctx->req_hdrs, append_request_headers, hdrs_bkt);
+    }
 
     *acceptor = ctx->acceptor;
     *acceptor_baton = ctx->acceptor_baton;
@@ -382,17 +397,20 @@ static void print_usage(apr_pool_t *pool)
     puts("-m <method> Use the <method> HTTP Method");
     puts("-f <file> Use the <file> as the request body");
     puts("-p <hostname:port> Use the <host:port> as proxy server");
+    puts("-r <header:value> Use <header:value> as request header");
 }
 
 int main(int argc, const char **argv)
 {
     apr_status_t status;
     apr_pool_t *pool;
+    serf_bucket_alloc_t *bkt_alloc;
     serf_context_t *context;
     serf_connection_t *connection;
     serf_request_t *request;
     app_baton_t app_ctx;
     handler_baton_t handler_ctx;
+    serf_bucket_t *req_hdrs = NULL;
     apr_uri_t url;
     const char *proxy = NULL;
     const char *raw_url, *method, *req_body_path = NULL;
@@ -410,6 +428,7 @@ int main(int argc, const char **argv)
 
     apr_pool_create(&pool, NULL);
     /* serf_initialize(); */
+    bkt_alloc = serf_bucket_allocator_create(pool, NULL, NULL);
 
     /* Default to one round of fetching with no limit to max inflight reqs. */
     count = 1;
@@ -421,7 +440,7 @@ int main(int argc, const char **argv)
 
     apr_getopt_init(&opt, pool, argc, argv);
 
-    while ((status = apr_getopt(opt, "U:P:f:hHm:n:vp:x:", &opt_c, &opt_arg)) ==
+    while ((status = apr_getopt(opt, "U:P:f:hHm:n:vp:x:r:", &opt_c, &opt_arg)) ==
            APR_SUCCESS) {
 
         switch (opt_c) {
@@ -464,6 +483,28 @@ int main(int argc, const char **argv)
             break;
         case 'p':
             proxy = opt_arg;
+            break;
+        case 'r':
+            {
+                char *sep;
+                char *hdr_val;
+
+                if (req_hdrs == NULL) {
+                    /* first request header, allocate bucket */
+                    req_hdrs = serf_bucket_headers_create(bkt_alloc);
+                }
+                sep = strchr(opt_arg, ':');
+                if ((sep == NULL) || (sep == opt_arg) || (strlen(sep) <= 1)) {
+                    printf("Invalid request header string (%s)\n", opt_arg);
+                    return EINVAL;
+                }
+                hdr_val = sep + 1;
+                while (*hdr_val == ' ') {
+                    hdr_val++;
+                }
+                serf_bucket_headers_setx(req_hdrs, opt_arg, (sep - opt_arg), 1,
+                                         hdr_val, strlen(hdr_val), 1);
+            }
             break;
         case 'v':
             puts("Serf version: " SERF_VERSION_STRING);
@@ -553,7 +594,7 @@ int main(int argc, const char **argv)
     serf_config_credentials_callback(context, credentials_callback);
 
     /* ### Connection or Context should have an allocator? */
-    app_ctx.bkt_alloc = serf_bucket_allocator_create(pool, NULL, NULL);
+    app_ctx.bkt_alloc = bkt_alloc;
     app_ctx.ssl_ctx = NULL;
 
     status = serf_connection_create2(&connection, context, url,
@@ -587,6 +628,7 @@ int main(int argc, const char **argv)
     handler_ctx.acceptor = accept_response;
     handler_ctx.acceptor_baton = &app_ctx;
     handler_ctx.handler = handle_response;
+    handler_ctx.req_hdrs = req_hdrs;
 
     serf_connection_set_max_outstanding_requests(connection, inflight);
 
