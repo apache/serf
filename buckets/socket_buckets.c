@@ -53,7 +53,7 @@ static apr_status_t socket_reader(void *baton, apr_size_t bufsize,
                       *len, buf);
     }
 
-    if (ctx->progress_func)
+    if (ctx->progress_func && *len)
         ctx->progress_func(ctx->progress_baton, *len, 0);
 
     return status;
