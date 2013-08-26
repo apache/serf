@@ -141,7 +141,9 @@ int main(int argc, const char **argv)
     allocator = serf_bucket_allocator_create(pool, NULL, NULL);
 
     while (1) {
-        printf("status %d\n", status);
+        const char *unused;
+        apr_size_t remaining;
+
         handler_ctx.requests_outstanding = 0;
         apr_atomic_inc32(&handler_ctx.requests_outstanding);
         
@@ -160,7 +162,9 @@ int main(int argc, const char **argv)
             }
         }
 
-        if (status == APR_EOF)
+        printf("###########################################################\n");
+        (void) serf_bucket_peek(accept_ctx.bkt, &unused, &remaining);
+        if (!remaining)
             break;
     }
     serf_bucket_destroy(resp_bkt);
