@@ -103,8 +103,14 @@ static apr_status_t serf_mmap_peek(serf_bucket_t *bucket,
                                      const char **data,
                                      apr_size_t *len)
 {
-    /* Oh, bah. */
-    return APR_ENOTIMPL;
+    mmap_context_t *ctx = bucket->data;
+
+    /* return whatever we have left */
+    apr_mmap_offset((void**)data, ctx->mmap, ctx->offset);
+    *len = ctx->remaining;
+
+    /* we returned everything this bucket will ever hold */
+    return APR_EOF;
 }
 
 static apr_uint64_t serf_mmap_get_remaining(serf_bucket_t *bucket)
