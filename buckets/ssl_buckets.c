@@ -1194,21 +1194,16 @@ void serf_ssl_server_cert_chain_callback_set(
     context->server_cert_userdata = data;
 }
 
-static serf_ssl_context_t *ssl_init_context(void)
+static serf_ssl_context_t *ssl_init_context(serf_bucket_alloc_t *allocator)
 {
     serf_ssl_context_t *ssl_ctx;
-    apr_pool_t *pool;
-    serf_bucket_alloc_t *allocator;
 
     init_ssl_libraries();
-
-    apr_pool_create(&pool, NULL);
-    allocator = serf_bucket_allocator_create(pool, NULL, NULL);
 
     ssl_ctx = serf_bucket_mem_alloc(allocator, sizeof(*ssl_ctx));
 
     ssl_ctx->refcount = 0;
-    ssl_ctx->pool = pool;
+    ssl_ctx->pool = serf_bucket_allocator_get_pool(allocator);
     ssl_ctx->allocator = allocator;
 
     ssl_ctx->ctx = SSL_CTX_new(SSLv23_client_method());
@@ -1265,8 +1260,6 @@ static serf_ssl_context_t *ssl_init_context(void)
 static apr_status_t ssl_free_context(
     serf_ssl_context_t *ssl_ctx)
 {
-    apr_pool_t *p;
-
     /* If never had the pending buckets, don't try to free them. */
     if (ssl_ctx->decrypt.pending != NULL) {
         serf_bucket_destroy(ssl_ctx->decrypt.pending);
@@ -1279,10 +1272,7 @@ static apr_status_t ssl_free_context(
     SSL_free(ssl_ctx->ssl);
     SSL_CTX_free(ssl_ctx->ctx);
 
-    p = ssl_ctx->pool;
-
     serf_bucket_mem_free(ssl_ctx->allocator, ssl_ctx);
-    apr_pool_destroy(p);
 
     return APR_SUCCESS;
 }
@@ -1296,7 +1286,7 @@ static serf_bucket_t * serf_bucket_ssl_create(
 
     ctx = serf_bucket_mem_alloc(allocator, sizeof(*ctx));
     if (!ssl_ctx) {
-        ctx->ssl_ctx = ssl_init_context();
+        ctx->ssl_ctx = ssl_init_context(allocator);
     }
     else {
         ctx->ssl_ctx = ssl_ctx;
