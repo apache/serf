@@ -37,6 +37,7 @@ typedef struct header_list {
 
 typedef struct {
     header_list_t *list;
+    header_list_t *last;
 
     header_list_t *cur_read;
     enum {
@@ -60,6 +61,7 @@ serf_bucket_t *serf_bucket_headers_create(
 
     ctx = serf_bucket_mem_alloc(allocator, sizeof(*ctx));
     ctx->list = NULL;
+    ctx->last = NULL;
     ctx->state = READ_START;
 
     return serf_bucket_create(&serf_bucket_type_headers, allocator, ctx);
@@ -105,13 +107,12 @@ void serf_bucket_headers_setx(
     }
 
     /* Add the new header at the end of the list. */
-    while (iter && iter->next) {
-        iter = iter->next;
-    }
-    if (iter)
-        iter->next = hdr;
+    if (ctx->last)
+        ctx->last->next = hdr;
     else
         ctx->list = hdr;
+
+    ctx->last = hdr;
 }
 
 void serf_bucket_headers_set(
