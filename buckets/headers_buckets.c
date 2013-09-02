@@ -73,7 +73,6 @@ void serf_bucket_headers_setx(
     const char *value, apr_size_t value_size, int value_copy)
 {
     headers_context_t *ctx = bkt->data;
-    header_list_t *iter = ctx->list;
     header_list_t *hdr;
 
 #if 0
