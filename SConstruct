@@ -265,6 +265,8 @@ SHARED_SOURCES = []
 if sys.platform == 'win32':
   env.GenDef(['serf.h','serf_bucket_types.h', 'serf_bucket_util.h'])
   SHARED_SOURCES.append(['serf.def'])
+  dll_res = env.RES(['serf.rc'])
+  SHARED_SOURCES.append(dll_res)
 
 SOURCES = Glob('*.c') + Glob('buckets/*.c') + Glob('auth/*.c')
 
