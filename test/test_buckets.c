@@ -496,7 +496,6 @@ static void test_iovec_buckets(CuTest *tc)
 /* Construct a header bucket with some headers, and then read from it. */
 static void test_header_buckets(CuTest *tc)
 {
-    apr_status_t status;
     apr_pool_t *test_pool = tc->testBaton;
     serf_bucket_alloc_t *alloc = serf_bucket_allocator_create(test_pool, NULL,
                                                               NULL);
@@ -511,24 +510,9 @@ static void test_header_buckets(CuTest *tc)
     /* Note: order not guaranteed, assume here that it's fifo. */
     cur = "Content-Type: text/plain" CRLF
           "Content-Length: 100" CRLF
-          CRLF
           CRLF;
-    while (1) {
-        const char *data;
-        apr_size_t len;
 
-        status = serf_bucket_read(hdrs, SERF_READ_ALL_AVAIL, &data, &len);
-        CuAssert(tc, "Unexpected error when waiting for response headers",
-                 !SERF_BUCKET_READ_ERROR(status));
-        if (SERF_BUCKET_READ_ERROR(status) ||
-            APR_STATUS_IS_EOF(status))
-            break;
-
-        /* Check that the bytes read match with expected at current position. */
-        CuAssertStrnEquals(tc, cur, len, data);
-        cur += len;
-    }
-    CuAssertIntEquals(tc, APR_EOF, status);
+    read_and_check_bucket(tc, hdrs, cur);
 }
 
 static void test_aggregate_buckets(CuTest *tc)
