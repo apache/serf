@@ -365,12 +365,11 @@ if gssapi and CALLOUT_OKAY:
 if sys.platform == 'win32':
   env.Append(CPPDEFINES=['SERF_HAVE_SSPI'])
 
-# On Solaris, the -R values that APR describes never make it into actual
+# On some systems, the -R values that APR describes never make it into actual
 # RPATH flags. We'll manually map all directories in LIBPATH into new
 # flags to set RPATH values.
-if sys.platform == 'sunos5':
-  for d in env['LIBPATH']:
-    env.Append(RPATH=':'+d)
+for d in env['LIBPATH']:
+  env.Append(RPATH=':'+d)
 
 # Set up the construction of serf-*.pc
 pkgconfig = env.Textfile('serf-%d.pc' % (MAJOR,),
