@@ -259,6 +259,7 @@ else:
     # Optimize for speed, use DLL runtime
     env.Append(CCFLAGS=['/O2', '/MD'])
     env.Append(CPPDEFINES='NDEBUG')
+    env.Append(LINKFLAGS='/RELEASE')
 
 # PLAN THE BUILD
 SHARED_SOURCES = []
