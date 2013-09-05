@@ -399,17 +399,19 @@ install_static = env.Install(libdir, lib_static)
 install_shared = env.InstallVersionedLib(libdir, lib_shared)
 
 if sys.platform == 'darwin':
+  # Change the shared library install name (id) to its final name and location.
+  # Notes:
   # If --install-sandbox=<path> is specified, install_shared_path will point
-  # to a path in the sandbox. The shared library install name (id) should be the
-  # final targat path.
+  # to a path in the sandbox. We can't use that path because the sandbox is
+  # only a temporary location. The id should be the final target path.
+  # Also, we shouldn't use the complete version number for id, as that'll
+  # make applications depend on the exact major.minor.patch version of serf.
+
   install_shared_path = install_shared[0].abspath
-  target_install_shared_path = os.path.join(libdir, lib_shared[0].name)
+  target_install_shared_path = os.path.join(libdir, '%s.dylib' % LIBNAME)
   env.AddPostAction(install_shared, ('install_name_tool -id %s %s'
                                      % (target_install_shared_path,
                                         install_shared_path)))
-  ### construct shared lib symlinks. this also means install the lib
-  ### as libserf-2.1.0.0.dylib, then add the symlinks.
-  ### note: see InstallAs
 
 env.Alias('install-lib', [install_static, install_shared,
                           ])
