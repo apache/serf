@@ -326,6 +326,9 @@ static void test_bucket_header_set(CuTest *tc)
 
     CuAssertTrue(tc, hdrs != NULL);
 
+    /* no headers set yet */
+    CuAssertPtrEquals(tc, NULL, (void *)serf_bucket_headers_get(hdrs, "Foo"));
+
     serf_bucket_headers_set(hdrs, "Foo", "bar");
 
     CuAssertStrEquals(tc, "bar", serf_bucket_headers_get(hdrs, "Foo"));
@@ -340,8 +343,64 @@ static void test_bucket_header_set(CuTest *tc)
 
     /* headers are case insensitive. */
     CuAssertStrEquals(tc, "bar,baz,test", serf_bucket_headers_get(hdrs, "fOo"));
+
+    /* header not found */
+    CuAssertPtrEquals(tc, NULL, (void *)serf_bucket_headers_get(hdrs, "blabla"));
 }
 
+static int
+store_header_in_table(void *baton, const char *key, const char *value)
+{
+    apr_table_t *hdrs = baton;
+
+    apr_table_add(hdrs, key, value);
+
+    return 0;
+}
+
+static void test_bucket_header_do(CuTest *tc)
+{
+    apr_pool_t *test_pool = tc->testBaton;
+    serf_bucket_alloc_t *alloc = serf_bucket_allocator_create(test_pool, NULL,
+                                                              NULL);
+    serf_bucket_t *hdrs = serf_bucket_headers_create(alloc);
+    struct kv {
+        const char *key;
+        const char *value;
+    } exp_hdrs[] = {
+        { "Foo", "bar" },
+        { "Foo", "baz" },
+        { "Bar", "foo" },
+        { "Faz", "boo" },
+        { "Foo", "bof" },
+    };
+    int i;
+    apr_table_t *actual_hdrs;
+    const apr_table_entry_t *elts;
+    const apr_array_header_t *arr;
+    const int num_hdrs = sizeof(exp_hdrs) / sizeof(exp_hdrs[0]);
+
+    for (i = 0 ; i < num_hdrs; i ++)
+        serf_bucket_headers_set(hdrs, exp_hdrs[i].key, exp_hdrs[i].value);
+
+    actual_hdrs = apr_table_make(test_pool, num_hdrs);
+
+    serf_bucket_headers_do(hdrs, store_header_in_table, actual_hdrs);
+
+    /* The actual_hdrs dictionary should now have all key/value pairs, in the
+       same order as exp_hdrs (assuming apr_table_t maintains order). */
+    CuAssertIntEquals(tc, num_hdrs, apr_table_elts(actual_hdrs)->nelts);
+
+    arr = apr_table_elts(actual_hdrs);
+    CuAssertPtrNotNull(tc, arr);
+
+    elts = (const apr_table_entry_t *)arr->elts;
+
+    for (i = 0; i < arr->nelts; ++i) {
+        CuAssertStrEquals(tc, elts[i].key, exp_hdrs[i].key);
+        CuAssertStrEquals(tc, elts[i].val, exp_hdrs[i].value);
+    }
+}
 
 static void test_iovec_buckets(CuTest *tc)
 {
@@ -1262,6 +1321,7 @@ CuSuite *test_buckets(void)
     SUITE_ADD_TEST(suite, test_response_bucket_peek_at_headers);
     SUITE_ADD_TEST(suite, test_response_bucket_iis_status_code);
     SUITE_ADD_TEST(suite, test_bucket_header_set);
+    SUITE_ADD_TEST(suite, test_bucket_header_do);
     SUITE_ADD_TEST(suite, test_iovec_buckets);
     SUITE_ADD_TEST(suite, test_aggregate_buckets);
     SUITE_ADD_TEST(suite, test_aggregate_bucket_readline);
