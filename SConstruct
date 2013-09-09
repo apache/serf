@@ -204,9 +204,15 @@ thisdir = os.getcwd()
 libdir = '$LIBDIR'
 incdir = '$PREFIX/include/serf-$MAJOR'
 
-env['SHLIBVERSION']='${MINOR}.0.0'
+# This version string is used in the dynamic library name, and for Mac OS X also
+# for the current_version and compatibility_version options in the .dylib
+#
+# Unfortunately we can't set the .dylib compatibility_version option separately
+# from current_version, so don't use the PATCH level to avoid that build and
+# runtime patch levels have to be identical.
+env['SHLIBVERSION'] = '%d.%d.%d' % (MAJOR, MINOR, 0)
 
-LIBNAME = 'libserf-${MAJOR}'
+LIBNAME = 'libserf-%d' % (MAJOR,)
 if sys.platform != 'win32':
   LIBNAMESTATIC = LIBNAME
 else:
@@ -218,10 +224,6 @@ env.Append(RPATH=libdir,
 if sys.platform == 'darwin':
 #  linkflags.append('-Wl,-install_name,@executable_path/%s.dylib' % (LIBNAME,))
   env.Append(LINKFLAGS='-Wl,-install_name,%s/%s.dylib' % (thisdir, LIBNAME,))
-  # 'man ld' says positive non-zero for the first number, so we add one.
-  # Mac's interpretation of compatibility is the same as our MINOR version.
-  env.Append(LINKFLAGS='-Wl,-compatibility_version,%d' % (MINOR+1,))
-  env.Append(LINKFLAGS='-Wl,-current_version,%d.%d' % (MINOR+1, PATCH,))
 
 if sys.platform != 'win32':
   ### gcc only. figure out appropriate test / better way to check these
