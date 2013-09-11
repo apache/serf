@@ -575,7 +575,7 @@ static void log_time()
     apr_time_exp_t tm;
 
     apr_time_exp_lt(&tm, apr_time_now());
-    fprintf(stderr, "[%d-%02d-%02dT%02d:%02d:%02d.%06d%+03d] ",
+    fprintf(stderr, "%d-%02d-%02dT%02d:%02d:%02d.%06d%+03d ",
             1900 + tm.tm_year, 1 + tm.tm_mon, tm.tm_mday,
             tm.tm_hour, tm.tm_min, tm.tm_sec, tm.tm_usec,
             tm.tm_gmtoff/3600);
