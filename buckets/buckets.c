@@ -591,6 +591,9 @@ void serf__log(int verbose_flag, const char *filename, const char *fmt, ...)
         if (filename)
             fprintf(stderr, "%s: ", filename);
 
+        if (verbose_flag == LOGLVL_ERROR)
+            fprintf(stderr, "ERROR: ");
+
         va_start(argp, fmt);
         vfprintf(stderr, fmt, argp);
         va_end(argp);
@@ -636,6 +639,9 @@ void serf__log_skt(int verbose_flag, const char *filename, apr_socket_t *skt,
 
         if (filename)
             fprintf(stderr, "%s: ", filename);
+
+        if (verbose_flag == LOGLVL_ERROR)
+            fprintf(stderr, "ERROR: ");
 
         va_start(argp, fmt);
         vfprintf(stderr, fmt, argp);
