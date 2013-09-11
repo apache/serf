@@ -68,9 +68,10 @@ static apr_status_t handle_response(serf_request_t *request,
     apr_status_t status;
     serf_status_line sl;
     req_ctx_t *ctx = handler_baton;
+    serf_connection_t *conn = request->conn;
 
     if (! response) {
-        serf_connection_request_create(request->conn,
+        serf_connection_request_create(conn,
                                        setup_request,
                                        ctx);
         return APR_SUCCESS;
@@ -97,18 +98,18 @@ static apr_status_t handle_response(serf_request_t *request,
        connection.
     */
     if (sl.code >= 200 && sl.code < 300) {
-        request->conn->state = SERF_CONN_CONNECTED;
+        
+        conn->state = SERF_CONN_CONNECTED;
 
         /* Body is supposed to be empty. */
         apr_pool_destroy(ctx->pool);
-        serf_bucket_destroy(request->conn->ssltunnel_ostream);
-        serf_bucket_destroy(request->conn->stream);
-        request->conn->stream = NULL;
+        serf_bucket_destroy(conn->ssltunnel_ostream);
+        serf_bucket_destroy(conn->stream);
+        conn->stream = NULL;
         ctx = NULL;
 
-        serf__log(CONN_VERBOSE, __FILE__,
-                  "successfully set up ssl tunnel on connection 0x%x\n",
-                  request->conn);
+        serf__log_skt(CONN_VERBOSE, __FILE__, conn->skt,
+                      "successfully set up ssl tunnel.\n");
 
         return APR_EOF;
     }
@@ -182,8 +183,8 @@ apr_status_t serf__ssltunnel_connect(serf_connection_t *conn)
                                    ctx);
 
     conn->state = SERF_CONN_SETUP_SSLTUNNEL;
-    serf__log(CONN_VERBOSE, __FILE__,
-              "setting up ssl tunnel on connection 0x%x\n", conn);
+    serf__log_skt(CONN_VERBOSE, __FILE__, conn->skt,
+                  "setting up ssl tunnel on connection.\n");
 
     return APR_SUCCESS;
 }

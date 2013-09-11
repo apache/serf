@@ -446,8 +446,8 @@ static apr_status_t no_more_writes(serf_connection_t *conn)
 {
     /* Note that we should hold new requests until we open our new socket. */
     conn->state = SERF_CONN_CLOSING;
-    serf__log(CONN_VERBOSE, __FILE__, "stop writing on conn 0x%x\n",
-              conn);
+    serf__log_skt(CONN_VERBOSE, __FILE__, conn->skt,
+                  "stop writing on conn 0x%x\n", conn);
 
     /* Clear our iovec. */
     conn->vec_len = 0;

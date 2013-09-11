@@ -181,7 +181,8 @@ typedef struct
    claim to be. The session key can only be used with the HTTP service
    on the target host. */
 static apr_status_t
-gss_api_get_credentials(char *token, apr_size_t token_len,
+gss_api_get_credentials(serf_connection_t *conn,
+                        char *token, apr_size_t token_len,
                         const char *hostname,
                         const char **buf, apr_size_t *buf_len,
                         gss_authn_info_t *gss_info)
@@ -202,6 +203,7 @@ gss_api_get_credentials(char *token, apr_size_t token_len,
 
     /* Establish a security context to the server. */
     status = serf__spnego_init_sec_context(
+         conn,
          gss_info->gss_ctx,
          KRB_HTTP_SERVICE, hostname,
          &input_buf,
@@ -326,14 +328,16 @@ do_auth(peer_t peer,
     }
 
     if (peer == HOST) {
-        status = gss_api_get_credentials(token, token_len,
+        status = gss_api_get_credentials(conn,
+                                         token, token_len,
                                          conn->host_info.hostname,
                                          &tmp, &tmp_len,
                                          gss_info);
     } else {
         char *proxy_host;
         apr_getnameinfo(&proxy_host, conn->ctx->proxy_address, 0);
-        status = gss_api_get_credentials(token, token_len, proxy_host,
+        status = gss_api_get_credentials(conn,
+                                         token, token_len, proxy_host,
                                          &tmp, &tmp_len,
                                          gss_info);
     }
