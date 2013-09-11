@@ -55,6 +55,7 @@
 #define SOCK_MSG_VERBOSE 0 /* logs bytes received from or written to a socket. */
 #define CONN_VERBOSE 0
 #define AUTH_VERBOSE 0
+#define LOGLVL_ERROR 0 /* Log context info for errors */
 
 /* Older versions of APR do not have the APR_VERSION_AT_LEAST macro. Those
    implementations are safe.
