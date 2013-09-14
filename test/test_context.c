@@ -638,6 +638,47 @@ static void test_progress_callback(CuTest *tc)
     CuAssertTrue(tc, pb->read > 0);
 }
 
+/* Test that username:password components in url are ignored. */
+static void test_connection_userinfo_in_url(CuTest *tc)
+{
+    test_baton_t *tb;
+    apr_status_t status;
+    handler_baton_t handler_ctx[2];
+    const int num_requests = sizeof(handler_ctx)/sizeof(handler_ctx[0]);
+    int i;
+    progress_baton_t *pb;
+
+    test_server_message_t message_list[] = {
+        {CHUNKED_REQUEST(1, "1")},
+        {CHUNKED_REQUEST(1, "2")},
+    };
+
+    test_server_action_t action_list[] = {
+        {SERVER_RESPOND, CHUNKED_EMPTY_RESPONSE},
+        {SERVER_RESPOND, CHUNKED_RESPONSE(1, "2")},
+    };
+
+    apr_pool_t *test_pool = tc->testBaton;
+
+    /* Set up a test context with a server. */
+    status = test_http_server_setup(&tb,
+                                    message_list, num_requests,
+                                    action_list, num_requests, 0,
+                                    progress_conn_setup, test_pool);
+    CuAssertIntEquals(tc, APR_SUCCESS, status);
+
+    /* Create a connection using user:password@hostname syntax */
+    tb->serv_url = "http://user:password@localhost:" SERV_PORT_STR;
+    use_new_connection(tb, test_pool);
+
+    /* Send some requests on the connections */
+    for (i = 0 ; i < num_requests ; i++) {
+        create_new_request(tb, &handler_ctx[i], "GET", "/", i+1);
+    }
+
+    test_helper_run_requests_expect_ok(tc, tb, num_requests, handler_ctx,
+                                       test_pool);
+}
 
 /*****************************************************************************
  * Issue #91: test that serf correctly handle an incoming 4xx reponse while
@@ -2226,6 +2267,7 @@ CuSuite *test_context(void)
     SUITE_ADD_TEST(suite, test_request_timeout);
     SUITE_ADD_TEST(suite, test_connection_large_response);
     SUITE_ADD_TEST(suite, test_connection_large_request);
+    SUITE_ADD_TEST(suite, test_connection_userinfo_in_url);
     SUITE_ADD_TEST(suite, test_ssl_handshake);
     SUITE_ADD_TEST(suite, test_ssl_trust_rootca);
     SUITE_ADD_TEST(suite, test_ssl_application_rejects_cert);

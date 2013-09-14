@@ -1391,7 +1391,8 @@ apr_status_t serf_connection_create2(
     /* We're not interested in the path following the hostname. */
     c->host_url = apr_uri_unparse(c->pool,
                                   &host_info,
-                                  APR_URI_UNP_OMITPATHINFO);
+                                  APR_URI_UNP_OMITPATHINFO |
+                                  APR_URI_UNP_OMITUSERINFO);
 
     /* Store the host info without the path on the connection. */
     (void)apr_uri_parse(c->pool, c->host_url, &(c->host_info));
