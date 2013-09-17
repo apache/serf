@@ -2203,12 +2203,14 @@ static void test_ssltunnel_digest_auth(CuTest *tc)
     /* Add a Basic header before Digest header, to test that serf uses the most
        secure authentication scheme first, instead of following the order of
        the headers. */
+    /* Use non standard case for Proxy-Authenticate header to test case
+       insensitivity for http headers. */
     test_server_action_t action_list_proxy[] = {
         {SERVER_RESPOND, "HTTP/1.1 407 Unauthorized" CRLF
             "Transfer-Encoding: chunked" CRLF
             "Proxy-Authenticate: Basic c2VyZjpzZXJmdGVzdA==" CRLF
             "Proxy-Authenticate: NonExistent blablablabla" CRLF
-            "Proxy-Authenticate: Digest realm=\"Test Suite Proxy\","
+            "proXy-Authenticate: Digest realm=\"Test Suite Proxy\","
             "nonce=\"ABCDEF1234567890\",opaque=\"myopaque\","
             "algorithm=\"MD5\",qop-options=\"auth\"" CRLF
             CRLF

@@ -182,11 +182,12 @@ static void basic_authentication(CuTest *tc, const char *resp_hdrs)
         "0" CRLF CRLF);
 
     action_list[0].kind = SERVER_RESPOND;
-    /* Non-standard case usage for scheme name */
+    /* Use non-standard case WWW-Authenticate header and scheme name to test
+       for case insensitive comparisons. */
     action_list[0].text = apr_psprintf(test_pool,
         "HTTP/1.1 401 Unauthorized" CRLF
         "Transfer-Encoding: chunked" CRLF
-        "WWW-Authenticate: bAsIc realm=""Test Suite""" CRLF
+        "www-Authenticate: bAsIc realm=""Test Suite""" CRLF
         "%s"
         CRLF
         "1" CRLF CRLF

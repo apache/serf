@@ -233,7 +233,7 @@ static int store_header_in_dict(void *baton,
     char *auth_name, *c;
 
     /* We're only interested in xxxx-Authenticate headers. */
-    if (strcmp(key, ab->header) != 0)
+    if (strcasecmp(key, ab->header) != 0)
         return 0;
 
     /* Extract the authentication scheme name.  */
