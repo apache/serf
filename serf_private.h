@@ -451,6 +451,15 @@ serf_request_t *serf__request_requeue(const serf_request_t *request);
 apr_status_t serf__ssltunnel_connect(serf_connection_t *conn);
 
 
+/* Creates a bucket that logs all data returned by one of the read functions
+   of the wrapped bucket. The new bucket will replace the wrapped bucket, so
+   the wrapped ptr will be invalid when this function returns. */
+serf_bucket_t *serf__bucket_log_wrapper_create(serf_bucket_t *wrapped,
+                                               const char *prefix,
+                                               /* need configuration here */
+                                               apr_socket_t *skt,
+                                               serf_bucket_alloc_t *allocator);
+
 /** Logging functions. Use one of the [COMP]_VERBOSE flags to enable specific
     logging. 
  **/

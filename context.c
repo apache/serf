@@ -320,6 +320,10 @@ serf_bucket_t *serf_context_bucket_socket_create(
 {
     serf_bucket_t *bucket = serf_bucket_socket_create(skt, allocator);
 
+    bucket = serf__bucket_log_wrapper_create(bucket, "receiving raw",
+                                             skt,
+                                             allocator);
+
     /* Use serf's default bytes read/written callback */
     serf_bucket_socket_set_read_progress_cb(bucket,
                                             serf__context_progress_delta,
