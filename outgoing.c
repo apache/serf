@@ -325,8 +325,9 @@ static apr_status_t prepare_conn_streams(serf_connection_t *conn,
         /* SSL tunnel needed and not set up yet, get a direct unencrypted
          stream for this socket */
         if (conn->stream == NULL) {
-            conn->stream = serf_bucket_socket_create(conn->skt,
-                                                     conn->allocator);
+            conn->stream = serf_context_bucket_socket_create(conn->ctx,
+                                                             conn->skt,
+                                                             conn->allocator);
         }
 
         /* Don't create the ostream bucket chain including the ssl_encrypt
