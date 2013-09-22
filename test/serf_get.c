@@ -33,6 +33,7 @@ typedef struct {
     int using_ssl;
     serf_ssl_context_t *ssl_ctx;
     serf_bucket_alloc_t *bkt_alloc;
+    serf_context_t *serf_ctx;
 } app_baton_t;
 
 static void closed_connection(serf_connection_t *conn,
@@ -151,7 +152,8 @@ static apr_status_t conn_setup(apr_socket_t *skt,
     serf_bucket_t *c;
     app_baton_t *ctx = setup_baton;
 
-    c = serf_bucket_socket_create(skt, ctx->bkt_alloc);
+    c = serf_context_bucket_socket_create(ctx->serf_ctx, skt,
+                                          ctx->bkt_alloc);
     if (ctx->using_ssl) {
         c = serf_bucket_ssl_decrypt_create(c, ctx->ssl_ctx, ctx->bkt_alloc);
         if (!ctx->ssl_ctx) {
@@ -539,6 +541,7 @@ int main(int argc, const char **argv)
     app_ctx.hostinfo = url.hostinfo;
 
     context = serf_context_create(pool);
+    app_ctx.serf_ctx = context;
 
     if (proxy)
     {
