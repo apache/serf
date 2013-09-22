@@ -621,7 +621,13 @@ int main(int argc, const char **argv)
 
     handler_ctx.host = url.hostinfo;
     handler_ctx.method = method;
-    handler_ctx.path = url.path;
+    handler_ctx.path = apr_pstrcat(pool,
+                                   url.path,
+                                   url.query ? "?" : "",
+                                   url.query ? url.query : "",
+                                   url.fragment ? "#" : "",
+                                   url.fragment ? url.fragment : "",
+                                   NULL);
     handler_ctx.username = username;
     handler_ctx.password = password;
     handler_ctx.auth_attempts = 0;
