@@ -625,8 +625,6 @@ int main(int argc, const char **argv)
                                    url.path,
                                    url.query ? "?" : "",
                                    url.query ? url.query : "",
-                                   url.fragment ? "#" : "",
-                                   url.fragment ? url.fragment : "",
                                    NULL);
     handler_ctx.username = username;
     handler_ctx.password = password;
