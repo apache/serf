@@ -31,6 +31,7 @@
 typedef struct {
     const char *hostinfo;
     int using_ssl;
+    int head_request;
     serf_ssl_context_t *ssl_ctx;
     serf_bucket_alloc_t *bkt_alloc;
     serf_context_t *serf_ctx;
@@ -179,7 +180,9 @@ static serf_bucket_t* accept_response(serf_request_t *request,
                                       apr_pool_t *pool)
 {
     serf_bucket_t *c;
+    serf_bucket_t *response;
     serf_bucket_alloc_t *bkt_alloc;
+    app_baton_t *app_ctx = acceptor_baton;
 
     /* get the per-request bucket allocator */
     bkt_alloc = serf_request_get_alloc(request);
@@ -187,7 +190,12 @@ static serf_bucket_t* accept_response(serf_request_t *request,
     /* Create a barrier so the response doesn't eat us! */
     c = serf_bucket_barrier_create(stream, bkt_alloc);
 
-    return serf_bucket_response_create(c, bkt_alloc);
+    response = serf_bucket_response_create(c, bkt_alloc);
+
+    if (app_ctx->head_request)
+      serf_bucket_response_set_head(response);
+
+    return response;
 }
 
 typedef struct {
@@ -536,6 +544,13 @@ int main(int argc, const char **argv)
     }
     else {
         app_ctx.using_ssl = 0;
+    }
+
+    if (strcasecmp(method, "HEAD") == 0) {
+        app_ctx.head_request = 1;
+    }
+    else {
+        app_ctx.head_request = 0;
     }
 
     app_ctx.hostinfo = url.hostinfo;
