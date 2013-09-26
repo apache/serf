@@ -271,7 +271,7 @@ static apr_status_t run_machine(serf_bucket_t *bkt, response_context_t *ctx)
             /* If this is a response to a HEAD request, or code == 1xx,204 or304
                then we don't receive a real body. */
             if (!expect_body(ctx)) {
-                ctx->body = serf_bucket_simple_create("", NULL, NULL, NULL,
+                ctx->body = serf_bucket_simple_create(NULL, 0, NULL, NULL,
                                                       bkt->allocator);
                 ctx->state = STATE_BODY;
                 break;
