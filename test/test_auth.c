@@ -545,6 +545,69 @@ static void test_digest_switch_realms(CuTest *tc)
  "opaque=\"myopaque\", algorithm=\"MD5\"");
 }
 
+static void test_auth_on_HEAD(CuTest *tc)
+{
+    test_baton_t *tb;
+    handler_baton_t handler_ctx[2];
+    int num_requests_sent, num_requests_recvd;
+    apr_status_t status;
+    apr_pool_t *test_pool = tc->testBaton;
+
+    test_server_message_t message_list[] = {
+        { 
+            "HEAD / HTTP/1.1" CRLF
+            "Host: localhost:12345" CRLF
+            CRLF
+        },
+        {
+            "HEAD / HTTP/1.1" CRLF
+            "Host: localhost:12345" CRLF
+            "Authorization: Basic c2VyZjpzZXJmdGVzdA==" CRLF
+            CRLF
+        },
+    };
+    test_server_action_t action_list[] = {
+        {
+            SERVER_RESPOND,
+            "HTTP/1.1 401 Unauthorized" CRLF
+            "WWW-Authenticate: Basic Realm=""Test Suite""" CRLF
+            CRLF
+        },
+        {
+            SERVER_RESPOND,
+            "HTTP/1.1 200 Ok" CRLF
+            "Content-Type: text/html" CRLF
+            CRLF
+        },
+    };
+
+    /* Set up a test context with a server */
+    status = test_http_server_setup(&tb,
+                                    message_list, 2,
+                                    action_list, 2, 0, NULL,
+                                    test_pool);
+    CuAssertIntEquals(tc, APR_SUCCESS, status);
+
+    serf_config_authn_types(tb->context, SERF_AUTHN_BASIC);
+    serf_config_credentials_callback(tb->context, basic_authn_callback);
+
+    create_new_request(tb, &handler_ctx[0], "HEAD", "/", -1);
+
+    /* Test that a request is retried and authentication headers are set
+       correctly. */
+    num_requests_sent = 1;
+    num_requests_recvd = 2;
+
+    status = test_helper_run_requests_no_check(tc, tb, num_requests_sent,
+                                               handler_ctx, test_pool);
+    CuAssertIntEquals(tc, APR_SUCCESS, status);
+    CuAssertIntEquals(tc, num_requests_recvd, tb->sent_requests->nelts);
+    CuAssertIntEquals(tc, num_requests_recvd, tb->accepted_requests->nelts);
+    CuAssertIntEquals(tc, num_requests_sent, tb->handled_requests->nelts);
+
+    CuAssertTrue(tc, tb->result_flags & TEST_RESULT_AUTHNCB_CALLED);
+}
+
 /*****************************************************************************/
 CuSuite *test_auth(void)
 {
@@ -560,6 +623,7 @@ CuSuite *test_auth(void)
     SUITE_ADD_TEST(suite, test_digest_authentication_keepalive_off);
     SUITE_ADD_TEST(suite, test_basic_switch_realms);
     SUITE_ADD_TEST(suite, test_digest_switch_realms);
+    SUITE_ADD_TEST(suite, test_auth_on_HEAD);
 
     return suite;
 }
