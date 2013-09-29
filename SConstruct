@@ -204,9 +204,15 @@ thisdir = os.getcwd()
 libdir = '$LIBDIR'
 incdir = '$PREFIX/include/serf-$MAJOR'
 
-env['SHLIBVERSION']='${MINOR}.0.0'
+# This version string is used in the dynamic library name, and for Mac OS X also
+# for the current_version and compatibility_version options in the .dylib
+#
+# Unfortunately we can't set the .dylib compatibility_version option separately
+# from current_version, so don't use the PATCH level to avoid that build and
+# runtime patch levels have to be identical.
+env['SHLIBVERSION'] = '%d.%d.%d' % (MAJOR, MINOR, 0)
 
-LIBNAME = 'libserf-${MAJOR}'
+LIBNAME = 'libserf-%d' % (MAJOR,)
 if sys.platform != 'win32':
   LIBNAMESTATIC = LIBNAME
 else:
@@ -218,10 +224,6 @@ env.Append(RPATH=libdir,
 if sys.platform == 'darwin':
 #  linkflags.append('-Wl,-install_name,@executable_path/%s.dylib' % (LIBNAME,))
   env.Append(LINKFLAGS='-Wl,-install_name,%s/%s.dylib' % (thisdir, LIBNAME,))
-  # 'man ld' says positive non-zero for the first number, so we add one.
-  # Mac's interpretation of compatibility is the same as our MINOR version.
-  env.Append(LINKFLAGS='-Wl,-compatibility_version,%d' % (MINOR+1,))
-  env.Append(LINKFLAGS='-Wl,-current_version,%d.%d' % (MINOR+1, PATCH,))
 
 if sys.platform != 'win32':
   ### gcc only. figure out appropriate test / better way to check these
@@ -259,6 +261,7 @@ else:
     # Optimize for speed, use DLL runtime
     env.Append(CCFLAGS=['/O2', '/MD'])
     env.Append(CPPDEFINES='NDEBUG')
+    env.Append(LINKFLAGS='/RELEASE')
 
 # PLAN THE BUILD
 SHARED_SOURCES = []
@@ -354,6 +357,7 @@ else:
 
 # If build with gssapi, get its information and define SERF_HAVE_GSSAPI
 if gssapi and CALLOUT_OKAY:
+    env.ParseConfig('$GSSAPI --cflags gssapi')
     def parse_libs(env, cmd, unique=1):
         env['GSSAPI_LIBS'] = cmd.strip()
         return env.MergeFlags(cmd, unique)
@@ -362,12 +366,11 @@ if gssapi and CALLOUT_OKAY:
 if sys.platform == 'win32':
   env.Append(CPPDEFINES=['SERF_HAVE_SSPI'])
 
-# On Solaris, the -R values that APR describes never make it into actual
+# On some systems, the -R values that APR describes never make it into actual
 # RPATH flags. We'll manually map all directories in LIBPATH into new
 # flags to set RPATH values.
-if sys.platform == 'sunos5':
-  for d in env['LIBPATH']:
-    env.Append(RPATH=':'+d)
+for d in env['LIBPATH']:
+  env.Append(RPATH=':'+d)
 
 # Set up the construction of serf-*.pc
 pkgconfig = env.Textfile('serf-%d.pc' % (MAJOR,),
@@ -397,17 +400,19 @@ install_static = env.Install(libdir, lib_static)
 install_shared = env.InstallVersionedLib(libdir, lib_shared)
 
 if sys.platform == 'darwin':
+  # Change the shared library install name (id) to its final name and location.
+  # Notes:
   # If --install-sandbox=<path> is specified, install_shared_path will point
-  # to a path in the sandbox. The shared library install name (id) should be the
-  # final targat path.
+  # to a path in the sandbox. We can't use that path because the sandbox is
+  # only a temporary location. The id should be the final target path.
+  # Also, we shouldn't use the complete version number for id, as that'll
+  # make applications depend on the exact major.minor.patch version of serf.
+
   install_shared_path = install_shared[0].abspath
-  target_install_shared_path = os.path.join(libdir, lib_shared[0].name)
+  target_install_shared_path = os.path.join(libdir, '%s.dylib' % LIBNAME)
   env.AddPostAction(install_shared, ('install_name_tool -id %s %s'
                                      % (target_install_shared_path,
                                         install_shared_path)))
-  ### construct shared lib symlinks. this also means install the lib
-  ### as libserf-2.1.0.0.dylib, then add the symlinks.
-  ### note: see InstallAs
 
 env.Alias('install-lib', [install_static, install_shared,
                           ])
