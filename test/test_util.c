@@ -451,6 +451,7 @@ serf_bucket_t* accept_response(serf_request_t *request,
     serf_bucket_t *c;
     serf_bucket_alloc_t *bkt_alloc;
     handler_baton_t *ctx = acceptor_baton;
+    serf_bucket_t *response;
 
     /* get the per-request bucket allocator */
     bkt_alloc = serf_request_get_alloc(request);
@@ -460,7 +461,12 @@ serf_bucket_t* accept_response(serf_request_t *request,
 
     APR_ARRAY_PUSH(ctx->accepted_requests, int) = ctx->req_id;
 
-    return serf_bucket_response_create(c, bkt_alloc);
+    response = serf_bucket_response_create(c, bkt_alloc);
+
+    if (strcasecmp(ctx->method, "HEAD") == 0)
+      serf_bucket_response_set_head(response);
+
+    return response;
 }
 
 apr_status_t setup_request(serf_request_t *request,
@@ -484,11 +490,17 @@ apr_status_t setup_request(serf_request_t *request,
     }
     else
     {
-        /* create a simple body text */
-        const char *str = apr_psprintf(pool, "%d", ctx->req_id);
+        if (ctx->req_id >= 0) {
+            /* create a simple body text */
+            const char *str = apr_psprintf(pool, "%d", ctx->req_id);
 
-        body_bkt = serf_bucket_simple_create(str, strlen(str), NULL, NULL,
-                                             serf_request_get_alloc(request));
+            body_bkt = serf_bucket_simple_create(
+                                        str, strlen(str), NULL, NULL,
+                                        serf_request_get_alloc(request));
+        }
+        else
+            body_bkt = NULL;
+
         *req_bkt =
         serf_request_bucket_request_create(request,
                                            ctx->method, ctx->path,

@@ -23,7 +23,9 @@
 
 /* Windows does not define IOV_MAX, so we need to ensure it is defined. */
 #ifndef IOV_MAX
-#define IOV_MAX 16
+/* There is no limit for iovec count on Windows, but apr_socket_sendv
+   allocates WSABUF structures on stack if vecs_count <= 50. */
+#define IOV_MAX 50
 #endif
 
 /* Older versions of APR do not have this macro.  */
