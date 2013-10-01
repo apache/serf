@@ -97,6 +97,8 @@ typedef struct serf_protocol_type_t serf_protocol_type_t;
 #define SERF_ERROR_STATUS_LINE_TOO_LONG (SERF_ERROR_START + 10)
 /* The HTTP response header too long. */
 #define SERF_ERROR_RESPONSE_HEADER_TOO_LONG (SERF_ERROR_START + 11)
+/* The connection to the server timed out. */
+#define SERF_ERROR_CONNECTION_TIMEDOUT (SERF_ERROR_START + 12)
 
 /* SSL certificates related errors */
 #define SERF_ERROR_SSL_CERT_FAILED (SERF_ERROR_START + 70)
@@ -1332,8 +1334,8 @@ void serf_debug__bucket_alloc_check(
     serf_bucket_alloc_t *allocator);
 
 /* Version info */
-#define SERF_MAJOR_VERSION 2
-#define SERF_MINOR_VERSION 0
+#define SERF_MAJOR_VERSION 1
+#define SERF_MINOR_VERSION 8
 #define SERF_PATCH_VERSION 0
 
 /* Version number string */

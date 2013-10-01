@@ -299,6 +299,10 @@ apr_status_t serf_context_run(
 
         status = serf_event_trigger(ctx, conn, desc);
         if (status) {
+            /* Don't return APR_TIMEUP as a connection error, as our caller
+               will use that as a trigger to call us again */
+            if (status == APR_TIMEUP)
+                status = SERF_ERROR_CONNECTION_TIMEDOUT;
             return status;
         }
 
