@@ -1297,8 +1297,29 @@ apr_status_t serf__process_connection(serf_connection_t *conn,
                 int error;
                 apr_socklen_t l = sizeof(error);
 
-                if (!getsockopt(osskt, SOL_SOCKET, SO_ERROR, (char*)&error, &l))
-                    return APR_FROM_OS_ERROR(error);
+                if (!getsockopt(osskt, SOL_SOCKET, SO_ERROR, (char*)&error,
+                                &l)) {
+                    status = APR_FROM_OS_ERROR(error);
+
+                    /* Handle fallback for multi-homed servers.
+                     
+                       ### Improve algorithm to find better than just 'next'?
+
+                       Current Windows versions already handle re-ordering for
+                       api users by using statistics on the recently failed
+                       connections to order the list of addresses. */
+                    if (conn->completed_requests == 0
+                        && conn->address->next != NULL
+                        && (APR_STATUS_IS_ECONNREFUSED(status)
+                            || APR_STATUS_IS_TIMEUP(status)
+                            || APR_STATUS_IS_ENETUNREACH(status))) {
+
+                        conn->address = conn->address->next;
+                        return reset_connection(conn, 1);
+                    }
+
+                    return status;
+                  }
             }
         }
 #endif
