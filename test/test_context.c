@@ -646,7 +646,6 @@ static void test_connection_userinfo_in_url(CuTest *tc)
     handler_baton_t handler_ctx[2];
     const int num_requests = sizeof(handler_ctx)/sizeof(handler_ctx[0]);
     int i;
-    progress_baton_t *pb;
 
     test_server_message_t message_list[] = {
         {CHUNKED_REQUEST(1, "1")},

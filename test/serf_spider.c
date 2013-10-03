@@ -324,10 +324,6 @@ static apr_status_t setup_request(serf_request_t *request,
     }
 
     if (ctx->app_ctx->using_ssl) {
-        serf_bucket_alloc_t *req_alloc;
-
-        req_alloc = serf_request_get_alloc(request);
-
         if (ctx->app_ctx->ssl_ctx == NULL) {
             *req_bkt = serf_bucket_ssl_encrypt_create(*req_bkt, NULL,
                                                       ctx->app_ctx->bkt_alloc);
@@ -627,8 +623,7 @@ int main(int argc, const char **argv)
     app_baton_t app_ctx;
     handler_baton_t *handler_ctx;
     apr_uri_t url;
-    const char *raw_url, *method;
-    int count;
+    const char *raw_url;
     apr_getopt_t *opt;
     char opt_c;
     char *authn = NULL;
@@ -646,11 +641,6 @@ int main(int argc, const char **argv)
     apr_pool_create(&pool, NULL);
     apr_atomic_init(pool);
     /* serf_initialize(); */
-
-    /* Default to one round of fetching. */
-    count = 1;
-    /* Default to GET. */
-    method = "GET";
 
     apr_getopt_init(&opt, pool, argc, argv);
 
