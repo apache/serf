@@ -1,5 +1,23 @@
-Serf 1.3.2 [????-??-??, from /tags/1.3.2, r????]
-  Windows: Also export functions with capital letters in .def file.
+Serf 1.3.2 [2013-10-04, from /tags/1.3.2, r????]
+  Fix issue 130: HTTP headers should be treated case-insensitively
+  Fix issue 126: Compilation breaks with Codewarrior compiler
+  Fix crash during cleanup of SSL buckets in apr_terminate() (r2145)
+  Fix Windows build: Also export functions with capital letters in .def file
+  Fix host header when url contains a username or password (r2170)
+  Ensure less TCP package fragmentation on Windows (r2145)
+  Handle authentication for responses to HEAD requests (r2178,-9)
+  Improve serf_get: add option to add request headers, allow url with query,
+     allow HEAD requests (r2143,r2175,-6)
+  Improve RFC conformance: don't expect body for certain responses (r2011,-2)
+  Do not invoke progress callback when no data was received (r2144)
+  And more test suite fixes and build warning cleanups
+  SCons-related fixes:
+   Fix build when GSSAPI not in default include path (2155)
+   Fix OpenBSD build: always map all LIBPATH entries into RPATH (r2156)
+   Checksum generation in Windows shared libraries for release builds (2162)
+   Mac OS X: Use MAJOR version only in dylib install name (r2161)
+   Use both MAJOR and MINOR version for the shared library name (2163)
+   Fix the .pc file when installing serf in a non-default LIBDIR (r2191)
 
 
 Serf 1.3.1 [2013-08-15, from /tags/1.3.1, r2138]
