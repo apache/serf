@@ -380,6 +380,7 @@ pkgconfig = env.Textfile('serf-%d.pc' % (MAJOR,),
                          SUBST_DICT = {
                            '@MAJOR@': str(MAJOR),
                            '@PREFIX@': '$PREFIX',
+                           '@LIBDIR@': '$LIBDIR',
                            '@INCLUDE_SUBDIR@': 'serf-%d' % (MAJOR,),
                            '@VERSION@': '%d.%d.%d' % (MAJOR, MINOR, PATCH),
                            '@LIBS@': '%s %s %s -lz' % (apu_libs, apr_libs,
