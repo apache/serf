@@ -17,6 +17,7 @@
 #include <apr_poll.h>
 #include <apr_version.h>
 #include <apr_portable.h>
+#include <apr_strings.h>
 
 #include "serf.h"
 #include "serf_bucket_util.h"
@@ -286,6 +287,16 @@ static apr_status_t do_conn_setup(serf_connection_t *conn)
 
        where STREAM is an internal variant of AGGREGATE.
     */
+
+    /* Share the configuration with all the buckets in the newly created output
+       chain (see PLAIN or ENCRYPTED scenario's), including the request buckets
+       created by the application (ostream_tail will handle this for us). */
+    serf_bucket_set_config(conn->ostream_head, conn->config);
+
+    /* Share the configuration with the ssl_decrypt and socket buckets. The
+       response buckets wrapping the ssl_decrypt/socket buckets won't get the
+       config automatically because they are upstream. */
+    serf_bucket_set_config(conn->stream, conn->config);
 
     return status;
 }
@@ -1133,6 +1144,9 @@ static apr_status_t read_from_connection(serf_connection_t *conn)
                                                      request->acceptor_baton,
                                                      tmppool);
             apr_pool_clear(tmppool);
+
+            /* Share the configuration with the response bucket(s) */
+            serf_bucket_set_config(request->resp_bkt, conn->config);
         }
 
         status = handle_response(request, tmppool);
@@ -1389,6 +1403,7 @@ apr_status_t serf_connection_create2(
     apr_pool_t *pool)
 {
     apr_status_t status = APR_SUCCESS;
+    serf_config_t *config;
     serf_connection_t *c;
     apr_sockaddr_t *host_address = NULL;
 
@@ -1421,6 +1436,17 @@ apr_status_t serf_connection_create2(
     if (!c->host_info.port) {
         c->host_info.port = apr_uri_port_of_scheme(c->host_info.scheme);
     }
+
+    /* Store the connection specific info in the configuration store */
+    status = serf_get_config_from_store(ctx, c, &config, pool);
+    if (status)
+        return status;
+    c->config = config;
+    serf_set_config_string(config, SERF_CONFIG_PER_HOST, "hostname",
+                           c->host_info.hostname, SERF_CONFIG_COPY_VALUE);
+    serf_set_config_string(config, SERF_CONFIG_PER_HOST, "hostport",
+                           apr_itoa(ctx->pool, c->host_info.port),
+                           SERF_CONFIG_NO_COPIES);
 
     *conn = c;
 
