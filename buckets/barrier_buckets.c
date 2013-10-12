@@ -92,6 +92,16 @@ static apr_uint64_t serf_barrier_get_remaining(serf_bucket_t *bucket)
     return serf_bucket_get_remaining(ctx->stream);
 }
 
+static apr_status_t serf_barrier_set_config(serf_bucket_t *bucket,
+                                            serf_config_t *config)
+{
+    /* This bucket doesn't need/update any shared config, but we need to pass
+     it along to our wrapped bucket. */
+    barrier_context_t *ctx = bucket->data;
+
+    return serf_bucket_set_config(ctx->stream, config);
+}
+
 const serf_bucket_type_t serf_bucket_type_barrier = {
     "BARRIER",
     serf_barrier_read,
@@ -103,4 +113,5 @@ const serf_bucket_type_t serf_bucket_type_barrier = {
     serf_barrier_destroy,
     serf_default_read_bucket,
     serf_barrier_get_remaining,
+    serf_barrier_set_config,
 };

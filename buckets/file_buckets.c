@@ -154,4 +154,5 @@ const serf_bucket_type_t serf_bucket_type_file = {
     serf_default_destroy_and_data,
     serf_default_read_bucket,
     serf_file_get_remaining,
+    serf_default_ignore_config,
 };

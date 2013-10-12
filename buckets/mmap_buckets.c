@@ -130,6 +130,7 @@ const serf_bucket_type_t serf_bucket_type_mmap = {
     serf_default_destroy_and_data,
     serf_default_read_bucket,
     serf_mmap_get_remaining,
+    serf_default_ignore_config,
 };
 
 #else /* !APR_HAS_MMAP */
@@ -142,6 +143,9 @@ serf_bucket_t *serf_bucket_mmap_create(apr_mmap_t *file_mmap,
 
 const serf_bucket_type_t serf_bucket_type_mmap = {
     "MMAP",
+    NULL,
+    NULL,
+    NULL,
     NULL,
     NULL,
     NULL,

@@ -128,6 +128,11 @@ serf_bucket_t * serf_buckets_are_v2(serf_bucket_t *bucket,
     return bucket->type->read_bucket_v2(bucket, type);
 }
 
+apr_status_t serf_default_ignore_config(serf_bucket_t *bucket,
+                                        serf_config_t *config)
+{
+    return APR_SUCCESS;
+}
 /* ==================================================================== */
 
 

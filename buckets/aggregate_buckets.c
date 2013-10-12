@@ -33,6 +33,8 @@ typedef struct {
 
     /* Does this bucket own its children? !0 if yes, 0 if not. */
     int bucket_owner;
+
+    serf_config_t *config;
 } aggregate_context_t;
 
 
@@ -75,6 +77,7 @@ static aggregate_context_t *create_aggregate(serf_bucket_alloc_t *allocator)
     ctx->done = NULL;
     ctx->hold_open = NULL;
     ctx->hold_open_baton = NULL;
+    ctx->config = NULL;
     ctx->bucket_owner = 1;
 
     return ctx;
@@ -150,6 +153,9 @@ void serf_bucket_aggregate_prepend(
     new_list->next = ctx->list;
 
     ctx->list = new_list;
+
+    /* Share our config with this new bucket */
+    serf_bucket_set_config(prepend_bucket, ctx->config);
 }
 
 void serf_bucket_aggregate_append(
@@ -176,6 +182,9 @@ void serf_bucket_aggregate_append(
         ctx->last->next = new_list;
         ctx->last = ctx->last->next;
     }
+
+    /* Share our config with this new bucket */
+    serf_bucket_set_config(append_bucket, ctx->config);
 }
 
 void serf_bucket_aggregate_hold_open(serf_bucket_t *aggregate_bucket, 
@@ -213,10 +222,12 @@ void serf_bucket_aggregate_append_iovec(
     struct iovec *vecs,
     int vecs_count)
 {
+    aggregate_context_t *ctx = aggregate_bucket->data;
     serf_bucket_t *new_bucket;
 
     new_bucket = serf_bucket_iovec_create(vecs, vecs_count,
                                           aggregate_bucket->allocator);
+    serf_bucket_set_config(new_bucket, ctx->config);
 
     serf_bucket_aggregate_append(aggregate_bucket, new_bucket);
 }
@@ -498,6 +509,28 @@ static apr_uint64_t serf_aggregate_get_remaining(serf_bucket_t *bucket)
     return remaining;
 }
 
+static apr_status_t serf_aggregate_set_config(serf_bucket_t *bucket,
+                                              serf_config_t *config)
+{
+    /* This bucket doesn't need/update any shared config, but we need to pass
+       it along to our wrapped buckets. Store it for all buckets that will be
+       be added later. */
+    aggregate_context_t *ctx = bucket->data;
+    bucket_list_t *cur;
+    apr_status_t err_status = APR_SUCCESS;
+
+    ctx->config = config;
+
+    for(cur = ctx->list; cur != NULL; cur = cur->next) {
+        apr_status_t status;
+
+        status = serf_bucket_set_config(cur->bucket, config);
+        if (status)
+            err_status = status;
+    }
+    return err_status;
+}
+
 const serf_bucket_type_t serf_bucket_type_aggregate = {
     "AGGREGATE",
     serf_aggregate_read,
@@ -509,4 +542,5 @@ const serf_bucket_type_t serf_bucket_type_aggregate = {
     serf_aggregate_destroy_and_data,
     serf_aggregate_read_bucket,
     serf_aggregate_get_remaining,
+    serf_aggregate_set_config,
 };

@@ -18,12 +18,13 @@
 #include "serf_bucket_util.h"
 
 /* TODO: don't use SOCK[_MSG]_VERBOSE directly, but get a log category in
-   the create function. */
+   from the config object. */
 
 typedef struct {
     const serf_bucket_type_t *old_type;
     const char *prefix;
     apr_socket_t *skt;
+    serf_config_t *config;
 } log_wrapped_context_t;
 
 /* Extended serf_bucket_t. */
@@ -128,6 +129,17 @@ static void serf_log_wrapped_destroy(serf_bucket_t *bucket)
     bkt_type->destroy(bucket);
 }
 
+static apr_status_t serf_log_wrapped_set_config(serf_bucket_t *bucket,
+                                                serf_config_t *config)
+{
+    serf_log_wrapped_bucket_t *lwbkt = (serf_log_wrapped_bucket_t *)bucket;
+    log_wrapped_context_t *ctx = lwbkt->more_data;
+
+    ctx->config = config;
+
+    return ctx->old_type->set_config(bucket, config);
+}
+
 serf_bucket_t *serf__bucket_log_wrapper_create(serf_bucket_t *wrapped,
                                                const char *prefix,
                                                /* need configuration here */
@@ -156,6 +168,7 @@ serf_bucket_t *serf__bucket_log_wrapper_create(serf_bucket_t *wrapped,
     bkt_type->read = serf_log_wrapped_read;
     bkt_type->readline = serf_log_wrapped_readline;
     bkt_type->read_iovec = serf_log_wrapped_read_iovec;
+    bkt_type->set_config = serf_log_wrapped_set_config;
 
     ctx->old_type = wrapped->type;
     ctx->prefix = prefix;

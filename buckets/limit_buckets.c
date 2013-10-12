@@ -122,6 +122,16 @@ static apr_uint64_t serf_limit_get_remaining(serf_bucket_t *bucket)
     return ctx->remaining;
 }
 
+static apr_status_t serf_limit_set_config(serf_bucket_t *bucket,
+                                          serf_config_t *config)
+{
+    /* This bucket doesn't need/update any shared config, but we need to pass
+     it along to our wrapped bucket. */
+    limit_context_t *ctx = bucket->data;
+
+    return serf_bucket_set_config(ctx->stream, config);
+}
+
 const serf_bucket_type_t serf_bucket_type_limit = {
     "LIMIT",
     serf_limit_read,
@@ -133,4 +143,5 @@ const serf_bucket_type_t serf_bucket_type_limit = {
     serf_limit_destroy,
     serf_default_read_bucket,
     serf_limit_get_remaining,
+    serf_limit_set_config,
 };

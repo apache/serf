@@ -110,7 +110,10 @@ const serf_bucket_type_t serf_bucket_type_socket = {
     serf_socket_readline,
     serf_default_read_iovec,
     serf_default_read_for_sendfile,
-    serf_default_read_bucket,
+    serf_buckets_are_v2,
     serf_socket_peek,
     serf_default_destroy_and_data,
+    serf_default_read_bucket,
+    NULL,
+    serf_default_ignore_config,
 };

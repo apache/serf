@@ -223,13 +223,26 @@ static void serf_chunk_destroy(serf_bucket_t *bucket)
     serf_default_destroy_and_data(bucket);
 }
 
+static apr_status_t serf_chunk_set_config(serf_bucket_t *bucket,
+                                          serf_config_t *config)
+{
+    /* This bucket doesn't need/update any shared config, but we need to pass
+       it along to our wrapped bucket. */
+    chunk_context_t *ctx = bucket->data;
+
+    return serf_bucket_set_config(ctx->stream, config);
+}
+
 const serf_bucket_type_t serf_bucket_type_chunk = {
     "CHUNK",
     serf_chunk_read,
     serf_chunk_readline,
     serf_chunk_read_iovec,
     serf_default_read_for_sendfile,
-    serf_default_read_bucket,
+    serf_buckets_are_v2,
     serf_chunk_peek,
     serf_chunk_destroy,
+    serf_default_read_bucket,
+    NULL,
+    serf_chunk_set_config,
 };

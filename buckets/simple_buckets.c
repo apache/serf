@@ -163,4 +163,5 @@ const serf_bucket_type_t serf_bucket_type_simple = {
     serf_simple_destroy,
     serf_default_read_bucket,
     serf_simple_get_remaining,
+    serf_default_ignore_config,
 };

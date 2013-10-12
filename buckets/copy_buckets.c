@@ -173,6 +173,15 @@ static void serf_copy_destroy(serf_bucket_t *bucket)
     serf_default_destroy_and_data(bucket);
 }
 
+static apr_status_t serf_copy_set_config(serf_bucket_t *bucket,
+                                         serf_config_t *config)
+{
+    /* This bucket doesn't need/update any shared config, but we need to pass
+     it along to our wrapped bucket. */
+    copy_context_t *ctx = bucket->data;
+
+    return serf_bucket_set_config(ctx->wrapped, config);
+}
 
 const serf_bucket_type_t serf_bucket_type_copy = {
     "COPY",
@@ -180,7 +189,10 @@ const serf_bucket_type_t serf_bucket_type_copy = {
     serf_copy_readline,
     serf_copy_read_iovec,
     serf_copy_read_for_sendfile,
-    serf_copy_read_bucket,
+    serf_buckets_are_v2,
     serf_copy_peek,
     serf_copy_destroy,
+    serf_copy_read_bucket,
+    NULL,
+    serf_copy_set_config,
 };
