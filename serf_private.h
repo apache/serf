@@ -132,9 +132,57 @@ typedef struct serf__authn_info_t {
     int failed_authn_types;
 } serf__authn_info_t;
 
+/*** Configuration store declarations ***/
+
+struct serf_config_t {
+    apr_pool_t *pool;
+
+    /* Configuration key/value pairs per context */
+    apr_hash_t *per_context;
+    /* Configuration key/value pairs per host */
+    apr_hash_t *per_host;
+    /* Configuration key/value pairs per connection */
+    apr_hash_t *per_conn;
+};
+
+typedef struct serf__config_store_t {
+    apr_pool_t *pool;
+
+    /* Configuration key/value pairs per context */
+    apr_hash_t *per_context;
+
+    /* Configuration per host, dual-layered:
+     Key: hostname:port
+     Value: hash table of per host key/value pairs
+     */
+    apr_hash_t *per_host;
+
+    /* Configuration per connection, dual-layered:
+     Key: string(connection ptr) (?)
+     Value: hash table of per host key/value pairs
+     */
+    apr_hash_t *per_conn;
+
+} serf__config_store_t;
+
+/* Initializes the data structures used by the configuration store */
+apr_status_t serf__init_config_store(serf_context_t *ctx);
+
+/* Cleans up all connection specific configuration values */
+apr_status_t
+serf__remove_connection_from_config_store(serf__config_store_t config_store,
+                                          serf_connection_t *conn);
+
+/* Cleans up all host specific configuration values */
+apr_status_t
+serf__remove_host_from_config_store(serf__config_store_t config_store,
+                                    const char *hostname_port);
+
 struct serf_context_t {
     /* the pool used for self and for other allocations */
     apr_pool_t *pool;
+
+    serf__config_store_t config_store;
 
     void *pollset_baton;
     serf_socket_add_t pollset_add;
@@ -291,6 +339,9 @@ struct serf_connection_t {
 
     /* Needs to read first before we can write again. */
     int stop_writing;
+
+    /* Configuration shared with buckets and authn plugins */
+    serf_config_t *config;
 };
 
 /*** Internal bucket functions ***/

@@ -52,6 +52,7 @@ typedef struct serf_connection_type_t serf_connection_type_t;
 typedef struct serf_protocol_t serf_protocol_t;
 typedef struct serf_protocol_type_t serf_protocol_type_t;
 
+typedef struct serf_config_t serf_config_t;
 
 /**
  * @defgroup serf high-level constructs
@@ -907,6 +908,13 @@ struct serf_bucket_type_t {
      */
     apr_uint64_t (*get_remaining)(serf_bucket_t *bucket);
 
+    /* Provides a reference to a config object containing all configuration
+     * values relevant for this bucket.
+     *
+     * @since New in 1.4.
+     */
+    apr_status_t (*set_config)(serf_bucket_t *bucket, serf_config_t *config);
+
     /* ### apr buckets have 'copy', 'split', and 'setaside' functions.
        ### not sure whether those will be needed in this bucket model.
     */
@@ -962,6 +970,10 @@ serf_bucket_t * serf_buckets_are_v2(serf_bucket_t *bucket,
             ((b)->type->read_bucket == serf_buckets_are_v2 ? \
              (b)->type->get_remaining(b) : \
              SERF_LENGTH_UNKNOWN)
+#define serf_bucket_set_config(b,c) \
+            ((b)->type->read_bucket == serf_buckets_are_v2 ? \
+            (b)->type->set_config(b,c) : \
+            APR_ENOTIMPL)
 
 /**
  * Check whether a real error occurred. Note that bucket read functions
@@ -1156,6 +1168,97 @@ struct serf_connection_type_t {
                            int *vecs_written, apr_size_t *last_written);
 };
 
+
+/*** Configuration store declarations ***/
+
+typedef enum {
+    SERF_CONFIG_PER_CONTEXT,
+    SERF_CONFIG_PER_HOST,
+    SERF_CONFIG_PER_CONNECTION,
+} serf_config_categories_t;
+
+typedef enum {
+    SERF_CONFIG_NO_COPIES  = 0x00,
+    SERF_CONFIG_COPY_KEY   = 0x01,
+    SERF_CONFIG_COPY_VALUE = 0x02
+} serf_config_copy_flags_t;
+
+/* TODO: application code will be cleaner if we combine category and key in
+   one 64-bit int */
+
+/* Configuration values stored in the configuration store:
+
+   Category     Key          Value Type
+   --------     ---          ----------
+   Context      logflags     int64_t
+   Context      proxyauthn   apr_hash_t *
+   Connection   localip      const char *
+   Connection   remoteip     const char *
+   Host         hostname     const char *
+   Host         hostport     const char *
+   Host         authn        apr_hash_t *
+*/
+
+/* Set a value of type const char * for configuration item CATEGORY+KEY.
+   Use COPY_FLAGS to specify if key and/or value need to be copied. This is
+   needed when the lifetime of key or value is shorter than the lifetime of the
+   serf context.
+   @since New in 1.4.
+ */
+apr_status_t serf_set_config_string(serf_config_t *config,
+                                    serf_config_categories_t category,
+                                    const char *key,
+                                    const char *value,
+                                    int copy_flags);
+
+/* Set a value of generic type for configuration item CATEGORY+KEY.
+   See @a serf_set_config_string for COPY_FLAGS description.
+   @since New in 1.4.
+ */
+apr_status_t serf_set_config_object(serf_config_t *config,
+                                serf_config_categories_t category,
+                                const char *key,
+                                void *value,
+                                apr_size_t *len,
+                                int copy_flags);
+
+/* Get the value for configuration item CATEGORY+KEY. The value's type will 
+   be fixed, see the above table.
+   @since New in 1.4.
+ */
+apr_status_t serf_get_config_string(serf_config_t *config,
+                                    serf_config_categories_t category,
+                                    const char *key,
+                                    char **value);
+/* Remove the value for configuration item CATEGORY+KEY from the configuration
+   store.
+   @since New in 1.4.
+ */
+apr_status_t serf_remove_config_value(serf_config_t *config,
+                                      serf_config_categories_t category,
+                                      const char *key);
+
+/* Returns a config object, which is a read/write view on the configuration
+   store. This view is limited to:
+   - all per context configuration
+   - per host configuration (host as defined in CONN)
+   - per connection configuration
+
+   If CONN is NULL, only the per context configuration will be available.
+
+   The host and connection entries will be created in the configuration store
+   when not existing already.
+ 
+   The config object will be allocated in POOL. The config object's lifecycle
+   cannot extend beyond that of the serf context!
+   @since New in 1.4.
+ */
+apr_status_t serf_get_config_from_store(serf_context_t *ctx,
+                                        serf_connection_t *conn,
+                                        serf_config_t **config,
+                                        apr_pool_t *pool);
+
+/*** Connection and protocol API v2 ***/
 
 /* ### docco.  */
 apr_status_t serf_connection_switch_protocol(
