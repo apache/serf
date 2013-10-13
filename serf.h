@@ -1172,19 +1172,31 @@ struct serf_connection_type_t {
 /*** Configuration store declarations ***/
 
 typedef enum {
-    SERF_CONFIG_PER_CONTEXT,
-    SERF_CONFIG_PER_HOST,
-    SERF_CONFIG_PER_CONNECTION,
-} serf_config_categories_t;
-
-typedef enum {
     SERF_CONFIG_NO_COPIES  = 0x00,
     SERF_CONFIG_COPY_KEY   = 0x01,
     SERF_CONFIG_COPY_VALUE = 0x02
 } serf_config_copy_flags_t;
 
-/* TODO: application code will be cleaner if we combine category and key in
-   one 64-bit int */
+typedef const apr_uint32_t serf_config_key_t;
+typedef serf_config_key_t * serf_config_key_ptr_t;
+
+/* The left-most byte of the int32 key holds the category (bit flags).
+   The other bytes are a number representing the key.
+
+   Serf will not use the second byte for its own keys, so applications can
+   use this byte to define custom keys.
+ */
+typedef enum {
+    SERF_CONFIG_PER_CONTEXT    = 0x10000000,
+    SERF_CONFIG_PER_HOST       = 0x20000000,
+    SERF_CONFIG_PER_CONNECTION = 0x40000000,
+} serf_config_categories_t;
+
+extern serf_config_key_t serf_config_host_name;
+extern serf_config_key_t serf_config_host_port;
+
+#define SERF_CONFIG_HOST_NAME &serf_config_host_name
+#define SERF_CONFIG_HOST_PORT &serf_config_host_port
 
 /* Configuration values stored in the configuration store:
 
@@ -1206,8 +1218,7 @@ typedef enum {
    @since New in 1.4.
  */
 apr_status_t serf_set_config_string(serf_config_t *config,
-                                    serf_config_categories_t category,
-                                    const char *key,
+                                    serf_config_key_ptr_t key,
                                     const char *value,
                                     int copy_flags);
 
@@ -1216,27 +1227,26 @@ apr_status_t serf_set_config_string(serf_config_t *config,
    @since New in 1.4.
  */
 apr_status_t serf_set_config_object(serf_config_t *config,
-                                serf_config_categories_t category,
-                                const char *key,
-                                void *value,
-                                apr_size_t *len,
-                                int copy_flags);
+                                    serf_config_key_ptr_t key,
+                                    void *value,
+                                    apr_size_t *len,
+                                    int copy_flags);
 
 /* Get the value for configuration item CATEGORY+KEY. The value's type will 
    be fixed, see the above table.
+   Returns APR_EINVAL when getting a key from a category that this config
+   object doesn't contain, APR_SUCCESS otherwise.
    @since New in 1.4.
  */
 apr_status_t serf_get_config_string(serf_config_t *config,
-                                    serf_config_categories_t category,
-                                    const char *key,
+                                    serf_config_key_ptr_t key,
                                     char **value);
 /* Remove the value for configuration item CATEGORY+KEY from the configuration
    store.
    @since New in 1.4.
  */
 apr_status_t serf_remove_config_value(serf_config_t *config,
-                                      serf_config_categories_t category,
-                                      const char *key);
+                                      serf_config_key_ptr_t key);
 
 /* Returns a config object, which is a read/write view on the configuration
    store. This view is limited to:

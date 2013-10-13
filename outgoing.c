@@ -1442,9 +1442,9 @@ apr_status_t serf_connection_create2(
     if (status)
         return status;
     c->config = config;
-    serf_set_config_string(config, SERF_CONFIG_PER_HOST, "hostname",
+    serf_set_config_string(config, SERF_CONFIG_HOST_NAME,
                            c->host_info.hostname, SERF_CONFIG_COPY_VALUE);
-    serf_set_config_string(config, SERF_CONFIG_PER_HOST, "hostport",
+    serf_set_config_string(config, SERF_CONFIG_HOST_PORT,
                            apr_itoa(ctx->pool, c->host_info.port),
                            SERF_CONFIG_NO_COPIES);
 

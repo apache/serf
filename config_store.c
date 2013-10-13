@@ -19,6 +19,10 @@
 #include "serf_bucket_util.h"
 #include "serf_private.h"
 
+/* APR requires the keys in its hash table to be pointers. */
+serf_config_key_t serf_config_host_name = SERF_CONFIG_PER_HOST | 0x000001;
+serf_config_key_t serf_config_host_port = SERF_CONFIG_PER_HOST | 0x000002;
+
 /*** Config Store ***/
 apr_status_t serf__init_config_store(serf_context_t *ctx)
 {
@@ -121,44 +125,40 @@ serf__remove_host_from_config_store(serf__config_store_t config_store,
 
 /*** Config ***/
 apr_status_t serf_set_config_string(serf_config_t *config,
-                                    serf_config_categories_t category,
-                                    const char *key,
+                                    serf_config_key_ptr_t key,
                                     const char *value,
                                     int copy_flags)
 {
-    const char *ckey = key;
     const char *cvalue = value;
     apr_hash_t *target;
+    serf_config_key_t keyint = *key;
 
-    /* Copy key and/or value to our pool's memory */
-    if (copy_flags & SERF_CONFIG_COPY_KEY) {
-        ckey = apr_pstrdup(config->pool, key);
-    }
+    /* Copy value to our pool's memory? */
     if (copy_flags & SERF_CONFIG_COPY_VALUE) {
         cvalue = apr_pstrdup(config->pool, value);
     }
 
     /* Set the value in the hash table of the selected category */
-    switch (category) {
-        case SERF_CONFIG_PER_CONTEXT:
-            target = config->per_context;
-            break;
-        case SERF_CONFIG_PER_HOST:
-            target = config->per_host;
-            break;
-        case SERF_CONFIG_PER_CONNECTION:
-            target = config->per_conn;
-            break;
+    if (keyint & SERF_CONFIG_PER_CONTEXT)
+        target = config->per_context;
+    else if (keyint & SERF_CONFIG_PER_HOST)
+        target = config->per_host;
+    else
+        target = config->per_conn;
+
+
+    if (!target) {
+        /* Config object doesn't manage keys in this category */
+        return APR_EINVAL;
     }
 
-    apr_hash_set(target, ckey, APR_HASH_KEY_STRING, cvalue);
+    apr_hash_set(target, key, sizeof(serf_config_key_t), cvalue);
 
     return APR_SUCCESS;
 }
 
 apr_status_t serf_set_config_object(serf_config_t *config,
-                                    serf_config_categories_t category,
-                                    const char *key,
+                                    serf_config_key_ptr_t key,
                                     void *value,
                                     apr_size_t *len,
                                     int copy_flags)
@@ -167,32 +167,31 @@ apr_status_t serf_set_config_object(serf_config_t *config,
 }
 
 apr_status_t serf_get_config_string(serf_config_t *config,
-                                    serf_config_categories_t category,
-                                    const char *key,
+                                    serf_config_key_ptr_t key,
                                     char **value)
 {
     apr_hash_t *target;
+    serf_config_key_t keyint = *key;
 
-    switch (category) {
-        case SERF_CONFIG_PER_CONTEXT:
-            target = config->per_context;
-            break;
-        case SERF_CONFIG_PER_HOST:
-            target = config->per_host;
-            break;
-        case SERF_CONFIG_PER_CONNECTION:
-            target = config->per_conn;
-            break;
+    if (keyint & SERF_CONFIG_PER_CONTEXT)
+        target = config->per_context;
+    else if (keyint & SERF_CONFIG_PER_HOST)
+        target = config->per_host;
+    else
+        target = config->per_conn;
+
+    if (!target) {
+        *value = NULL;
+        return APR_EINVAL;
     }
 
-    *value = (char*)apr_hash_get(target, key, APR_HASH_KEY_STRING);
+    *value = (char*)apr_hash_get(target, key, sizeof(serf_config_key_t));
 
     return APR_SUCCESS;
 }
 
 apr_status_t serf_remove_config_value(serf_config_t *config,
-                                      serf_config_categories_t category,
-                                      const char *key)
+                                      serf_config_key_ptr_t key)
 {
     return APR_ENOTIMPL;
 }

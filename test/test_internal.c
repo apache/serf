@@ -20,6 +20,21 @@
 #include "serf_private.h"
 #include "serf_bucket_util.h"
 
+static serf_config_key_t
+            per_conn_test_key = SERF_CONFIG_PER_CONNECTION | 0xFFFFFF,
+            per_host_test_key =      SERF_CONFIG_PER_HOST | 0xFFFFFF,
+            per_context_test_key =   SERF_CONFIG_PER_CONTEXT | 0xFFFFFF,
+            per_conn_unknown_key =   SERF_CONFIG_PER_CONNECTION | 0xFF0001,
+            per_host_unknown_key =   SERF_CONFIG_PER_HOST | 0xFF0002,
+            per_context_unknown_key = SERF_CONFIG_PER_CONTEXT | 0xFF0003;
+
+#define PER_CONN_UNKNOWN_KEY    &per_conn_unknown_key
+#define PER_HOST_UNKNOWN_KEY    &per_host_unknown_key
+#define PER_CONTEXT_UNKNOWN_KEY &per_context_unknown_key
+#define PER_CONN_TEST_KEY       &per_conn_test_key
+#define PER_HOST_TEST_KEY       &per_host_test_key
+#define PER_CONTEXT_TEST_KEY    &per_context_test_key
+
 static void test_config_store_per_context(CuTest *tc)
 {
     apr_pool_t *test_pool = tc->testBaton;
@@ -42,8 +57,8 @@ static void test_config_store_per_context(CuTest *tc)
         char *actual;
 
         CuAssertIntEquals(tc, APR_SUCCESS,
-                          serf_get_config_string(cfg, SERF_CONFIG_PER_CONTEXT,
-                                                 "unknown_key", &actual));
+                          serf_get_config_string(cfg, PER_CONTEXT_UNKNOWN_KEY,
+                                                 &actual));
         CuAssertPtrEquals(tc, NULL, actual);
     }
 
@@ -52,11 +67,10 @@ static void test_config_store_per_context(CuTest *tc)
         char *actual;
 
         CuAssertIntEquals(tc, APR_SUCCESS,
-                          serf_set_config_string(cfg, SERF_CONFIG_PER_CONTEXT,
-                              "test_key", "test_value", SERF_CONFIG_NO_COPIES));
+                          serf_set_config_string(cfg, PER_CONTEXT_TEST_KEY, "test_value", SERF_CONFIG_NO_COPIES));
         CuAssertIntEquals(tc, APR_SUCCESS,
-                          serf_get_config_string(cfg, SERF_CONFIG_PER_CONTEXT,
-                                                 "test_key", &actual));
+                          serf_get_config_string(cfg, PER_CONTEXT_TEST_KEY,
+                                                 &actual));
         CuAssertStrEquals(tc, "test_value", actual);
     }
 }
@@ -107,39 +121,34 @@ static void test_config_store_per_connection_different_host(CuTest *tc)
 
     /* Test 2: Get a non-existing per connection key, value should be NULL */
     CuAssertIntEquals(tc, APR_SUCCESS,
-                      serf_get_config_string(cfg1, SERF_CONFIG_PER_CONNECTION,
-                                             "unknown_key", &actual));
+                      serf_get_config_string(cfg1, PER_CONN_UNKNOWN_KEY, &actual));
     CuAssertPtrEquals(tc, NULL, actual);
 
     /* Test 3: Store and retrieve a string value for a per-connection key */
     CuAssertIntEquals(tc, APR_SUCCESS,
-                      serf_set_config_string(cfg1, SERF_CONFIG_PER_CONNECTION,
-                          "test_key", "test_value", SERF_CONFIG_NO_COPIES));
+                      serf_set_config_string(cfg1, PER_CONN_TEST_KEY,
+                                             "test_value", SERF_CONFIG_NO_COPIES));
     CuAssertIntEquals(tc, APR_SUCCESS,
-                      serf_get_config_string(cfg1, SERF_CONFIG_PER_CONNECTION,
-                                             "test_key", &actual));
+                      serf_get_config_string(cfg1, PER_CONN_TEST_KEY, &actual));
     CuAssertStrEquals(tc, "test_value", actual);
 
     /* Test that the key was set in the config for the first connection only. */
     CuAssertIntEquals(tc, APR_SUCCESS,
-                      serf_get_config_string(cfg2, SERF_CONFIG_PER_CONNECTION,
-                                             "test_key", &actual));
+                      serf_get_config_string(cfg2, PER_CONN_TEST_KEY, &actual));
     CuAssertPtrEquals(tc, NULL, actual);
 
     /* Test 4: Store and retrieve a string value for a per-host key */
     CuAssertIntEquals(tc, APR_SUCCESS,
-                      serf_set_config_string(cfg1, SERF_CONFIG_PER_HOST,
-                          "test_key", "test_value", SERF_CONFIG_NO_COPIES));
+                      serf_set_config_string(cfg1, PER_HOST_TEST_KEY,
+                                             "test_value", SERF_CONFIG_NO_COPIES));
     CuAssertIntEquals(tc, APR_SUCCESS,
-                      serf_get_config_string(cfg1, SERF_CONFIG_PER_HOST,
-                          "test_key", &actual));
+                      serf_get_config_string(cfg1, PER_HOST_TEST_KEY, &actual));
     CuAssertStrEquals(tc, "test_value", actual);
 
     /* Test that the key was NOT set in the config for the second connection,
        since they are to a different host. */
     CuAssertIntEquals(tc, APR_SUCCESS,
-                      serf_get_config_string(cfg2, SERF_CONFIG_PER_HOST,
-                          "test_key", &actual));
+                      serf_get_config_string(cfg2, PER_HOST_TEST_KEY, &actual));
     CuAssertPtrEquals(tc, NULL, actual);
 }
 
@@ -173,42 +182,63 @@ static void test_config_store_per_connection_same_host(CuTest *tc)
 
     /* Test 2: Get a non-existing per connection key, value should be NULL */
     CuAssertIntEquals(tc, APR_SUCCESS,
-                      serf_get_config_string(cfg1, SERF_CONFIG_PER_CONNECTION,
-                                             "unknown_key", &actual));
+                      serf_get_config_string(cfg1, PER_CONN_UNKNOWN_KEY,
+                                             &actual));
     CuAssertPtrEquals(tc, NULL, actual);
 
     /* Test 3: Store and retrieve a string value for a per-connection key */
     CuAssertIntEquals(tc, APR_SUCCESS,
-                      serf_set_config_string(cfg1, SERF_CONFIG_PER_CONNECTION,
-                          "test_key", "test_value", SERF_CONFIG_NO_COPIES));
+                      serf_set_config_string(cfg1, PER_CONN_TEST_KEY,
+                          "test_value", SERF_CONFIG_NO_COPIES));
     CuAssertIntEquals(tc, APR_SUCCESS,
-                      serf_get_config_string(cfg1, SERF_CONFIG_PER_CONNECTION,
-                                             "test_key", &actual));
+                      serf_get_config_string(cfg1, PER_CONN_TEST_KEY, &actual));
     CuAssertStrEquals(tc, "test_value", actual);
 
     /* Test that the key was set in the config for the first connection only. */
     CuAssertIntEquals(tc, APR_SUCCESS,
-                      serf_get_config_string(cfg2, SERF_CONFIG_PER_CONNECTION,
-                                             "test_key", &actual));
+                      serf_get_config_string(cfg2, PER_CONN_TEST_KEY, &actual));
     CuAssertPtrEquals(tc, NULL, actual);
 
     /* Test 4: Store and retrieve a string value for a per-host key */
     CuAssertIntEquals(tc, APR_SUCCESS,
-                      serf_set_config_string(cfg1, SERF_CONFIG_PER_HOST,
-                          "test_key", "test_value", SERF_CONFIG_NO_COPIES));
+                      serf_set_config_string(cfg1, PER_HOST_TEST_KEY,
+                          "test_value", SERF_CONFIG_NO_COPIES));
     CuAssertIntEquals(tc, APR_SUCCESS,
-                      serf_get_config_string(cfg1, SERF_CONFIG_PER_HOST,
-                                             "test_key", &actual));
+                      serf_get_config_string(cfg1, PER_HOST_TEST_KEY, &actual));
     CuAssertStrEquals(tc, "test_value", actual);
 
     /* Test that the key was also set in the config for the second connection,
        since they are the same host. */
     CuAssertIntEquals(tc, APR_SUCCESS,
-                      serf_get_config_string(cfg2, SERF_CONFIG_PER_HOST,
-                                             "test_key", &actual));
+                      serf_get_config_string(cfg2, PER_HOST_TEST_KEY, &actual));
     CuAssertStrEquals(tc, "test_value", actual);
 }
 
+static void test_config_store_error_handling(CuTest *tc)
+{
+    apr_pool_t *test_pool = tc->testBaton;
+    serf_config_t *cfg;
+    char *actual;
+
+    serf_context_t *ctx = serf_context_create(test_pool);
+
+    CuAssertIntEquals(tc, APR_SUCCESS,
+                      serf_get_config_from_store(ctx, NULL, &cfg, test_pool));
+
+    /* Config only has per-context keys, check for no crashes when getting
+       per-connection and per-host keys. */
+    CuAssertIntEquals(tc, APR_EINVAL,
+                      serf_get_config_string(cfg, PER_HOST_TEST_KEY, &actual));
+    CuAssertPtrEquals(tc, NULL, actual);
+
+    CuAssertIntEquals(tc, APR_EINVAL,
+                      serf_get_config_string(cfg, PER_CONN_TEST_KEY, &actual));
+    CuAssertPtrEquals(tc, NULL, actual);
+
+    CuAssertIntEquals(tc, APR_EINVAL,
+                      serf_set_config_string(cfg, PER_CONN_TEST_KEY,
+                            "test_value", SERF_CONFIG_NO_COPIES));
+}
 
 CuSuite *test_internal(void)
 {
@@ -219,6 +249,7 @@ CuSuite *test_internal(void)
     SUITE_ADD_TEST(suite, test_config_store_per_context);
     SUITE_ADD_TEST(suite, test_config_store_per_connection_different_host);
     SUITE_ADD_TEST(suite, test_config_store_per_connection_same_host);
+    SUITE_ADD_TEST(suite, test_config_store_error_handling);
 
     return suite;
 }
