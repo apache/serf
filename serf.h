@@ -1248,26 +1248,6 @@ apr_status_t serf_get_config_string(serf_config_t *config,
 apr_status_t serf_remove_config_value(serf_config_t *config,
                                       serf_config_key_ptr_t key);
 
-/* Returns a config object, which is a read/write view on the configuration
-   store. This view is limited to:
-   - all per context configuration
-   - per host configuration (host as defined in CONN)
-   - per connection configuration
-
-   If CONN is NULL, only the per context configuration will be available.
-
-   The host and connection entries will be created in the configuration store
-   when not existing already.
- 
-   The config object will be allocated in OUT_POOL. The config object's
-   lifecycle cannot extend beyond that of the serf context!
-   @since New in 1.4.
- */
-apr_status_t serf_get_config_from_store(serf_context_t *ctx,
-                                        serf_connection_t *conn,
-                                        serf_config_t **config,
-                                        apr_pool_t *out_pool);
-
 /*** Connection and protocol API v2 ***/
 
 /* ### docco.  */

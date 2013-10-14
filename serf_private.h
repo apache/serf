@@ -172,6 +172,25 @@ typedef struct serf__config_store_t {
 /* Initializes the data structures used by the configuration store */
 apr_status_t serf__init_config_store(serf_context_t *ctx);
 
+/* Returns a config object, which is a read/write view on the configuration
+   store. This view is limited to:
+   - all per context configuration
+   - per host configuration (host as defined in CONN)
+   - per connection configuration
+
+   If CONN is NULL, only the per context configuration will be available.
+
+   The host and connection entries will be created in the configuration store
+   when not existing already.
+
+   The config object will be allocated in OUT_POOL. The config object's
+   lifecycle cannot extend beyond that of the serf context!
+ */
+apr_status_t serf_get_config_from_store(serf_context_t *ctx,
+                                        serf_connection_t *conn,
+                                        serf_config_t **config,
+                                        apr_pool_t *out_pool);
+
 /* Cleans up all connection specific configuration values */
 apr_status_t
 serf__remove_connection_from_config_store(serf__config_store_t config_store,
