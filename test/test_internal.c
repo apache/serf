@@ -54,7 +54,7 @@ static void test_config_store_per_context(CuTest *tc)
 
     /* Get a non-existing key, value should be NULL */
     {
-        char *actual;
+        const char *actual;
 
         CuAssertIntEquals(tc, APR_SUCCESS,
                           serf_get_config_string(cfg, PER_CONTEXT_UNKNOWN_KEY,
@@ -64,7 +64,7 @@ static void test_config_store_per_context(CuTest *tc)
 
     /* Store and retrieve a string value for a per-context key */
     {
-        char *actual;
+        const char *actual;
 
         CuAssertIntEquals(tc, APR_SUCCESS,
                           serf_set_config_string(cfg, PER_CONTEXT_TEST_KEY, "test_value", SERF_CONFIG_NO_COPIES));
@@ -95,7 +95,7 @@ static void test_config_store_per_connection_different_host(CuTest *tc)
     apr_pool_t *test_pool = tc->testBaton;
     serf_config_t *cfg1, *cfg2;
     apr_uri_t url;
-    char *actual;
+    const char *actual;
 
     serf_context_t *ctx = serf_context_create(test_pool);
     serf_connection_t *conn1, *conn2;
@@ -157,7 +157,7 @@ static void test_config_store_per_connection_same_host(CuTest *tc)
     apr_pool_t *test_pool = tc->testBaton;
     serf_config_t *cfg1, *cfg2;
     apr_uri_t url;
-    char *actual;
+    const char *actual;
 
     serf_context_t *ctx = serf_context_create(test_pool);
     serf_connection_t *conn1, *conn2;
@@ -218,7 +218,7 @@ static void test_config_store_error_handling(CuTest *tc)
 {
     apr_pool_t *test_pool = tc->testBaton;
     serf_config_t *cfg;
-    char *actual;
+    const char *actual;
 
     serf_context_t *ctx = serf_context_create(test_pool);
 
