@@ -530,8 +530,6 @@ apr_status_t serf__ssltunnel_connect(serf_connection_t *conn);
    the wrapped ptr will be invalid when this function returns. */
 serf_bucket_t *serf__bucket_log_wrapper_create(serf_bucket_t *wrapped,
                                                const char *prefix,
-                                               /* need configuration here */
-                                               apr_socket_t *skt,
                                                serf_bucket_alloc_t *allocator);
 
 /** Logging functions. Use one of the [COMP]_VERBOSE flags to enable specific
@@ -548,5 +546,9 @@ void serf__log_nopref(int verbose_flag, const char *fmt, ...);
 /* Logs a socket event, add local and remote ip address:port */
 void serf__log_skt(int verbose_flag, const char *filename, apr_socket_t *skt,
                    const char *fmt, ...);
+
+/* Logs an event, uses CONFIG to find out socket related info. */
+void serf__log_cfg(int verbose_flag, const char *filename,
+                   serf_config_t *config, const char *fmt, ...);
 
 #endif

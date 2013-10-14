@@ -20,8 +20,11 @@
 #include "serf_private.h"
 
 /* APR requires the keys in its hash table to be pointers. */
-serf_config_key_t serf_config_host_name = SERF_CONFIG_PER_HOST | 0x000001;
-serf_config_key_t serf_config_host_port = SERF_CONFIG_PER_HOST | 0x000002;
+serf_config_key_t
+        serf_config_host_name = SERF_CONFIG_PER_HOST | 0x000001,
+        serf_config_host_port = SERF_CONFIG_PER_HOST | 0x000002,
+        serf_config_conn_localip =  SERF_CONFIG_PER_CONNECTION | 0x000003,
+        serf_config_conn_remoteip = SERF_CONFIG_PER_CONNECTION | 0x000004;
 
 /*** Config Store ***/
 apr_status_t serf__init_config_store(serf_context_t *ctx)
@@ -163,6 +166,29 @@ apr_status_t serf_set_config_string(serf_config_t *config,
     return APR_SUCCESS;
 }
 
+apr_status_t serf_set_config_stringf(serf_config_t *config,
+                                     serf_config_key_ptr_t key,
+                                     const char *fmt, ...)
+{
+    apr_pool_t *pool;
+    serf_config_key_t keyint = *key;
+    va_list argp;
+    char *cvalue;
+
+    if (keyint & SERF_CONFIG_PER_CONTEXT)
+        pool = config->ctx_pool;
+    else if (keyint & SERF_CONFIG_PER_HOST)
+        pool = config->ctx_pool;
+    else
+        pool = config->conn_pool;
+
+    va_start(argp, fmt);
+    cvalue = apr_pvsprintf(pool, fmt, argp);
+    va_end(argp);
+
+    return serf_set_config_string(config, key, cvalue, SERF_CONFIG_NO_COPIES);
+}
+
 apr_status_t serf_set_config_object(serf_config_t *config,
                                     serf_config_key_ptr_t key,
                                     void *value,
@@ -174,7 +200,7 @@ apr_status_t serf_set_config_object(serf_config_t *config,
 
 apr_status_t serf_get_config_string(serf_config_t *config,
                                     serf_config_key_ptr_t key,
-                                    char **value)
+                                    const char **value)
 {
     apr_hash_t *target;
     serf_config_key_t keyint = *key;

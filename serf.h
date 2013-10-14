@@ -1194,9 +1194,13 @@ typedef enum {
 
 extern serf_config_key_t serf_config_host_name;
 extern serf_config_key_t serf_config_host_port;
+extern serf_config_key_t serf_config_conn_localip;
+extern serf_config_key_t serf_config_conn_remoteip;
 
 #define SERF_CONFIG_HOST_NAME &serf_config_host_name
 #define SERF_CONFIG_HOST_PORT &serf_config_host_port
+#define SERF_CONFIG_CONN_LOCALIP  &serf_config_conn_localip
+#define SERF_CONFIG_CONN_REMOTEIP &serf_config_conn_remoteip
 
 /* Configuration values stored in the configuration store:
 
@@ -1222,6 +1226,10 @@ apr_status_t serf_set_config_string(serf_config_t *config,
                                     const char *value,
                                     int copy_flags);
 
+apr_status_t serf_set_config_stringf(serf_config_t *config,
+                                     serf_config_key_ptr_t key,
+                                     const char *fmt, ...);
+
 /* Set a value of generic type for configuration item CATEGORY+KEY.
    See @a serf_set_config_string for COPY_FLAGS description.
    @since New in 1.4.
@@ -1240,7 +1248,7 @@ apr_status_t serf_set_config_object(serf_config_t *config,
  */
 apr_status_t serf_get_config_string(serf_config_t *config,
                                     serf_config_key_ptr_t key,
-                                    char **value);
+                                    const char **value);
 /* Remove the value for configuration item CATEGORY+KEY from the configuration
    store.
    @since New in 1.4.

@@ -648,3 +648,41 @@ void serf__log_skt(int verbose_flag, const char *filename, apr_socket_t *skt,
     }
 }
 
+void serf__log_cfg(int verbose_flag, const char *filename,
+                   serf_config_t *config, const char *fmt, ...)
+{
+    va_list argp;
+
+    if (verbose_flag) {
+        log_time();
+
+        if (config) {
+            const char *localip, *remoteip;
+            apr_status_t status;
+
+            /* Log local and remote ip address:port */
+            fprintf(stderr, "[l:");
+            status = serf_get_config_string(config, SERF_CONFIG_CONN_LOCALIP,
+                                            &localip);
+            if (!status && localip) {
+                fprintf(stderr, "%s", localip);
+            }
+
+            fprintf(stderr, " r:");
+            status = serf_get_config_string(config, SERF_CONFIG_CONN_REMOTEIP,
+                                            &remoteip);
+            if (!status && remoteip) {
+                fprintf(stderr, "%s", remoteip);
+            }
+            fprintf(stderr, "] ");
+        }
+
+        if (filename)
+            fprintf(stderr, "%s: ", filename);
+
+        va_start(argp, fmt);
+        vfprintf(stderr, fmt, argp);
+        va_end(argp);
+    }
+}
+
