@@ -62,7 +62,7 @@ apr_status_t serf_get_config_from_store(serf_context_t *ctx,
     serf__config_store_t *config_store = &ctx->config_store;
 
     serf_config_t *cfg = apr_pcalloc(out_pool, sizeof(serf_config_t));
-    cfg->pool = out_pool;
+    cfg->ctx_pool = ctx->pool;
     cfg->per_context = config_store->per_context;
 
     if (conn) {
@@ -70,6 +70,8 @@ apr_status_t serf_get_config_from_store(serf_context_t *ctx,
         apr_hash_t *per_conn, *per_host;
         apr_pool_t *tmp_pool;
         apr_status_t status;
+
+        cfg->conn_pool = conn->pool;
 
         if ((status = apr_pool_create(&tmp_pool, out_pool)) != APR_SUCCESS)
             return status;
@@ -80,9 +82,9 @@ apr_status_t serf_get_config_from_store(serf_context_t *ctx,
         per_conn = apr_hash_get(config_store->per_conn, conn_key,
                                 APR_HASH_KEY_STRING);
         if (!per_conn) {
-            per_conn = apr_hash_make(config_store->pool);
+            per_conn = apr_hash_make(conn->pool);
             apr_hash_set(config_store->per_conn,
-                         apr_pstrdup(config_store->pool, conn_key),
+                         apr_pstrdup(conn->pool, conn_key),
                          APR_HASH_KEY_STRING, per_conn);
         }
         cfg->per_conn = per_conn;
@@ -132,26 +134,30 @@ apr_status_t serf_set_config_string(serf_config_t *config,
     const char *cvalue = value;
     apr_hash_t *target;
     serf_config_key_t keyint = *key;
-
-    /* Copy value to our pool's memory? */
-    if (copy_flags & SERF_CONFIG_COPY_VALUE) {
-        cvalue = apr_pstrdup(config->pool, value);
-    }
+    apr_pool_t *pool;
 
     /* Set the value in the hash table of the selected category */
-    if (keyint & SERF_CONFIG_PER_CONTEXT)
+    if (keyint & SERF_CONFIG_PER_CONTEXT) {
         target = config->per_context;
-    else if (keyint & SERF_CONFIG_PER_HOST)
+        pool = config->ctx_pool;
+    }
+    else if (keyint & SERF_CONFIG_PER_HOST) {
         target = config->per_host;
-    else
+        pool = config->ctx_pool;
+    }
+    else {
         target = config->per_conn;
-
+        pool = config->conn_pool;
+    }
 
     if (!target) {
         /* Config object doesn't manage keys in this category */
         return APR_EINVAL;
     }
 
+    /* Copy value to our pool's memory? */
+    if (copy_flags & SERF_CONFIG_COPY_VALUE)
+        cvalue = apr_pstrdup(pool, value);
     apr_hash_set(target, key, sizeof(serf_config_key_t), cvalue);
 
     return APR_SUCCESS;
@@ -181,6 +187,7 @@ apr_status_t serf_get_config_string(serf_config_t *config,
         target = config->per_conn;
 
     if (!target) {
+        /* Config object doesn't manage keys in this category */
         *value = NULL;
         return APR_EINVAL;
     }

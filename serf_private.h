@@ -135,7 +135,11 @@ typedef struct serf__authn_info_t {
 /*** Configuration store declarations ***/
 
 struct serf_config_t {
-    apr_pool_t *pool;
+    /* Pool for per-connection configuration values */
+    apr_pool_t *conn_pool;
+    /* Pool for per-host and per-context configuration values */
+    apr_pool_t *ctx_pool;
+
 
     /* Configuration key/value pairs per context */
     apr_hash_t *per_context;
