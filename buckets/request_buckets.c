@@ -26,6 +26,7 @@ typedef struct {
     serf_bucket_t *headers;
     serf_bucket_t *body;
     apr_int64_t len;
+    serf_config_t *config;
 } request_context_t;
 
 #define LENGTH_UNKNOWN ((apr_int64_t)-1)
@@ -210,14 +211,27 @@ void serf_bucket_request_become(
     /* The allocator remains the same. */
 }
 
+static apr_status_t serf_request_set_config(serf_bucket_t *bucket,
+                                            serf_config_t *config)
+{
+    request_context_t *ctx = bucket->data;
+
+    ctx->config = config;
+
+    return serf_bucket_set_config(ctx->headers, config);
+}
+
 const serf_bucket_type_t serf_bucket_type_request = {
     "REQUEST",
     serf_request_read,
     serf_request_readline,
     serf_request_read_iovec,
     serf_default_read_for_sendfile,
-    serf_default_read_bucket,
+    serf_buckets_are_v2,
     serf_request_peek,
     serf_default_destroy_and_data,
+    serf_default_read_bucket,
+    NULL,
+    serf_request_set_config,
 };
 

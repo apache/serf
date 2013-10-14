@@ -68,6 +68,7 @@ typedef struct {
 
     int stream_status; /* What was the last status we read? */
 
+    serf_config_t *config;
 } deflate_context_t;
 
 /* Inputs a string and returns a long.  */
@@ -318,6 +319,7 @@ static apr_status_t serf_deflate_read(serf_bucket_t *bucket,
 
                     /* Push back the remaining data to be read. */
                     tmp = serf_bucket_aggregate_create(bucket->allocator);
+                    serf_bucket_set_config(tmp, ctx->config);
                     serf_bucket_aggregate_prepend(tmp, ctx->stream);
                     ctx->stream = tmp;
 
@@ -393,9 +395,9 @@ static apr_status_t serf_deflate_read(serf_bucket_t *bucket,
 static apr_status_t serf_deflate_set_config(serf_bucket_t *bucket,
                                             serf_config_t *config)
 {
-    /* This bucket doesn't need/update any shared config, but we need to pass
-     it along to our wrapped bucket. */
     deflate_context_t *ctx = bucket->data;
+
+    ctx->config = config;
 
     return serf_bucket_set_config(ctx->stream, config);
 }

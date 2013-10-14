@@ -41,6 +41,8 @@ typedef struct {
 
     int chunked;                /* Do we need to read trailers? */
     int head_req;               /* Was this a HEAD request? */
+
+    serf_config_t *config;
 } response_context_t;
 
 /* Returns 1 if according to RFC2626 this response can have a body, 0 if it
@@ -308,11 +310,13 @@ static apr_status_t run_machine(serf_bucket_t *bkt, response_context_t *ctx)
                     ctx->body =
                         serf_bucket_deflate_create(ctx->body, bkt->allocator,
                                                    SERF_DEFLATE_GZIP);
+                    serf_bucket_set_config(ctx->body, ctx->config);
                 }
                 else if (v && strcasecmp("deflate", v) == 0) {
                     ctx->body =
                         serf_bucket_deflate_create(ctx->body, bkt->allocator,
                                                    SERF_DEFLATE_DEFLATE);
+                    serf_bucket_set_config(ctx->body, ctx->config);
                 }
             }
         }
@@ -483,9 +487,9 @@ apr_status_t serf_response_full_become_aggregate(serf_bucket_t *bucket)
 static apr_status_t serf_response_set_config(serf_bucket_t *bucket,
                                              serf_config_t *config)
 {
-    /* This bucket doesn't need/update any shared config, but we need to pass
-     it along to our wrapped bucket. */
     response_context_t *ctx = bucket->data;
+
+    ctx->config = config;
 
     return serf_bucket_set_config(ctx->stream, config);
 }

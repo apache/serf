@@ -267,6 +267,16 @@ static apr_status_t do_conn_setup(serf_connection_t *conn)
         return status;
     }
 
+    /* Share the configuration with all the buckets in the newly created output
+     chain (see PLAIN or ENCRYPTED scenario's), including the request buckets
+     created by the application (ostream_tail will handle this for us). */
+    serf_bucket_set_config(conn->ostream_head, conn->config);
+
+    /* Share the configuration with the ssl_decrypt and socket buckets. The
+     response buckets wrapping the ssl_decrypt/socket buckets won't get the
+     config automatically because they are upstream. */
+    serf_bucket_set_config(conn->stream, conn->config);
+
     serf_bucket_aggregate_append(conn->ostream_head,
                                  ostream);
 
@@ -287,16 +297,6 @@ static apr_status_t do_conn_setup(serf_connection_t *conn)
 
        where STREAM is an internal variant of AGGREGATE.
     */
-
-    /* Share the configuration with all the buckets in the newly created output
-       chain (see PLAIN or ENCRYPTED scenario's), including the request buckets
-       created by the application (ostream_tail will handle this for us). */
-    serf_bucket_set_config(conn->ostream_head, conn->config);
-
-    /* Share the configuration with the ssl_decrypt and socket buckets. The
-       response buckets wrapping the ssl_decrypt/socket buckets won't get the
-       config automatically because they are upstream. */
-    serf_bucket_set_config(conn->stream, conn->config);
 
     return status;
 }
