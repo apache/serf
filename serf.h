@@ -1171,12 +1171,6 @@ struct serf_connection_type_t {
 
 /*** Configuration store declarations ***/
 
-typedef enum {
-    SERF_CONFIG_NO_COPIES  = 0x00,
-    SERF_CONFIG_COPY_KEY   = 0x01,
-    SERF_CONFIG_COPY_VALUE = 0x02
-} serf_config_copy_flags_t;
-
 typedef const apr_uint32_t serf_config_key_t;
 typedef serf_config_key_t * serf_config_key_ptr_t;
 
@@ -1216,15 +1210,18 @@ extern serf_config_key_t serf_config_conn_remoteip;
 */
 
 /* Set a value of type const char * for configuration item CATEGORY+KEY.
-   Use COPY_FLAGS to specify if key and/or value need to be copied. This is
-   needed when the lifetime of key or value is shorter than the lifetime of the
-   serf context.
    @since New in 1.4.
  */
 apr_status_t serf_config_set_string(serf_config_t *config,
                                     serf_config_key_ptr_t key,
-                                    const char *value,
-                                    int copy_flags);
+                                    const char *value);
+/* Copy a value of type const char * and set it for configuration item
+   CATEGORY+KEY.
+   @since New in 1.4.
+ */
+apr_status_t serf_config_set_stringc(serf_config_t *config,
+                                     serf_config_key_ptr_t key,
+                                     const char *value);
 
 /* Set a value of generic type for configuration item CATEGORY+KEY.
    See @a serf_set_config_string for COPY_FLAGS description.

@@ -131,39 +131,48 @@ serf__config_store_remove_host(serf__config_store_t config_store,
 /*** Config ***/
 apr_status_t serf_config_set_string(serf_config_t *config,
                                     serf_config_key_ptr_t key,
-                                    const char *value,
-                                    int copy_flags)
+                                    const char *value)
 {
-    const char *cvalue = value;
     apr_hash_t *target;
     serf_config_key_t keyint = *key;
-    apr_pool_t *pool;
 
     /* Set the value in the hash table of the selected category */
-    if (keyint & SERF_CONFIG_PER_CONTEXT) {
+    if (keyint & SERF_CONFIG_PER_CONTEXT)
         target = config->per_context;
-        pool = config->ctx_pool;
-    }
-    else if (keyint & SERF_CONFIG_PER_HOST) {
+    else if (keyint & SERF_CONFIG_PER_HOST)
         target = config->per_host;
-        pool = config->ctx_pool;
-    }
-    else {
+    else
         target = config->per_conn;
-        pool = config->conn_pool;
-    }
 
     if (!target) {
         /* Config object doesn't manage keys in this category */
         return APR_EINVAL;
     }
 
-    /* Copy value to our pool's memory? */
-    if (copy_flags & SERF_CONFIG_COPY_VALUE)
-        cvalue = apr_pstrdup(pool, value);
-    apr_hash_set(target, key, sizeof(serf_config_key_t), cvalue);
+    apr_hash_set(target, key, sizeof(serf_config_key_t), value);
 
     return APR_SUCCESS;
+}
+
+apr_status_t serf_config_set_stringc(serf_config_t *config,
+                                     serf_config_key_ptr_t key,
+                                     const char *value)
+{
+    const char *cvalue;
+    serf_config_key_t keyint = *key;
+    apr_pool_t *pool;
+
+    if (keyint & SERF_CONFIG_PER_CONTEXT ||
+        keyint & SERF_CONFIG_PER_HOST) {
+
+        pool = config->ctx_pool;
+    } else {
+        pool = config->conn_pool;
+    }
+
+    cvalue = apr_pstrdup(pool, value);
+
+    return serf_config_set_string(config, key, cvalue);
 }
 
 apr_status_t serf_config_set_stringf(serf_config_t *config,
@@ -186,7 +195,7 @@ apr_status_t serf_config_set_stringf(serf_config_t *config,
     cvalue = apr_pvsprintf(pool, fmt, argp);
     va_end(argp);
 
-    return serf_config_set_string(config, key, cvalue, SERF_CONFIG_NO_COPIES);
+    return serf_config_set_string(config, key, cvalue);
 }
 
 apr_status_t serf_config_set_object(serf_config_t *config,

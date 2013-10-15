@@ -67,7 +67,8 @@ static void test_config_store_per_context(CuTest *tc)
         const char *actual;
 
         CuAssertIntEquals(tc, APR_SUCCESS,
-                          serf_config_set_string(cfg, PER_CONTEXT_TEST_KEY, "test_value", SERF_CONFIG_NO_COPIES));
+                          serf_config_set_string(cfg, PER_CONTEXT_TEST_KEY,
+                                                 "test_value"));
         CuAssertIntEquals(tc, APR_SUCCESS,
                           serf_config_get_string(cfg, PER_CONTEXT_TEST_KEY,
                                                  &actual));
@@ -129,7 +130,7 @@ static void test_config_store_per_connection_different_host(CuTest *tc)
     /* Test 3: Store and retrieve a string value for a per-connection key */
     CuAssertIntEquals(tc, APR_SUCCESS,
                       serf_config_set_string(cfg1, PER_CONN_TEST_KEY,
-                                             "test_value", SERF_CONFIG_NO_COPIES));
+                                             "test_value"));
     CuAssertIntEquals(tc, APR_SUCCESS,
                       serf_config_get_string(cfg1, PER_CONN_TEST_KEY, &actual));
     CuAssertStrEquals(tc, "test_value", actual);
@@ -142,7 +143,7 @@ static void test_config_store_per_connection_different_host(CuTest *tc)
     /* Test 4: Store and retrieve a string value for a per-host key */
     CuAssertIntEquals(tc, APR_SUCCESS,
                       serf_config_set_string(cfg1, PER_HOST_TEST_KEY,
-                                             "test_value", SERF_CONFIG_NO_COPIES));
+                                             "test_value"));
     CuAssertIntEquals(tc, APR_SUCCESS,
                       serf_config_get_string(cfg1, PER_HOST_TEST_KEY, &actual));
     CuAssertStrEquals(tc, "test_value", actual);
@@ -193,7 +194,7 @@ static void test_config_store_per_connection_same_host(CuTest *tc)
     /* Test 3: Store and retrieve a string value for a per-connection key */
     CuAssertIntEquals(tc, APR_SUCCESS,
                       serf_config_set_string(cfg1, PER_CONN_TEST_KEY,
-                          "test_value", SERF_CONFIG_NO_COPIES));
+                                             "test_value"));
     CuAssertIntEquals(tc, APR_SUCCESS,
                       serf_config_get_string(cfg1, PER_CONN_TEST_KEY, &actual));
     CuAssertStrEquals(tc, "test_value", actual);
@@ -206,7 +207,7 @@ static void test_config_store_per_connection_same_host(CuTest *tc)
     /* Test 4: Store and retrieve a string value for a per-host key */
     CuAssertIntEquals(tc, APR_SUCCESS,
                       serf_config_set_string(cfg1, PER_HOST_TEST_KEY,
-                          "test_value", SERF_CONFIG_NO_COPIES));
+                                             "test_value"));
     CuAssertIntEquals(tc, APR_SUCCESS,
                       serf_config_get_string(cfg1, PER_HOST_TEST_KEY, &actual));
     CuAssertStrEquals(tc, "test_value", actual);
@@ -241,7 +242,7 @@ static void test_config_store_error_handling(CuTest *tc)
 
     CuAssertIntEquals(tc, APR_EINVAL,
                       serf_config_set_string(cfg, PER_CONN_TEST_KEY,
-                            "test_value", SERF_CONFIG_NO_COPIES));
+                                             "test_value"));
 }
 
 CuSuite *test_internal(void)
