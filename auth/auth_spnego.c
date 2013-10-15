@@ -300,7 +300,7 @@ do_auth(peer_t peer,
                 /* Switch to stateless mode, from now on handle authentication
                    of each request with a new gss context. This is easiest to
                    manage when sending requests one by one. */
-                serf__log_skt(AUTH_VERBOSE, __FILE__, conn->skt,
+                serf__log_cfg(AUTH_VERBOSE, __FILE__, conn->config,
                               "Server requires per-request SPNEGO authn, "
                               "switching to stateless mode.\n");
 
@@ -396,7 +396,7 @@ serf__init_spnego_connection(const serf__authn_scheme_t *scheme,
     /* Make serf send the initial requests one by one */
     serf_connection_set_max_outstanding_requests(conn, 1);
 
-    serf__log_skt(AUTH_VERBOSE, __FILE__, conn->skt,
+    serf__log_cfg(AUTH_VERBOSE, __FILE__, conn->config,
                   "Initialized Kerberos context for this connection.\n");
 
     return APR_SUCCESS;
@@ -441,7 +441,7 @@ serf__setup_request_spnego_auth(peer_t peer,
        previous response will have created the authn headers for this request
        already. */
     if (gss_info && gss_info->header && gss_info->value) {
-        serf__log_skt(AUTH_VERBOSE, __FILE__, conn->skt,
+        serf__log_cfg(AUTH_VERBOSE, __FILE__, conn->config,
                       "Set Negotiate authn header on retried request.\n");
 
         serf_bucket_headers_setn(hdrs_bkt, gss_info->header,
@@ -463,13 +463,13 @@ serf__setup_request_spnego_auth(peer_t peer,
             /* We shouldn't normally arrive here, do nothing. */
             break;
         case pstate_undecided: /* fall through */
-            serf__log_skt(AUTH_VERBOSE, __FILE__, conn->skt,
+            serf__log_cfg(AUTH_VERBOSE, __FILE__, conn->config,
                           "Assume for now that the server supports persistent "
                           "SPNEGO authentication.\n");
             /* Nothing to do here. */
             break;
         case pstate_stateful:
-            serf__log_skt(AUTH_VERBOSE, __FILE__, conn->skt,
+            serf__log_cfg(AUTH_VERBOSE, __FILE__, conn->config,
                           "SPNEGO on this connection is persistent, "
                           "don't set authn header on next request.\n");
             /* Nothing to do here. */
@@ -482,7 +482,7 @@ serf__setup_request_spnego_auth(peer_t peer,
                    Add an initial Negotiate token for the server, to bypass the
                    40x response we know we'll otherwise receive.
                   (RFC 4559 section 4.2) */
-                serf__log_skt(AUTH_VERBOSE, __FILE__, conn->skt,
+                serf__log_cfg(AUTH_VERBOSE, __FILE__, conn->config,
                               "Add initial Negotiate header to request.\n");
 
                 status = do_auth(peer,
@@ -591,7 +591,7 @@ serf__validate_response_spnego_auth(const serf__authn_scheme_t *scheme,
         const char *auth_hdr_val;
         apr_status_t status;
 
-        serf__log_skt(AUTH_VERBOSE, __FILE__, conn->skt,
+        serf__log_cfg(AUTH_VERBOSE, __FILE__, conn->config,
                       "Validate SPNEGO response header.\n");
 
         hdrs = serf_bucket_response_get_headers(response);
@@ -609,7 +609,7 @@ serf__validate_response_spnego_auth(const serf__authn_scheme_t *scheme,
                completed.*/
             gss_info->state = gss_api_auth_completed;
 
-            serf__log_skt(AUTH_VERBOSE, __FILE__, conn->skt,
+            serf__log_cfg(AUTH_VERBOSE, __FILE__, conn->config,
                           "SPNEGO handshake completed.\n");
         }
     }
