@@ -28,6 +28,13 @@
 
 #define PROXY_PORT 23456
 
+/* Logs a standard event, with filename & timestamp header */
+void test__log(int verbose_flag, const char *filename, const char *fmt, ...);
+
+/* Logs a socket event, add local and remote ip address:port */
+void test__log_skt(int verbose_flag, const char *filename, apr_socket_t *skt,
+                   const char *fmt, ...);
+
 typedef struct serv_ctx_t serv_ctx_t;
 
 typedef apr_status_t (*send_func_t)(serv_ctx_t *serv_ctx, const char *data,

@@ -1940,7 +1940,7 @@ ssltunnel_basic_authn_callback(char **username,
     handler_baton_t *handler_ctx = baton;
     test_baton_t *tb = handler_ctx->tb;
 
-    serf__log(TEST_VERBOSE, __FILE__, "ssltunnel_basic_authn_callback\n");
+    test__log(TEST_VERBOSE, __FILE__, "ssltunnel_basic_authn_callback\n");
 
     tb->result_flags |= TEST_RESULT_AUTHNCB_CALLED;
 
@@ -1963,7 +1963,7 @@ ssltunnel_basic_authn_callback(char **username,
     } else
         return SERF_ERROR_ISSUE_IN_TESTSUITE;
 
-    serf__log(TEST_VERBOSE, __FILE__, "ssltunnel_basic_authn_callback finished successfully.\n");
+    test__log(TEST_VERBOSE, __FILE__, "ssltunnel_basic_authn_callback finished successfully.\n");
 
     return APR_SUCCESS;
 }

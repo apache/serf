@@ -90,7 +90,7 @@ static int bio_apr_socket_read(BIO *bio, char *in, int inlen)
 
     status = apr_socket_recv(serv_ctx->client_sock, in, &len);
     serv_ctx->bio_read_status = status;
-    serf__log_skt(TEST_VERBOSE, __FILE__, serv_ctx->client_sock,
+    test__log_skt(TEST_VERBOSE, __FILE__, serv_ctx->client_sock,
                   "Read %d bytes from socket with status %d.\n", len, status);
 
     if (status == APR_EAGAIN) {
@@ -113,7 +113,7 @@ static int bio_apr_socket_write(BIO *bio, const char *in, int inlen)
 
     apr_status_t status = apr_socket_send(serv_ctx->client_sock, in, &len);
 
-    serf__log_skt(TEST_VERBOSE, __FILE__, serv_ctx->client_sock,
+    test__log_skt(TEST_VERBOSE, __FILE__, serv_ctx->client_sock,
                   "Wrote %d of %d bytes to socket with status %d.\n",
                   len, inlen, status);
 
@@ -141,7 +141,7 @@ static BIO_METHOD bio_apr_socket_method = {
 
 static int validate_client_certificate(int preverify_ok, X509_STORE_CTX *ctx)
 {
-    serf__log(TEST_VERBOSE, __FILE__, "validate_client_certificate called, "
+    test__log(TEST_VERBOSE, __FILE__, "validate_client_certificate called, "
               "preverify code: %d.\n", preverify_ok);
 
     return preverify_ok;
@@ -241,7 +241,7 @@ static apr_status_t ssl_reset(serv_ctx_t *serv_ctx)
 {
     ssl_context_t *ssl_ctx = serv_ctx->ssl_ctx;
 
-    serf__log(TEST_VERBOSE, __FILE__, "Reset ssl context.\n");
+    test__log(TEST_VERBOSE, __FILE__, "Reset ssl context.\n");
 
     ssl_ctx->handshake_done = 0;
     if (ssl_ctx)
@@ -264,13 +264,13 @@ static apr_status_t ssl_handshake(serv_ctx_t *serv_ctx)
     if (result == 1) {
         X509 *peer;
 
-        serf__log(TEST_VERBOSE, __FILE__, "Handshake successful.\n");
+        test__log(TEST_VERBOSE, __FILE__, "Handshake successful.\n");
 
         /* Check client certificate */
         peer = SSL_get_peer_certificate(ssl_ctx->ssl);
         if (peer)
         {
-            serf__log(TEST_VERBOSE, __FILE__, "Peer cert received.\n");
+            test__log(TEST_VERBOSE, __FILE__, "Peer cert received.\n");
             if (SSL_get_verify_result(ssl_ctx->ssl) == X509_V_OK)
             {
                 /* The client sent a certificate which verified OK */
@@ -282,7 +282,7 @@ static apr_status_t ssl_handshake(serv_ctx_t *serv_ctx)
                                                 NID_commonName,
                                                 buf, 1024);
                 if (ret != -1 && strcmp(serv_ctx->client_cn, buf) != 0) {
-                    serf__log(TEST_VERBOSE, __FILE__, "Client cert common name "
+                    test__log(TEST_VERBOSE, __FILE__, "Client cert common name "
                               "\"%s\" doesn't match expected \"%s\".\n", buf,
                               serv_ctx->client_cn);
                     return SERF_ERROR_ISSUE_IN_TESTSUITE;
@@ -291,7 +291,7 @@ static apr_status_t ssl_handshake(serv_ctx_t *serv_ctx)
             }
         } else {
             if (serv_ctx->client_cn) {
-                serf__log(TEST_VERBOSE, __FILE__, "Client cert expected but not"
+                test__log(TEST_VERBOSE, __FILE__, "Client cert expected but not"
                           " received.\n");
                 return SERF_ERROR_ISSUE_IN_TESTSUITE;
             }
@@ -310,7 +310,7 @@ static apr_status_t ssl_handshake(serv_ctx_t *serv_ctx)
             case SSL_ERROR_SYSCALL:
                 return serv_ctx->bio_read_status; /* Usually APR_EAGAIN */
             default:
-                serf__log(TEST_VERBOSE, __FILE__, "SSL Error %d: ", ssl_err);
+                test__log(TEST_VERBOSE, __FILE__, "SSL Error %d: ", ssl_err);
                 ERR_print_errors_fp(stderr);
                 serf__log_nopref(TEST_VERBOSE, "\n");
                 return SERF_ERROR_ISSUE_IN_TESTSUITE;
@@ -335,7 +335,7 @@ ssl_socket_write(serv_ctx_t *serv_ctx, const char *data,
     if (result == 0)
         return APR_EAGAIN;
 
-    serf__log(TEST_VERBOSE, __FILE__, "ssl_socket_write: ssl error?\n");
+    test__log(TEST_VERBOSE, __FILE__, "ssl_socket_write: ssl error?\n");
 
     return SERF_ERROR_ISSUE_IN_TESTSUITE;
 }
@@ -365,7 +365,7 @@ ssl_socket_read(serv_ctx_t *serv_ctx, char *data,
             case SSL_ERROR_SSL:
             default:
                 *len = 0;
-                serf__log(TEST_VERBOSE, __FILE__,
+                test__log(TEST_VERBOSE, __FILE__,
                           "ssl_socket_read SSL Error %d: ", ssl_err);
                 ERR_print_errors_fp(stderr);
                 serf__log_nopref(TEST_VERBOSE, "\n");
