@@ -662,14 +662,14 @@ void serf__log_cfg(int verbose_flag, const char *filename,
 
             /* Log local and remote ip address:port */
             fprintf(stderr, "[l:");
-            status = serf_get_config_string(config, SERF_CONFIG_CONN_LOCALIP,
+            status = serf_config_get_string(config, SERF_CONFIG_CONN_LOCALIP,
                                             &localip);
             if (!status && localip) {
                 fprintf(stderr, "%s", localip);
             }
 
             fprintf(stderr, " r:");
-            status = serf_get_config_string(config, SERF_CONFIG_CONN_REMOTEIP,
+            status = serf_config_get_string(config, SERF_CONFIG_CONN_REMOTEIP,
                                             &remoteip);
             if (!status && remoteip) {
                 fprintf(stderr, "%s", remoteip);

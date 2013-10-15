@@ -27,7 +27,7 @@ serf_config_key_t
         serf_config_conn_remoteip = SERF_CONFIG_PER_CONNECTION | 0x000004;
 
 /*** Config Store ***/
-apr_status_t serf__init_config_store(serf_context_t *ctx)
+apr_status_t serf__config_store_init(serf_context_t *ctx)
 {
     apr_pool_t *pool = ctx->pool;
 
@@ -57,10 +57,10 @@ static const char * conn_key_for_conn(serf_connection_t *conn,
 
 /* TODO: when will this be released? Related config to a specific lifecyle:
    connection or context */
-apr_status_t serf_get_config_from_store(serf_context_t *ctx,
-                                        serf_connection_t *conn,
-                                        serf_config_t **config,
-                                        apr_pool_t *out_pool)
+apr_status_t serf__config_store_get_config(serf_context_t *ctx,
+                                           serf_connection_t *conn,
+                                           serf_config_t **config,
+                                           apr_pool_t *out_pool)
 {
     serf__config_store_t *config_store = &ctx->config_store;
 
@@ -115,21 +115,21 @@ apr_status_t serf_get_config_from_store(serf_context_t *ctx,
 }
 
 apr_status_t
-serf__remove_connection_from_config_store(serf__config_store_t config_store,
-                                          serf_connection_t *conn)
+serf__config_store_remove_connection(serf__config_store_t config_store,
+                                     serf_connection_t *conn)
 {
     return APR_ENOTIMPL;
 }
 
 apr_status_t
-serf__remove_host_from_config_store(serf__config_store_t config_store,
-                                    const char *hostname_port)
+serf__config_store_remove_host(serf__config_store_t config_store,
+                               const char *hostname_port)
 {
     return APR_ENOTIMPL;
 }
 
 /*** Config ***/
-apr_status_t serf_set_config_string(serf_config_t *config,
+apr_status_t serf_config_set_string(serf_config_t *config,
                                     serf_config_key_ptr_t key,
                                     const char *value,
                                     int copy_flags)
@@ -166,7 +166,7 @@ apr_status_t serf_set_config_string(serf_config_t *config,
     return APR_SUCCESS;
 }
 
-apr_status_t serf_set_config_stringf(serf_config_t *config,
+apr_status_t serf_config_set_stringf(serf_config_t *config,
                                      serf_config_key_ptr_t key,
                                      const char *fmt, ...)
 {
@@ -186,10 +186,10 @@ apr_status_t serf_set_config_stringf(serf_config_t *config,
     cvalue = apr_pvsprintf(pool, fmt, argp);
     va_end(argp);
 
-    return serf_set_config_string(config, key, cvalue, SERF_CONFIG_NO_COPIES);
+    return serf_config_set_string(config, key, cvalue, SERF_CONFIG_NO_COPIES);
 }
 
-apr_status_t serf_set_config_object(serf_config_t *config,
+apr_status_t serf_config_set_object(serf_config_t *config,
                                     serf_config_key_ptr_t key,
                                     void *value,
                                     apr_size_t *len,
@@ -198,7 +198,7 @@ apr_status_t serf_set_config_object(serf_config_t *config,
     return APR_ENOTIMPL;
 }
 
-apr_status_t serf_get_config_string(serf_config_t *config,
+apr_status_t serf_config_get_string(serf_config_t *config,
                                     serf_config_key_ptr_t key,
                                     const char **value)
 {
@@ -223,7 +223,7 @@ apr_status_t serf_get_config_string(serf_config_t *config,
     return APR_SUCCESS;
 }
 
-apr_status_t serf_remove_config_value(serf_config_t *config,
+apr_status_t serf_config_remove_value(serf_config_t *config,
                                       serf_config_key_ptr_t key)
 {
     return APR_ENOTIMPL;

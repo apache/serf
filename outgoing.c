@@ -358,13 +358,13 @@ static void store_ipaddresses_in_config(serf_config_t *config,
     if (apr_socket_addr_get(&sa, APR_LOCAL, skt) == APR_SUCCESS) {
         char buf[32];
         apr_sockaddr_ip_getbuf(buf, 32, sa);
-        serf_set_config_stringf(config, SERF_CONFIG_CONN_LOCALIP,
+        serf_config_set_stringf(config, SERF_CONFIG_CONN_LOCALIP,
                                 "%s:%d", buf, sa->port);
     }
     if (apr_socket_addr_get(&sa, APR_REMOTE, skt) == APR_SUCCESS) {
         char buf[32];
         apr_sockaddr_ip_getbuf(buf, 32, sa);
-        serf_set_config_stringf(config, SERF_CONFIG_CONN_REMOTEIP,
+        serf_config_set_stringf(config, SERF_CONFIG_CONN_REMOTEIP,
                                "%s:%d", buf, sa->port);
     }
 }
@@ -1459,13 +1459,13 @@ apr_status_t serf_connection_create2(
     }
 
     /* Store the connection specific info in the configuration store */
-    status = serf_get_config_from_store(ctx, c, &config, pool);
+    status = serf__config_store_get_config(ctx, c, &config, pool);
     if (status)
         return status;
     c->config = config;
-    serf_set_config_string(config, SERF_CONFIG_HOST_NAME,
+    serf_config_set_string(config, SERF_CONFIG_HOST_NAME,
                            c->host_info.hostname, SERF_CONFIG_COPY_VALUE);
-    serf_set_config_string(config, SERF_CONFIG_HOST_PORT,
+    serf_config_set_string(config, SERF_CONFIG_HOST_PORT,
                            apr_itoa(ctx->pool, c->host_info.port),
                            SERF_CONFIG_NO_COPIES);
 

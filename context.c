@@ -171,7 +171,7 @@ serf_context_t *serf_context_create_ex(
     ctx->server_authn_info = apr_hash_make(pool);
 
     /* Assume returned status is APR_SUCCESS */
-    serf__init_config_store(ctx);
+    serf__config_store_init(ctx);
 
     return ctx;
 }

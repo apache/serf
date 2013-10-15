@@ -1221,12 +1221,16 @@ extern serf_config_key_t serf_config_conn_remoteip;
    serf context.
    @since New in 1.4.
  */
-apr_status_t serf_set_config_string(serf_config_t *config,
+apr_status_t serf_config_set_string(serf_config_t *config,
                                     serf_config_key_ptr_t key,
                                     const char *value,
                                     int copy_flags);
 
-apr_status_t serf_set_config_stringf(serf_config_t *config,
+/* Set a value of generic type for configuration item CATEGORY+KEY.
+   See @a serf_set_config_string for COPY_FLAGS description.
+   @since New in 1.4.
+ */
+apr_status_t serf_config_set_stringf(serf_config_t *config,
                                      serf_config_key_ptr_t key,
                                      const char *fmt, ...);
 
@@ -1234,7 +1238,7 @@ apr_status_t serf_set_config_stringf(serf_config_t *config,
    See @a serf_set_config_string for COPY_FLAGS description.
    @since New in 1.4.
  */
-apr_status_t serf_set_config_object(serf_config_t *config,
+apr_status_t serf_config_set_object(serf_config_t *config,
                                     serf_config_key_ptr_t key,
                                     void *value,
                                     apr_size_t *len,
@@ -1246,14 +1250,15 @@ apr_status_t serf_set_config_object(serf_config_t *config,
    object doesn't contain, APR_SUCCESS otherwise.
    @since New in 1.4.
  */
-apr_status_t serf_get_config_string(serf_config_t *config,
+apr_status_t serf_config_get_string(serf_config_t *config,
                                     serf_config_key_ptr_t key,
                                     const char **value);
+
 /* Remove the value for configuration item CATEGORY+KEY from the configuration
    store.
    @since New in 1.4.
  */
-apr_status_t serf_remove_config_value(serf_config_t *config,
+apr_status_t serf_config_remove_value(serf_config_t *config,
                                       serf_config_key_ptr_t key);
 
 /*** Connection and protocol API v2 ***/
