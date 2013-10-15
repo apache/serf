@@ -181,15 +181,15 @@ static apr_status_t serf_deflate_read(serf_bucket_t *bucket,
             if (ctx->hdr_buffer[0] != deflate_magic[0] ||
                 ctx->hdr_buffer[1] != deflate_magic[1]) {
 
-                serf__log(LOGLVL_ERROR, __FILE__,
-                          "Incorrect magic number. Actual:%hhx%hhx.\n",
-                          ctx->hdr_buffer[0], ctx->hdr_buffer[1]);
+                serf__log_cfg(LOGLVL_ERROR, __FILE__, ctx->config,
+                              "Incorrect magic number. Actual:%hhx%hhx.\n",
+                              ctx->hdr_buffer[0], ctx->hdr_buffer[1]);
                 return SERF_ERROR_DECOMPRESSION_FAILED;
             }
             if (ctx->hdr_buffer[3] != 0) {
-                serf__log(LOGLVL_ERROR, __FILE__,
-                          "Incorrect magic number (at offset 3). Actual: %x\n",
-                          ctx->hdr_buffer[3]);
+                serf__log_cfg(LOGLVL_ERROR, __FILE__, ctx->config,
+                              "Incorrect magic number (at offset 3). Actual: "
+                              "%x\n", ctx->hdr_buffer[3]);
                 return SERF_ERROR_DECOMPRESSION_FAILED;
             }
             ctx->state++;
@@ -198,16 +198,16 @@ static apr_status_t serf_deflate_read(serf_bucket_t *bucket,
             /* Do the checksum computation. */
             compCRC = getLong((unsigned char*)ctx->hdr_buffer);
             if (ctx->crc != compCRC) {
-                serf__log(LOGLVL_ERROR, __FILE__,
-                          "Incorrect crc. Expected: %ld, Actual:%ld\n",
-                          compCRC, ctx->crc);
+                serf__log_cfg(LOGLVL_ERROR, __FILE__, ctx->config,
+                              "Incorrect crc. Expected: %ld, Actual:%ld\n",
+                              compCRC, ctx->crc);
                 return SERF_ERROR_DECOMPRESSION_FAILED;
             }
             compLen = getLong((unsigned char*)ctx->hdr_buffer + 4);
             if (ctx->zstream.total_out != compLen) {
-                serf__log(LOGLVL_ERROR, __FILE__,
-                          "Incorrect length. Expected: %ld, Actual:%ld\n",
-                          compLen, ctx->zstream.total_out);
+                serf__log_cfg(LOGLVL_ERROR, __FILE__, ctx->config,
+                              "Incorrect length. Expected: %ld, Actual:%ld\n",
+                              compLen, ctx->zstream.total_out);
                 return SERF_ERROR_DECOMPRESSION_FAILED;
             }
             ctx->state++;
@@ -215,9 +215,9 @@ static apr_status_t serf_deflate_read(serf_bucket_t *bucket,
         case STATE_INIT:
             zRC = inflateInit2(&ctx->zstream, ctx->windowSize);
             if (zRC != Z_OK) {
-                serf__log(LOGLVL_ERROR, __FILE__,
-                          "inflateInit2 error %d - %s\n",
-                          zRC, ctx->zstream.msg);
+                serf__log_cfg(LOGLVL_ERROR, __FILE__, ctx->config,
+                              "inflateInit2 error %d - %s\n",
+                              zRC, ctx->zstream.msg);
                 return SERF_ERROR_DECOMPRESSION_FAILED;
             }
             ctx->zstream.next_out = ctx->buffer;
@@ -350,8 +350,9 @@ static apr_status_t serf_deflate_read(serf_bucket_t *bucket,
                     break;
                 }
                 if (zRC != Z_OK) {
-                    serf__log(LOGLVL_ERROR, __FILE__, "inflate error %d - %s\n",
-                              zRC, ctx->zstream.msg);
+                    serf__log_cfg(LOGLVL_ERROR, __FILE__, ctx->config,
+                                  "inflate error %d - %s\n",
+                                  zRC, ctx->zstream.msg);
                     return SERF_ERROR_DECOMPRESSION_FAILED;
                 }
             }
@@ -373,8 +374,8 @@ static apr_status_t serf_deflate_read(serf_bucket_t *bucket,
                     if (ctx->state != STATE_INFLATE)
                         return APR_SUCCESS;
                     else {
-                        serf__log(LOGLVL_ERROR, __FILE__,
-                                  "Unexpected EOF on input stream\n");
+                        serf__log_cfg(LOGLVL_ERROR, __FILE__, ctx->config,
+                                      "Unexpected EOF on input stream\n");
                         return SERF_ERROR_DECOMPRESSION_FAILED;
                     }
                 }

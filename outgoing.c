@@ -75,8 +75,9 @@ static apr_status_t clean_conn(void *data)
 {
     serf_connection_t *conn = data;
 
-    serf__log(CONN_VERBOSE, __FILE__, "cleaning up connection 0x%x\n",
-              conn);
+    serf__log_cfg(CONN_VERBOSE, __FILE__, conn->config,
+                  "cleaning up connection 0x%x\n",
+                  conn);
     serf_connection_close(conn);
 
     return APR_SUCCESS;
@@ -405,8 +406,9 @@ apr_status_t serf__open_connections(serf_context_t *ctx)
                                    APR_PROTO_TCP,
 #endif
                                    conn->skt_pool);
-        serf__log(SOCK_VERBOSE, __FILE__,
-                  "created socket for conn 0x%x, status %d\n", conn, status);
+        serf__log_cfg(SOCK_VERBOSE, __FILE__, conn->config,
+                      "created socket for conn 0x%x, status %d\n", conn,
+                      status);
         if (status != APR_SUCCESS)
             return status;
 
@@ -1407,8 +1409,9 @@ serf_connection_t *serf_connection_create(
     /* Add the connection to the context. */
     *(serf_connection_t **)apr_array_push(ctx->conns) = conn;
 
-    serf__log(CONN_VERBOSE, __FILE__, "created connection 0x%x\n",
-              conn);
+    serf__log_cfg(CONN_VERBOSE, __FILE__, conn->config,
+                  "created connection 0x%x\n",
+                  conn);
 
     return conn;
 }
@@ -1523,8 +1526,8 @@ apr_status_t serf_connection_close(
             }
             --ctx->conns->nelts;
 
-            serf__log(CONN_VERBOSE, __FILE__, "closed connection 0x%x\n",
-                      conn);
+            serf__log_cfg(CONN_VERBOSE, __FILE__, conn->config,
+                          "closed connection 0x%x\n", conn);
 
             /* Found the connection. Closed it. All done. */
             return APR_SUCCESS;
