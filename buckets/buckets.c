@@ -586,62 +586,11 @@ static void log_time()
             tm.tm_gmtoff/3600);
 }
 
-void serf__log(int verbose_flag, const char *filename, const char *fmt, ...)
-{
-    va_list argp;
-
-    if (verbose_flag) {
-        log_time();
-
-        if (filename)
-            fprintf(stderr, "%s: ", filename);
-
-        va_start(argp, fmt);
-        vfprintf(stderr, fmt, argp);
-        va_end(argp);
-    }
-}
-
 void serf__log_nopref(int verbose_flag, const char *fmt, ...)
 {
     va_list argp;
 
     if (verbose_flag) {
-        va_start(argp, fmt);
-        vfprintf(stderr, fmt, argp);
-        va_end(argp);
-    }
-}
-
-void serf__log_skt(int verbose_flag, const char *filename, apr_socket_t *skt,
-                   const char *fmt, ...)
-{
-    va_list argp;
-
-    if (verbose_flag) {
-        apr_sockaddr_t *sa;
-        log_time();
-
-        if (skt) {
-            /* Log local and remote ip address:port */
-            fprintf(stderr, "[l:");
-            if (apr_socket_addr_get(&sa, APR_LOCAL, skt) == APR_SUCCESS) {
-                char buf[32];
-                apr_sockaddr_ip_getbuf(buf, 32, sa);
-                fprintf(stderr, "%s:%d", buf, sa->port);
-            }
-            fprintf(stderr, " r:");
-            if (apr_socket_addr_get(&sa, APR_REMOTE, skt) == APR_SUCCESS) {
-                char buf[32];
-                apr_sockaddr_ip_getbuf(buf, 32, sa);
-                fprintf(stderr, "%s:%d", buf, sa->port);
-            }
-            fprintf(stderr, "] ");
-        }
-
-        if (filename)
-            fprintf(stderr, "%s: ", filename);
-
         va_start(argp, fmt);
         vfprintf(stderr, fmt, argp);
         va_end(argp);
@@ -685,4 +634,3 @@ void serf__log_cfg(int verbose_flag, const char *filename,
         va_end(argp);
     }
 }
-

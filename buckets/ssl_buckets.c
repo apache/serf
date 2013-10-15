@@ -203,7 +203,11 @@ static void
 apps_ssl_info_callback(const SSL *s, int where, int ret)
 {
     const char *str;
+    serf_ssl_context_t *ctx;
     int w;
+
+    ctx = SSL_get_app_data(s);
+
     w = where & ~SSL_ST_MASK;
 
     if (w & SSL_ST_CONNECT)
@@ -214,23 +218,26 @@ apps_ssl_info_callback(const SSL *s, int where, int ret)
         str = "undefined";
 
     if (where & SSL_CB_LOOP) {
-        serf__log(SSL_VERBOSE, __FILE__, "%s:%s\n", str,
-                  SSL_state_string_long(s));
+        serf__log_cfg(SSL_VERBOSE, __FILE__, ctx->config,
+                      "%s:%s\n", str, SSL_state_string_long(s));
     }
     else if (where & SSL_CB_ALERT) {
         str = (where & SSL_CB_READ) ? "read" : "write";
-        serf__log(SSL_VERBOSE, __FILE__, "SSL3 alert %s:%s:%s\n",
-               str,
-               SSL_alert_type_string_long(ret),
-               SSL_alert_desc_string_long(ret));
+        serf__log_cfg(SSL_VERBOSE, __FILE__, ctx->config,
+                      "SSL3 alert %s:%s:%s\n",
+                      str,
+                      SSL_alert_type_string_long(ret),
+                      SSL_alert_desc_string_long(ret));
     }
     else if (where & SSL_CB_EXIT) {
         if (ret == 0)
-            serf__log(SSL_VERBOSE, __FILE__, "%s:failed in %s\n", str,
-                      SSL_state_string_long(s));
+            serf__log_cfg(SSL_VERBOSE, __FILE__, ctx->config,
+                          "%s:failed in %s\n", str,
+                          SSL_state_string_long(s));
         else if (ret < 0) {
-            serf__log(SSL_VERBOSE, __FILE__, "%s:error in %s\n", str,
-                      SSL_state_string_long(s));
+            serf__log_cfg(SSL_VERBOSE, __FILE__, ctx->config,
+                          "%s:error in %s\n", str,
+                          SSL_state_string_long(s));
         }
     }
 }
@@ -982,10 +989,10 @@ static void init_ssl_libraries(void)
         long libver = SSLeay();
 
         if ((libver ^ OPENSSL_VERSION_NUMBER) & 0xFFF00000) {
-            serf__log(SSL_VERBOSE, __FILE__,
-                      "Warning: OpenSSL library version mismatch, compile-time "
-                      "was %lx, runtime is %lx.\n",
-                      OPENSSL_VERSION_NUMBER, libver);
+            serf__log_cfg(SSL_VERBOSE, __FILE__, NULL,
+                          "Warning: OpenSSL library version mismatch, compile-"
+                          "time was %lx, runtime is %lx.\n",
+                          OPENSSL_VERSION_NUMBER, libver);
         }
 #endif
 

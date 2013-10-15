@@ -49,7 +49,7 @@
 
 /* Internal logging facilities, set flag to 1 to enable console logging for
    the selected component. */
-#define SSL_VERBOSE 0
+#define SSL_VERBOSE 1
 #define SSL_MSG_VERBOSE 0  /* logs decrypted requests and responses. */
 #define SOCK_VERBOSE 0
 #define SOCK_MSG_VERBOSE 0 /* logs bytes received from or written to a socket. */
@@ -536,16 +536,9 @@ serf_bucket_t *serf__bucket_log_wrapper_create(serf_bucket_t *wrapped,
     logging. 
  **/
 
-/* Logs a standard event, with filename & timestamp header */
-void serf__log(int verbose_flag, const char *filename, const char *fmt, ...);
-
 /* Logs a standard event, but without prefix. This is useful to build up
  log lines in parts. */
 void serf__log_nopref(int verbose_flag, const char *fmt, ...);
-
-/* Logs a socket event, add local and remote ip address:port */
-void serf__log_skt(int verbose_flag, const char *filename, apr_socket_t *skt,
-                   const char *fmt, ...);
 
 /* Logs an event, uses CONFIG to find out socket related info. */
 void serf__log_cfg(int verbose_flag, const char *filename,
