@@ -243,5 +243,5 @@ apr_status_t serf_config_get_object(serf_config_t *config,
 apr_status_t serf_config_remove_value(serf_config_t *config,
                                       serf_config_key_ptr_t key)
 {
-    return APR_ENOTIMPL;
+    return serf_config_set_object(config, key, NULL);
 }

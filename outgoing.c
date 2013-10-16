@@ -31,11 +31,12 @@ static apr_status_t clean_skt(void *data)
     apr_status_t status = APR_SUCCESS;
 
     if (conn->skt) {
-        serf__log(SOCK_VERBOSE, __FILE__, conn->config, "cleanup - ");
         status = apr_socket_close(conn->skt);
         conn->skt = NULL;
-        serf__log_nopref(SOCK_VERBOSE, conn->config,
-                         "closed socket, status %d\n", status);
+        serf__log(SOCK_VERBOSE, __FILE__, conn->config,
+                  "closed socket, status %d\n", status);
+        serf_config_remove_value(conn->config, SERF_CONFIG_CONN_LOCALIP);
+        serf_config_remove_value(conn->config, SERF_CONFIG_CONN_REMOTEIP);
     }
 
     return status;
@@ -651,13 +652,10 @@ static apr_status_t reset_connection(serf_connection_t *conn,
     /* Requests queue has been prepared for a new socket, close the old one. */
     if (conn->skt != NULL) {
         remove_connection(ctx, conn);
-        status = apr_socket_close(conn->skt);
-        serf__log(SOCK_VERBOSE, __FILE__, conn->config,
-                  "closed socket, status %d\n", status);
+        status = clean_skt(conn);
         if (conn->closed != NULL) {
             handle_conn_closed(conn, status);
         }
-        conn->skt = NULL;
     }
 
     if (conn->stream != NULL) {
@@ -1496,13 +1494,10 @@ apr_status_t serf_connection_close(
             }
             if (conn->skt != NULL) {
                 remove_connection(ctx, conn);
-                status = apr_socket_close(conn->skt);
-                serf__log(SOCK_VERBOSE, __FILE__, conn->config,
-                          "closed socket, status %d\n", status);
+                status = clean_skt(conn);
                 if (conn->closed != NULL) {
                     handle_conn_closed(conn, status);
                 }
-                conn->skt = NULL;
             }
             if (conn->stream != NULL) {
                 serf_bucket_destroy(conn->stream);
