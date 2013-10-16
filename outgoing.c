@@ -33,7 +33,7 @@ static apr_status_t clean_skt(void *data)
     if (conn->skt) {
         status = apr_socket_close(conn->skt);
         conn->skt = NULL;
-        serf__log(SOCK_VERBOSE, __FILE__, conn->config,
+        serf__log(LOGLVL_DEBUG, LOGCOMP_CONN, __FILE__, conn->config,
                   "closed socket, status %d\n", status);
         serf_config_remove_value(conn->config, SERF_CONFIG_CONN_LOCALIP);
         serf_config_remove_value(conn->config, SERF_CONFIG_CONN_REMOTEIP);
@@ -77,7 +77,7 @@ static apr_status_t clean_conn(void *data)
 {
     serf_connection_t *conn = data;
 
-    serf__log(CONN_VERBOSE, __FILE__, conn->config,
+    serf__log(LOGLVL_DEBUG, LOGCOMP_CONN, __FILE__, conn->config,
               "cleaning up connection 0x%x\n", conn);
     serf_connection_close(conn);
 
@@ -115,7 +115,7 @@ request_or_data_pending(serf_request_t **next_req, serf_connection_t *conn)
         status = serf_bucket_peek(conn->ostream_head, &dummy,
                                   &len);
         if (!SERF_BUCKET_READ_ERROR(status) && len) {
-            serf__log(CONN_VERBOSE, __FILE__, conn->config,
+            serf__log(LOGLVL_DEBUG, LOGCOMP_CONN, __FILE__, conn->config,
                       "All requests written but still data pending.\n");
             return 1;
         }
@@ -407,7 +407,7 @@ apr_status_t serf__open_connections(serf_context_t *ctx)
                                    APR_PROTO_TCP,
 #endif
                                    conn->skt_pool);
-        serf__log(SOCK_VERBOSE, __FILE__, conn->config,
+        serf__log(LOGLVL_DEBUG, LOGCOMP_CONN, __FILE__, conn->config,
                   "created socket for conn 0x%x, status %d\n", conn, status);
         if (status != APR_SUCCESS)
             return status;
@@ -434,7 +434,7 @@ apr_status_t serf__open_connections(serf_context_t *ctx)
         status = apr_socket_connect(skt, conn->address);
         store_ipaddresses_in_config(conn->config, skt);
 
-        serf__log(SOCK_VERBOSE, __FILE__, conn->config,
+        serf__log(LOGLVL_DEBUG, LOGCOMP_CONN, __FILE__, conn->config,
                   "connected socket for conn 0x%x, status %d\n", conn, status);
         if (status != APR_SUCCESS) {
             if (!APR_STATUS_IS_EINPROGRESS(status))
@@ -480,7 +480,7 @@ static apr_status_t no_more_writes(serf_connection_t *conn)
 {
     /* Note that we should hold new requests until we open our new socket. */
     conn->state = SERF_CONN_CLOSING;
-    serf__log(CONN_VERBOSE, __FILE__, conn->config,
+    serf__log(LOGLVL_DEBUG, LOGCOMP_CONN, __FILE__, conn->config,
               "stop writing on conn 0x%x\n", conn);
 
     /* Clear our iovec. */
@@ -613,7 +613,7 @@ static apr_status_t reset_connection(serf_connection_t *conn,
     apr_status_t status;
     serf_request_t *old_reqs;
 
-    serf__log(CONN_VERBOSE, __FILE__, conn->config,
+    serf__log(LOGLVL_DEBUG, LOGCOMP_CONN, __FILE__, conn->config,
               "reset connection 0x%x\n", conn);
 
     conn->probable_keepalive_limit = conn->completed_responses;
@@ -689,7 +689,7 @@ static apr_status_t socket_writev(serf_connection_t *conn)
     status = apr_socket_sendv(conn->skt, conn->vec,
                               conn->vec_len, &written);
     if (status && !APR_STATUS_IS_EAGAIN(status))
-        serf__log(SOCK_VERBOSE, __FILE__, conn->config,
+        serf__log(LOGLVL_DEBUG, LOGCOMP_CONN, __FILE__, conn->config,
                   "socket_sendv error %d\n", status);
 
     /* did we write everything? */
@@ -697,14 +697,14 @@ static apr_status_t socket_writev(serf_connection_t *conn)
         apr_size_t len = 0;
         int i;
 
-        serf__log(SOCK_VERBOSE || SOCK_MSG_VERBOSE, __FILE__, conn->config,
+        serf__log(LOGLVL_DEBUG, LOGCOMP_CONN, __FILE__, conn->config,
                   "--- socket_sendv: %d bytes. --\n", written);
 
         for (i = 0; i < conn->vec_len; i++) {
             len += conn->vec[i].iov_len;
             if (written < len) {
-                serf__log_nopref(SOCK_MSG_VERBOSE, conn->config, "%.*s",
-                                 conn->vec[i].iov_len - (len - written),
+                serf__log_nopref(LOGLVL_DEBUG, LOGCOMP_RAWMSG, conn->config,
+                                 "%.*s", conn->vec[i].iov_len - (len - written),
                                  conn->vec[i].iov_base);
                 if (i) {
                     memmove(conn->vec, &conn->vec[i],
@@ -715,14 +715,15 @@ static apr_status_t socket_writev(serf_connection_t *conn)
                 conn->vec[0].iov_len = len - written;
                 break;
             } else {
-                serf__log_nopref(SOCK_MSG_VERBOSE, conn->config, "%.*s",
+                serf__log_nopref(LOGLVL_DEBUG, LOGCOMP_RAWMSG, conn->config,
+                                 "%.*s",
                                  conn->vec[i].iov_len, conn->vec[i].iov_base);
             }
         }
         if (len == written) {
             conn->vec_len = 0;
         }
-        serf__log_nopref(SOCK_MSG_VERBOSE, conn->config, "\n");
+        serf__log_nopref(LOGLVL_DEBUG, LOGCOMP_RAWMSG, conn->config, "\n");
 
         /* Log progress information */
         serf__context_progress_delta(conn->ctx, 0, written);
@@ -1465,7 +1466,7 @@ apr_status_t serf_connection_create2(
 
     *conn = c;
 
-    serf__log(CONN_VERBOSE, __FILE__, c->config,
+    serf__log(LOGLVL_DEBUG, LOGCOMP_CONN, __FILE__, c->config,
               "created connection 0x%x\n", c);
 
     return status;
@@ -1518,7 +1519,7 @@ apr_status_t serf_connection_close(
             }
             --ctx->conns->nelts;
 
-            serf__log(CONN_VERBOSE, __FILE__, conn->config,
+            serf__log(LOGLVL_DEBUG, LOGCOMP_CONN, __FILE__, conn->config,
                       "closed connection 0x%x\n", conn);
 
             /* Found the connection. Closed it. All done. */
@@ -1537,11 +1538,11 @@ void serf_connection_set_max_outstanding_requests(
     unsigned int max_requests)
 {
     if (max_requests == 0)
-        serf__log(CONN_VERBOSE, __FILE__, conn->config,
+        serf__log(LOGLVL_DEBUG, LOGCOMP_CONN, __FILE__, conn->config,
                   "Set max. nr. of outstanding requests for this "
                   "connection to unlimited.\n");
     else
-        serf__log(CONN_VERBOSE, __FILE__, conn->config,
+        serf__log(LOGLVL_DEBUG, LOGCOMP_CONN, __FILE__, conn->config,
                   "Limit max. nr. of outstanding requests for this "
                   "connection to %u.\n", max_requests);
 

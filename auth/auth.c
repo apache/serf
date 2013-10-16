@@ -143,7 +143,7 @@ static int handle_auth_headers(int code,
         if (! (ctx->authn_types & scheme->type))
             continue;
 
-        serf__log(AUTH_VERBOSE, __FILE__, conn->config,
+        serf__log(LOGLVL_INFO, LOGCOMP_AUTHN, __FILE__, conn->config,
                   "Client supports: %s\n", scheme->name);
 
         auth_hdr = apr_hash_get(hdrs, scheme->key, APR_HASH_KEY_STRING);
@@ -167,7 +167,7 @@ static int handle_auth_headers(int code,
 
         handler = scheme->handle_func;
 
-        serf__log(AUTH_VERBOSE, __FILE__, conn->config,
+        serf__log(LOGLVL_INFO, LOGCOMP_AUTHN, __FILE__, conn->config,
                   "... matched: %s\n", scheme->name);
 
         /* If this is the first time we use this scheme on this context and/or
@@ -202,7 +202,7 @@ static int handle_auth_headers(int code,
            If no more authn schemes are found the status of this scheme will be
            returned.
         */
-        serf__log(AUTH_VERBOSE, __FILE__, conn->config,
+        serf__log(LOGLVL_INFO, LOGCOMP_AUTHN, __FILE__, conn->config,
                   "%s authentication failed.\n", scheme->name);
 
         /* Clear per-request auth_baton when switching to next auth scheme. */
@@ -277,20 +277,25 @@ static apr_status_t dispatch_auth(int code,
 
         hdrs = serf_bucket_response_get_headers(response);
 
-#if AUTH_VERBOSE
+#ifdef SERF_LOGGING_ENABLED
         {
             const char *auth_hdr;
 
             /* ### headers_get() doesn't tell us whether to free this result
                ### or not. but... meh. debug mode.  */
             auth_hdr = serf_bucket_headers_get(hdrs, ab.header);
-            if (auth_hdr == NULL)
-                auth_hdr = "<missing>";
-            serf__log(AUTH_VERBOSE, __FILE__, request->conn->config,
-                      "%s authz required. Response header(s): %s\n",
-                      code == 401 ? "Server" : "Proxy", auth_hdr);
+            if (auth_hdr == NULL) {
+                serf__log(LOGLVL_WARNING, LOGCOMP_AUTHN, __FILE__,
+                          request->conn->config,
+                          "%s header missing in response!\n", ab.header);
+            } else {
+                serf__log(LOGLVL_DEBUG, LOGCOMP_AUTHN, __FILE__,
+                          request->conn->config,
+                          "%s authz required. Response header(s): %s\n",
+                          code == 401 ? "Server" : "Proxy", auth_hdr);
+            }
         }
-#endif /* AUTH_VERBOSE */
+#endif /* SERF_LOGGING_ENABLED */
 
         /* Store all WWW- or Proxy-Authenticate headers in a dictionary.
 

@@ -49,14 +49,14 @@ serf_log_wrapped_readline(serf_bucket_t *bucket,
                                                   data, len);
 
     if (SERF_BUCKET_READ_ERROR(status))
-        serf__log(LOGLVL_ERROR, ctx->prefix, ctx->config,
+        serf__log(LOGLVL_ERROR, LOGCOMP_CONN, ctx->prefix, ctx->config,
                   "Error %d while reading.\n", status);
 
     if (*len) {
-        serf__log(SOCK_VERBOSE || SOCK_MSG_VERBOSE, ctx->prefix, ctx->config,
+        serf__log(LOGLVL_DEBUG, LOGCOMP_CONN, ctx->prefix, ctx->config,
                   "--- %d bytes. --\n", *len);
-        serf__log(SOCK_MSG_VERBOSE, ctx->prefix, ctx->config, "%.*s\n",
-                  *len, *data);
+        serf__log(LOGLVL_DEBUG, LOGCOMP_RAWMSG, ctx->prefix, ctx->config,
+                  "%.*s\n", *len, *data);
     }
 
     return status;
@@ -78,19 +78,19 @@ serf_log_wrapped_read_iovec(serf_bucket_t *bucket,
                                                     vecs, vecs_used);
 
     if (SERF_BUCKET_READ_ERROR(status))
-        serf__log(LOGLVL_ERROR, ctx->prefix, ctx->config,
+        serf__log(LOGLVL_ERROR, LOGCOMP_CONN, ctx->prefix, ctx->config,
                   "Error %d while reading.\n", status);
 
     for (i = 0, len = 0; i < *vecs_used; i++)
         len += vecs[i].iov_len;
-    serf__log(SOCK_VERBOSE || SOCK_MSG_VERBOSE, ctx->prefix, ctx->config,
+    serf__log(LOGLVL_DEBUG, LOGCOMP_CONN, ctx->prefix, ctx->config,
               "--- %d bytes. --\n", len);
 
     for (i = 0; i < *vecs_used; i++) {
-        serf__log_nopref(SOCK_MSG_VERBOSE, ctx->config,
+        serf__log_nopref(LOGLVL_DEBUG, LOGCOMP_RAWMSG, ctx->config,
                          "%.*s", vecs[i].iov_len, vecs[i].iov_base);
     }
-    serf__log_nopref(SOCK_MSG_VERBOSE, ctx->config, "\n");
+    serf__log_nopref(LOGLVL_DEBUG, LOGCOMP_RAWMSG, ctx->config, "\n");
 
     return status;
 }
@@ -105,13 +105,13 @@ serf_log_wrapped_read(serf_bucket_t *bucket, apr_size_t requested,
     apr_status_t status = ctx->old_type->read(bucket, requested, data, len);
 
     if (SERF_BUCKET_READ_ERROR(status))
-        serf__log(LOGLVL_ERROR, ctx->prefix, ctx->config,
+        serf__log(LOGLVL_ERROR, LOGCOMP_CONN, ctx->prefix, ctx->config,
                   "Error %d while reading.\n", status);
 
     if (*len) {
-        serf__log(SOCK_VERBOSE || SOCK_MSG_VERBOSE, ctx->prefix, ctx->config,
+        serf__log(LOGLVL_DEBUG, LOGCOMP_CONN, ctx->prefix, ctx->config,
                   "--- %d bytes. --\n", *len);
-        serf__log(SOCK_MSG_VERBOSE, ctx->prefix, ctx->config,
+        serf__log(LOGLVL_DEBUG, LOGCOMP_RAWMSG, ctx->prefix, ctx->config,
                   "%.*s\n", *len, *data);
     }
 
@@ -142,7 +142,7 @@ serf_bucket_t *serf__bucket_log_wrapper_create(serf_bucket_t *wrapped,
                                                const char *prefix,
                                                serf_bucket_alloc_t *alloc)
 {
-#if SOCK_VERBOSE || SOCK_MSG_VERBOSE
+#ifdef SERF_LOGGING_ENABLED
     serf_log_wrapped_bucket_t *bkt = serf_bucket_mem_alloc(alloc, sizeof(*bkt));
     log_wrapped_context_t *ctx = serf_bucket_mem_alloc(alloc, sizeof(*ctx));
     serf_bucket_type_t *bkt_type = serf_bucket_mem_alloc(alloc, sizeof(*bkt_type));

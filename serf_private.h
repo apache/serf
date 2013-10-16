@@ -47,15 +47,33 @@
 #define SERF_IO_CONN (2)
 #define SERF_IO_LISTENER (3)
 
-/* Internal logging facilities, set flag to 1 to enable console logging for
-   the selected component. */
-#define SSL_VERBOSE 0
-#define SSL_MSG_VERBOSE 0  /* logs decrypted requests and responses. */
-#define SOCK_VERBOSE 0
-#define SOCK_MSG_VERBOSE 0 /* logs bytes received from or written to a socket. */
-#define CONN_VERBOSE 0
-#define AUTH_VERBOSE 0
-#define LOGLVL_ERROR 0 /* Log context info for errors */
+/*** Logging facilities ***/
+
+/* Comment out this flag to disable all logging at compile time */
+/* #define SERF_LOGGING_ENABLED */
+
+/* Slightly shorter names for internal use. */
+#define LOGLVL_ERROR   SERF_LOG_ERROR
+#define LOGLVL_WARNING SERF_LOG_WARNING
+#define LOGLVL_INFO    SERF_LOG_INFO
+#define LOGLVL_DEBUG   SERF_LOG_DEBUG
+#define LOGLVL_NONE    SERF_LOG_NONE
+
+/* List of components, used as a mask. */
+#define LOGCOMP_ALL_MSG SERF_LOGCOMP_ALL_MSG
+#define LOGCOMP_ALL     SERF_LOGCOMP_ALL
+#define LOGCOMP_SSL     SERF_LOGCOMP_SSL
+#define LOGCOMP_AUTHN   SERF_LOGCOMP_AUTHN
+#define LOGCOMP_CONN    SERF_LOGCOMP_CONN
+#define LOGCOMP_COMPR   SERF_LOGCOMP_COMPR
+
+#define LOGCOMP_RAWMSG  SERF_LOGCOMP_RAWMSG
+#define LOGCOMP_SSLMSG  SERF_LOGCOMP_SSLMSG
+#define LOGCOMP_NONE    SERF_LOGCOMP_NONE
+
+/* TODO: remove before next serf release, FOR TESTING ONLY */
+#define ACTIVE_LOGLEVEL SERF_LOG_NONE
+#define ACTIVE_LOGCOMPS SERF_LOGCOMP_NONE
 
 /* Older versions of APR do not have the APR_VERSION_AT_LEAST macro. Those
    implementations are safe.
@@ -71,7 +89,6 @@
 #endif
 
 typedef struct serf__authn_scheme_t serf__authn_scheme_t;
-typedef struct serf__log_baton_t serf__log_baton_t;
 
 typedef struct serf_io_baton_t {
     int type;
@@ -537,20 +554,16 @@ serf_bucket_t *serf__bucket_log_wrapper_create(serf_bucket_t *wrapped,
     logging. 
  **/
 
-struct serf__log_baton_t {
-    FILE *fp;
-};
-
 /* TODO */
 apr_status_t serf__log_init(serf_context_t *ctx);
 
 /* Logs a standard event, but without prefix. This is useful to build up
    log lines in parts. */
-void serf__log_nopref(int verbose_flag, serf_config_t *config,
-                      const char *fmt, ...);
+void serf__log_nopref(apr_uint32_t level, apr_uint32_t comp,
+                      serf_config_t *config, const char *fmt, ...);
 
 /* Logs an event, uses CONFIG to find out socket related info. */
-void serf__log(int verbose_flag, const char *filename,
+void serf__log(apr_uint32_t level, apr_uint32_t comp, const char *filename,
                serf_config_t *config, const char *fmt, ...);
 
 #endif

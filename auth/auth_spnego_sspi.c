@@ -220,7 +220,7 @@ serf__spnego_init_sec_context(serf_connection_t *conn,
         ctx->target_name = apr_pstrcat(scratch_pool, service, "/", canonname,
                                        NULL);
 
-        serf__log(AUTH_VERBOSE, __FILE__, conn->config,
+        serf__log(LOGLVL_DEBUG, LOGCOMP_AUTHN, __FILE__, conn->config,
                   "Using SPN '%s' for '%s'\n", ctx->target_name, hostname);
     }
     else if (ctx->authn_type == SERF_AUTHN_NTLM)

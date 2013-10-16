@@ -1262,6 +1262,31 @@ apr_status_t serf_config_get_object(serf_config_t *config,
 apr_status_t serf_config_remove_value(serf_config_t *config,
                                       serf_config_key_ptr_t key);
 
+/*** Serf logging API ***/
+
+/* Ordered list of log levels, more detailed log levels include less
+   detailed levels. (e.g. level DEBUG also logs ERROR, WARNING & INFO messages).
+ */
+#define SERF_LOG_ERROR   0x0001
+#define SERF_LOG_WARNING 0x0002
+#define SERF_LOG_INFO    0x0004
+#define SERF_LOG_DEBUG   0x0008
+#define SERF_LOG_NONE    0x0000
+
+/* List of components, used as a mask. */
+#define SERF_LOGCOMP_ALL_MSG 0xFFFF /* All components, including message
+                                       content */
+#define SERF_LOGCOMP_RAWMSG  0x0100 /* logs requests and responses directly on
+                                       the socket layer. */
+#define SERF_LOGCOMP_SSLMSG  0x0200 /* logs decrypted requests and responses. */
+
+#define SERF_LOGCOMP_ALL     0x00FF /* All components, no message content */
+#define SERF_LOGCOMP_SSL     0x0001 /* The SSL component */
+#define SERF_LOGCOMP_AUTHN   0x0002 /* Authentication components */
+#define SERF_LOGCOMP_CONN    0x0004 /* Connection-related events */
+#define SERF_LOGCOMP_COMPR   0x0008 /* The compression (deflate) component */
+#define SERF_LOGCOMP_NONE    0x0000
+
 /*** Connection and protocol API v2 ***/
 
 /* ### docco.  */
