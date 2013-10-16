@@ -87,11 +87,10 @@ serf_log_wrapped_read_iovec(serf_bucket_t *bucket,
                   "--- %d bytes. --\n", len);
 
     for (i = 0; i < *vecs_used; i++) {
-        serf__log_nopref(SOCK_MSG_VERBOSE, "%.*s",
-                         vecs[i].iov_len,
-                         vecs[i].iov_base);
+        serf__log_nopref(SOCK_MSG_VERBOSE, ctx->config,
+                         "%.*s", vecs[i].iov_len, vecs[i].iov_base);
     }
-    serf__log_nopref(SOCK_MSG_VERBOSE, "\n");
+    serf__log_nopref(SOCK_MSG_VERBOSE, ctx->config, "\n");
 
     return status;
 }

@@ -34,7 +34,8 @@ static apr_status_t clean_skt(void *data)
         serf__log_cfg(SOCK_VERBOSE, __FILE__, conn->config, "cleanup - ");
         status = apr_socket_close(conn->skt);
         conn->skt = NULL;
-        serf__log_nopref(SOCK_VERBOSE, "closed socket, status %d\n", status);
+        serf__log_nopref(SOCK_VERBOSE, conn->config,
+                         "closed socket, status %d\n", status);
     }
 
     return status;
@@ -707,9 +708,9 @@ static apr_status_t socket_writev(serf_connection_t *conn)
         for (i = 0; i < conn->vec_len; i++) {
             len += conn->vec[i].iov_len;
             if (written < len) {
-                serf__log_nopref(SOCK_MSG_VERBOSE, "%.*s",
-                                   conn->vec[i].iov_len - (len - written),
-                                   conn->vec[i].iov_base);
+                serf__log_nopref(SOCK_MSG_VERBOSE, conn->config, "%.*s",
+                                 conn->vec[i].iov_len - (len - written),
+                                 conn->vec[i].iov_base);
                 if (i) {
                     memmove(conn->vec, &conn->vec[i],
                             sizeof(struct iovec) * (conn->vec_len - i));
@@ -719,14 +720,14 @@ static apr_status_t socket_writev(serf_connection_t *conn)
                 conn->vec[0].iov_len = len - written;
                 break;
             } else {
-                serf__log_nopref(SOCK_MSG_VERBOSE, "%.*s",
-                                   conn->vec[i].iov_len, conn->vec[i].iov_base);
+                serf__log_nopref(SOCK_MSG_VERBOSE, conn->config, "%.*s",
+                                 conn->vec[i].iov_len, conn->vec[i].iov_base);
             }
         }
         if (len == written) {
             conn->vec_len = 0;
         }
-        serf__log_nopref(SOCK_MSG_VERBOSE, "\n");
+        serf__log_nopref(SOCK_MSG_VERBOSE, conn->config, "\n");
 
         /* Log progress information */
         serf__context_progress_delta(conn->ctx, 0, written);
@@ -1409,10 +1410,6 @@ serf_connection_t *serf_connection_create(
     /* Add the connection to the context. */
     *(serf_connection_t **)apr_array_push(ctx->conns) = conn;
 
-    serf__log_cfg(CONN_VERBOSE, __FILE__, conn->config,
-                  "created connection 0x%x\n",
-                  conn);
-
     return conn;
 }
 
@@ -1472,6 +1469,9 @@ apr_status_t serf_connection_create2(
                            apr_itoa(ctx->pool, c->host_info.port));
 
     *conn = c;
+
+    serf__log_cfg(CONN_VERBOSE, __FILE__, c->config,
+                  "created connection 0x%x\n", c);
 
     return status;
 }

@@ -49,7 +49,7 @@
 
 /* Internal logging facilities, set flag to 1 to enable console logging for
    the selected component. */
-#define SSL_VERBOSE 1
+#define SSL_VERBOSE 0
 #define SSL_MSG_VERBOSE 0  /* logs decrypted requests and responses. */
 #define SOCK_VERBOSE 0
 #define SOCK_MSG_VERBOSE 0 /* logs bytes received from or written to a socket. */
@@ -71,6 +71,7 @@
 #endif
 
 typedef struct serf__authn_scheme_t serf__authn_scheme_t;
+typedef struct serf__log_baton_t serf__log_baton_t;
 
 typedef struct serf_io_baton_t {
     int type;
@@ -536,9 +537,17 @@ serf_bucket_t *serf__bucket_log_wrapper_create(serf_bucket_t *wrapped,
     logging. 
  **/
 
+struct serf__log_baton_t {
+    FILE *fp;
+};
+
+/* TODO */
+apr_status_t serf__log_init(serf_context_t *ctx);
+
 /* Logs a standard event, but without prefix. This is useful to build up
- log lines in parts. */
-void serf__log_nopref(int verbose_flag, const char *fmt, ...);
+   log lines in parts. */
+void serf__log_nopref(int verbose_flag, serf_config_t *config,
+                      const char *fmt, ...);
 
 /* Logs an event, uses CONFIG to find out socket related info. */
 void serf__log_cfg(int verbose_flag, const char *filename,
