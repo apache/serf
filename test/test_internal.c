@@ -258,6 +258,59 @@ static void test_config_store_error_handling(CuTest *tc)
                       serf_config_set_object(cfg, PER_CONN_TEST_KEY, stderr));
 }
 
+static void test_config_store_remove_objects(CuTest *tc)
+{
+    apr_pool_t *test_pool = tc->testBaton;
+    serf_config_t *cfg;
+    serf_connection_t *conn;
+    apr_uri_t url;
+    const char *actual;
+
+    serf_context_t *ctx = serf_context_create(test_pool);
+
+    /* Create a connection conn */
+    apr_uri_parse(test_pool, "http://localhost:12345", &url);
+    serf_connection_create2(&conn, ctx, url, conn_setup, NULL,
+                            conn_closed, NULL, test_pool);
+
+    CuAssertIntEquals(tc, APR_SUCCESS,
+                      serf__config_store_get_config(ctx, conn, &cfg, test_pool));
+
+    /* Add and remove a key per-context */
+    CuAssertIntEquals(tc, APR_SUCCESS,
+                      serf_config_set_string(cfg, PER_CONTEXT_TEST_KEY,
+                                             "test_value"));
+    CuAssertIntEquals(tc, APR_SUCCESS,
+                      serf_config_remove_value(cfg, PER_CONTEXT_TEST_KEY));
+    CuAssertIntEquals(tc, APR_SUCCESS,
+                      serf_config_get_string(cfg, PER_CONTEXT_TEST_KEY,
+                                             &actual));
+    CuAssertPtrEquals(tc, NULL, actual);
+
+    /* Add and remove a key per-context */
+    CuAssertIntEquals(tc, APR_SUCCESS,
+                      serf_config_set_string(cfg, PER_HOST_TEST_KEY,
+                                             "test_value"));
+    CuAssertIntEquals(tc, APR_SUCCESS,
+                      serf_config_remove_value(cfg, PER_HOST_TEST_KEY));
+    CuAssertIntEquals(tc, APR_SUCCESS,
+                      serf_config_get_string(cfg, PER_HOST_TEST_KEY,
+                                             &actual));
+    CuAssertPtrEquals(tc, NULL, actual);
+
+
+    /* Add and remove a key per-context */
+    CuAssertIntEquals(tc, APR_SUCCESS,
+                      serf_config_set_string(cfg, PER_CONN_TEST_KEY,
+                                             "test_value"));
+    CuAssertIntEquals(tc, APR_SUCCESS,
+                      serf_config_remove_value(cfg, PER_CONN_TEST_KEY));
+    CuAssertIntEquals(tc, APR_SUCCESS,
+                      serf_config_get_string(cfg, PER_CONN_TEST_KEY,
+                                             &actual));
+    CuAssertPtrEquals(tc, NULL, actual);
+}
+
 CuSuite *test_internal(void)
 {
     CuSuite *suite = CuSuiteNew();
@@ -268,6 +321,7 @@ CuSuite *test_internal(void)
     SUITE_ADD_TEST(suite, test_config_store_per_connection_different_host);
     SUITE_ADD_TEST(suite, test_config_store_per_connection_same_host);
     SUITE_ADD_TEST(suite, test_config_store_error_handling);
+    SUITE_ADD_TEST(suite, test_config_store_remove_objects);
 
     return suite;
 }
