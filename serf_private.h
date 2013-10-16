@@ -550,7 +550,7 @@ void serf__log_nopref(int verbose_flag, serf_config_t *config,
                       const char *fmt, ...);
 
 /* Logs an event, uses CONFIG to find out socket related info. */
-void serf__log_cfg(int verbose_flag, const char *filename,
-                   serf_config_t *config, const char *fmt, ...);
+void serf__log(int verbose_flag, const char *filename,
+               serf_config_t *config, const char *fmt, ...);
 
 #endif

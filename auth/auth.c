@@ -143,8 +143,8 @@ static int handle_auth_headers(int code,
         if (! (ctx->authn_types & scheme->type))
             continue;
 
-        serf__log_cfg(AUTH_VERBOSE, __FILE__, conn->config,
-                      "Client supports: %s\n", scheme->name);
+        serf__log(AUTH_VERBOSE, __FILE__, conn->config,
+                  "Client supports: %s\n", scheme->name);
 
         auth_hdr = apr_hash_get(hdrs, scheme->key, APR_HASH_KEY_STRING);
 
@@ -167,8 +167,8 @@ static int handle_auth_headers(int code,
 
         handler = scheme->handle_func;
 
-        serf__log_cfg(AUTH_VERBOSE, __FILE__, conn->config,
-                      "... matched: %s\n", scheme->name);
+        serf__log(AUTH_VERBOSE, __FILE__, conn->config,
+                  "... matched: %s\n", scheme->name);
 
         /* If this is the first time we use this scheme on this context and/or
            this connection, make sure to initialize the authentication handler 
@@ -202,8 +202,8 @@ static int handle_auth_headers(int code,
            If no more authn schemes are found the status of this scheme will be
            returned.
         */
-        serf__log_cfg(AUTH_VERBOSE, __FILE__, conn->config,
-                      "%s authentication failed.\n", scheme->name);
+        serf__log(AUTH_VERBOSE, __FILE__, conn->config,
+                  "%s authentication failed.\n", scheme->name);
 
         /* Clear per-request auth_baton when switching to next auth scheme. */
         request->auth_baton = NULL;
@@ -286,9 +286,9 @@ static apr_status_t dispatch_auth(int code,
             auth_hdr = serf_bucket_headers_get(hdrs, ab.header);
             if (auth_hdr == NULL)
                 auth_hdr = "<missing>";
-            serf__log_cfg(AUTH_VERBOSE, __FILE__, request->conn->config,
-                          "%s authz required. Response header(s): %s\n",
-                          code == 401 ? "Server" : "Proxy", auth_hdr);
+            serf__log(AUTH_VERBOSE, __FILE__, request->conn->config,
+                      "%s authz required. Response header(s): %s\n",
+                      code == 401 ? "Server" : "Proxy", auth_hdr);
         }
 #endif /* AUTH_VERBOSE */
 

@@ -70,7 +70,7 @@ log_error(int verbose_flag, serf_config_t *config,
                                           &stat_buff);
         }
 
-        serf__log_cfg(verbose_flag, __FILE__, config,
+        serf__log(verbose_flag, __FILE__, config,
                   "%s (%x,%d): %s\n", msg,
                   err_maj_stat, err_min_stat, stat_buff.value);
     }
@@ -167,8 +167,8 @@ serf__spnego_init_sec_context(serf_connection_t *conn,
     /* TODO: should be shared between multiple requests. */
     bufdesc.value = apr_pstrcat(scratch_pool, service, "@", hostname, NULL);
     bufdesc.length = strlen(bufdesc.value);
-    serf__log_cfg(AUTH_VERBOSE, __FILE__, conn->config,
-                  "Get principal for %s\n", bufdesc.value);
+    serf__log(AUTH_VERBOSE, __FILE__, conn->config,
+              "Get principal for %s\n", bufdesc.value);
     gss_maj_stat = gss_import_name (&gss_min_stat, &bufdesc,
                                     GSS_C_NT_HOSTBASED_SERVICE,
                                     &host_gss_name);

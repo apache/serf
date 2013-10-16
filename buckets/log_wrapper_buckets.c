@@ -49,14 +49,14 @@ serf_log_wrapped_readline(serf_bucket_t *bucket,
                                                   data, len);
 
     if (SERF_BUCKET_READ_ERROR(status))
-        serf__log_cfg(LOGLVL_ERROR, ctx->prefix, ctx->config,
-                      "Error %d while reading.\n", status);
+        serf__log(LOGLVL_ERROR, ctx->prefix, ctx->config,
+                  "Error %d while reading.\n", status);
 
     if (*len) {
-        serf__log_cfg(SOCK_VERBOSE || SOCK_MSG_VERBOSE, ctx->prefix, ctx->config,
-                      "--- %d bytes. --\n", *len);
-        serf__log_cfg(SOCK_MSG_VERBOSE, ctx->prefix, ctx->config, "%.*s\n",
-                      *len, *data);
+        serf__log(SOCK_VERBOSE || SOCK_MSG_VERBOSE, ctx->prefix, ctx->config,
+                  "--- %d bytes. --\n", *len);
+        serf__log(SOCK_MSG_VERBOSE, ctx->prefix, ctx->config, "%.*s\n",
+                  *len, *data);
     }
 
     return status;
@@ -78,13 +78,13 @@ serf_log_wrapped_read_iovec(serf_bucket_t *bucket,
                                                     vecs, vecs_used);
 
     if (SERF_BUCKET_READ_ERROR(status))
-        serf__log_cfg(LOGLVL_ERROR, ctx->prefix, ctx->config,
-                      "Error %d while reading.\n", status);
+        serf__log(LOGLVL_ERROR, ctx->prefix, ctx->config,
+                  "Error %d while reading.\n", status);
 
     for (i = 0, len = 0; i < *vecs_used; i++)
         len += vecs[i].iov_len;
-    serf__log_cfg(SOCK_VERBOSE || SOCK_MSG_VERBOSE, ctx->prefix, ctx->config,
-                  "--- %d bytes. --\n", len);
+    serf__log(SOCK_VERBOSE || SOCK_MSG_VERBOSE, ctx->prefix, ctx->config,
+              "--- %d bytes. --\n", len);
 
     for (i = 0; i < *vecs_used; i++) {
         serf__log_nopref(SOCK_MSG_VERBOSE, ctx->config,
@@ -105,14 +105,14 @@ serf_log_wrapped_read(serf_bucket_t *bucket, apr_size_t requested,
     apr_status_t status = ctx->old_type->read(bucket, requested, data, len);
 
     if (SERF_BUCKET_READ_ERROR(status))
-        serf__log_cfg(LOGLVL_ERROR, ctx->prefix, ctx->config,
-                      "Error %d while reading.\n", status);
+        serf__log(LOGLVL_ERROR, ctx->prefix, ctx->config,
+                  "Error %d while reading.\n", status);
 
     if (*len) {
-        serf__log_cfg(SOCK_VERBOSE || SOCK_MSG_VERBOSE, ctx->prefix, ctx->config,
+        serf__log(SOCK_VERBOSE || SOCK_MSG_VERBOSE, ctx->prefix, ctx->config,
                   "--- %d bytes. --\n", *len);
-        serf__log_cfg(SOCK_MSG_VERBOSE, ctx->prefix, ctx->config,
-                      "%.*s\n", *len, *data);
+        serf__log(SOCK_MSG_VERBOSE, ctx->prefix, ctx->config,
+                  "%.*s\n", *len, *data);
     }
 
     return status;
