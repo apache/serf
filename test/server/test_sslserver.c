@@ -312,7 +312,7 @@ static apr_status_t ssl_handshake(serv_ctx_t *serv_ctx)
             default:
                 test__log(TEST_VERBOSE, __FILE__, "SSL Error %d: ", ssl_err);
                 ERR_print_errors_fp(stderr);
-                serf__log_nopref(TEST_VERBOSE, "\n");
+                test__log_nopref(TEST_VERBOSE, "\n");
                 return SERF_ERROR_ISSUE_IN_TESTSUITE;
         }
     }
@@ -368,7 +368,7 @@ ssl_socket_read(serv_ctx_t *serv_ctx, char *data,
                 test__log(TEST_VERBOSE, __FILE__,
                           "ssl_socket_read SSL Error %d: ", ssl_err);
                 ERR_print_errors_fp(stderr);
-                serf__log_nopref(TEST_VERBOSE, "\n");
+                test__log_nopref(TEST_VERBOSE, "\n");
                 return SERF_ERROR_ISSUE_IN_TESTSUITE;
         }
     }

@@ -34,6 +34,9 @@ void test__log(int verbose_flag, const char *filename, const char *fmt, ...);
 /* Logs a socket event, add local and remote ip address:port */
 void test__log_skt(int verbose_flag, const char *filename, apr_socket_t *skt,
                    const char *fmt, ...);
+/* Logs a standard event, but without prefix. This is useful to build up
+   log lines in parts. */
+void test__log_nopref(int verbose_flag, const char *fmt, ...);
 
 typedef struct serv_ctx_t serv_ctx_t;
 

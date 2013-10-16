@@ -642,6 +642,17 @@ void test__log(int verbose_flag, const char *filename, const char *fmt, ...)
     }
 }
 
+void test__log_nopref(int verbose_flag, const char *fmt, ...)
+{
+    va_list argp;
+
+    if (verbose_flag) {
+        va_start(argp, fmt);
+        vfprintf(stderr, fmt, argp);
+        va_end(argp);
+    }
+}
+
 void test__log_skt(int verbose_flag, const char *filename, apr_socket_t *skt,
                    const char *fmt, ...)
 {
