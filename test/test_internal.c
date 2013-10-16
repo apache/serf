@@ -224,6 +224,7 @@ static void test_config_store_error_handling(CuTest *tc)
     apr_pool_t *test_pool = tc->testBaton;
     serf_config_t *cfg;
     const char *actual;
+    void *actual_obj;
 
     serf_context_t *ctx = serf_context_create(test_pool);
 
@@ -243,6 +244,18 @@ static void test_config_store_error_handling(CuTest *tc)
     CuAssertIntEquals(tc, APR_EINVAL,
                       serf_config_set_string(cfg, PER_CONN_TEST_KEY,
                                              "test_value"));
+
+    /* The same tests with objects instead of strings */
+    CuAssertIntEquals(tc, APR_EINVAL,
+                      serf_config_get_object(cfg, PER_HOST_TEST_KEY, &actual_obj));
+    CuAssertPtrEquals(tc, NULL, actual_obj);
+
+    CuAssertIntEquals(tc, APR_EINVAL,
+                      serf_config_get_object(cfg, PER_CONN_TEST_KEY, &actual_obj));
+    CuAssertPtrEquals(tc, NULL, actual_obj);
+
+    CuAssertIntEquals(tc, APR_EINVAL,
+                      serf_config_set_object(cfg, PER_CONN_TEST_KEY, stderr));
 }
 
 CuSuite *test_internal(void)
