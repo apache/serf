@@ -1190,11 +1190,13 @@ extern serf_config_key_t serf_config_host_name;
 extern serf_config_key_t serf_config_host_port;
 extern serf_config_key_t serf_config_conn_localip;
 extern serf_config_key_t serf_config_conn_remoteip;
+extern serf_config_key_t serf_config_ctx_logbaton;
 
 #define SERF_CONFIG_HOST_NAME &serf_config_host_name
 #define SERF_CONFIG_HOST_PORT &serf_config_host_port
 #define SERF_CONFIG_CONN_LOCALIP  &serf_config_conn_localip
 #define SERF_CONFIG_CONN_REMOTEIP &serf_config_conn_remoteip
+#define SERF_CONFIG_CTX_LOGBATON &serf_config_ctx_logbaton
 
 /* Configuration values stored in the configuration store:
 
@@ -1237,9 +1239,7 @@ apr_status_t serf_config_set_stringf(serf_config_t *config,
  */
 apr_status_t serf_config_set_object(serf_config_t *config,
                                     serf_config_key_ptr_t key,
-                                    void *value,
-                                    apr_size_t *len,
-                                    int copy_flags);
+                                    void *value);
 
 /* Get the value for configuration item CATEGORY+KEY. The value's type will 
    be fixed, see the above table.
@@ -1250,6 +1250,10 @@ apr_status_t serf_config_set_object(serf_config_t *config,
 apr_status_t serf_config_get_string(serf_config_t *config,
                                     serf_config_key_ptr_t key,
                                     const char **value);
+
+apr_status_t serf_config_get_object(serf_config_t *config,
+                                    serf_config_key_ptr_t key,
+                                    void **value);
 
 /* Remove the value for configuration item CATEGORY+KEY from the configuration
    store.

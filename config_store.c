@@ -24,7 +24,8 @@ serf_config_key_t
         serf_config_host_name = SERF_CONFIG_PER_HOST | 0x000001,
         serf_config_host_port = SERF_CONFIG_PER_HOST | 0x000002,
         serf_config_conn_localip =  SERF_CONFIG_PER_CONNECTION | 0x000003,
-        serf_config_conn_remoteip = SERF_CONFIG_PER_CONNECTION | 0x000004;
+        serf_config_conn_remoteip = SERF_CONFIG_PER_CONNECTION | 0x000004,
+        serf_config_ctx_logbaton = SERF_CONFIG_PER_CONTEXT | 0x000005;
 
 /*** Config Store ***/
 apr_status_t serf__config_store_init(serf_context_t *ctx)
@@ -133,25 +134,9 @@ apr_status_t serf_config_set_string(serf_config_t *config,
                                     serf_config_key_ptr_t key,
                                     const char *value)
 {
-    apr_hash_t *target;
-    serf_config_key_t keyint = *key;
-
-    /* Set the value in the hash table of the selected category */
-    if (keyint & SERF_CONFIG_PER_CONTEXT)
-        target = config->per_context;
-    else if (keyint & SERF_CONFIG_PER_HOST)
-        target = config->per_host;
-    else
-        target = config->per_conn;
-
-    if (!target) {
-        /* Config object doesn't manage keys in this category */
-        return APR_EINVAL;
-    }
-
-    apr_hash_set(target, key, sizeof(serf_config_key_t), value);
-
-    return APR_SUCCESS;
+    /* Cast away const is ok here, the callers should always use
+       serf_config_get_string for this key. */
+    return serf_config_set_object(config, key, (void *)value);
 }
 
 apr_status_t serf_config_set_stringc(serf_config_t *config,
@@ -200,16 +185,39 @@ apr_status_t serf_config_set_stringf(serf_config_t *config,
 
 apr_status_t serf_config_set_object(serf_config_t *config,
                                     serf_config_key_ptr_t key,
-                                    void *value,
-                                    apr_size_t *len,
-                                    int copy_flags)
+                                    void *value)
 {
-    return APR_ENOTIMPL;
+    apr_hash_t *target;
+    serf_config_key_t keyint = *key;
+
+    /* Set the value in the hash table of the selected category */
+    if (keyint & SERF_CONFIG_PER_CONTEXT)
+        target = config->per_context;
+    else if (keyint & SERF_CONFIG_PER_HOST)
+        target = config->per_host;
+    else
+        target = config->per_conn;
+
+    if (!target) {
+        /* Config object doesn't manage keys in this category */
+        return APR_EINVAL;
+    }
+
+    apr_hash_set(target, key, sizeof(serf_config_key_t), value);
+
+    return APR_SUCCESS;
 }
 
 apr_status_t serf_config_get_string(serf_config_t *config,
                                     serf_config_key_ptr_t key,
                                     const char **value)
+{
+    return serf_config_get_object(config, key, (void**)value);
+}
+
+apr_status_t serf_config_get_object(serf_config_t *config,
+                                    serf_config_key_ptr_t key,
+                                    void **value)
 {
     apr_hash_t *target;
     serf_config_key_t keyint = *key;
