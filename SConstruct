@@ -103,6 +103,9 @@ opts.AddVariables(
   BoolVariable('APR_STATIC',
                "Enable using a static compiled APR",
                False),
+  BoolVariable('DISABLE_LOGGING',
+               "Disable the logging framework at compile time",
+               False),
   RawListVariable('CC', "Command name or path of the C compiler", None),
   RawListVariable('CFLAGS', "Extra flags for the C compiler (space-separated)",
                   None),
@@ -193,6 +196,7 @@ if gssapi and os.path.isdir(gssapi):
 
 debug = env.get('DEBUG', None)
 aprstatic = env.get('APR_STATIC', None)
+disablelogging = env.get('DISABLE_LOGGING', None)
 
 Help(opts.GenerateHelpText(env))
 opts.Save(SAVED_CONFIG, env)
@@ -367,6 +371,10 @@ if gssapi and CALLOUT_OKAY:
     env.Append(CPPDEFINES='SERF_HAVE_GSSAPI')
 if sys.platform == 'win32':
   env.Append(CPPDEFINES=['SERF_HAVE_SSPI'])
+
+# Set preprocessor define to disable the logging framework
+if disablelogging:
+    env.Append(CPPDEFINES='SERF_DISABLE_LOGGING')
 
 # On some systems, the -R values that APR describes never make it into actual
 # RPATH flags. We'll manually map all directories in LIBPATH into new

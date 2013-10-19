@@ -49,8 +49,10 @@
 
 /*** Logging facilities ***/
 
-/* Comment out this flag to disable all logging at compile time */
-#define SERF_LOGGING_ENABLED
+/* Check for the SERF_DISABLE_LOGGING define, as set by scons. */
+#ifndef SERF_DISABLE_LOGGING
+  #define SERF_LOGGING_ENABLED
+#endif
 
 /* Slightly shorter names for internal use. */
 #define LOGLVL_ERROR   SERF_LOG_ERROR
