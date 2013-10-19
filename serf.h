@@ -1287,6 +1287,36 @@ apr_status_t serf_config_remove_value(serf_config_t *config,
 #define SERF_LOGCOMP_COMPR   0x0008 /* The compression (deflate) component */
 #define SERF_LOGCOMP_NONE    0x0000
 
+typedef struct serf_log_output_t serf_log_output_t;
+typedef struct serf_log_layout_t serf_log_layout_t;
+
+/* The default log layout. It's format is:
+   [TIMESTAMP] [LOG LEVEL] [l:LOCALIP:PORT r:REMOTEIP:PORT] FILENAME MESSAGE
+ */
+#define SERF_LOG_DEFAULT_LAYOUT ((serf_log_layout_t *)NULL)
+
+/* TODO: it's not yet possible to define custom layouts */
+
+/* Create a stream output for log info. This can be used with one of the
+   standard streams stderr or stdout.
+   LAYOUT should be SERF_LOG_DEFAULT_LAYOUT (there's no alternative for now).
+   The lifetime of POOL should be atleast the same as that of CTX, but it can
+   be used by multiple contexts. */
+apr_status_t serf_logging_create_stream_output(serf_log_output_t **output,
+                                               serf_context_t *ctx,
+                                               apr_uint32_t level,
+                                               apr_uint32_t comp_mask,
+                                               serf_log_layout_t *layout,
+                                               FILE *fp,
+                                               apr_pool_t *pool);
+
+/* Define an output handler for a log level and a (set of) log component(s).
+   OUTPUT is the object returned by one of the serf_logging_create_XXX_output
+   factory functions. */
+apr_status_t serf_logging_add_output(serf_context_t *ctx,
+                                     const serf_log_output_t *output);
+
+
 /*** Connection and protocol API v2 ***/
 
 /* ### docco.  */

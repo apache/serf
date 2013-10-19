@@ -13,17 +13,31 @@
  * limitations under the License.
  */
 
-/* Logging functions.
-   Use with one of the [COMP]_VERBOSE defines so that the compiler knows to
-   optimize this code out when no logging is needed. */
-
 #include "serf.h"
 #include "serf_private.h"
 
-struct log_baton_t {
-    FILE *fp;
+#ifdef SERF_LOGGING_ENABLED
+typedef struct log_baton_t {
     apr_uint32_t level;
     apr_uint32_t comps;
+    apr_array_header_t *output_list;
+} log_baton_t;
+
+typedef apr_status_t (*log_to_output_t)(serf_log_output_t *output,
+                                        serf_config_t *config,
+                                        apr_uint32_t level,
+                                        apr_uint32_t comp,
+                                        int header,
+                                        const char *prefix,
+                                        const char *fmt,
+                                        va_list argp);
+
+struct serf_log_output_t {
+    apr_uint32_t level;
+    apr_uint32_t comps;
+    serf_log_layout_t *layout;
+    log_to_output_t logger;
+    void *baton;
 };
 
 const char * loglvl_labels[] = {
@@ -37,26 +51,37 @@ const char * loglvl_labels[] = {
     "",
     "DEBUG", /* 0x0008 */
 };
+#endif
 
 apr_status_t serf__log_init(serf_context_t *ctx)
 {
 #ifdef SERF_LOGGING_ENABLED
     log_baton_t *log_baton;
-    serf_config_t *config;
-    apr_status_t status;
+    serf_config_t *config = ctx->config;
 
     log_baton = apr_palloc(ctx->pool, sizeof(log_baton_t));
-    log_baton->fp = stderr;
     log_baton->level = SERF_LOG_NONE;
     log_baton->comps = SERF_LOGCOMP_NONE;
+    log_baton->output_list = apr_array_make(ctx->pool, 1,
+                                            sizeof(serf_log_output_t *));
 
     /* TODO: remove before next serf release, FOR TESTING ONLY */
-    log_baton->level = ACTIVE_LOGLEVEL;
-    log_baton->comps = ACTIVE_LOGCOMPS;
+    {
+        serf_log_output_t *output;
+        apr_status_t status;
 
-    status = serf__config_store_get_config(ctx, NULL, &config, ctx->pool);
-    if (status)
-        return status;
+        status = serf_logging_create_stream_output(&output, ctx,
+                                                   ACTIVE_LOGLEVEL,
+                                                   ACTIVE_LOGCOMPS,
+                                                   SERF_LOG_DEFAULT_LAYOUT,
+                                                   stderr, ctx->pool);
+        if (status)
+            return status;
+
+        status = serf_logging_add_output(ctx, output);
+        if (status)
+            return status;
+    }
 
     return serf_config_set_object(config, SERF_CONFIG_CTX_LOGBATON, log_baton);
 #else
@@ -64,9 +89,6 @@ apr_status_t serf__log_init(serf_context_t *ctx)
 #endif
 }
 
-/* Logging functions.
-   Use with one of the [COMP]_VERBOSE defines so that the compiler knows to
-   optimize this code out when no logging is needed. */
 #ifdef SERF_LOGGING_ENABLED
 static void log_time(FILE *logfp)
 {
@@ -97,24 +119,28 @@ void serf__log_nopref(apr_uint32_t level, apr_uint32_t comp,
     status = serf_config_get_object(config, SERF_CONFIG_CTX_LOGBATON,
                                     (void **)&log_baton);
 
-    if (!status && log_baton &&
-        (log_baton->level >= level) && (comp & log_baton->comps))
-    {
-        if (log_baton->fp) {
-            va_start(argp, fmt);
-            vfprintf(log_baton->fp, fmt, argp);
-            va_end(argp);
+    if (!status && log_baton) {
+        int i;
+
+        for (i = 0; i < log_baton->output_list->nelts; i++) {
+            serf_log_output_t *output = APR_ARRAY_IDX(log_baton->output_list,
+                                                      i, serf_log_output_t *);
+            if ((output->level >= level) && (comp & output->comps)) {
+                va_start(argp, fmt);
+                output->logger(output, config, level, comp, 0, "", fmt, argp);
+                va_end(argp);
+
+            }
         }
     }
 #endif
 }
 
-void serf__log(apr_uint32_t level, apr_uint32_t comp, const char *filename,
+void serf__log(apr_uint32_t level, apr_uint32_t comp, const char *prefix,
                serf_config_t *config, const char *fmt, ...)
 {
 #ifdef SERF_LOGGING_ENABLED
     va_list argp;
-    const char *localip, *remoteip;
     log_baton_t *log_baton;
     apr_status_t status;
 
@@ -127,11 +153,41 @@ void serf__log(apr_uint32_t level, apr_uint32_t comp, const char *filename,
     status = serf_config_get_object(config, SERF_CONFIG_CTX_LOGBATON,
                                     (void **)&log_baton);
 
-    if (!status && log_baton &&
-        (log_baton->level >= level) && (comp & log_baton->comps))
-    {
-        if (log_baton->fp) {
-            FILE *logfp = log_baton->fp;
+    if (!status && log_baton) {
+        int i;
+
+        for (i = 0; i < log_baton->output_list->nelts; i++) {
+            serf_log_output_t *output = APR_ARRAY_IDX(log_baton->output_list,
+                                                      i, serf_log_output_t *);
+            if ((output->level >= level) && (comp & output->comps)) {
+                va_start(argp, fmt);
+                output->logger(output, config, level, comp, 1, prefix, fmt, argp);
+                va_end(argp);
+
+            }
+        }
+    }
+#endif
+}
+
+/*** Output to system stream (stderr or stdout) or a file ***/
+
+#ifdef SERF_LOGGING_ENABLED
+static apr_status_t log_to_stream_output(serf_log_output_t *output,
+                                         serf_config_t *config,
+                                         apr_uint32_t level,
+                                         apr_uint32_t comp,
+                                         int header,
+                                         const char *prefix,
+                                         const char *fmt,
+                                         va_list argp)
+{
+    if (output && output->baton) {
+        FILE *logfp = output->baton;
+
+        if (output->layout == SERF_LOG_DEFAULT_LAYOUT && header) {
+            const char *localip, *remoteip;
+            apr_status_t status;
 
             log_time(logfp);
 
@@ -150,14 +206,58 @@ void serf__log(apr_uint32_t level, apr_uint32_t comp, const char *filename,
                 fprintf(logfp, "%s", remoteip);
             }
             fprintf(logfp, "] ");
-
-            if (filename)
-                fprintf(logfp, "%s: ", filename);
             
-            va_start(argp, fmt);
-            vfprintf(logfp, fmt, argp);
-            va_end(argp);
+            if (prefix)
+                fprintf(logfp, "%s: ", prefix);
         }
+
+        vfprintf(logfp, fmt, argp);
+
+        return APR_SUCCESS;
     }
+
+    return APR_EINVAL;
+}
+#endif
+
+apr_status_t serf_logging_create_stream_output(serf_log_output_t **output,
+                                               serf_context_t *ctx,
+                                               apr_uint32_t level,
+                                               apr_uint32_t comp_mask,
+                                               serf_log_layout_t *layout,
+                                               FILE *fp,
+                                               apr_pool_t *pool)
+{
+#ifdef SERF_LOGGING_ENABLED
+    serf_log_output_t *baton;
+
+    baton = apr_palloc(pool, sizeof(serf_log_output_t));
+    baton->baton = fp;
+    baton->logger = log_to_stream_output;
+    baton->level = level;
+    baton->comps = comp_mask;
+    baton->layout = layout;
+
+    *output = baton;
+#endif
+    return APR_SUCCESS;
+}
+
+apr_status_t serf_logging_add_output(serf_context_t *ctx,
+                                     const serf_log_output_t *output)
+{
+#ifdef SERF_LOGGING_ENABLED
+    apr_status_t status;
+    log_baton_t *log_baton;
+
+    status = serf_config_get_object(ctx->config, SERF_CONFIG_CTX_LOGBATON,
+                                    (void **)&log_baton);
+    if (!status && log_baton) {
+        APR_ARRAY_PUSH(log_baton->output_list, const serf_log_output_t *) = output;
+    }
+
+    return status;
+#else
+    return APR_SUCCESS;
 #endif
 }

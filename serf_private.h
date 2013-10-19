@@ -50,7 +50,7 @@
 /*** Logging facilities ***/
 
 /* Comment out this flag to disable all logging at compile time */
-/* #define SERF_LOGGING_ENABLED */
+#define SERF_LOGGING_ENABLED
 
 /* Slightly shorter names for internal use. */
 #define LOGLVL_ERROR   SERF_LOG_ERROR
@@ -259,7 +259,9 @@ struct serf_context_t {
     /* List of authn types supported by the client.*/
     int authn_types;
     /* Callback function used to get credentials for a realm. */
-    serf_credentials_callback_t cred_cb; 
+    serf_credentials_callback_t cred_cb;
+
+    serf_config_t *config;
 };
 
 struct serf_listener_t {
@@ -550,11 +552,10 @@ serf_bucket_t *serf__bucket_log_wrapper_create(serf_bucket_t *wrapped,
                                                const char *prefix,
                                                serf_bucket_alloc_t *allocator);
 
-/** Logging functions. Use one of the [COMP]_VERBOSE flags to enable specific
-    logging. 
- **/
+/** Logging functions. **/
 
-/* TODO */
+/* Initialize the logging subsystem. This will store a log baton in the 
+   context's configuration store. */
 apr_status_t serf__log_init(serf_context_t *ctx);
 
 /* Logs a standard event, but without prefix. This is useful to build up
