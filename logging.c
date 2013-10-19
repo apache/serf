@@ -18,8 +18,6 @@
 
 #ifdef SERF_LOGGING_ENABLED
 typedef struct log_baton_t {
-    apr_uint32_t level;
-    apr_uint32_t comps;
     apr_array_header_t *output_list;
 } log_baton_t;
 
@@ -60,8 +58,6 @@ apr_status_t serf__log_init(serf_context_t *ctx)
     serf_config_t *config = ctx->config;
 
     log_baton = apr_palloc(ctx->pool, sizeof(log_baton_t));
-    log_baton->level = SERF_LOG_NONE;
-    log_baton->comps = SERF_LOGCOMP_NONE;
     log_baton->output_list = apr_array_make(ctx->pool, 1,
                                             sizeof(serf_log_output_t *));
 
@@ -78,15 +74,18 @@ apr_status_t serf__log_init(serf_context_t *ctx)
         if (status)
             return status;
 
+        status = serf_config_set_object(config, SERF_CONFIG_CTX_LOGBATON,
+                                        log_baton);
+        if (status)
+            return status;
+
         status = serf_logging_add_output(ctx, output);
         if (status)
             return status;
     }
-
-    return serf_config_set_object(config, SERF_CONFIG_CTX_LOGBATON, log_baton);
-#else
-    return APR_SUCCESS;
 #endif
+
+    return APR_SUCCESS;
 }
 
 #ifdef SERF_LOGGING_ENABLED
