@@ -232,24 +232,42 @@ apps_ssl_info_callback(const SSL *s, int where, int ret)
                   SSL_alert_desc_string_long(ret));
     }
     else if (where & SSL_CB_EXIT) {
+        int level;
         const char *how = (ret == 0) ? "failed" : "error";
-        if (ssl_error == 0) {
-            serf__log(LOGLVL_WARNING, LOGCOMP_SSL, __FILE__, ctx->config,
-                "%s:%s %s in %s, status=%d\n",
-                str, read_write_str, how, SSL_state_string_long(s),
-                ctx->crypt_status);
+
+        if (ret < 0 && ssl_error != SSL_ERROR_WANT_READ)
+            level = LOGLVL_ERROR;
+        else if (ret == 0)
+            level = LOGLVL_WARNING;
+        else if (ssl_error != SSL_ERROR_WANT_READ)
+            level = LOGLVL_INFO;
+        else
+            level = LOGLVL_DEBUG;
+
+        if (ret > 0) {
+            /* ret > 0: Just a state change; not an error */
+            serf__log(level, LOGCOMP_SSL, __FILE__, ctx->config,
+                      "%s: %s\n",
+                      str, SSL_state_string_long(s),
+                      ctx->crypt_status);
+        }
+        else if (ssl_error == 0) {
+            serf__log(level, LOGCOMP_SSL, __FILE__, ctx->config,
+                      "%s:%s %s in %s, status=%d\n",
+                      str, read_write_str, how, SSL_state_string_long(s),
+                      ctx->crypt_status);
         }
         else if (ssl_error != SSL_ERROR_SYSCALL) {
-            serf__log(LOGLVL_WARNING, LOGCOMP_SSL, __FILE__, ctx->config,
+            serf__log(level, LOGCOMP_SSL, __FILE__, ctx->config,
                       "%s:%s %s in %s: ssl_error=%d, status=%d\n",
                       str, read_write_str, how, SSL_state_string_long(s),
                       ssl_error, ctx->crypt_status);
         }
         else {
-            serf__log(LOGLVL_WARNING, LOGCOMP_SSL, __FILE__, ctx->config,
-                "%s:%s %s in %s: status=%d\n",
-                str, read_write_str, how, SSL_state_string_long(s),
-                ctx->crypt_status);
+            serf__log(level, LOGCOMP_SSL, __FILE__, ctx->config,
+                      "%s:%s %s in %s: status=%d\n",
+                      str, read_write_str, how, SSL_state_string_long(s),
+                      ctx->crypt_status);
         }
     }
 }
@@ -768,9 +786,6 @@ static apr_status_t ssl_encrypt(void *baton, apr_size_t bufsize,
 
                     ssl_err = SSL_get_error(ctx->ssl, ssl_len);
 
-                    serf__log(LOGLVL_ERROR, LOGCOMP_SSL, __FILE__, ctx->config,
-                              "ssl_encrypt: SSL write error: %d\n", ssl_err);
-
                     switch (ssl_err) {
                     case SSL_ERROR_SYSCALL:
                         /* bio_bucket_read() or bio_bucket_write() returned
@@ -800,10 +815,6 @@ static apr_status_t ssl_encrypt(void *baton, apr_size_t bufsize,
                         ctx->fatal_err = status = SERF_ERROR_SSL_COMM_FAILED;
                         break;
                     }
-
-                    serf__log(LOGLVL_ERROR, LOGCOMP_SSL, __FILE__, ctx->config,
-                              "ssl_encrypt: SSL write error: %d %d\n",
-                              status, *len);
                 } else {
                     /* We're done with this data. */
                     serf_bucket_mem_free(ctx->allocator, vecs_data);
