@@ -205,6 +205,9 @@ apps_ssl_info_callback(const SSL *s, int where, int ret)
     const char *str;
     serf_ssl_context_t *ctx;
     int w;
+    int in_write = (where & SSL_CB_WRITE);
+    const char *read_write_str = (in_write ? "write" : "read");
+    int ssl_error = SSL_get_error(s, ret);
 
     ctx = SSL_get_app_data(s);
 
@@ -222,20 +225,34 @@ apps_ssl_info_callback(const SSL *s, int where, int ret)
                   "%s:%s\n", str, SSL_state_string_long(s));
     }
     else if (where & SSL_CB_ALERT) {
-        str = (where & SSL_CB_READ) ? "read" : "write";
         serf__log(LOGLVL_WARNING, LOGCOMP_SSL, __FILE__, ctx->config,
-                  "SSL3 alert %s:%s:%s\n",
-                  str,
+                  "SSL %s alert: %s: %s\n",
+                  read_write_str,
                   SSL_alert_type_string_long(ret),
                   SSL_alert_desc_string_long(ret));
     }
     else if (where & SSL_CB_EXIT) {
-        if (ret == 0)
+        const char *how = (ret == 0) ? "failed" : "error";
+        apr_status_t status = in_write
+                                ? ctx->encrypt.status
+                                : ctx->decrypt.status;
+
+        if (ssl_error == 0) {
             serf__log(LOGLVL_WARNING, LOGCOMP_SSL, __FILE__, ctx->config,
-                      "%s:failed in %s\n", str, SSL_state_string_long(s));
-        else if (ret < 0) {
+                "%s:%s %s in %s\n",
+                str, read_write_str, how, SSL_state_string_long(s));
+        }
+        else if (ssl_error != SSL_ERROR_SYSCALL) {
             serf__log(LOGLVL_WARNING, LOGCOMP_SSL, __FILE__, ctx->config,
-                      "%s:error in %s\n", str, SSL_state_string_long(s));
+                      "%s:%s %s in %s: ssl_error=%d, status=%d\n",
+                      str, read_write_str, how, SSL_state_string_long(s),
+                      ssl_error, status);
+        }
+        else {
+            serf__log(LOGLVL_WARNING, LOGCOMP_SSL, __FILE__, ctx->config,
+                "%s:%s %s in %s: status=%d\n",
+                str, read_write_str, how, SSL_state_string_long(s),
+                status);
         }
     }
 }
