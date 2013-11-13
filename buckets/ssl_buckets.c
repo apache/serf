@@ -78,6 +78,7 @@
  *            |- 3. Call SSL_write with read data
  *              |- ...
  *                |- bio_bucket_read can be called
+ *                  |- read data from ctx->decrypt.stream
  *                |- bio_bucket_write with encrypted data
  *                  |- store in sink
  *            |- 4. If successful, read pending encrypted data and return.
@@ -93,14 +94,12 @@
  *        |- serf_ssl_read
  *          |- serf_databuf_read
  *            |- ssl_decrypt
- *              |- 1. SSL_read() for pending decrypted data; if any, return.
- *              |- 2. Try to read from ctx->stream [SOCKET bucket]
- *              |- 3. Append data to ssl_ctx->source
- *              |- 4. Call SSL_read()
+ *              |- Call SSL_read()
  *                |- ...
- *                  |- bio_bucket_write can be called
  *                  |- bio_bucket_read
- *                    |- read data from ssl_ctx->source
+ *                    |- read data from ctx->decrypt.stream
+ *                  |- bio_bucket_write can be called
+ *                    |- store in sink
  *              |- If data read, return it.
  *              |- If an error, set the STATUS value and return.
  *
@@ -111,7 +110,7 @@ typedef struct bucket_list {
     struct bucket_list *next;
 } bucket_list_t;
 
-typedef struct {
+typedef struct serf_ssl_stream_t {
     /* Helper to read data. Wraps stream. */
     serf_databuf_t databuf;
 
@@ -120,12 +119,6 @@ typedef struct {
 
     /* The next set of buckets */
     bucket_list_t *stream_next;
-
-    /* The status of the last thing we read. */
-    apr_status_t status;
-
-    /* Data we've read but not processed. */
-    serf_bucket_t *pending;
 } serf_ssl_stream_t;
 
 struct serf_ssl_context_t {
@@ -145,6 +138,15 @@ struct serf_ssl_context_t {
 
     serf_ssl_stream_t encrypt;
     serf_ssl_stream_t decrypt;
+
+    /* The status of the last thing we read or wrote. */
+    apr_status_t crypt_status;
+
+    /* Encrypted data waiting to be written. */
+    serf_bucket_t *encrypt_pending;
+
+    /* Should we read before we can write again? */
+    int want_read;
 
     /* Client cert callbacks */
     serf_ssl_need_client_cert_t cert_callback;
@@ -231,26 +233,23 @@ apps_ssl_info_callback(const SSL *s, int where, int ret)
     }
     else if (where & SSL_CB_EXIT) {
         const char *how = (ret == 0) ? "failed" : "error";
-        apr_status_t status = in_write
-                                ? ctx->encrypt.status
-                                : ctx->decrypt.status;
-
         if (ssl_error == 0) {
             serf__log(LOGLVL_WARNING, LOGCOMP_SSL, __FILE__, ctx->config,
-                "%s:%s %s in %s\n",
-                str, read_write_str, how, SSL_state_string_long(s));
+                "%s:%s %s in %s, status=%d\n",
+                str, read_write_str, how, SSL_state_string_long(s),
+                ctx->crypt_status);
         }
         else if (ssl_error != SSL_ERROR_SYSCALL) {
             serf__log(LOGLVL_WARNING, LOGCOMP_SSL, __FILE__, ctx->config,
                       "%s:%s %s in %s: ssl_error=%d, status=%d\n",
                       str, read_write_str, how, SSL_state_string_long(s),
-                      ssl_error, status);
+                      ssl_error, ctx->crypt_status);
         }
         else {
             serf__log(LOGLVL_WARNING, LOGCOMP_SSL, __FILE__, ctx->config,
                 "%s:%s %s in %s: status=%d\n",
                 str, read_write_str, how, SSL_state_string_long(s),
-                status);
+                ctx->crypt_status);
         }
     }
 }
@@ -267,36 +266,29 @@ static int bio_bucket_read(BIO *bio, char *in, int inlen)
     serf__log(LOGLVL_DEBUG, LOGCOMP_SSL, __FILE__, ctx->config,
               "bio_bucket_read called for %d bytes\n", inlen);
 
-    if (ctx->encrypt.status == SERF_ERROR_WAIT_CONN
-        && BIO_should_read(bio)) {
-        serf__log(LOGLVL_DEBUG, LOGCOMP_SSL, __FILE__, ctx->config,
-                  "bio_bucket_read waiting: (%d %d %d)\n",
-                  BIO_should_retry(bio), BIO_should_read(bio),
-                  BIO_get_retry_flags(bio));
-        /* Falling back... */
-        BIO_clear_retry_flags(bio);
+    BIO_clear_retry_flags(bio); /* Clear retry hints */
+
+    status = serf_bucket_read(ctx->decrypt.stream, inlen, &data, &len);
+    ctx->crypt_status = status;
+    ctx->want_read = FALSE;
+
+    if (SERF_BUCKET_READ_ERROR(status)) {
+        return -1; /* Raises: SSL_ERROR_SYSCALL; caller reads crypt_status */
     }
 
-    status = serf_bucket_read(ctx->decrypt.pending, inlen, &data, &len);
+    if (status && !APR_STATUS_IS_EOF(status)) {
+        BIO_set_retry_read(bio); /* Signal SSL: Retry later */
+    }
 
-    ctx->decrypt.status = status;
+    if (! len) {
+        return -1; /* Raises: SSL_ERROR_SYSCALL; caller reads crypt_status */
+    }
 
     serf__log(LOGLVL_DEBUG, LOGCOMP_SSL, __FILE__, ctx->config,
               "bio_bucket_read received %d bytes (%d)\n", len, status);
 
-    if (!SERF_BUCKET_READ_ERROR(status)) {
-        /* Oh suck. */
-        if (len) {
-            memcpy(in, data, len);
-            return len;
-        }
-        if (APR_STATUS_IS_EOF(status)) {
-            BIO_set_retry_read(bio);
-            return -1;
-        }
-    }
-
-    return -1;
+    memcpy(in, data, len);
+    return len;
 }
 
 /* Returns the amount written. */
@@ -308,20 +300,13 @@ static int bio_bucket_write(BIO *bio, const char *in, int inl)
     serf__log(LOGLVL_DEBUG, LOGCOMP_SSL, __FILE__, ctx->config,
               "bio_bucket_write called for %d bytes\n", inl);
 
-    if (ctx->encrypt.status == SERF_ERROR_WAIT_CONN
-        && !BIO_should_read(bio)) {
-        serf__log(LOGLVL_DEBUG, LOGCOMP_SSL, __FILE__, ctx->config,
-                  "bio_bucket_write waiting: (%d %d %d)\n",
-                  BIO_should_retry(bio), BIO_should_read(bio),
-                  BIO_get_retry_flags(bio));
-        /* Falling back... */
-        BIO_clear_retry_flags(bio);
-    }
+    BIO_clear_retry_flags(bio); /* Clear retry hints */
+    ctx->crypt_status = APR_SUCCESS;
 
     tmp = serf_bucket_simple_copy_create(in, inl,
-                                         ctx->encrypt.pending->allocator);
+                                         ctx->encrypt_pending->allocator);
 
-    serf_bucket_aggregate_append(ctx->encrypt.pending, tmp);
+    serf_bucket_aggregate_append(ctx->encrypt_pending, tmp);
 
     return inl;
 }
@@ -603,9 +588,7 @@ static apr_status_t ssl_decrypt(void *baton, apr_size_t bufsize,
                                 char *buf, apr_size_t *len)
 {
     serf_ssl_context_t *ctx = baton;
-    apr_size_t priv_len;
     apr_status_t status;
-    const char *data;
     int ssl_len;
 
     if (ctx->fatal_err)
@@ -614,98 +597,74 @@ static apr_status_t ssl_decrypt(void *baton, apr_size_t bufsize,
     serf__log(LOGLVL_DEBUG, LOGCOMP_SSL, __FILE__, ctx->config,
               "ssl_decrypt: begin %d\n", bufsize);
 
+    ctx->want_read = FALSE; /* Reading now */
+    ctx->crypt_status = APR_SUCCESS; /* Clear before calling SSL */
+
     /* Is there some data waiting to be read? */
     ssl_len = SSL_read(ctx->ssl, buf, bufsize);
-    if (ssl_len > 0) {
-        serf__log(LOGLVL_DEBUG, LOGCOMP_SSL, __FILE__, ctx->config,
-                  "ssl_decrypt: %d bytes (%d); status: %d; flags: %d\n",
-                  ssl_len, bufsize, ctx->decrypt.status,
-                  BIO_get_retry_flags(ctx->bio));
-        *len = ssl_len;
-        return APR_SUCCESS;
-    }
+    if (ssl_len < 0) {
+        int ssl_err;
 
-    status = serf_bucket_read(ctx->decrypt.stream, bufsize, &data, &priv_len);
-
-    if (!SERF_BUCKET_READ_ERROR(status) && priv_len) {
-        serf_bucket_t *tmp;
-
-        serf__log(LOGLVL_DEBUG, LOGCOMP_SSL, __FILE__, ctx->config,
-                  "ssl_decrypt: read %d bytes (%d); status: %d\n",
-                  priv_len, bufsize, status);
-
-        tmp = serf_bucket_simple_copy_create(data, priv_len,
-                                             ctx->decrypt.pending->allocator);
-
-        serf_bucket_aggregate_append(ctx->decrypt.pending, tmp);
-
-        ssl_len = SSL_read(ctx->ssl, buf, bufsize);
-        if (ssl_len < 0) {
-            int ssl_err;
-
-            ssl_err = SSL_get_error(ctx->ssl, ssl_len);
-            switch (ssl_err) {
-            case SSL_ERROR_SYSCALL:
-                *len = 0;
-                /* Return the underlying network error that caused OpenSSL
-                   to fail. ### This can be a crypt error! */
-                status = ctx->decrypt.status;
-                break;
-            case SSL_ERROR_WANT_READ:
-            case SSL_ERROR_WANT_WRITE:
-                *len = 0;
-                status = APR_EAGAIN;
-                break;
-            case SSL_ERROR_SSL:
-                *len = 0;
-                if (ctx->pending_err) {
-                    status = ctx->pending_err;
-                    ctx->pending_err = 0;
-                } else {
-                    ctx->fatal_err = status = SERF_ERROR_SSL_COMM_FAILED;
-                }
-                break;
-            default:
-                *len = 0;
-                ctx->fatal_err = status = SERF_ERROR_SSL_COMM_FAILED;
-                break;
-            }
-        } else if (ssl_len == 0) {
-            /* The server shut down the connection. */
-            int ssl_err, shutdown;
+        ssl_err = SSL_get_error(ctx->ssl, ssl_len);
+        switch (ssl_err) {
+        case SSL_ERROR_SYSCALL:
+            /* bio_bucket_read() or bio_bucket_write() returned -1. */
             *len = 0;
-
-            /* Check for SSL_RECEIVED_SHUTDOWN */
-            shutdown = SSL_get_shutdown(ctx->ssl);
-            /* Check for SSL_ERROR_ZERO_RETURN */
-            ssl_err = SSL_get_error(ctx->ssl, ssl_len);
-
-            if (shutdown == SSL_RECEIVED_SHUTDOWN &&
-                ssl_err == SSL_ERROR_ZERO_RETURN) {
-                /* The server closed the SSL session. While this doesn't
-                necessary mean the connection is closed, let's close
-                it here anyway.
-                We can optimize this later. */
-                serf__log(LOGLVL_ERROR, LOGCOMP_SSL, __FILE__, ctx->config,
-                          "ssl_decrypt: SSL read error: server"
-                          " shut down connection!\n");
-                status = APR_EOF;
+            /* Return the underlying status that caused OpenSSL to fail */
+            status = ctx->crypt_status;
+            break;
+        case SSL_ERROR_WANT_READ:
+        case SSL_ERROR_WANT_WRITE:
+            *len = 0;
+            status = APR_EAGAIN;
+            break;
+        case SSL_ERROR_SSL:
+            *len = 0;
+            if (ctx->pending_err) {
+                status = ctx->pending_err;
+                ctx->pending_err = APR_SUCCESS;
             } else {
-                /* A fatal error occurred. */
                 ctx->fatal_err = status = SERF_ERROR_SSL_COMM_FAILED;
             }
-        } else {
-            *len = ssl_len;
-            serf__log(LOGLVL_DEBUG, LOGCOMP_SSLMSG, __FILE__, ctx->config,
-                      "---\n%.*s\n-(%d)-\n", *len, buf, *len);
+            break;
+        default:
+            *len = 0;
+            ctx->fatal_err = status = SERF_ERROR_SSL_COMM_FAILED;
+            break;
         }
-    }
-    else {
+    } else if (ssl_len == 0) {
+        /* The server shut down the connection. */
+        int ssl_err, shutdown;
         *len = 0;
+
+        /* Check for SSL_RECEIVED_SHUTDOWN */
+        shutdown = SSL_get_shutdown(ctx->ssl);
+        /* Check for SSL_ERROR_ZERO_RETURN */
+        ssl_err = SSL_get_error(ctx->ssl, ssl_len);
+
+        if (shutdown == SSL_RECEIVED_SHUTDOWN &&
+            ssl_err == SSL_ERROR_ZERO_RETURN) {
+            /* The server closed the SSL session. While this doesn't
+            necessary mean the connection is closed, let's close
+            it here anyway.
+            We can optimize this later. */
+            serf__log(LOGLVL_ERROR, LOGCOMP_SSL, __FILE__, ctx->config,
+                        "ssl_decrypt: SSL read error: server"
+                        " shut down connection!\n");
+            status = APR_EOF;
+        } else {
+            /* A fatal error occurred. */
+            ctx->fatal_err = status = SERF_ERROR_SSL_COMM_FAILED;
+        }
+    } else {
+        *len = ssl_len;
+        status = ctx->crypt_status;
+        serf__log(LOGLVL_DEBUG, LOGCOMP_SSLMSG, __FILE__, ctx->config,
+                    "---\n%.*s\n-(%d)-\n", *len, buf, *len);
     }
+ 
     serf__log(LOGLVL_DEBUG, LOGCOMP_SSL, __FILE__, ctx->config,
-              "ssl_decrypt: %d %d %d\n", status, *len,
-              BIO_get_retry_flags(ctx->bio));
+              "ssl_decrypt: %d %d\n", status, *len);
 
     return status;
 }
@@ -727,7 +686,7 @@ static apr_status_t ssl_encrypt(void *baton, apr_size_t bufsize,
               "ssl_encrypt: begin %d\n", bufsize);
 
     /* Try to read already encrypted but unread data first. */
-    status = serf_bucket_read(ctx->encrypt.pending, bufsize, &data, len);
+    status = serf_bucket_read(ctx->encrypt_pending, bufsize, &data, len);
     if (SERF_BUCKET_READ_ERROR(status)) {
         return status;
     }
@@ -740,29 +699,10 @@ static apr_status_t ssl_encrypt(void *baton, apr_size_t bufsize,
         }
 
         serf__log(LOGLVL_DEBUG, LOGCOMP_SSL, __FILE__, ctx->config,
-                  "ssl_encrypt: %d %d %d (quick read)\n",
-                  status, *len, BIO_get_retry_flags(ctx->bio));
+                  "ssl_encrypt: %d %d (quick read)\n",
+                  status, *len);
 
         return status;
-    }
-
-    if (BIO_should_retry(ctx->bio) && BIO_should_write(ctx->bio)) {
-        serf__log(LOGLVL_DEBUG, LOGCOMP_SSL, __FILE__, ctx->config,
-                  "ssl_encrypt: %d %d %d (should write exit)\n",
-                  status, *len, BIO_get_retry_flags(ctx->bio));
-
-        return APR_EAGAIN;
-    }
-
-    /* If we were previously blocked, unblock ourselves now. */
-    if (BIO_should_read(ctx->bio)) {
-        serf__log(LOGLVL_DEBUG, LOGCOMP_SSL, __FILE__, ctx->config,
-                  "ssl_encrypt: reset %d %d (%d %d %d)\n",
-                  status, ctx->encrypt.status,
-                  BIO_should_retry(ctx->bio), BIO_should_read(ctx->bio),
-                  BIO_get_retry_flags(ctx->bio));
-
-        ctx->encrypt.status = APR_SUCCESS;
     }
 
     /* Oh well, read from our stream now. */
@@ -770,7 +710,7 @@ static apr_status_t ssl_encrypt(void *baton, apr_size_t bufsize,
     do {
         apr_size_t interim_len;
 
-        if (!ctx->encrypt.status) {
+        if (!ctx->want_read) {
             struct iovec vecs[64];
             int vecs_read;
 
@@ -806,9 +746,7 @@ static apr_status_t ssl_encrypt(void *baton, apr_size_t bufsize,
                           "ssl_encrypt: bucket read %d bytes; "\
                           "status %d\n", interim_len, status);
 
-                /* Stash our status away. */
-                ctx->encrypt.status = status;
-
+                ctx->crypt_status = APR_SUCCESS; /* Clear before calling SSL */
                 ssl_len = SSL_write(ctx->ssl, vecs_data, interim_len);
 
                 serf__log(LOGLVL_DEBUG, LOGCOMP_SSL, __FILE__, ctx->config,
@@ -833,23 +771,34 @@ static apr_status_t ssl_encrypt(void *baton, apr_size_t bufsize,
                     serf__log(LOGLVL_ERROR, LOGCOMP_SSL, __FILE__, ctx->config,
                               "ssl_encrypt: SSL write error: %d\n", ssl_err);
 
-                    if (ssl_err == SSL_ERROR_SYSCALL) {
-                        /* Return the underlying network error that caused OpenSSL
-                           to fail. ### This can be a decrypt error! */
-                        status = ctx->encrypt.status;
+                    switch (ssl_err) {
+                    case SSL_ERROR_SYSCALL:
+                        /* bio_bucket_read() or bio_bucket_write() returned
+                           a failure by returning -1. */
+                        status = ctx->crypt_status;
                         if (SERF_BUCKET_READ_ERROR(status)) {
                             return status;
                         }
-                    }
-                    else {
-                        /* Oh, no. */
-                        if (ssl_err == SSL_ERROR_WANT_READ) {
-                            status = SERF_ERROR_WAIT_CONN;
+                        break;
+
+                    case SSL_ERROR_WANT_READ:
+                        ctx->want_read = TRUE;
+                        /* Fall through */
+                    case SSL_ERROR_WANT_WRITE:
+                        status = SERF_ERROR_WAIT_CONN;
+                        break;
+                    case SSL_ERROR_SSL:
+                        if (ctx->pending_err) {
+                            status = ctx->pending_err;
+                            ctx->pending_err = APR_SUCCESS;
                         }
                         else {
-                            ctx->fatal_err = status =
-                                SERF_ERROR_SSL_COMM_FAILED;
+                            ctx->fatal_err = status = SERF_ERROR_SSL_COMM_FAILED;
                         }
+                        break;
+                    default:
+                        ctx->fatal_err = status = SERF_ERROR_SSL_COMM_FAILED;
+                        break;
                     }
 
                     serf__log(LOGLVL_ERROR, LOGCOMP_SSL, __FILE__, ctx->config,
@@ -869,7 +818,11 @@ static apr_status_t ssl_encrypt(void *baton, apr_size_t bufsize,
         else {
             interim_len = 0;
             *len = 0;
-            status = ctx->encrypt.status;
+            status = ctx->crypt_status;
+
+            if (!status) {
+                status = APR_EAGAIN; /* Exit loop */
+            }
         }
 
     } while (!status && interim_bufsize);
@@ -881,7 +834,7 @@ static apr_status_t ssl_encrypt(void *baton, apr_size_t bufsize,
         int vecs_read, i;
 
         /* We read something! */
-        agg_status = serf_bucket_read_iovec(ctx->encrypt.pending, bufsize,
+        agg_status = serf_bucket_read_iovec(ctx->encrypt_pending, bufsize,
                                             64, vecs, &vecs_read);
         *len = 0;
         for (i = 0; i < vecs_read; i++) {
@@ -891,22 +844,15 @@ static apr_status_t ssl_encrypt(void *baton, apr_size_t bufsize,
 
         serf__log(LOGLVL_DEBUG, LOGCOMP_SSL, __FILE__, ctx->config,
                   "ssl_encrypt read agg: %d %d %d %d\n", status, agg_status,
-                  ctx->encrypt.status, *len);
+                  ctx->crypt_status, *len);
 
         if (!agg_status) {
-            status = agg_status;
+            status = APR_SUCCESS;
         }
     }
 
-    if (status == SERF_ERROR_WAIT_CONN
-        && BIO_should_retry(ctx->bio) && BIO_should_read(ctx->bio)) {
-        ctx->encrypt.status = SERF_ERROR_WAIT_CONN;
-    }
-
     serf__log(LOGLVL_DEBUG, LOGCOMP_SSL, __FILE__, ctx->config,
-              "ssl_encrypt finished: %d %d (%d %d %d)\n", status, *len,
-              BIO_should_retry(ctx->bio), BIO_should_read(ctx->bio),
-              BIO_get_retry_flags(ctx->bio));
+              "ssl_encrypt finished: %d %d\n", status, *len);
 
     return status;
 }
@@ -1269,18 +1215,18 @@ static serf_ssl_context_t *ssl_init_context(serf_bucket_alloc_t *allocator)
 
     ssl_ctx->encrypt.stream = NULL;
     ssl_ctx->encrypt.stream_next = NULL;
-    ssl_ctx->encrypt.pending = serf_bucket_aggregate_create(allocator);
-    ssl_ctx->encrypt.status = APR_SUCCESS;
+    ssl_ctx->encrypt_pending = serf_bucket_aggregate_create(allocator);
     serf_databuf_init(&ssl_ctx->encrypt.databuf);
     ssl_ctx->encrypt.databuf.read = ssl_encrypt;
     ssl_ctx->encrypt.databuf.read_baton = ssl_ctx;
 
     ssl_ctx->decrypt.stream = NULL;
-    ssl_ctx->decrypt.pending = serf_bucket_aggregate_create(allocator);
-    ssl_ctx->decrypt.status = APR_SUCCESS;
     serf_databuf_init(&ssl_ctx->decrypt.databuf);
     ssl_ctx->decrypt.databuf.read = ssl_decrypt;
     ssl_ctx->decrypt.databuf.read_baton = ssl_ctx;
+
+    ssl_ctx->crypt_status = APR_SUCCESS;
+    ssl_ctx->want_read = FALSE;
 
     return ssl_ctx;
 }
@@ -1289,11 +1235,8 @@ static apr_status_t ssl_free_context(
     serf_ssl_context_t *ssl_ctx)
 {
     /* If never had the pending buckets, don't try to free them. */
-    if (ssl_ctx->decrypt.pending != NULL) {
-        serf_bucket_destroy(ssl_ctx->decrypt.pending);
-    }
-    if (ssl_ctx->encrypt.pending != NULL) {
-        serf_bucket_destroy(ssl_ctx->encrypt.pending);
+    if (ssl_ctx->encrypt_pending != NULL) {
+        serf_bucket_destroy(ssl_ctx->encrypt_pending);
     }
 
     /* SSL_free implicitly frees the underlying BIO. */
@@ -1710,23 +1653,23 @@ static void serf_ssl_encrypt_destroy_and_data(serf_bucket_t *bucket)
 
     if (ssl_ctx->encrypt.stream == *ctx->our_stream) {
         serf_bucket_destroy(*ctx->our_stream);
-        serf_bucket_destroy(ssl_ctx->encrypt.pending);
+        serf_bucket_destroy(ssl_ctx->encrypt_pending);
 
-        /* Reset our encrypted status and databuf. */
-        ssl_ctx->encrypt.status = APR_SUCCESS;
+        /* Reset our status and databuf. */
+        ssl_ctx->crypt_status = APR_SUCCESS;
         ssl_ctx->encrypt.databuf.status = APR_SUCCESS;
 
         /* Advance to the next stream - if we have one. */
         if (ssl_ctx->encrypt.stream_next == NULL) {
             ssl_ctx->encrypt.stream = NULL;
-            ssl_ctx->encrypt.pending = NULL;
+            ssl_ctx->encrypt_pending = NULL;
         }
         else {
             bucket_list_t *cur;
 
             cur = ssl_ctx->encrypt.stream_next;
             ssl_ctx->encrypt.stream = cur->bucket;
-            ssl_ctx->encrypt.pending =
+            ssl_ctx->encrypt_pending =
                 serf_bucket_aggregate_create(cur->bucket->allocator);
             ssl_ctx->encrypt.stream_next = cur->next;
             serf_bucket_mem_free(ssl_ctx->allocator, cur);
