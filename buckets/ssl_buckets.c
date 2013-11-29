@@ -463,6 +463,7 @@ validate_server_certificate(int cert_valid, X509_STORE_CTX *store_ctx)
             case X509_V_ERR_UNABLE_TO_GET_ISSUER_CERT:
             case X509_V_ERR_CERT_UNTRUSTED:
             case X509_V_ERR_INVALID_CA:
+            case X509_V_ERR_UNABLE_TO_VERIFY_LEAF_SIGNATURE:
                     failures |= SERF_SSL_CERT_UNKNOWNCA;
                     break;
             case X509_V_ERR_CERT_REVOKED:
