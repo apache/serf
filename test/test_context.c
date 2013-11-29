@@ -1180,8 +1180,7 @@ static void test_ssl_handshake(CuTest *tc)
     /* This unknown failures is X509_V_ERR_UNABLE_TO_VERIFY_LEAF_SIGNATURE, 
        meaning the chain has only the server cert. A good candidate for its
        own failure code. */
-    expected_failures = SERF_SSL_CERT_UNKNOWNCA |
-                        SERF_SSL_CERT_UNKNOWN_FAILURE;
+    expected_failures = SERF_SSL_CERT_UNKNOWNCA;
     tb->user_baton = &expected_failures;
 
     create_new_request(tb, &handler_ctx[0], "GET", "/", 1);
