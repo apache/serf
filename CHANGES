@@ -1,7 +1,7 @@
-Serf 1.3.2 [2013-??-??, from /tags/1.3.3, r????]
+Serf 1.3.3 [2013-12-09, from /tags/1.3.3, r????]
   Fix issue 129: Try more addresses of multihomed servers
   Handle X509_V_ERR_UNABLE_TO_VERIFY_LEAF_SIGNATURE correctly (r2225)
-  Return APR_TIMEUP from poll() to easier detect connection timeouts (r2183)
+  Return APR_TIMEUP from poll() to enable detecting connection timeouts (r2183)
 
 
 Serf 1.3.2 [2013-10-04, from /tags/1.3.2, r2195]
