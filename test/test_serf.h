@@ -25,6 +25,8 @@
 #include "serf.h"
 #include "server/test_server.h"
 
+#include "MockHTTPinC/MockHTTP.h"
+
 /** These macros are provided by APR itself from version 1.3.
  * Definitions are provided here for when using older versions of APR.
  */
@@ -100,6 +102,7 @@ typedef struct {
 
     serv_ctx_t *serv_ctx;
     apr_sockaddr_t *serv_addr;
+    apr_port_t serv_port;
 
     serv_ctx_t *proxy_ctx;
     apr_sockaddr_t *proxy_addr;
@@ -120,6 +123,9 @@ typedef struct {
 
     serf_ssl_context_t *ssl_context;
     serf_ssl_need_server_cert_t server_cert_cb;
+
+    /* Context for the MockHTTP library */
+    MockHTTP *mh;
 } test_baton_t;
 
 apr_status_t default_https_conn_setup(apr_socket_t *skt,
@@ -281,5 +287,28 @@ serf_bucket_t *serf_bucket_mock_create(mockbkt_action *actions,
                                        int len,
                                        serf_bucket_alloc_t *allocator);
 apr_status_t serf_bucket_mock_more_data_arrived(serf_bucket_t *bucket);
+
+/*****************************************************************************/
+/* Test utility functions, to be used with the MockHTTPinC framework         */
+/*****************************************************************************/
+
+/* Setup a serf client context to connect to the mock test server */
+apr_status_t setup_test_client_context(test_baton_t **tb_p,
+                                       serf_connection_setup_t conn_setup,
+                                       apr_size_t messages_to_be_sent,
+                                       apr_pool_t *pool);
+
+/* Setup a mock test server on localhost on the default port. The actual port
+   will be stored in tb->port. */
+void setup_test_mock_server(test_baton_t *tb);
+
+/* Helper function, runs the client and server context loops and validates
+   that no errors were encountered, and all messages were sent and received. */
+apr_status_t
+run_client_and_mock_servers_loops(test_baton_t *tb,
+                                  int num_requests,
+                                  handler_baton_t handler_ctx[],
+                                  apr_pool_t *pool);
+
 
 #endif /* TEST_SERF_H */

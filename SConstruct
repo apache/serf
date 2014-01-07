@@ -438,6 +438,10 @@ env.Alias('install', ['install-lib', 'install-inc', 'install-pc', ])
 
 tenv = env.Clone()
 
+# MockHTTP requires C99 standard, so use it for the test suite.
+cflags = tenv['CFLAGS']
+tenv.Replace(CFLAGS = [f.replace('-std=c89', '-std=c99') for f in cflags])
+
 TEST_PROGRAMS = [ 'serf_get', 'serf_response', 'serf_request', 'serf_spider',
                   'test_all', 'serf_bwtp' ]
 if sys.platform == 'win32':
@@ -463,6 +467,8 @@ testall_files = [
         'test/test_internal.c',
         'test/mock_buckets.c',
         'test/test_ssl.c',
+        'test/MockHTTPInC/MockHTTP.c',
+        'test/MockHTTPInC/MockHTTP_server.c',
         'test/server/test_server.c',
         'test/server/test_sslserver.c',
         ]

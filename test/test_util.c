@@ -24,6 +24,7 @@
 #include "test_serf.h"
 #include "server/test_server.h"
 
+#include "MockHTTPinC/MockHttp.h"
 
 /*****************************************************************************/
 /* Server setup function(s)
@@ -163,6 +164,7 @@ static apr_status_t setup(test_baton_t **tb_p,
     tb->handled_requests = apr_array_make(pool, message_count, sizeof(int));
 
     tb->serv_url = serv_url;
+    tb->serv_port = SERV_PORT;
     tb->conn_setup = conn_setup;
 
     status = default_server_address(&tb->serv_addr, pool);
@@ -615,6 +617,95 @@ create_new_request_with_resp_hdlr(test_baton_t *tb,
                                    handler_ctx);
 }
 
+/*****************************************************************************/
+/* Test utility functions, to be used with the MockHTTPinC framework         */
+/*****************************************************************************/
+
+static apr_status_t clean_mh(void *data)
+{
+    test_baton_t *tb = data;
+
+    if (tb && tb->mh) {
+        mhCleanup(tb->mh);
+    }
+    return APR_SUCCESS;
+}
+
+apr_status_t
+setup_test_client_context(test_baton_t **tb_p,
+                          serf_connection_setup_t conn_setup,
+                          apr_size_t messages_to_be_sent,
+                          apr_pool_t *pool)
+{
+    apr_status_t status;
+    test_baton_t *tb;
+
+    /* TODO: fix hardcoded server address */
+    status = setup(tb_p,
+                   conn_setup ? conn_setup : default_http_conn_setup,
+                   "http://localhost:30080",
+                   FALSE,
+                   messages_to_be_sent,
+                   pool);
+    if (status != APR_SUCCESS)
+        return status;
+
+    tb = *tb_p;
+    apr_pool_cleanup_register(tb->pool, tb, clean_mh, clean_mh);
+
+    return status;
+}
+
+apr_status_t
+run_client_and_mock_servers_loops(test_baton_t *tb,
+                                  int num_requests,
+                                  handler_baton_t handler_ctx[],
+                                  apr_pool_t *pool)
+{
+    apr_pool_t *iter_pool;
+    int i, done = 0;
+    MockHTTP *mh = tb->mh;
+    apr_status_t status;
+    apr_time_t finish_time = apr_time_now() + apr_time_from_sec(15);
+
+    apr_pool_create(&iter_pool, pool);
+
+    while (!done)
+    {
+        apr_pool_clear(iter_pool);
+
+        /* run server event loop */
+        mhRunServerLoop(mh);
+
+        /* run client event loop */
+        status = serf_context_run(tb->context, 0, iter_pool);
+        if (!APR_STATUS_IS_TIMEUP(status) &&
+            SERF_BUCKET_READ_ERROR(status))
+            return status;
+
+        done = 1;
+        for (i = 0; i < num_requests; i++)
+            done &= handler_ctx[i].done;
+
+        if (!done && (apr_time_now() > finish_time))
+            return APR_ETIMEDOUT;
+    }
+    apr_pool_destroy(iter_pool);
+    
+    return APR_SUCCESS;
+}
+
+void setup_test_mock_server(test_baton_t *tb)
+{
+    InitMockHTTP(tb->mh)
+      WithHTTPserver(WithPort(30080))
+    EndInit
+    tb->serv_port = mhServerPortNr(tb->mh);
+}
+
+/*****************************************************************************/
+/* Logging functions                                                         */
+/*****************************************************************************/
 static void log_time()
 {
     apr_time_exp_t tm;

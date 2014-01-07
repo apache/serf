@@ -18,6 +18,8 @@
 #include "serf.h"
 #include "test_serf.h"
 
+#include "MockHTTPinC/MockHTTP.h"
+
 static apr_status_t
 authn_callback_expect_not_called(char **username,
                                  char **password,
@@ -138,7 +140,8 @@ basic_authn_callback(char **username,
         return SERF_ERROR_ISSUE_IN_TESTSUITE;
     if (strcmp("Basic", authn_type) != 0)
         return SERF_ERROR_ISSUE_IN_TESTSUITE;
-    if (strcmp("<http://localhost:12345> Test Suite", realm) != 0)
+    if (strcmp(apr_psprintf(pool, "<http://localhost:%d> Test Suite",
+                            tb->serv_port), realm) != 0)
         return SERF_ERROR_ISSUE_IN_TESTSUITE;
 
     *username = "serf";
@@ -148,100 +151,81 @@ basic_authn_callback(char **username,
 }
 
 /* Test template, used for KeepAlive Off and KeepAlive On test */
-static void basic_authentication(CuTest *tc, const char *resp_hdrs)
+static void basic_authentication(CuTest *tc, const char *resp_hdr,
+                                 const char *resp_value)
 {
     test_baton_t *tb;
     handler_baton_t handler_ctx[2];
-    int num_requests_sent, num_requests_recvd;
-    test_server_message_t message_list[3];
-    test_server_action_t action_list[3];
+    int num_requests_sent;
     apr_status_t status;
 
     apr_pool_t *test_pool = tc->testBaton;
-    
-    /* Expected string relies on strict order of headers, which is not
-       guaranteed. c2VyZjpzZXJmdGVzdA== is base64 encoded serf:serftest . */
-    message_list[0].text = CHUNKED_REQUEST(1, "1");
-    message_list[1].text = apr_psprintf(test_pool,
-        "GET / HTTP/1.1" CRLF
-        "Host: localhost:12345" CRLF
-        "Authorization: Basic c2VyZjpzZXJmdGVzdA==" CRLF
-        "Transfer-Encoding: chunked" CRLF
-        CRLF
-        "1" CRLF
-        "1" CRLF
-        "0" CRLF CRLF);
-    message_list[2].text = apr_psprintf(test_pool,
-        "GET / HTTP/1.1" CRLF
-        "Host: localhost:12345" CRLF
-        "Authorization: Basic c2VyZjpzZXJmdGVzdA==" CRLF
-        "Transfer-Encoding: chunked" CRLF
-        CRLF
-        "1" CRLF
-        "2" CRLF
-        "0" CRLF CRLF);
-
-    action_list[0].kind = SERVER_RESPOND;
-    /* Use non-standard case WWW-Authenticate header and scheme name to test
-       for case insensitive comparisons. */
-    action_list[0].text = apr_psprintf(test_pool,
-        "HTTP/1.1 401 Unauthorized" CRLF
-        "Transfer-Encoding: chunked" CRLF
-        "www-Authenticate: bAsIc realm=""Test Suite""" CRLF
-        "%s"
-        CRLF
-        "1" CRLF CRLF
-        "0" CRLF CRLF, resp_hdrs);
-    action_list[1].kind = SERVER_RESPOND;
-    action_list[1].text = CHUNKED_EMPTY_RESPONSE;
-    action_list[2].kind = SERVER_RESPOND;
-    action_list[2].text = CHUNKED_EMPTY_RESPONSE;
 
     /* Set up a test context with a server */
-    status = test_http_server_setup(&tb,
-                                    message_list, 3,
-                                    action_list, 3, 0, NULL,
-                                    test_pool);
+    status = setup_test_client_context(&tb, NULL, 2, test_pool);
     CuAssertIntEquals(tc, APR_SUCCESS, status);
+    setup_test_mock_server(tb);
 
     serf_config_authn_types(tb->context, SERF_AUTHN_BASIC);
     serf_config_credentials_callback(tb->context, basic_authn_callback);
 
-    create_new_request(tb, &handler_ctx[0], "GET", "/", 1);
-
     /* Test that a request is retried and authentication headers are set
        correctly. */
     num_requests_sent = 1;
-    num_requests_recvd = 2;
 
-    status = test_helper_run_requests_no_check(tc, tb, num_requests_sent,
+    /* c2VyZjpzZXJmdGVzdA== is base64 encoded serf:serftest . */
+    /* Use non-standard case WWW-Authenticate header and scheme name to test
+       for case insensitive comparisons. */
+    Given(tb->mh)
+      GetRequest(URLEqualTo("/"), HeaderNotSet("Authorization"))
+        Respond(WithCode(401),WithChunkedBody("1"),
+                WithHeader("www-Authenticate", "bAsIc realm=""Test Suite"""),
+                resp_hdr ? WithHeader(resp_hdr, resp_value) : NULL)
+      GetRequest(URLEqualTo("/"),
+                 HeaderEqualTo("Authorization", "Basic c2VyZjpzZXJmdGVzdA=="))
+        Respond(WithCode(200),WithChunkedBody(""))
+    Expect
+      AllRequestsReceivedInOrder
+    EndGiven
+
+    create_new_request(tb, &handler_ctx[0], "GET", "/", 1);
+    status = run_client_and_mock_servers_loops(tb, num_requests_sent,
                                                handler_ctx, test_pool);
     CuAssertIntEquals(tc, APR_SUCCESS, status);
-    CuAssertIntEquals(tc, num_requests_recvd, tb->sent_requests->nelts);
-    CuAssertIntEquals(tc, num_requests_recvd, tb->accepted_requests->nelts);
-    CuAssertIntEquals(tc, num_requests_sent, tb->handled_requests->nelts);
-
     CuAssertTrue(tc, tb->result_flags & TEST_RESULT_AUTHNCB_CALLED);
+    Verify(tb->mh)
+      CuAssertTrue(tc, VerifyAllExpectationsOk);
+    EndVerify
 
     /* Test that credentials were cached by asserting that the authn callback
        wasn't called again. */
+    Given(tb->mh)
+      GetRequest(URLEqualTo("/"),
+                 HeaderEqualTo("Authorization", "Basic c2VyZjpzZXJmdGVzdA=="))
+        Respond(WithCode(200), WithChunkedBody(""))
+    Expect
+      AllRequestsReceivedInOrder
+    EndGiven
     tb->result_flags = 0;
 
     create_new_request(tb, &handler_ctx[0], "GET", "/", 2);
-    status = test_helper_run_requests_no_check(tc, tb, num_requests_sent,
+    status = run_client_and_mock_servers_loops(tb, num_requests_sent,
                                                handler_ctx, test_pool);
     CuAssertIntEquals(tc, APR_SUCCESS, status);
     CuAssertTrue(tc, !(tb->result_flags & TEST_RESULT_AUTHNCB_CALLED));
+    Verify(tb->mh)
+      CuAssertTrue(tc, VerifyAllExpectationsOk);
+    EndVerify
 }
 
 static void test_basic_authentication(CuTest *tc)
 {
-    basic_authentication(tc, "");
+    basic_authentication(tc, "", "");
 }
 
 static void test_basic_authentication_keepalive_off(CuTest *tc)
 {
-    basic_authentication(tc, "Connection: close" CRLF);
+    basic_authentication(tc, "Connection", "close");
 }
 
 static apr_status_t
@@ -617,13 +601,14 @@ CuSuite *test_auth(void)
 
     SUITE_ADD_TEST(suite, test_authentication_disabled);
     SUITE_ADD_TEST(suite, test_unsupported_authentication);
-    SUITE_ADD_TEST(suite, test_basic_authentication);
-    SUITE_ADD_TEST(suite, test_basic_authentication_keepalive_off);
     SUITE_ADD_TEST(suite, test_digest_authentication);
     SUITE_ADD_TEST(suite, test_digest_authentication_keepalive_off);
     SUITE_ADD_TEST(suite, test_basic_switch_realms);
     SUITE_ADD_TEST(suite, test_digest_switch_realms);
     SUITE_ADD_TEST(suite, test_auth_on_HEAD);
+    /* Converted to MockHTTP */
+    SUITE_ADD_TEST(suite, test_basic_authentication);
+    SUITE_ADD_TEST(suite, test_basic_authentication_keepalive_off);
 
     return suite;
 }
