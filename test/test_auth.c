@@ -41,42 +41,33 @@ authn_callback_expect_not_called(char **username,
 static void test_authentication_disabled(CuTest *tc)
 {
     test_baton_t *tb;
-    handler_baton_t handler_ctx[2];
-
-    test_server_message_t message_list[] = {
-        {CHUNKED_REQUEST(1, "1")} };
-    test_server_action_t action_list[] = {
-        {SERVER_RESPOND, "HTTP/1.1 401 Unauthorized" CRLF
-            "Transfer-Encoding: chunked" CRLF
-            "WWW-Authenticate: Basic realm=""Test Suite""" CRLF
-            CRLF
-            "1" CRLF CRLF
-            "0" CRLF CRLF},
-    };
+    handler_baton_t handler_ctx[1];
     apr_status_t status;
 
     apr_pool_t *test_pool = tc->testBaton;
 
     /* Set up a test context with a server */
-    status = test_http_server_setup(&tb,
-                                    message_list, 1,
-                                    action_list, 1, 0, NULL,
-                                    test_pool);
+    status = setup_test_client_context(&tb, NULL, 1, test_pool);
     CuAssertIntEquals(tc, APR_SUCCESS, status);
+    setup_test_mock_server(tb);
 
     serf_config_authn_types(tb->context, SERF_AUTHN_NONE);
     serf_config_credentials_callback(tb->context,
                                      authn_callback_expect_not_called);
 
+    Given(tb->mh)
+      GetRequest(URLEqualTo("/"), ChunkedBodyEqualTo("1"))
+        Respond(WithCode(401), WithChunkedBody("1"),
+                WithHeader("WWW-Authenticate", "Basic realm=\"Test Suite\""))
+    EndGiven
+
     create_new_request(tb, &handler_ctx[0], "GET", "/", 1);
-
-    status = test_helper_run_requests_no_check(tc, tb, 1,
+    status = run_client_and_mock_servers_loops(tb, 1,
                                                handler_ctx, test_pool);
+    Verify(tb->mh)
+      CuAssertTrue(tc, VerifyAllRequestsReceived);
+    EndVerify
     CuAssertIntEquals(tc, SERF_ERROR_AUTHN_NOT_SUPPORTED, status);
-    CuAssertIntEquals(tc, 1, tb->sent_requests->nelts);
-    CuAssertIntEquals(tc, 1, tb->accepted_requests->nelts);
-    CuAssertIntEquals(tc, 0, tb->handled_requests->nelts);
-
     CuAssertTrue(tc, !(tb->result_flags & TEST_RESULT_AUTHNCB_CALLED));
 }
 
@@ -84,42 +75,34 @@ static void test_authentication_disabled(CuTest *tc)
 static void test_unsupported_authentication(CuTest *tc)
 {
     test_baton_t *tb;
-    handler_baton_t handler_ctx[2];
-
-    test_server_message_t message_list[] = {
-        {CHUNKED_REQUEST(1, "1")} };
-    test_server_action_t action_list[] = {
-        {SERVER_RESPOND, "HTTP/1.1 401 Unauthorized" CRLF
-            "Transfer-Encoding: chunked" CRLF
-            "WWW-Authenticate: NotExistent realm=""Test Suite""" CRLF
-            CRLF
-            "1" CRLF CRLF
-            "0" CRLF CRLF},
-    };
+    handler_baton_t handler_ctx[1];
     apr_status_t status;
 
     apr_pool_t *test_pool = tc->testBaton;
 
     /* Set up a test context with a server */
-    status = test_http_server_setup(&tb,
-                                    message_list, 1,
-                                    action_list, 1, 0, NULL,
-                                    test_pool);
+    status = setup_test_client_context(&tb, NULL, 1, test_pool);
     CuAssertIntEquals(tc, APR_SUCCESS, status);
+    setup_test_mock_server(tb);
 
     serf_config_authn_types(tb->context, SERF_AUTHN_ALL);
     serf_config_credentials_callback(tb->context,
                                      authn_callback_expect_not_called);
 
+    Given(tb->mh)
+      GetRequest(URLEqualTo("/"), ChunkedBodyEqualTo("1"))
+        Respond(WithCode(401), WithChunkedBody("1"),
+                WithHeader("WWW-Authenticate",
+                           "NotExistent realm=\"Test Suite\""))
+    EndGiven
+
     create_new_request(tb, &handler_ctx[0], "GET", "/", 1);
-
-    status = test_helper_run_requests_no_check(tc, tb, 1,
+    status = run_client_and_mock_servers_loops(tb, 1,
                                                handler_ctx, test_pool);
+    Verify(tb->mh)
+      CuAssertTrue(tc, VerifyAllRequestsReceived);
+    EndVerify
     CuAssertIntEquals(tc, SERF_ERROR_AUTHN_NOT_SUPPORTED, status);
-    CuAssertIntEquals(tc, 1, tb->sent_requests->nelts);
-    CuAssertIntEquals(tc, 1, tb->accepted_requests->nelts);
-    CuAssertIntEquals(tc, 0, tb->handled_requests->nelts);
-
     CuAssertTrue(tc, !(tb->result_flags & TEST_RESULT_AUTHNCB_CALLED));
 }
 
@@ -586,12 +569,12 @@ CuSuite *test_auth(void)
 
     CuSuiteSetSetupTeardownCallbacks(suite, test_setup, test_teardown);
 
-    SUITE_ADD_TEST(suite, test_authentication_disabled);
-    SUITE_ADD_TEST(suite, test_unsupported_authentication);
     SUITE_ADD_TEST(suite, test_basic_switch_realms);
     SUITE_ADD_TEST(suite, test_digest_switch_realms);
     SUITE_ADD_TEST(suite, test_auth_on_HEAD);
     /* Converted to MockHTTP */
+    SUITE_ADD_TEST(suite, test_authentication_disabled);
+    SUITE_ADD_TEST(suite, test_unsupported_authentication);
     SUITE_ADD_TEST(suite, test_basic_authentication);
     SUITE_ADD_TEST(suite, test_basic_authentication_keepalive_off);
     SUITE_ADD_TEST(suite, test_digest_authentication);
