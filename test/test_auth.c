@@ -332,7 +332,8 @@ switched_realm_authn_callback(char **username,
     if (strcmp(exp_realm, realm) != 0)
         return SERF_ERROR_ISSUE_IN_TESTSUITE;
 
-    if (strcmp(realm, "<http://localhost:12345> Test Suite") == 0) {
+    if (strcmp(apr_psprintf(pool, "<http://localhost:%d> Test Suite",
+                            tb->serv_port), realm) == 0) {
         *username = "serf";
         *password = "serftest";
     } else {
@@ -354,123 +355,98 @@ static void authentication_switch_realms(CuTest *tc,
     test_baton_t *tb;
     handler_baton_t handler_ctx[2];
     int num_requests_sent, num_requests_recvd;
-    test_server_message_t message_list[5];
-    test_server_action_t action_list[5];
     apr_pool_t *test_pool = tc->testBaton;
     apr_status_t status;
 
-    
-    message_list[0].text = CHUNKED_REQUEST(1, "1");
-    message_list[1].text = apr_psprintf(test_pool,
-        "GET / HTTP/1.1" CRLF
-        "Host: localhost:12345" CRLF
-        "Authorization: %s %s" CRLF
-        "Transfer-Encoding: chunked" CRLF
-        CRLF
-        "1" CRLF
-        "1" CRLF
-        "0" CRLF CRLF, scheme, authz_attr_test_suite);
-    message_list[2].text = apr_psprintf(test_pool,
-        "GET / HTTP/1.1" CRLF
-        "Host: localhost:12345" CRLF
-        "Authorization: %s %s" CRLF
-        "Transfer-Encoding: chunked" CRLF
-        CRLF
-        "1" CRLF
-        "2" CRLF
-        "0" CRLF CRLF, scheme, authz_attr_test_suite);
-    /* The client doesn't know that /newrealm/ is in another realm, so it
-       reuses the credentials cached on the connection. */
-    message_list[3].text = apr_psprintf(test_pool,
-        "GET /newrealm/index.html HTTP/1.1" CRLF
-        "Host: localhost:12345" CRLF
-        "Authorization: %s %s" CRLF
-        "Transfer-Encoding: chunked" CRLF
-        CRLF
-        "1" CRLF
-        "3" CRLF
-        "0" CRLF CRLF, scheme, authz_attr_wrong_realm);
-    message_list[4].text = apr_psprintf(test_pool,
-        "GET /newrealm/index.html HTTP/1.1" CRLF
-        "Host: localhost:12345" CRLF
-        "Authorization: %s %s" CRLF
-        "Transfer-Encoding: chunked" CRLF
-        CRLF
-        "1" CRLF
-        "3" CRLF
-        "0" CRLF CRLF, scheme, authz_attr_new_realm);
+    const char *exp_authz_test_suite = apr_psprintf(test_pool, "%s %s", scheme,
+                                                    authz_attr_test_suite);
+    const char *exp_authz_wrong_realm = apr_psprintf(test_pool, "%s %s", scheme,
+                                                     authz_attr_wrong_realm);
+    const char *exp_authz_new_realm = apr_psprintf(test_pool, "%s %s", scheme,
+                                                   authz_attr_new_realm);
 
-    action_list[0].kind = SERVER_RESPOND;
-    action_list[0].text = apr_psprintf(test_pool,
-        "HTTP/1.1 401 Unauthorized" CRLF
-        "Transfer-Encoding: chunked" CRLF
-        "WWW-Authenticate: %s realm=""Test Suite""%s" CRLF
-        CRLF
-        "1" CRLF CRLF
-        "0" CRLF CRLF, scheme, authn_attr);
-    action_list[1].kind = SERVER_RESPOND;
-    action_list[1].text = CHUNKED_EMPTY_RESPONSE;
-    action_list[2].kind = SERVER_RESPOND;
-    action_list[2].text = CHUNKED_EMPTY_RESPONSE;
-    action_list[3].kind = SERVER_RESPOND;
-    action_list[3].text = apr_psprintf(test_pool,
-        "HTTP/1.1 401 Unauthorized" CRLF
-        "Transfer-Encoding: chunked" CRLF
-        "WWW-Authenticate: %s realm=""New Realm""%s" CRLF
-        CRLF
-        "1" CRLF CRLF
-        "0" CRLF CRLF, scheme, authn_attr);
-    action_list[4].kind = SERVER_RESPOND;
-    action_list[4].text = CHUNKED_EMPTY_RESPONSE;
-
-    
     /* Set up a test context with a server */
-    status = test_http_server_setup(&tb,
-                                    message_list, 5,
-                                    action_list, 5, 0, NULL,
-                                    test_pool);
+    status = setup_test_client_context(&tb, NULL, 5, test_pool);
     CuAssertIntEquals(tc, APR_SUCCESS, status);
+    setup_test_mock_server(tb);
 
     serf_config_authn_types(tb->context, SERF_AUTHN_BASIC | SERF_AUTHN_DIGEST);
     serf_config_credentials_callback(tb->context,
                                      switched_realm_authn_callback);
 
-    create_new_request(tb, &handler_ctx[0], "GET", "/", 1);
-
     /* Test that a request is retried and authentication headers are set
-     correctly. */
+       correctly. */
+    tb->user_baton = apr_psprintf(test_pool, "<http://localhost:%d> Test Suite",
+                                  mhServerPortNr(tb->mh));
     num_requests_sent = 1;
     num_requests_recvd = 2;
 
-    tb->user_baton = "<http://localhost:12345> Test Suite";
-    status = test_helper_run_requests_no_check(tc, tb, num_requests_sent,
+    Given(tb->mh)
+      GetRequest(URLEqualTo("/"), ChunkedBodyEqualTo("1"),
+                 HeaderNotSet("Authorization"))
+        Respond(WithCode(401), WithChunkedBody("1"),
+                WithHeader("WWW-Authenticate",
+                           apr_psprintf(test_pool, "%s realm=\"Test Suite\"%s",
+                                        scheme, authn_attr)))
+      GetRequest(URLEqualTo("/"), ChunkedBodyEqualTo("1"),
+                 HeaderEqualTo("Authorization", exp_authz_test_suite))
+        Respond(WithCode(200), WithChunkedBody(""))
+    EndGiven
+
+    create_new_request(tb, &handler_ctx[0], "GET", "/", 1);
+    status = run_client_and_mock_servers_loops(tb, num_requests_sent,
                                                handler_ctx, test_pool);
     CuAssertIntEquals(tc, APR_SUCCESS, status);
-    CuAssertIntEquals(tc, num_requests_recvd, tb->sent_requests->nelts);
-    CuAssertIntEquals(tc, num_requests_recvd, tb->accepted_requests->nelts);
     CuAssertIntEquals(tc, num_requests_sent, tb->handled_requests->nelts);
-
+    Verify(tb->mh)
+      CuAssertTrue(tc, VerifyAllRequestsReceivedInOrder);
+    EndVerify
     CuAssertTrue(tc, tb->result_flags & TEST_RESULT_AUTHNCB_CALLED);
 
     /* Test that credentials were cached by asserting that the authn callback
        wasn't called again. */
     tb->result_flags = 0;
 
+    Given(tb->mh)
+      GetRequest(URLEqualTo("/"), ChunkedBodyEqualTo("2"),
+                 HeaderEqualTo("Authorization", exp_authz_test_suite))
+        Respond(WithCode(200), WithChunkedBody(""))
+    EndGiven
+
     create_new_request(tb, &handler_ctx[0], "GET", "/", 2);
-    status = test_helper_run_requests_no_check(tc, tb, num_requests_sent,
+    status = run_client_and_mock_servers_loops(tb, num_requests_sent,
                                                handler_ctx, test_pool);
     CuAssertIntEquals(tc, APR_SUCCESS, status);
+    Verify(tb->mh)
+      CuAssertTrue(tc, VerifyAllRequestsReceivedInOrder);
+    EndVerify
     CuAssertTrue(tc, !(tb->result_flags & TEST_RESULT_AUTHNCB_CALLED));
 
     /* Switch realms. Test that serf asks the application for new
        credentials. */
     tb->result_flags = 0;
-    tb->user_baton = "<http://localhost:12345> New Realm";
+    tb->user_baton = apr_psprintf(test_pool, "<http://localhost:%d> New Realm",
+                                  mhServerPortNr(tb->mh));
+
+    Given(tb->mh)
+      GetRequest(URLEqualTo("/newrealm/index.html"), ChunkedBodyEqualTo("3"),
+                 HeaderEqualTo("Authorization", exp_authz_wrong_realm))
+        Respond(WithCode(401), WithChunkedBody("1"),
+                WithHeader("WWW-Authenticate",
+                           apr_psprintf(test_pool, "%s realm=\"New Realm\"%s",
+                                        scheme, authn_attr)))
+    GetRequest(URLEqualTo("/newrealm/index.html"), ChunkedBodyEqualTo("3"),
+               HeaderEqualTo("Authorization", exp_authz_new_realm))
+        Respond(WithCode(200), WithChunkedBody(""))
+    EndGiven
 
     create_new_request(tb, &handler_ctx[0], "GET", "/newrealm/index.html", 3);
-    status = test_helper_run_requests_no_check(tc, tb, num_requests_sent,
+    status = run_client_and_mock_servers_loops(tb, num_requests_sent,
                                                handler_ctx, test_pool);
     CuAssertIntEquals(tc, APR_SUCCESS, status);
+    Verify(tb->mh)
+      CuAssertTrue(tc, VerifyAllRequestsReceivedInOrder);
+    EndVerify
     CuAssertTrue(tc, tb->result_flags & TEST_RESULT_AUTHNCB_CALLED);
 }
 
@@ -502,62 +478,42 @@ static void test_digest_switch_realms(CuTest *tc)
 static void test_auth_on_HEAD(CuTest *tc)
 {
     test_baton_t *tb;
-    handler_baton_t handler_ctx[2];
-    int num_requests_sent, num_requests_recvd;
+    handler_baton_t handler_ctx[1];
+    int num_requests_sent;
     apr_status_t status;
     apr_pool_t *test_pool = tc->testBaton;
 
-    test_server_message_t message_list[] = {
-        { 
-            "HEAD / HTTP/1.1" CRLF
-            "Host: localhost:12345" CRLF
-            CRLF
-        },
-        {
-            "HEAD / HTTP/1.1" CRLF
-            "Host: localhost:12345" CRLF
-            "Authorization: Basic c2VyZjpzZXJmdGVzdA==" CRLF
-            CRLF
-        },
-    };
-    test_server_action_t action_list[] = {
-        {
-            SERVER_RESPOND,
-            "HTTP/1.1 401 Unauthorized" CRLF
-            "WWW-Authenticate: Basic Realm=""Test Suite""" CRLF
-            CRLF
-        },
-        {
-            SERVER_RESPOND,
-            "HTTP/1.1 200 Ok" CRLF
-            "Content-Type: text/html" CRLF
-            CRLF
-        },
-    };
-
     /* Set up a test context with a server */
-    status = test_http_server_setup(&tb,
-                                    message_list, 2,
-                                    action_list, 2, 0, NULL,
-                                    test_pool);
+    status = setup_test_client_context(&tb, NULL, 2, test_pool);
     CuAssertIntEquals(tc, APR_SUCCESS, status);
+    setup_test_mock_server(tb);
 
     serf_config_authn_types(tb->context, SERF_AUTHN_BASIC);
     serf_config_credentials_callback(tb->context, basic_authn_callback);
 
-    create_new_request(tb, &handler_ctx[0], "HEAD", "/", -1);
-
     /* Test that a request is retried and authentication headers are set
        correctly. */
     num_requests_sent = 1;
-    num_requests_recvd = 2;
 
-    status = test_helper_run_requests_no_check(tc, tb, num_requests_sent,
+    Given(tb->mh)
+      HEADRequest(URLEqualTo("/"), BodyEqualTo(""),
+                  HeaderNotSet("Authorization"))
+        Respond(WithCode(401), WithBody(""),
+                WithHeader("WWW-Authenticate", "Basic Realm=\"Test Suite\""))
+      HEADRequest(URLEqualTo("/"), BodyEqualTo(""),
+                  HeaderEqualTo("Authorization", "Basic c2VyZjpzZXJmdGVzdA=="))
+        Respond(WithCode(200), WithBody(""))
+    EndGiven
+
+    create_new_request(tb, &handler_ctx[0], "HEAD", "/", -1);
+
+    status = run_client_and_mock_servers_loops(tb, num_requests_sent,
                                                handler_ctx, test_pool);
     CuAssertIntEquals(tc, APR_SUCCESS, status);
-    CuAssertIntEquals(tc, num_requests_recvd, tb->sent_requests->nelts);
-    CuAssertIntEquals(tc, num_requests_recvd, tb->accepted_requests->nelts);
     CuAssertIntEquals(tc, num_requests_sent, tb->handled_requests->nelts);
+    Verify(tb->mh)
+      CuAssertTrue(tc, VerifyAllRequestsReceivedInOrder);
+    EndVerify
 
     CuAssertTrue(tc, tb->result_flags & TEST_RESULT_AUTHNCB_CALLED);
 }
@@ -569,16 +525,15 @@ CuSuite *test_auth(void)
 
     CuSuiteSetSetupTeardownCallbacks(suite, test_setup, test_teardown);
 
-    SUITE_ADD_TEST(suite, test_basic_switch_realms);
-    SUITE_ADD_TEST(suite, test_digest_switch_realms);
-    SUITE_ADD_TEST(suite, test_auth_on_HEAD);
-    /* Converted to MockHTTP */
     SUITE_ADD_TEST(suite, test_authentication_disabled);
     SUITE_ADD_TEST(suite, test_unsupported_authentication);
     SUITE_ADD_TEST(suite, test_basic_authentication);
     SUITE_ADD_TEST(suite, test_basic_authentication_keepalive_off);
     SUITE_ADD_TEST(suite, test_digest_authentication);
     SUITE_ADD_TEST(suite, test_digest_authentication_keepalive_off);
+    SUITE_ADD_TEST(suite, test_basic_switch_realms);
+    SUITE_ADD_TEST(suite, test_digest_switch_realms);
+    SUITE_ADD_TEST(suite, test_auth_on_HEAD);
 
     return suite;
 }
