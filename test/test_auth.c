@@ -179,7 +179,7 @@ static void basic_authentication(CuTest *tc, const char *resp_hdr,
     Given(tb->mh)
       GetRequest(URLEqualTo("/"), HeaderNotSet("Authorization"))
         Respond(WithCode(401),WithChunkedBody("1"),
-                WithHeader("www-Authenticate", "bAsIc realm=""Test Suite"""),
+                WithHeader("www-Authenticate", "bAsIc realm=\"Test Suite\""),
                 resp_hdr ? WithHeader(resp_hdr, resp_value) : NULL)
       GetRequest(URLEqualTo("/"),
                  HeaderEqualTo("Authorization", "Basic c2VyZjpzZXJmdGVzdA=="))
@@ -245,7 +245,8 @@ digest_authn_callback(char **username,
         return SERF_ERROR_ISSUE_IN_TESTSUITE;
     if (strcmp("Digest", authn_type) != 0)
         return SERF_ERROR_ISSUE_IN_TESTSUITE;
-    if (strcmp("<http://localhost:12345> Test Suite", realm) != 0)
+    if (strcmp(apr_psprintf(pool, "<http://localhost:%d> Test Suite",
+                            tb->serv_port), realm) != 0)
         return SERF_ERROR_ISSUE_IN_TESTSUITE;
 
     *username = "serf";
@@ -255,59 +256,19 @@ digest_authn_callback(char **username,
 }
 
 /* Test template, used for KeepAlive Off and KeepAlive On test */
-static void digest_authentication(CuTest *tc, const char *resp_hdrs)
+static void digest_authentication(CuTest *tc, const char *resp_hdr,
+                                  const char *resp_value)
 {
     test_baton_t *tb;
     handler_baton_t handler_ctx[2];
-    int num_requests_sent, num_requests_recvd;
-    test_server_message_t message_list[2];
-    test_server_action_t action_list[2];
+    int num_requests_sent;
     apr_pool_t *test_pool = tc->testBaton;
     apr_status_t status;
 
-    /* Expected string relies on strict order of headers and attributes of
-       Digest, both are not guaranteed.
-       6ff0d4cc201513ce970d5c6b25e1043b is encoded as: 
-         md5hex(md5hex("serf:Test Suite:serftest") & ":" &
-                md5hex("ABCDEF1234567890") & ":" &
-                md5hex("GET:/test/index.html"))
-     */
-    message_list[0].text = CHUNKED_REQUEST_URI("/test/index.html", 1, "1");
-    message_list[1].text = apr_psprintf(test_pool,
-        "GET /test/index.html HTTP/1.1" CRLF
-        "Host: localhost:12345" CRLF
-        "Authorization: Digest realm=\"Test Suite\", username=\"serf\", "
-        "nonce=\"ABCDEF1234567890\", uri=\"/test/index.html\", "
-        "response=\"6ff0d4cc201513ce970d5c6b25e1043b\", opaque=\"myopaque\", "
-        "algorithm=\"MD5\"" CRLF
-        "Transfer-Encoding: chunked" CRLF
-        CRLF
-        "1" CRLF
-        "1" CRLF
-        "0" CRLF CRLF);
-    action_list[0].kind = SERVER_RESPOND;
-    action_list[0].text = apr_psprintf(test_pool,
-        "HTTP/1.1 401 Unauthorized" CRLF
-        "Transfer-Encoding: chunked" CRLF
-        "WWW-Authenticate: Digest realm=\"Test Suite\","
-        "nonce=\"ABCDEF1234567890\",opaque=\"myopaque\","
-        "algorithm=\"MD5\",qop-options=\"auth\"" CRLF
-        "%s"
-        CRLF
-        "1" CRLF CRLF
-        "0" CRLF CRLF, resp_hdrs);
-    /* If the resp_hdrs includes "Connection: close", serf will automatically
-       reset the connection from the client side, no need to use 
-       SERVER_KILL_CONNECTION. */
-    action_list[1].kind = SERVER_RESPOND;
-    action_list[1].text = CHUNKED_EMPTY_RESPONSE;
-
     /* Set up a test context with a server */
-    status = test_http_server_setup(&tb,
-                                    message_list, 2,
-                                    action_list, 2, 0, NULL,
-                                    test_pool);
+    status = setup_test_client_context(&tb, NULL, 2, test_pool);
     CuAssertIntEquals(tc, APR_SUCCESS, status);
+    setup_test_mock_server(tb);
 
     /* Add both Basic and Digest here, should use Digest only. */
     serf_config_authn_types(tb->context, SERF_AUTHN_BASIC | SERF_AUTHN_DIGEST);
@@ -318,21 +279,47 @@ static void digest_authentication(CuTest *tc, const char *resp_hdrs)
     /* Test that a request is retried and authentication headers are set
        correctly. */
     num_requests_sent = 1;
-    num_requests_recvd = 2;
 
-    status = test_helper_run_requests_no_check(tc, tb, num_requests_sent,
+    
+    /* Expected string relies on strict order of attributes of Digest, which are
+       not guaranteed.
+       6ff0d4cc201513ce970d5c6b25e1043b is encoded as: 
+         md5hex(md5hex("serf:Test Suite:serftest") & ":" &
+                md5hex("ABCDEF1234567890") & ":" &
+                md5hex("GET:/test/index.html"))
+     */
+    Given(tb->mh)
+      GetRequest(URLEqualTo("/test/index.html"), HeaderNotSet("Authorization"))
+        Respond(WithCode(401), WithChunkedBody("1"),
+                WithHeader("www-Authenticate", "Digest realm=\"Test Suite\","
+                           "nonce=\"ABCDEF1234567890\",opaque=\"myopaque\","
+                           "algorithm=\"MD5\",qop-options=\"auth\""),
+                resp_hdr ? WithHeader(resp_hdr, resp_value) : NULL)
+      GetRequest(URLEqualTo("/test/index.html"),
+                 HeaderEqualTo("Authorization", "Digest realm=\"Test Suite\", "
+                               "username=\"serf\", nonce=\"ABCDEF1234567890\", "
+                               "uri=\"/test/index.html\", "
+                               "response=\"6ff0d4cc201513ce970d5c6b25e1043b\", "
+                               "opaque=\"myopaque\", algorithm=\"MD5\""))
+        Respond(WithCode(200),WithChunkedBody(""))
+    Expect
+      AllRequestsReceivedInOrder
+    EndGiven
+
+    status = run_client_and_mock_servers_loops(tb, num_requests_sent,
                                                handler_ctx, test_pool);
     CuAssertIntEquals(tc, APR_SUCCESS, status);
-    CuAssertIntEquals(tc, num_requests_recvd, tb->sent_requests->nelts);
-    CuAssertIntEquals(tc, num_requests_recvd, tb->accepted_requests->nelts);
     CuAssertIntEquals(tc, num_requests_sent, tb->handled_requests->nelts);
+    Verify(tb->mh)
+      CuAssertTrue(tc, VerifyAllExpectationsOk);
+    EndVerify
 
     CuAssertTrue(tc, tb->result_flags & TEST_RESULT_AUTHNCB_CALLED);
 }
 
 static void test_digest_authentication(CuTest *tc)
 {
-    digest_authentication(tc, "");
+    digest_authentication(tc, "", "");
 }
 
 static void test_digest_authentication_keepalive_off(CuTest *tc)
@@ -340,7 +327,7 @@ static void test_digest_authentication_keepalive_off(CuTest *tc)
     /* Add the Connection: close header to the response with the Digest headers.
        This to test that the Digest headers will be added to the retry of the
        request on the new connection. */
-    digest_authentication(tc, "Connection: close" CRLF);
+    digest_authentication(tc, "Connection", "close");
 }
 
 static apr_status_t
@@ -601,14 +588,14 @@ CuSuite *test_auth(void)
 
     SUITE_ADD_TEST(suite, test_authentication_disabled);
     SUITE_ADD_TEST(suite, test_unsupported_authentication);
-    SUITE_ADD_TEST(suite, test_digest_authentication);
-    SUITE_ADD_TEST(suite, test_digest_authentication_keepalive_off);
     SUITE_ADD_TEST(suite, test_basic_switch_realms);
     SUITE_ADD_TEST(suite, test_digest_switch_realms);
     SUITE_ADD_TEST(suite, test_auth_on_HEAD);
     /* Converted to MockHTTP */
     SUITE_ADD_TEST(suite, test_basic_authentication);
     SUITE_ADD_TEST(suite, test_basic_authentication_keepalive_off);
+    SUITE_ADD_TEST(suite, test_digest_authentication);
+    SUITE_ADD_TEST(suite, test_digest_authentication_keepalive_off);
 
     return suite;
 }
