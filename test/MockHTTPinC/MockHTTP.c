@@ -217,6 +217,8 @@ mhResponse_t *_mhMatchRequest(const MockHTTP *mh, mhRequest_t *req)
         if (_mhRequestMatcherMatch(pair->rm, req) == YES)
             return pair->resp;
     }
+    _mhLog(MH_VERBOSE, __FILE__, "Couldn't match request!\n");
+
     return NULL;
 }
 
@@ -264,6 +266,10 @@ static bool str_matcher(const mhMatchingPattern_t *mp, const char *actual)
 
     if (expected == actual)
         return YES; /* case where both are NULL, e.g. test for header not set */
+
+    if ((!expected && *actual == '\0') ||
+        (!actual && *expected == '\0'))
+        return YES; /* "" and NULL are equal */
 
     if (expected && actual && strcmp(expected, actual) == 0)
         return YES;
@@ -479,25 +485,13 @@ constructRequestMatcher(MockHTTP *mh, const char *method, va_list argp)
     return rm;
 }
 
-mhRequestMatcher_t *mhGetRequest(MockHTTP *mh, ...)
+mhRequestMatcher_t *mhGivenRequest(MockHTTP *mh, const char *method, ...)
 {
     va_list argp;
     mhRequestMatcher_t *rm;
 
-    va_start(argp, mh);
-    rm = constructRequestMatcher(mh, "GET", argp);
-    va_end(argp);
-
-    return rm;
-}
-
-mhRequestMatcher_t *mhPostRequest(MockHTTP *mh, ...)
-{
-    va_list argp;
-    mhRequestMatcher_t *rm;
-
-    va_start(argp, mh);
-    rm = constructRequestMatcher(mh, "POST", argp);
+    va_start(argp, method);
+    rm = constructRequestMatcher(mh, method, argp);
     va_end(argp);
 
     return rm;

@@ -413,8 +413,9 @@ static apr_status_t readRequest(_mhClientCtx_t *cctx, mhRequest_t **preq)
 
     STATUSREADERR(apr_socket_recv(cctx->skt, cctx->buf + cctx->buflen, &len));
     if (len) {
-        _mhLog(MH_VERBOSE, __FILE__, "recvd: %.*s\n", (unsigned int)len,
-               cctx->buf + cctx->buflen);
+        _mhLog(MH_VERBOSE, __FILE__, "recvd with status %d:\n%.*s\n---- %d ----\n",
+               status, (unsigned int)len, cctx->buf + cctx->buflen,
+               (unsigned int)len);
 
         cctx->buflen += len;
         cctx->bufrem -= len;
@@ -540,6 +541,9 @@ static apr_status_t writeResponse(_mhClientCtx_t *cctx, mhResponse_t *resp)
 
     len = cctx->respRem;
     STATUSREADERR(apr_socket_send(cctx->skt, cctx->respBody, &len));
+    _mhLog(MH_VERBOSE, __FILE__, "sent with status %d:\n%.*s\n---- %d ----\n",
+           status, (unsigned int)len, cctx->respBody, (unsigned int)len);
+
     if (len < cctx->respRem) {
         memcpy(cctx->respBody, cctx->respBody + len, cctx->respRem - len + 1);
         cctx->respRem -= len;
@@ -575,8 +579,14 @@ static apr_status_t process(mhServCtx_t *ctx, _mhClientCtx_t *cctx,
                 mhResponse_t *resp;
                 apr_queue_push(ctx->reqQueue, cctx->req);
                 resp = _mhMatchRequest(ctx->mh, cctx->req);
-                if (resp)
+                if (resp) {
+                    _mhLog(MH_VERBOSE, __FILE__,
+                           "Requested matched, queueing response.\n");
+
                     *((mhResponse_t **)apr_array_push(cctx->respQueue)) = resp;
+                } else {
+                    _mhLog(MH_VERBOSE, __FILE__, "No response to send back!\n");
+                }
 
                 cctx->req = NULL;
             }
@@ -588,9 +598,13 @@ static apr_status_t process(mhServCtx_t *ctx, _mhClientCtx_t *cctx,
         presp = apr_array_pop(cctx->respQueue);
         resp = *presp;
         if (resp) {
+            _mhLog(MH_VERBOSE, __FILE__, "Sending response to client.\n");
+
             status = writeResponse(cctx, resp);
             if (status == APR_EOF) {
                 if (closeConnection(cctx->pool, resp)) {
+                    _mhLog(MH_VERBOSE, __FILE__,
+                           "Actively closing connection.\n");
                     apr_socket_close(cctx->skt);
                 }
             } else {
@@ -636,6 +650,8 @@ apr_status_t _mhRunServerLoop(mhServCtx_t *ctx)
         if (desc->desc.s == ctx->skt) {
             apr_socket_t *cskt;
             apr_pollfd_t pfd = { 0 };
+
+            _mhLog(MH_VERBOSE, __FILE__, "Accepting client connection.\n");
 
             _mhClientCtx_t *cctx = apr_pcalloc(ctx->pool, sizeof(_mhClientCtx_t));
 

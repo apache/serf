@@ -82,13 +82,18 @@ extern "C" {
                 mhRequestMatcher_t *__rm;
 
 /* Stub a GET request */
-#define   GetRequest(...)\
-                __rm = mhGetRequest(__mh, __VA_ARGS__, NULL);\
+#define   GETRequest(...)\
+                __rm = mhGivenRequest(__mh, "GET", __VA_ARGS__, NULL);\
                 mhPushRequest(__mh, __rm);
 
 /* Stub a POST request */
-#define   PostRequest(...)\
-                __rm = mhPostRequest(__mh, __VA_ARGS__, NULL);\
+#define   POSTRequest(...)\
+                __rm = mhGivenRequest(__mh, "POST", __VA_ARGS__, NULL);\
+                mhPushRequest(__mh, __rm);
+
+/* Stub a HEAD request */
+#define   HEADRequest(...)\
+                __rm = mhGivenRequest(__mh, "HEAD", __VA_ARGS__, NULL);\
                 mhPushRequest(__mh, __rm);
 
 /* Match the request's URL */
@@ -187,14 +192,14 @@ extern "C" {
 
 /* TODO: check that these can be used with multiple arguments */
 /* Verify that a matching GET request was received by the server */
-#define   GetRequestReceivedFor(x)\
+#define   GETRequestReceivedFor(x)\
                 mhVerifyRequestReceived(__mh,\
-                    mhGetRequestReceivedFor(__mh, (x), NULL))
+                    mhGivenRequest(__mh, "GET", (x), NULL))
 
 /* Verify that a matching POST request was received by the server */
-#define   PostRequestReceivedFor(x)\
+#define   POSTRequestReceivedFor(x)\
                 mhVerifyRequestReceived(__mh,\
-                    mhPostRequestReceivedFor(__mh, (x), NULL))
+                    mhGivenRequest(__mh, "POST", (x), NULL))
 
 /* Verify that all stubbed requests where received at least once, order not
    important */
@@ -220,6 +225,12 @@ extern "C" {
 /* End of test result verification section */
 #define EndVerify\
             }
+
+/* TODO: remove these when the test suite is updated */
+#define GetRequest GETRequest
+#define PostRequest POSTRequest
+#define GetRequestReceivedFor GETRequestReceivedFor
+#define PostRequestReceivedFor POSTRequestReceivedFor
 
 typedef struct MockHTTP MockHTTP;
 typedef struct mhMatchingPattern_t mhMatchingPattern_t;
@@ -282,10 +293,7 @@ mhError_t mhInitHTTPserver(MockHTTP *mh, ...);
 mhServerBuilder_t *mhConstructServerPortSetter(MockHTTP *mh, unsigned int port);
 
 /* Define request stubs */
-mhRequestMatcher_t *mhGetRequest(MockHTTP *mh, ...);
-mhRequestMatcher_t *mhPostRequest(MockHTTP *mh, ...);
-#define mhGetRequestReceivedFor mhGetRequest
-#define mhPostRequestReceivedFor mhPostRequest
+mhRequestMatcher_t *mhGivenRequest(MockHTTP *mh, const char *method, ...);
 
 /* Request matching functions */
 mhMatchingPattern_t *mhMatchURLEqualTo(MockHTTP *mh, const char *expected);
