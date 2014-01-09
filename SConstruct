@@ -467,8 +467,8 @@ testall_files = [
         'test/test_internal.c',
         'test/mock_buckets.c',
         'test/test_ssl.c',
-        'test/MockHTTPInC/MockHTTP.c',
-        'test/MockHTTPInC/MockHTTP_server.c',
+        'test/MockHTTPinC/MockHTTP.c',
+        'test/MockHTTPinC/MockHTTP_server.c',
         'test/server/test_server.c',
         'test/server/test_sslserver.c',
         ]
