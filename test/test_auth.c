@@ -18,8 +18,6 @@
 #include "serf.h"
 #include "test_serf.h"
 
-#include "MockHTTPinC/MockHTTP.h"
-
 static apr_status_t
 authn_callback_expect_not_called(char **username,
                                  char **password,

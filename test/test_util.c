@@ -24,8 +24,6 @@
 #include "test_serf.h"
 #include "server/test_server.h"
 
-#include "MockHTTPinC/MockHttp.h"
-
 /*****************************************************************************/
 /* Server setup function(s)
  */
