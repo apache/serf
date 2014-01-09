@@ -103,6 +103,7 @@ typedef struct {
     serv_ctx_t *serv_ctx;
     apr_sockaddr_t *serv_addr;
     apr_port_t serv_port;
+    const char *serv_host; /* "localhost:30080" */
 
     serv_ctx_t *proxy_ctx;
     apr_sockaddr_t *proxy_addr;
@@ -302,13 +303,21 @@ apr_status_t setup_test_client_context(test_baton_t **tb_p,
    will be stored in tb->port. */
 void setup_test_mock_server(test_baton_t *tb);
 
-/* Helper function, runs the client and server context loops and validates
-   that no errors were encountered, and all messages were sent and received. */
+/* Helper function, runs the client and server context loops. */
 apr_status_t
 run_client_and_mock_servers_loops(test_baton_t *tb,
                                   int num_requests,
                                   handler_baton_t handler_ctx[],
                                   apr_pool_t *pool);
+
+/* Helper function, runs the client and server context loops and validates
+   that no errors were encountered, and all messages were sent and received
+   in order. */
+void
+run_client_and_mock_servers_loops_expect_ok(CuTest *tc, test_baton_t *tb,
+                                            int num_requests,
+                                            handler_baton_t handler_ctx[],
+                                            apr_pool_t *pool);
 
 
 #endif /* TEST_SERF_H */

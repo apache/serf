@@ -165,6 +165,7 @@ static apr_status_t setup(test_baton_t **tb_p,
 
     tb->serv_url = serv_url;
     tb->serv_port = SERV_PORT;
+    tb->serv_host = apr_psprintf(tb->pool, "%s:%d", "localhost", tb->serv_port);
     tb->conn_setup = conn_setup;
 
     status = default_server_address(&tb->serv_addr, pool);
@@ -695,12 +696,36 @@ run_client_and_mock_servers_loops(test_baton_t *tb,
     return APR_SUCCESS;
 }
 
+void
+run_client_and_mock_servers_loops_expect_ok(CuTest *tc, test_baton_t *tb,
+                                            int num_requests,
+                                            handler_baton_t handler_ctx[],
+                                            apr_pool_t *pool)
+{
+    apr_status_t status;
+
+    status = run_client_and_mock_servers_loops(tb, num_requests, handler_ctx,
+                                               pool);
+    CuAssertIntEquals(tc, APR_SUCCESS, status);
+
+    /* Check that the requests were sent and reveived by the server in the order
+     we created them */
+    Verify(tb->mh)
+      CuAssertTrue(tc, VerifyAllRequestsReceivedInOrder);
+    EndVerify
+
+    CuAssertIntEquals(tc, num_requests, tb->sent_requests->nelts);
+    CuAssertIntEquals(tc, num_requests, tb->accepted_requests->nelts);
+    CuAssertIntEquals(tc, num_requests, tb->handled_requests->nelts);
+}
+
 void setup_test_mock_server(test_baton_t *tb)
 {
     InitMockHTTP(tb->mh)
       WithHTTPserver(WithPort(30080))
     EndInit
     tb->serv_port = mhServerPortNr(tb->mh);
+    tb->serv_host = apr_psprintf(tb->pool, "%s:%d", "localhost", tb->serv_port);
 }
 
 /*****************************************************************************/

@@ -34,38 +34,37 @@ static void test_serf_connection_request_create(CuTest *tc)
     const int num_requests = sizeof(handler_ctx)/sizeof(handler_ctx[0]);
     apr_status_t status;
     int i;
-    test_server_message_t message_list[] = {
-        {CHUNKED_REQUEST(1, "1")},
-        {CHUNKED_REQUEST(1, "2")},
-    };
-
-    test_server_action_t action_list[] = {
-        {SERVER_RESPOND, CHUNKED_EMPTY_RESPONSE},
-        {SERVER_RESPOND, CHUNKED_EMPTY_RESPONSE},
-    };
 
     apr_pool_t *test_pool = tc->testBaton;
 
     /* Set up a test context with a server */
-    status = test_http_server_setup(&tb,
-                                    message_list, num_requests,
-                                    action_list, num_requests, 0, NULL,
-                                    test_pool);
+    status = setup_test_client_context(&tb, NULL, num_requests, test_pool);
     CuAssertIntEquals(tc, APR_SUCCESS, status);
+    setup_test_mock_server(tb);
+
+    Given(tb->mh)
+      GetRequest(URLEqualTo("/"), ChunkedBodyEqualTo("1"),
+                 HeaderEqualTo("Host", tb->serv_host))
+        Respond(WithCode(200), WithChunkedBody(""))
+      GetRequest(URLEqualTo("/"), ChunkedBodyEqualTo("2"),
+                 HeaderEqualTo("Host", tb->serv_host))
+        Respond(WithCode(200), WithChunkedBody(""))
+    EndGiven
 
     create_new_request(tb, &handler_ctx[0], "GET", "/", 1);
     create_new_request(tb, &handler_ctx[1], "GET", "/", 2);
 
-    test_helper_run_requests_expect_ok(tc, tb, num_requests, handler_ctx,
-                                       test_pool);
+    status = run_client_and_mock_servers_loops(tb, num_requests,
+                                               handler_ctx, test_pool);
+    CuAssertIntEquals(tc, APR_SUCCESS, status);
 
-    /* Check that the requests were sent in the order we created them */
-    for (i = 0; i < tb->sent_requests->nelts; i++) {
-        int req_nr = APR_ARRAY_IDX(tb->sent_requests, i, int);
-        CuAssertIntEquals(tc, i + 1, req_nr);
-    }
+    /* Check that the requests were sent and reveived by the server in the order
+       we created them */
+    Verify(tb->mh)
+      CuAssertTrue(tc, VerifyAllRequestsReceivedInOrder);
+    EndVerify
 
-    /* Check that the requests were received in the order we created them */
+    /* Check that the responses were received in the order we created them */
     for (i = 0; i < tb->handled_requests->nelts; i++) {
         int req_nr = APR_ARRAY_IDX(tb->handled_requests, i, int);
         CuAssertIntEquals(tc, i + 1, req_nr);
@@ -81,42 +80,33 @@ static void test_serf_connection_priority_request_create(CuTest *tc)
     const int num_requests = sizeof(handler_ctx)/sizeof(handler_ctx[0]);
     apr_status_t status;
     int i;
-
-    test_server_message_t message_list[] = {
-        {CHUNKED_REQUEST(1, "1")},
-        {CHUNKED_REQUEST(1, "2")},
-        {CHUNKED_REQUEST(1, "3")},
-    };
-
-    test_server_action_t action_list[] = {
-        {SERVER_RESPOND, CHUNKED_EMPTY_RESPONSE},
-        {SERVER_RESPOND, CHUNKED_EMPTY_RESPONSE},
-        {SERVER_RESPOND, CHUNKED_EMPTY_RESPONSE},
-    };
-
     apr_pool_t *test_pool = tc->testBaton;
 
     /* Set up a test context with a server */
-    status = test_http_server_setup(&tb,
-                                    message_list, num_requests,
-                                    action_list, num_requests, 0, NULL,
-                                    test_pool);
+    status = setup_test_client_context(&tb, NULL, num_requests, test_pool);
     CuAssertIntEquals(tc, APR_SUCCESS, status);
+    setup_test_mock_server(tb);
+
+    Given(tb->mh)
+      GetRequest(URLEqualTo("/"), ChunkedBodyEqualTo("1"),
+                 HeaderEqualTo("Host", tb->serv_host))
+        Respond(WithCode(200), WithChunkedBody(""))
+      GetRequest(URLEqualTo("/"), ChunkedBodyEqualTo("2"),
+                 HeaderEqualTo("Host", tb->serv_host))
+        Respond(WithCode(200), WithChunkedBody(""))
+      GetRequest(URLEqualTo("/"), ChunkedBodyEqualTo("3"),
+                 HeaderEqualTo("Host", tb->serv_host))
+        Respond(WithCode(200), WithChunkedBody(""))
+    EndGiven
 
     create_new_request(tb, &handler_ctx[0], "GET", "/", 2);
     create_new_request(tb, &handler_ctx[1], "GET", "/", 3);
     create_new_prio_request(tb, &handler_ctx[2], "GET", "/", 1);
 
-    test_helper_run_requests_expect_ok(tc, tb, num_requests, handler_ctx,
-                                       test_pool);
+    run_client_and_mock_servers_loops_expect_ok(tc, tb, num_requests,
+                                                handler_ctx, test_pool);
 
-    /* Check that the requests were sent in the order we created them */
-    for (i = 0; i < tb->sent_requests->nelts; i++) {
-        int req_nr = APR_ARRAY_IDX(tb->sent_requests, i, int);
-        CuAssertIntEquals(tc, i + 1, req_nr);
-    }
-
-    /* Check that the requests were received in the order we created them */
+    /* Check that the responses were received in the order we created them */
     for (i = 0; i < tb->handled_requests->nelts; i++) {
         int req_nr = APR_ARRAY_IDX(tb->handled_requests, i, int);
         CuAssertIntEquals(tc, i + 1, req_nr);
@@ -2257,8 +2247,6 @@ CuSuite *test_context(void)
 
     CuSuiteSetSetupTeardownCallbacks(suite, test_setup, test_teardown);
 
-    SUITE_ADD_TEST(suite, test_serf_connection_request_create);
-    SUITE_ADD_TEST(suite, test_serf_connection_priority_request_create);
     SUITE_ADD_TEST(suite, test_closed_connection);
     SUITE_ADD_TEST(suite, test_setup_proxy);
     SUITE_ADD_TEST(suite, test_keepalive_limit_one_by_one);
@@ -2286,6 +2274,10 @@ CuSuite *test_context(void)
     SUITE_ADD_TEST(suite, test_ssltunnel_basic_auth_server_has_keepalive_off);
     SUITE_ADD_TEST(suite, test_ssltunnel_basic_auth_proxy_has_keepalive_off);
     SUITE_ADD_TEST(suite, test_ssltunnel_digest_auth);
+
+    /* Converted to MockHTTPinC library */
+    SUITE_ADD_TEST(suite, test_serf_connection_request_create);
+    SUITE_ADD_TEST(suite, test_serf_connection_priority_request_create);
 
     return suite;
 }
