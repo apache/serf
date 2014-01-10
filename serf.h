@@ -1067,7 +1067,7 @@ apr_pool_t *serf_bucket_allocator_get_pool(
  */
 #define SERF_LINEBUF_LIMIT 8000
 
-typedef struct {
+typedef struct serf_linebuf_t {
 
     /* Current state of the buffer. */
     enum {

@@ -28,7 +28,7 @@
 /* Add Connection: close header to each request. */
 /* #define CONNECTION_CLOSE_HDR */
 
-typedef struct {
+typedef struct app_baton_t {
     const char *hostinfo;
     int using_ssl;
     int head_request;
@@ -237,7 +237,7 @@ static serf_bucket_t* accept_response(serf_request_t *request,
     return response;
 }
 
-typedef struct {
+typedef struct handler_baton_t {
 #if APR_MAJOR_VERSION > 0
     apr_uint32_t completed_requests;
 #else

@@ -65,14 +65,14 @@ typedef struct node_header_t {
 #define DEBUG_DOUBLE_FREE
 
 
-typedef struct {
+typedef struct read_status_t {
     const serf_bucket_t *bucket;
     apr_status_t last;
 } read_status_t;
 
 #define TRACK_BUCKET_COUNT 100  /* track N buckets' status */
 
-typedef struct {
+typedef struct track_state_t {
     int next_index;    /* info[] is a ring. next bucket goes at this idx. */
     int num_used;
 

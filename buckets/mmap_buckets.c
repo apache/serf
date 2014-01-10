@@ -21,7 +21,7 @@
 
 #if APR_HAS_MMAP
 
-typedef struct {
+typedef struct mmap_context_t {
     apr_mmap_t *mmap;
     void *current;
     apr_off_t offset;

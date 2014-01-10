@@ -26,7 +26,7 @@
 #endif
 
 
-typedef struct {
+typedef struct body_context_t {
     serf_bucket_t *stream;
     apr_uint64_t remaining;
 } body_context_t;

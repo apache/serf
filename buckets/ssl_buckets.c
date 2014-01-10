@@ -179,7 +179,7 @@ struct serf_ssl_context_t {
     serf_config_t *config;
 };
 
-typedef struct {
+typedef struct ssl_context_t {
     /* The bucket-independent ssl context that this bucket is associated with */
     serf_ssl_context_t *ssl_ctx;
 

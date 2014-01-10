@@ -21,7 +21,7 @@
 #include "serf_bucket_util.h"
 
 
-typedef struct {
+typedef struct socket_context_t {
     apr_socket_t *skt;
 
     serf_databuf_t databuf;

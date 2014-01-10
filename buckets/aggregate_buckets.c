@@ -23,7 +23,7 @@ typedef struct bucket_list {
     struct bucket_list *next;
 } bucket_list_t;
 
-typedef struct {
+typedef struct aggregate_context_t {
     bucket_list_t *list; /* active buckets */
     bucket_list_t *last; /* last bucket of the list */
     bucket_list_t *done; /* we finished reading this; now pending a destroy */

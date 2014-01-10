@@ -20,14 +20,14 @@
 /* TODO: don't use SOCK[_MSG]_VERBOSE directly, but get a log category in
    from the config object. */
 
-typedef struct {
+typedef struct log_wrapped_context_t {
     const serf_bucket_type_t *old_type;
     const char *prefix;
     serf_config_t *config;
 } log_wrapped_context_t;
 
 /* Extended serf_bucket_t. */
-typedef struct {
+typedef struct serf_log_wrapped_bucket_t {
     /* This must be the first member to ensure that this bucket can be cast
        to a serf_bucket_t */
     serf_bucket_t wrapped_bkt;

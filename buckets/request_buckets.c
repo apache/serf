@@ -20,7 +20,7 @@
 #include "serf_bucket_util.h"
 
 
-typedef struct {
+typedef struct request_context_t {
     const char *method;
     const char *uri;
     serf_bucket_t *headers;

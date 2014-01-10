@@ -35,7 +35,7 @@ typedef struct header_list {
     struct header_list *next;
 } header_list_t;
 
-typedef struct {
+typedef struct headers_context_t {
     header_list_t *list;
     header_list_t *last;
 

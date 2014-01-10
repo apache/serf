@@ -18,7 +18,7 @@
 #include "serf.h"
 #include "serf_bucket_util.h"
 
-typedef struct {
+typedef struct file_context_t {
     apr_file_t *file;
 
     serf_databuf_t databuf;

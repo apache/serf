@@ -92,7 +92,7 @@ CuSuite *test_mock_bucket(void);
         "0" CRLF\
         CRLF
 
-typedef struct {
+typedef struct test_baton_t {
     /* Pool for resource allocation. */
     apr_pool_t *pool;
 
@@ -195,7 +195,7 @@ apr_status_t test_https_server_proxy_setup(
 void *test_setup(void *baton);
 void *test_teardown(void *baton);
 
-typedef struct {
+typedef struct handler_baton_t {
     serf_response_acceptor_t acceptor;
     void *acceptor_baton;
 
@@ -268,7 +268,7 @@ create_new_request_with_resp_hdlr(test_baton_t *tb,
                                   serf_response_handler_t handler);
 
 /* Mock bucket type and constructor */
-typedef struct {
+typedef struct mockbkt_action {
     int times;
     const char *data;
     apr_status_t status;

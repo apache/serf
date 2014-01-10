@@ -55,13 +55,13 @@
 /* The structure passed to the parser thread after we've read the entire
  * response.
  */
-typedef struct {
+typedef struct doc_path_t {
     apr_xml_doc *doc;
     char *path;
     apr_pool_t *pool;
 } doc_path_t;
 
-typedef struct {
+typedef struct app_baton_t {
     const char *authn;
     int using_ssl;
     serf_ssl_context_t *ssl_ctx;
@@ -114,7 +114,7 @@ static serf_bucket_t* accept_response(serf_request_t *request,
     return serf_bucket_response_create(c, bkt_alloc);
 }
 
-typedef struct {
+typedef struct handler_baton_t {
     serf_bucket_alloc_t *allocator;
 #if APR_MAJOR_VERSION > 0
     apr_uint32_t *requests_outstanding;
@@ -278,7 +278,7 @@ static apr_status_t handle_response(serf_request_t *request,
     /* NOTREACHED */
 }
 
-typedef struct {
+typedef struct parser_baton_t {
     apr_uint32_t *requests_outstanding;
     serf_connection_t *connection;
     apr_array_header_t *doc_queue;

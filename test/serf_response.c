@@ -23,7 +23,7 @@
 
 #include "serf.h"
 
-typedef struct {
+typedef struct accept_baton_t {
     const char *resp_file;
     serf_bucket_t *bkt;
 } accept_baton_t;
@@ -54,7 +54,7 @@ static serf_bucket_t* accept_response(void *acceptor_baton,
     return serf_bucket_response_create(c, bkt_alloc);
 }
 
-typedef struct {
+typedef struct handler_baton_t {
 #if APR_MAJOR_VERSION > 0
     apr_uint32_t requests_outstanding;
 #else

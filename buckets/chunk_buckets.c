@@ -20,7 +20,7 @@
 #include "serf_bucket_util.h"
 
 
-typedef struct {
+typedef struct chunk_context_t {
     enum {
         STATE_FETCH,
         STATE_CHUNK,

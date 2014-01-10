@@ -23,7 +23,7 @@
 
 
 /* Structure passed around as baton for the CONNECT request and respone. */
-typedef struct {
+typedef struct req_ctx_t {
     apr_pool_t *pool;
     const char *uri;
 } req_ctx_t;

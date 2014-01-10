@@ -21,7 +21,7 @@
 
 #define IOVEC_HOLD_COUNT 16
 
-typedef struct {
+typedef struct copy_context_t {
     serf_bucket_t *wrapped;
 
     /* When reading, this defines the amount of data that we should grab

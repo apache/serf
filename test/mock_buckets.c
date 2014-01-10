@@ -21,7 +21,7 @@
 
 /* This bucket uses a list of count - data/len - status actions (provided by the
    test case), to control the read / read_iovec operations. */
-typedef struct {
+typedef struct mockbkt_context_t {
     mockbkt_action *actions;
     int len;
     const char *current_data;

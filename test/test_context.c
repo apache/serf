@@ -550,7 +550,7 @@ static void test_keepalive_limit_one_by_one_and_burst(CuTest *tc)
 #undef SEND_REQUESTS
 #undef RCVD_REQUESTS
 
-typedef struct {
+typedef struct progress_baton_t {
   apr_off_t read;
   apr_off_t written;
 } progress_baton_t;

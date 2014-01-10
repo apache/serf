@@ -218,7 +218,7 @@ static int handle_auth_headers(int code,
 /**
  * Baton passed to the store_header_in_dict callback function
  */
-typedef struct {
+typedef struct auth_baton_t {
     const char *header;
     apr_pool_t *pool;
     apr_hash_t *hdrs;

@@ -19,7 +19,7 @@
 #include "serf_bucket_util.h"
 
 
-typedef struct {
+typedef struct iovec_context_t {
     struct iovec *vecs;
 
     /* Total number of buffer stored in the vecs var. */

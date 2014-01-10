@@ -18,7 +18,7 @@
 #include "serf.h"
 #include "serf_bucket_util.h"
 
-typedef struct {
+typedef struct dechunk_context_t {
     serf_bucket_t *stream;
 
     enum {

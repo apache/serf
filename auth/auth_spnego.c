@@ -515,7 +515,7 @@ serf__setup_request_spnego_auth(peer_t peer,
 /**
  * Baton passed to the get_auth_header callback function.
  */
-typedef struct {
+typedef struct get_auth_header_baton_t {
     const char *hdr_name;
     const char *auth_name;
     const char *hdr_value;

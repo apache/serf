@@ -35,7 +35,7 @@ static char deflate_magic[2] = { '\037', '\213' };
 static const int DEFLATE_WINDOW_SIZE = -15;
 static const int DEFLATE_MEMLEVEL = 9;
 
-typedef struct {
+typedef struct deflate_context_t {
     serf_bucket_t *stream;
     serf_bucket_t *inflate_stream;
 

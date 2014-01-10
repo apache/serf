@@ -21,7 +21,7 @@
 #include "serf_bucket_util.h"
 #include "serf_private.h"
 
-typedef struct {
+typedef struct response_context_t {
     serf_bucket_t *stream;
     serf_bucket_t *body;        /* Pointer to the stream wrapping the body. */
     serf_bucket_t *headers;     /* holds parsed headers */

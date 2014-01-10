@@ -25,14 +25,14 @@
 
 #include "serf.h"
 
-typedef struct {
+typedef struct app_baton_t {
     int count;
     int using_ssl;
     serf_ssl_context_t *ssl_ctx;
     serf_bucket_alloc_t *bkt_alloc;
 } app_baton_t;
 
-typedef struct {
+typedef struct handler_baton_t {
 #if APR_MAJOR_VERSION > 0
     apr_uint32_t requests_outstanding;
 #else

@@ -228,7 +228,7 @@ typedef apr_status_t (*serf_databuf_reader_t)(
  * This structure should be initialized by calling @see serf_databuf_init.
  * Users should not bother to zero the structure beforehand.
  */
-typedef struct {
+typedef struct serf_databuf_t {
     /** The current data position within the buffer. */
     const char *current;
 

@@ -88,7 +88,7 @@ serf_bucket_t *serf_bucket_response_create(
 #define SERF_HTTP_VERSION_MAJOR(shv) ((int)shv / 1000)
 #define SERF_HTTP_VERSION_MINOR(shv) ((int)shv % 1000)
 
-typedef struct {
+typedef struct serf_status_line {
     int version;
     int code;
     const char *reason;

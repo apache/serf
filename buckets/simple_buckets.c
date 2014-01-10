@@ -19,7 +19,7 @@
 #include "serf_bucket_util.h"
 
 
-typedef struct {
+typedef struct simple_context_t {
     const char *original;
     const char *current;
     apr_size_t remaining;

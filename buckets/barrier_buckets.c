@@ -19,7 +19,7 @@
 #include "serf_bucket_util.h"
 
 
-typedef struct {
+typedef struct barrier_context_t {
     serf_bucket_t *stream;
 } barrier_context_t;
 
