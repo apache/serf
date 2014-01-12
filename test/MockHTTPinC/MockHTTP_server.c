@@ -566,7 +566,7 @@ static apr_status_t process(mhServCtx_t *ctx, _mhClientCtx_t *cctx,
     apr_status_t status = APR_SUCCESS;
 
     /* First sent any pending responses before reading the next request. */
-    if (desc->rtnevents & APR_POLLOUT) {
+    if (desc->rtnevents & APR_POLLOUT && cctx->respQueue->nelts) {
         mhResponse_t **presp, *resp;
 
         /* TODO: response in progress */
@@ -582,10 +582,16 @@ static apr_status_t process(mhServCtx_t *ctx, _mhClientCtx_t *cctx,
                     _mhLog(MH_VERBOSE, __FILE__,
                            "Actively closing connection.\n");
                     apr_socket_close(cctx->skt);
+                    ctx->cctx = NULL;
+                    return APR_EOF;
                 }
+                status = APR_SUCCESS;
             } else {
                 cctx->currResp = resp;
+                status = APR_EAGAIN;
             }
+        } else {
+            return APR_EGENERAL;
         }
     }
     if (desc->rtnevents & APR_POLLIN || cctx->buflen) {
@@ -595,15 +601,17 @@ static apr_status_t process(mhServCtx_t *ctx, _mhClientCtx_t *cctx,
             ctx->mh->verifyStats->requestsReceived++;
             apr_queue_push(ctx->reqQueue, cctx->req);
             if (_mhMatchRequest(ctx->mh, cctx->req, &resp) == YES) {
+                ctx->mh->verifyStats->requestsMatched++;
                 if (resp) {
                     _mhLog(MH_VERBOSE, __FILE__,
-                           "Requested matched, queueing response.\n");
+                           "Request matched, queueing response.\n");
                 } else {
                     _mhLog(MH_VERBOSE, __FILE__,
-                           "Requested matched, queueing default response.\n");
+                           "Request matched, queueing default response.\n");
                     resp = ctx->mh->defResponse;
                 }
             } else {
+                ctx->mh->verifyStats->requestsNotMatched++;
                 _mhLog(MH_VERBOSE, __FILE__,
                        "Request found no match, queueing error response.\n");
                 resp = ctx->mh->defErrorResponse;
@@ -612,6 +620,7 @@ static apr_status_t process(mhServCtx_t *ctx, _mhClientCtx_t *cctx,
             resp->req = cctx->req;
             *((mhResponse_t **)apr_array_push(cctx->respQueue)) = resp;
             cctx->req = NULL;
+            status = APR_SUCCESS;
         }
     }
 
@@ -643,11 +652,13 @@ apr_status_t _mhRunServerLoop(mhServCtx_t *ctx)
         if (cctx->respQueue->nelts > 0)
             cctx->reqevents |= APR_POLLOUT;
         pfd.reqevents = ctx->cctx->reqevents;
-        apr_pollset_add(ctx->pollset, &pfd);
+        STATUSERR(apr_pollset_add(ctx->pollset, &pfd));
     }
 
     STATUSERR(apr_pollset_poll(ctx->pollset, APR_USEC_PER_SEC >> 1,
                                &num, &desc));
+
+    /* The same socket can be returned multiple times by apr_pollset_poll() */
     while (num--) {
         if (desc->desc.s == ctx->skt) {
             apr_socket_t *cskt;
@@ -685,6 +696,7 @@ apr_status_t _mhRunServerLoop(mhServCtx_t *ctx)
 
             STATUSREADERR(process(ctx, cctx, desc));
         }
+        desc++;
     }
 
     return status;

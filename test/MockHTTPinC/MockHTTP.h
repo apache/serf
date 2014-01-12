@@ -253,6 +253,8 @@ typedef unsigned long mhError_t;
 typedef struct mhStats_t {
     unsigned int requestsReceived;
     unsigned int requestsResponded;
+    unsigned int requestsNotMatched;
+    unsigned int requestsMatched;
 } mhStats_t;
 
 /* Everything ok */

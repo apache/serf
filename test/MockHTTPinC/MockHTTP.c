@@ -375,6 +375,11 @@ chunked_body_matcher(apr_pool_t *pool, const mhMatchingPattern_t *mp,
         curpos += strlen(actual);
     }
 
+    /* Up until now the body matches, but maybe the body is expected to be 
+       longer. */
+    if (strlen(expected + curpos) > 0)
+        return NO;
+
     return YES;
 }
 
@@ -545,7 +550,7 @@ mhResponse_t *mhResponse(MockHTTP *mh, ...)
     apr_pool_t *pool = mh->pool;
     va_list argp;
 
-    mhResponse_t *resp = apr_palloc(pool, sizeof(mhResponse_t));
+    mhResponse_t *resp = apr_pcalloc(pool, sizeof(mhResponse_t));
     resp->pool = pool;
     resp->code = 200;
     resp->body = "";

@@ -121,94 +121,61 @@ static void test_closed_connection(CuTest *tc)
     apr_status_t status;
     handler_baton_t handler_ctx[10];
     const int num_requests = sizeof(handler_ctx)/sizeof(handler_ctx[0]);
-    int done = FALSE, i;
-
-    test_server_message_t message_list[] = {
-        {CHUNKED_REQUEST(1, "1")},
-        {CHUNKED_REQUEST(1, "2")},
-        {CHUNKED_REQUEST(1, "3")},
-        {CHUNKED_REQUEST(1, "4")},
-        {CHUNKED_REQUEST(1, "5")},
-        {CHUNKED_REQUEST(1, "6")},
-        {CHUNKED_REQUEST(1, "7")},
-        {CHUNKED_REQUEST(1, "8")},
-        {CHUNKED_REQUEST(1, "9")},
-        {CHUNKED_REQUEST(2, "10")}
-        };
-
-    test_server_action_t action_list[] = {
-        {SERVER_RESPOND, CHUNKED_EMPTY_RESPONSE},
-        {SERVER_RESPOND, CHUNKED_EMPTY_RESPONSE},
-        {SERVER_RESPOND, CHUNKED_EMPTY_RESPONSE},
-        {SERVER_RESPOND,
-         "HTTP/1.1 200 OK" CRLF
-         "Transfer-Encoding: chunked" CRLF
-         "Connection: close" CRLF
-         CRLF
-         "0" CRLF
-         CRLF
-        },
-        {SERVER_IGNORE_AND_KILL_CONNECTION},
-        {SERVER_RESPOND, CHUNKED_EMPTY_RESPONSE},
-        {SERVER_RESPOND, CHUNKED_EMPTY_RESPONSE},
-        {SERVER_RESPOND, CHUNKED_EMPTY_RESPONSE},
-        {SERVER_RESPOND,
-         "HTTP/1.1 200 OK" CRLF
-         "Transfer-Encoding: chunked" CRLF
-         "Connection: close" CRLF
-         CRLF
-         "0" CRLF
-         CRLF
-        },
-        {SERVER_IGNORE_AND_KILL_CONNECTION},
-        {SERVER_RESPOND, CHUNKED_EMPTY_RESPONSE},
-        {SERVER_RESPOND, CHUNKED_EMPTY_RESPONSE},
-    };
-
+    int i;
     apr_pool_t *test_pool = tc->testBaton;
 
-    /* Set up a test context with a server. */
-    status = test_http_server_setup(&tb,
-                                    message_list, num_requests,
-                                    action_list, 12,
-                                    0,
-                                    NULL,
-                                    test_pool);
+    /* Set up a test context with a server */
+    status = setup_test_client_context(&tb, NULL, num_requests, test_pool);
     CuAssertIntEquals(tc, APR_SUCCESS, status);
+    setup_test_mock_server(tb);
+
+    /* We will send 10 requests to the mock server, close connection after the
+       4th and the 8th response */
+    Given(tb->mh)
+      GETRequest(URLEqualTo("/"), ChunkedBodyEqualTo("1"))
+        Respond(WithCode(200), WithRequestBody)
+      GETRequest(URLEqualTo("/"), ChunkedBodyEqualTo("2"))
+        Respond(WithCode(200), WithRequestBody)
+      GETRequest(URLEqualTo("/"), ChunkedBodyEqualTo("3"))
+        Respond(WithCode(200), WithRequestBody)
+      GETRequest(URLEqualTo("/"), ChunkedBodyEqualTo("4"))
+        Respond(WithCode(200), WithRequestBody,
+                WithConnectionCloseHeader)
+      /* All messages from hereon can potentially be sent (but not responded to)
+         twice */
+      GETRequest(URLEqualTo("/"), ChunkedBodyEqualTo("5"))
+        Respond(WithCode(200), WithRequestBody)
+      GETRequest(URLEqualTo("/"), ChunkedBodyEqualTo("6"))
+        Respond(WithCode(200), WithRequestBody)
+      GETRequest(URLEqualTo("/"), ChunkedBodyEqualTo("7"))
+        Respond(WithCode(200), WithRequestBody)
+      GETRequest(URLEqualTo("/"), ChunkedBodyEqualTo("8"))
+        Respond(WithCode(200), WithRequestBody,
+                WithConnectionCloseHeader)
+      /* All messages from hereon can potentially be sent (but not responded to)
+         three times */
+      GETRequest(URLEqualTo("/"), ChunkedBodyEqualTo("9"))
+        Respond(WithCode(200), WithRequestBody)
+      GETRequest(URLEqualTo("/"), ChunkedBodyEqualTo("10"))
+        Respond(WithCode(200), WithRequestBody)
+    EndGiven
 
     /* Send some requests on the connections */
     for (i = 0 ; i < num_requests ; i++) {
         create_new_request(tb, &handler_ctx[i], "GET", "/", i+1);
     }
 
-    while (1) {
-        status = run_test_server(tb->serv_ctx, 0, test_pool);
-        if (APR_STATUS_IS_TIMEUP(status))
-            status = APR_SUCCESS;
-        CuAssertIntEquals(tc, APR_SUCCESS, status);
+    status = run_client_and_mock_servers_loops(tb, num_requests, handler_ctx,
+                                               test_pool);
+    CuAssertIntEquals(tc, APR_SUCCESS, status);
 
-        status = serf_context_run(tb->context, 0, test_pool);
-        if (APR_STATUS_IS_TIMEUP(status))
-            status = APR_SUCCESS;
-        CuAssertIntEquals(tc, APR_SUCCESS, status);
-
-        /* Debugging purposes only! */
-        serf_debug__closed_conn(tb->bkt_alloc);
-
-        done = TRUE;
-        for (i = 0 ; i < num_requests ; i++)
-            if (handler_ctx[i].done == FALSE) {
-                done = FALSE;
-                break;
-            }
-        if (done)
-            break;
-    }
-
-   /* Check that all requests were received */
-   CuAssertTrue(tc, tb->sent_requests->nelts >= num_requests);
-   CuAssertIntEquals(tc, num_requests, tb->accepted_requests->nelts);
-   CuAssertIntEquals(tc, num_requests, tb->handled_requests->nelts);
+    /* Check that the requests were sent and reveived by the server */
+    Verify(tb->mh)
+      CuAssert(tc, ErrorMessage, VerifyAllRequestsReceived);
+    EndVerify
+    CuAssertTrue(tc, tb->sent_requests->nelts >= num_requests);
+    CuAssertIntEquals(tc, num_requests, tb->accepted_requests->nelts);
+    CuAssertIntEquals(tc, num_requests, tb->handled_requests->nelts);
 }
 
 /* Test if serf is sending the request to the proxy, not to the server
@@ -2247,7 +2214,6 @@ CuSuite *test_context(void)
 
     CuSuiteSetSetupTeardownCallbacks(suite, test_setup, test_teardown);
 
-    SUITE_ADD_TEST(suite, test_closed_connection);
     SUITE_ADD_TEST(suite, test_setup_proxy);
     SUITE_ADD_TEST(suite, test_keepalive_limit_one_by_one);
     SUITE_ADD_TEST(suite, test_keepalive_limit_one_by_one_and_burst);
@@ -2278,6 +2244,7 @@ CuSuite *test_context(void)
     /* Converted to MockHTTPinC library */
     SUITE_ADD_TEST(suite, test_serf_connection_request_create);
     SUITE_ADD_TEST(suite, test_serf_connection_priority_request_create);
+    SUITE_ADD_TEST(suite, test_closed_connection);
 
     return suite;
 }
