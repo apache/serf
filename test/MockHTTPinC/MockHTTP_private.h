@@ -21,6 +21,7 @@
 #include <apr_queue.h>
 #include <apr_tables.h>
 #include <apr_poll.h>
+#include <apr_time.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -38,6 +39,12 @@ extern "C" {
 
 #define STATUSREADERR(x) if (((status = (x)) && READ_ERROR(status)))\
                             return status;
+
+#define MH_STATUS_START (APR_OS_START_USERERR + 1500)
+
+/* This code indicates that the server is waiting for a timed event */
+#define MH_STATUS_WAITING (MH_STATUS_START + 1)
+
 
 typedef short int bool;
 static const bool YES = 1;
@@ -61,6 +68,9 @@ struct MockHTTP {
     apr_queue_t *reqQueue; /* Thread safe FIFO queue. */
     char *errmsg;
     unsigned long expectations;
+    mhStats_t *verifyStats;
+    mhResponse_t *defResponse;
+    mhResponse_t *defErrorResponse;
 };
 
 typedef struct _mhClientCtx_t _mhClientCtx_t;
@@ -91,13 +101,15 @@ struct mhRequest_t {
 
 struct mhResponse_t {
     apr_pool_t *pool;
-
+    bool built;
     unsigned int code;
     const char *body;
     bool chunked;
     apr_array_header_t *chunks;
     apr_hash_t *hdrs;
     apr_array_header_t *builders;
+    bool closeConn;
+    mhRequest_t *req;  /* mhResponse_t instance is reply to req */
 };
 
 struct mhRequestMatcher_t {
@@ -126,10 +138,12 @@ void setHeader(apr_pool_t *pool, apr_hash_t *hdrs,
 
 /* Initialize a mhRequest_t object. */
 mhRequest_t *_mhRequestInit(MockHTTP *mh);
-mhResponse_t *_mhMatchRequest(const MockHTTP *mh, mhRequest_t *req);
+bool _mhMatchRequest(const MockHTTP *mh, mhRequest_t *req, mhResponse_t **resp);
 
 bool _mhRequestMatcherMatch(const mhRequestMatcher_t *rm,
                             const mhRequest_t *req);
+/* Build a response */
+void _mhResponseBuild(mhResponse_t *resp);
 
 /* Test servers */
 mhServCtx_t *_mhInitTestServer(const MockHTTP *mh, const char *host,

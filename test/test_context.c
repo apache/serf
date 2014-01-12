@@ -43,10 +43,10 @@ static void test_serf_connection_request_create(CuTest *tc)
     setup_test_mock_server(tb);
 
     Given(tb->mh)
-      GetRequest(URLEqualTo("/"), ChunkedBodyEqualTo("1"),
+      GETRequest(URLEqualTo("/"), ChunkedBodyEqualTo("1"),
                  HeaderEqualTo("Host", tb->serv_host))
         Respond(WithCode(200), WithChunkedBody(""))
-      GetRequest(URLEqualTo("/"), ChunkedBodyEqualTo("2"),
+      GETRequest(URLEqualTo("/"), ChunkedBodyEqualTo("2"),
                  HeaderEqualTo("Host", tb->serv_host))
         Respond(WithCode(200), WithChunkedBody(""))
     EndGiven
@@ -88,13 +88,13 @@ static void test_serf_connection_priority_request_create(CuTest *tc)
     setup_test_mock_server(tb);
 
     Given(tb->mh)
-      GetRequest(URLEqualTo("/"), ChunkedBodyEqualTo("1"),
+      GETRequest(URLEqualTo("/"), ChunkedBodyEqualTo("1"),
                  HeaderEqualTo("Host", tb->serv_host))
         Respond(WithCode(200), WithChunkedBody(""))
-      GetRequest(URLEqualTo("/"), ChunkedBodyEqualTo("2"),
+      GETRequest(URLEqualTo("/"), ChunkedBodyEqualTo("2"),
                  HeaderEqualTo("Host", tb->serv_host))
         Respond(WithCode(200), WithChunkedBody(""))
-      GetRequest(URLEqualTo("/"), ChunkedBodyEqualTo("3"),
+      GETRequest(URLEqualTo("/"), ChunkedBodyEqualTo("3"),
                  HeaderEqualTo("Host", tb->serv_host))
         Respond(WithCode(200), WithChunkedBody(""))
     EndGiven

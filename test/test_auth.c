@@ -54,7 +54,7 @@ static void test_authentication_disabled(CuTest *tc)
                                      authn_callback_expect_not_called);
 
     Given(tb->mh)
-      GetRequest(URLEqualTo("/"), ChunkedBodyEqualTo("1"))
+      GETRequest(URLEqualTo("/"), ChunkedBodyEqualTo("1"))
         Respond(WithCode(401), WithChunkedBody("1"),
                 WithHeader("WWW-Authenticate", "Basic realm=\"Test Suite\""))
     EndGiven
@@ -88,7 +88,7 @@ static void test_unsupported_authentication(CuTest *tc)
                                      authn_callback_expect_not_called);
 
     Given(tb->mh)
-      GetRequest(URLEqualTo("/"), ChunkedBodyEqualTo("1"))
+      GETRequest(URLEqualTo("/"), ChunkedBodyEqualTo("1"))
         Respond(WithCode(401), WithChunkedBody("1"),
                 WithHeader("WWW-Authenticate",
                            "NotExistent realm=\"Test Suite\""))
@@ -132,8 +132,7 @@ basic_authn_callback(char **username,
 }
 
 /* Test template, used for KeepAlive Off and KeepAlive On test */
-static void basic_authentication(CuTest *tc, const char *resp_hdr,
-                                 const char *resp_value)
+static void basic_authentication(CuTest *tc, int close_conn)
 {
     test_baton_t *tb;
     handler_baton_t handler_ctx[2];
@@ -158,11 +157,11 @@ static void basic_authentication(CuTest *tc, const char *resp_hdr,
     /* Use non-standard case WWW-Authenticate header and scheme name to test
        for case insensitive comparisons. */
     Given(tb->mh)
-      GetRequest(URLEqualTo("/"), HeaderNotSet("Authorization"))
+      GETRequest(URLEqualTo("/"), HeaderNotSet("Authorization"))
         Respond(WithCode(401),WithChunkedBody("1"),
                 WithHeader("www-Authenticate", "bAsIc realm=\"Test Suite\""),
-                resp_hdr ? WithHeader(resp_hdr, resp_value) : NULL)
-      GetRequest(URLEqualTo("/"),
+                close_conn ? WithConnectionCloseHeader : NULL)
+      GETRequest(URLEqualTo("/"),
                  HeaderEqualTo("Authorization", "Basic c2VyZjpzZXJmdGVzdA=="))
         Respond(WithCode(200),WithChunkedBody(""))
     Expect
@@ -181,7 +180,7 @@ static void basic_authentication(CuTest *tc, const char *resp_hdr,
     /* Test that credentials were cached by asserting that the authn callback
        wasn't called again. */
     Given(tb->mh)
-      GetRequest(URLEqualTo("/"),
+      GETRequest(URLEqualTo("/"),
                  HeaderEqualTo("Authorization", "Basic c2VyZjpzZXJmdGVzdA=="))
         Respond(WithCode(200), WithChunkedBody(""))
     Expect
@@ -201,12 +200,12 @@ static void basic_authentication(CuTest *tc, const char *resp_hdr,
 
 static void test_basic_authentication(CuTest *tc)
 {
-    basic_authentication(tc, "", "");
+    basic_authentication(tc, 0 /* don't close connection */);
 }
 
 static void test_basic_authentication_keepalive_off(CuTest *tc)
 {
-    basic_authentication(tc, "Connection", "close");
+    basic_authentication(tc, 1);
 }
 
 static apr_status_t
@@ -237,8 +236,7 @@ digest_authn_callback(char **username,
 }
 
 /* Test template, used for KeepAlive Off and KeepAlive On test */
-static void digest_authentication(CuTest *tc, const char *resp_hdr,
-                                  const char *resp_value)
+static void digest_authentication(CuTest *tc, int close_conn)
 {
     test_baton_t *tb;
     handler_baton_t handler_ctx[2];
@@ -270,13 +268,13 @@ static void digest_authentication(CuTest *tc, const char *resp_hdr,
                 md5hex("GET:/test/index.html"))
      */
     Given(tb->mh)
-      GetRequest(URLEqualTo("/test/index.html"), HeaderNotSet("Authorization"))
+      GETRequest(URLEqualTo("/test/index.html"), HeaderNotSet("Authorization"))
         Respond(WithCode(401), WithChunkedBody("1"),
                 WithHeader("www-Authenticate", "Digest realm=\"Test Suite\","
                            "nonce=\"ABCDEF1234567890\",opaque=\"myopaque\","
                            "algorithm=\"MD5\",qop-options=\"auth\""),
-                resp_hdr ? WithHeader(resp_hdr, resp_value) : NULL)
-      GetRequest(URLEqualTo("/test/index.html"),
+                close_conn ? WithConnectionCloseHeader : NULL)
+      GETRequest(URLEqualTo("/test/index.html"),
                  HeaderEqualTo("Authorization", "Digest realm=\"Test Suite\", "
                                "username=\"serf\", nonce=\"ABCDEF1234567890\", "
                                "uri=\"/test/index.html\", "
@@ -300,7 +298,7 @@ static void digest_authentication(CuTest *tc, const char *resp_hdr,
 
 static void test_digest_authentication(CuTest *tc)
 {
-    digest_authentication(tc, "", "");
+    digest_authentication(tc, 0 /* don't close connection */);
 }
 
 static void test_digest_authentication_keepalive_off(CuTest *tc)
@@ -308,7 +306,7 @@ static void test_digest_authentication_keepalive_off(CuTest *tc)
     /* Add the Connection: close header to the response with the Digest headers.
        This to test that the Digest headers will be added to the retry of the
        request on the new connection. */
-    digest_authentication(tc, "Connection", "close");
+    digest_authentication(tc, 1);
 }
 
 static apr_status_t
@@ -380,13 +378,13 @@ static void authentication_switch_realms(CuTest *tc,
     num_requests_recvd = 2;
 
     Given(tb->mh)
-      GetRequest(URLEqualTo("/"), ChunkedBodyEqualTo("1"),
+      GETRequest(URLEqualTo("/"), ChunkedBodyEqualTo("1"),
                  HeaderNotSet("Authorization"))
         Respond(WithCode(401), WithChunkedBody("1"),
                 WithHeader("WWW-Authenticate",
                            apr_psprintf(test_pool, "%s realm=\"Test Suite\"%s",
                                         scheme, authn_attr)))
-      GetRequest(URLEqualTo("/"), ChunkedBodyEqualTo("1"),
+      GETRequest(URLEqualTo("/"), ChunkedBodyEqualTo("1"),
                  HeaderEqualTo("Authorization", exp_authz_test_suite))
         Respond(WithCode(200), WithChunkedBody(""))
     EndGiven
@@ -406,7 +404,7 @@ static void authentication_switch_realms(CuTest *tc,
     tb->result_flags = 0;
 
     Given(tb->mh)
-      GetRequest(URLEqualTo("/"), ChunkedBodyEqualTo("2"),
+      GETRequest(URLEqualTo("/"), ChunkedBodyEqualTo("2"),
                  HeaderEqualTo("Authorization", exp_authz_test_suite))
         Respond(WithCode(200), WithChunkedBody(""))
     EndGiven
@@ -427,13 +425,13 @@ static void authentication_switch_realms(CuTest *tc,
                                   mhServerPortNr(tb->mh));
 
     Given(tb->mh)
-      GetRequest(URLEqualTo("/newrealm/index.html"), ChunkedBodyEqualTo("3"),
+      GETRequest(URLEqualTo("/newrealm/index.html"), ChunkedBodyEqualTo("3"),
                  HeaderEqualTo("Authorization", exp_authz_wrong_realm))
         Respond(WithCode(401), WithChunkedBody("1"),
                 WithHeader("WWW-Authenticate",
                            apr_psprintf(test_pool, "%s realm=\"New Realm\"%s",
                                         scheme, authn_attr)))
-    GetRequest(URLEqualTo("/newrealm/index.html"), ChunkedBodyEqualTo("3"),
+    GETRequest(URLEqualTo("/newrealm/index.html"), ChunkedBodyEqualTo("3"),
                HeaderEqualTo("Authorization", exp_authz_new_realm))
         Respond(WithCode(200), WithChunkedBody(""))
     EndGiven

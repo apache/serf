@@ -69,7 +69,7 @@ extern "C" {
  * when expectations can't be matched. These macro's should be used like this:
  *
  *   Given(mh)
- *     GetRequest(URLEqualTo("/index.html"))
+ *     GETRequest(URLEqualTo("/index.html"))
  *       Respond(WithCode(200), WithBody("body"))
  *   Expect
  *     AllRequestsReceivedOnce
@@ -155,6 +155,15 @@ extern "C" {
 #define     WithChunkedBody(...)\
                 mhRespSetChunkedBody(__mh, __VA_ARGS__, NULL)
 
+/* Use the body of the request as the body of the response. */
+#define     WithRequestBody\
+                mhRespSetUseRequestBody(__mh)
+
+/* Adds a "Connection: close" header to the response, makes the mock server
+   close the connection after sending the response. */
+#define     WithConnectionCloseHeader\
+                mhRespSetConnCloseHdr(__mh)
+
 #define EndGiven\
                 /* Assign local variables to NULL to avoid 'variable unused' 
                    warnings. */\
@@ -180,7 +189,7 @@ extern "C" {
  * To be used like this:
  *   Verify(mh)
  *     ASSERT(VerifyAllExpectationsOk);
- *     ASSERT(GetRequestReceivedFor(URLEqualTo("/index.html"));
+ *     ASSERT(GETRequestReceivedFor(URLEqualTo("/index.html"));
  *   EndVerify
  *
  * Note: the ASSERT macro is not included in this library, but should be
@@ -217,6 +226,9 @@ extern "C" {
 #define   VerifyAllExpectationsOk\
                mhVerifyAllExpectationsOk(__mh)
 
+#define   VerifyStats\
+              mhVerifyStatistics(__mh)
+
 /* Return the last error message, if any.
    e.g. ASSERT_MSG(ErrorMessage, VerifyAllExpectationsOk); */
 #define   ErrorMessage\
@@ -225,12 +237,6 @@ extern "C" {
 /* End of test result verification section */
 #define EndVerify\
             }
-
-/* TODO: remove these when the test suite is updated */
-#define GetRequest GETRequest
-#define PostRequest POSTRequest
-#define GetRequestReceivedFor GETRequestReceivedFor
-#define PostRequestReceivedFor POSTRequestReceivedFor
 
 typedef struct MockHTTP MockHTTP;
 typedef struct mhMatchingPattern_t mhMatchingPattern_t;
@@ -243,6 +249,11 @@ typedef struct mhServCtx_t mhServCtx_t;
 typedef struct mhServerBuilder_t mhServerBuilder_t;
 
 typedef unsigned long mhError_t;
+
+typedef struct mhStats_t {
+    unsigned int requestsReceived;
+    unsigned int requestsResponded;
+} mhStats_t;
 
 /* Everything ok */
 #define MOCKHTTP_NO_ERROR 0
@@ -283,39 +294,44 @@ mhError_t mhRunServerLoop(MockHTTP *mh);
 /**
  * Get the actual port number on which the server is listening.
  */
-int mhServerPortNr(MockHTTP *mh);
+int mhServerPortNr(const MockHTTP *mh);
 
 /**
    The following functions should not be used directly, as they can be quite
    complex to use. Use the macro's instead.
  **/
 mhError_t mhInitHTTPserver(MockHTTP *mh, ...);
-mhServerBuilder_t *mhConstructServerPortSetter(MockHTTP *mh, unsigned int port);
+mhServerBuilder_t *mhConstructServerPortSetter(const MockHTTP *mh,
+                                               unsigned int port);
 
 /* Define request stubs */
 mhRequestMatcher_t *mhGivenRequest(MockHTTP *mh, const char *method, ...);
 
 /* Request matching functions */
-mhMatchingPattern_t *mhMatchURLEqualTo(MockHTTP *mh, const char *expected);
-mhMatchingPattern_t *mhMatchMethodEqualTo(MockHTTP *mh, const char *expected);
-mhMatchingPattern_t *mhMatchBodyEqualTo(MockHTTP *mh, const char *expected);
+mhMatchingPattern_t *mhMatchURLEqualTo(const MockHTTP *mh,
+                                       const char *expected);
+mhMatchingPattern_t *mhMatchMethodEqualTo(const MockHTTP *mh,
+                                          const char *expected);
+mhMatchingPattern_t *mhMatchBodyEqualTo(const MockHTTP *mh,
+                                        const char *expected);
 /* Network level matching functions, for testing of http libraries */
-mhMatchingPattern_t *mhMatchBodyNotChunkedEqualTo(MockHTTP *mh,
+mhMatchingPattern_t *mhMatchBodyNotChunkedEqualTo(const MockHTTP *mh,
                                                   const char *expected);
-mhMatchingPattern_t *mhMatchChunkedBodyEqualTo(MockHTTP *mh,
+mhMatchingPattern_t *mhMatchChunkedBodyEqualTo(const MockHTTP *mh,
                                                const char *expected);
-mhMatchingPattern_t *mhMatchChunkedBodyChunksEqualTo(MockHTTP *mh, ...);
-mhMatchingPattern_t *mhMatchHeaderEqualTo(MockHTTP *mh,
+mhMatchingPattern_t *mhMatchChunkedBodyChunksEqualTo(const MockHTTP *mh, ...);
+mhMatchingPattern_t *mhMatchHeaderEqualTo(const MockHTTP *mh,
                                           const char *hdr, const char *value);
 
 /* Response functions */
 mhResponse_t *mhResponse(MockHTTP *mh, ...);
-mhRespBuilder_t *mhRespSetCode(MockHTTP *mh, unsigned int status);
-mhRespBuilder_t *mhRespSetBody(MockHTTP *mh, const char *body);
-mhRespBuilder_t *mhRespSetChunkedBody(MockHTTP *mh, ...);
-mhRespBuilder_t *mhRespAddHeader(MockHTTP *mh, const char *header,
+mhRespBuilder_t *mhRespSetCode(const MockHTTP *mh, unsigned int status);
+mhRespBuilder_t *mhRespSetBody(const MockHTTP *mh, const char *body);
+mhRespBuilder_t *mhRespSetChunkedBody(const MockHTTP *mh, ...);
+mhRespBuilder_t *mhRespAddHeader(const MockHTTP *mh, const char *header,
                                  const char *value);
-void mhResponseBuild(mhResponse_t *resp);
+mhRespBuilder_t *mhRespSetConnCloseHdr(const MockHTTP *mh);
+mhRespBuilder_t *mhRespSetUseRequestBody(const MockHTTP *mh);
 
 /* Define request/response pairs */
 void mhPushRequest(MockHTTP *mh, mhRequestMatcher_t *rm);
@@ -326,12 +342,13 @@ void mhExpectAllRequestsReceivedOnce(MockHTTP *mh);
 void mhExpectAllRequestsReceivedInOrder(MockHTTP *mh);
 
 /* Verify */
-int mhVerifyRequestReceived(MockHTTP *mh, mhRequestMatcher_t *rm);
-int mhVerifyAllRequestsReceived(MockHTTP *mh);
-int mhVerifyAllRequestsReceivedInOrder(MockHTTP *mh);
-int mhVerifyAllRequestsReceivedOnce(MockHTTP *mh);
-int mhVerifyAllExpectationsOk(MockHTTP *mh);
-const char *mhGetLastErrorString(MockHTTP *mh);
+int mhVerifyRequestReceived(const MockHTTP *mh, const mhRequestMatcher_t *rm);
+int mhVerifyAllRequestsReceived(const MockHTTP *mh);
+int mhVerifyAllRequestsReceivedInOrder(const MockHTTP *mh);
+int mhVerifyAllRequestsReceivedOnce(const MockHTTP *mh);
+int mhVerifyAllExpectationsOk(const MockHTTP *mh);
+mhStats_t *mhVerifyStatistics(const MockHTTP *mh);
+const char *mhGetLastErrorString(const MockHTTP *mh);
 
 #define MOCKHTTP_VERSION 0.1
 
