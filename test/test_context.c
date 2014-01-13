@@ -88,15 +88,14 @@ static void test_serf_connection_priority_request_create(CuTest *tc)
     setup_test_mock_server(tb);
 
     Given(tb->mh)
+      DefaultResponse(WithCode(200), WithRequestBody)
+
       GETRequest(URLEqualTo("/"), ChunkedBodyEqualTo("1"),
                  HeaderEqualTo("Host", tb->serv_host))
-        Respond(WithCode(200), WithChunkedBody(""))
       GETRequest(URLEqualTo("/"), ChunkedBodyEqualTo("2"),
                  HeaderEqualTo("Host", tb->serv_host))
-        Respond(WithCode(200), WithChunkedBody(""))
       GETRequest(URLEqualTo("/"), ChunkedBodyEqualTo("3"),
                  HeaderEqualTo("Host", tb->serv_host))
-        Respond(WithCode(200), WithChunkedBody(""))
     EndGiven
 
     create_new_request(tb, &handler_ctx[0], "GET", "/", 2);
@@ -132,32 +131,26 @@ static void test_closed_connection(CuTest *tc)
     /* We will send 10 requests to the mock server, close connection after the
        4th and the 8th response */
     Given(tb->mh)
+      DefaultResponse(WithCode(200), WithRequestBody)
+
       GETRequest(URLEqualTo("/"), ChunkedBodyEqualTo("1"))
-        Respond(WithCode(200), WithRequestBody)
       GETRequest(URLEqualTo("/"), ChunkedBodyEqualTo("2"))
-        Respond(WithCode(200), WithRequestBody)
       GETRequest(URLEqualTo("/"), ChunkedBodyEqualTo("3"))
-        Respond(WithCode(200), WithRequestBody)
       GETRequest(URLEqualTo("/"), ChunkedBodyEqualTo("4"))
         Respond(WithCode(200), WithRequestBody,
                 WithConnectionCloseHeader)
       /* All messages from hereon can potentially be sent (but not responded to)
          twice */
       GETRequest(URLEqualTo("/"), ChunkedBodyEqualTo("5"))
-        Respond(WithCode(200), WithRequestBody)
       GETRequest(URLEqualTo("/"), ChunkedBodyEqualTo("6"))
-        Respond(WithCode(200), WithRequestBody)
       GETRequest(URLEqualTo("/"), ChunkedBodyEqualTo("7"))
-        Respond(WithCode(200), WithRequestBody)
       GETRequest(URLEqualTo("/"), ChunkedBodyEqualTo("8"))
         Respond(WithCode(200), WithRequestBody,
                 WithConnectionCloseHeader)
       /* All messages from hereon can potentially be sent (but not responded to)
          three times */
       GETRequest(URLEqualTo("/"), ChunkedBodyEqualTo("9"))
-        Respond(WithCode(200), WithRequestBody)
       GETRequest(URLEqualTo("/"), ChunkedBodyEqualTo("10"))
-        Respond(WithCode(200), WithRequestBody)
     EndGiven
 
     /* Send some requests on the connections */

@@ -560,6 +560,14 @@ static apr_status_t writeResponse(_mhClientCtx_t *cctx, mhResponse_t *resp)
     return status;
 }
 
+static mhResponse_t *cloneResponse(apr_pool_t *pool, mhResponse_t *resp)
+{
+    mhResponse_t *clone;
+    clone = apr_pmemdup(pool, resp, sizeof(mhResponse_t));
+    clone->hdrs = apr_hash_copy(pool, resp->hdrs);
+    return clone;
+}
+
 static apr_status_t process(mhServCtx_t *ctx, _mhClientCtx_t *cctx,
                             const apr_pollfd_t *desc)
 {
@@ -608,13 +616,13 @@ static apr_status_t process(mhServCtx_t *ctx, _mhClientCtx_t *cctx,
                 } else {
                     _mhLog(MH_VERBOSE, __FILE__,
                            "Request matched, queueing default response.\n");
-                    resp = ctx->mh->defResponse;
+                    resp = cloneResponse(ctx->pool, ctx->mh->defResponse);
                 }
             } else {
                 ctx->mh->verifyStats->requestsNotMatched++;
                 _mhLog(MH_VERBOSE, __FILE__,
                        "Request found no match, queueing error response.\n");
-                resp = ctx->mh->defErrorResponse;
+                resp = cloneResponse(ctx->pool, ctx->mh->defErrorResponse);
             }
 
             resp->req = cctx->req;

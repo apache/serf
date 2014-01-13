@@ -132,6 +132,10 @@ extern "C" {
 /* TODO: http version, conditional, */
 /* When a request matches, the server will respond with the response defined
    here. */
+#define   DefaultResponse(...)\
+                __resp = mhResponse(__mh, __VA_ARGS__, NULL);\
+                mhSetDefaultResponse(__mh, __resp);
+
 #define   Respond(...)\
                 __resp = mhResponse(__mh, __VA_ARGS__, NULL);\
                 mhSetRespForReq(__mh, __rm, __resp);
@@ -251,9 +255,16 @@ typedef struct mhServerBuilder_t mhServerBuilder_t;
 typedef unsigned long mhError_t;
 
 typedef struct mhStats_t {
+    /* Number of requests received and read by the server. This does not include
+       pipelined requests that were received after the server closed the socket.
+     */
     unsigned int requestsReceived;
+    /* Number of requests the server responded to. This includes default 
+       responses or 500 Internal Server Error responses */
     unsigned int requestsResponded;
+    /* Number of requests for which a match was found. */
     unsigned int requestsNotMatched;
+    /* Number of requests for which no match was found. */
     unsigned int requestsMatched;
 } mhStats_t;
 
@@ -338,6 +349,7 @@ mhRespBuilder_t *mhRespSetUseRequestBody(const MockHTTP *mh);
 /* Define request/response pairs */
 void mhPushRequest(MockHTTP *mh, mhRequestMatcher_t *rm);
 void mhSetRespForReq(MockHTTP *mh, mhRequestMatcher_t *rm, mhResponse_t *resp);
+void mhSetDefaultResponse(MockHTTP *mh, mhResponse_t *resp);
 
 /* Define expectations */
 void mhExpectAllRequestsReceivedOnce(MockHTTP *mh);

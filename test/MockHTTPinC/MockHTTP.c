@@ -265,6 +265,11 @@ void mhSetRespForReq(MockHTTP *mh, mhRequestMatcher_t *rm, mhResponse_t *resp)
     }
 }
 
+void mhSetDefaultResponse(MockHTTP *mh, mhResponse_t *resp)
+{
+    mh->defResponse = resp;
+}
+
 mhRequest_t *_mhRequestInit(MockHTTP *mh)
 {
     mhRequest_t *req = apr_palloc(mh->pool, sizeof(mhRequest_t));
