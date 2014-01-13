@@ -366,11 +366,25 @@ apr_status_t serf__handle_auth_response(int *consumed_response,
         
         /* Discard all response body before processing authentication. */
         if (!APR_STATUS_IS_EOF(status)) {
+            if (SERF_BUCKET_READ_ERROR(status)) {
+                /* Report the request as 'died' to the application */
+                (void)(*request->handler)(request,
+                                          NULL,
+                                          request->handler_baton,
+                                          pool);
+            }
             return status;
         }
 
         status = dispatch_auth(sl.code, request, response, pool);
         if (status != APR_SUCCESS) {
+            if (SERF_BUCKET_READ_ERROR(status)) {
+                /* Report the request as 'died' to the application */
+                (void)(*request->handler)(request,
+                                          NULL,
+                                          request->handler_baton,
+                                          pool);
+            }
             return status;
         }
 
@@ -409,6 +423,16 @@ apr_status_t serf__handle_auth_response(int *consumed_response,
                consider the reponse body as invalid and discard it. */
             status = discard_body(response);
             *consumed_response = 1;
+            
+            if (SERF_BUCKET_READ_ERROR(status)
+                 || SERF_BUCKET_READ_ERROR(resp_status)) {
+                /* Report the request as 'died' to the application */
+                (void)(*request->handler)(request,
+                                          NULL,
+                                          request->handler_baton,
+                                          pool);
+            }
+            
             if (!APR_STATUS_IS_EOF(status)) {
                 return status;
             }
