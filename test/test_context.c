@@ -262,9 +262,7 @@ static void test_setup_proxy(CuTest *tc)
  * Test if we can make serf send requests one by one.
  *****************************************************************************/
 
-/* Resend the first request 4 times by reducing the pipeline bandwidth to
-   one request at a time, and by adding the first request again at the start of
-   the outgoing queue. */
+/* Resend the first request 2 more times as priority requests. */
 static apr_status_t
 handle_response_keepalive_limit(serf_request_t *request,
                                 serf_bucket_t *response,
@@ -303,76 +301,55 @@ handle_response_keepalive_limit(serf_request_t *request,
     return APR_SUCCESS;
 }
 
-#define SEND_REQUESTS 5
+#define SENT_REQUESTS 5
 #define RCVD_REQUESTS 7
 static void test_keepalive_limit_one_by_one(CuTest *tc)
 {
     test_baton_t *tb;
     apr_status_t status;
-    handler_baton_t handler_ctx[SEND_REQUESTS];
-    int done = FALSE, i;
-
-    test_server_message_t message_list[] = {
-        {CHUNKED_REQUEST(1, "1")},
-        {CHUNKED_REQUEST(1, "1")},
-        {CHUNKED_REQUEST(1, "1")},
-        {CHUNKED_REQUEST(1, "2")},
-        {CHUNKED_REQUEST(1, "3")},
-        {CHUNKED_REQUEST(1, "4")},
-        {CHUNKED_REQUEST(1, "5")},
-    };
-
-    test_server_action_t action_list[] = {
-        {SERVER_RESPOND, CHUNKED_EMPTY_RESPONSE},
-        {SERVER_RESPOND, CHUNKED_EMPTY_RESPONSE},
-        {SERVER_RESPOND, CHUNKED_EMPTY_RESPONSE},
-        {SERVER_RESPOND, CHUNKED_EMPTY_RESPONSE},
-        {SERVER_RESPOND, CHUNKED_EMPTY_RESPONSE},
-        {SERVER_RESPOND, CHUNKED_EMPTY_RESPONSE},
-        {SERVER_RESPOND, CHUNKED_EMPTY_RESPONSE},
-    };
+    handler_baton_t handler_ctx[RCVD_REQUESTS];
+    int i;
 
     apr_pool_t *test_pool = tc->testBaton;
 
-    /* Set up a test context with a server. */
-    status = test_http_server_setup(&tb,
-                                    message_list, RCVD_REQUESTS,
-                                    action_list, RCVD_REQUESTS, 0, NULL,
-                                    test_pool);
+    /* Set up a test context with a server */
+    status = setup_test_client_context(&tb, NULL, RCVD_REQUESTS, test_pool);
     CuAssertIntEquals(tc, APR_SUCCESS, status);
+    setup_test_mock_server(tb);
 
-    for (i = 0 ; i < SEND_REQUESTS ; i++) {
+    /* Reduce the bandwidth to one at a time. The first request will be resend
+       twice as priority requests, so iff the bandwidth reduction is in effect 
+       these should be sent before all other requests. */
+    serf_connection_set_max_outstanding_requests(tb->connection, 1);
+
+    Given(tb->mh)
+      DefaultResponse(WithCode(200), WithRequestBody)
+
+      GETRequest(URLEqualTo("/"), ChunkedBodyEqualTo("1"))
+      GETRequest(URLEqualTo("/"), ChunkedBodyEqualTo("1"))
+      GETRequest(URLEqualTo("/"), ChunkedBodyEqualTo("1"))
+      GETRequest(URLEqualTo("/"), ChunkedBodyEqualTo("2"))
+      GETRequest(URLEqualTo("/"), ChunkedBodyEqualTo("3"))
+      GETRequest(URLEqualTo("/"), ChunkedBodyEqualTo("4"))
+      GETRequest(URLEqualTo("/"), ChunkedBodyEqualTo("5"))
+    EndGiven
+
+    for (i = 0 ; i < SENT_REQUESTS ; i++) {
         create_new_request_with_resp_hdlr(tb, &handler_ctx[i], "GET", "/", i+1,
                                           handle_response_keepalive_limit);
-        /* TODO: don't think this needs to be done in the loop. */
-        serf_connection_set_max_outstanding_requests(tb->connection, 1);
     }
 
-    while (1) {
-        status = run_test_server(tb->serv_ctx, 0, test_pool);
-        if (APR_STATUS_IS_TIMEUP(status))
-            status = APR_SUCCESS;
-        CuAssertIntEquals(tc, APR_SUCCESS, status);
+    /* The two retries of request 1 both also have req_id=1, which means that
+       we can't expected RECV_REQUESTS # of requests here, because the done flag
+       of these 2 request will not be registered correctly. */
+    status = run_client_and_mock_servers_loops(tb, SENT_REQUESTS, handler_ctx,
+                                               test_pool);
+    CuAssertIntEquals(tc, APR_SUCCESS, status);
 
-        status = serf_context_run(tb->context, 0, test_pool);
-        if (APR_STATUS_IS_TIMEUP(status))
-            status = APR_SUCCESS;
-        CuAssertIntEquals(tc, APR_SUCCESS, status);
+    Verify(tb->mh)
+      CuAssert(tc, ErrorMessage, VerifyAllRequestsReceivedInOrder);
+    EndVerify
 
-        /* Debugging purposes only! */
-        serf_debug__closed_conn(tb->bkt_alloc);
-
-        done = TRUE;
-        for (i = 0 ; i < SEND_REQUESTS ; i++)
-            if (handler_ctx[i].done == FALSE) {
-                done = FALSE;
-                break;
-            }
-        if (done)
-            break;
-    }
-
-    /* Check that all requests were received */
     CuAssertIntEquals(tc, RCVD_REQUESTS, tb->sent_requests->nelts);
     CuAssertIntEquals(tc, RCVD_REQUESTS, tb->accepted_requests->nelts);
     CuAssertIntEquals(tc, RCVD_REQUESTS, tb->handled_requests->nelts);
@@ -384,7 +361,7 @@ static void test_keepalive_limit_one_by_one(CuTest *tc)
  * Test if we can make serf first send requests one by one, and then change
  * back to burst mode.
  *****************************************************************************/
-#define SEND_REQUESTS 5
+#define SENT_REQUESTS 5
 #define RCVD_REQUESTS 7
 /* Resend the first request 2 times by reducing the pipeline bandwidth to
    one request at a time, and by adding the first request again at the start of
@@ -440,69 +417,45 @@ static void test_keepalive_limit_one_by_one_and_burst(CuTest *tc)
 {
     test_baton_t *tb;
         apr_status_t status;
-    handler_baton_t handler_ctx[SEND_REQUESTS];
-    int done = FALSE, i;
-
-    test_server_message_t message_list[] = {
-        {CHUNKED_REQUEST(1, "1")},
-        {CHUNKED_REQUEST(1, "1")},
-        {CHUNKED_REQUEST(1, "1")},
-        {CHUNKED_REQUEST(1, "2")},
-        {CHUNKED_REQUEST(1, "3")},
-        {CHUNKED_REQUEST(1, "4")},
-        {CHUNKED_REQUEST(1, "5")},
-    };
-
-    test_server_action_t action_list[] = {
-        {SERVER_RESPOND, CHUNKED_EMPTY_RESPONSE},
-        {SERVER_RESPOND, CHUNKED_EMPTY_RESPONSE},
-        {SERVER_RESPOND, CHUNKED_EMPTY_RESPONSE},
-        {SERVER_RESPOND, CHUNKED_EMPTY_RESPONSE},
-        {SERVER_RESPOND, CHUNKED_EMPTY_RESPONSE},
-        {SERVER_RESPOND, CHUNKED_EMPTY_RESPONSE},
-        {SERVER_RESPOND, CHUNKED_EMPTY_RESPONSE},
-    };
-
+    handler_baton_t handler_ctx[SENT_REQUESTS];
+    int i;
     apr_pool_t *test_pool = tc->testBaton;
 
-    /* Set up a test context with a server. */
-    status = test_http_server_setup(&tb,
-                                    message_list, RCVD_REQUESTS,
-                                    action_list, RCVD_REQUESTS, 0, NULL,
-                                    test_pool);
+    /* Set up a test context with a server */
+    status = setup_test_client_context(&tb, NULL, RCVD_REQUESTS, test_pool);
     CuAssertIntEquals(tc, APR_SUCCESS, status);
+    setup_test_mock_server(tb);
 
-    for (i = 0 ; i < SEND_REQUESTS ; i++) {
+    serf_connection_set_max_outstanding_requests(tb->connection, 1);
+
+    Given(tb->mh)
+      DefaultResponse(WithCode(200), WithRequestBody)
+
+      GETRequest(URLEqualTo("/"), ChunkedBodyEqualTo("1"))
+      GETRequest(URLEqualTo("/"), ChunkedBodyEqualTo("1"))
+      GETRequest(URLEqualTo("/"), ChunkedBodyEqualTo("1"))
+      GETRequest(URLEqualTo("/"), ChunkedBodyEqualTo("2"))
+      GETRequest(URLEqualTo("/"), ChunkedBodyEqualTo("3"))
+      GETRequest(URLEqualTo("/"), ChunkedBodyEqualTo("4"))
+      GETRequest(URLEqualTo("/"), ChunkedBodyEqualTo("5"))
+    EndGiven
+
+    for (i = 0 ; i < SENT_REQUESTS ; i++) {
         create_new_request_with_resp_hdlr(tb, &handler_ctx[i], "GET", "/", i+1,
                                           handle_response_keepalive_limit_burst);
-        serf_connection_set_max_outstanding_requests(tb->connection, 1);
     }
 
-    while (1) {
-        status = run_test_server(tb->serv_ctx, 0, test_pool);
-        if (APR_STATUS_IS_TIMEUP(status))
-            status = APR_SUCCESS;
-        CuAssertIntEquals(tc, APR_SUCCESS, status);
+    /* The two retries of request 1 both also have req_id=1, which means that
+       we can't expected RECV_REQUESTS # of requests here, because the done flag
+       of these 2 request will not be registered correctly. */
+    status = run_client_and_mock_servers_loops(tb, SENT_REQUESTS, handler_ctx,
+                                               test_pool);
+    CuAssertIntEquals(tc, APR_SUCCESS, status);
 
-        status = serf_context_run(tb->context, 0, test_pool);
-        if (APR_STATUS_IS_TIMEUP(status))
-            status = APR_SUCCESS;
-        CuAssertIntEquals(tc, APR_SUCCESS, status);
+    Verify(tb->mh)
+      CuAssert(tc, ErrorMessage, VerifyAllRequestsReceivedInOrder);
+    EndVerify
 
-        /* Debugging purposes only! */
-        serf_debug__closed_conn(tb->bkt_alloc);
-
-        done = TRUE;
-        for (i = 0 ; i < SEND_REQUESTS ; i++)
-            if (handler_ctx[i].done == FALSE) {
-                done = FALSE;
-                break;
-            }
-        if (done)
-            break;
-    }
-
-    /* Check that all requests were received */
     CuAssertIntEquals(tc, RCVD_REQUESTS, tb->sent_requests->nelts);
     CuAssertIntEquals(tc, RCVD_REQUESTS, tb->accepted_requests->nelts);
     CuAssertIntEquals(tc, RCVD_REQUESTS, tb->handled_requests->nelts);
@@ -532,7 +485,8 @@ static apr_status_t progress_conn_setup(apr_socket_t *skt,
                                           apr_pool_t *pool)
 {
     test_baton_t *tb = setup_baton;
-    *input_bkt = serf_context_bucket_socket_create(tb->context, skt, tb->bkt_alloc);
+    *input_bkt = serf_context_bucket_socket_create(tb->context, skt,
+                                                   tb->bkt_alloc);
     return APR_SUCCESS;
 }
 
@@ -545,43 +499,36 @@ static void test_progress_callback(CuTest *tc)
     int i;
     progress_baton_t *pb;
 
-    test_server_message_t message_list[] = {
-        {CHUNKED_REQUEST(1, "1")},
-        {CHUNKED_REQUEST(1, "2")},
-        {CHUNKED_REQUEST(1, "3")},
-        {CHUNKED_REQUEST(1, "4")},
-        {CHUNKED_REQUEST(1, "5")},
-    };
-
-    test_server_action_t action_list[] = {
-        {SERVER_RESPOND, CHUNKED_EMPTY_RESPONSE},
-        {SERVER_RESPOND, CHUNKED_RESPONSE(1, "2")},
-        {SERVER_RESPOND, CHUNKED_EMPTY_RESPONSE},
-        {SERVER_RESPOND, CHUNKED_EMPTY_RESPONSE},
-        {SERVER_RESPOND, CHUNKED_EMPTY_RESPONSE},
-    };
-
     apr_pool_t *test_pool = tc->testBaton;
-    
-    /* Set up a test context with a server. */
-    status = test_http_server_setup(&tb,
-                                    message_list, num_requests,
-                                    action_list, num_requests, 0,
-                                    progress_conn_setup, test_pool);
+
+    /* Set up a test context with a server */
+    status = setup_test_client_context(&tb, progress_conn_setup,
+                                       num_requests, test_pool);
     CuAssertIntEquals(tc, APR_SUCCESS, status);
+    setup_test_mock_server(tb);
 
     /* Set up the progress callback. */
     pb = apr_pcalloc(test_pool, sizeof(*pb));
     tb->user_baton = pb;
     serf_context_set_progress_cb(tb->context, progress_cb, tb);
 
+    Given(tb->mh)
+      DefaultResponse(WithCode(200), WithRequestBody)
+
+      GETRequest(URLEqualTo("/"), ChunkedBodyEqualTo("1"))
+      GETRequest(URLEqualTo("/"), ChunkedBodyEqualTo("2"))
+      GETRequest(URLEqualTo("/"), ChunkedBodyEqualTo("3"))
+      GETRequest(URLEqualTo("/"), ChunkedBodyEqualTo("4"))
+      GETRequest(URLEqualTo("/"), ChunkedBodyEqualTo("5"))
+    EndGiven
+
     /* Send some requests on the connections */
     for (i = 0 ; i < num_requests ; i++) {
         create_new_request(tb, &handler_ctx[i], "GET", "/", i+1);
     }
 
-    test_helper_run_requests_expect_ok(tc, tb, num_requests, handler_ctx,
-                                       test_pool);
+    run_client_and_mock_servers_loops_expect_ok(tc, tb, num_requests,
+                                                handler_ctx, test_pool);
 
     /* Check that progress was reported. */
     CuAssertTrue(tc, pb->written > 0);
@@ -597,27 +544,24 @@ static void test_connection_userinfo_in_url(CuTest *tc)
     const int num_requests = sizeof(handler_ctx)/sizeof(handler_ctx[0]);
     int i;
 
-    test_server_message_t message_list[] = {
-        {CHUNKED_REQUEST(1, "1")},
-        {CHUNKED_REQUEST(1, "2")},
-    };
-
-    test_server_action_t action_list[] = {
-        {SERVER_RESPOND, CHUNKED_EMPTY_RESPONSE},
-        {SERVER_RESPOND, CHUNKED_RESPONSE(1, "2")},
-    };
-
     apr_pool_t *test_pool = tc->testBaton;
 
-    /* Set up a test context with a server. */
-    status = test_http_server_setup(&tb,
-                                    message_list, num_requests,
-                                    action_list, num_requests, 0,
-                                    progress_conn_setup, test_pool);
+    /* Set up a test context with a server */
+    status = setup_test_client_context(&tb, NULL, num_requests, test_pool);
     CuAssertIntEquals(tc, APR_SUCCESS, status);
+    setup_test_mock_server(tb);
+
+    Given(tb->mh)
+      DefaultResponse(WithCode(200), WithRequestBody)
+
+      GETRequest(URLEqualTo("/"), ChunkedBodyEqualTo("1"))
+      GETRequest(URLEqualTo("/"), ChunkedBodyEqualTo("2"))
+    EndGiven
 
     /* Create a connection using user:password@hostname syntax */
-    tb->serv_url = "http://user:password@localhost:" SERV_PORT_STR;
+    tb->serv_url = apr_psprintf(test_pool, "http://user:password@localhost:%d",
+                                tb->serv_port);
+
     use_new_connection(tb, test_pool);
 
     /* Send some requests on the connections */
@@ -625,8 +569,8 @@ static void test_connection_userinfo_in_url(CuTest *tc)
         create_new_request(tb, &handler_ctx[i], "GET", "/", i+1);
     }
 
-    test_helper_run_requests_expect_ok(tc, tb, num_requests, handler_ctx,
-                                       test_pool);
+    run_client_and_mock_servers_loops_expect_ok(tc, tb, num_requests,
+                                                handler_ctx, test_pool);
 }
 
 /*****************************************************************************
@@ -2208,13 +2152,9 @@ CuSuite *test_context(void)
     CuSuiteSetSetupTeardownCallbacks(suite, test_setup, test_teardown);
 
     SUITE_ADD_TEST(suite, test_setup_proxy);
-    SUITE_ADD_TEST(suite, test_keepalive_limit_one_by_one);
-    SUITE_ADD_TEST(suite, test_keepalive_limit_one_by_one_and_burst);
-    SUITE_ADD_TEST(suite, test_progress_callback);
     SUITE_ADD_TEST(suite, test_request_timeout);
     SUITE_ADD_TEST(suite, test_connection_large_response);
     SUITE_ADD_TEST(suite, test_connection_large_request);
-    SUITE_ADD_TEST(suite, test_connection_userinfo_in_url);
     SUITE_ADD_TEST(suite, test_ssl_handshake);
     SUITE_ADD_TEST(suite, test_ssl_trust_rootca);
     SUITE_ADD_TEST(suite, test_ssl_application_rejects_cert);
@@ -2238,6 +2178,10 @@ CuSuite *test_context(void)
     SUITE_ADD_TEST(suite, test_serf_connection_request_create);
     SUITE_ADD_TEST(suite, test_serf_connection_priority_request_create);
     SUITE_ADD_TEST(suite, test_closed_connection);
+    SUITE_ADD_TEST(suite, test_keepalive_limit_one_by_one);
+    SUITE_ADD_TEST(suite, test_keepalive_limit_one_by_one_and_burst);
+    SUITE_ADD_TEST(suite, test_progress_callback);
+    SUITE_ADD_TEST(suite, test_connection_userinfo_in_url);
 
     return suite;
 }
