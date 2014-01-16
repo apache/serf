@@ -98,7 +98,9 @@ static apr_status_t handle_response(serf_request_t *request,
        connection.
     */
     if (sl.code >= 200 && sl.code < 300) {
-        
+        serf_bucket_t *hdrs;
+        const char *val;
+
         conn->state = SERF_CONN_CONNECTED;
 
         /* Body is supposed to be empty. */
@@ -110,6 +112,20 @@ static apr_status_t handle_response(serf_request_t *request,
 
         serf__log(LOGLVL_INFO, LOGCOMP_CONN, __FILE__, conn->config,
                   "successfully set up ssl tunnel.\n");
+
+        /* Fix for issue #123: ignore the "Connection: close" header here,
+           leaving the header in place would make the serf's main context
+           loop close this connection immediately after reading the 200 OK
+           response. */
+
+        hdrs = serf_bucket_response_get_headers(response);
+        val = serf_bucket_headers_get(hdrs, "Connection");
+        if (val && strcasecmp("close", val) == 0) {
+            serf__log(LOGLVL_DEBUG, LOGCOMP_CONN, __FILE__, conn->config,
+                      "Ignore Connection: close header on this reponse, don't "
+                      "close the connection now that the tunnel is set up.\n");
+            serf__bucket_headers_remove(hdrs, "Connection");
+        }
 
         return APR_EOF;
     }
