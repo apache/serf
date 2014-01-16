@@ -20,6 +20,8 @@
 #include "serf.h"
 #include "serf_bucket_util.h"
 
+#include "serf_private.h" /* for serf__bucket_headers_remove */
+
 
 typedef struct header_list {
     const char *header;
@@ -192,6 +194,29 @@ const char *serf_bucket_headers_get(
     }
 
     return val;
+}
+
+void serf__bucket_headers_remove(serf_bucket_t *bucket, const char *header)
+{
+    headers_context_t *ctx = bucket->data;
+    header_list_t *scan = ctx->list, *prev = NULL;
+
+    /* Find and delete all items with the same header (case insensitive) */
+    while (scan) {
+        if (strcasecmp(scan->header, header) == 0) {
+            if (prev) {
+                prev->next = scan->next;
+            } else {
+                ctx->list = scan->next;
+            }
+            if (ctx->last == scan) {
+                ctx->last = NULL;
+            }
+        } else {
+            prev = scan;
+        }
+        scan = scan->next;
+    }
 }
 
 void serf_bucket_headers_do(

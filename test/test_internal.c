@@ -311,6 +311,83 @@ static void test_config_store_remove_objects(CuTest *tc)
     CuAssertPtrEquals(tc, NULL, actual);
 }
 
+/* Add and remove some headers from the headers bucket. */
+/* Note: serf__bucket_headers_remove is an internal function */
+static void test_header_buckets_remove(CuTest *tc)
+{
+    apr_pool_t *test_pool = tc->testBaton;
+    serf_bucket_alloc_t *alloc = serf_bucket_allocator_create(test_pool, NULL,
+                                                              NULL);
+    const char *cur;
+
+    serf_bucket_t *hdrs = serf_bucket_headers_create(alloc);
+    CuAssertTrue(tc, hdrs != NULL);
+
+    /* empty bucket, delete header */
+    serf__bucket_headers_remove(hdrs, "Content-Length");
+
+    /* bucket with one header, delete a non-existant header */
+    serf_bucket_headers_set(hdrs, "Content-Type", "text/plain");
+    serf__bucket_headers_remove(hdrs, "Content-Length");
+    cur = "Content-Type: text/plain" CRLF CRLF;
+    read_and_check_bucket(tc, hdrs, cur);
+
+    serf_bucket_destroy(hdrs);
+    hdrs = serf_bucket_headers_create(alloc);
+
+    /* bucket with one header, delete it */
+    serf_bucket_headers_set(hdrs, "Content-Type", "text/plain");
+    serf__bucket_headers_remove(hdrs, "Content-Type");
+    cur = CRLF;
+    read_and_check_bucket(tc, hdrs, cur);
+
+    serf_bucket_destroy(hdrs);
+    hdrs = serf_bucket_headers_create(alloc);
+
+    /* bucket with two headers, delete the first */
+    serf_bucket_headers_set(hdrs, "Content-Type", "text/plain");
+    serf_bucket_headers_set(hdrs, "Content-Length", "100");
+    serf__bucket_headers_remove(hdrs, "Content-Type");
+    cur = "Content-Length: 100" CRLF CRLF;
+    read_and_check_bucket(tc, hdrs, cur);
+
+    serf_bucket_destroy(hdrs);
+    hdrs = serf_bucket_headers_create(alloc);
+
+    /* bucket with two headers, delete the second */
+    serf_bucket_headers_set(hdrs, "Content-Type", "text/plain");
+    serf_bucket_headers_set(hdrs, "Content-Length", "100");
+    serf__bucket_headers_remove(hdrs, "Content-Length");
+    cur = "Content-Type: text/plain" CRLF CRLF;
+    read_and_check_bucket(tc, hdrs, cur);
+
+    serf_bucket_destroy(hdrs);
+    hdrs = serf_bucket_headers_create(alloc);
+
+    /* bucket with more headers, delete one in the middle */
+    serf_bucket_headers_set(hdrs, "Content-Type", "text/plain");
+    serf_bucket_headers_set(hdrs, "Content-Location", "/");
+    serf_bucket_headers_set(hdrs, "Content-Length", "100");
+    serf__bucket_headers_remove(hdrs, "Content-Location");
+    cur = "Content-Type: text/plain" CRLF
+    "Content-Length: 100" CRLF CRLF;
+    read_and_check_bucket(tc, hdrs, cur);
+
+    serf_bucket_destroy(hdrs);
+    hdrs = serf_bucket_headers_create(alloc);
+
+    /* bucket with more headers, delete more in the middle */
+    serf_bucket_headers_set(hdrs, "Content-Type", "text/plain");
+    serf_bucket_headers_set(hdrs, "Content-Location", "/");
+    serf_bucket_headers_set(hdrs, "Content-Location", "/bla");
+    serf_bucket_headers_set(hdrs, "Content-Length", "100");
+    serf_bucket_headers_set(hdrs, "Content-Location", "/blub");
+    serf__bucket_headers_remove(hdrs, "Content-Location");
+    cur = "Content-Type: text/plain" CRLF
+    "Content-Length: 100" CRLF CRLF;
+    read_and_check_bucket(tc, hdrs, cur);
+}
+
 CuSuite *test_internal(void)
 {
     CuSuite *suite = CuSuiteNew();
@@ -322,6 +399,7 @@ CuSuite *test_internal(void)
     SUITE_ADD_TEST(suite, test_config_store_per_connection_same_host);
     SUITE_ADD_TEST(suite, test_config_store_error_handling);
     SUITE_ADD_TEST(suite, test_config_store_remove_objects);
+    SUITE_ADD_TEST(suite, test_header_buckets_remove);
 
     return suite;
 }

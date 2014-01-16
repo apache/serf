@@ -401,6 +401,12 @@ struct serf_connection_t {
  */
 apr_status_t serf_response_full_become_aggregate(serf_bucket_t *bucket);
 
+/**
+ * Remove the header from the list, do nothing if the header wasn't added.
+ */
+void serf__bucket_headers_remove(serf_bucket_t *headers_bucket,
+                                 const char *header);
+
 /*** Authentication handler declarations ***/
 
 typedef enum { PROXY, HOST } peer_t;
