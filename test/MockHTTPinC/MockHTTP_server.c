@@ -40,7 +40,7 @@ struct _mhClientCtx_t {
     apr_size_t bufrem;
     mhRequest_t *req;
     apr_int16_t reqevents;
-    char *respBody;
+    const char *respBody;
     apr_size_t respRem;
     apr_array_header_t *respQueue;  /*  test will queue a response */
     mhResponse_t *currResp; /* response in progress */
@@ -348,84 +348,76 @@ static apr_status_t readChunked(_mhClientCtx_t *cctx, mhRequest_t *req, bool *do
     return status;
 }
 
-/* New request data was made available, read status line/hdrs/body (chunks) */
-static apr_status_t processData(_mhClientCtx_t *cctx, mhRequest_t **preq)
+/* New request data was made available, read status line/hdrs/body (chunks).
+   APR_EAGAIN: wait for more data
+   APR_EOF: request received, or no more data available. */
+static apr_status_t readRequest(_mhClientCtx_t *cctx, mhRequest_t **preq)
 {
-    bool done;
     mhRequest_t *req = *preq;
     apr_status_t status = APR_SUCCESS;
-
-    if (cctx->buflen == 0)
-        return APR_EAGAIN; /* more data needed */
+    apr_size_t len;
 
     if (req == NULL) {
         req = *preq = apr_pcalloc(cctx->pool, sizeof(mhRequest_t));
         req->hdrs = apr_hash_make(cctx->pool);
     }
 
-    done = NO;
-    switch(cctx->req->readState) {
-        case 0: /* status line */
-            STATUSREADERR(readReqLine(cctx, req, &done));
-            break;
-        case 1: /* headers */
-            STATUSREADERR(readHeader(cctx, req, &done));
-            break;
-        case 2: /* body */
-        {
-            const char *clstr, *chstr;
-            chstr = getHeader(cctx->pool, req->hdrs,
-                              "Transfer-Encoding");
-            /* TODO: chunked can be one of more encodings */
-            /* Read Transfer-Encoding first, ignore C-L when T-E is set */
-            if (chstr && apr_strnatcasecmp(chstr, "chunked") == 0) {
-                STATUSREADERR(readChunked(cctx, req, &done));
-            } else {
-                clstr = getHeader(cctx->pool, req->hdrs,
-                                  "Content-Length");
-                if (clstr)
-                    STATUSREADERR(readBody(cctx, req, &done));
-            }
-            break;
+    while (!status) { /* read all available data */
+        bool done;
+
+        len = cctx->bufrem;
+        STATUSREADERR(apr_socket_recv(cctx->skt, cctx->buf + cctx->buflen,
+                                      &len));
+        if (len) {
+            _mhLog(MH_VERBOSE, __FILE__,
+                   "recvd with status %d:\n%.*s\n---- %d ----\n",
+                   status, (unsigned int)len, cctx->buf + cctx->buflen,
+                   (unsigned int)len);
+            cctx->buflen += len;
+            cctx->bufrem -= len;
         }
-        case 3: /* finished */
-            _mhLog(MH_VERBOSE, __FILE__, "Server received request: %s %s\n",
-                   req->method, req->url);
-            status = APR_EOF;
-            break;
+
+        done = NO;
+        switch(cctx->req->readState) {
+            case 0: /* status line */
+                STATUSREADERR(readReqLine(cctx, req, &done));
+                if (done) req->readState++;
+                break;
+            case 1: /* headers */
+                STATUSREADERR(readHeader(cctx, req, &done));
+                if (done) req->readState++;
+                break;
+            case 2: /* body */
+            {
+                const char *clstr, *chstr;
+                chstr = getHeader(cctx->pool, req->hdrs,
+                                  "Transfer-Encoding");
+                /* TODO: chunked can be one of more encodings */
+                /* Read Transfer-Encoding first, ignore C-L when T-E is set */
+                if (chstr && apr_strnatcasecmp(chstr, "chunked") == 0) {
+                    STATUSREADERR(readChunked(cctx, req, &done));
+                } else {
+                    clstr = getHeader(cctx->pool, req->hdrs, "Content-Length");
+                    if (clstr) {
+                        STATUSREADERR(readBody(cctx, req, &done));
+                    } else {
+                        done = YES; /* no body to read */
+                    }
+                }
+                if (done) {
+                    _mhLog(MH_VERBOSE, __FILE__, "Server received request: %s %s\n",
+                           req->method, req->url);
+                    return APR_EOF;
+                }
+            }
+        }
     }
-    if (done) req->readState++;
 
-/*    printf("buflen: %ld\n", cctx->buflen);*/
+    if (!cctx->buflen) {
+        if (APR_STATUS_IS_EOF(status))
+            return MH_STATUS_INCOMPLETE_REQUEST;
 
-    if (cctx->buflen == 0)
-        return APR_EOF;
-
-    return status;
-}
-
-static apr_status_t readRequest(_mhClientCtx_t *cctx, mhRequest_t **preq)
-{
-    apr_status_t status;
-    apr_size_t len;
-
-    len = cctx->bufrem;
-    if (len == 0) return APR_EGENERAL; /* should clear buffer */
-
-    STATUSREADERR(apr_socket_recv(cctx->skt, cctx->buf + cctx->buflen, &len));
-    if (len) {
-        _mhLog(MH_VERBOSE, __FILE__, "recvd with status %d:\n%.*s\n---- %d ----\n",
-               status, (unsigned int)len, cctx->buf + cctx->buflen,
-               (unsigned int)len);
-
-        cctx->buflen += len;
-        cctx->bufrem -= len;
-    } else {
-        status = APR_EAGAIN;
-    }
-
-    while (cctx->buflen) {
-        STATUSERR(processData(cctx, preq));
+        return status;
     }
 
     return status;
@@ -515,7 +507,7 @@ static char *respToString(apr_pool_t *pool, mhResponse_t *resp)
         str = apr_psprintf(pool, "%s%s", str, resp->body);
     } else {
         int i;
-        apr_size_t len;
+        apr_size_t len = 0;
         for (i = 0 ; i < resp->chunks->nelts; i++) {
             const char *chunk;
 
@@ -538,7 +530,11 @@ static apr_status_t writeResponse(_mhClientCtx_t *cctx, mhResponse_t *resp)
 
     if (!cctx->respRem) {
         _mhResponseBuild(resp);
-        cctx->respBody = respToString(pool, resp);
+        if (resp->raw_data) {
+            cctx->respBody = resp->raw_data;
+        } else {
+            cctx->respBody = respToString(pool, resp);
+        }
         cctx->respRem = strlen(cctx->respBody);
     }
 
@@ -548,7 +544,7 @@ static apr_status_t writeResponse(_mhClientCtx_t *cctx, mhResponse_t *resp)
            status, (unsigned int)len, cctx->respBody, (unsigned int)len);
 
     if (len < cctx->respRem) {
-        memcpy(cctx->respBody, cctx->respBody + len, cctx->respRem - len + 1);
+        cctx->respBody += len;
         cctx->respRem -= len;
         cctx->currResp = resp;
     } else {
@@ -604,11 +600,16 @@ static apr_status_t process(mhServCtx_t *ctx, _mhClientCtx_t *cctx,
     }
     if (desc->rtnevents & APR_POLLIN || cctx->buflen) {
         STATUSREADERR(readRequest(cctx, &cctx->req));
-        if (status == APR_EOF && cctx->req) {
+
+        if (!cctx->req)
+            return status;
+
+        if (status == APR_EOF) { /* complete request received */
             mhResponse_t *resp;
             ctx->mh->verifyStats->requestsReceived++;
             apr_queue_push(ctx->reqQueue, cctx->req);
             if (_mhMatchRequest(ctx->mh, cctx->req, &resp) == YES) {
+
                 ctx->mh->verifyStats->requestsMatched++;
                 if (resp) {
                     _mhLog(MH_VERBOSE, __FILE__,
@@ -628,7 +629,23 @@ static apr_status_t process(mhServCtx_t *ctx, _mhClientCtx_t *cctx,
             resp->req = cctx->req;
             *((mhResponse_t **)apr_array_push(cctx->respQueue)) = resp;
             cctx->req = NULL;
-            status = APR_SUCCESS;
+            return APR_SUCCESS;
+        }
+
+        if (ctx->mh->incompleteReqMatchers->nelts > 0) {
+            mhResponse_t *resp = NULL;
+            /* (currently) incomplete request received? */
+            if (_mhMatchIncompleteRequest(ctx->mh, cctx->req, &resp) == YES) {
+                _mhLog(MH_VERBOSE, __FILE__,
+                       "Incomplete request matched, queueing response.\n");
+                ctx->mh->verifyStats->requestsMatched++;
+                if (!resp)
+                    resp = cloneResponse(ctx->pool, ctx->mh->defResponse);
+                resp->req = cctx->req;
+                *((mhResponse_t **)apr_array_push(cctx->respQueue)) = resp;
+                cctx->req = NULL;
+                return APR_SUCCESS;
+            }
         }
     }
 
@@ -670,11 +687,12 @@ apr_status_t _mhRunServerLoop(mhServCtx_t *ctx)
     while (num--) {
         if (desc->desc.s == ctx->skt) {
             apr_socket_t *cskt;
+            _mhClientCtx_t *cctx;
             apr_pollfd_t pfd = { 0 };
 
             _mhLog(MH_VERBOSE, __FILE__, "Accepting client connection.\n");
 
-            _mhClientCtx_t *cctx = apr_pcalloc(ctx->pool, sizeof(_mhClientCtx_t));
+            cctx = apr_pcalloc(ctx->pool, sizeof(_mhClientCtx_t));
 
             STATUSERR(apr_socket_accept(&cskt, ctx->skt, ctx->pool));
 

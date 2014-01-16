@@ -45,6 +45,7 @@ extern "C" {
 /* This code indicates that the server is waiting for a timed event */
 #define MH_STATUS_WAITING (MH_STATUS_START + 1)
 
+#define MH_STATUS_INCOMPLETE_REQUEST (MH_STATUS_START + 1)
 
 typedef short int bool;
 static const bool YES = 1;
@@ -63,6 +64,7 @@ typedef enum expectation_t {
 struct MockHTTP {
     apr_pool_t *pool;
     apr_array_header_t *reqMatchers;
+    apr_array_header_t *incompleteReqMatchers;
     apr_array_header_t *reqsReceived;
     mhServCtx_t *servCtx;
     apr_queue_t *reqQueue; /* Thread safe FIFO queue. */
@@ -104,6 +106,7 @@ struct mhResponse_t {
     bool built;
     unsigned int code;
     const char *body;
+    const char *raw_data; /* complete response */
     bool chunked;
     apr_array_header_t *chunks;
     apr_hash_t *hdrs;
@@ -117,12 +120,14 @@ struct mhRequestMatcher_t {
 
     const char *method;
     apr_array_header_t *matchers;
+    bool incomplete;
 };
 
 struct mhMatchingPattern_t {
     const void *baton; /* use this for an expected string */
     const void *baton2;
     matchfunc_t matcher;
+    bool match_incomplete; /* Don't wait for full valid requests */
 };
 
 typedef void (* respbuilderfunc_t)(mhResponse_t *resp, const void *baton);
@@ -139,6 +144,8 @@ void setHeader(apr_pool_t *pool, apr_hash_t *hdrs,
 /* Initialize a mhRequest_t object. */
 mhRequest_t *_mhRequestInit(MockHTTP *mh);
 bool _mhMatchRequest(const MockHTTP *mh, mhRequest_t *req, mhResponse_t **resp);
+bool _mhMatchIncompleteRequest(const MockHTTP *mh, mhRequest_t *req,
+                               mhResponse_t **resp);
 
 bool _mhRequestMatcherMatch(const mhRequestMatcher_t *rm,
                             const mhRequest_t *req);

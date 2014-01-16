@@ -96,6 +96,11 @@ extern "C" {
                 __rm = mhGivenRequest(__mh, "HEAD", __VA_ARGS__, NULL);\
                 mhPushRequest(__mh, __rm);
 
+/* Stub a HTTP request, first parameter is HTTP method (e.g. PROPFIND) */
+#define   HTTPRequest(method, ...)\
+                __rm = mhGivenRequest(__mh, method, __VA_ARGS__, NULL);\
+                mhPushRequest(__mh, __rm);
+
 /* Match the request's URL */
 #define     URLEqualTo(x)\
                 mhMatchURLEqualTo(__mh, (x))
@@ -128,6 +133,9 @@ extern "C" {
    e.g. ChunkedBodyChunksEqualTo("chunk1", "chunk2") */
 #define     ChunkedBodyChunksEqualTo(...)\
                 mhMatchChunkedBodyChunksEqualTo(__mh, __VA_ARGS__, NULL)
+
+#define     IncompleteBodyEqualTo(x)\
+                mhMatchIncompleteBodyEqualTo(__mh, (x))
 
 /* TODO: http version, conditional, */
 /* When a request matches, the server will respond with the response defined
@@ -167,6 +175,10 @@ extern "C" {
    close the connection after sending the response. */
 #define     WithConnectionCloseHeader\
                 mhRespSetConnCloseHdr(__mh)
+
+/* Use the provided string as raw response data. */
+#define     WithRawData(data)\
+                mhRespSetRawData(__mh, (data))
 
 #define EndGiven\
                 /* Assign local variables to NULL to avoid 'variable unused' 
@@ -327,6 +339,8 @@ mhMatchingPattern_t *mhMatchMethodEqualTo(const MockHTTP *mh,
                                           const char *expected);
 mhMatchingPattern_t *mhMatchBodyEqualTo(const MockHTTP *mh,
                                         const char *expected);
+mhMatchingPattern_t *mhMatchIncompleteBodyEqualTo(const MockHTTP *mh,
+                                                  const char *expected);
 /* Network level matching functions, for testing of http libraries */
 mhMatchingPattern_t *mhMatchBodyNotChunkedEqualTo(const MockHTTP *mh,
                                                   const char *expected);
@@ -345,6 +359,7 @@ mhRespBuilder_t *mhRespAddHeader(const MockHTTP *mh, const char *header,
                                  const char *value);
 mhRespBuilder_t *mhRespSetConnCloseHdr(const MockHTTP *mh);
 mhRespBuilder_t *mhRespSetUseRequestBody(const MockHTTP *mh);
+mhRespBuilder_t *mhRespSetRawData(const MockHTTP *mh, const char *data);
 
 /* Define request/response pairs */
 void mhPushRequest(MockHTTP *mh, mhRequestMatcher_t *rm);

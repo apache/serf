@@ -578,6 +578,9 @@ static void test_connection_userinfo_in_url(CuTest *tc)
  * the outgoing request wasn't written completely yet.
  *****************************************************************************/
 
+#define REQUEST_BODY_PART1\
+    "<?xml version=""1.0"" encoding=""utf-8""?><propfind xmlns=""DAV:""><prop>"
+
 #define REQUEST_PART1 "PROPFIND / HTTP/1.1" CRLF\
 "Host: lgo-ubuntu.local" CRLF\
 "User-Agent: SVN/1.8.0-dev (x86_64-apple-darwin11.4.2) serf/2.0.0" CRLF\
@@ -586,6 +589,7 @@ static void test_connection_userinfo_in_url(CuTest *tc)
 CRLF\
 "12d" CRLF\
 "<?xml version=""1.0"" encoding=""utf-8""?><propfind xmlns=""DAV:""><prop>"
+
 
 #define REQUEST_PART2 \
 "<resourcetype xmlns=""DAV:""/><getcontentlength xmlns=""DAV:""/>"\
@@ -712,29 +716,23 @@ static apr_status_t handle_response_timeout(
 static void test_request_timeout(CuTest *tc)
 {
     test_baton_t *tb;
-        apr_status_t status;
+    apr_status_t status;
     handler_baton_t handler_ctx[1];
     const int num_requests = sizeof(handler_ctx)/sizeof(handler_ctx[0]);
-
-    test_server_message_t message_list[] = {
-        {REQUEST_PART1},
-        {REQUEST_PART2},
-    };
-
-    test_server_action_t action_list[] = {
-        {SERVER_RESPOND, RESPONSE_408},
-    };
-
     apr_pool_t *test_pool = tc->testBaton;
 
-    /* Set up a test context with a server. */
-    status = test_http_server_setup(&tb,
-                                    message_list, 2,
-                                    action_list, 1, 0,
-                                    NULL, test_pool);
+    /* Set up a test context with a server */
+    status = setup_test_client_context(&tb, NULL, 2, test_pool);
     CuAssertIntEquals(tc, APR_SUCCESS, status);
+    setup_test_mock_server(tb);
 
-    /* Send some requests on the connection */
+    Given(tb->mh)
+      HTTPRequest("PROPFIND", URLEqualTo("/"),
+                  IncompleteBodyEqualTo(REQUEST_BODY_PART1))
+        Respond(WithRawData(RESPONSE_408))
+    EndGiven
+
+    /* Send a incomplete requesta on the connection */
     handler_ctx[0].method = "PROPFIND";
     handler_ctx[0].path = "/";
     handler_ctx[0].done = FALSE;
@@ -752,8 +750,8 @@ static void test_request_timeout(CuTest *tc)
                                    setup_request_timeout,
                                    &handler_ctx[0]);
 
-    test_helper_run_requests_expect_ok(tc, tb, num_requests, handler_ctx,
-                                       test_pool);
+    run_client_and_mock_servers_loops_expect_ok(tc, tb, num_requests,
+                                                handler_ctx, test_pool);
 }
 
 static const char *create_large_response_message(apr_pool_t *pool)
@@ -2152,7 +2150,6 @@ CuSuite *test_context(void)
     CuSuiteSetSetupTeardownCallbacks(suite, test_setup, test_teardown);
 
     SUITE_ADD_TEST(suite, test_setup_proxy);
-    SUITE_ADD_TEST(suite, test_request_timeout);
     SUITE_ADD_TEST(suite, test_connection_large_response);
     SUITE_ADD_TEST(suite, test_connection_large_request);
     SUITE_ADD_TEST(suite, test_ssl_handshake);
@@ -2182,6 +2179,7 @@ CuSuite *test_context(void)
     SUITE_ADD_TEST(suite, test_keepalive_limit_one_by_one_and_burst);
     SUITE_ADD_TEST(suite, test_progress_callback);
     SUITE_ADD_TEST(suite, test_connection_userinfo_in_url);
+    SUITE_ADD_TEST(suite, test_request_timeout);
 
     return suite;
 }
