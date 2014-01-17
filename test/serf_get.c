@@ -441,7 +441,6 @@ static const apr_getopt_option_t options[] =
 {
 
     {"help",    'h', 0, "Display this help"},
-    {NULL,      'H', 0, "Print response headers" },
     {NULL,      'v', 0, "Display version"},
     {NULL,      'H', 0, "Print response headers"},
     {NULL,      'n', 1, "<count> Fetch URL <count> times"},
