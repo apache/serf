@@ -63,9 +63,9 @@ typedef enum expectation_t {
 
 struct MockHTTP {
     apr_pool_t *pool;
-    apr_array_header_t *reqMatchers;
-    apr_array_header_t *incompleteReqMatchers;
-    apr_array_header_t *reqsReceived;
+    apr_array_header_t *reqMatchers; /* array of ReqMatcherRespPair_t *'s */
+    apr_array_header_t *incompleteReqMatchers; /*       .... same type */
+    apr_array_header_t *reqsReceived; /* array of mhRequest_t *'s */
     mhServCtx_t *servCtx;
     apr_queue_t *reqQueue; /* Thread safe FIFO queue. */
     char *errmsg;
@@ -106,10 +106,10 @@ struct mhRequest_t {
     const char *url;
     apr_hash_t *hdrs;
     int version;
-    apr_array_header_t *body;
+    apr_array_header_t *body; /* array of iovec strings that form the raw body */
     apr_size_t bodyLen;
     bool chunked;
-    /* array of strings that form the dechunked body */
+    /* array of iovec strings that form the dechunked body */
     apr_array_header_t *chunks;
     reqReadState_t readState;
     bool incomplete_chunk; /* chunk reading in progress */
@@ -120,10 +120,10 @@ struct mhResponse_t {
     bool built;
     unsigned int code;
     apr_hash_t *hdrs;
-    apr_array_header_t *body; /* array of strings that form the raw body */
+    apr_array_header_t *body; /* array of iovec strings that form the raw body */
     apr_size_t bodyLen;
     bool chunked;
-    /* array of strings that form the dechunked body */
+    /* array of iovec strings that form the dechunked body */
     apr_array_header_t *chunks;
     const char *raw_data;
     apr_array_header_t *builders;
@@ -135,7 +135,7 @@ struct mhRequestMatcher_t {
     apr_pool_t *pool;
 
     const char *method;
-    apr_array_header_t *matchers;
+    apr_array_header_t *matchers; /* array of mhMatchingPattern_t *'s. */
     bool incomplete;
 };
 
@@ -143,6 +143,8 @@ struct mhMatchingPattern_t {
     const void *baton; /* use this for an expected string */
     const void *baton2;
     matchfunc_t matcher;
+    const char *describe_key;
+    const char *describe_value;
     bool match_incomplete; /* Don't wait for full valid requests */
 };
 

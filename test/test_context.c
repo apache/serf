@@ -798,29 +798,26 @@ static void test_connection_large_response(CuTest *tc)
     handler_baton_t handler_ctx[1];
     const int num_requests = sizeof(handler_ctx)/sizeof(handler_ctx[0]);
     apr_status_t status;
-    test_server_message_t message_list[] = {
-        {CHUNKED_REQUEST(1, "1")},
-    };
-    test_server_action_t action_list[1];
 
     apr_pool_t *test_pool = tc->testBaton;
 
     /* create large chunked response message */
     const char *response = create_large_response_message(test_pool);
-    action_list[0].kind = SERVER_RESPOND;
-    action_list[0].text = response;
 
     /* Set up a test context with a server */
-    status = test_http_server_setup(&tb,
-                                    message_list, num_requests,
-                                    action_list, num_requests, 0, NULL,
-                                    test_pool);
+    status = setup_test_client_context(&tb, NULL, num_requests, test_pool);
     CuAssertIntEquals(tc, APR_SUCCESS, status);
+    setup_test_mock_server(tb);
+
+    Given(tb->mh)
+      GETRequest(URLEqualTo("/"), ChunkedBodyEqualTo("1"))
+        Respond(WithRawData(response))
+    EndGiven
 
     create_new_request(tb, &handler_ctx[0], "GET", "/", 1);
 
-    test_helper_run_requests_expect_ok(tc, tb, num_requests, handler_ctx,
-                                       test_pool);
+    run_client_and_mock_servers_loops_expect_ok(tc, tb, num_requests,
+                                                handler_ctx, test_pool);
 }
 
 static const char *
@@ -2166,7 +2163,6 @@ CuSuite *test_context(void)
     CuSuiteSetSetupTeardownCallbacks(suite, test_setup, test_teardown);
 
     SUITE_ADD_TEST(suite, test_setup_proxy);
-    SUITE_ADD_TEST(suite, test_connection_large_response);
     SUITE_ADD_TEST(suite, test_ssl_handshake);
     SUITE_ADD_TEST(suite, test_ssl_trust_rootca);
     SUITE_ADD_TEST(suite, test_ssl_application_rejects_cert);
@@ -2197,6 +2193,7 @@ CuSuite *test_context(void)
     SUITE_ADD_TEST(suite, test_connection_userinfo_in_url);
     SUITE_ADD_TEST(suite, test_request_timeout);
     SUITE_ADD_TEST(suite, test_connection_large_request);
+    SUITE_ADD_TEST(suite, test_connection_large_response);
 
     return suite;
 }

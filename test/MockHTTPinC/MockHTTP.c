@@ -26,6 +26,9 @@
 static const int DefaultSrvPort =   30080;
 static const int DefaultProxyPort = 38080;
 
+char *serializeArrayOfIovecs(apr_pool_t *pool,
+                             apr_array_header_t *blocks);
+
 typedef struct ReqMatcherRespPair_t {
     mhRequestMatcher_t *rm;
     mhResponse_t *resp;
@@ -364,7 +367,8 @@ mhMatchURLEqualTo(const MockHTTP *mh, const char *expected)
     mhMatchingPattern_t *mp = apr_pcalloc(pool, sizeof(mhMatchingPattern_t));
     mp->baton = apr_pstrdup(pool, expected);
     mp->matcher = url_matcher;
-
+    mp->describe_key = "URL equal to";
+    mp->describe_value = expected;
     return mp;
 }
 
@@ -387,7 +391,8 @@ mhMatchBodyEqualTo(const MockHTTP *mh, const char *expected)
     mhMatchingPattern_t *mp = apr_pcalloc(pool, sizeof(mhMatchingPattern_t));
     mp->baton = apr_pstrdup(pool, expected);
     mp->matcher = body_matcher;
-
+    mp->describe_key = "Body equal to";
+    mp->describe_value = expected;
     return mp;
 }
 
@@ -405,7 +410,8 @@ mhMatchRawBodyEqualTo(const MockHTTP *mh, const char *expected)
     mhMatchingPattern_t *mp = apr_pcalloc(pool, sizeof(mhMatchingPattern_t));
     mp->baton = apr_pstrdup(pool, expected);
     mp->matcher = raw_body_matcher;
-
+    mp->describe_key = "Raw body equal to";
+    mp->describe_value = expected;
     return mp;
 }
 
@@ -418,6 +424,8 @@ mhMatchIncompleteBodyEqualTo(const MockHTTP *mh, const char *expected)
     mp->baton = apr_pstrdup(pool, expected);
     mp->matcher = body_matcher;
     mp->match_incomplete = TRUE;
+    mp->describe_key = "Incomplete body equal to";
+    mp->describe_value = expected;
     return mp;
 }
 
@@ -438,7 +446,8 @@ mhMatchBodyNotChunkedEqualTo(const MockHTTP *mh, const char *expected)
     mhMatchingPattern_t *mp = apr_pcalloc(pool, sizeof(mhMatchingPattern_t));
     mp->baton = apr_pstrdup(pool, expected);
     mp->matcher = body_notchunked_matcher;
-
+    mp->describe_key = "Body not chunked equal to";
+    mp->describe_value = expected;
     return mp;
 }
 
@@ -460,7 +469,8 @@ mhMatchChunkedBodyEqualTo(const MockHTTP *mh, const char *expected)
     mhMatchingPattern_t *mp = apr_pcalloc(pool, sizeof(mhMatchingPattern_t));
     mp->baton = apr_pstrdup(pool, expected);
     mp->matcher = chunked_body_matcher;
-
+    mp->describe_key = "Chunked body equal to";
+    mp->describe_value = expected;
     return mp;
 }
 
@@ -517,7 +527,8 @@ mhMatchChunkedBodyChunksEqualTo(const MockHTTP *mh, ...)
     mp = apr_palloc(pool, sizeof(mhMatchingPattern_t));
     mp->baton = chunks;
     mp->matcher = chunked_body_chunks_matcher;
-
+    mp->describe_key = "Chunked body with chunks";
+    mp->describe_value = serializeArrayOfIovecs(pool, chunks);
     return mp;
 }
 
@@ -538,7 +549,8 @@ mhMatchHeaderEqualTo(const MockHTTP *mh, const char *hdr, const char *value)
     mp->baton = apr_pstrdup(pool, value);
     mp->baton2 = apr_pstrdup(pool, hdr);
     mp->matcher = header_matcher;
-
+    mp->describe_key = "Header equal to";
+    mp->describe_value = apr_psprintf(pool, "%s: %s", hdr, value);
     return mp;
 }
 
@@ -561,7 +573,8 @@ mhMatchMethodEqualTo(const MockHTTP *mh, const char *expected)
     mhMatchingPattern_t *mp = apr_pcalloc(pool, sizeof(mhMatchingPattern_t));
     mp->baton = apr_pstrdup(pool, expected);
     mp->matcher = method_matcher;
-
+    mp->describe_key = "Method equal to";
+    mp->describe_value = expected;
     return mp;
 }
 
@@ -850,6 +863,86 @@ void mhExpectAllRequestsReceivedInOrder(MockHTTP *mh)
 /******************************************************************************/
 /* Verify results                                                             */
 /******************************************************************************/
+const char *serializeHeaders(apr_pool_t *pool, const mhRequest_t *req,
+                             const char *indent)
+{
+    apr_hash_index_t *hi;
+    const char *hdrs = "";
+    bool first = YES;
+    for (hi = apr_hash_first(pool, req->hdrs); hi; hi = apr_hash_next(hi)) {
+        const void *key;
+        apr_ssize_t klen;
+        void *val;
+
+        apr_hash_this(hi, &key, &klen, &val);
+        hdrs = apr_psprintf(pool, "%s%s%s: %s\n", hdrs, first ? "" : indent,
+                            (const char *)key, (const char *)val);
+        first = NO;
+    }
+    return hdrs;
+}
+
+char *serializeArrayOfIovecs(apr_pool_t *pool, apr_array_header_t *blocks)
+{
+    int i;
+    char *str = "";
+    for (i = 0 ; i < blocks->nelts; i++) {
+        struct iovec vec = APR_ARRAY_IDX(blocks, i, struct iovec);
+        str = apr_pstrcat(pool, str, vec.iov_base, NULL);
+    }
+    return str;
+}
+
+const char *serializeRawBody(apr_pool_t *pool, const mhRequest_t *req)
+{
+    char *body = serializeArrayOfIovecs(pool, req->body);
+    const char *newbody = "";
+    char *nextkv, *line;
+    for ( ; (line = apr_strtok(body, "\n", &nextkv)) != NULL; body = NULL) {
+        newbody = apr_psprintf(pool, "%s%s\n%s", newbody, line,
+                               *nextkv != '\0' ? "                |" : "");
+    }
+    return newbody;
+}
+
+const char *serializeRequest(apr_pool_t *pool, const mhRequest_t *req)
+{
+    const char *str;
+    str = apr_psprintf(pool, "         Method: %s\n"
+                             "            URL: %s\n"
+                             "        Version: HTTP/%d.%d\n"
+                             "        Headers: %s"
+                             "  Raw body size: %ld\n"
+                             "   %s:|%s\n",
+                       req->method, req->url,
+                       req->version / 10, req->version % 10,
+                       serializeHeaders(pool, req, "                 "),
+                       req->bodyLen,
+                       req->chunked ? "Chunked Body" : "        Body",
+                       serializeRawBody(pool, req));
+    return str;
+}
+
+const char *
+serializeRequestMatcher(apr_pool_t *pool, const mhRequestMatcher_t *rm,
+                        const mhRequest_t *req)
+{
+    const char *str = "";
+    int i;
+
+    for (i = 0 ; i < rm->matchers->nelts; i++) {
+        const mhMatchingPattern_t *mp;
+        bool matches;
+
+        mp = APR_ARRAY_IDX(rm->matchers, i, mhMatchingPattern_t *);
+        matches = mp->matcher(pool, mp, req);
+        str = apr_psprintf(pool, "%s%25s: %s%s\n", str,
+                           mp->describe_key, mp->describe_value,
+                           matches ? "" : "   <--- rule failed!");
+    }
+    return str;
+}
+
 int mhVerifyRequestReceived(const MockHTTP *mh, const mhRequestMatcher_t *rm)
 {
     int i;
@@ -886,7 +979,17 @@ int mhVerifyAllRequestsReceivedInOrder(const MockHTTP *mh)
         req  = APR_ARRAY_IDX(mh->reqsReceived, i, mhRequest_t *);
 
         if (_mhRequestMatcherMatch(pair->rm, req) == NO) {
-            appendErrMessage(mh, "Requests don't match!\n");
+            apr_pool_t *tmppool;
+            apr_pool_create(&tmppool, mh->pool);
+            appendErrMessage(mh, "ERROR: Request wasn't expected!\n");
+            appendErrMessage(mh, "=================================\n");
+            appendErrMessage(mh, "Expected request with:\n");
+            appendErrMessage(mh, serializeRequestMatcher(tmppool, pair->rm, req));
+            appendErrMessage(mh, "---------------------------------\n");
+            appendErrMessage(mh, "Actual request:\n");
+            appendErrMessage(mh, serializeRequest(tmppool, req));
+            appendErrMessage(mh, "=================================\n");
+            apr_pool_destroy(tmppool);
             return NO;
         }
     }
@@ -914,7 +1017,7 @@ static int verifyAllRequestsReceived(const MockHTTP *mh, bool breakOnNotOnce)
     bool result = YES;
 
     /* TODO: improve error message */
-    if (mh->reqsReceived->nelts > mh->reqMatchers->nelts) {
+    if (breakOnNotOnce && mh->reqsReceived->nelts > mh->reqMatchers->nelts) {
         appendErrMessage(mh, "More requests received than expected!\n");
         return NO;
     } else if (mh->reqsReceived->nelts < mh->reqMatchers->nelts) {

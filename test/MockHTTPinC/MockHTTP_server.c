@@ -232,7 +232,7 @@ static apr_status_t readReqLine(_mhClientCtx_t *cctx, mhRequest_t *req, bool *do
         return APR_EGENERAL;
     }
     version = apr_pstrndup(cctx->pool, start, ptr-start);
-    req->version = (version[5] - '0') * 100 +
+    req->version = (version[5] - '0') * 10 +
     version[7] - '0';
 
     *done = TRUE;
@@ -582,7 +582,7 @@ static char *respToString(apr_pool_t *pool, mhResponse_t *resp)
         apr_hash_this(hi, &key, &klen, &val);
 
         str = apr_psprintf(pool, "%s%s: %s\r\n", str,
-                                 (const char *) key, (const char *)val);
+                                 (const char *)key, (const char *)val);
     }
     str = apr_psprintf(pool, "%s\r\n", str);
 
@@ -594,18 +594,18 @@ static char *respToString(apr_pool_t *pool, mhResponse_t *resp)
 
             vec = APR_ARRAY_IDX(resp->body, i, struct iovec);
             str = apr_psprintf(pool, "%s%.*s", str, (unsigned int)vec.iov_len,
-                               vec.iov_base);
+                               (const char *)vec.iov_base);
         }
     } else {
         int i;
-        bool emptyChunk;
+        bool emptyChunk = NO; /* empty response should atleast have 0-chunk */
         for (i = 0 ; i < resp->chunks->nelts; i++) {
             struct iovec vec;
 
             vec = APR_ARRAY_IDX(resp->chunks, i, struct iovec);
             str = apr_psprintf(pool, "%s%" APR_UINT64_T_HEX_FMT "\r\n%.*s\r\n",
                                str, (apr_uint64_t)vec.iov_len,
-                               (unsigned int)vec.iov_len, vec.iov_base);
+                               (unsigned int)vec.iov_len, (char *)vec.iov_base);
             emptyChunk = vec.iov_len == 0 ? YES : NO;
         }
         if (!emptyChunk) /* Add 0 chunk only if last chunk wasn't empty already */
@@ -667,17 +667,19 @@ static apr_status_t process(mhServCtx_t *ctx, _mhClientCtx_t *cctx,
     apr_status_t status = APR_SUCCESS;
 
     /* First sent any pending responses before reading the next request. */
-    if (desc->rtnevents & APR_POLLOUT && cctx->respQueue->nelts) {
+    if (desc->rtnevents & APR_POLLOUT &&
+        (cctx->currResp || cctx->respQueue->nelts)) {
         mhResponse_t **presp, *resp;
 
         /* TODO: response in progress */
-        presp = apr_array_pop(cctx->respQueue);
-        resp = *presp;
+        resp = cctx->currResp ? cctx->currResp :
+                                *(mhResponse_t **)apr_array_pop(cctx->respQueue);
         if (resp) {
             _mhLog(MH_VERBOSE, __FILE__, "Sending response to client.\n");
 
             status = writeResponse(cctx, resp);
             if (status == APR_EOF) {
+                cctx->currResp = NULL;
                 ctx->mh->verifyStats->requestsResponded++;
                 if (resp->closeConn) {
                     _mhLog(MH_VERBOSE, __FILE__,
@@ -771,7 +773,7 @@ apr_status_t _mhRunServerLoop(mhServCtx_t *ctx)
         apr_pollset_remove(ctx->pollset, &pfd);
 
         cctx->reqevents = APR_POLLIN;
-        if (cctx->respQueue->nelts > 0)
+        if (cctx->currResp || cctx->respQueue->nelts > 0)
             cctx->reqevents |= APR_POLLOUT;
         pfd.reqevents = ctx->cctx->reqevents;
         STATUSERR(apr_pollset_add(ctx->pollset, &pfd));
