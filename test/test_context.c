@@ -823,23 +823,17 @@ static void test_connection_large_response(CuTest *tc)
                                        test_pool);
 }
 
-static const char *create_large_request_message(apr_pool_t *pool)
+static const char *
+create_large_request_message_body(apr_pool_t *pool)
 {
-    const char *request = "GET / HTTP/1.1" CRLF
-                          "Host: localhost:12345" CRLF
-                          "Transfer-Encoding: chunked" CRLF
-                          CRLF;
     struct iovec vecs[500];
     const int num_vecs = 500;
     int i, j;
     apr_size_t len;
 
-    vecs[0].iov_base = (char *)request;
-    vecs[0].iov_len = strlen(request);
-
-    for (i = 1; i < num_vecs; i++)
+    for (i = 0; i < num_vecs; i++)
     {
-        int chunk_len = 10 * i * 3;
+        int chunk_len = 10 * (i + 1) * 3;
         char *chunk;
         char *buf;
 
@@ -859,6 +853,18 @@ static const char *create_large_request_message(apr_pool_t *pool)
     }
 
     return apr_pstrcatv(pool, vecs, num_vecs, &len);
+
+}
+
+static const char *create_large_request_message(apr_pool_t *pool,
+                                                const char *body)
+{
+    const char *request = "GET / HTTP/1.1" CRLF
+                          "Host: localhost:12345" CRLF
+                          "Transfer-Encoding: chunked" CRLF
+                          CRLF;
+
+    return apr_pstrcat(pool, request, body, NULL);
 }
 
 /* Validate sending a large chunked response. */
@@ -867,31 +873,30 @@ static void test_connection_large_request(CuTest *tc)
     test_baton_t *tb;
     handler_baton_t handler_ctx[1];
     const int num_requests = sizeof(handler_ctx)/sizeof(handler_ctx[0]);
-    test_server_message_t message_list[1];
-    test_server_action_t action_list[] = {
-        {SERVER_RESPOND, CHUNKED_EMPTY_RESPONSE},
-    };
-    const char *request;
+    const char *request, *body;
     apr_status_t status;
 
     apr_pool_t *test_pool = tc->testBaton;
 
     /* Set up a test context with a server */
-    status = test_http_server_setup(&tb,
-                                    message_list, num_requests,
-                                    action_list, num_requests, 0, NULL,
-                                    test_pool);
+    status = setup_test_client_context(&tb, NULL, num_requests, test_pool);
     CuAssertIntEquals(tc, APR_SUCCESS, status);
+    setup_test_mock_server(tb);
 
     /* create large chunked request message */
-    request = create_large_request_message(test_pool);
-    message_list[0].text = request;
+    body = create_large_request_message_body(test_pool);
+    request = create_large_request_message(test_pool, body);
+
+    Given(tb->mh)
+      GETRequest(URLEqualTo("/"), RawBodyEqualTo(body))
+        Respond(WithCode(200), WithChunkedBody(""))
+    EndGiven
 
     create_new_request(tb, &handler_ctx[0], "GET", "/", 1);
     handler_ctx[0].request = request;
 
-    test_helper_run_requests_expect_ok(tc, tb, num_requests, handler_ctx,
-                                       test_pool);
+    run_client_and_mock_servers_loops_expect_ok(tc, tb, num_requests,
+                                                handler_ctx, test_pool);
 }
 
 /*****************************************************************************
@@ -1480,7 +1485,7 @@ static void test_ssl_large_request(CuTest *tc)
     test_server_action_t action_list[] = {
         {SERVER_RESPOND, CHUNKED_EMPTY_RESPONSE},
     };
-    const char *request;
+    const char *request, *body;
     apr_status_t status;
 
     /* Set up a test context with a server */
@@ -1498,7 +1503,8 @@ static void test_ssl_large_request(CuTest *tc)
     CuAssertIntEquals(tc, APR_SUCCESS, status);
 
     /* create large chunked request message */
-    request = create_large_request_message(test_pool);
+    body = create_large_request_message_body(test_pool);
+    request = create_large_request_message(test_pool, body);
     message_list[0].text = request;
 
     create_new_request(tb, &handler_ctx[0], "GET", "/", 1);
@@ -2161,7 +2167,6 @@ CuSuite *test_context(void)
 
     SUITE_ADD_TEST(suite, test_setup_proxy);
     SUITE_ADD_TEST(suite, test_connection_large_response);
-    SUITE_ADD_TEST(suite, test_connection_large_request);
     SUITE_ADD_TEST(suite, test_ssl_handshake);
     SUITE_ADD_TEST(suite, test_ssl_trust_rootca);
     SUITE_ADD_TEST(suite, test_ssl_application_rejects_cert);
@@ -2191,6 +2196,7 @@ CuSuite *test_context(void)
     SUITE_ADD_TEST(suite, test_progress_callback);
     SUITE_ADD_TEST(suite, test_connection_userinfo_in_url);
     SUITE_ADD_TEST(suite, test_request_timeout);
+    SUITE_ADD_TEST(suite, test_connection_large_request);
 
     return suite;
 }

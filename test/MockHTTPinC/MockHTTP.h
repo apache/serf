@@ -109,6 +109,10 @@ extern "C" {
 #define     BodyEqualTo(x)\
                 mhMatchBodyEqualTo(__mh, (x))
 
+/* Match the request's body as raw data (e.g. including the chunk header). */
+#define     RawBodyEqualTo(x)\
+                mhMatchRawBodyEqualTo(__mh, (x))
+
 /* Match a request header's value. */
 #define     HeaderEqualTo(h, v)\
                 mhMatchHeaderEqualTo(__mh, (h), (v))
@@ -176,7 +180,8 @@ extern "C" {
 #define     WithConnectionCloseHeader\
                 mhRespSetConnCloseHdr(__mh)
 
-/* Use the provided string as raw response data. */
+/* Use the provided string as raw response data. The response need not be
+   valid HTTP.*/
 #define     WithRawData(data)\
                 mhRespSetRawData(__mh, (data))
 
@@ -339,6 +344,8 @@ mhMatchingPattern_t *mhMatchMethodEqualTo(const MockHTTP *mh,
                                           const char *expected);
 mhMatchingPattern_t *mhMatchBodyEqualTo(const MockHTTP *mh,
                                         const char *expected);
+mhMatchingPattern_t *mhMatchRawBodyEqualTo(const MockHTTP *mh,
+                                           const char *expected);
 mhMatchingPattern_t *mhMatchIncompleteBodyEqualTo(const MockHTTP *mh,
                                                   const char *expected);
 /* Network level matching functions, for testing of http libraries */

@@ -302,13 +302,6 @@ void mhSetDefaultResponse(MockHTTP *mh, mhResponse_t *resp)
     mh->defResponse = resp;
 }
 
-mhRequest_t *_mhRequestInit(MockHTTP *mh)
-{
-    mhRequest_t *req = apr_palloc(mh->pool, sizeof(mhRequest_t));
-
-    return req;
-}
-
 /******************************************************************************/
 /* Requests matchers: define criteria to match different aspects of a HTTP    */
 /* request received by the MockHTTP server.                                   */
@@ -316,23 +309,25 @@ mhRequest_t *_mhRequestInit(MockHTTP *mh)
 static bool
 chunks_matcher(const mhMatchingPattern_t *mp, apr_array_header_t *chunks)
 {
-    apr_size_t curpos = 0;
-    const char *expected = mp->baton;
+    const char *ptr, *expected = mp->baton;
     int i;
 
+    ptr = expected;
     for (i = 0 ; i < chunks->nelts; i++) {
-        const char *ptr, *actual;
+        struct iovec vec;
+        apr_size_t len;
 
-        ptr = expected + curpos;
-        actual = APR_ARRAY_IDX(chunks, i, const char *);
-        if (strncmp(ptr, actual, strlen(actual)) != 0)
+        vec = APR_ARRAY_IDX(chunks, i, struct iovec);
+        /* iov_base can be incomplete, so shorter than iov_len */
+        len = strlen(vec.iov_base);
+        if (strncmp(ptr, vec.iov_base, len) != 0)
             return NO;
-        curpos += strlen(actual);
+        ptr += len;
     }
 
     /* Up until now the body matches, but maybe the body is expected to be
-     longer. */
-    if (strlen(expected + curpos) > 0)
+       longer. */
+    if (*ptr != '\0')
         return NO;
 
     return YES;
@@ -379,8 +374,9 @@ static bool body_matcher(apr_pool_t *pool, const mhMatchingPattern_t *mp,
     /* ignore chunked or not chunked */
     if (req->chunked == YES)
         return chunks_matcher(mp, req->chunks);
-    else
-        return str_matcher(mp, req->body);
+    else {
+        return chunks_matcher(mp, req->body);
+    }
 }
 
 mhMatchingPattern_t *
@@ -391,6 +387,24 @@ mhMatchBodyEqualTo(const MockHTTP *mh, const char *expected)
     mhMatchingPattern_t *mp = apr_pcalloc(pool, sizeof(mhMatchingPattern_t));
     mp->baton = apr_pstrdup(pool, expected);
     mp->matcher = body_matcher;
+
+    return mp;
+}
+
+static bool raw_body_matcher(apr_pool_t *pool, const mhMatchingPattern_t *mp,
+                             const mhRequest_t *req)
+{
+    return chunks_matcher(mp, req->body);
+}
+
+mhMatchingPattern_t *
+mhMatchRawBodyEqualTo(const MockHTTP *mh, const char *expected)
+{
+    apr_pool_t *pool = mh->pool;
+
+    mhMatchingPattern_t *mp = apr_pcalloc(pool, sizeof(mhMatchingPattern_t));
+    mp->baton = apr_pstrdup(pool, expected);
+    mp->matcher = raw_body_matcher;
 
     return mp;
 }
@@ -413,7 +427,7 @@ body_notchunked_matcher(apr_pool_t *pool, const mhMatchingPattern_t *mp,
 {
     if (req->chunked == YES)
         return NO;
-    return str_matcher(mp, req->body);
+    return chunks_matcher(mp, req->body);
 }
 
 mhMatchingPattern_t *
@@ -465,11 +479,15 @@ static bool chunked_body_chunks_matcher(apr_pool_t *pool,
         return NO;
 
     for (i = 0 ; i < chunks->nelts; i++) {
-        const char *expected, *actual;
+        struct iovec actual, expected;
 
-        expected = APR_ARRAY_IDX(chunks, i, const char *);
-        actual = APR_ARRAY_IDX(req->chunks, i, const char *);
-        if (strcmp(expected, actual) != 0)
+        actual = APR_ARRAY_IDX(req->chunks, i, struct iovec);
+        expected = APR_ARRAY_IDX(chunks, i, struct iovec);
+
+        if (actual.iov_len != expected.iov_len)
+            return NO;
+
+        if (strncmp(expected.iov_base, actual.iov_base, actual.iov_len) != 0)
             return NO;
     }
 
@@ -484,12 +502,15 @@ mhMatchChunkedBodyChunksEqualTo(const MockHTTP *mh, ...)
     mhMatchingPattern_t *mp;
     va_list argp;
 
-    chunks = apr_array_make(pool, 5, sizeof(const char *));
+    chunks = apr_array_make(pool, 5, sizeof(struct iovec));
     va_start(argp, mh);
     while (1) {
-        const char *chunk = va_arg(argp, const char *);
-        if (chunk == NULL) break;
-        *((const char **)apr_array_push(chunks)) = chunk;
+        struct iovec vec;
+        vec.iov_base = (void *)va_arg(argp, const char *);
+        if (vec.iov_base == NULL)
+            break;
+        vec.iov_len = strlen(vec.iov_base);
+        *((struct iovec *)apr_array_push(chunks)) = vec;
     }
     va_end(argp);
 
@@ -610,7 +631,7 @@ mhResponse_t *mhResponse(MockHTTP *mh, ...)
     mhResponse_t *resp = apr_pcalloc(pool, sizeof(mhResponse_t));
     resp->pool = pool;
     resp->code = 200;
-    resp->body = "";
+    resp->body = apr_array_make(pool, 5, sizeof(struct iovec));
     resp->hdrs = apr_hash_make(pool);
     resp->builders = apr_array_make(pool, 5, sizeof(mhRespBuilder_t *));
 
@@ -660,7 +681,11 @@ mhRespBuilder_t *mhRespSetCode(const MockHTTP *mh, unsigned int code)
 static void respBodySetter(mhResponse_t *resp, const void *baton)
 {
     const RespBuilderHelper_t *rbh = baton;
-    resp->body = rbh->body;
+    struct iovec vec;
+    vec.iov_base = (void *)rbh->body;
+    vec.iov_len = strlen(rbh->body);
+    *((struct iovec *)apr_array_push(resp->body)) = vec;
+    resp->bodyLen = vec.iov_len;
     resp->chunked = NO;
 }
 
@@ -695,12 +720,15 @@ mhRespBuilder_t * mhRespSetChunkedBody(const MockHTTP *mh, ...)
 
     RespBuilderHelper_t *rbh = apr_palloc(pool, sizeof(RespBuilderHelper_t));
 
-    chunks = apr_array_make(pool, 5, sizeof(const char *));
+    chunks = apr_array_make(pool, 5, sizeof(struct iovec));
     va_start(argp, mh);
     while (1) {
-        const char *chunk = va_arg(argp, const char *);
-        if (chunk == NULL) break;
-        *((const char **)apr_array_push(chunks)) = chunk;
+        struct iovec vec;
+        vec.iov_base = (void *)va_arg(argp, const char *);
+        if (vec.iov_base == NULL)
+            break;
+        vec.iov_len = strlen(vec.iov_base);
+        *((struct iovec *)apr_array_push(chunks)) = vec;
     }
     va_end(argp);
     rbh->chunked = YES;
@@ -758,6 +786,7 @@ static void respUseRequestBodySetter(mhResponse_t *resp, const void *baton)
         resp->chunked = YES;
     } else {
         resp->body  = req->body;
+        resp->bodyLen = req->bodyLen;
     }
 }
 
