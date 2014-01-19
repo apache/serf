@@ -350,7 +350,7 @@ static void authentication_switch_realms(CuTest *tc,
 {
     test_baton_t *tb;
     handler_baton_t handler_ctx[2];
-    int num_requests_sent, num_requests_recvd;
+    int num_requests_sent;
     apr_pool_t *test_pool = tc->testBaton;
     apr_status_t status;
 
@@ -375,7 +375,6 @@ static void authentication_switch_realms(CuTest *tc,
     tb->user_baton = apr_psprintf(test_pool, "<http://localhost:%d> Test Suite",
                                   mhServerPortNr(tb->mh));
     num_requests_sent = 1;
-    num_requests_recvd = 2;
 
     Given(tb->mh)
       GETRequest(URLEqualTo("/"), ChunkedBodyEqualTo("1"),

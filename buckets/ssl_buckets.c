@@ -1763,7 +1763,7 @@ static apr_status_t serf_ssl_set_config(serf_bucket_t *bucket,
                 err_status = status;
         }
         if (ssl_ctx->decrypt.stream) {
-            serf_bucket_set_config(ssl_ctx->decrypt.stream, config);
+            status = serf_bucket_set_config(ssl_ctx->decrypt.stream, config);
             if (status)
                 err_status = status;
         }
