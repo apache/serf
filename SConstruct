@@ -333,26 +333,37 @@ if sys.platform == 'win32':
     env.Append(CPPPATH='$OPENSSL/inc32',
                LIBPATH='$OPENSSL/out32dll')
 else:
-  if os.path.isdir(apr):
-    apr = os.path.join(apr, 'bin', 'apr-1-config')
-    env['APR'] = apr
-  if os.path.isdir(apu):
-    apu = os.path.join(apu, 'bin', 'apu-1-config')
-    env['APU'] = apu
-
-  ### we should use --cc, but that is giving some scons error about an implict
-  ### dependency upon gcc. probably ParseConfig doesn't know what to do with
-  ### the apr-1-config output
   if CALLOUT_OKAY:
+    if os.path.isdir(apr):
+      possible_apr = os.path.join(apr, 'bin', 'apr-2-config')
+      if os.path.isfile(possible_apr):
+        apr = possible_apr
+      else:
+        apr = os.path.join(apr, 'bin', 'apr-1-config')
+      env['APR'] = apr
+
+    apr_version = os.popen(env.subst('$APR --version')).read().strip()
+    apr_major, apr_minor, apr_patch = map(int, apr_version.split('.'))
+
+    if os.path.isdir(apu):
+      apu = os.path.join(apu, 'bin', 'apu-1-config')
+      env['APU'] = apu
+
+    ### we should use --cc, but that is giving some scons error about an implict
+    ### dependency upon gcc. probably ParseConfig doesn't know what to do with
+    ### the apr-1-config output
     env.ParseConfig('$APR --cflags --cppflags --ldflags --includes'
                     ' --link-ld --libs')
-    env.ParseConfig('$APU --ldflags --includes --link-ld --libs')
+    if apr_major < 2:
+      env.ParseConfig('$APU --ldflags --includes --link-ld --libs')
 
-  ### there is probably a better way to run/capture output.
-  ### env.ParseConfig() may be handy for getting this stuff into the build
-  if CALLOUT_OKAY:
+    ### there is probably a better way to run/capture output.
+    ### env.ParseConfig() may be handy for getting this stuff into the build
     apr_libs = os.popen(env.subst('$APR --link-libtool --libs')).read().strip()
-    apu_libs = os.popen(env.subst('$APU --link-libtool --libs')).read().strip()
+    if apr_major < 2:
+      apu_libs = os.popen(env.subst('$APU --link-libtool --libs')).read().strip()
+    else:
+      apu_libs = ''
   else:
     apr_libs = ''
     apu_libs = ''
