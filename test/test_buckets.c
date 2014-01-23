@@ -1223,12 +1223,14 @@ static void test_random_eagain_in_response(CuTest *tc)
                      !SERF_BUCKET_READ_ERROR(status));
             errmsg = apr_psprintf(iter_pool,
                                   "Read more data than expected, EAGAIN"
-                                  " inserted at pos: %d, remainder: \"%s\"",
+                                  " inserted at pos: %" APR_SIZE_T_FMT
+                                  ", remainder: \"%s\"",
                                   cut, fullmsg + cut);
             CuAssert(tc, errmsg, strlen(ptr) >= len);
             errmsg = apr_psprintf(iter_pool,
                                   "Read data is not equal to expected, EAGAIN"
-                                  " inserted at pos: %d, remainder: \"%s\"",
+                                  " inserted at pos: %" APR_SIZE_T_FMT
+                                  ", remainder: \"%s\"",
                                   cut, fullmsg + cut);
             CuAssertStrnEquals_Msg(tc, errmsg, ptr, len, data);
 
