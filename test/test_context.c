@@ -1389,12 +1389,6 @@ static void test_ssl_no_servercert_callback_fail(CuTest *tc)
     test_baton_t *tb;
     handler_baton_t handler_ctx[1];
     const int num_requests = sizeof(handler_ctx)/sizeof(handler_ctx[0]);
-    test_server_message_t message_list[] = {
-        {CHUNKED_REQUEST(1, "1")},
-    };
-    test_server_action_t action_list[] = {
-        {SERVER_RESPOND, CHUNKED_EMPTY_RESPONSE},
-    };
     apr_status_t status;
     apr_pool_t *test_pool = tc->testBaton;
 

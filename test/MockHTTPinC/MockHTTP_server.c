@@ -1163,8 +1163,9 @@ static apr_status_t initSSLCtx(_mhClientCtx_t *cctx)
 
         store = SSL_CTX_get_cert_store(ssl_ctx->ctx);
         for (i = 1; i < cctx->certFiles->nelts; i++) {
+            FILE *fp;
             certfile = APR_ARRAY_IDX(cctx->certFiles, i, const char *);
-            FILE *fp = fopen(certfile, "r");
+            fp = fopen(certfile, "r");
             if (fp) {
                 X509 *ssl_cert = PEM_read_X509(fp, NULL, NULL, NULL);
                 fclose(fp);
