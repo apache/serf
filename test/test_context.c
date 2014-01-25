@@ -1425,36 +1425,34 @@ static void test_ssl_large_response(CuTest *tc)
     test_baton_t *tb;
     handler_baton_t handler_ctx[1];
     const int num_requests = sizeof(handler_ctx)/sizeof(handler_ctx[0]);
-    test_server_message_t message_list[] = {
-        {CHUNKED_REQUEST(1, "1")},
-    };
-    test_server_action_t action_list[1];
     apr_status_t status;
-
-    /* Set up a test context with a server */
     apr_pool_t *test_pool = tc->testBaton;
     const char *response;
 
-    status = test_https_server_setup(&tb,
-                                     message_list, num_requests,
-                                     action_list, num_requests, 0,
-                                     https_set_root_ca_conn_setup,
-                                     "test/server/serfserverkey.pem",
-                                     server_certs,
-                                     NULL, /* no client cert */
-                                     NULL, /* No server cert callback */
-                                     test_pool);
+    /* Set up a test context and a https server */
+    status = setup_test_client_https_context(&tb,
+                                             https_set_root_ca_conn_setup,
+                                             num_requests,
+                                             NULL, /* No server cert callback */
+                                             test_pool);
     CuAssertIntEquals(tc, APR_SUCCESS, status);
+    setup_test_mock_https_server(tb, "test/server/serfserverkey.pem",
+                                 server_certs,
+                                 NULL /* no client cert */);
 
     /* create large chunked response message */
     response = create_large_response_message(test_pool);
-    action_list[0].kind = SERVER_RESPOND;
-    action_list[0].text = response;
+
+    Given(tb->mh)
+      GETRequest(URLEqualTo("/"), ChunkedBodyEqualTo("1"))
+        Respond(WithRawData(response))
+    EndGiven
 
     create_new_request(tb, &handler_ctx[0], "GET", "/", 1);
 
-    test_helper_run_requests_expect_ok(tc, tb, num_requests,
-                                       handler_ctx, test_pool);
+    /* TODO: check the actual response data (duh). */
+    run_client_and_mock_servers_loops_expect_ok(tc, tb, num_requests,
+                                                handler_ctx, test_pool);
 }
 
 /* Similar to test_connection_large_request, validate sending a large
@@ -1464,37 +1462,34 @@ static void test_ssl_large_request(CuTest *tc)
     test_baton_t *tb;
     handler_baton_t handler_ctx[1];
     const int num_requests = sizeof(handler_ctx)/sizeof(handler_ctx[0]);
-    test_server_message_t message_list[1];
-    test_server_action_t action_list[] = {
-        {SERVER_RESPOND, CHUNKED_EMPTY_RESPONSE},
-    };
     const char *request, *body;
     apr_status_t status;
-
-    /* Set up a test context with a server */
     apr_pool_t *test_pool = tc->testBaton;
 
-    status = test_https_server_setup(&tb,
-                                     message_list, num_requests,
-                                     action_list, num_requests, 0,
-                                     https_set_root_ca_conn_setup,
-                                     "test/server/serfserverkey.pem",
-                                     server_certs,
-                                     NULL, /* no client cert */
-                                     NULL, /* No server cert callback */
-                                     test_pool);
+    /* Set up a test context and a https server */
+    status = setup_test_client_https_context(&tb,
+                                             https_set_root_ca_conn_setup,
+                                             num_requests,
+                                             NULL, /* No server cert callback */
+                                             test_pool);
     CuAssertIntEquals(tc, APR_SUCCESS, status);
+    setup_test_mock_https_server(tb, "test/server/serfserverkey.pem",
+                                 server_certs,
+                                 NULL /* no client cert */);
 
     /* create large chunked request message */
     body = create_large_request_message_body(test_pool);
     request = create_large_request_message(test_pool, body);
-    message_list[0].text = request;
+    Given(tb->mh)
+      GETRequest(URLEqualTo("/"), RawBodyEqualTo(body))
+        Respond(WithCode(200), WithChunkedBody(""))
+    EndGiven
 
     create_new_request(tb, &handler_ctx[0], "GET", "/", 1);
     handler_ctx[0].request = request;
 
-    test_helper_run_requests_expect_ok(tc, tb, num_requests,
-                                       handler_ctx, test_pool);
+    run_client_and_mock_servers_loops_expect_ok(tc, tb, num_requests,
+                                                handler_ctx, test_pool);
 }
 
 static apr_status_t client_cert_cb(void *data, const char **cert_path)
@@ -1600,41 +1595,41 @@ static void test_ssl_expired_server_cert(CuTest *tc)
     const int num_requests = sizeof(handler_ctx)/sizeof(handler_ctx[0]);
     int expected_failures;
     apr_status_t status;
-    test_server_message_t message_list[] = {
-        {CHUNKED_REQUEST(1, "1")},
-    };
+    apr_pool_t *test_pool = tc->testBaton;
 
-    test_server_action_t action_list[] = {
-        {SERVER_RESPOND, CHUNKED_EMPTY_RESPONSE},
-    };
     static const char *expired_server_certs[] = {
         "test/server/serfserver_expired_cert.pem",
         "test/server/serfcacert.pem",
         "test/server/serfrootcacert.pem",
         NULL };
 
-    /* Set up a test context with a server */
-    apr_pool_t *test_pool = tc->testBaton;
-
-    status = test_https_server_setup(&tb,
-                                     message_list, num_requests,
-                                     action_list, num_requests, 0,
-                                     NULL, /* default conn setup */
-                                     "test/server/serfserverkey.pem",
-                                     expired_server_certs,
-                                     NULL, /* no client cert */
-                                     ssl_server_cert_cb_expect_failures,
-                                     test_pool);
+    /* Set up a test context and a https server */
+    status = setup_test_client_https_context(&tb,
+                                             NULL, /* default conn setup */
+                                             num_requests,
+                                             ssl_server_cert_cb_expect_failures,
+                                             test_pool);
     CuAssertIntEquals(tc, APR_SUCCESS, status);
+    setup_test_mock_https_server(tb, "test/server/serfserverkey.pem",
+                                 expired_server_certs,
+                                 NULL /* no client cert */);
 
     expected_failures = SERF_SSL_CERT_SELF_SIGNED |
                         SERF_SSL_CERT_EXPIRED;
     tb->user_baton = &expected_failures;
 
+    Given(tb->mh)
+      GETRequest(URLEqualTo("/"), ChunkedBodyEqualTo("1"),
+                 HeaderEqualTo("Host", tb->serv_host))
+        Respond(WithCode(200), WithChunkedBody(""))
+    EndGiven
+
     create_new_request(tb, &handler_ctx[0], "GET", "/", 1);
 
-    test_helper_run_requests_expect_ok(tc, tb, num_requests, handler_ctx,
-                                       test_pool);
+    run_client_and_mock_servers_loops_expect_ok(tc, tb, num_requests,
+                                                handler_ctx, test_pool);
+    CuAssertTrue(tc, tb->result_flags & TEST_RESULT_SERVERCERTCB_CALLED);
+
 }
 
 /* Validate that the expired certificate is reported as failure in the
@@ -1646,41 +1641,40 @@ static void test_ssl_future_server_cert(CuTest *tc)
     const int num_requests = sizeof(handler_ctx)/sizeof(handler_ctx[0]);
     int expected_failures;
     apr_status_t status;
-    test_server_message_t message_list[] = {
-        {CHUNKED_REQUEST(1, "1")},
-    };
+    apr_pool_t *test_pool = tc->testBaton;
 
-    test_server_action_t action_list[] = {
-        {SERVER_RESPOND, CHUNKED_EMPTY_RESPONSE},
-    };
     static const char *future_server_certs[] = {
         "test/server/serfserver_future_cert.pem",
         "test/server/serfcacert.pem",
         "test/server/serfrootcacert.pem",
         NULL };
 
-    /* Set up a test context with a server */
-    apr_pool_t *test_pool = tc->testBaton;
-
-    status = test_https_server_setup(&tb,
-                                     message_list, num_requests,
-                                     action_list, num_requests, 0,
-                                     NULL, /* default conn setup */
-                                     "test/server/serfserverkey.pem",
-                                     future_server_certs,
-                                     NULL, /* no client cert */
-                                     ssl_server_cert_cb_expect_failures,
-                                     test_pool);
+    /* Set up a test context and a https server */
+    status = setup_test_client_https_context(&tb,
+                                             NULL, /* default conn setup */
+                                             num_requests,
+                                             ssl_server_cert_cb_expect_failures,
+                                             test_pool);
     CuAssertIntEquals(tc, APR_SUCCESS, status);
+    setup_test_mock_https_server(tb, "test/server/serfserverkey.pem",
+                                 future_server_certs,
+                                 NULL /* no client cert */);
 
     expected_failures = SERF_SSL_CERT_SELF_SIGNED |
                         SERF_SSL_CERT_NOTYETVALID;
     tb->user_baton = &expected_failures;
 
+    Given(tb->mh)
+      GETRequest(URLEqualTo("/"), ChunkedBodyEqualTo("1"),
+                 HeaderEqualTo("Host", tb->serv_host))
+        Respond(WithCode(200), WithChunkedBody(""))
+    EndGiven
+
     create_new_request(tb, &handler_ctx[0], "GET", "/", 1);
 
-    test_helper_run_requests_expect_ok(tc, tb, num_requests, handler_ctx,
-                                       test_pool);
+    run_client_and_mock_servers_loops_expect_ok(tc, tb, num_requests,
+                                                handler_ctx, test_pool);
+    CuAssertTrue(tc, tb->result_flags & TEST_RESULT_SERVERCERTCB_CALLED);
 }
 
 
@@ -2149,11 +2143,7 @@ CuSuite *test_context(void)
     CuSuiteSetSetupTeardownCallbacks(suite, test_setup, test_teardown);
 
     SUITE_ADD_TEST(suite, test_setup_proxy);
-    SUITE_ADD_TEST(suite, test_ssl_large_response);
-    SUITE_ADD_TEST(suite, test_ssl_large_request);
     SUITE_ADD_TEST(suite, test_ssl_client_certificate);
-    SUITE_ADD_TEST(suite, test_ssl_expired_server_cert);
-    SUITE_ADD_TEST(suite, test_ssl_future_server_cert);
     SUITE_ADD_TEST(suite, test_setup_ssltunnel);
     SUITE_ADD_TEST(suite, test_ssltunnel_no_creds_cb);
     SUITE_ADD_TEST(suite, test_ssltunnel_basic_auth);
@@ -2180,6 +2170,10 @@ CuSuite *test_context(void)
     SUITE_ADD_TEST(suite, test_ssl_certificate_chain_all_from_server);
     SUITE_ADD_TEST(suite, test_ssl_no_servercert_callback_allok);
     SUITE_ADD_TEST(suite, test_ssl_no_servercert_callback_fail);
+    SUITE_ADD_TEST(suite, test_ssl_large_response);
+    SUITE_ADD_TEST(suite, test_ssl_large_request);
+    SUITE_ADD_TEST(suite, test_ssl_expired_server_cert);
+    SUITE_ADD_TEST(suite, test_ssl_future_server_cert);
 
     return suite;
 }

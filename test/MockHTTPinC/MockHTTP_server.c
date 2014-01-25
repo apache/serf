@@ -383,10 +383,12 @@ static apr_status_t readChunk(_mhClientCtx_t *cctx, mhRequest_t *req, bool *done
     switch (req->readState) {
         case ReadStateBody:
         case ReadStateChunked:
+            req->readState = ReadStateChunkedHeader;
+            /* fall through */
+        case ReadStateChunkedHeader:
         {
             struct iovec vec;
             apr_size_t chlen;
-            req->readState = ReadStateChunkedHeader;
             readLine(cctx, &buf, &len);
             if (!len)
                 return APR_EAGAIN;
