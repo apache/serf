@@ -656,6 +656,26 @@ setup_test_client_context(test_baton_t **tb_p,
 }
 
 apr_status_t
+setup_test_client_https_context(test_baton_t **tb_p,
+                                serf_connection_setup_t conn_setup,
+                                apr_size_t messages_to_be_sent,
+                                serf_ssl_need_server_cert_t server_cert_cb,
+                                apr_pool_t *pool)
+{
+    test_baton_t *tb;
+    apr_status_t status;
+
+    status = setup_test_client_context(tb_p,
+                                       conn_setup ? conn_setup :
+                                                    default_https_conn_setup,
+                                       messages_to_be_sent,
+                                       pool);
+    tb = *tb_p;
+    tb->server_cert_cb = server_cert_cb;
+    return status;
+}
+
+apr_status_t
 run_client_and_mock_servers_loops(test_baton_t *tb,
                                   int num_requests,
                                   handler_baton_t handler_ctx[],
@@ -720,7 +740,21 @@ run_client_and_mock_servers_loops_expect_ok(CuTest *tc, test_baton_t *tb,
 void setup_test_mock_server(test_baton_t *tb)
 {
     InitMockHTTP(tb->mh)
-      WithHTTPserver(WithPort(30080))
+      SetupServer(WithHTTP(), WithPort(30080))
+    EndInit
+    tb->serv_port = mhServerPortNr(tb->mh);
+    tb->serv_host = apr_psprintf(tb->pool, "%s:%d", "localhost", tb->serv_port);
+}
+
+void setup_test_mock_https_server(test_baton_t *tb,
+                                  const char *keyfile,
+                                  const char **certfiles,
+                                  const char *client_cn)
+{
+    InitMockHTTP(tb->mh)
+      SetupServer(WithHTTPS(), WithPort(30080),
+                  WithCertificateKeyFile(keyfile),
+                  WithCertificateFileArray(certfiles))
     EndInit
     tb->serv_port = mhServerPortNr(tb->mh);
     tb->serv_host = apr_psprintf(tb->pool, "%s:%d", "localhost", tb->serv_port);

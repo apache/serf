@@ -453,6 +453,8 @@ tenv = env.Clone()
 cflags = tenv['CFLAGS']
 tenv.Replace(CFLAGS = [f.replace('-std=c89', '-std=c99') for f in cflags])
 
+tenv.Append(CPPDEFINES='MOCKHTTP_OPENSSL')
+
 TEST_PROGRAMS = [ 'serf_get', 'serf_response', 'serf_request', 'serf_spider',
                   'test_all', 'serf_bwtp' ]
 if sys.platform == 'win32':

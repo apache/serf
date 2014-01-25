@@ -299,9 +299,21 @@ apr_status_t setup_test_client_context(test_baton_t **tb_p,
                                        apr_size_t messages_to_be_sent,
                                        apr_pool_t *pool);
 
+apr_status_t
+setup_test_client_https_context(test_baton_t **tb_p,
+                                serf_connection_setup_t conn_setup,
+                                apr_size_t messages_to_be_sent,
+                                serf_ssl_need_server_cert_t server_cert_cb,
+                                apr_pool_t *pool);
+
 /* Setup a mock test server on localhost on the default port. The actual port
    will be stored in tb->port. */
 void setup_test_mock_server(test_baton_t *tb);
+
+void setup_test_mock_https_server(test_baton_t *tb,
+                                  const char *keyfile,
+                                  const char **certfiles,
+                                  const char *client_cn);
 
 /* Helper function, runs the client and server context loops. */
 apr_status_t

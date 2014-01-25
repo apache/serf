@@ -23,11 +23,9 @@
 #include <apr_strings.h>
 #include <apr_lib.h>
 
-static const int DefaultSrvPort =   30080;
-static const int DefaultProxyPort = 38080;
-
 static char *serializeArrayOfIovecs(apr_pool_t *pool,
                                     apr_array_header_t *blocks);
+mhResponse_t *initResponse(MockHTTP *mh);
 
 typedef struct ReqMatcherRespPair_t {
     mhRequestMatcher_t *rm;
@@ -108,12 +106,13 @@ MockHTTP *mhInit()
 {
     apr_pool_t *pool;
     MockHTTP *__mh, *mh;
+    mhResponse_t *__resp;
 
     apr_initialize();
     atexit(apr_terminate);
 
     apr_pool_create(&pool, NULL);
-    mh = apr_pcalloc(pool, sizeof(struct MockHTTP));
+    __mh = mh = apr_pcalloc(pool, sizeof(struct MockHTTP));
     mh->pool = pool;
     mh->reqMatchers = apr_array_make(pool, 5, sizeof(ReqMatcherRespPair_t *));;
     mh->incompleteReqMatchers = apr_array_make(pool, 5,
@@ -124,62 +123,14 @@ MockHTTP *mhInit()
     *mh->errmsg = '\0';
     mh->expectations = 0;
     mh->verifyStats = apr_pcalloc(pool, sizeof(mhStats_t));
-    __mh = mh;
-    mh->defResponse = mhResponse(__mh, WithCode(200),
-                                 WithBody("Default Response"), NULL);
-    mh->defErrorResponse = mhResponse(__mh, WithCode(500),
-                                      WithBody("Mock server error."), NULL);
+
+    __resp = mhNewDefaultResponse(__mh);
+    mhConfigResponse(__resp, WithCode(200), WithBody("Default Response"), NULL);
+
+    __resp = mh->defErrorResponse = initResponse(__mh);
+    mhConfigResponse(__resp, WithCode(500),
+                     WithBody("Mock server error."), NULL);
     return mh;
-}
-
-/******************************************************************************/
-/* Init server                                                                */
-/******************************************************************************/
-typedef void (* srvbuilderfunc_t)(mhServCtx_t *ctx, const void *baton,
-                                  long baton2);
-struct mhServerBuilder_t {
-    const void *baton;
-    long baton2;
-    srvbuilderfunc_t builder;
-};
-
-mhError_t mhInitHTTPserver(MockHTTP *mh, ...)
-{
-    va_list argp;
-    apr_status_t status;
-
-    mh->servCtx = _mhInitTestServer(mh, "localhost", DefaultSrvPort);
-
-    va_start(argp, mh);
-    while (1) {
-        mhServerBuilder_t *bldr = va_arg(argp, mhServerBuilder_t *);
-        if (bldr == NULL) break;
-        bldr->builder(mh->servCtx, bldr->baton, bldr->baton2);
-    }
-    va_end(argp);
-
-    status = _mhStartServer(mh->servCtx);
-    if (status == MH_STATUS_WAITING)
-        return MOCKHTTP_WAITING;
-
-    /* TODO: store error message */
-    return MOCKHTTP_SETUP_FAILED;
-}
-
-static void srv_port_setter(mhServCtx_t *ctx, const void *baton, long baton2) {
-    ctx->port = (unsigned int)baton2;
-}
-
-mhServerBuilder_t *mhConstructServerPortSetter(const MockHTTP *mh,
-                                               unsigned int port)
-{
-    apr_pool_t *pool = mh->pool;
-
-    mhServerBuilder_t *bldr = apr_palloc(pool, sizeof(mhServerBuilder_t));
-    bldr->baton2 = (unsigned int)port;
-    bldr->builder = srv_port_setter;
-
-    return bldr;
 }
 
 void mhCleanup(MockHTTP *mh)
@@ -281,28 +232,6 @@ void mhPushRequest(MockHTTP *mh, mhRequestMatcher_t *rm)
                 apr_array_push(mh->incompleteReqMatchers)) = pair;
     else
         *((ReqMatcherRespPair_t **)apr_array_push(mh->reqMatchers)) = pair;
-}
-
-void mhSetRespForReq(MockHTTP *mh, mhRequestMatcher_t *rm, mhResponse_t *resp)
-{
-    int i;
-    apr_array_header_t *matchers;
-
-    matchers = rm->incomplete ? mh->incompleteReqMatchers : mh->reqMatchers;
-    for (i = 0 ; i < matchers->nelts; i++) {
-        ReqMatcherRespPair_t *pair;
-
-        pair = APR_ARRAY_IDX(matchers, i, ReqMatcherRespPair_t *);
-        if (rm == pair->rm) {
-            pair->resp = resp;
-            break;
-        }
-    }
-}
-
-void mhSetDefaultResponse(MockHTTP *mh, mhResponse_t *resp)
-{
-    mh->defResponse = resp;
 }
 
 /******************************************************************************/
@@ -636,10 +565,9 @@ _mhRequestMatcherMatch(const mhRequestMatcher_t *rm, const mhRequest_t *req)
 /******************************************************************************/
 /* Response                                                                   */
 /******************************************************************************/
-mhResponse_t *mhResponse(MockHTTP *mh, ...)
+mhResponse_t *initResponse(MockHTTP *mh)
 {
     apr_pool_t *pool = mh->pool;
-    va_list argp;
 
     mhResponse_t *resp = apr_pcalloc(pool, sizeof(mhResponse_t));
     resp->pool = pool;
@@ -647,94 +575,77 @@ mhResponse_t *mhResponse(MockHTTP *mh, ...)
     resp->body = apr_array_make(pool, 5, sizeof(struct iovec));
     resp->hdrs = apr_hash_make(pool);
     resp->builders = apr_array_make(pool, 5, sizeof(mhRespBuilder_t *));
+    return resp;
+}
 
-    va_start(argp, mh);
-    while (1) {
-        mhRespBuilder_t *rb;
-        rb = va_arg(argp, mhRespBuilder_t *);
-        if (rb == NULL) break;
-        *((mhRespBuilder_t **)apr_array_push(resp->builders)) = rb;
+mhResponse_t *mhNewResponseForRequest(MockHTTP *mh, mhRequestMatcher_t *rm)
+{
+    apr_array_header_t *matchers;
+    int i;
+
+    mhResponse_t *resp = initResponse(mh);
+
+    matchers = rm->incomplete ? mh->incompleteReqMatchers : mh->reqMatchers;
+    for (i = 0 ; i < matchers->nelts; i++) {
+        ReqMatcherRespPair_t *pair;
+
+        pair = APR_ARRAY_IDX(matchers, i, ReqMatcherRespPair_t *);
+        if (rm == pair->rm) {
+            pair->resp = resp;
+            break;
+        }
     }
-    va_end(argp);
 
     return resp;
 }
 
-typedef struct RespBuilderHelper_t {
-    int code;
-    const char *body;
-    const char *header;
-    const char *value;
-    const char *raw_data; /* complete response */
-    bool chunked;
-    apr_array_header_t *chunks;
-    bool closeConn;
-} RespBuilderHelper_t;
-
-static void respCodeSetter(mhResponse_t *resp, const void *baton)
+mhResponse_t *mhNewDefaultResponse(MockHTTP *mh)
 {
-    const RespBuilderHelper_t *rbh = baton;
-    resp->code = rbh->code;
+    mh->defResponse = initResponse(mh);
+    return mh->defResponse;
 }
 
-mhRespBuilder_t *mhRespSetCode(const MockHTTP *mh, unsigned int code)
+static void noop(mhResponse_t *resp) { }
+
+void mhConfigResponse(mhResponse_t *resp, ...)
 {
-    apr_pool_t *pool = mh->pool;
-    mhRespBuilder_t *rb;
-
-    RespBuilderHelper_t *rbh = apr_palloc(pool, sizeof(RespBuilderHelper_t));
-    rbh->code = code;
-
-    rb = apr_palloc(pool, sizeof(mhRespBuilder_t));
-    rb->baton = rbh;
-    rb->builder = respCodeSetter;
-    return rb;
+    va_list argp;
+    /* This is only needed for values that are only known when the request
+       is received, e.g. WithRequestBody. */
+    va_start(argp, resp);
+    while (1) {
+        respbuilder_t builder;
+        builder = va_arg(argp, respbuilder_t);
+        if (builder == NULL) break;
+        *((respbuilder_t *)apr_array_push(resp->builders)) = builder;
+    }
+    va_end(argp);
 }
 
-static void respBodySetter(mhResponse_t *resp, const void *baton)
+respbuilder_t mhRespSetCode(mhResponse_t *resp, unsigned int code)
 {
-    const RespBuilderHelper_t *rbh = baton;
+    resp->code = code;
+    return noop;
+}
+
+respbuilder_t mhRespSetBody(mhResponse_t *resp, const char *body)
+{
     struct iovec vec;
-    vec.iov_base = (void *)rbh->body;
-    vec.iov_len = strlen(rbh->body);
+    vec.iov_base = (void *)body;
+    vec.iov_len = strlen(body);
     *((struct iovec *)apr_array_push(resp->body)) = vec;
     resp->bodyLen = vec.iov_len;
     resp->chunked = NO;
+    return noop;
 }
 
-mhRespBuilder_t * mhRespSetBody(const MockHTTP *mh, const char *body)
+respbuilder_t mhRespSetChunkedBody(mhResponse_t *resp, ...)
 {
-    apr_pool_t *pool = mh->pool;
-    mhRespBuilder_t *rb;
-
-    RespBuilderHelper_t *rbh = apr_palloc(pool, sizeof(RespBuilderHelper_t));
-    rbh->body = apr_pstrdup(pool, body);
-    rbh->chunked = NO;
-
-    rb = apr_palloc(pool, sizeof(mhRespBuilder_t));
-    rb->baton = rbh;
-    rb->builder = respBodySetter;
-    return rb;
-}
-
-static void respChunksSetter(mhResponse_t *resp, const void *baton)
-{
-    const RespBuilderHelper_t *rbh = baton;
-    resp->chunks = rbh->chunks;
-    resp->chunked = YES;
-}
-
-mhRespBuilder_t * mhRespSetChunkedBody(const MockHTTP *mh, ...)
-{
-    apr_pool_t *pool = mh->pool;
-    mhRespBuilder_t *rb;
     apr_array_header_t *chunks;
     va_list argp;
 
-    RespBuilderHelper_t *rbh = apr_palloc(pool, sizeof(RespBuilderHelper_t));
-
-    chunks = apr_array_make(pool, 5, sizeof(struct iovec));
-    va_start(argp, mh);
+    chunks = apr_array_make(resp->pool, 5, sizeof(struct iovec));
+    va_start(argp, resp);
     while (1) {
         struct iovec vec;
         vec.iov_base = (void *)va_arg(argp, const char *);
@@ -744,54 +655,26 @@ mhRespBuilder_t * mhRespSetChunkedBody(const MockHTTP *mh, ...)
         *((struct iovec *)apr_array_push(chunks)) = vec;
     }
     va_end(argp);
-    rbh->chunked = YES;
-    rbh->chunks = chunks;
-
-    rb = apr_palloc(pool, sizeof(mhRespBuilder_t));
-    rb->baton = rbh;
-    rb->builder = respChunksSetter;
-    return rb;
+    resp->chunks = chunks;
+    resp->chunked = YES;
+    return noop;
 }
 
-static void respHeaderSetter(mhResponse_t *resp, const void *baton)
+respbuilder_t mhRespAddHeader(mhResponse_t *resp, const char *header,
+                              const char *value)
 {
-    const RespBuilderHelper_t *rbh = baton;
-    setHeader(resp->pool, resp->hdrs, rbh->header, rbh->value);
+    setHeader(resp->pool, resp->hdrs, header, value);
+    return noop;
 }
 
-mhRespBuilder_t *
-mhRespAddHeader(const MockHTTP *mh, const char *header, const char *value)
-{
-    apr_pool_t *pool = mh->pool;
-    mhRespBuilder_t *rb;
-
-    RespBuilderHelper_t *rbh = apr_palloc(pool, sizeof(RespBuilderHelper_t));
-    rbh->header = apr_pstrdup(pool, header);
-    rbh->value = apr_pstrdup(pool, value);
-
-    rb = apr_palloc(pool, sizeof(mhRespBuilder_t));
-    rb->baton = rbh;
-    rb->builder = respHeaderSetter;
-    return rb;
-}
-
-static void respConnCloseSetter(mhResponse_t *resp, const void *baton)
+respbuilder_t mhRespSetConnCloseHdr(mhResponse_t *resp)
 {
     setHeader(resp->pool, resp->hdrs, "Connection", "close");
     resp->closeConn = YES;
+    return noop;
 }
 
-mhRespBuilder_t *mhRespSetConnCloseHdr(const MockHTTP *mh)
-{
-    apr_pool_t *pool = mh->pool;
-    mhRespBuilder_t *rb;
-
-    rb = apr_palloc(pool, sizeof(mhRespBuilder_t));
-    rb->builder = respConnCloseSetter;
-    return rb;
-}
-
-static void respUseRequestBodySetter(mhResponse_t *resp, const void *baton)
+static void respUseRequestBody(mhResponse_t *resp)
 {
     mhRequest_t *req = resp->req;
     if (req->chunked) {
@@ -800,50 +683,32 @@ static void respUseRequestBodySetter(mhResponse_t *resp, const void *baton)
     } else {
         resp->body  = req->body;
         resp->bodyLen = req->bodyLen;
+        resp->chunked = NO;
     }
 }
 
-mhRespBuilder_t *mhRespSetUseRequestBody(const MockHTTP *mh)
+respbuilder_t mhRespSetUseRequestBody(mhResponse_t *resp)
 {
-    apr_pool_t *pool = mh->pool;
-    mhRespBuilder_t *rb;
-
-    rb = apr_palloc(pool, sizeof(mhRespBuilder_t));
-    rb->builder = respUseRequestBodySetter;
-    return rb;
+    return respUseRequestBody;
 }
 
-static void respRawDataSetter(mhResponse_t *resp, const void *baton)
+respbuilder_t mhRespSetRawData(mhResponse_t *resp, const char *raw_data)
 {
-    const RespBuilderHelper_t *rbh = baton;
-    resp->raw_data = rbh->raw_data;
+    resp->raw_data = raw_data;
+    return noop;
 }
 
-mhRespBuilder_t *mhRespSetRawData(const MockHTTP *mh, const char *data)
-{
-    apr_pool_t *pool = mh->pool;
-    mhRespBuilder_t *rb;
-
-    RespBuilderHelper_t *rbh = apr_palloc(pool, sizeof(RespBuilderHelper_t));
-    rbh->raw_data = apr_pstrdup(pool, data);
-
-    rb = apr_palloc(pool, sizeof(mhRespBuilder_t));
-    rb->baton = rbh;
-    rb->builder = respRawDataSetter;
-    return rb;
-}
-
-void _mhResponseBuild(mhResponse_t *resp)
+void _mhBuildResponse(mhResponse_t *resp)
 {
     int i;
     if (resp->built == YES)
         return;
     resp->built = YES;
     for (i = 0 ; i < resp->builders->nelts; i++) {
-        const mhRespBuilder_t *rb;
+        respbuilder_t builder;
 
-        rb = APR_ARRAY_IDX(resp->builders, i, mhRespBuilder_t *);
-        rb->builder(resp, rb->baton);
+        builder = APR_ARRAY_IDX(resp->builders, i, respbuilder_t);
+        builder(resp);
     }
 }
 

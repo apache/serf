@@ -27,6 +27,12 @@ extern "C" {
 /* TODO: define all macro's with mh prefix, + create shortcuts with flag to
       not define this (in case of conflicts with other code ) */
 
+typedef enum mhServerType_t {
+    mhHTTPServer,
+    mhHTTPSServer,
+    mhHTTPSProxy,
+} mhServerType_t;
+
 /* Note: the variadic macro's used here require C99. */
 /* TODO: we can provide xxx1(x), xxx2(x,y)... macro's for C89 compilers */
 
@@ -40,31 +46,48 @@ extern "C" {
  */
 #define InitMockHTTP(mh)\
             {\
-                MockHTTP *__mh = (mh) = mhInit();
+                MockHTTP *__mh = (mh) = mhInit();\
+                mhServCtx_t *__servctx = NULL;
 
 /* TODO: Variadic macro's require at least one argument, otherwise compilation
    will fail. We should be able to initiate a server with all default params. */
 
-/* Setup a HTTP server */
-#define   WithHTTPserver(...)\
-                mhInitHTTPserver(__mh, __VA_ARGS__, NULL);
+#define   SetupServer(...)\
+                __servctx = mhNewServer(__mh);\
+                mhConfigAndStartServer(__servctx, __VA_ARGS__, NULL);
 
-/* Setup a HTTPS server (not yet implemented) */
-#define   WithHTTPSserver(...)
+/* Setup a HTTP server */
+#define     WithHTTP()\
+                mhSetServerType(__servctx, mhHTTPServer)
+
+/* Setup a HTTPS server */
+#define     WithHTTPS()\
+                mhSetServerType(__servctx, mhHTTPSServer)
 
 /* Setup a HTTP/HTTPS proxy (not yet implemented) */
-#define   WithHTTPproxy(...)
+#define     WithHTTPproxy()\
+                mhSetServerType(__servctx, mhHTTPSProxy)
 
 /*   Specify on which TCP port the server should listen. */
 #define     WithPort(port)\
-                mhConstructServerPortSetter(__mh, port)
+                mhSetServerPort(__servctx, port)
 
 /* Finalize MockHTTP library initialization */
 #define EndInit\
             }
 
 /**
- * Stub requests to the proxy or server, return canned responses. Define the 
+ * HTTP Server configuration options
+ */
+#define     WithCertificateKeyFile(keyFile)\
+                mhSetServerCertKeyFile(__servctx, keyFile)
+#define     WithCertificateFiles(...)\
+                mhAddServerCertFiles(__servctx, __VA_ARGS__, NULL)
+#define     WithCertificateFileArray(files)\
+                mhAddServerCertFileArray(__servctx, files)
+
+/**
+ * Stub requests to the proxy or server, return canned responses. Define the
  * expected results before starting the test, so the server can exit early
  * when expectations can't be matched. These macro's should be used like this:
  *
@@ -145,45 +168,45 @@ extern "C" {
 /* When a request matches, the server will respond with the response defined
    here. */
 #define   DefaultResponse(...)\
-                __resp = mhResponse(__mh, __VA_ARGS__, NULL);\
-                mhSetDefaultResponse(__mh, __resp);
+                __resp = mhNewDefaultResponse(__mh);\
+                mhConfigResponse(__resp, __VA_ARGS__, NULL);
 
 #define   Respond(...)\
-                __resp = mhResponse(__mh, __VA_ARGS__, NULL);\
-                mhSetRespForReq(__mh, __rm, __resp);
+                __resp = mhNewResponseForRequest(__mh, __rm);\
+                mhConfigResponse(__resp, __VA_ARGS__, NULL);
 
 /* Set the HTTP response code. Default: 200 OK */
 #define     WithCode(x)\
-                mhRespSetCode(__mh, (x))
+                mhRespSetCode(__resp, (x))
 
 /* Set a header/value pair */
 #define     WithHeader(h,v)\
-                mhRespAddHeader(__mh, (h), (v))
+                mhRespAddHeader(__resp, (h), (v))
 
 /* Set the body of the response. This will automatically add a Content-Length
    header */
 #define     WithBody(x)\
-                mhRespSetBody(__mh, (x))
+                mhRespSetBody(__resp, (x))
 
 /* Set the chunked body of a response. This will automatically add a 
    Transfer-Encoding: chunked header.
    e.g. WithChunkedBody("chunk1", "chunk2") */
 #define     WithChunkedBody(...)\
-                mhRespSetChunkedBody(__mh, __VA_ARGS__, NULL)
+                mhRespSetChunkedBody(__resp, __VA_ARGS__, NULL)
 
 /* Use the body of the request as the body of the response. */
 #define     WithRequestBody\
-                mhRespSetUseRequestBody(__mh)
+                mhRespSetUseRequestBody(__resp)
 
 /* Adds a "Connection: close" header to the response, makes the mock server
    close the connection after sending the response. */
 #define     WithConnectionCloseHeader\
-                mhRespSetConnCloseHdr(__mh)
+                mhRespSetConnCloseHdr(__resp)
 
 /* Use the provided string as raw response data. The response need not be
    valid HTTP.*/
 #define     WithRawData(data)\
-                mhRespSetRawData(__mh, (data))
+                mhRespSetRawData(__resp, (data))
 
 #define EndGiven\
                 /* Assign local variables to NULL to avoid 'variable unused' 
@@ -330,9 +353,13 @@ int mhServerPortNr(const MockHTTP *mh);
    The following functions should not be used directly, as they can be quite
    complex to use. Use the macro's instead.
  **/
-mhError_t mhInitHTTPserver(MockHTTP *mh, ...);
-mhServerBuilder_t *mhConstructServerPortSetter(const MockHTTP *mh,
-                                               unsigned int port);
+mhServCtx_t *mhNewServer(MockHTTP *mh);
+void mhConfigAndStartServer(mhServCtx_t *ctx, ...);
+int mhSetServerPort(mhServCtx_t *ctx, unsigned int port);
+int mhSetServerType(mhServCtx_t *ctx, mhServerType_t type);
+int mhSetServerCertKeyFile(mhServCtx_t *ctx, const char *keyFile);
+int mhAddServerCertFiles(mhServCtx_t *ctx, ...);
+int mhAddServerCertFileArray(mhServCtx_t *ctx, const char **certFiles);
 
 /* Define request stubs */
 mhRequestMatcher_t *mhGivenRequest(MockHTTP *mh, const char *method, ...);
@@ -358,20 +385,23 @@ mhMatchingPattern_t *mhMatchHeaderEqualTo(const MockHTTP *mh,
                                           const char *hdr, const char *value);
 
 /* Response functions */
-mhResponse_t *mhResponse(MockHTTP *mh, ...);
-mhRespBuilder_t *mhRespSetCode(const MockHTTP *mh, unsigned int status);
-mhRespBuilder_t *mhRespSetBody(const MockHTTP *mh, const char *body);
-mhRespBuilder_t *mhRespSetChunkedBody(const MockHTTP *mh, ...);
-mhRespBuilder_t *mhRespAddHeader(const MockHTTP *mh, const char *header,
+typedef void (* respbuilder_t)(mhResponse_t *resp);
+
+mhResponse_t *mhNewResponseForRequest(MockHTTP *mh, mhRequestMatcher_t *rm);
+void mhConfigResponse(mhResponse_t *resp, ...);
+mhResponse_t *mhNewDefaultResponse(MockHTTP *mh);
+
+respbuilder_t mhRespSetCode(mhResponse_t *resp, unsigned int status);
+respbuilder_t mhRespSetBody(mhResponse_t *resp, const char *body);
+respbuilder_t mhRespSetChunkedBody(mhResponse_t *resp, ...);
+respbuilder_t mhRespAddHeader(mhResponse_t *resp, const char *header,
                                  const char *value);
-mhRespBuilder_t *mhRespSetConnCloseHdr(const MockHTTP *mh);
-mhRespBuilder_t *mhRespSetUseRequestBody(const MockHTTP *mh);
-mhRespBuilder_t *mhRespSetRawData(const MockHTTP *mh, const char *data);
+respbuilder_t mhRespSetConnCloseHdr(mhResponse_t *resp);
+respbuilder_t mhRespSetUseRequestBody(mhResponse_t *resp);
+respbuilder_t mhRespSetRawData(mhResponse_t *resp, const char *raw_data);
 
 /* Define request/response pairs */
 void mhPushRequest(MockHTTP *mh, mhRequestMatcher_t *rm);
-void mhSetRespForReq(MockHTTP *mh, mhRequestMatcher_t *rm, mhResponse_t *resp);
-void mhSetDefaultResponse(MockHTTP *mh, mhResponse_t *resp);
 
 /* Define expectations */
 void mhExpectAllRequestsReceivedOnce(MockHTTP *mh);
@@ -385,6 +415,9 @@ int mhVerifyAllRequestsReceivedOnce(const MockHTTP *mh);
 int mhVerifyAllExpectationsOk(const MockHTTP *mh);
 mhStats_t *mhVerifyStatistics(const MockHTTP *mh);
 const char *mhGetLastErrorString(const MockHTTP *mh);
+
+
+mhError_t mhInitHTTPSserver(MockHTTP *mh, ...);
 
 #define MOCKHTTP_VERSION 0.1
 

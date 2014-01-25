@@ -77,18 +77,6 @@ struct MockHTTP {
 
 typedef struct _mhClientCtx_t _mhClientCtx_t;
 
-struct mhServCtx_t {
-    apr_pool_t *pool;
-    const MockHTTP *mh; /* keep const to avoid thread race problems */
-    const char *hostname;
-    apr_port_t port;
-    apr_pollset_t *pollset;
-    apr_socket_t *skt;
-    apr_queue_t *reqQueue;   /* thread safe, pass received reqs back to test, */
-    /* TODO: allow more connections */
-    _mhClientCtx_t *cctx;
-};
-
 typedef enum reqReadState_t {
     ReadStateStatusLine = 0,
     ReadStateHeaders,
@@ -148,13 +136,6 @@ struct mhMatchingPattern_t {
     bool match_incomplete; /* Don't wait for full valid requests */
 };
 
-typedef void (* respbuilderfunc_t)(mhResponse_t *resp, const void *baton);
-
-struct mhRespBuilder_t {
-    void *baton;
-    respbuilderfunc_t builder;
-};
-
 const char *getHeader(apr_pool_t *pool, apr_hash_t *hdrs, const char *hdr);
 void setHeader(apr_pool_t *pool, apr_hash_t *hdrs,
                const char *hdr, const char *val);
@@ -167,13 +148,11 @@ bool _mhMatchIncompleteRequest(const MockHTTP *mh, mhRequest_t *req,
 
 bool _mhRequestMatcherMatch(const mhRequestMatcher_t *rm,
                             const mhRequest_t *req);
-/* Build a response TODO: -> mhBuildResponse*/
-void _mhResponseBuild(mhResponse_t *resp);
+
+/* Build a response */
+void _mhBuildResponse(mhResponse_t *resp);
 
 /* Test servers */
-mhServCtx_t *_mhInitTestServer(const MockHTTP *mh, const char *host,
-apr_port_t port);
-mhError_t _mhStartServer(mhServCtx_t *ctx);
 apr_status_t _mhRunServerLoop(mhServCtx_t *ctx);
 
 void _mhLog(int verbose_flag, const char *filename, const char *fmt, ...);
