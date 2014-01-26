@@ -639,11 +639,15 @@ setup_test_client_context(test_baton_t **tb_p,
     apr_status_t status;
     test_baton_t *tb;
 
-    /* TODO: fix hardcoded server address */
+    /* TODO: fix hardcoded server address
+       -> this requires starting the server first before creating the serf
+          context
+          -> refactoring of setup() needed, better do this when all tests
+             are migrated to the mock framework. */
     status = setup(tb_p,
                    conn_setup ? conn_setup : default_http_conn_setup,
                    "http://localhost:30080",
-                   FALSE,
+                   FALSE, /* use proxy */
                    messages_to_be_sent,
                    pool);
     if (status != APR_SUCCESS)
