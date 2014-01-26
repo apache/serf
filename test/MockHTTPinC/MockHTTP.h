@@ -22,10 +22,13 @@ extern "C" {
 
 /* TODO: define defaults, eg HTTP/1.1 in req/resp */
 /* TODO: use requests only once, use them in order, use best matching first */
-/* TODO: any method, raw requests + responses */
+/* TODO: raw requests */
 /* TODO: add delay time for accept skt, response */
 /* TODO: define all macro's with mh prefix, + create shortcuts with flag to
       not define this (in case of conflicts with other code ) */
+/* TODO: connection level checks:
+   - ssl related: client certificate, handshake successful, 
+   - authn: Negotiate, NTLM, Kerberos */
 
 typedef enum mhServerType_t {
     mhHTTPServer,
@@ -77,7 +80,7 @@ typedef enum mhServerType_t {
             }
 
 /**
- * HTTP Server configuration options
+ * HTTPS Server configuration options
  */
 #define     WithCertificateKeyFile(keyFile)\
                 mhSetServerCertKeyFile(__servctx, keyFile)
@@ -85,6 +88,8 @@ typedef enum mhServerType_t {
                 mhAddServerCertFiles(__servctx, __VA_ARGS__, NULL)
 #define     WithCertificateFileArray(files)\
                 mhAddServerCertFileArray(__servctx, files)
+#define     WithClientCertificate\
+                mhSetServerRequestClientCert(__servctx)
 
 /**
  * Stub requests to the proxy or server, return canned responses. Define the
@@ -163,6 +168,16 @@ typedef enum mhServerType_t {
 
 #define     IncompleteBodyEqualTo(x)\
                 mhMatchIncompleteBodyEqualTo(__mh, (x))
+
+#define     ClientCertificateIsValid\
+                mhMatchClientCertValid(__mh)
+
+#define     ClientCertificateCNEqualTo(x)\
+                mhMatchClientCertCNEqualTo(__mh, (x))
+
+/* Connection-level aspect matching */
+#define   ConnectionSetup(...)\
+                mhGivenConnSetup(__mh, __VA_ARGS__, NULL);
 
 /* TODO: http version, conditional, */
 /* When a request matches, the server will respond with the response defined
@@ -270,6 +285,9 @@ typedef enum mhServerType_t {
 #define   VerifyAllExpectationsOk\
                mhVerifyAllExpectationsOk(__mh)
 
+#define   VerifyConnectionSetupOk\
+               mhVerifyConnectionSetupOk(__mh)
+
 #define   VerifyStats\
               mhVerifyStatistics(__mh)
 
@@ -291,6 +309,7 @@ typedef struct mhResponse_t mhResponse_t;
 typedef struct mhRespBuilder_t mhRespBuilder_t;
 typedef struct mhServCtx_t mhServCtx_t;
 typedef struct mhServerBuilder_t mhServerBuilder_t;
+typedef struct mhRequestMatcher_t mhConnectionMatcher_t; /* TODO */
 
 typedef unsigned long mhError_t;
 
@@ -360,6 +379,7 @@ int mhSetServerType(mhServCtx_t *ctx, mhServerType_t type);
 int mhSetServerCertKeyFile(mhServCtx_t *ctx, const char *keyFile);
 int mhAddServerCertFiles(mhServCtx_t *ctx, ...);
 int mhAddServerCertFileArray(mhServCtx_t *ctx, const char **certFiles);
+int mhSetServerRequestClientCert(mhServCtx_t *ctx);
 
 /* Define request stubs */
 mhRequestMatcher_t *mhGivenRequest(MockHTTP *mh, const char *method, ...);
@@ -383,6 +403,11 @@ mhMatchingPattern_t *mhMatchChunkedBodyEqualTo(const MockHTTP *mh,
 mhMatchingPattern_t *mhMatchChunkedBodyChunksEqualTo(const MockHTTP *mh, ...);
 mhMatchingPattern_t *mhMatchHeaderEqualTo(const MockHTTP *mh,
                                           const char *hdr, const char *value);
+
+mhConnectionMatcher_t *mhGivenConnSetup(MockHTTP *mh, ...);
+mhMatchingPattern_t *mhMatchClientCertCNEqualTo(const MockHTTP *mh,
+                                                const char *expected);
+mhMatchingPattern_t *mhMatchClientCertValid(const MockHTTP *mh);
 
 /* Response functions */
 typedef void (* respbuilder_t)(mhResponse_t *resp);
@@ -413,6 +438,7 @@ int mhVerifyAllRequestsReceived(const MockHTTP *mh);
 int mhVerifyAllRequestsReceivedInOrder(const MockHTTP *mh);
 int mhVerifyAllRequestsReceivedOnce(const MockHTTP *mh);
 int mhVerifyAllExpectationsOk(const MockHTTP *mh);
+int mhVerifyConnectionSetupOk(const MockHTTP *mh);
 mhStats_t *mhVerifyStatistics(const MockHTTP *mh);
 const char *mhGetLastErrorString(const MockHTTP *mh);
 

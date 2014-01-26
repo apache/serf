@@ -1553,37 +1553,41 @@ static void test_ssl_client_certificate(CuTest *tc)
     test_baton_t *tb;
     handler_baton_t handler_ctx[1];
     const int num_requests = sizeof(handler_ctx)/sizeof(handler_ctx[0]);
-    test_server_message_t message_list[] = {
-        {CHUNKED_REQUEST(1, "1")},
-    };
-    test_server_action_t action_list[] = {
-        {SERVER_RESPOND, CHUNKED_EMPTY_RESPONSE},
-    };
     apr_status_t status;
 
-    /* Set up a test context with a server */
     apr_pool_t *test_pool = tc->testBaton;
 
-    /* The SSL server the complete certificate chain to validate the client
-       certificate. */
-    status = test_https_server_setup(&tb,
-                                     message_list, num_requests,
-                                     action_list, num_requests, 0,
-                                     client_cert_conn_setup,
-                                     "test/server/serfserverkey.pem",
-                                     all_server_certs,
-                                     "Serf Client",
-                                     NULL, /* No server cert callback */
-                                     test_pool);
+    /* Set up a test context and a https server */
+    status = setup_test_client_https_context(&tb,
+                                             client_cert_conn_setup,
+                                             num_requests,
+                                             NULL, /* No server cert callback */
+                                             test_pool);
     CuAssertIntEquals(tc, APR_SUCCESS, status);
+    /* The SSL server uses the complete certificate chain to validate the client
+       certificate. */
+    setup_test_mock_https_server(tb, "test/server/serfserverkey.pem",
+                                 all_server_certs,
+                                 "Serf Client");
+
+    Given(tb->mh)
+      ConnectionSetup(ClientCertificateIsValid,
+                      ClientCertificateCNEqualTo("Serf Client"))
+
+      GETRequest(URLEqualTo("/"), ChunkedBodyEqualTo("1"),
+                 HeaderEqualTo("Host", tb->serv_host))
+        Respond(WithCode(200), WithChunkedBody(""))
+    EndGiven
 
     create_new_request(tb, &handler_ctx[0], "GET", "/", 1);
 
-    test_helper_run_requests_expect_ok(tc, tb, num_requests,
-                                       handler_ctx, test_pool);
-
+    status = run_client_and_mock_servers_loops(tb, num_requests, handler_ctx,
+                                               test_pool);
     CuAssertTrue(tc, tb->result_flags & TEST_RESULT_CLIENT_CERTCB_CALLED);
     CuAssertTrue(tc, tb->result_flags & TEST_RESULT_CLIENT_CERTPWCB_CALLED);
+    Verify(tb->mh)
+      CuAssert(tc, ErrorMessage, VerifyConnectionSetupOk);
+    EndVerify
 }
 
 /* Validate that the expired certificate is reported as failure in the
@@ -2143,7 +2147,6 @@ CuSuite *test_context(void)
     CuSuiteSetSetupTeardownCallbacks(suite, test_setup, test_teardown);
 
     SUITE_ADD_TEST(suite, test_setup_proxy);
-    SUITE_ADD_TEST(suite, test_ssl_client_certificate);
     SUITE_ADD_TEST(suite, test_setup_ssltunnel);
     SUITE_ADD_TEST(suite, test_ssltunnel_no_creds_cb);
     SUITE_ADD_TEST(suite, test_ssltunnel_basic_auth);
@@ -2174,6 +2177,7 @@ CuSuite *test_context(void)
     SUITE_ADD_TEST(suite, test_ssl_large_request);
     SUITE_ADD_TEST(suite, test_ssl_expired_server_cert);
     SUITE_ADD_TEST(suite, test_ssl_future_server_cert);
+    SUITE_ADD_TEST(suite, test_ssl_client_certificate);
 
     return suite;
 }

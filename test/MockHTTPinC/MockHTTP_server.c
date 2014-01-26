@@ -66,6 +66,7 @@ struct mhServCtx_t {
     /* HTTPS specific */
     const char *keyFile;
     apr_array_header_t *certFiles;
+    bool clientCert;
 };
 
 struct _mhClientCtx_t {
@@ -90,6 +91,7 @@ struct _mhClientCtx_t {
     reset_conn_func_t reset;
     const char *keyFile;
     apr_array_header_t *certFiles;
+    bool clientCert;
 };
 
 static apr_status_t setupTCPServer(mhServCtx_t *ctx, bool blocking);
@@ -809,6 +811,11 @@ static apr_status_t process(mhServCtx_t *ctx, _mhClientCtx_t *cctx,
     return status;
 }
 
+_mhClientCtx_t *_mhGetClientCtx(mhServCtx_t *serv_ctx)
+{
+    return serv_ctx->cctx;
+}
+
 static _mhClientCtx_t *initClientCtx(apr_pool_t *pool, mhServCtx_t *serv_ctx,
                                      apr_socket_t *cskt, mhServerType_t type)
 {
@@ -832,6 +839,7 @@ static _mhClientCtx_t *initClientCtx(apr_pool_t *pool, mhServCtx_t *serv_ctx,
         cctx->send = sslSocketWrite;
         cctx->keyFile = serv_ctx->keyFile;
         cctx->certFiles = serv_ctx->certFiles;
+        cctx->clientCert = serv_ctx->clientCert;
         initSSLCtx(cctx);
     }
 #endif
@@ -896,8 +904,8 @@ apr_status_t _mhRunServerLoop(mhServCtx_t *ctx)
             _mhClientCtx_t *cctx = desc->client_data;
 
             if (cctx->handshake) {
-                /* APR_SUCCESS = handshake finished */
-                if (cctx->handshake(cctx))
+                status = cctx->handshake(cctx);
+                if (status)     /* APR_SUCCESS -> handshake finished */
                     continue;
             }
             STATUSREADERR(process(ctx, cctx, desc));
@@ -982,6 +990,12 @@ int mhAddServerCertFileArray(mhServCtx_t *ctx, const char **certFiles)
         certFile = certFiles[i++];
         mhAddServerCertFiles(ctx, certFile, NULL);
     } while (certFiles[i] != NULL);
+    return YES;
+}
+
+int mhSetServerRequestClientCert(mhServCtx_t *ctx)
+{
+    ctx->clientCert = YES;
     return YES;
 }
 
@@ -1112,6 +1126,28 @@ static BIO_METHOD bio_apr_socket_method = {
 #endif
 };
 
+static apr_status_t cleanupSSL(void *baton)
+{
+    _mhClientCtx_t *cctx = baton;
+    sslCtx_t *ssl_ctx = cctx->ssl_ctx;
+
+    if (ssl_ctx) {
+        if (ssl_ctx->ssl)
+            SSL_clear(ssl_ctx->ssl);
+        SSL_CTX_free(ssl_ctx->ctx);
+    }
+
+    return APR_SUCCESS;
+}
+
+static int validateClientCertificate(int preverify_ok, X509_STORE_CTX *ctx)
+{
+    _mhLog(MH_VERBOSE, __FILE__, "validate_client_certificate called, "
+                                 "preverify: %d.\n", preverify_ok);
+    /* Client cert is valid for now, can be validated later. */
+    return 1;
+}
+
 static apr_status_t initSSL(_mhClientCtx_t *cctx)
 {
     sslCtx_t *ssl_ctx = cctx->ssl_ctx;
@@ -1177,11 +1213,21 @@ static apr_status_t initSSLCtx(_mhClientCtx_t *cctx)
             }
         }
 
+        /* This makes the server send a client certificate request during
+           handshake. The client certificate is optional, so processing
+           won't stop of the client didn't provide one.*/
+        if (cctx->clientCert)
+            SSL_CTX_set_verify(ssl_ctx->ctx, SSL_VERIFY_PEER,
+                               validateClientCertificate);
+
         SSL_CTX_set_mode(ssl_ctx->ctx, SSL_MODE_ENABLE_PARTIAL_WRITE);
 
         ssl_ctx->bio = BIO_new(&bio_apr_socket_method);
         ssl_ctx->bio->ptr = cctx;
         initSSL(cctx);
+
+        apr_pool_cleanup_register(cctx->pool, cctx,
+                                  cleanupSSL, apr_pool_cleanup_null);
     }
     return APR_SUCCESS;
 }
@@ -1240,6 +1286,69 @@ sslSocketRead(_mhClientCtx_t *cctx, char *data, apr_size_t *len)
     return APR_EGENERAL;
 }
 
+static void appendSSLErrMessage(const MockHTTP *mh, long result)
+{
+    apr_size_t startpos = strlen(mh->errmsg);
+    ERR_error_string(result, mh->errmsg + startpos);
+    /* TODO: debug */
+    ERR_print_errors_fp(stderr);
+}
+
+bool _mhClientcert_valid_matcher(apr_pool_t *pool, const mhMatchingPattern_t *mp,
+                                 const _mhClientCtx_t *cctx)
+{
+    sslCtx_t *ssl_ctx = cctx->ssl_ctx;
+    X509 *peer;
+
+    /* Check client certificate */
+    peer = SSL_get_peer_certificate(ssl_ctx->ssl);
+    if (peer) {
+        long result = SSL_get_verify_result(ssl_ctx->ssl);
+        if (result == X509_V_OK) {
+            /* The client sent a certificate which verified OK */
+            return YES;
+        } else {
+//            appendSSLErrMessage(mh, result);
+        }
+        /* TODO: add to error message */
+        _mhLog(MH_VERBOSE, __FILE__, "No client certificate was received.\n");
+    }
+    return NO;
+}
+
+bool _mhClientcertcn_matcher(apr_pool_t *pool, const mhMatchingPattern_t *mp,
+                             const _mhClientCtx_t *cctx)
+{
+    sslCtx_t *ssl_ctx = cctx->ssl_ctx;
+    X509 *peer;
+    const char *clientCN = mp->baton;
+
+    /* Check client certificate */
+    peer = SSL_get_peer_certificate(ssl_ctx->ssl);
+    if (peer) {
+        char buf[1024];
+        int ret;
+        X509_NAME *subject = X509_get_subject_name(peer);
+
+        ret = X509_NAME_get_text_by_NID(subject,
+                                        NID_commonName,
+                                        buf, 1024);
+        if (ret != -1 && strcmp(clientCN, buf) == 0) {
+            return YES;
+        }
+
+        /* TODO: add to error message */
+        _mhLog(MH_VERBOSE, __FILE__, "Client certificate common name "
+               "\"%s\" doesn't match expected \"%s\".\n", buf, clientCN);
+        return NO;
+    } else {
+        /* TODO: add to error message */
+        _mhLog(MH_VERBOSE, __FILE__, "No client certificate was received.\n");
+        return NO;
+    }
+}
+
+
 static apr_status_t sslHandshake(_mhClientCtx_t *cctx)
 {
     sslCtx_t *ssl_ctx = cctx->ssl_ctx;
@@ -1253,6 +1362,7 @@ static apr_status_t sslHandshake(_mhClientCtx_t *cctx)
     if (result == 1) {
         _mhLog(MH_VERBOSE, __FILE__, "Handshake successful.\n");
         ssl_ctx->handshake_done = YES;
+
         return APR_SUCCESS;
     } else {
         int ssl_err;

@@ -563,6 +563,67 @@ _mhRequestMatcherMatch(const mhRequestMatcher_t *rm, const mhRequest_t *req)
 }
 
 /******************************************************************************/
+/* Connection-leven matchers: define criteria to match different aspects of a */
+/* HTTP or HTTPS connection.                                                  */
+/******************************************************************************/
+
+static mhConnectionMatcher_t *
+constructConnectionMatcher(const MockHTTP *mh, va_list argp)
+{
+    apr_pool_t *pool = mh->pool;
+
+    mhConnectionMatcher_t *cm = apr_pcalloc(pool, sizeof(mhRequestMatcher_t));
+    cm->pool = pool;
+    cm->matchers = apr_array_make(pool, 5, sizeof(mhMatchingPattern_t *));
+
+    while (1) {
+        mhMatchingPattern_t *mp;
+        mp = va_arg(argp, mhMatchingPattern_t *);
+        if (mp == NULL) break;
+        *((mhMatchingPattern_t **)apr_array_push(cm->matchers)) = mp;
+    }
+    return cm;
+}
+
+/* TODO: void, return value not needed */
+mhConnectionMatcher_t *mhGivenConnSetup(MockHTTP *mh, ...)
+{
+    va_list argp;
+    mhConnectionMatcher_t *cm;
+
+    va_start(argp, mh);
+    cm = constructConnectionMatcher(mh, argp);
+    va_end(argp);
+
+    mh->connMatcher = cm;
+    return cm;
+}
+
+mhMatchingPattern_t *
+mhMatchClientCertCNEqualTo(const MockHTTP *mh, const char *expected)
+{
+    apr_pool_t *pool = mh->pool;
+
+    mhMatchingPattern_t *mp = apr_pcalloc(pool, sizeof(mhMatchingPattern_t));
+    mp->baton = apr_pstrdup(pool, expected);
+    mp->connmatcher = _mhClientcertcn_matcher;
+    mp->describe_key = "Client Certificate CN equal to";
+    mp->describe_value = expected;
+    return mp;
+}
+
+mhMatchingPattern_t *mhMatchClientCertValid(const MockHTTP *mh)
+{
+    apr_pool_t *pool = mh->pool;
+
+    mhMatchingPattern_t *mp = apr_pcalloc(pool, sizeof(mhMatchingPattern_t));
+    mp->connmatcher = _mhClientcert_valid_matcher;
+    mp->describe_key = "Client Certificate";
+    mp->describe_value = "valid";
+    return mp;
+}
+
+/******************************************************************************/
 /* Response                                                                   */
 /******************************************************************************/
 mhResponse_t *initResponse(MockHTTP *mh)
@@ -958,6 +1019,28 @@ int mhVerifyAllExpectationsOk(const MockHTTP *mh)
 
     /* No expectations set. Consider this an error to avoid false positives */
     return NO;
+}
+
+
+int mhVerifyConnectionSetupOk(const MockHTTP *mh)
+{
+    int i;
+    apr_pool_t *match_pool;
+    mhConnectionMatcher_t *cm = mh->connMatcher;
+    _mhClientCtx_t *cctx = _mhGetClientCtx(mh->servCtx); /* TODO: one conn? */
+
+    apr_pool_create(&match_pool, cm->pool);
+
+    for (i = 0 ; i < cm->matchers->nelts; i++) {
+        const mhMatchingPattern_t *mp;
+
+        mp = APR_ARRAY_IDX(cm->matchers, i, mhMatchingPattern_t *);
+        if (mp->connmatcher(match_pool, mp, cctx) == NO)
+            return NO;
+    }
+    apr_pool_destroy(match_pool);
+
+    return YES;
 }
 
 static void log_time()

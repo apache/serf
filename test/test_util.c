@@ -749,12 +749,13 @@ void setup_test_mock_server(test_baton_t *tb)
 void setup_test_mock_https_server(test_baton_t *tb,
                                   const char *keyfile,
                                   const char **certfiles,
-                                  const char *client_cn)
+                                  const char *client_cn) /* TODO: remove arg */
 {
     InitMockHTTP(tb->mh)
       SetupServer(WithHTTPS(), WithPort(30080),
                   WithCertificateKeyFile(keyfile),
-                  WithCertificateFileArray(certfiles))
+                  WithCertificateFileArray(certfiles),
+                  WithClientCertificate)
     EndInit
     tb->serv_port = mhServerPortNr(tb->mh);
     tb->serv_host = apr_psprintf(tb->pool, "%s:%d", "localhost", tb->serv_port);

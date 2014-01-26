@@ -53,8 +53,12 @@ static const bool NO = 0;
 
 static const int MaxReqRespQueueSize = 50;
 
-typedef bool (*matchfunc_t)(apr_pool_t *pool, const mhMatchingPattern_t *mp,
-                            const mhRequest_t *req);
+typedef struct _mhClientCtx_t _mhClientCtx_t;
+
+typedef bool (*reqmatchfunc_t)(apr_pool_t *pool, const mhMatchingPattern_t *mp,
+                               const mhRequest_t *req);
+typedef bool (*connmatchfunc_t)(apr_pool_t *pool, const mhMatchingPattern_t *mp,
+                                const _mhClientCtx_t *cctx);
 
 typedef enum expectation_t {
     RequestsReceivedOnce    = 0x00000001,
@@ -63,19 +67,18 @@ typedef enum expectation_t {
 
 struct MockHTTP {
     apr_pool_t *pool;
-    apr_array_header_t *reqMatchers; /* array of ReqMatcherRespPair_t *'s */
-    apr_array_header_t *incompleteReqMatchers; /*       .... same type */
-    apr_array_header_t *reqsReceived; /* array of mhRequest_t *'s */
+    apr_array_header_t *reqMatchers;    /* array of ReqMatcherRespPair_t *'s */
+    apr_array_header_t *incompleteReqMatchers;       /*       .... same type */
+    apr_array_header_t *reqsReceived;   /* array of mhRequest_t *'s */
     mhServCtx_t *servCtx;
-    apr_queue_t *reqQueue; /* Thread safe FIFO queue. */
+    apr_queue_t *reqQueue;              /* Thread safe FIFO queue. */
     char *errmsg;
     unsigned long expectations;
-    mhStats_t *verifyStats;
-    mhResponse_t *defResponse;
-    mhResponse_t *defErrorResponse;
+    mhStats_t *verifyStats;             /* Statistics gathered by the server */
+    mhResponse_t *defResponse;          /* Default req matched response */
+    mhResponse_t *defErrorResponse;     /* Default req not matched response */
+    mhConnectionMatcher_t *connMatcher; /* Connection-level matching */
 };
-
-typedef struct _mhClientCtx_t _mhClientCtx_t;
 
 typedef enum reqReadState_t {
     ReadStateStatusLine = 0,
@@ -130,7 +133,8 @@ struct mhRequestMatcher_t {
 struct mhMatchingPattern_t {
     const void *baton; /* use this for an expected string */
     const void *baton2;
-    matchfunc_t matcher;
+    reqmatchfunc_t matcher;
+    connmatchfunc_t connmatcher;
     const char *describe_key;
     const char *describe_value;
     bool match_incomplete; /* Don't wait for full valid requests */
@@ -148,6 +152,11 @@ bool _mhMatchIncompleteRequest(const MockHTTP *mh, mhRequest_t *req,
 
 bool _mhRequestMatcherMatch(const mhRequestMatcher_t *rm,
                             const mhRequest_t *req);
+bool _mhClientcertcn_matcher(apr_pool_t *pool, const mhMatchingPattern_t *mp,
+                             const _mhClientCtx_t *cctx);
+bool _mhClientcert_valid_matcher(apr_pool_t *pool, const mhMatchingPattern_t *mp,
+                                 const _mhClientCtx_t *cctx);
+_mhClientCtx_t *_mhGetClientCtx(mhServCtx_t *serv_ctx);
 
 /* Build a response */
 void _mhBuildResponse(mhResponse_t *resp);
