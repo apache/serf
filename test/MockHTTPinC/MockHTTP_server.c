@@ -51,24 +51,6 @@ typedef apr_status_t (*receive_func_t)(_mhClientCtx_t *cctx, char *data,
 typedef struct sslCtx_t sslCtx_t;
 
 #define BUFSIZE 32768
-struct mhServCtx_t {
-    apr_pool_t *pool;
-    const MockHTTP *mh; /* keep const to avoid thread race problems */
-    const char *hostname;
-    apr_port_t port;
-    apr_pollset_t *pollset;
-    apr_socket_t *skt;
-    apr_queue_t *reqQueue;   /* thread safe, pass received reqs back to test, */
-    mhServerType_t type;
-    /* TODO: allow more connections */
-    _mhClientCtx_t *cctx;
-
-    /* HTTPS specific */
-    const char *keyFile;
-    apr_array_header_t *certFiles;
-    bool clientCert;
-};
-
 struct _mhClientCtx_t {
     apr_pool_t *pool;
     apr_socket_t *skt;
@@ -144,24 +126,30 @@ static apr_status_t setupTCPServer(mhServCtx_t *ctx, bool blocking)
     apr_pool_t *pool = ctx->pool;
     apr_status_t status;
 
-    STATUSERR(apr_sockaddr_info_get(&serv_addr, ctx->hostname,
-                                    APR_UNSPEC, ctx->port, 0,
-                                    pool));
+    while (1) {
+        STATUSERR(apr_sockaddr_info_get(&serv_addr, ctx->hostname,
+                                        APR_UNSPEC, ctx->port, 0,
+                                        pool));
 
-    /* Create server socket */
-    /* Note: this call requires APR v1.0.0 or higher */
-    STATUSERR(apr_socket_create(&ctx->skt, serv_addr->family,
-                                SOCK_STREAM, 0, pool));
+        /* Create server socket */
+        /* Note: this call requires APR v1.0.0 or higher */
+        STATUSERR(apr_socket_create(&ctx->skt, serv_addr->family,
+                                    SOCK_STREAM, 0, pool));
 
-    STATUSERR(apr_socket_opt_set(ctx->skt, APR_SO_NONBLOCK, 1));
-    STATUSERR(apr_socket_timeout_set(ctx->skt, 0));
-    STATUSERR(apr_socket_opt_set(ctx->skt, APR_SO_REUSEADDR, 1));
+        STATUSERR(apr_socket_opt_set(ctx->skt, APR_SO_NONBLOCK, 1));
+        STATUSERR(apr_socket_timeout_set(ctx->skt, 0));
+        STATUSERR(apr_socket_opt_set(ctx->skt, APR_SO_REUSEADDR, 1));
 
-    /* TODO: try the next port until bind succeeds */
-    STATUSERR(apr_socket_bind(ctx->skt, serv_addr));
-
-    /* Listen for clients */
-    STATUSERR(apr_socket_listen(ctx->skt, SOMAXCONN));
+        /* TODO: try the next port until bind succeeds */
+        status = apr_socket_bind(ctx->skt, serv_addr);
+        if (status == EADDRINUSE) {
+            ctx->port++;
+            continue;
+        }
+        /* Listen for clients */
+        STATUSERR(apr_socket_listen(ctx->skt, SOMAXCONN));
+        break;
+    };
 
     /* Create a new pollset, avoid broken WSAPoll implemenation on Windows. */
 #ifdef BROKEN_WSAPOLL
@@ -184,6 +172,7 @@ static apr_status_t setupTCPServer(mhServCtx_t *ctx, bool blocking)
     return APR_SUCCESS;
 }
 
+static const int MaxReqRespQueueSize = 50;
 static mhServCtx_t *
 initServCtx(const MockHTTP *mh, const char *hostname, apr_port_t port)
 {
@@ -194,7 +183,10 @@ initServCtx(const MockHTTP *mh, const char *hostname, apr_port_t port)
     ctx->mh = mh;
     ctx->hostname = apr_pstrdup(pool, hostname);
     ctx->port = port;
-    ctx->reqQueue = mh->reqQueue;
+    ctx->reqsReceived = apr_array_make(pool, 5, sizeof(mhRequest_t *));
+    ctx->reqMatchers = apr_array_make(pool, 5, sizeof(ReqMatcherRespPair_t *));
+    ctx->incompleteReqMatchers = apr_array_make(pool, 5,
+                                               sizeof(ReqMatcherRespPair_t *));
 
     apr_pool_cleanup_register(pool, ctx,
                               cleanupServer,
@@ -708,6 +700,65 @@ static apr_status_t writeResponse(_mhClientCtx_t *cctx, mhResponse_t *resp)
     return status;
 }
 
+void mhPushRequest(mhServCtx_t *ctx, mhRequestMatcher_t *rm)
+{
+    ReqMatcherRespPair_t *pair;
+    int i;
+
+    pair = apr_palloc(ctx->pool, sizeof(ReqMatcherRespPair_t));
+    pair->rm = rm;
+    pair->resp = NULL;
+
+    for (i = 0 ; i < rm->matchers->nelts; i++) {
+        const mhMatchingPattern_t *mp;
+
+        mp = APR_ARRAY_IDX(rm->matchers, i, mhMatchingPattern_t *);
+        if (mp->match_incomplete == YES) {
+            rm->incomplete = YES;
+            break;
+        }
+    }
+    if (rm->incomplete)
+        *((ReqMatcherRespPair_t **)
+          apr_array_push(ctx->incompleteReqMatchers)) = pair;
+    else
+        *((ReqMatcherRespPair_t **)apr_array_push(ctx->reqMatchers)) = pair;
+}
+
+static bool
+matchRequest(mhRequest_t *req, mhResponse_t **resp,
+             apr_array_header_t *matchers)
+{
+    int i;
+
+    for (i = 0 ; i < matchers->nelts; i++) {
+        const ReqMatcherRespPair_t *pair;
+
+        pair = APR_ARRAY_IDX(matchers, i, ReqMatcherRespPair_t *);
+
+        if (_mhRequestMatcherMatch(pair->rm, req) == YES) {
+            *resp = pair->resp;
+            return YES;
+        }
+    }
+    _mhLog(MH_VERBOSE, __FILE__, "Couldn't match request!\n");
+
+    *resp = NULL;
+    return NO;
+}
+
+bool _mhMatchRequest(const mhServCtx_t *ctx, mhRequest_t *req,
+                     mhResponse_t **resp)
+{
+    return matchRequest(req, resp, ctx->reqMatchers);
+}
+
+bool _mhMatchIncompleteRequest(const mhServCtx_t *ctx, mhRequest_t *req,
+                               mhResponse_t **resp)
+{
+    return matchRequest(req, resp, ctx->incompleteReqMatchers);
+}
+
 static mhResponse_t *cloneResponse(apr_pool_t *pool, mhResponse_t *resp)
 {
     mhResponse_t *clone;
@@ -766,8 +817,8 @@ static apr_status_t process(mhServCtx_t *ctx, _mhClientCtx_t *cctx,
         if (status == APR_EOF) { /* complete request received */
             mhResponse_t *resp;
             ctx->mh->verifyStats->requestsReceived++;
-            apr_queue_push(ctx->reqQueue, cctx->req);
-            if (_mhMatchRequest(ctx->mh, cctx->req, &resp) == YES) {
+            *((mhRequest_t **)apr_array_push(ctx->reqsReceived)) = cctx->req;
+            if (_mhMatchRequest(ctx, cctx->req, &resp) == YES) {
 
                 ctx->mh->verifyStats->requestsMatched++;
                 if (resp) {
@@ -791,10 +842,10 @@ static apr_status_t process(mhServCtx_t *ctx, _mhClientCtx_t *cctx,
             return APR_SUCCESS;
         }
 
-        if (ctx->mh->incompleteReqMatchers->nelts > 0) {
+        if (ctx->incompleteReqMatchers->nelts > 0) {
             mhResponse_t *resp = NULL;
             /* (currently) incomplete request received? */
-            if (_mhMatchIncompleteRequest(ctx->mh, cctx->req, &resp) == YES) {
+            if (_mhMatchIncompleteRequest(ctx, cctx->req, &resp) == YES) {
                 _mhLog(MH_VERBOSE, __FILE__,
                        "Incomplete request matched, queueing response.\n");
                 ctx->mh->verifyStats->requestsMatched++;
@@ -828,7 +879,7 @@ static _mhClientCtx_t *initClientCtx(apr_pool_t *pool, mhServCtx_t *serv_ctx,
     cctx->closeConn = NO;
     cctx->respQueue = apr_array_make(pool, 5, sizeof(mhResponse_t *));
     cctx->currResp = NULL;
-    if (type == mhHTTPServer) {
+    if (type == mhHTTPServer || type == mhHTTPProxy) {
         cctx->read = socketRead;
         cctx->send = socketWrite;
     }
@@ -923,6 +974,7 @@ apr_status_t _mhRunServerLoop(mhServCtx_t *ctx)
 mhServCtx_t *mhNewServer(MockHTTP *mh)
 {
     mh->servCtx = initServCtx(mh, "localhost", DefaultSrvPort);
+    mh->servCtx->type = mhGenericServer;
     return mh->servCtx;
 }
 
@@ -941,9 +993,14 @@ void mhConfigAndStartServer(mhServCtx_t *serv_ctx, ...)
     /* TODO: store error message */
 }
 
-int mhServerPortNr(const MockHTTP *mh)
+unsigned int mhServerPortNr(const MockHTTP *mh)
 {
     return mh->servCtx->port;
+}
+
+unsigned int mhProxyPortNr(const MockHTTP *mh)
+{
+    return mh->proxyCtx->port;
 }
 
 int mhSetServerPort(mhServCtx_t *ctx, unsigned int port)
@@ -954,7 +1011,23 @@ int mhSetServerPort(mhServCtx_t *ctx, unsigned int port)
 
 int mhSetServerType(mhServCtx_t *ctx, mhServerType_t type)
 {
-    ctx->type = type;
+    switch (ctx->type) {
+        case mhGenericServer:
+            if (type == mhHTTP)
+                ctx->type = mhHTTPServer;
+            else
+                ctx->type = mhHTTPSServer;
+            break;
+        case mhGenericProxy:
+            if (type == mhHTTP)
+                ctx->type = mhHTTPProxy;
+            else
+                ctx->type = mhHTTPSProxy;
+            break;
+        default:
+            /* TODO: error in test configuration. */
+            break;
+    }
     return YES;
 }
 
@@ -998,6 +1071,25 @@ int mhSetServerRequestClientCert(mhServCtx_t *ctx)
     ctx->clientCert = YES;
     return YES;
 }
+
+
+mhServCtx_t *mhNewProxy(MockHTTP *mh)
+{
+    mh->proxyCtx = initServCtx(mh, "localhost", DefaultSrvPort);
+    mh->proxyCtx->type = mhGenericProxy;
+    return mh->proxyCtx;
+}
+
+mhServCtx_t *mhGetServerCtx(MockHTTP *mh)
+{
+    return mh->servCtx;
+}
+
+mhServCtx_t *mhGetProxyCtx(MockHTTP *mh)
+{
+    return mh->proxyCtx;
+}
+
 
 #ifdef MOCKHTTP_OPENSSL
 /******************************************************************************/

@@ -18,7 +18,6 @@
 
 #include <apr_pools.h>
 #include <apr_hash.h>
-#include <apr_queue.h>
 #include <apr_tables.h>
 #include <apr_poll.h>
 #include <apr_time.h>
@@ -51,8 +50,6 @@ typedef short int bool;
 static const bool YES = 1;
 static const bool NO = 0;
 
-static const int MaxReqRespQueueSize = 50;
-
 typedef struct _mhClientCtx_t _mhClientCtx_t;
 
 typedef bool (*reqmatchfunc_t)(apr_pool_t *pool, const mhMatchingPattern_t *mp,
@@ -67,18 +64,43 @@ typedef enum expectation_t {
 
 struct MockHTTP {
     apr_pool_t *pool;
-    apr_array_header_t *reqMatchers;    /* array of ReqMatcherRespPair_t *'s */
-    apr_array_header_t *incompleteReqMatchers;       /*       .... same type */
-    apr_array_header_t *reqsReceived;   /* array of mhRequest_t *'s */
     mhServCtx_t *servCtx;
-    apr_queue_t *reqQueue;              /* Thread safe FIFO queue. */
     char *errmsg;
     unsigned long expectations;
     mhStats_t *verifyStats;             /* Statistics gathered by the server */
     mhResponse_t *defResponse;          /* Default req matched response */
     mhResponse_t *defErrorResponse;     /* Default req not matched response */
     mhConnectionMatcher_t *connMatcher; /* Connection-level matching */
+    mhServCtx_t *proxyCtx;
 };
+
+
+typedef struct ReqMatcherRespPair_t {
+    mhRequestMatcher_t *rm;
+    mhResponse_t *resp;
+} ReqMatcherRespPair_t;
+
+struct mhServCtx_t {
+    apr_pool_t *pool;
+    const MockHTTP *mh;      /* keep const to avoid thread race problems */
+    const char *hostname;
+    apr_port_t port;
+    apr_pollset_t *pollset;
+    apr_socket_t *skt;
+    mhServerType_t type;
+    /* TODO: allow more connections */
+    _mhClientCtx_t *cctx;
+
+    /* HTTPS specific */
+    const char *keyFile;
+    apr_array_header_t *certFiles;
+    bool clientCert;
+
+    apr_array_header_t *reqsReceived;   /* array of mhRequest_t *'s */
+    apr_array_header_t *reqMatchers;    /* array of ReqMatcherRespPair_t *'s */
+    apr_array_header_t *incompleteReqMatchers;       /*       .... same type */
+};
+    
 
 typedef enum reqReadState_t {
     ReadStateStatusLine = 0,
@@ -146,8 +168,9 @@ void setHeader(apr_pool_t *pool, apr_hash_t *hdrs,
 
 /* Initialize a mhRequest_t object. */
 mhRequest_t *_mhInitRequest(apr_pool_t *pool);
-bool _mhMatchRequest(const MockHTTP *mh, mhRequest_t *req, mhResponse_t **resp);
-bool _mhMatchIncompleteRequest(const MockHTTP *mh, mhRequest_t *req,
+bool _mhMatchRequest(const mhServCtx_t *ctx, mhRequest_t *req,
+                     mhResponse_t **resp);
+bool _mhMatchIncompleteRequest(const mhServCtx_t *ctx, mhRequest_t *req,
                                mhResponse_t **resp);
 
 bool _mhRequestMatcherMatch(const mhRequestMatcher_t *rm,

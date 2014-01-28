@@ -25,12 +25,7 @@
 
 static char *serializeArrayOfIovecs(apr_pool_t *pool,
                                     apr_array_header_t *blocks);
-mhResponse_t *initResponse(MockHTTP *mh);
-
-typedef struct ReqMatcherRespPair_t {
-    mhRequestMatcher_t *rm;
-    mhResponse_t *resp;
-} ReqMatcherRespPair_t;
+static mhResponse_t *initResponse(MockHTTP *mh);
 
 /* private functions */
 static const char *toLower(apr_pool_t *pool, const char *str)
@@ -114,11 +109,6 @@ MockHTTP *mhInit()
     apr_pool_create(&pool, NULL);
     __mh = mh = apr_pcalloc(pool, sizeof(struct MockHTTP));
     mh->pool = pool;
-    mh->reqMatchers = apr_array_make(pool, 5, sizeof(ReqMatcherRespPair_t *));;
-    mh->incompleteReqMatchers = apr_array_make(pool, 5,
-                                               sizeof(ReqMatcherRespPair_t *));;
-    apr_queue_create(&mh->reqQueue, MaxReqRespQueueSize, pool);
-    mh->reqsReceived = apr_array_make(pool, 5, sizeof(mhRequest_t *));
     mh->errmsg = apr_palloc(pool, ERRMSG_MAXSIZE);
     *mh->errmsg = '\0';
     mh->expectations = 0;
@@ -150,21 +140,12 @@ mhError_t mhRunServerLoop(MockHTTP *mh)
     apr_status_t status = APR_EGENERAL;
 
     do {
-        void *data;
-
+        if (mh->proxyCtx) {
+            status = _mhRunServerLoop(mh->proxyCtx);
+        }
+        /* TODO: status? */
         if (mh->servCtx) {
             status = _mhRunServerLoop(mh->servCtx);
-
-            while (apr_queue_trypop(mh->reqQueue, &data) == APR_SUCCESS) {
-                mhRequest_t *req;
-
-                req = data;
-                *((mhRequest_t **)apr_array_push(mh->reqsReceived)) = req;
-
-                _mhLog(MH_VERBOSE, __FILE__,
-                       "Request added to incoming queue: %s %s\n", req->method,
-                       req->url);
-            }
         }
     } while (status == APR_SUCCESS);
 
@@ -174,65 +155,7 @@ mhError_t mhRunServerLoop(MockHTTP *mh)
     return MOCKHTTP_NO_ERROR;
 }
 
-static bool
-matchRequest(const MockHTTP *mh, mhRequest_t *req, mhResponse_t **resp,
-             apr_array_header_t *matchers)
-{
-    int i;
-
-    for (i = 0 ; i < matchers->nelts; i++) {
-        const ReqMatcherRespPair_t *pair;
-
-        pair = APR_ARRAY_IDX(matchers, i, ReqMatcherRespPair_t *);
-
-        if (_mhRequestMatcherMatch(pair->rm, req) == YES) {
-            *resp = pair->resp;
-            return YES;
-        }
-    }
-    _mhLog(MH_VERBOSE, __FILE__, "Couldn't match request!\n");
-
-    *resp = NULL;
-    return NO;
-}
-
-bool _mhMatchRequest(const MockHTTP *mh, mhRequest_t *req, mhResponse_t **resp)
-{
-    return matchRequest(mh, req, resp, mh->reqMatchers);
-}
-
-bool _mhMatchIncompleteRequest(const MockHTTP *mh, mhRequest_t *req,
-                               mhResponse_t **resp)
-{
-    return matchRequest(mh, req, resp, mh->incompleteReqMatchers);
-}
-
 /* Define expectations*/
-
-void mhPushRequest(MockHTTP *mh, mhRequestMatcher_t *rm)
-{
-    ReqMatcherRespPair_t *pair;
-    int i;
-
-    pair = apr_palloc(mh->pool, sizeof(ReqMatcherRespPair_t));
-    pair->rm = rm;
-    pair->resp = NULL;
-
-    for (i = 0 ; i < rm->matchers->nelts; i++) {
-        const mhMatchingPattern_t *mp;
-
-        mp = APR_ARRAY_IDX(rm->matchers, i, mhMatchingPattern_t *);
-        if (mp->match_incomplete == YES) {
-            rm->incomplete = YES;
-            break;
-        }
-    }
-    if (rm->incomplete)
-        *((ReqMatcherRespPair_t **)
-                apr_array_push(mh->incompleteReqMatchers)) = pair;
-    else
-        *((ReqMatcherRespPair_t **)apr_array_push(mh->reqMatchers)) = pair;
-}
 
 /******************************************************************************/
 /* Requests matchers: define criteria to match different aspects of a HTTP    */
@@ -585,8 +508,8 @@ constructConnectionMatcher(const MockHTTP *mh, va_list argp)
     return cm;
 }
 
-/* TODO: void, return value not needed */
-mhConnectionMatcher_t *mhGivenConnSetup(MockHTTP *mh, ...)
+/* Stores a mhConnectionMatcher_t * in the MockHTTP context */
+void mhGivenConnSetup(MockHTTP *mh, ...)
 {
     va_list argp;
     mhConnectionMatcher_t *cm;
@@ -596,7 +519,6 @@ mhConnectionMatcher_t *mhGivenConnSetup(MockHTTP *mh, ...)
     va_end(argp);
 
     mh->connMatcher = cm;
-    return cm;
 }
 
 mhMatchingPattern_t *
@@ -626,7 +548,7 @@ mhMatchingPattern_t *mhMatchClientCertValid(const MockHTTP *mh)
 /******************************************************************************/
 /* Response                                                                   */
 /******************************************************************************/
-mhResponse_t *initResponse(MockHTTP *mh)
+static mhResponse_t *initResponse(MockHTTP *mh)
 {
     apr_pool_t *pool = mh->pool;
 
@@ -639,14 +561,15 @@ mhResponse_t *initResponse(MockHTTP *mh)
     return resp;
 }
 
-mhResponse_t *mhNewResponseForRequest(MockHTTP *mh, mhRequestMatcher_t *rm)
+mhResponse_t *mhNewResponseForRequest(MockHTTP *mh, mhServCtx_t *ctx,
+                                      mhRequestMatcher_t *rm)
 {
     apr_array_header_t *matchers;
     int i;
 
     mhResponse_t *resp = initResponse(mh);
 
-    matchers = rm->incomplete ? mh->incompleteReqMatchers : mh->reqMatchers;
+    matchers = rm->incomplete ? ctx->incompleteReqMatchers : ctx->reqMatchers;
     for (i = 0 ; i < matchers->nelts; i++) {
         ReqMatcherRespPair_t *pair;
 
@@ -870,40 +793,27 @@ serializeRequestMatcher(apr_pool_t *pool, const mhRequestMatcher_t *rm,
     return str;
 }
 
-int mhVerifyRequestReceived(const MockHTTP *mh, const mhRequestMatcher_t *rm)
-{
-    int i;
-
-    for (i = 0; i < mh->reqsReceived->nelts; i++)
-    {
-        mhRequest_t *req = APR_ARRAY_IDX(mh->reqsReceived, i, mhRequest_t *);
-        if (_mhRequestMatcherMatch(rm, req) == YES)
-            return YES;
-    }
-
-    return NO;
-}
-
-int mhVerifyAllRequestsReceivedInOrder(const MockHTTP *mh)
+static int verifyAllRequestsReceivedInOrder(const MockHTTP *mh,
+                                            const mhServCtx_t *ctx)
 {
     int i;
 
     /* TODO: improve error message */
-    if (mh->reqsReceived->nelts > mh->reqMatchers->nelts) {
+    if (ctx->reqsReceived->nelts > ctx->reqMatchers->nelts) {
         appendErrMessage(mh, "More requests received than expected!\n");
         return NO;
-    } else if (mh->reqsReceived->nelts < mh->reqMatchers->nelts) {
+    } else if (ctx->reqsReceived->nelts < ctx->reqMatchers->nelts) {
         appendErrMessage(mh, "Less requests received than expected!\n");
         return NO;
     }
 
-    for (i = 0; i < mh->reqsReceived->nelts; i++)
+    for (i = 0; i < ctx->reqsReceived->nelts; i++)
     {
         const ReqMatcherRespPair_t *pair;
         const mhRequest_t *req;
 
-        pair = APR_ARRAY_IDX(mh->reqMatchers, i, ReqMatcherRespPair_t *);
-        req  = APR_ARRAY_IDX(mh->reqsReceived, i, mhRequest_t *);
+        pair = APR_ARRAY_IDX(ctx->reqMatchers, i, ReqMatcherRespPair_t *);
+        req  = APR_ARRAY_IDX(ctx->reqsReceived, i, mhRequest_t *);
 
         if (_mhRequestMatcherMatch(pair->rm, req) == NO) {
             apr_pool_t *tmppool;
@@ -923,6 +833,17 @@ int mhVerifyAllRequestsReceivedInOrder(const MockHTTP *mh)
     return YES;
 }
 
+int mhVerifyAllRequestsReceivedInOrder(const MockHTTP *mh)
+{
+    bool result = YES;
+
+    if (mh->servCtx)
+        result &= verifyAllRequestsReceivedInOrder(mh, mh->servCtx);
+    if (mh->proxyCtx)
+        result &= verifyAllRequestsReceivedInOrder(mh, mh->proxyCtx);
+    return result;
+}
+
 static bool
 isArrayElement(apr_array_header_t *ary, const ReqMatcherRespPair_t *element)
 {
@@ -936,7 +857,8 @@ isArrayElement(apr_array_header_t *ary, const ReqMatcherRespPair_t *element)
     return NO;
 }
 
-static int verifyAllRequestsReceived(const MockHTTP *mh, bool breakOnNotOnce)
+static int verifyAllRequestsReceived(const MockHTTP *mh, const mhServCtx_t *ctx,
+                                     bool breakOnNotOnce)
 {
     int i;
     apr_array_header_t *used;
@@ -944,28 +866,28 @@ static int verifyAllRequestsReceived(const MockHTTP *mh, bool breakOnNotOnce)
     bool result = YES;
 
     /* TODO: improve error message */
-    if (breakOnNotOnce && mh->reqsReceived->nelts > mh->reqMatchers->nelts) {
+    if (breakOnNotOnce && ctx->reqsReceived->nelts > ctx->reqMatchers->nelts) {
         appendErrMessage(mh, "More requests received than expected!\n");
         return NO;
-    } else if (mh->reqsReceived->nelts < mh->reqMatchers->nelts) {
+    } else if (ctx->reqsReceived->nelts < ctx->reqMatchers->nelts) {
         appendErrMessage(mh, "Less requests received than expected!\n");
         return NO;
     }
 
     apr_pool_create(&pool, mh->pool);
-    used = apr_array_make(mh->pool, mh->reqsReceived->nelts,
+    used = apr_array_make(mh->pool, ctx->reqsReceived->nelts,
                           sizeof(ReqMatcherRespPair_t *));;
 
-    for (i = 0; i < mh->reqsReceived->nelts; i++)
+    for (i = 0; i < ctx->reqsReceived->nelts; i++)
     {
-        mhRequest_t *req = APR_ARRAY_IDX(mh->reqsReceived, i, mhRequest_t *);
+        mhRequest_t *req = APR_ARRAY_IDX(ctx->reqsReceived, i, mhRequest_t *);
         int j;
         bool matched = NO;
 
-        for (j = 0 ; j < mh->reqMatchers->nelts; j++) {
+        for (j = 0 ; j < ctx->reqMatchers->nelts; j++) {
             const ReqMatcherRespPair_t *pair;
 
-            pair = APR_ARRAY_IDX(mh->reqMatchers, j, ReqMatcherRespPair_t *);
+            pair = APR_ARRAY_IDX(ctx->reqMatchers, j, ReqMatcherRespPair_t *);
 
             if (breakOnNotOnce && isArrayElement(used, pair))
                 continue; /* skip this match if request matched before */
@@ -990,12 +912,24 @@ static int verifyAllRequestsReceived(const MockHTTP *mh, bool breakOnNotOnce)
 
 int mhVerifyAllRequestsReceived(const MockHTTP *mh)
 {
-    return verifyAllRequestsReceived(mh, NO);
+    bool result = YES;
+
+    if (mh->servCtx)
+        result &= verifyAllRequestsReceived(mh, mh->servCtx, NO);
+    if (mh->proxyCtx)
+        result &= verifyAllRequestsReceived(mh, mh->proxyCtx, NO);
+    return result;
 }
 
 int mhVerifyAllRequestsReceivedOnce(const MockHTTP *mh)
 {
-    return verifyAllRequestsReceived(mh, YES);
+    bool result = YES;
+
+    if (mh->servCtx)
+        result &= verifyAllRequestsReceived(mh, mh->servCtx, YES);
+    if (mh->proxyCtx)
+        result &= verifyAllRequestsReceived(mh, mh->proxyCtx, YES);
+    return result;
 }
 
 const char *mhGetLastErrorString(const MockHTTP *mh)

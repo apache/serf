@@ -176,86 +176,31 @@ static void test_closed_connection(CuTest *tc)
 static void test_setup_proxy(CuTest *tc)
 {
     test_baton_t *tb;
-    int i;
     handler_baton_t handler_ctx[1];
     const int num_requests = sizeof(handler_ctx)/sizeof(handler_ctx[0]);
-    apr_pool_t *iter_pool;
     apr_status_t status;
-
-    test_server_message_t message_list[] = {
-        {"GET http://localhost:" SERV_PORT_STR " HTTP/1.1" CRLF\
-         "Host: localhost:" SERV_PORT_STR CRLF\
-         "Transfer-Encoding: chunked" CRLF\
-         CRLF\
-         "1" CRLF\
-         "1" CRLF\
-         "0" CRLF\
-         CRLF}
-    };
-
-    test_server_action_t action_list_proxy[] = {
-        {SERVER_RESPOND, CHUNKED_EMPTY_RESPONSE},
-    };
-
     apr_pool_t *test_pool = tc->testBaton;
 
-    /* Set up a test context with a server, no messages expected. */
-    status = test_server_proxy_setup(&tb,
-                                     /* server messages and actions */
-                                     NULL, 0,
-                                     NULL, 0,
-                                     /* server messages and actions */
-                                     message_list, 1,
-                                     action_list_proxy, 1,
-                                     0,
-                                     NULL, test_pool);
+    /* Set up a test context with a proxy */
+    status = setup_test_client_context_with_proxy(&tb, NULL, num_requests,
+                                                  test_pool);
     CuAssertIntEquals(tc, APR_SUCCESS, status);
+    status = setup_test_mock_proxy(tb);
+    CuAssertIntEquals(tc, APR_SUCCESS, status);
+    setup_test_mock_server(tb);
 
+    Given(tb->mh)
+      RequestsReceivedByProxy
+        GETRequest(
+            URLEqualTo(apr_psprintf(test_pool, "http://%s", tb->serv_host)),
+            HeaderEqualTo("Host", tb->serv_host),
+            ChunkedBodyEqualTo("1"))
+          Respond(WithCode(200), WithChunkedBody(""))
+    EndGiven
     create_new_request(tb, &handler_ctx[0], "GET", "/", 1);
 
-    apr_pool_create(&iter_pool, test_pool);
-
-    while (!handler_ctx[0].done)
-    {
-        apr_pool_clear(iter_pool);
-
-        status = run_test_server(tb->serv_ctx, 0, iter_pool);
-        if (APR_STATUS_IS_TIMEUP(status))
-            status = APR_SUCCESS;
-        CuAssertIntEquals(tc, APR_SUCCESS, status);
-
-        status = run_test_server(tb->proxy_ctx, 0, iter_pool);
-        if (APR_STATUS_IS_TIMEUP(status))
-            status = APR_SUCCESS;
-        CuAssertIntEquals(tc, APR_SUCCESS, status);
-
-        status = serf_context_run(tb->context, 0, iter_pool);
-        if (APR_STATUS_IS_TIMEUP(status))
-            status = APR_SUCCESS;
-        CuAssertIntEquals(tc, APR_SUCCESS, status);
-
-        /* Debugging purposes only! */
-        serf_debug__closed_conn(tb->bkt_alloc);
-    }
-    apr_pool_destroy(iter_pool);
-
-    /* Check that all requests were received */
-    CuAssertIntEquals(tc, num_requests, tb->sent_requests->nelts);
-    CuAssertIntEquals(tc, num_requests, tb->accepted_requests->nelts);
-    CuAssertIntEquals(tc, num_requests, tb->handled_requests->nelts);
-
-
-    /* Check that the requests were sent in the order we created them */
-    for (i = 0; i < tb->sent_requests->nelts; i++) {
-        int req_nr = APR_ARRAY_IDX(tb->sent_requests, i, int);
-        CuAssertIntEquals(tc, i + 1, req_nr);
-    }
-
-    /* Check that the requests were received in the order we created them */
-    for (i = 0; i < tb->handled_requests->nelts; i++) {
-        int req_nr = APR_ARRAY_IDX(tb->handled_requests, i, int);
-        CuAssertIntEquals(tc, i + 1, req_nr);
-    }
+    run_client_and_mock_servers_loops_expect_ok(tc, tb, num_requests,
+                                                handler_ctx, test_pool);
 }
 
 /*****************************************************************************
@@ -2146,7 +2091,6 @@ CuSuite *test_context(void)
 
     CuSuiteSetSetupTeardownCallbacks(suite, test_setup, test_teardown);
 
-    SUITE_ADD_TEST(suite, test_setup_proxy);
     SUITE_ADD_TEST(suite, test_setup_ssltunnel);
     SUITE_ADD_TEST(suite, test_ssltunnel_no_creds_cb);
     SUITE_ADD_TEST(suite, test_ssltunnel_basic_auth);
@@ -2178,6 +2122,7 @@ CuSuite *test_context(void)
     SUITE_ADD_TEST(suite, test_ssl_expired_server_cert);
     SUITE_ADD_TEST(suite, test_ssl_future_server_cert);
     SUITE_ADD_TEST(suite, test_ssl_client_certificate);
+    SUITE_ADD_TEST(suite, test_setup_proxy);
 
     return suite;
 }

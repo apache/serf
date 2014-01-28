@@ -31,9 +31,14 @@ extern "C" {
    - authn: Negotiate, NTLM, Kerberos */
 
 typedef enum mhServerType_t {
+    mhGenericServer,  /* Abstract type */
+    mhGenericProxy,   /* Abstract type */
+    mhHTTP,           /* Abstract type */
+    mhHTTPS,          /* Abstract type */
     mhHTTPServer,
     mhHTTPSServer,
-    mhHTTPSProxy,
+    mhHTTPProxy,
+    mhHTTPSProxy,     /* Sets up SSL tunnel on CONNECT request. */
 } mhServerType_t;
 
 /* Note: the variadic macro's used here require C99. */
@@ -42,14 +47,14 @@ typedef enum mhServerType_t {
 /**
  * Initialize the MockHTTP library. To be used like this:
  *
- *   MockHTTP *mh;
+ *   MockHTTP *mh = mhInit();
  *   InitMockHTTP(mh)
  *     WithHTTPServer(WithPort(30080))
  *   EndInit
- */
-#define InitMockHTTP(mh)\
+ */   /* TODO: rename */
+#define InitMockServers(mh)\
             {\
-                MockHTTP *__mh = (mh) = mhInit();\
+                MockHTTP *__mh = mh;\
                 mhServCtx_t *__servctx = NULL;
 
 /* TODO: Variadic macro's require at least one argument, otherwise compilation
@@ -60,16 +65,12 @@ typedef enum mhServerType_t {
                 mhConfigAndStartServer(__servctx, __VA_ARGS__, NULL);
 
 /* Setup a HTTP server */
-#define     WithHTTP()\
-                mhSetServerType(__servctx, mhHTTPServer)
+#define     WithHTTP\
+                mhSetServerType(__servctx, mhHTTP)
 
 /* Setup a HTTPS server */
-#define     WithHTTPS()\
-                mhSetServerType(__servctx, mhHTTPSServer)
-
-/* Setup a HTTP/HTTPS proxy (not yet implemented) */
-#define     WithHTTPproxy()\
-                mhSetServerType(__servctx, mhHTTPSProxy)
+#define     WithHTTPS\
+                mhSetServerType(__servctx, mhHTTPS)
 
 /*   Specify on which TCP port the server should listen. */
 #define     WithPort(port)\
@@ -78,6 +79,10 @@ typedef enum mhServerType_t {
 /* Finalize MockHTTP library initialization */
 #define EndInit\
             }
+
+#define   SetupProxy(...)\
+                __servctx = mhNewProxy(__mh);\
+                mhConfigAndStartServer(__servctx, __VA_ARGS__, NULL);
 
 /**
  * HTTPS Server configuration options
@@ -107,27 +112,34 @@ typedef enum mhServerType_t {
             {\
                 MockHTTP *__mh = mh;\
                 mhResponse_t *__resp;\
-                mhRequestMatcher_t *__rm;
+                mhRequestMatcher_t *__rm;\
+                mhServCtx_t *__servctx = mhGetServerCtx(__mh);
+
+#define RequestsReceivedByServer\
+                __servctx = mhGetServerCtx(__mh);
+
+#define RequestsReceivedByProxy\
+                __servctx = mhGetProxyCtx(__mh);
 
 /* Stub a GET request */
 #define   GETRequest(...)\
                 __rm = mhGivenRequest(__mh, "GET", __VA_ARGS__, NULL);\
-                mhPushRequest(__mh, __rm);
+                mhPushRequest(__servctx, __rm);
 
 /* Stub a POST request */
 #define   POSTRequest(...)\
                 __rm = mhGivenRequest(__mh, "POST", __VA_ARGS__, NULL);\
-                mhPushRequest(__mh, __rm);
+                mhPushRequest(__servctx, __rm);
 
 /* Stub a HEAD request */
 #define   HEADRequest(...)\
                 __rm = mhGivenRequest(__mh, "HEAD", __VA_ARGS__, NULL);\
-                mhPushRequest(__mh, __rm);
+                mhPushRequest(__servctx, __rm);
 
 /* Stub a HTTP request, first parameter is HTTP method (e.g. PROPFIND) */
 #define   HTTPRequest(method, ...)\
                 __rm = mhGivenRequest(__mh, method, __VA_ARGS__, NULL);\
-                mhPushRequest(__mh, __rm);
+                mhPushRequest(__servctx, __rm);
 
 /* Match the request's URL */
 #define     URLEqualTo(x)\
@@ -187,7 +199,7 @@ typedef enum mhServerType_t {
                 mhConfigResponse(__resp, __VA_ARGS__, NULL);
 
 #define   Respond(...)\
-                __resp = mhNewResponseForRequest(__mh, __rm);\
+                __resp = mhNewResponseForRequest(__mh, __servctx, __rm);\
                 mhConfigResponse(__resp, __VA_ARGS__, NULL);
 
 /* Set the HTTP response code. Default: 200 OK */
@@ -257,17 +269,6 @@ typedef enum mhServerType_t {
 #define Verify(mh)\
             {\
                 MockHTTP *__mh = mh;
-
-/* TODO: check that these can be used with multiple arguments */
-/* Verify that a matching GET request was received by the server */
-#define   GETRequestReceivedFor(x)\
-                mhVerifyRequestReceived(__mh,\
-                    mhGivenRequest(__mh, "GET", (x), NULL))
-
-/* Verify that a matching POST request was received by the server */
-#define   POSTRequestReceivedFor(x)\
-                mhVerifyRequestReceived(__mh,\
-                    mhGivenRequest(__mh, "POST", (x), NULL))
 
 /* Verify that all stubbed requests where received at least once, order not
    important */
@@ -361,19 +362,25 @@ void mhCleanup(MockHTTP *mh);
  */
 mhError_t mhRunServerLoop(MockHTTP *mh);
 
-/* TODO: this is not going to work once we add the proxy, should take a 
-   mhServCtx_t* instead! */
 /**
  * Get the actual port number on which the server is listening.
  */
-int mhServerPortNr(const MockHTTP *mh);
+unsigned int mhServerPortNr(const MockHTTP *mh);
+
+/**
+ * Get the actual port number on which the proxy is listening.
+ */
+unsigned int mhProxyPortNr(const MockHTTP *mh);
 
 /**
    The following functions should not be used directly, as they can be quite
    complex to use. Use the macro's instead.
  **/
 mhServCtx_t *mhNewServer(MockHTTP *mh);
+mhServCtx_t *mhNewProxy(MockHTTP *mh);
 void mhConfigAndStartServer(mhServCtx_t *ctx, ...);
+mhServCtx_t *mhGetServerCtx(MockHTTP *mh);
+mhServCtx_t *mhGetProxyCtx(MockHTTP *mh);
 int mhSetServerPort(mhServCtx_t *ctx, unsigned int port);
 int mhSetServerType(mhServCtx_t *ctx, mhServerType_t type);
 int mhSetServerCertKeyFile(mhServCtx_t *ctx, const char *keyFile);
@@ -404,7 +411,7 @@ mhMatchingPattern_t *mhMatchChunkedBodyChunksEqualTo(const MockHTTP *mh, ...);
 mhMatchingPattern_t *mhMatchHeaderEqualTo(const MockHTTP *mh,
                                           const char *hdr, const char *value);
 
-mhConnectionMatcher_t *mhGivenConnSetup(MockHTTP *mh, ...);
+void mhGivenConnSetup(MockHTTP *mh, ...);
 mhMatchingPattern_t *mhMatchClientCertCNEqualTo(const MockHTTP *mh,
                                                 const char *expected);
 mhMatchingPattern_t *mhMatchClientCertValid(const MockHTTP *mh);
@@ -412,7 +419,8 @@ mhMatchingPattern_t *mhMatchClientCertValid(const MockHTTP *mh);
 /* Response functions */
 typedef void (* respbuilder_t)(mhResponse_t *resp);
 
-mhResponse_t *mhNewResponseForRequest(MockHTTP *mh, mhRequestMatcher_t *rm);
+mhResponse_t *mhNewResponseForRequest(MockHTTP *mh, mhServCtx_t *ctx,
+                                      mhRequestMatcher_t *rm);
 void mhConfigResponse(mhResponse_t *resp, ...);
 mhResponse_t *mhNewDefaultResponse(MockHTTP *mh);
 
@@ -426,14 +434,13 @@ respbuilder_t mhRespSetUseRequestBody(mhResponse_t *resp);
 respbuilder_t mhRespSetRawData(mhResponse_t *resp, const char *raw_data);
 
 /* Define request/response pairs */
-void mhPushRequest(MockHTTP *mh, mhRequestMatcher_t *rm);
+void mhPushRequest(mhServCtx_t *ctx, mhRequestMatcher_t *rm);
 
 /* Define expectations */
 void mhExpectAllRequestsReceivedOnce(MockHTTP *mh);
 void mhExpectAllRequestsReceivedInOrder(MockHTTP *mh);
 
 /* Verify */
-int mhVerifyRequestReceived(const MockHTTP *mh, const mhRequestMatcher_t *rm);
 int mhVerifyAllRequestsReceived(const MockHTTP *mh);
 int mhVerifyAllRequestsReceivedInOrder(const MockHTTP *mh);
 int mhVerifyAllRequestsReceivedOnce(const MockHTTP *mh);

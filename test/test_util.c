@@ -647,7 +647,7 @@ setup_test_client_context(test_baton_t **tb_p,
     status = setup(tb_p,
                    conn_setup ? conn_setup : default_http_conn_setup,
                    "http://localhost:30080",
-                   FALSE, /* use proxy */
+                   FALSE, /* don't use proxy */
                    messages_to_be_sent,
                    pool);
     if (status != APR_SUCCESS)
@@ -676,6 +676,35 @@ setup_test_client_https_context(test_baton_t **tb_p,
                                        pool);
     tb = *tb_p;
     tb->server_cert_cb = server_cert_cb;
+    return status;
+}
+
+apr_status_t
+setup_test_client_context_with_proxy(test_baton_t **tb_p,
+                                     serf_connection_setup_t conn_setup,
+                                     apr_size_t messages_to_be_sent,
+                                     apr_pool_t *pool)
+{
+    apr_status_t status;
+    test_baton_t *tb;
+
+    /* TODO: fix hardcoded server address
+     -> this requires starting the server first before creating the serf
+     context
+     -> refactoring of setup() needed, better do this when all tests
+     are migrated to the mock framework. */
+    status = setup(tb_p,
+                   conn_setup ? conn_setup : default_http_conn_setup,
+                   "http://localhost:30080",
+                   TRUE, /* use proxy */
+                   messages_to_be_sent,
+                   pool);
+    if (status != APR_SUCCESS)
+        return status;
+
+    tb = *tb_p;
+    apr_pool_cleanup_register(tb->pool, tb, clean_mh, clean_mh);
+
     return status;
 }
 
@@ -743,11 +772,28 @@ run_client_and_mock_servers_loops_expect_ok(CuTest *tc, test_baton_t *tb,
 
 void setup_test_mock_server(test_baton_t *tb)
 {
-    InitMockHTTP(tb->mh)
-      SetupServer(WithHTTP(), WithPort(30080))
+    if (!tb->mh)    /* TODO: move this to test_setup */
+        tb->mh = mhInit();
+
+    InitMockServers(tb->mh)
+      SetupServer(WithHTTP, WithPort(30080))
     EndInit
     tb->serv_port = mhServerPortNr(tb->mh);
     tb->serv_host = apr_psprintf(tb->pool, "%s:%d", "localhost", tb->serv_port);
+}
+
+apr_status_t setup_test_mock_proxy(test_baton_t *tb)
+{
+    if (!tb->mh)
+        tb->mh = mhInit();
+
+    InitMockServers(tb->mh)
+      SetupProxy(WithHTTP, WithPort(PROXY_PORT))
+    EndInit
+    return apr_sockaddr_info_get(&tb->proxy_addr,
+                                 "localhost", APR_UNSPEC,
+                                 mhProxyPortNr(tb->mh), 0,
+                                 tb->pool);
 }
 
 void setup_test_mock_https_server(test_baton_t *tb,
@@ -755,8 +801,11 @@ void setup_test_mock_https_server(test_baton_t *tb,
                                   const char **certfiles,
                                   const char *client_cn) /* TODO: remove arg */
 {
-    InitMockHTTP(tb->mh)
-      SetupServer(WithHTTPS(), WithPort(30080),
+    if (!tb->mh)
+        tb->mh = mhInit();
+
+    InitMockServers(tb->mh)
+      SetupServer(WithHTTPS, WithPort(30080),
                   WithCertificateKeyFile(keyfile),
                   WithCertificateFileArray(certfiles),
                   WithClientCertificate)
