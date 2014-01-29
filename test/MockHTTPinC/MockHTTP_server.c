@@ -222,7 +222,7 @@ mhRequest_t *_mhInitRequest(apr_pool_t *pool)
 {
     mhRequest_t *req = apr_pcalloc(pool, sizeof(mhRequest_t));
     req->pool = pool;
-    req->hdrs = apr_hash_make(pool);
+    req->hdrs = apr_table_make(pool, 5);
     req->body = apr_array_make(pool, 5, sizeof(struct iovec));
     req->chunks = apr_array_make(pool, 5, sizeof(struct iovec));
 
@@ -316,7 +316,7 @@ static apr_status_t readHeader(_mhClientCtx_t *cctx, mhRequest_t *req, bool *don
         while (*ptr != '\r') ptr++;
         val = apr_pstrndup(cctx->pool, start, ptr-start);
 
-        setHeader(cctx->pool, req->hdrs, hdr, val);
+        setHeader(req->hdrs, hdr, val);
     }
     return APR_SUCCESS;
 }
@@ -611,30 +611,19 @@ static const char *codeToString(unsigned int code)
 static char *respToString(apr_pool_t *pool, mhResponse_t *resp)
 {
     char *str;
-    apr_hash_index_t *hi;
-    void *val;
-    const void *key;
-    apr_ssize_t klen;
+    const apr_table_entry_t *elts;
+    const apr_array_header_t *arr;
+    int i;
 
     /* status line */
     str = apr_psprintf(pool, "HTTP/1.1 %d %s\r\n", resp->code,
                        codeToString(resp->code));
 
-    /* headers */
-    if (resp->chunked == YES) {
-        /* TODO: add to existing header */
-        apr_hash_set(resp->hdrs, "Transfer-Encoding", APR_HASH_KEY_STRING,
-                     "chunked");
-    } else {
-        apr_hash_set(resp->hdrs, "Content-Length", APR_HASH_KEY_STRING,
-                     apr_itoa(pool, resp->bodyLen));
-    }
+    arr = apr_table_elts(resp->hdrs);
+    elts = (const apr_table_entry_t *)arr->elts;
 
-    for (hi = apr_hash_first(pool, resp->hdrs); hi; hi = apr_hash_next(hi)) {
-        apr_hash_this(hi, &key, &klen, &val);
-
-        str = apr_psprintf(pool, "%s%s: %s\r\n", str,
-                                 (const char *)key, (const char *)val);
+    for (i = 0; i < arr->nelts; ++i) {
+        str = apr_psprintf(pool, "%s%s: %s\r\n", str, elts[i].key, elts[i].val);
     }
     str = apr_psprintf(pool, "%s\r\n", str);
 
@@ -763,8 +752,7 @@ static mhResponse_t *cloneResponse(apr_pool_t *pool, mhResponse_t *resp)
 {
     mhResponse_t *clone;
     clone = apr_pmemdup(pool, resp, sizeof(mhResponse_t));
-    /* Note: apr_hash_copy crashes on NULL or empty hashtables. */
-    clone->hdrs = apr_hash_copy(pool, resp->hdrs);
+    clone->hdrs = apr_table_copy(pool, resp->hdrs);
     if (resp->chunks)
         clone->chunks = apr_array_copy(pool, resp->chunks);
     if (resp->body)

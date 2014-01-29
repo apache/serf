@@ -38,16 +38,14 @@ authn_callback_expect_not_called(char **username,
 /* Tests that authn fails if all authn schemes are disabled. */
 static void test_authentication_disabled(CuTest *tc)
 {
-    test_baton_t *tb;
+    test_baton_t *tb = tc->testBaton;
     handler_baton_t handler_ctx[1];
     apr_status_t status;
 
-    apr_pool_t *test_pool = tc->testBaton;
-
     /* Set up a test context with a server */
-    status = setup_test_client_context(&tb, NULL, 1, test_pool);
-    CuAssertIntEquals(tc, APR_SUCCESS, status);
     setup_test_mock_server(tb);
+    status = setup_test_client_context(tb, NULL, tb->pool);
+    CuAssertIntEquals(tc, APR_SUCCESS, status);
 
     serf_config_authn_types(tb->context, SERF_AUTHN_NONE);
     serf_config_credentials_callback(tb->context,
@@ -61,7 +59,7 @@ static void test_authentication_disabled(CuTest *tc)
 
     create_new_request(tb, &handler_ctx[0], "GET", "/", 1);
     status = run_client_and_mock_servers_loops(tb, 1,
-                                               handler_ctx, test_pool);
+                                               handler_ctx, tb->pool);
     Verify(tb->mh)
       CuAssertTrue(tc, VerifyAllRequestsReceived);
     EndVerify
@@ -72,16 +70,15 @@ static void test_authentication_disabled(CuTest *tc)
 /* Tests that authn fails if encountered an unsupported scheme. */
 static void test_unsupported_authentication(CuTest *tc)
 {
-    test_baton_t *tb;
+    test_baton_t *tb = tc->testBaton;
     handler_baton_t handler_ctx[1];
     apr_status_t status;
 
-    apr_pool_t *test_pool = tc->testBaton;
 
     /* Set up a test context with a server */
-    status = setup_test_client_context(&tb, NULL, 1, test_pool);
-    CuAssertIntEquals(tc, APR_SUCCESS, status);
     setup_test_mock_server(tb);
+    status = setup_test_client_context(tb, NULL, tb->pool);
+    CuAssertIntEquals(tc, APR_SUCCESS, status);
 
     serf_config_authn_types(tb->context, SERF_AUTHN_ALL);
     serf_config_credentials_callback(tb->context,
@@ -96,7 +93,7 @@ static void test_unsupported_authentication(CuTest *tc)
 
     create_new_request(tb, &handler_ctx[0], "GET", "/", 1);
     status = run_client_and_mock_servers_loops(tb, 1,
-                                               handler_ctx, test_pool);
+                                               handler_ctx, tb->pool);
     Verify(tb->mh)
       CuAssertTrue(tc, VerifyAllRequestsReceived);
     EndVerify
@@ -134,17 +131,16 @@ basic_authn_callback(char **username,
 /* Test template, used for KeepAlive Off and KeepAlive On test */
 static void basic_authentication(CuTest *tc, int close_conn)
 {
-    test_baton_t *tb;
+    test_baton_t *tb = tc->testBaton;
     handler_baton_t handler_ctx[2];
     int num_requests_sent;
     apr_status_t status;
 
-    apr_pool_t *test_pool = tc->testBaton;
 
     /* Set up a test context with a server */
-    status = setup_test_client_context(&tb, NULL, 2, test_pool);
-    CuAssertIntEquals(tc, APR_SUCCESS, status);
     setup_test_mock_server(tb);
+    status = setup_test_client_context(tb, NULL, tb->pool);
+    CuAssertIntEquals(tc, APR_SUCCESS, status);
 
     serf_config_authn_types(tb->context, SERF_AUTHN_BASIC);
     serf_config_credentials_callback(tb->context, basic_authn_callback);
@@ -170,7 +166,7 @@ static void basic_authentication(CuTest *tc, int close_conn)
 
     create_new_request(tb, &handler_ctx[0], "GET", "/", 1);
     status = run_client_and_mock_servers_loops(tb, num_requests_sent,
-                                               handler_ctx, test_pool);
+                                               handler_ctx, tb->pool);
     CuAssertIntEquals(tc, APR_SUCCESS, status);
     CuAssertTrue(tc, tb->result_flags & TEST_RESULT_AUTHNCB_CALLED);
     Verify(tb->mh)
@@ -190,7 +186,7 @@ static void basic_authentication(CuTest *tc, int close_conn)
 
     create_new_request(tb, &handler_ctx[0], "GET", "/", 2);
     status = run_client_and_mock_servers_loops(tb, num_requests_sent,
-                                               handler_ctx, test_pool);
+                                               handler_ctx, tb->pool);
     CuAssertIntEquals(tc, APR_SUCCESS, status);
     CuAssertTrue(tc, !(tb->result_flags & TEST_RESULT_AUTHNCB_CALLED));
     Verify(tb->mh)
@@ -238,16 +234,15 @@ digest_authn_callback(char **username,
 /* Test template, used for KeepAlive Off and KeepAlive On test */
 static void digest_authentication(CuTest *tc, int close_conn)
 {
-    test_baton_t *tb;
+    test_baton_t *tb = tc->testBaton;
     handler_baton_t handler_ctx[2];
     int num_requests_sent;
-    apr_pool_t *test_pool = tc->testBaton;
     apr_status_t status;
 
     /* Set up a test context with a server */
-    status = setup_test_client_context(&tb, NULL, 2, test_pool);
-    CuAssertIntEquals(tc, APR_SUCCESS, status);
     setup_test_mock_server(tb);
+    status = setup_test_client_context(tb, NULL, tb->pool);
+    CuAssertIntEquals(tc, APR_SUCCESS, status);
 
     /* Add both Basic and Digest here, should use Digest only. */
     serf_config_authn_types(tb->context, SERF_AUTHN_BASIC | SERF_AUTHN_DIGEST);
@@ -286,7 +281,7 @@ static void digest_authentication(CuTest *tc, int close_conn)
     EndGiven
 
     status = run_client_and_mock_servers_loops(tb, num_requests_sent,
-                                               handler_ctx, test_pool);
+                                               handler_ctx, tb->pool);
     CuAssertIntEquals(tc, APR_SUCCESS, status);
     CuAssertIntEquals(tc, num_requests_sent, tb->handled_requests->nelts);
     Verify(tb->mh)
@@ -348,23 +343,22 @@ static void authentication_switch_realms(CuTest *tc,
                                          const char *authz_attr_wrong_realm,
                                          const char *authz_attr_new_realm)
 {
-    test_baton_t *tb;
+    test_baton_t *tb = tc->testBaton;
     handler_baton_t handler_ctx[2];
     int num_requests_sent;
-    apr_pool_t *test_pool = tc->testBaton;
     apr_status_t status;
 
-    const char *exp_authz_test_suite = apr_psprintf(test_pool, "%s %s", scheme,
+    const char *exp_authz_test_suite = apr_psprintf(tb->pool, "%s %s", scheme,
                                                     authz_attr_test_suite);
-    const char *exp_authz_wrong_realm = apr_psprintf(test_pool, "%s %s", scheme,
+    const char *exp_authz_wrong_realm = apr_psprintf(tb->pool, "%s %s", scheme,
                                                      authz_attr_wrong_realm);
-    const char *exp_authz_new_realm = apr_psprintf(test_pool, "%s %s", scheme,
+    const char *exp_authz_new_realm = apr_psprintf(tb->pool, "%s %s", scheme,
                                                    authz_attr_new_realm);
 
     /* Set up a test context with a server */
-    status = setup_test_client_context(&tb, NULL, 5, test_pool);
-    CuAssertIntEquals(tc, APR_SUCCESS, status);
     setup_test_mock_server(tb);
+    status = setup_test_client_context(tb, NULL, tb->pool);
+    CuAssertIntEquals(tc, APR_SUCCESS, status);
 
     serf_config_authn_types(tb->context, SERF_AUTHN_BASIC | SERF_AUTHN_DIGEST);
     serf_config_credentials_callback(tb->context,
@@ -372,7 +366,7 @@ static void authentication_switch_realms(CuTest *tc,
 
     /* Test that a request is retried and authentication headers are set
        correctly. */
-    tb->user_baton = apr_psprintf(test_pool, "<http://localhost:%d> Test Suite",
+    tb->user_baton = apr_psprintf(tb->pool, "<http://localhost:%d> Test Suite",
                                   mhServerPortNr(tb->mh));
     num_requests_sent = 1;
 
@@ -381,7 +375,7 @@ static void authentication_switch_realms(CuTest *tc,
                  HeaderNotSet("Authorization"))
         Respond(WithCode(401), WithChunkedBody("1"),
                 WithHeader("WWW-Authenticate",
-                           apr_psprintf(test_pool, "%s realm=\"Test Suite\"%s",
+                           apr_psprintf(tb->pool, "%s realm=\"Test Suite\"%s",
                                         scheme, authn_attr)))
       GETRequest(URLEqualTo("/"), ChunkedBodyEqualTo("1"),
                  HeaderEqualTo("Authorization", exp_authz_test_suite))
@@ -390,7 +384,7 @@ static void authentication_switch_realms(CuTest *tc,
 
     create_new_request(tb, &handler_ctx[0], "GET", "/", 1);
     status = run_client_and_mock_servers_loops(tb, num_requests_sent,
-                                               handler_ctx, test_pool);
+                                               handler_ctx, tb->pool);
     CuAssertIntEquals(tc, APR_SUCCESS, status);
     CuAssertIntEquals(tc, num_requests_sent, tb->handled_requests->nelts);
     Verify(tb->mh)
@@ -410,7 +404,7 @@ static void authentication_switch_realms(CuTest *tc,
 
     create_new_request(tb, &handler_ctx[0], "GET", "/", 2);
     status = run_client_and_mock_servers_loops(tb, num_requests_sent,
-                                               handler_ctx, test_pool);
+                                               handler_ctx, tb->pool);
     CuAssertIntEquals(tc, APR_SUCCESS, status);
     Verify(tb->mh)
       CuAssertTrue(tc, VerifyAllRequestsReceivedInOrder);
@@ -420,7 +414,7 @@ static void authentication_switch_realms(CuTest *tc,
     /* Switch realms. Test that serf asks the application for new
        credentials. */
     tb->result_flags = 0;
-    tb->user_baton = apr_psprintf(test_pool, "<http://localhost:%d> New Realm",
+    tb->user_baton = apr_psprintf(tb->pool, "<http://localhost:%d> New Realm",
                                   mhServerPortNr(tb->mh));
 
     Given(tb->mh)
@@ -428,7 +422,7 @@ static void authentication_switch_realms(CuTest *tc,
                  HeaderEqualTo("Authorization", exp_authz_wrong_realm))
         Respond(WithCode(401), WithChunkedBody("1"),
                 WithHeader("WWW-Authenticate",
-                           apr_psprintf(test_pool, "%s realm=\"New Realm\"%s",
+                           apr_psprintf(tb->pool, "%s realm=\"New Realm\"%s",
                                         scheme, authn_attr)))
     GETRequest(URLEqualTo("/newrealm/index.html"), ChunkedBodyEqualTo("3"),
                HeaderEqualTo("Authorization", exp_authz_new_realm))
@@ -437,7 +431,7 @@ static void authentication_switch_realms(CuTest *tc,
 
     create_new_request(tb, &handler_ctx[0], "GET", "/newrealm/index.html", 3);
     status = run_client_and_mock_servers_loops(tb, num_requests_sent,
-                                               handler_ctx, test_pool);
+                                               handler_ctx, tb->pool);
     CuAssertIntEquals(tc, APR_SUCCESS, status);
     Verify(tb->mh)
       CuAssertTrue(tc, VerifyAllRequestsReceivedInOrder);
@@ -472,16 +466,15 @@ static void test_digest_switch_realms(CuTest *tc)
 
 static void test_auth_on_HEAD(CuTest *tc)
 {
-    test_baton_t *tb;
+    test_baton_t *tb = tc->testBaton;
     handler_baton_t handler_ctx[1];
     int num_requests_sent;
     apr_status_t status;
-    apr_pool_t *test_pool = tc->testBaton;
 
     /* Set up a test context with a server */
-    status = setup_test_client_context(&tb, NULL, 2, test_pool);
-    CuAssertIntEquals(tc, APR_SUCCESS, status);
     setup_test_mock_server(tb);
+    status = setup_test_client_context(tb, NULL, tb->pool);
+    CuAssertIntEquals(tc, APR_SUCCESS, status);
 
     serf_config_authn_types(tb->context, SERF_AUTHN_BASIC);
     serf_config_credentials_callback(tb->context, basic_authn_callback);
@@ -503,7 +496,7 @@ static void test_auth_on_HEAD(CuTest *tc)
     create_new_request(tb, &handler_ctx[0], "HEAD", "/", -1);
 
     status = run_client_and_mock_servers_loops(tb, num_requests_sent,
-                                               handler_ctx, test_pool);
+                                               handler_ctx, tb->pool);
     CuAssertIntEquals(tc, APR_SUCCESS, status);
     CuAssertIntEquals(tc, num_requests_sent, tb->handled_requests->nelts);
     Verify(tb->mh)

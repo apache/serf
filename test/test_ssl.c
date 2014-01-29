@@ -32,12 +32,12 @@
 /* Test setting up the openssl library. */
 static void test_ssl_init(CuTest *tc)
 {
+    test_baton_t *tb = tc->testBaton;
     serf_bucket_t *bkt, *stream;
     serf_ssl_context_t *ssl_context;
     apr_status_t status;
 
-    apr_pool_t *test_pool = tc->testBaton;
-    serf_bucket_alloc_t *alloc = serf_bucket_allocator_create(test_pool, NULL,
+    serf_bucket_alloc_t *alloc = serf_bucket_allocator_create(tb->pool, NULL,
                                                               NULL);
 
     stream = SERF_BUCKET_SIMPLE_STRING("", alloc);
@@ -71,11 +71,11 @@ static const char * get_ca_file(apr_pool_t *pool, const char * file)
 /* Test that loading a custom CA certificate file works. */
 static void test_ssl_load_cert_file(CuTest *tc)
 {
+    test_baton_t *tb = tc->testBaton;
     serf_ssl_certificate_t *cert = NULL;
 
-    apr_pool_t *test_pool = tc->testBaton;
     apr_status_t status = serf_ssl_load_cert_file(
-        &cert, get_ca_file(test_pool, "test/serftestca.pem"), test_pool);
+        &cert, get_ca_file(tb->pool, "test/serftestca.pem"), tb->pool);
 
     CuAssertIntEquals(tc, APR_SUCCESS, status);
     CuAssertPtrNotNull(tc, cert);
@@ -84,20 +84,20 @@ static void test_ssl_load_cert_file(CuTest *tc)
 /* Test that reading the subject from a custom CA certificate file works. */
 static void test_ssl_cert_subject(CuTest *tc)
 {
+    test_baton_t *tb = tc->testBaton;
     apr_hash_t *subject;
     serf_ssl_certificate_t *cert = NULL;
     apr_status_t status;
 
-    apr_pool_t *test_pool = tc->testBaton;
 
-    status = serf_ssl_load_cert_file(&cert, get_ca_file(test_pool,
+    status = serf_ssl_load_cert_file(&cert, get_ca_file(tb->pool,
                                                         "test/serftestca.pem"),
-                                     test_pool);
+                                     tb->pool);
 
     CuAssertIntEquals(tc, APR_SUCCESS, status);
     CuAssertPtrNotNull(tc, cert);
 
-    subject = serf_ssl_cert_subject(cert, test_pool);
+    subject = serf_ssl_cert_subject(cert, tb->pool);
     CuAssertPtrNotNull(tc, subject);
 
     CuAssertStrEquals(tc, "Serf",
@@ -119,20 +119,20 @@ static void test_ssl_cert_subject(CuTest *tc)
 /* Test that reading the issuer from a custom CA certificate file works. */
 static void test_ssl_cert_issuer(CuTest *tc)
 {
+    test_baton_t *tb = tc->testBaton;
     apr_hash_t *issuer;
     serf_ssl_certificate_t *cert = NULL;
     apr_status_t status;
 
-    apr_pool_t *test_pool = tc->testBaton;
 
-    status = serf_ssl_load_cert_file(&cert, get_ca_file(test_pool,
+    status = serf_ssl_load_cert_file(&cert, get_ca_file(tb->pool,
                                                         "test/serftestca.pem"),
-                                     test_pool);
+                                     tb->pool);
 
     CuAssertIntEquals(tc, APR_SUCCESS, status);
     CuAssertPtrNotNull(tc, cert);
 
-    issuer = serf_ssl_cert_issuer(cert, test_pool);
+    issuer = serf_ssl_cert_issuer(cert, tb->pool);
     CuAssertPtrNotNull(tc, issuer);
 
     /* TODO: create a new test certificate with different issuer and subject. */
@@ -156,20 +156,20 @@ static void test_ssl_cert_issuer(CuTest *tc)
    from a custom CA certificate file works. */
 static void test_ssl_cert_certificate(CuTest *tc)
 {
+    test_baton_t *tb = tc->testBaton;
     apr_hash_t *kv;
     serf_ssl_certificate_t *cert = NULL;
     apr_array_header_t *san_arr;
     apr_status_t status;
 
-    apr_pool_t *test_pool = tc->testBaton;
 
-    status = serf_ssl_load_cert_file(&cert, get_ca_file(test_pool,
+    status = serf_ssl_load_cert_file(&cert, get_ca_file(tb->pool,
                                                         "test/serftestca.pem"),
-                                     test_pool);
+                                     tb->pool);
     CuAssertIntEquals(tc, APR_SUCCESS, status);
     CuAssertPtrNotNull(tc, cert);
 
-    kv = serf_ssl_cert_certificate(cert, test_pool);
+    kv = serf_ssl_cert_certificate(cert, tb->pool);
     CuAssertPtrNotNull(tc, kv);
 
     CuAssertStrEquals(tc, "8A:4C:19:D5:F2:52:4E:35:49:5E:7A:14:80:B2:02:BD:B4:4D:22:18",
@@ -243,6 +243,7 @@ static const char *extract_cert_from_pem(const char *pemdata,
 
 static void test_ssl_cert_export(CuTest *tc)
 {
+    test_baton_t *tb = tc->testBaton;
     serf_ssl_certificate_t *cert = NULL;
     apr_file_t *fp;
     apr_finfo_t file_info;
@@ -251,11 +252,10 @@ static void test_ssl_cert_export(CuTest *tc)
     apr_size_t pemlen;
     apr_status_t status;
 
-    apr_pool_t *test_pool = tc->testBaton;
 
-    status = serf_ssl_load_cert_file(&cert, get_ca_file(test_pool,
+    status = serf_ssl_load_cert_file(&cert, get_ca_file(tb->pool,
                                                         "test/serftestca.pem"),
-                                     test_pool);
+                                     tb->pool);
     CuAssertIntEquals(tc, APR_SUCCESS, status);
     CuAssertPtrNotNull(tc, cert);
 
@@ -263,19 +263,19 @@ static void test_ssl_cert_export(CuTest *tc)
        what serf_ssl_cert_export is supposed to be returning. */
     status = apr_file_open(&fp, "test/serftestca.pem",
                            APR_FOPEN_READ | APR_FOPEN_BINARY,
-                           APR_FPROT_OS_DEFAULT, test_pool);
+                           APR_FPROT_OS_DEFAULT, tb->pool);
     CuAssertIntEquals(tc, APR_SUCCESS, status);
 
     apr_file_info_get(&file_info, APR_FINFO_SIZE, fp);
-    pembuf = apr_palloc(test_pool, file_info.size);
+    pembuf = apr_palloc(tb->pool, file_info.size);
 
     status = apr_file_read_full(fp, pembuf, file_info.size, &pemlen);
     CuAssertIntEquals(tc, APR_SUCCESS, status);
 
-    base64derbuf = serf_ssl_cert_export(cert, test_pool);
+    base64derbuf = serf_ssl_cert_export(cert, tb->pool);
 
     CuAssertStrEquals(tc,
-                      extract_cert_from_pem(pembuf, test_pool),
+                      extract_cert_from_pem(pembuf, tb->pool),
                       base64derbuf);
 }
 

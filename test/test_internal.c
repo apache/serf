@@ -37,17 +37,17 @@ static serf_config_key_t
 
 static void test_config_store_per_context(CuTest *tc)
 {
-    apr_pool_t *test_pool = tc->testBaton;
+    test_baton_t *tb = tc->testBaton;
     serf_config_t *cfg;
 
-    serf_context_t *ctx = serf_context_create(test_pool);
+    serf_context_t *ctx = serf_context_create(tb->pool);
 
     /* The config store is empty initially, so we can play all we want */
 
     /* We don't have a serf connection yet, so only the per context config
        should be available to read and write */
     CuAssertIntEquals(tc, APR_SUCCESS,
-                      serf__config_store_get_config(ctx, NULL, &cfg, test_pool));
+                      serf__config_store_get_config(ctx, NULL, &cfg, tb->pool));
     CuAssertPtrEquals(tc, NULL, cfg->per_conn);
     CuAssertPtrEquals(tc, NULL, cfg->per_host);
     CuAssertPtrNotNull(tc, cfg->per_context);
@@ -93,34 +93,34 @@ static apr_status_t conn_setup(apr_socket_t *skt,
 
 static void test_config_store_per_connection_different_host(CuTest *tc)
 {
-    apr_pool_t *test_pool = tc->testBaton;
+    test_baton_t *tb = tc->testBaton;
     serf_config_t *cfg1, *cfg2;
     apr_uri_t url;
     const char *actual;
 
-    serf_context_t *ctx = serf_context_create(test_pool);
+    serf_context_t *ctx = serf_context_create(tb->pool);
     serf_connection_t *conn1, *conn2;
 
     /* Create two connections conn1 and conn2 to a different host */
-    apr_uri_parse(test_pool, "http://localhost:12345", &url);
+    apr_uri_parse(tb->pool, "http://localhost:12345", &url);
     serf_connection_create2(&conn1, ctx, url, conn_setup, NULL,
-                            conn_closed, NULL, test_pool);
-    apr_uri_parse(test_pool, "http://localhost:54321", &url);
+                            conn_closed, NULL, tb->pool);
+    apr_uri_parse(tb->pool, "http://localhost:54321", &url);
     serf_connection_create2(&conn2, ctx, url, conn_setup, NULL,
-                            conn_closed, NULL, test_pool);
+                            conn_closed, NULL, tb->pool);
 
     /* Test 1: This should return a config object with per_context, per_host and
        per_connection hash_table's initialized. */
     CuAssertIntEquals(tc, APR_SUCCESS,
                       serf__config_store_get_config(ctx, conn1, &cfg1,
-                                                    test_pool));
+                                                    tb->pool));
     CuAssertPtrNotNull(tc, cfg1->per_context);
     CuAssertPtrNotNull(tc, cfg1->per_host);
     CuAssertPtrNotNull(tc, cfg1->per_conn);
     /* Get a config object for the other connection also. */
     CuAssertIntEquals(tc, APR_SUCCESS,
                       serf__config_store_get_config(ctx, conn2, &cfg2,
-                                                    test_pool));
+                                                    tb->pool));
 
     /* Test 2: Get a non-existing per connection key, value should be NULL */
     CuAssertIntEquals(tc, APR_SUCCESS,
@@ -157,33 +157,33 @@ static void test_config_store_per_connection_different_host(CuTest *tc)
 
 static void test_config_store_per_connection_same_host(CuTest *tc)
 {
-    apr_pool_t *test_pool = tc->testBaton;
+    test_baton_t *tb = tc->testBaton;
     serf_config_t *cfg1, *cfg2;
     apr_uri_t url;
     const char *actual;
 
-    serf_context_t *ctx = serf_context_create(test_pool);
+    serf_context_t *ctx = serf_context_create(tb->pool);
     serf_connection_t *conn1, *conn2;
 
     /* Create two connections conn1 and conn2 to the same host */
-    apr_uri_parse(test_pool, "http://localhost:12345", &url);
+    apr_uri_parse(tb->pool, "http://localhost:12345", &url);
     serf_connection_create2(&conn1, ctx, url, conn_setup, NULL,
-                            conn_closed, NULL, test_pool);
+                            conn_closed, NULL, tb->pool);
     serf_connection_create2(&conn2, ctx, url, conn_setup, NULL,
-                            conn_closed, NULL, test_pool);
+                            conn_closed, NULL, tb->pool);
 
     /* Test 1: This should return a config object with per_context, per_host and
      per_connection hash_table's initialized. */
     CuAssertIntEquals(tc, APR_SUCCESS,
                       serf__config_store_get_config(ctx, conn1, &cfg1,
-                                                    test_pool));
+                                                    tb->pool));
     CuAssertPtrNotNull(tc, cfg1->per_context);
     CuAssertPtrNotNull(tc, cfg1->per_host);
     CuAssertPtrNotNull(tc, cfg1->per_conn);
     /* Get a config object for the other connection also. */
     CuAssertIntEquals(tc, APR_SUCCESS,
                       serf__config_store_get_config(ctx, conn2, &cfg2,
-                                                    test_pool));
+                                                    tb->pool));
 
     /* Test 2: Get a non-existing per connection key, value should be NULL */
     CuAssertIntEquals(tc, APR_SUCCESS,
@@ -221,15 +221,15 @@ static void test_config_store_per_connection_same_host(CuTest *tc)
 
 static void test_config_store_error_handling(CuTest *tc)
 {
-    apr_pool_t *test_pool = tc->testBaton;
+    test_baton_t *tb = tc->testBaton;
     serf_config_t *cfg;
     const char *actual;
     void *actual_obj;
 
-    serf_context_t *ctx = serf_context_create(test_pool);
+    serf_context_t *ctx = serf_context_create(tb->pool);
 
     CuAssertIntEquals(tc, APR_SUCCESS,
-                      serf__config_store_get_config(ctx, NULL, &cfg, test_pool));
+                      serf__config_store_get_config(ctx, NULL, &cfg, tb->pool));
 
     /* Config only has per-context keys, check for no crashes when getting
        per-connection and per-host keys. */
@@ -260,21 +260,21 @@ static void test_config_store_error_handling(CuTest *tc)
 
 static void test_config_store_remove_objects(CuTest *tc)
 {
-    apr_pool_t *test_pool = tc->testBaton;
+    test_baton_t *tb = tc->testBaton;
     serf_config_t *cfg;
     serf_connection_t *conn;
     apr_uri_t url;
     const char *actual;
 
-    serf_context_t *ctx = serf_context_create(test_pool);
+    serf_context_t *ctx = serf_context_create(tb->pool);
 
     /* Create a connection conn */
-    apr_uri_parse(test_pool, "http://localhost:12345", &url);
+    apr_uri_parse(tb->pool, "http://localhost:12345", &url);
     serf_connection_create2(&conn, ctx, url, conn_setup, NULL,
-                            conn_closed, NULL, test_pool);
+                            conn_closed, NULL, tb->pool);
 
     CuAssertIntEquals(tc, APR_SUCCESS,
-                      serf__config_store_get_config(ctx, conn, &cfg, test_pool));
+                      serf__config_store_get_config(ctx, conn, &cfg, tb->pool));
 
     /* Add and remove a key per-context */
     CuAssertIntEquals(tc, APR_SUCCESS,
@@ -315,8 +315,8 @@ static void test_config_store_remove_objects(CuTest *tc)
 /* Note: serf__bucket_headers_remove is an internal function */
 static void test_header_buckets_remove(CuTest *tc)
 {
-    apr_pool_t *test_pool = tc->testBaton;
-    serf_bucket_alloc_t *alloc = serf_bucket_allocator_create(test_pool, NULL,
+    test_baton_t *tb = tc->testBaton;
+    serf_bucket_alloc_t *alloc = serf_bucket_allocator_create(tb->pool, NULL,
                                                               NULL);
     const char *cur;
 

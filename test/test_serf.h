@@ -294,22 +294,19 @@ apr_status_t serf_bucket_mock_more_data_arrived(serf_bucket_t *bucket);
 /*****************************************************************************/
 
 /* Setup a serf client context to connect to the mock test server */
-apr_status_t setup_test_client_context(test_baton_t **tb_p,
+apr_status_t setup_test_client_context(test_baton_t *tb,
                                        serf_connection_setup_t conn_setup,
-                                       apr_size_t messages_to_be_sent,
                                        apr_pool_t *pool);
 
 apr_status_t
-setup_test_client_https_context(test_baton_t **tb_p,
+setup_test_client_https_context(test_baton_t *tb,
                                 serf_connection_setup_t conn_setup,
-                                apr_size_t messages_to_be_sent,
                                 serf_ssl_need_server_cert_t server_cert_cb,
                                 apr_pool_t *pool);
 
 apr_status_t
-setup_test_client_context_with_proxy(test_baton_t **tb_p,
+setup_test_client_context_with_proxy(test_baton_t *tb,
                                      serf_connection_setup_t conn_setup,
-                                     apr_size_t messages_to_be_sent,
                                      apr_pool_t *pool);
 
 /* Setup a mock test server on localhost on the default port. The actual port

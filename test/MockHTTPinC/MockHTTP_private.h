@@ -117,7 +117,7 @@ struct mhRequest_t {
     apr_pool_t *pool;
     const char *method;
     const char *url;
-    apr_hash_t *hdrs;
+    apr_table_t *hdrs;
     int version;
     apr_array_header_t *body; /* array of iovec strings that form the raw body */
     apr_size_t bodyLen;
@@ -132,7 +132,7 @@ struct mhResponse_t {
     apr_pool_t *pool;
     bool built;
     unsigned int code;
-    apr_hash_t *hdrs;
+    apr_table_t *hdrs;
     apr_array_header_t *body; /* array of iovec strings that form the raw body */
     apr_size_t bodyLen;
     bool chunked;
@@ -162,9 +162,8 @@ struct mhMatchingPattern_t {
     bool match_incomplete; /* Don't wait for full valid requests */
 };
 
-const char *getHeader(apr_pool_t *pool, apr_hash_t *hdrs, const char *hdr);
-void setHeader(apr_pool_t *pool, apr_hash_t *hdrs,
-               const char *hdr, const char *val);
+const char *getHeader(apr_pool_t *pool, apr_table_t *hdrs, const char *hdr);
+void setHeader(apr_table_t *hdrs, const char *hdr, const char *val);
 
 /* Initialize a mhRequest_t object. */
 mhRequest_t *_mhInitRequest(apr_pool_t *pool);

@@ -132,10 +132,23 @@ apr_status_t use_new_connection(test_baton_t *tb,
                                      default_closed_connection,
                                      tb,
                                      pool);
+
     apr_pool_cleanup_register(pool, tb->connection, cleanup_conn,
                               apr_pool_cleanup_null);
 
     return status;
+}
+
+static test_baton_t *initTestCtx(apr_pool_t *pool)
+{
+    test_baton_t *tb;
+    tb = apr_pcalloc(pool, sizeof(*tb));
+    tb->pool = pool;
+    tb->bkt_alloc = serf_bucket_allocator_create(pool, NULL, NULL);
+    tb->accepted_requests = apr_array_make(pool, 10, sizeof(int));
+    tb->sent_requests = apr_array_make(pool, 10, sizeof(int));
+    tb->handled_requests = apr_array_make(pool, 10, sizeof(int));
+    return tb;
 }
 
 /* Setup the client context, ready to connect and send requests to a
@@ -150,20 +163,14 @@ static apr_status_t setup(test_baton_t **tb_p,
     test_baton_t *tb;
     apr_status_t status;
 
-    tb = apr_pcalloc(pool, sizeof(*tb));
-    *tb_p = tb;
+    *tb_p = tb = initTestCtx(pool);
 
-    tb->pool = pool;
     tb->context = serf_context_create(pool);
-    tb->bkt_alloc = serf_bucket_allocator_create(pool, NULL, NULL);
-
-    tb->accepted_requests = apr_array_make(pool, message_count, sizeof(int));
-    tb->sent_requests = apr_array_make(pool, message_count, sizeof(int));
-    tb->handled_requests = apr_array_make(pool, message_count, sizeof(int));
 
     tb->serv_url = serv_url;
     tb->serv_port = SERV_PORT;
     tb->serv_host = apr_psprintf(tb->pool, "%s:%d", "localhost", tb->serv_port);
+
     tb->conn_setup = conn_setup;
 
     status = default_server_address(&tb->serv_addr, pool);
@@ -362,21 +369,6 @@ test_https_server_proxy_setup(test_baton_t **tb_p,
     status = start_test_server(tb->proxy_ctx);
 
     return status;
-}
-
-void *test_setup(void *dummy)
-{
-    apr_pool_t *test_pool;
-    apr_pool_create(&test_pool, NULL);
-    return test_pool;
-}
-
-void *test_teardown(void *baton)
-{
-    apr_pool_t *pool = baton;
-    apr_pool_destroy(pool);
-
-    return NULL;
 }
 
 /* Helper function, runs the client and server context loops and validates
@@ -620,90 +612,53 @@ create_new_request_with_resp_hdlr(test_baton_t *tb,
 /* Test utility functions, to be used with the MockHTTPinC framework         */
 /*****************************************************************************/
 
-static apr_status_t clean_mh(void *data)
-{
-    test_baton_t *tb = data;
-
-    if (tb && tb->mh) {
-        mhCleanup(tb->mh);
-    }
-    return APR_SUCCESS;
-}
-
 apr_status_t
-setup_test_client_context(test_baton_t **tb_p,
+setup_test_client_context(test_baton_t *tb,
                           serf_connection_setup_t conn_setup,
-                          apr_size_t messages_to_be_sent,
                           apr_pool_t *pool)
 {
     apr_status_t status;
-    test_baton_t *tb;
 
-    /* TODO: fix hardcoded server address
-       -> this requires starting the server first before creating the serf
-          context
-          -> refactoring of setup() needed, better do this when all tests
-             are migrated to the mock framework. */
-    status = setup(tb_p,
-                   conn_setup ? conn_setup : default_http_conn_setup,
-                   "http://localhost:30080",
-                   FALSE, /* don't use proxy */
-                   messages_to_be_sent,
-                   pool);
-    if (status != APR_SUCCESS)
-        return status;
-
-    tb = *tb_p;
-    apr_pool_cleanup_register(tb->pool, tb, clean_mh, clean_mh);
+    tb->context = serf_context_create(pool);
+    tb->conn_setup = conn_setup ? conn_setup :
+                                  default_http_conn_setup;
+    status = use_new_connection(tb, pool);
 
     return status;
 }
 
 apr_status_t
-setup_test_client_https_context(test_baton_t **tb_p,
+setup_test_client_https_context(test_baton_t *tb,
                                 serf_connection_setup_t conn_setup,
-                                apr_size_t messages_to_be_sent,
                                 serf_ssl_need_server_cert_t server_cert_cb,
                                 apr_pool_t *pool)
 {
-    test_baton_t *tb;
     apr_status_t status;
 
-    status = setup_test_client_context(tb_p,
-                                       conn_setup ? conn_setup :
+    status = setup_test_client_context(tb,
+                                       conn_setup ? conn_setup:
                                                     default_https_conn_setup,
-                                       messages_to_be_sent,
                                        pool);
-    tb = *tb_p;
     tb->server_cert_cb = server_cert_cb;
+
     return status;
 }
 
 apr_status_t
-setup_test_client_context_with_proxy(test_baton_t **tb_p,
+setup_test_client_context_with_proxy(test_baton_t *tb,
                                      serf_connection_setup_t conn_setup,
-                                     apr_size_t messages_to_be_sent,
                                      apr_pool_t *pool)
 {
     apr_status_t status;
-    test_baton_t *tb;
 
-    /* TODO: fix hardcoded server address
-     -> this requires starting the server first before creating the serf
-     context
-     -> refactoring of setup() needed, better do this when all tests
-     are migrated to the mock framework. */
-    status = setup(tb_p,
-                   conn_setup ? conn_setup : default_http_conn_setup,
-                   "http://localhost:30080",
-                   TRUE, /* use proxy */
-                   messages_to_be_sent,
-                   pool);
-    if (status != APR_SUCCESS)
-        return status;
+    tb->context = serf_context_create(pool);
+    tb->conn_setup = conn_setup ? conn_setup :
+                                  default_http_conn_setup; /* TODO: https */
 
-    tb = *tb_p;
-    apr_pool_cleanup_register(tb->pool, tb, clean_mh, clean_mh);
+    /* Configure serf to use the proxy server */
+    serf_config_proxy(tb->context, tb->proxy_addr);
+
+    status = use_new_connection(tb, pool);
 
     return status;
 }
@@ -780,6 +735,7 @@ void setup_test_mock_server(test_baton_t *tb)
     EndInit
     tb->serv_port = mhServerPortNr(tb->mh);
     tb->serv_host = apr_psprintf(tb->pool, "%s:%d", "localhost", tb->serv_port);
+    tb->serv_url = apr_psprintf(tb->pool, "http://%s", tb->serv_host);
 }
 
 apr_status_t setup_test_mock_proxy(test_baton_t *tb)
@@ -812,6 +768,23 @@ void setup_test_mock_https_server(test_baton_t *tb,
     EndInit
     tb->serv_port = mhServerPortNr(tb->mh);
     tb->serv_host = apr_psprintf(tb->pool, "%s:%d", "localhost", tb->serv_port);
+    tb->serv_url = apr_psprintf(tb->pool, "https://%s", tb->serv_host);
+}
+
+void *test_setup(void *dummy)
+{
+    apr_pool_t *test_pool;
+    apr_pool_create(&test_pool, NULL);
+    return initTestCtx(test_pool);
+}
+
+void *test_teardown(void *baton)
+{
+    test_baton_t *tb = baton;
+    if (tb->mh)
+        mhCleanup(tb->mh);
+    apr_pool_destroy(tb->pool);      /* tb is now an invalid pointer */
+    return NULL;
 }
 
 /*****************************************************************************/

@@ -44,31 +44,28 @@ static const char *toLower(apr_pool_t *pool, const char *str)
 /* header should be stored with their original case to use them in responses.
    Search on header name is case-insensitive per RFC2616. */
 const char *
-getHeader(apr_pool_t *pool, apr_hash_t *hdrs, const char *hdr)
+getHeader(apr_pool_t *pool, apr_table_t *hdrs, const char *hdr)
 {
     const char *lhdr = toLower(pool, hdr);
-    apr_hash_index_t *hi;
-    void *val;
-    const void *key;
-    apr_ssize_t klen;
+    const apr_table_entry_t *elts;
+    const apr_array_header_t *arr;
+    int i;
 
-    for (hi = apr_hash_first(pool, hdrs); hi; hi = apr_hash_next(hi)) {
-        const char *tmp;
+    arr = apr_table_elts(hdrs);
+    elts = (const apr_table_entry_t *)arr->elts;
 
-        apr_hash_this(hi, &key, &klen, &val);
-
-        tmp = toLower(pool, key);
+    for (i = 0; i < arr->nelts; ++i) {
+        const char *tmp = toLower(pool, elts[i].key);
         if (strcmp(tmp, lhdr) == 0)
-            return val;
+            return elts[i].val;
     }
 
     return NULL;
 }
 
-void setHeader(apr_pool_t *pool, apr_hash_t *hdrs,
-               const char *hdr, const char *val)
+void setHeader(apr_table_t *hdrs, const char *hdr, const char *val)
 {
-    apr_hash_set(hdrs, hdr, APR_HASH_KEY_STRING, val);
+    apr_table_add(hdrs, hdr, val);
 }
 
 /* To enable calls like Assert(expected, Verify...(), ErrorMessage()), with the
@@ -556,7 +553,7 @@ static mhResponse_t *initResponse(MockHTTP *mh)
     resp->pool = pool;
     resp->code = 200;
     resp->body = apr_array_make(pool, 5, sizeof(struct iovec));
-    resp->hdrs = apr_hash_make(pool);
+    resp->hdrs = apr_table_make(pool, 5);
     resp->builders = apr_array_make(pool, 5, sizeof(mhRespBuilder_t *));
     return resp;
 }
@@ -620,6 +617,8 @@ respbuilder_t mhRespSetBody(mhResponse_t *resp, const char *body)
     *((struct iovec *)apr_array_push(resp->body)) = vec;
     resp->bodyLen = vec.iov_len;
     resp->chunked = NO;
+    setHeader(resp->hdrs, "Content-Length",
+              apr_itoa(resp->pool, resp->bodyLen));
     return noop;
 }
 
@@ -640,6 +639,7 @@ respbuilder_t mhRespSetChunkedBody(mhResponse_t *resp, ...)
     }
     va_end(argp);
     resp->chunks = chunks;
+    setHeader(resp->hdrs, "Transfer-Encoding", "chunked");
     resp->chunked = YES;
     return noop;
 }
@@ -647,13 +647,13 @@ respbuilder_t mhRespSetChunkedBody(mhResponse_t *resp, ...)
 respbuilder_t mhRespAddHeader(mhResponse_t *resp, const char *header,
                               const char *value)
 {
-    setHeader(resp->pool, resp->hdrs, header, value);
+    setHeader(resp->hdrs, header, value);
     return noop;
 }
 
 respbuilder_t mhRespSetConnCloseHdr(mhResponse_t *resp)
 {
-    setHeader(resp->pool, resp->hdrs, "Connection", "close");
+    setHeader(resp->hdrs, "Connection", "close");
     resp->closeConn = YES;
     return noop;
 }
@@ -664,10 +664,13 @@ static void respUseRequestBody(mhResponse_t *resp)
     if (req->chunked) {
         resp->chunks = req->chunks;
         resp->chunked = YES;
+        setHeader(resp->hdrs, "Transfer-Encoding", "chunked");
     } else {
         resp->body  = req->body;
         resp->bodyLen = req->bodyLen;
         resp->chunked = NO;
+        setHeader(resp->hdrs, "Content-Length",
+                  apr_itoa(resp->pool, resp->bodyLen));
     }
 }
 
@@ -715,17 +718,18 @@ void mhExpectAllRequestsReceivedInOrder(MockHTTP *mh)
 static const char *serializeHeaders(apr_pool_t *pool, const mhRequest_t *req,
                                     const char *indent)
 {
-    apr_hash_index_t *hi;
+    const apr_table_entry_t *elts;
+    const apr_array_header_t *arr;
     const char *hdrs = "";
     bool first = YES;
-    for (hi = apr_hash_first(pool, req->hdrs); hi; hi = apr_hash_next(hi)) {
-        const void *key;
-        apr_ssize_t klen;
-        void *val;
+    int i;
 
-        apr_hash_this(hi, &key, &klen, &val);
+    arr = apr_table_elts(req->hdrs);
+    elts = (const apr_table_entry_t *)arr->elts;
+
+    for (i = 0; i < arr->nelts; ++i) {
         hdrs = apr_psprintf(pool, "%s%s%s: %s\n", hdrs, first ? "" : indent,
-                            (const char *)key, (const char *)val);
+                            elts[i].key, elts[i].val);
         first = NO;
     }
     return hdrs;
