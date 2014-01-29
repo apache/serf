@@ -373,24 +373,32 @@ serf__init_spnego_connection(const serf__authn_scheme_t *scheme,
                              serf_connection_t *conn,
                              apr_pool_t *pool)
 {
-    gss_authn_info_t *gss_info;
-    apr_status_t status;
+    serf_context_t *ctx = conn->ctx;
+    serf__authn_info_t *authn_info;
+    gss_authn_info_t *gss_info = NULL;
 
-    gss_info = apr_pcalloc(conn->pool, sizeof(*gss_info));
-    gss_info->pool = conn->pool;
-    gss_info->state = gss_api_auth_not_started;
-    gss_info->pstate = pstate_init;
-    status = serf__spnego_create_sec_context(&gss_info->gss_ctx, scheme,
-                                             gss_info->pool, pool);
-
-    if (status) {
-        return status;
-    }
-
+    /* For proxy authentication, reuse the gss context for all connections. 
+       For server authentication, create a new gss context per connection. */
     if (code == 401) {
-        conn->authn_baton = gss_info;
+        authn_info = &conn->authn_info;
     } else {
-        conn->proxy_authn_baton = gss_info;
+        authn_info = &ctx->proxy_authn_info;
+    }
+    gss_info = authn_info->baton;
+
+    if (!gss_info) {
+        apr_status_t status;
+
+        gss_info = apr_pcalloc(conn->pool, sizeof(*gss_info));
+        gss_info->pool = conn->pool;
+        gss_info->state = gss_api_auth_not_started;
+        gss_info->pstate = pstate_init;
+        status = serf__spnego_create_sec_context(&gss_info->gss_ctx, scheme,
+                                                 gss_info->pool, pool);
+        if (status) {
+            return status;
+        }
+        authn_info->baton = gss_info;
     }
 
     /* Make serf send the initial requests one by one */
@@ -412,8 +420,9 @@ serf__handle_spnego_auth(int code,
                          apr_pool_t *pool)
 {
     serf_connection_t *conn = request->conn;
-    gss_authn_info_t *gss_info = (code == 401) ? conn->authn_baton :
-        conn->proxy_authn_baton;
+    serf_context_t *ctx = conn->ctx;
+    gss_authn_info_t *gss_info = (code == 401) ? conn->authn_info.baton :
+                                                 ctx->proxy_authn_info.baton;
 
     return do_auth(code == 401 ? HOST : PROXY,
                    code,
@@ -434,8 +443,9 @@ serf__setup_request_spnego_auth(peer_t peer,
                                 const char *uri,
                                 serf_bucket_t *hdrs_bkt)
 {
-    gss_authn_info_t *gss_info = (peer == HOST) ? conn->authn_baton :
-        conn->proxy_authn_baton;
+    serf_context_t *ctx = conn->ctx;
+    gss_authn_info_t *gss_info = (code == 401) ? conn->authn_info.baton :
+                                                 ctx->proxy_authn_info.baton;
 
     /* If we have an ongoing authentication handshake, the handler of the
        previous response will have created the authn headers for this request
@@ -575,14 +585,15 @@ serf__validate_response_spnego_auth(const serf__authn_scheme_t *scheme,
                                     serf_bucket_t *response,
                                     apr_pool_t *pool)
 {
+    serf_context_t *ctx = conn->ctx;
     gss_authn_info_t *gss_info;
     const char *auth_hdr_name;
 
     if (peer == HOST) {
-        gss_info = conn->authn_baton;
+        gss_info = conn->authn_info.baton;
         auth_hdr_name = "WWW-Authenticate";
     } else {
-        gss_info = conn->proxy_authn_baton;
+        gss_info = ctx->proxy_authn_info.baton;
         auth_hdr_name = "Proxy-Authenticate";
     }
 

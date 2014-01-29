@@ -372,9 +372,8 @@ struct serf_connection_t {
        port values are filled in. */
     apr_uri_t host_info;
 
-    /* connection and authentication scheme specific information */ 
-    void *authn_baton;
-    void *proxy_authn_baton;
+    /* authentication info for this connection. */
+    serf__authn_info_t authn_info;
 
     /* Time marker when connection begins. */
     apr_time_t connect_time;
