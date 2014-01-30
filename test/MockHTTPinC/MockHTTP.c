@@ -149,6 +149,9 @@ mhError_t mhRunServerLoop(MockHTTP *mh)
     if (status == MH_STATUS_WAITING)
         return MOCKHTTP_WAITING;
 
+    if (READ_ERROR(status) && !APR_STATUS_IS_TIMEUP(status))
+        return MOCKHTTP_TEST_FAILED;
+
     return MOCKHTTP_NO_ERROR;
 }
 

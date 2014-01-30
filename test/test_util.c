@@ -679,10 +679,13 @@ run_client_and_mock_servers_loops(test_baton_t *tb,
 
     while (!done)
     {
+        mhError_t err;
         apr_pool_clear(iter_pool);
 
         /* run server event loop */
-        mhRunServerLoop(mh);
+        err = mhRunServerLoop(mh);
+        if (err == MOCKHTTP_TEST_FAILED)
+            return SERF_ERROR_ISSUE_IN_TESTSUITE;
 
         /* run client event loop */
         status = serf_context_run(tb->context, 0, iter_pool);
