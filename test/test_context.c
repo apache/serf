@@ -2041,8 +2041,11 @@ static void test_ssltunnel_digest_auth(CuTest *tc)
 
     CuAssertTrue(tc, tb->result_flags & TEST_RESULT_AUTHNCB_CALLED);
 }
-#if 0
-static void test_setup_ssltunnel_kerbauthn(CuTest *tc)
+
+/* Minimum tests for Negotiate authentication. If serf is built on Windows or
+   with Kerberos, and the user is logged in to a Kerberos realm, this test
+   will initiate a context and send the initial token to the proxy/server. */
+static void test_ssltunnel_spnego_authn(CuTest *tc)
 {
     test_baton_t *tb = tc->testBaton;
     handler_baton_t handler_ctx[1];
@@ -2058,6 +2061,10 @@ static void test_setup_ssltunnel_kerbauthn(CuTest *tc)
     status = setup_test_client_context_with_proxy(tb, NULL, tb->pool);
     CuAssertIntEquals(tc, APR_SUCCESS, status);
 
+    serf_config_authn_types(tb->context, SERF_AUTHN_NEGOTIATE |
+                                         SERF_AUTHN_NTLM);
+    serf_config_credentials_callback(tb->context, ssltunnel_basic_authn_callback);
+
     Given(tb->mh)
       RequestsReceivedByProxy
         HTTPRequest("CONNECT",
@@ -2069,14 +2076,46 @@ static void test_setup_ssltunnel_kerbauthn(CuTest *tc)
                   WithHeader("Proxy-Authenticate", "NTLM"),
                   WithHeader("Connection", "close"),
                   WithHeader("Proxy-Connection", "close"),
+                  WithHeader("Content-Type", "text/html"),
                   WithBody("<html><body>Authn required</body></html>"))
     EndGiven
     create_new_request(tb, &handler_ctx[0], "GET", "/", 1);
 
-    run_client_and_mock_servers_loops_expect_ok(tc, tb, num_requests,
-                                                handler_ctx, tb->pool);
+    /* Don't check the result, authn will fail. */
+    run_client_and_mock_servers_loops(tb, num_requests, handler_ctx, tb->pool);
 }
-#endif
+
+static void test_server_spnego_authn(CuTest *tc)
+{
+    test_baton_t *tb = tc->testBaton;
+    handler_baton_t handler_ctx[1];
+    const int num_requests = sizeof(handler_ctx)/sizeof(handler_ctx[0]);
+    apr_status_t status;
+
+    /* Set up a test context with a server */
+    setup_test_mock_server(tb);
+    status = setup_test_client_context(tb, NULL, tb->pool);
+    CuAssertIntEquals(tc, APR_SUCCESS, status);
+
+    serf_config_authn_types(tb->context, SERF_AUTHN_NEGOTIATE |
+                                         SERF_AUTHN_NTLM);
+    serf_config_credentials_callback(tb->context, ssltunnel_basic_authn_callback);
+
+    Given(tb->mh)
+      HTTPRequest("GET",
+          URLEqualTo("/"),
+          HeaderEqualTo("Host", tb->serv_host))
+        Respond(WithCode(401),
+                WithHeader("WWW-Authenticate", "Negotiate"),
+                WithHeader("Content-Type", "text/html"),
+                WithBody("<html><body>Authn required</body></html>"))
+    EndGiven
+    create_new_request(tb, &handler_ctx[0], "GET", "/", 1);
+
+    /* Don't check the result, authn will fail. */
+    run_client_and_mock_servers_loops(tb, num_requests, handler_ctx,
+                                      tb->pool);
+}
 
 /*****************************************************************************/
 CuSuite *test_context(void)
@@ -2116,10 +2155,8 @@ CuSuite *test_context(void)
     SUITE_ADD_TEST(suite, test_ssl_future_server_cert);
     SUITE_ADD_TEST(suite, test_ssl_client_certificate);
     SUITE_ADD_TEST(suite, test_setup_proxy);
-#if 0 
-    /* TODO: test isn't finished yet. */
-    SUITE_ADD_TEST(suite, test_setup_ssltunnel_kerbauthn);
-#endif
+    SUITE_ADD_TEST(suite, test_ssltunnel_spnego_authn);
+    SUITE_ADD_TEST(suite, test_server_spnego_authn);
 
     return suite;
 }
