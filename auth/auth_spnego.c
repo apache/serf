@@ -444,8 +444,8 @@ serf__setup_request_spnego_auth(peer_t peer,
                                 serf_bucket_t *hdrs_bkt)
 {
     serf_context_t *ctx = conn->ctx;
-    gss_authn_info_t *gss_info = (code == 401) ? conn->authn_info.baton :
-                                                 ctx->proxy_authn_info.baton;
+    gss_authn_info_t *gss_info = (peer == HOST) ? conn->authn_info.baton :
+                                                  ctx->proxy_authn_info.baton;
 
     /* If we have an ongoing authentication handshake, the handler of the
        previous response will have created the authn headers for this request
