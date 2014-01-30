@@ -273,6 +273,14 @@ apps_ssl_info_callback(const SSL *s, int where, int ret)
 }
 #endif
 
+static void log_ssl_error(serf_ssl_context_t *ctx)
+{
+    unsigned long e = ERR_get_error();
+    serf__log(LOGLVL_ERROR, LOGCOMP_SSL, __FILE__, ctx->config,
+              "SSL Error: %s\n", ERR_error_string(e, NULL));
+
+}
+
 /* Returns the amount read. */
 static int bio_bucket_read(BIO *bio, char *in, int inlen)
 {
@@ -630,6 +638,7 @@ static apr_status_t ssl_decrypt(void *baton, apr_size_t bufsize,
             *len = 0;
             /* Return the underlying status that caused OpenSSL to fail */
             status = ctx->crypt_status;
+            log_ssl_error(ctx);
             break;
         case SSL_ERROR_WANT_READ:
         case SSL_ERROR_WANT_WRITE:
@@ -643,11 +652,13 @@ static apr_status_t ssl_decrypt(void *baton, apr_size_t bufsize,
                 ctx->pending_err = APR_SUCCESS;
             } else {
                 ctx->fatal_err = status = SERF_ERROR_SSL_COMM_FAILED;
+                log_ssl_error(ctx);
             }
             break;
         default:
             *len = 0;
             ctx->fatal_err = status = SERF_ERROR_SSL_COMM_FAILED;
+            log_ssl_error(ctx);
             break;
         }
     } else if (ssl_len == 0) {
@@ -673,6 +684,7 @@ static apr_status_t ssl_decrypt(void *baton, apr_size_t bufsize,
         } else {
             /* A fatal error occurred. */
             ctx->fatal_err = status = SERF_ERROR_SSL_COMM_FAILED;
+            log_ssl_error(ctx);
         }
     } else {
         *len = ssl_len;
@@ -809,10 +821,12 @@ static apr_status_t ssl_encrypt(void *baton, apr_size_t bufsize,
                         }
                         else {
                             ctx->fatal_err = status = SERF_ERROR_SSL_COMM_FAILED;
+                            log_ssl_error(ctx);
                         }
                         break;
                     default:
                         ctx->fatal_err = status = SERF_ERROR_SSL_COMM_FAILED;
+                        log_ssl_error(ctx);
                         break;
                     }
                 } else {
