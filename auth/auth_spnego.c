@@ -35,6 +35,8 @@
  **   the server requires Kerberos authn.
  ** - Add a way for serf to give detailed error information back to the
  **   application.
+ ** - This file is both GSSAPI and Kerberos/NTLM independent, so update names
+ **   and comments.
  **/
 
 /* Authentication over HTTP using Kerberos
