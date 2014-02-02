@@ -653,12 +653,29 @@ setup_test_client_context_with_proxy(test_baton_t *tb,
 
     tb->context = serf_context_create(pool);
     tb->conn_setup = conn_setup ? conn_setup :
-                                  default_http_conn_setup; /* TODO: https */
+                                  default_http_conn_setup;
 
     /* Configure serf to use the proxy server */
     serf_config_proxy(tb->context, tb->proxy_addr);
 
     status = use_new_connection(tb, pool);
+
+    return status;
+}
+
+apr_status_t
+setup_serf_https_context_with_proxy(test_baton_t *tb,
+                                    serf_connection_setup_t conn_setup,
+                                    serf_ssl_need_server_cert_t server_cert_cb,
+                                    apr_pool_t *pool)
+{
+    apr_status_t status;
+
+    status = setup_test_client_context_with_proxy(tb,
+                                                  conn_setup ? conn_setup:
+                                                  default_https_conn_setup,
+                                                  pool);
+    tb->server_cert_cb = server_cert_cb;
 
     return status;
 }

@@ -41,6 +41,12 @@ typedef enum mhServerType_t {
     mhHTTPSProxy,     /* Sets up SSL tunnel on CONNECT request. */
 } mhServerType_t;
 
+typedef enum mhAction_t {
+    mhActionInitiateNone,
+    mhActionInitiateProxyConn,
+    mhActionInitiateSSLTunnel,
+} mhAction_t;
+
 /* Note: the variadic macro's used here require C99. */
 /* TODO: we can provide xxx1(x), xxx2(x,y)... macro's for C89 compilers */
 
@@ -112,6 +118,7 @@ typedef enum mhServerType_t {
             {\
                 MockHTTP *__mh = mh;\
                 mhResponse_t *__resp;\
+                mhResponse_t *__action;\
                 mhRequestMatcher_t *__rm;\
                 mhServCtx_t *__servctx = mhGetServerCtx(__mh);
 
@@ -202,6 +209,10 @@ typedef enum mhServerType_t {
                 __resp = mhNewResponseForRequest(__mh, __servctx, __rm);\
                 mhConfigResponse(__resp, __VA_ARGS__, NULL);
 
+#define   SetupSSLTunnel\
+                mhNewActionForRequest(__servctx, __rm,\
+                                      mhActionInitiateSSLTunnel);
+
 /* Set the HTTP response code. Default: 200 OK */
 #define     WithCode(x)\
                 mhRespSetCode(__resp, (x))
@@ -238,7 +249,7 @@ typedef enum mhServerType_t {
 #define EndGiven\
                 /* Assign local variables to NULL to avoid 'variable unused' 
                    warnings. */\
-                __resp = NULL; __rm = NULL; __mh = NULL;\
+                __resp = NULL; __rm = NULL; __mh = NULL; __action = NULL;\
             }
 
 /* Set expectations for a series of requests */
@@ -423,6 +434,8 @@ mhResponse_t *mhNewResponseForRequest(MockHTTP *mh, mhServCtx_t *ctx,
                                       mhRequestMatcher_t *rm);
 void mhConfigResponse(mhResponse_t *resp, ...);
 mhResponse_t *mhNewDefaultResponse(MockHTTP *mh);
+void mhNewActionForRequest(mhServCtx_t *ctx, mhRequestMatcher_t *rm,
+                           mhAction_t action);
 
 respbuilder_t mhRespSetCode(mhResponse_t *resp, unsigned int status);
 respbuilder_t mhRespSetBody(mhResponse_t *resp, const char *body);

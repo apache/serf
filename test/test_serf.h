@@ -293,21 +293,32 @@ apr_status_t serf_bucket_mock_more_data_arrived(serf_bucket_t *bucket);
 /* Test utility functions, to be used with the MockHTTPinC framework         */
 /*****************************************************************************/
 
-/* Setup a serf client context to connect to the mock test server */
+/* Initiate a serf context configured to connect to the mock http server */
 apr_status_t setup_test_client_context(test_baton_t *tb,
                                        serf_connection_setup_t conn_setup,
                                        apr_pool_t *pool);
 
+/* Initiate a serf context configured to connect to the mock https server */
 apr_status_t
 setup_test_client_https_context(test_baton_t *tb,
                                 serf_connection_setup_t conn_setup,
                                 serf_ssl_need_server_cert_t server_cert_cb,
                                 apr_pool_t *pool);
 
+/* Initiate a serf context configured to connect to a http server over a
+   proxy */
 apr_status_t
 setup_test_client_context_with_proxy(test_baton_t *tb,
                                      serf_connection_setup_t conn_setup,
                                      apr_pool_t *pool);
+
+/* Initiate a serf context configured to connect to a https server over a
+   proxy */
+apr_status_t
+setup_serf_https_context_with_proxy(test_baton_t *tb,
+                                    serf_connection_setup_t conn_setup,
+                                    serf_ssl_need_server_cert_t server_cert_cb,
+                                    apr_pool_t *pool);
 
 /* Setup a mock test server on localhost on the default port. The actual port
    will be stored in tb->port. */

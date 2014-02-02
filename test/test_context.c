@@ -1597,66 +1597,36 @@ static void test_setup_ssltunnel(CuTest *tc)
     int i;
     handler_baton_t handler_ctx[1];
     const int num_requests = sizeof(handler_ctx)/sizeof(handler_ctx[0]);
-    apr_status_t status;
-
-    /* TODO: issue 83: should be relative uri instead of absolute. */
-    test_server_message_t message_list_server[] = {
-        {"GET / HTTP/1.1" CRLF\
-            "Host: localhost:" SERV_PORT_STR CRLF\
-            "Transfer-Encoding: chunked" CRLF\
-            CRLF\
-            "1" CRLF\
-            "1" CRLF\
-            "0" CRLF\
-            CRLF}
-    };
-    test_server_action_t action_list_server[] = {
-        {SERVER_RESPOND, CHUNKED_EMPTY_RESPONSE},
-    };
-    test_server_message_t message_list_proxy[] = {
-        {"CONNECT localhost:" SERV_PORT_STR " HTTP/1.1" CRLF\
-         "Host: localhost:" SERV_PORT_STR CRLF\
-         CRLF },
-        { NULL }
-    };
-    test_server_action_t action_list_proxy[] = {
-        {SERVER_RESPOND, CHUNKED_EMPTY_RESPONSE},
-        /* Forward the remainder of the data to the server without validation */
-        {PROXY_FORWARD, "https://localhost:" SERV_PORT_STR},
-    };
-
 
     /* Set up a test context with a server and a proxy. Serf should send a
        CONNECT request to the server. */
-    status = test_https_server_proxy_setup(&tb,
-                                           /* server messages and actions */
-                                           message_list_server, 1,
-                                           action_list_server, 1,
-                                           /* proxy messages and actions */
-                                           message_list_proxy, 2,
-                                           action_list_proxy, 2,
-                                           0,
-                                           https_set_root_ca_conn_setup,
-                                           "test/server/serfserverkey.pem",
-                                           server_certs,
-                                           NULL, /* no client cert */
-                                           NULL, /* No server cert callback */
-                                           tb->pool);
-                                     
-    CuAssertIntEquals(tc, APR_SUCCESS, status);
+    /* Set up a test context and a https server */
+    setup_test_mock_https_server(tb, "test/server/serfserverkey.pem",
+                                 all_server_certs,
+                                 NULL /* no client cert */);
+    CuAssertIntEquals(tc, APR_SUCCESS, setup_test_mock_proxy(tb));
+    CuAssertIntEquals(tc, APR_SUCCESS,
+            setup_serf_https_context_with_proxy(tb, chain_callback_conn_setup,
+                                                ssl_server_cert_cb_expect_allok,
+                                                tb->pool));
 
+    Given(tb->mh)
+      RequestsReceivedByServer
+        GETRequest(URLEqualTo("/"), ChunkedBodyEqualTo("1"),
+                   HeaderEqualTo("Host", tb->serv_host))
+          Respond(WithCode(200), WithChunkedBody(""))
+
+      RequestsReceivedByProxy
+        HTTPRequest("CONNECT", URLEqualTo(tb->serv_host))
+          Respond(WithCode(200), WithChunkedBody(""))
+          SetupSSLTunnel
+    EndGiven
     create_new_request(tb, &handler_ctx[0], "GET", "/", 1);
 
-    test_helper_run_requests_expect_ok(tc, tb, num_requests,
-                                       handler_ctx, tb->pool);
+    run_client_and_mock_servers_loops_expect_ok(tc, tb, num_requests,
+                                                handler_ctx, tb->pool);
 
-    /* Check that the requests were sent in the order we created them */
-    for (i = 0; i < tb->sent_requests->nelts; i++) {
-        int req_nr = APR_ARRAY_IDX(tb->sent_requests, i, int);
-        CuAssertIntEquals(tc, i + 1, req_nr);
-    }
-
-    /* Check that the requests were received in the order we created them */
+    /* Check that the response were received in the order we sent the requests */
     for (i = 0; i < tb->handled_requests->nelts; i++) {
         int req_nr = APR_ARRAY_IDX(tb->handled_requests, i, int);
         CuAssertIntEquals(tc, i + 1, req_nr);
@@ -2124,7 +2094,6 @@ CuSuite *test_context(void)
 
     CuSuiteSetSetupTeardownCallbacks(suite, test_setup, test_teardown);
 
-    SUITE_ADD_TEST(suite, test_setup_ssltunnel);
     SUITE_ADD_TEST(suite, test_ssltunnel_no_creds_cb);
     SUITE_ADD_TEST(suite, test_ssltunnel_basic_auth);
     SUITE_ADD_TEST(suite, test_ssltunnel_basic_auth_server_has_keepalive_off);
@@ -2157,6 +2126,7 @@ CuSuite *test_context(void)
     SUITE_ADD_TEST(suite, test_setup_proxy);
     SUITE_ADD_TEST(suite, test_ssltunnel_spnego_authn);
     SUITE_ADD_TEST(suite, test_server_spnego_authn);
+    SUITE_ADD_TEST(suite, test_setup_ssltunnel);
 
     return suite;
 }

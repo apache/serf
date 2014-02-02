@@ -1,4 +1,4 @@
-/* Copyright 2014 Lieven Govaerts
+ /* Copyright 2014 Lieven Govaerts
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,6 +18,7 @@
  */
 #include <apr_thread_proc.h>
 #include <apr_strings.h>
+#include <apr_uri.h>
 
 #include <stdlib.h>
 
@@ -54,15 +55,18 @@ typedef struct sslCtx_t sslCtx_t;
 struct _mhClientCtx_t {
     apr_pool_t *pool;
     apr_socket_t *skt;
-    char buf[BUFSIZE];
+    char buf[BUFSIZE];  /* buffer for data received from the client @ server */
     apr_size_t buflen;
     apr_size_t bufrem;
-    mhRequest_t *req;
-    apr_int16_t reqevents;
+    char obuf[BUFSIZE]; /* buffer for data to be sent from server to client */
+    apr_size_t obuflen;
+    apr_size_t obufrem;
     const char *respBody;
     apr_size_t respRem;
     apr_array_header_t *respQueue;  /*  test will queue a response */
     mhResponse_t *currResp; /* response in progress */
+    mhRequest_t *req;
+    apr_int16_t reqevents;
     bool closeConn;
     sslCtx_t *ssl_ctx;
 
@@ -172,6 +176,40 @@ static apr_status_t setupTCPServer(mhServCtx_t *ctx, bool blocking)
     return APR_SUCCESS;
 }
 
+/* connect to the server (url in form localhost:30080) */
+static apr_status_t connectToServer(mhServCtx_t *ctx, const char *url)
+{
+    apr_sockaddr_t *address;
+    char *host, *scopeid;
+    apr_port_t port;
+    apr_status_t status;
+
+    STATUSERR(apr_parse_addr_port(&host, &scopeid, &port, url, ctx->pool));
+    STATUSERR(apr_sockaddr_info_get(&address, host, APR_UNSPEC,
+                                    port, 0, ctx->pool));
+
+    /* Create server socket */
+    /* Note: this call requires APR v1.0.0 or higher */
+    STATUSERR(apr_socket_create(&ctx->proxyskt, address->family,
+                                SOCK_STREAM, 0, ctx->pool));
+    STATUSERR(apr_socket_opt_set(ctx->proxyskt, APR_SO_NONBLOCK, 1));
+    STATUSERR(apr_socket_timeout_set(ctx->proxyskt, 0));
+    STATUSERR(apr_socket_opt_set(ctx->proxyskt, APR_SO_REUSEADDR, 1));
+
+    status = apr_socket_connect(ctx->proxyskt, address);
+    if (status == APR_SUCCESS || APR_STATUS_IS_EINPROGRESS(status)) {
+        apr_pollfd_t pfd = { 0 };
+
+        pfd.desc_type = APR_POLL_SOCKET;
+        pfd.desc.s = ctx->proxyskt;
+        pfd.reqevents = APR_POLLIN | APR_POLLOUT;
+
+        STATUSERR(apr_pollset_add(ctx->pollset, &pfd));
+    }
+
+    return status;
+}
+
 static const int MaxReqRespQueueSize = 50;
 static mhServCtx_t *
 initServCtx(const MockHTTP *mh, const char *hostname, apr_port_t port)
@@ -187,6 +225,7 @@ initServCtx(const MockHTTP *mh, const char *hostname, apr_port_t port)
     ctx->reqMatchers = apr_array_make(pool, 5, sizeof(ReqMatcherRespPair_t *));
     ctx->incompleteReqMatchers = apr_array_make(pool, 5,
                                                sizeof(ReqMatcherRespPair_t *));
+    ctx->mode = ModeServer;
 
     apr_pool_cleanup_register(pool, ctx,
                               cleanupServer,
@@ -478,6 +517,22 @@ static apr_status_t readChunked(_mhClientCtx_t *cctx, mhRequest_t *req, bool *do
     return status;
 }
 
+static apr_status_t readData(_mhClientCtx_t *cctx)
+{
+    apr_status_t status;
+    apr_size_t len = cctx->bufrem;
+    STATUSREADERR(cctx->read(cctx, cctx->buf + cctx->buflen, &len));
+    if (len) {
+        _mhLog(MH_VERBOSE, cctx->skt,
+               "recvd with status %d:\n%.*s\n---- %d ----\n",
+               status, (unsigned int)len, cctx->buf + cctx->buflen,
+               (unsigned int)len);
+        cctx->buflen += len;
+        cctx->bufrem -= len;
+    }
+    return status;
+}
+
 /* New request data was made available, read status line/hdrs/body (chunks).
    APR_EAGAIN: wait for more data
    APR_EOF: request received, or no more data available. */
@@ -485,27 +540,16 @@ static apr_status_t readRequest(_mhClientCtx_t *cctx, mhRequest_t **preq)
 {
     mhRequest_t *req = *preq;
     apr_status_t status = APR_SUCCESS;
-    apr_size_t len;
 
     if (req == NULL) {
         req = *preq = _mhInitRequest(cctx->pool);
     }
 
     while (!status) { /* read all available data */
-        bool done;
+        bool done = NO;
 
-        len = cctx->bufrem;
-        STATUSREADERR(cctx->read(cctx, cctx->buf + cctx->buflen, &len));
-        if (len) {
-            _mhLog(MH_VERBOSE, __FILE__,
-                   "recvd with status %d:\n%.*s\n---- %d ----\n",
-                   status, (unsigned int)len, cctx->buf + cctx->buflen,
-                   (unsigned int)len);
-            cctx->buflen += len;
-            cctx->bufrem -= len;
-        }
+        STATUSREADERR(readData(cctx));
 
-        done = NO;
         switch(cctx->req->readState) {
             case ReadStateStatusLine: /* status line */
                 STATUSREADERR(readReqLine(cctx, req, &done));
@@ -537,7 +581,7 @@ static apr_status_t readRequest(_mhClientCtx_t *cctx, mhRequest_t **preq)
                     }
                 }
                 if (done) {
-                    _mhLog(MH_VERBOSE, __FILE__, "Server received request: %s %s\n",
+                    _mhLog(MH_VERBOSE, cctx->skt, "Server received request: %s %s\n",
                            req->method, req->url);
                     return APR_EOF;
                 }
@@ -673,7 +717,7 @@ static apr_status_t writeResponse(_mhClientCtx_t *cctx, mhResponse_t *resp)
 
     len = cctx->respRem;
     STATUSREADERR(cctx->send(cctx, cctx->respBody, &len));
-    _mhLog(MH_VERBOSE, __FILE__, "sent with status %d:\n%.*s\n---- %d ----\n",
+    _mhLog(MH_VERBOSE, cctx->skt, "sent with status %d:\n%.*s\n---- %d ----\n",
            status, (unsigned int)len, cctx->respBody, (unsigned int)len);
 
     if (len < cctx->respRem) {
@@ -697,6 +741,7 @@ void mhPushRequest(mhServCtx_t *ctx, mhRequestMatcher_t *rm)
     pair = apr_palloc(ctx->pool, sizeof(ReqMatcherRespPair_t));
     pair->rm = rm;
     pair->resp = NULL;
+    pair->action = mhActionInitiateNone;
 
     for (i = 0 ; i < rm->matchers->nelts; i++) {
         const mhMatchingPattern_t *mp;
@@ -715,8 +760,8 @@ void mhPushRequest(mhServCtx_t *ctx, mhRequestMatcher_t *rm)
 }
 
 static bool
-matchRequest(mhRequest_t *req, mhResponse_t **resp,
-             apr_array_header_t *matchers)
+matchRequest(const _mhClientCtx_t *cctx, mhRequest_t *req, mhResponse_t **resp,
+             mhAction_t *action, apr_array_header_t *matchers)
 {
     int i;
 
@@ -727,25 +772,29 @@ matchRequest(mhRequest_t *req, mhResponse_t **resp,
 
         if (_mhRequestMatcherMatch(pair->rm, req) == YES) {
             *resp = pair->resp;
+            *action = pair->action;
             return YES;
         }
     }
-    _mhLog(MH_VERBOSE, __FILE__, "Couldn't match request!\n");
+    _mhLog(MH_VERBOSE, cctx->skt, "Couldn't match request!\n");
 
     *resp = NULL;
     return NO;
 }
 
-bool _mhMatchRequest(const mhServCtx_t *ctx, mhRequest_t *req,
-                     mhResponse_t **resp)
+static bool
+_mhMatchRequest(const mhServCtx_t *ctx, const _mhClientCtx_t *cctx,
+                mhRequest_t *req, mhResponse_t **resp, mhAction_t *action)
 {
-    return matchRequest(req, resp, ctx->reqMatchers);
+    return matchRequest(cctx, req, resp, action, ctx->reqMatchers);
 }
 
-bool _mhMatchIncompleteRequest(const mhServCtx_t *ctx, mhRequest_t *req,
-                               mhResponse_t **resp)
+static bool
+_mhMatchIncompleteRequest(const mhServCtx_t *ctx, const _mhClientCtx_t *cctx,
+                          mhRequest_t *req, mhResponse_t **resp,
+                          mhAction_t *action)
 {
-    return matchRequest(req, resp, ctx->incompleteReqMatchers);
+    return matchRequest(cctx, req, resp, action, ctx->incompleteReqMatchers);
 }
 
 static mhResponse_t *cloneResponse(apr_pool_t *pool, mhResponse_t *resp)
@@ -760,28 +809,69 @@ static mhResponse_t *cloneResponse(apr_pool_t *pool, mhResponse_t *resp)
     return clone;
 }
 
-static apr_status_t process(mhServCtx_t *ctx, _mhClientCtx_t *cctx,
-                            const apr_pollfd_t *desc)
+/* Process events on connection proxy <-> server */
+static apr_status_t processProxy(mhServCtx_t *ctx, const apr_pollfd_t *desc)
+{
+    apr_status_t status = APR_SUCCESS;
+    _mhClientCtx_t *cctx = ctx->cctx;
+
+    if ((desc->rtnevents & APR_POLLOUT) && (cctx->buflen > 0)) {
+        apr_size_t len = cctx->buflen;
+        STATUSREADERR(apr_socket_send(ctx->proxyskt, cctx->buf, &len));
+        _mhLog(MH_VERBOSE, ctx->proxyskt,
+               "sent with status %d:\n%.*s\n---- %d ----\n",
+               status, (unsigned int)len, cctx->buf, (unsigned int)len);
+        cctx->bufrem += len;
+        cctx->buflen -= len;
+    }
+    if (desc->rtnevents & APR_POLLIN) {
+        char *buf = cctx->buf + cctx->obuflen;
+        apr_size_t len = cctx->obufrem;
+        STATUSREADERR(apr_socket_recv(ctx->proxyskt, cctx->obuf, &len));
+        _mhLog(MH_VERBOSE, ctx->proxyskt,
+               "received with status %d:\n%.*s\n---- %d ----\n",
+               status, (unsigned int)len, buf, (unsigned int)len);
+        cctx->obuflen += len;
+        cctx->obufrem -= len;
+    }
+
+    return status;
+}
+
+/* Process events on connection client <-> proxy or client <-> server */
+static apr_status_t processServer(mhServCtx_t *ctx, _mhClientCtx_t *cctx,
+                                  const apr_pollfd_t *desc)
 {
     apr_status_t status = APR_SUCCESS;
 
     /* First sent any pending responses before reading the next request. */
     if (desc->rtnevents & APR_POLLOUT &&
-        (cctx->currResp || cctx->respQueue->nelts)) {
+        (cctx->currResp || cctx->respQueue->nelts || cctx->obuflen)) {
         mhResponse_t *resp;
+
+        if (cctx->obuflen) {
+            apr_size_t len = cctx->obuflen;
+            STATUSREADERR(apr_socket_send(cctx->skt, cctx->obuf, &len));
+            _mhLog(MH_VERBOSE, ctx->proxyskt,
+                   "sent with status %d:\n%.*s\n---- %d ----\n",
+                   status, (unsigned int)len, cctx->obuf, (unsigned int)len);
+            cctx->obufrem += len;
+            cctx->obuflen -= len;
+            return status; /* can't send more data */
+        }
 
         /* TODO: response in progress */
         resp = cctx->currResp ? cctx->currResp :
                                 *(mhResponse_t **)apr_array_pop(cctx->respQueue);
         if (resp) {
-            _mhLog(MH_VERBOSE, __FILE__, "Sending response to client.\n");
+            _mhLog(MH_VERBOSE, cctx->skt, "Sending response to client.\n");
 
             status = writeResponse(cctx, resp);
             if (status == APR_EOF) {
                 cctx->currResp = NULL;
                 ctx->mh->verifyStats->requestsResponded++;
                 if (resp->closeConn) {
-                    _mhLog(MH_VERBOSE, __FILE__,
+                    _mhLog(MH_VERBOSE, cctx->skt,
                            "Actively closing connection.\n");
                     apr_socket_close(cctx->skt);
                     ctx->cctx = NULL;
@@ -797,53 +887,74 @@ static apr_status_t process(mhServCtx_t *ctx, _mhClientCtx_t *cctx,
         }
     }
     if (desc->rtnevents & APR_POLLIN || cctx->buflen) {
-        STATUSREADERR(readRequest(cctx, &cctx->req));
+        mhAction_t action;
 
-        if (!cctx->req)
-            return status;
+        switch (ctx->mode) {
+          case ModeServer:
+          case ModeProxy:             /* Read partial or full requests */
+            STATUSREADERR(readRequest(cctx, &cctx->req));
 
-        if (status == APR_EOF) { /* complete request received */
-            mhResponse_t *resp;
-            ctx->mh->verifyStats->requestsReceived++;
-            *((mhRequest_t **)apr_array_push(ctx->reqsReceived)) = cctx->req;
-            if (_mhMatchRequest(ctx, cctx->req, &resp) == YES) {
+            if (!cctx->req)
+                return status;
 
-                ctx->mh->verifyStats->requestsMatched++;
-                if (resp) {
-                    _mhLog(MH_VERBOSE, __FILE__,
-                           "Request matched, queueing response.\n");
+            if (status == APR_EOF) {  /* complete request received */
+                mhResponse_t *resp;
+                mhAction_t action;
+
+                ctx->mh->verifyStats->requestsReceived++;
+                *((mhRequest_t **)apr_array_push(ctx->reqsReceived)) = cctx->req;
+                if (_mhMatchRequest(ctx, cctx, cctx->req,
+                                    &resp, &action) == YES) {
+                    ctx->mh->verifyStats->requestsMatched++;
+                    if (resp) {
+                        _mhLog(MH_VERBOSE, cctx->skt,
+                               "Request matched, queueing response.\n");
+                    } else {
+                        _mhLog(MH_VERBOSE, cctx->skt,
+                               "Request matched, queueing default response.\n");
+                        resp = cloneResponse(ctx->pool, ctx->mh->defResponse);
+                    }
+
+                    if (action == mhActionInitiateSSLTunnel) {
+                        _mhLog(MH_VERBOSE, cctx->skt, "Initiating SSL tunnel.\n");
+                        ctx->mode = ModeTunnel;
+                        connectToServer(ctx, cctx->req->url);
+                    }
                 } else {
-                    _mhLog(MH_VERBOSE, __FILE__,
-                           "Request matched, queueing default response.\n");
-                    resp = cloneResponse(ctx->pool, ctx->mh->defResponse);
+                    ctx->mh->verifyStats->requestsNotMatched++;
+                    _mhLog(MH_VERBOSE, cctx->skt,
+                           "Request found no match, queueing error response.\n");
+                    resp = cloneResponse(ctx->pool, ctx->mh->defErrorResponse);
                 }
-            } else {
-                ctx->mh->verifyStats->requestsNotMatched++;
-                _mhLog(MH_VERBOSE, __FILE__,
-                       "Request found no match, queueing error response.\n");
-                resp = cloneResponse(ctx->pool, ctx->mh->defErrorResponse);
-            }
 
-            resp->req = cctx->req;
-            *((mhResponse_t **)apr_array_push(cctx->respQueue)) = resp;
-            cctx->req = NULL;
-            return APR_SUCCESS;
-        }
-
-        if (ctx->incompleteReqMatchers->nelts > 0) {
-            mhResponse_t *resp = NULL;
-            /* (currently) incomplete request received? */
-            if (_mhMatchIncompleteRequest(ctx, cctx->req, &resp) == YES) {
-                _mhLog(MH_VERBOSE, __FILE__,
-                       "Incomplete request matched, queueing response.\n");
-                ctx->mh->verifyStats->requestsMatched++;
-                if (!resp)
-                    resp = cloneResponse(ctx->pool, ctx->mh->defResponse);
                 resp->req = cctx->req;
                 *((mhResponse_t **)apr_array_push(cctx->respQueue)) = resp;
                 cctx->req = NULL;
                 return APR_SUCCESS;
             }
+
+            if (ctx->incompleteReqMatchers->nelts > 0) {
+                mhResponse_t *resp = NULL;
+                /* (currently) incomplete request received? */
+                if (_mhMatchIncompleteRequest(ctx, cctx, cctx->req,
+                                              &resp, &action) == YES) {
+                    _mhLog(MH_VERBOSE, cctx->skt,
+                           "Incomplete request matched, queueing response.\n");
+                    ctx->mh->verifyStats->requestsMatched++;
+                    if (!resp)
+                        resp = cloneResponse(ctx->pool, ctx->mh->defResponse);
+                    resp->req = cctx->req;
+                    *((mhResponse_t **)apr_array_push(cctx->respQueue)) = resp;
+                    cctx->req = NULL;
+                    return APR_SUCCESS;
+                }
+            }
+            break;
+          case ModeTunnel:            /* Forward raw data */
+            STATUSREADERR(readData(cctx));
+            break;
+          default:
+            break;
         }
     }
 
@@ -864,6 +975,8 @@ static _mhClientCtx_t *initClientCtx(apr_pool_t *pool, mhServCtx_t *serv_ctx,
     cctx->skt = cskt;
     cctx->buflen = 0;
     cctx->bufrem = BUFSIZE;
+    cctx->obuflen = 0;
+    cctx->obufrem = BUFSIZE;
     cctx->closeConn = NO;
     cctx->respQueue = apr_array_make(pool, 5, sizeof(mhResponse_t *));
     cctx->currResp = NULL;
@@ -907,7 +1020,7 @@ apr_status_t _mhRunServerLoop(mhServCtx_t *ctx)
         apr_pollset_remove(ctx->pollset, &pfd);
 
         cctx->reqevents = APR_POLLIN;
-        if (cctx->currResp || cctx->respQueue->nelts > 0)
+        if (cctx->currResp || cctx->respQueue->nelts > 0 || cctx->obuflen > 0)
             cctx->reqevents |= APR_POLLOUT;
         pfd.reqevents = ctx->cctx->reqevents;
         STATUSERR(apr_pollset_add(ctx->pollset, &pfd));
@@ -915,6 +1028,7 @@ apr_status_t _mhRunServerLoop(mhServCtx_t *ctx)
 
     STATUSERR(apr_pollset_poll(ctx->pollset, APR_USEC_PER_SEC >> 1,
                                &num, &desc));
+    _mhLog(MH_VERBOSE, ctx->skt, "poll on server\n");
 
     /* The same socket can be returned multiple times by apr_pollset_poll() */
     while (num--) {
@@ -922,7 +1036,7 @@ apr_status_t _mhRunServerLoop(mhServCtx_t *ctx)
             apr_socket_t *cskt;
             apr_pollfd_t pfd = { 0 };
 
-            _mhLog(MH_VERBOSE, __FILE__, "Accepting client connection.\n");
+            _mhLog(MH_VERBOSE, ctx->skt, "Accepting client connection.\n");
 
             STATUSERR(apr_socket_accept(&cskt, ctx->skt, ctx->pool));
 
@@ -938,6 +1052,8 @@ apr_status_t _mhRunServerLoop(mhServCtx_t *ctx)
             STATUSERR(apr_pollset_add(ctx->pollset, &pfd));
             cctx->reqevents = pfd.reqevents;
             ctx->cctx = cctx;
+        } else if (desc->desc.s == ctx->proxyskt) {
+            STATUSREADERR(processProxy(ctx, desc));
         } else {
             /* one of the client sockets */
             _mhClientCtx_t *cctx = desc->client_data;
@@ -947,7 +1063,7 @@ apr_status_t _mhRunServerLoop(mhServCtx_t *ctx)
                 if (status)     /* APR_SUCCESS -> handshake finished */
                     continue;
             }
-            STATUSREADERR(process(ctx, cctx, desc));
+            STATUSREADERR(processServer(ctx, cctx, desc));
         }
         desc++;
     }
@@ -1158,7 +1274,7 @@ static int bio_apr_socket_read(BIO *bio, char *in, int inlen)
 
     status = apr_socket_recv(cctx->skt, in, &len);
     ssl_ctx->bio_read_status = status;
-    _mhLog(MH_VERBOSE, __FILE__, "Read %d bytes from ssl socket with "
+    _mhLog(MH_VERBOSE, cctx->skt, "Read %d bytes from ssl socket with "
            "status %d.\n", len, status);
 
     if (status == APR_EAGAIN) {
@@ -1181,7 +1297,7 @@ static int bio_apr_socket_write(BIO *bio, const char *in, int inlen)
 
     apr_status_t status = apr_socket_send(cctx->skt, in, &len);
 
-    _mhLog(MH_VERBOSE, __FILE__, "Wrote %d of %d bytes to ssl socket with "
+    _mhLog(MH_VERBOSE, cctx->skt, "Wrote %d of %d bytes to ssl socket with "
            "status %d.\n", len, inlen, status);
 
     if (READ_ERROR(status))
@@ -1222,7 +1338,11 @@ static apr_status_t cleanupSSL(void *baton)
 
 static int validateClientCertificate(int preverify_ok, X509_STORE_CTX *ctx)
 {
-    _mhLog(MH_VERBOSE, __FILE__, "validate_client_certificate called, "
+    SSL *ssl = X509_STORE_CTX_get_ex_data(ctx,
+                                          SSL_get_ex_data_X509_STORE_CTX_idx());
+    _mhClientCtx_t *cctx = SSL_get_app_data(ssl);
+
+    _mhLog(MH_VERBOSE, cctx->skt, "validate_client_certificate called, "
                                  "preverify: %d.\n", preverify_ok);
     /* Client cert is valid for now, can be validated later. */
     return 1;
@@ -1235,6 +1355,7 @@ static apr_status_t initSSL(_mhClientCtx_t *cctx)
     ssl_ctx->ssl = SSL_new(ssl_ctx->ctx);
     SSL_set_cipher_list(ssl_ctx->ssl, "ALL");
     SSL_set_bio(ssl_ctx->ssl, ssl_ctx->bio, ssl_ctx->bio);
+    SSL_set_app_data(ssl_ctx->ssl, cctx);
 
     return APR_SUCCESS;
 }
@@ -1265,8 +1386,8 @@ static apr_status_t initSSLCtx(_mhClientCtx_t *cctx)
         SSL_CTX_set_default_passwd_cb(ssl_ctx->ctx, pem_passwd_cb);
         if (SSL_CTX_use_PrivateKey_file(ssl_ctx->ctx, cctx->keyFile,
                                         SSL_FILETYPE_PEM) != 1) {
-            _mhLog(MH_VERBOSE, "Cannot load private key from file '%s'\n",
-                   cctx->keyFile);
+            _mhLog(MH_VERBOSE, cctx->skt,
+                   "Cannot load private key from file '%s'\n", cctx->keyFile);
             return APR_EGENERAL;
         }
 
@@ -1274,8 +1395,8 @@ static apr_status_t initSSLCtx(_mhClientCtx_t *cctx)
         certfile = APR_ARRAY_IDX(cctx->certFiles, 0, const char *);
         if (SSL_CTX_use_certificate_file(ssl_ctx->ctx, certfile,
                                          SSL_FILETYPE_PEM) != 1) {
-            _mhLog(MH_VERBOSE, "Cannot load certificatefrom file '%s'\n",
-                   certfile);
+            _mhLog(MH_VERBOSE, cctx->skt,
+                   "Cannot load certificatefrom file '%s'\n", certfile);
             return APR_EGENERAL;
         }
 
@@ -1326,7 +1447,7 @@ sslSocketWrite(_mhClientCtx_t *cctx, const char *data, apr_size_t *len)
     if (result == 0)
         return APR_EAGAIN;
 
-    _mhLog(MH_VERBOSE, __FILE__, "ssl_socket_write: ssl error?\n");
+    _mhLog(MH_VERBOSE, cctx->skt, "ssl_socket_write: ssl error?\n");
 
     return APR_EGENERAL;
 }
@@ -1355,7 +1476,7 @@ sslSocketRead(_mhClientCtx_t *cctx, char *data, apr_size_t *len)
             case SSL_ERROR_SSL:
             default:
                 *len = 0;
-                _mhLog(MH_VERBOSE, __FILE__,
+                _mhLog(MH_VERBOSE, cctx->skt,
                           "ssl_socket_read SSL Error %d: ", ssl_err);
                 ERR_print_errors_fp(stderr);
                 return APR_EGENERAL;
@@ -1391,7 +1512,7 @@ bool _mhClientcert_valid_matcher(apr_pool_t *pool, const mhMatchingPattern_t *mp
 //            appendSSLErrMessage(mh, result);
         }
         /* TODO: add to error message */
-        _mhLog(MH_VERBOSE, __FILE__, "No client certificate was received.\n");
+        _mhLog(MH_VERBOSE, cctx->skt, "No client certificate was received.\n");
     }
     return NO;
 }
@@ -1418,12 +1539,12 @@ bool _mhClientcertcn_matcher(apr_pool_t *pool, const mhMatchingPattern_t *mp,
         }
 
         /* TODO: add to error message */
-        _mhLog(MH_VERBOSE, __FILE__, "Client certificate common name "
+        _mhLog(MH_VERBOSE, cctx->skt, "Client certificate common name "
                "\"%s\" doesn't match expected \"%s\".\n", buf, clientCN);
         return NO;
     } else {
         /* TODO: add to error message */
-        _mhLog(MH_VERBOSE, __FILE__, "No client certificate was received.\n");
+        _mhLog(MH_VERBOSE, cctx->skt, "No client certificate was received.\n");
         return NO;
     }
 }
@@ -1440,7 +1561,7 @@ static apr_status_t sslHandshake(_mhClientCtx_t *cctx)
     /* SSL handshake */
     result = SSL_accept(ssl_ctx->ssl);
     if (result == 1) {
-        _mhLog(MH_VERBOSE, __FILE__, "Handshake successful.\n");
+        _mhLog(MH_VERBOSE, cctx->skt, "Handshake successful.\n");
         ssl_ctx->handshake_done = YES;
 
         return APR_SUCCESS;
@@ -1455,7 +1576,7 @@ static apr_status_t sslHandshake(_mhClientCtx_t *cctx)
             case SSL_ERROR_SYSCALL:
                 return ssl_ctx->bio_read_status; /* Usually APR_EAGAIN */
             default:
-                _mhLog(MH_VERBOSE, __FILE__, "SSL Error %d: ", ssl_err);
+                _mhLog(MH_VERBOSE, cctx->skt, "SSL Error %d: ", ssl_err);
                 ERR_print_errors_fp(stderr);
                 return APR_EGENERAL;
         }

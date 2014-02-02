@@ -583,6 +583,24 @@ mhResponse_t *mhNewResponseForRequest(MockHTTP *mh, mhServCtx_t *ctx,
     return resp;
 }
 
+void mhNewActionForRequest(mhServCtx_t *ctx, mhRequestMatcher_t *rm,
+                           mhAction_t action)
+{
+    apr_array_header_t *matchers;
+    int i;
+
+    matchers = rm->incomplete ? ctx->incompleteReqMatchers : ctx->reqMatchers;
+    for (i = 0 ; i < matchers->nelts; i++) {
+        ReqMatcherRespPair_t *pair;
+
+        pair = APR_ARRAY_IDX(matchers, i, ReqMatcherRespPair_t *);
+        if (rm == pair->rm) {
+            pair->action = action;
+            break;
+        }
+    }
+}
+
 mhResponse_t *mhNewDefaultResponse(MockHTTP *mh)
 {
     mh->defResponse = initResponse(mh);
@@ -995,15 +1013,22 @@ static void log_time()
             tm.tm_gmtoff/3600);
 }
 
-void _mhLog(int verbose_flag, const char *filename, const char *fmt, ...)
+void _mhLog(int verbose_flag, apr_socket_t *skt, const char *fmt, ...)
 {
     va_list argp;
 
     if (verbose_flag) {
+        apr_sockaddr_t *sa;
+        apr_port_t lp = 0, rp = 0;
+
         log_time();
 
-        if (filename)
-            fprintf(stderr, "[%s]: ", filename);
+        /* Log client (remote) and server (local) port */
+        if (apr_socket_addr_get(&sa, APR_LOCAL, skt) == APR_SUCCESS)
+            lp = sa->port;
+        if (apr_socket_addr_get(&sa, APR_REMOTE, skt) == APR_SUCCESS)
+            rp = sa->port;
+        fprintf(stderr, "[cp:%u sp:%u] ", rp, lp);
 
         va_start(argp, fmt);
         vfprintf(stderr, fmt, argp);
