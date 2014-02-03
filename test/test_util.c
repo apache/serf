@@ -766,6 +766,7 @@ apr_status_t setup_test_mock_proxy(test_baton_t *tb)
     InitMockServers(tb->mh)
       SetupProxy(WithHTTP, WithPort(PROXY_PORT))
     EndInit
+    tb->proxy_port = mhProxyPortNr(tb->mh);
     return apr_sockaddr_info_get(&tb->proxy_addr,
                                  "localhost", APR_UNSPEC,
                                  mhProxyPortNr(tb->mh), 0,

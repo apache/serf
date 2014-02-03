@@ -819,7 +819,7 @@ static apr_status_t processProxy(mhServCtx_t *ctx, const apr_pollfd_t *desc)
         apr_size_t len = cctx->buflen;
         STATUSREADERR(apr_socket_send(ctx->proxyskt, cctx->buf, &len));
         _mhLog(MH_VERBOSE, ctx->proxyskt,
-               "sent with status %d:\n%.*s\n---- %d ----\n",
+               "Proxy sent to server, status %d:\n%.*s\n---- %d ----\n",
                status, (unsigned int)len, cctx->buf, (unsigned int)len);
         cctx->bufrem += len;
         cctx->buflen -= len;
@@ -829,10 +829,18 @@ static apr_status_t processProxy(mhServCtx_t *ctx, const apr_pollfd_t *desc)
         apr_size_t len = cctx->obufrem;
         STATUSREADERR(apr_socket_recv(ctx->proxyskt, cctx->obuf, &len));
         _mhLog(MH_VERBOSE, ctx->proxyskt,
-               "received with status %d:\n%.*s\n---- %d ----\n",
+               "Proxy received from server, status %d:\n%.*s\n---- %d ----\n",
                status, (unsigned int)len, buf, (unsigned int)len);
         cctx->obuflen += len;
         cctx->obufrem -= len;
+    }
+
+    if (status == APR_EOF && cctx->obuflen == 0) {
+        apr_socket_close(ctx->proxyskt);
+        ctx->proxyskt = NULL;
+        apr_socket_close(cctx->skt);
+        cctx->skt = NULL;
+        ctx->mode = ModeServer;
     }
 
     return status;
@@ -918,7 +926,8 @@ static apr_status_t processServer(mhServCtx_t *ctx, _mhClientCtx_t *cctx,
                     if (action == mhActionInitiateSSLTunnel) {
                         _mhLog(MH_VERBOSE, cctx->skt, "Initiating SSL tunnel.\n");
                         ctx->mode = ModeTunnel;
-                        connectToServer(ctx, cctx->req->url);
+                        ctx->proxyhost = apr_pstrdup(ctx->pool, cctx->req->url);
+                        connectToServer(ctx, ctx->proxyhost);
                     }
                 } else {
                     ctx->mh->verifyStats->requestsNotMatched++;
@@ -1011,8 +1020,10 @@ apr_status_t _mhRunServerLoop(mhServCtx_t *ctx)
 
     cctx = ctx->cctx;
 
+    _mhLog(MH_VERBOSE, ctx->skt, "poll on server\n");
+
     /* something to write */
-    if (cctx) {
+    if (cctx && cctx->skt) {
         pfd.desc_type = APR_POLL_SOCKET;
         pfd.desc.s = cctx->skt;
         pfd.reqevents = cctx->reqevents;
@@ -1028,7 +1039,6 @@ apr_status_t _mhRunServerLoop(mhServCtx_t *ctx)
 
     STATUSERR(apr_pollset_poll(ctx->pollset, APR_USEC_PER_SEC >> 1,
                                &num, &desc));
-    _mhLog(MH_VERBOSE, ctx->skt, "poll on server\n");
 
     /* The same socket can be returned multiple times by apr_pollset_poll() */
     while (num--) {
@@ -1057,6 +1067,9 @@ apr_status_t _mhRunServerLoop(mhServCtx_t *ctx)
         } else {
             /* one of the client sockets */
             _mhClientCtx_t *cctx = desc->client_data;
+
+            if (!cctx->skt) /* socket already closed? */
+                continue;
 
             if (cctx->handshake) {
                 status = cctx->handshake(cctx);

@@ -94,6 +94,7 @@ struct mhServCtx_t {
     apr_pollset_t *pollset;
     apr_socket_t *skt;         /* Server listening socket */
     apr_socket_t *proxyskt;    /* Socket for conn proxy <-> server */
+    const char *proxyhost;     /* Proxy host:port */
     mhServerType_t type;
     /* TODO: allow more connections */
     _mhClientCtx_t *cctx;

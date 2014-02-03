@@ -107,6 +107,7 @@ typedef struct test_baton_t {
 
     serv_ctx_t *proxy_ctx;
     apr_sockaddr_t *proxy_addr;
+    apr_port_t proxy_port;
 
     /* Cache connection params here so it gets user for a test to switch to a
        new connection. */
