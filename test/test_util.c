@@ -811,7 +811,7 @@ void *test_teardown(void *baton)
 /*****************************************************************************/
 /* Logging functions                                                         */
 /*****************************************************************************/
-static void log_time()
+static void log_time(void)
 {
     apr_time_exp_t tm;
 

@@ -1842,7 +1842,6 @@ static void test_ssltunnel_digest_auth(CuTest *tc)
     handler_baton_t handler_ctx[1];
     const int num_requests = sizeof(handler_ctx)/sizeof(handler_ctx[0]);
     const char *digest;
-    apr_status_t status;
 
     /* Set up a test context with a server and a proxy. Serf should send a
        CONNECT request to the server. */

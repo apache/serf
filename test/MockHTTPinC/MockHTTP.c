@@ -1002,7 +1002,7 @@ int mhVerifyConnectionSetupOk(const MockHTTP *mh)
     return YES;
 }
 
-static void log_time()
+static void log_time(void)
 {
     apr_time_exp_t tm;
 
