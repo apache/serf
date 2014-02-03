@@ -1824,7 +1824,8 @@ proxy_digest_authn_callback(char **username,
         return SERF_ERROR_ISSUE_IN_TESTSUITE;
     if (strcmp("Digest", authn_type) != 0)
         return SERF_ERROR_ISSUE_IN_TESTSUITE;
-    if (strcmp("<http://localhost:23456> Test Suite Proxy", realm) != 0)
+    if (strcmp(apr_psprintf(pool, "<http://localhost:%u> Test Suite Proxy",
+                            tb->proxy_port), realm) != 0)
         return SERF_ERROR_ISSUE_IN_TESTSUITE;
 
     *username = "serf";
@@ -1840,89 +1841,62 @@ static void test_ssltunnel_digest_auth(CuTest *tc)
     test_baton_t *tb = tc->testBaton;
     handler_baton_t handler_ctx[1];
     const int num_requests = sizeof(handler_ctx)/sizeof(handler_ctx[0]);
+    const char *digest;
     apr_status_t status;
 
-    test_server_message_t message_list_server[] = {
-        {"GET /test/index.html HTTP/1.1" CRLF\
-            "Host: localhost:" SERV_PORT_STR CRLF\
-            "Transfer-Encoding: chunked" CRLF\
-            CRLF\
-            "1" CRLF\
-            "1" CRLF\
-            "0" CRLF\
-            CRLF}
-    };
-    test_server_action_t action_list_server[] = {
-        {SERVER_RESPOND, CHUNKED_EMPTY_RESPONSE},
-    };
+    /* Set up a test context with a server and a proxy. Serf should send a
+       CONNECT request to the server. */
+    setup_test_mock_https_server(tb, "test/server/serfserverkey.pem",
+                                 server_certs,
+                                 NULL /* no client cert */);
+    CuAssertIntEquals(tc, APR_SUCCESS, setup_test_mock_proxy(tb));
+    CuAssertIntEquals(tc, APR_SUCCESS,
+            setup_serf_https_context_with_proxy(tb, https_set_root_ca_conn_setup,
+                                                NULL, /* No server cert cb */
+                                                tb->pool));
 
-#define CONNECT_REQ\
-    "CONNECT localhost:" SERV_PORT_STR " HTTP/1.1" CRLF\
-    "Host: localhost:" SERV_PORT_STR CRLF
+    serf_config_authn_types(tb->context, SERF_AUTHN_BASIC | SERF_AUTHN_DIGEST);
+    serf_config_credentials_callback(tb->context, proxy_digest_authn_callback);
 
-    test_server_message_t message_list_proxy[] = {
-        { CONNECT_REQ CRLF },
-        { CONNECT_REQ
-            "Proxy-Authorization: Digest realm=\"Test Suite Proxy\", "
-            "username=\"serf\", "
-            "nonce=\"ABCDEF1234567890\", uri=\"localhost:" SERV_PORT_STR "\", "
-            "response=\"15b1841822273b0fd44d2f6457f64213\", opaque=\"myopaque\", "
-            "algorithm=\"MD5\"" CRLF
-          CRLF },
-    };
+    digest = apr_psprintf(tb->pool, "Digest realm=\"Test Suite Proxy\", "
+        "username=\"serf\", nonce=\"ABCDEF1234567890\", uri=\"localhost:%u\", "
+        "response=\"b1d5a4f26e5a73a7d154defb95a74a26\", opaque=\"myopaque\", "
+        "algorithm=\"MD5\"", tb->serv_port);
+    Given(tb->mh)
+      RequestsReceivedByServer
+        GETRequest(URLEqualTo("/test/index.html"), ChunkedBodyEqualTo("1"))
+          Respond(WithCode(200),WithChunkedBody(""))
+
     /* Add a Basic header before Digest header, to test that serf uses the most
        secure authentication scheme first, instead of following the order of
        the headers. */
     /* Use non standard case for Proxy-Authenticate header to test case
        insensitivity for http headers. */
-    test_server_action_t action_list_proxy[] = {
-        {SERVER_RESPOND, "HTTP/1.1 407 Unauthorized" CRLF
-            "Transfer-Encoding: chunked" CRLF
-            "Proxy-Authenticate: Basic c2VyZjpzZXJmdGVzdA==" CRLF
-            "Proxy-Authenticate: NonExistent blablablabla" CRLF
-            "proXy-Authenticate: Digest realm=\"Test Suite Proxy\","
-            "nonce=\"ABCDEF1234567890\",opaque=\"myopaque\","
-            "algorithm=\"MD5\",qop-options=\"auth\"" CRLF
-            CRLF
-            "1" CRLF CRLF
-            "0" CRLF CRLF},
-        {SERVER_RESPOND, CHUNKED_EMPTY_RESPONSE},
-        /* Forward the remainder of the data to the server without validation */
-        {PROXY_FORWARD, "https://localhost:" SERV_PORT_STR},
-    };
-
-
-    /* Set up a test context with a server and a proxy. Serf should send a
-       CONNECT request to the server. */
-    status = test_https_server_proxy_setup(&tb,
-                                           /* server messages and actions */
-                                           message_list_server, 1,
-                                           action_list_server, 1,
-                                           /* proxy messages and actions */
-                                           message_list_proxy, 2,
-                                           action_list_proxy, 3,
-                                           0,
-                                           https_set_root_ca_conn_setup,
-                                           "test/server/serfserverkey.pem",
-                                           server_certs,
-                                           NULL, /* no client cert */
-                                           NULL, /* No server cert callback */
-                                           tb->pool);
-
-    CuAssertIntEquals(tc, APR_SUCCESS, status);
-
-    serf_config_authn_types(tb->context, SERF_AUTHN_BASIC | SERF_AUTHN_DIGEST);
-    serf_config_credentials_callback(tb->context, proxy_digest_authn_callback);
+      RequestsReceivedByProxy
+        HTTPRequest("CONNECT", URLEqualTo(tb->serv_host),
+                    HeaderNotSet("Proxy-Authorization"))
+          Respond(WithCode(407), WithChunkedBody("1"),
+                  WithHeader("Proxy-Authenticate",
+                             "Basic realm=\"Test Suite Proxy\""),
+                  WithHeader("Proxy-Authenticate", "NonExistent blablablabla"),
+                  WithHeader("proXy-Authenticate", "Digest "
+                   "realm=\"Test Suite Proxy\",nonce=\"ABCDEF1234567890\","
+                   "opaque=\"myopaque\",algorithm=\"MD5\""))
+        HTTPRequest("CONNECT", URLEqualTo(tb->serv_host),
+                    HeaderEqualTo("Proxy-Authorization", digest))
+          Respond(WithCode(200), WithChunkedBody(""))
+          SetupSSLTunnel
+    EndGiven
 
     create_new_request(tb, &handler_ctx[0], "GET", "/test/index.html", 1);
-    test_helper_run_requests_expect_ok(tc, tb, num_requests,
-                                       handler_ctx, tb->pool);
 
+    run_client_and_mock_servers_loops_expect_ok(tc, tb, num_requests,
+                                               handler_ctx, tb->pool);
     CuAssertTrue(tc, tb->result_flags & TEST_RESULT_AUTHNCB_CALLED);
 }
 
 /* Minimum tests for Negotiate authentication. If serf is built on Windows or
-   with Kerberos, and the user is logged in to a Kerberos realm, this test
+   with GSSAPI support, and the user is logged in to a Kerberos realm, this test
    will initiate a context and send the initial token to the proxy/server. */
 static void test_ssltunnel_spnego_authn(CuTest *tc)
 {
@@ -2003,18 +1977,18 @@ CuSuite *test_context(void)
 
     CuSuiteSetSetupTeardownCallbacks(suite, test_setup, test_teardown);
 
-    SUITE_ADD_TEST(suite, test_ssltunnel_digest_auth);
     /* Converted to MockHTTPinC library */
     SUITE_ADD_TEST(suite, test_serf_connection_request_create);
     SUITE_ADD_TEST(suite, test_serf_connection_priority_request_create);
     SUITE_ADD_TEST(suite, test_closed_connection);
+    SUITE_ADD_TEST(suite, test_setup_proxy);
     SUITE_ADD_TEST(suite, test_keepalive_limit_one_by_one);
     SUITE_ADD_TEST(suite, test_keepalive_limit_one_by_one_and_burst);
     SUITE_ADD_TEST(suite, test_progress_callback);
     SUITE_ADD_TEST(suite, test_connection_userinfo_in_url);
     SUITE_ADD_TEST(suite, test_request_timeout);
-    SUITE_ADD_TEST(suite, test_connection_large_request);
     SUITE_ADD_TEST(suite, test_connection_large_response);
+    SUITE_ADD_TEST(suite, test_connection_large_request);
     SUITE_ADD_TEST(suite, test_ssl_handshake);
     SUITE_ADD_TEST(suite, test_ssl_trust_rootca);
     SUITE_ADD_TEST(suite, test_ssl_application_rejects_cert);
@@ -2024,18 +1998,18 @@ CuSuite *test_context(void)
     SUITE_ADD_TEST(suite, test_ssl_no_servercert_callback_fail);
     SUITE_ADD_TEST(suite, test_ssl_large_response);
     SUITE_ADD_TEST(suite, test_ssl_large_request);
+    SUITE_ADD_TEST(suite, test_ssl_client_certificate);
     SUITE_ADD_TEST(suite, test_ssl_expired_server_cert);
     SUITE_ADD_TEST(suite, test_ssl_future_server_cert);
-    SUITE_ADD_TEST(suite, test_ssl_client_certificate);
-    SUITE_ADD_TEST(suite, test_setup_proxy);
-    SUITE_ADD_TEST(suite, test_ssltunnel_spnego_authn);
-    SUITE_ADD_TEST(suite, test_server_spnego_authn);
     SUITE_ADD_TEST(suite, test_setup_ssltunnel);
     SUITE_ADD_TEST(suite, test_ssltunnel_no_creds_cb);
     SUITE_ADD_TEST(suite, test_ssltunnel_basic_auth);
     SUITE_ADD_TEST(suite, test_ssltunnel_basic_auth_server_has_keepalive_off);
     SUITE_ADD_TEST(suite, test_ssltunnel_basic_auth_proxy_has_keepalive_off);
     SUITE_ADD_TEST(suite, test_ssltunnel_basic_auth_proxy_close_conn_on_200resp);
+    SUITE_ADD_TEST(suite, test_ssltunnel_digest_auth);
+    SUITE_ADD_TEST(suite, test_ssltunnel_spnego_authn);
+    SUITE_ADD_TEST(suite, test_server_spnego_authn);
 
     return suite;
 }
