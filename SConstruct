@@ -482,8 +482,6 @@ testall_files = [
         'test/test_ssl.c',
         'test/MockHTTPinC/MockHTTP.c',
         'test/MockHTTPinC/MockHTTP_server.c',
-        'test/server/test_server.c',
-        'test/server/test_sslserver.c',
         ]
 
 for proggie in TEST_EXES:

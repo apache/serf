@@ -23,9 +23,15 @@
 #include <apr_uri.h>
 
 #include "serf.h"
-#include "server/test_server.h"
 
 #include "MockHTTPinC/MockHTTP.h"
+
+/* Test logging facilities, set flag to 1 to enable console logging for
+   the test suite. */
+#define TEST_VERBOSE 0
+
+/* Preferred proxy port */
+#define PROXY_PORT 23456
 
 /** These macros are provided by APR itself from version 1.3.
  * Definitions are provided here for when using older versions of APR.
@@ -56,42 +62,6 @@ CuSuite *test_mock_bucket(void);
 #define CR "\r"
 #define LF "\n"
 
-#define CHUNKED_REQUEST(len, body)\
-        "GET / HTTP/1.1" CRLF\
-        "Host: localhost:12345" CRLF\
-        "Transfer-Encoding: chunked" CRLF\
-        CRLF\
-        #len CRLF\
-        body CRLF\
-        "0" CRLF\
-        CRLF
-
-#define CHUNKED_REQUEST_URI(uri, len, body)\
-        "GET " uri " HTTP/1.1" CRLF\
-        "Host: localhost:12345" CRLF\
-        "Transfer-Encoding: chunked" CRLF\
-        CRLF\
-        #len CRLF\
-        body CRLF\
-        "0" CRLF\
-        CRLF
-
-#define CHUNKED_RESPONSE(len, body)\
-        "HTTP/1.1 200 OK" CRLF\
-        "Transfer-Encoding: chunked" CRLF\
-        CRLF\
-        #len CRLF\
-        body CRLF\
-        "0" CRLF\
-        CRLF
-
-#define CHUNKED_EMPTY_RESPONSE\
-        "HTTP/1.1 200 OK" CRLF\
-        "Transfer-Encoding: chunked" CRLF\
-        CRLF\
-        "0" CRLF\
-        CRLF
-
 typedef struct test_baton_t {
     /* Pool for resource allocation. */
     apr_pool_t *pool;
@@ -100,12 +70,9 @@ typedef struct test_baton_t {
     serf_connection_t *connection;
     serf_bucket_alloc_t *bkt_alloc;
 
-    serv_ctx_t *serv_ctx;
-    apr_sockaddr_t *serv_addr;
     apr_port_t serv_port;
     const char *serv_host; /* "localhost:30080" */
 
-    serv_ctx_t *proxy_ctx;
     apr_sockaddr_t *proxy_addr;
     apr_port_t proxy_port;
 
@@ -139,60 +106,6 @@ apr_status_t default_https_conn_setup(apr_socket_t *skt,
 apr_status_t use_new_connection(test_baton_t *tb,
                                 apr_pool_t *pool);
 
-apr_status_t test_https_server_setup(test_baton_t **tb_p,
-                                     test_server_message_t *message_list,
-                                     apr_size_t message_count,
-                                     test_server_action_t *action_list,
-                                     apr_size_t action_count,
-                                     apr_int32_t options,
-                                     serf_connection_setup_t conn_setup,
-                                     const char *keyfile,
-                                     const char **certfile,
-                                     const char *client_cn,
-                                     serf_ssl_need_server_cert_t server_cert_cb,
-                                     apr_pool_t *pool);
-
-apr_status_t test_http_server_setup(test_baton_t **tb_p,
-                                    test_server_message_t *message_list,
-                                    apr_size_t message_count,
-                                    test_server_action_t *action_list,
-                                    apr_size_t action_count,
-                                    apr_int32_t options,
-                                    serf_connection_setup_t conn_setup,
-                                    apr_pool_t *pool);
-
-apr_status_t test_server_proxy_setup(
-                 test_baton_t **tb_p,
-                 test_server_message_t *serv_message_list,
-                 apr_size_t serv_message_count,
-                 test_server_action_t *serv_action_list,
-                 apr_size_t serv_action_count,
-                 test_server_message_t *proxy_message_list,
-                 apr_size_t proxy_message_count,
-                 test_server_action_t *proxy_action_list,
-                 apr_size_t proxy_action_count,
-                 apr_int32_t options,
-                 serf_connection_setup_t conn_setup,
-                 apr_pool_t *pool);
-
-apr_status_t test_https_server_proxy_setup(
-                 test_baton_t **tb_p,
-                 test_server_message_t *serv_message_list,
-                 apr_size_t serv_message_count,
-                 test_server_action_t *serv_action_list,
-                 apr_size_t serv_action_count,
-                 test_server_message_t *proxy_message_list,
-                 apr_size_t proxy_message_count,
-                 test_server_action_t *proxy_action_list,
-                 apr_size_t proxy_action_count,
-                 apr_int32_t options,
-                 serf_connection_setup_t conn_setup,
-                 const char *keyfile,
-                 const char **certfiles,
-                 const char *client_cn,
-                 serf_ssl_need_server_cert_t server_cert_cb,
-                 apr_pool_t *pool);
-
 void *test_setup(void *baton);
 void *test_teardown(void *baton);
 
@@ -223,16 +136,6 @@ typedef struct handler_baton_t {
 #define TEST_RESULT_CLIENT_CERTPWCB_CALLED   0x0008
 #define TEST_RESULT_AUTHNCB_CALLED           0x001A
 
-apr_status_t
-test_helper_run_requests_no_check(CuTest *tc, test_baton_t *tb,
-                                  int num_requests,
-                                  handler_baton_t handler_ctx[],
-                                  apr_pool_t *pool);
-void
-test_helper_run_requests_expect_ok(CuTest *tc, test_baton_t *tb,
-                                   int num_requests,
-                                   handler_baton_t handler_ctx[],
-                                   apr_pool_t *pool);
 serf_bucket_t* accept_response(serf_request_t *request,
                                serf_bucket_t *stream,
                                void *acceptor_baton,
@@ -348,5 +251,14 @@ run_client_and_mock_servers_loops_expect_ok(CuTest *tc, test_baton_t *tb,
                                             handler_baton_t handler_ctx[],
                                             apr_pool_t *pool);
 
+/* Logs a standard event, with filename & timestamp header */
+void test__log(int verbose_flag, const char *filename, const char *fmt, ...);
+
+/* Logs a socket event, add local and remote ip address:port */
+void test__log_skt(int verbose_flag, const char *filename, apr_socket_t *skt,
+                   const char *fmt, ...);
+/* Logs a standard event, but without prefix. This is useful to build up
+ log lines in parts. */
+void test__log_nopref(int verbose_flag, const char *fmt, ...);
 
 #endif /* TEST_SERF_H */

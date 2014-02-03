@@ -1052,22 +1052,22 @@ static void test_response_no_body_expected(CuTest *tc)
     /* response bucket should consider the blablablablabla as start of the
        next response, in all these cases it should APR_EOF after the empty
        line. */
-    test_server_message_t message_list[] = {
-        { "HTTP/1.1 100 Continue" CRLF
+    const char *message_list[] = {
+        "HTTP/1.1 100 Continue" CRLF
           "Content-Type: text/plain" CRLF
           "Content-Length: 6500000" CRLF
           CRLF
-          "blablablablabla" CRLF },
-        { "HTTP/1.1 204 No Content" CRLF
-            "Content-Type: text/plain" CRLF
-            "Content-Length: 6500000" CRLF
-            CRLF
-            "blablablablabla" CRLF },
-        { "HTTP/1.1 304 Not Modified" CRLF
-            "Content-Type: text/plain" CRLF
-            "Content-Length: 6500000" CRLF
-            CRLF
-            "blablablablabla" CRLF },
+          "blablablablabla" CRLF,
+        "HTTP/1.1 204 No Content" CRLF
+          "Content-Type: text/plain" CRLF
+          "Content-Length: 6500000" CRLF
+          CRLF
+          "blablablablabla" CRLF,
+        "HTTP/1.1 304 Not Modified" CRLF
+          "Content-Type: text/plain" CRLF
+          "Content-Length: 6500000" CRLF
+          CRLF
+          "blablablablabla" CRLF,
     };
 
     alloc = serf_bucket_allocator_create(tb->pool, NULL, NULL);
@@ -1089,9 +1089,9 @@ static void test_response_no_body_expected(CuTest *tc)
     CuAssertIntEquals(tc, 0, len);
 
     /* Test 2: a response with status for which server must not send a body. */
-    for (i = 0; i < sizeof(message_list) / sizeof(test_server_message_t); i++) {
+    for (i = 0; i < sizeof(message_list) / sizeof(const char*); i++) {
 
-        tmp = SERF_BUCKET_SIMPLE_STRING(message_list[i].text, alloc);
+        tmp = SERF_BUCKET_SIMPLE_STRING(message_list[i], alloc);
         bkt = serf_bucket_response_create(tmp, alloc);
 
         status = read_all(bkt, buf, sizeof(buf), &len);

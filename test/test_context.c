@@ -24,7 +24,6 @@
 #include "serf_private.h"
 
 #include "test_serf.h"
-#include "server/test_server.h"
 
 /* Validate that requests are sent and completed in the order of creation. */
 static void test_serf_connection_request_create(CuTest *tc)
