@@ -118,7 +118,6 @@ typedef enum mhAction_t {
             {\
                 MockHTTP *__mh = mh;\
                 mhResponse_t *__resp;\
-                mhResponse_t *__action;\
                 mhRequestMatcher_t *__rm;\
                 mhServCtx_t *__servctx = mhGetServerCtx(__mh);
 
@@ -249,7 +248,7 @@ typedef enum mhAction_t {
 #define EndGiven\
                 /* Assign local variables to NULL to avoid 'variable unused' 
                    warnings. */\
-                __resp = NULL; __rm = NULL; __mh = NULL; __action = NULL;\
+                __resp = NULL; __rm = NULL; __mh = NULL;\
             }
 
 /* Set expectations for a series of requests */
