@@ -270,9 +270,8 @@ struct serf_connection_t {
        port values are filled in. */
     apr_uri_t host_info;
 
-    /* connection and authentication scheme specific information */ 
-    void *authn_baton;
-    void *proxy_authn_baton;
+    /* authentication info for this connection. */
+    serf__authn_info_t authn_info;
 
     /* Time marker when connection begins. */
     apr_time_t connect_time;
@@ -295,6 +294,12 @@ struct serf_connection_t {
     Keep internal for now, probably only useful within serf.
  */
 apr_status_t serf_response_full_become_aggregate(serf_bucket_t *bucket);
+
+/**
+ * Remove the header from the list, do nothing if the header wasn't added.
+ */
+void serf__bucket_headers_remove(serf_bucket_t *headers_bucket,
+                                 const char *header);
 
 /*** Authentication handler declarations ***/
 

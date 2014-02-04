@@ -959,16 +959,24 @@ static apr_status_t cleanup_ssl(void *data)
 
 #endif
 
-static apr_uint32_t have_init_ssl = 0;
+#if !APR_VERSION_AT_LEAST(1,0,0)
+#define apr_atomic_cas32(mem, with, cmp) apr_atomic_cas(mem, with, cmp)
+#endif
+
+enum ssl_init_e
+{
+   INIT_UNINITIALIZED = 0,
+   INIT_BUSY = 1,
+   INIT_DONE = 2
+};
+
+static volatile apr_uint32_t have_init_ssl = INIT_UNINITIALIZED;
 
 static void init_ssl_libraries(void)
 {
     apr_uint32_t val;
-#if APR_VERSION_AT_LEAST(1,0,0)
-    val = apr_atomic_xchg32(&have_init_ssl, 1);
-#else
-    val = apr_atomic_cas(&have_init_ssl, 1, 0);
-#endif
+
+    val = apr_atomic_cas32(&have_init_ssl, INIT_BUSY, INIT_UNINITIALIZED);
 
     if (!val) {
 #if APR_HAS_THREADS
@@ -1016,6 +1024,19 @@ static void init_ssl_libraries(void)
 
         apr_pool_cleanup_register(ssl_pool, NULL, cleanup_ssl, cleanup_ssl);
 #endif
+        apr_atomic_cas32(&have_init_ssl, INIT_DONE, INIT_BUSY);
+    }
+  else
+    {
+        /* Make sure we don't continue before the initialization in another
+           thread has completed */
+        while (val != INIT_DONE) {
+            apr_sleep(APR_USEC_PER_SEC / 1000);
+      
+            val = apr_atomic_cas32(&have_init_ssl,
+                                   INIT_UNINITIALIZED,
+                                   INIT_UNINITIALIZED);            
+        }
     }
 }
 

@@ -1971,7 +1971,8 @@ ssltunnel_basic_authn_callback(char **username,
    tunnel. Retry the authentication a few times to test requeueing of the 
    CONNECT request. */
 static void ssltunnel_basic_auth(CuTest *tc, const char *server_resp_hdrs,
-                                 const char *proxy_resp_hdrs)
+                                 const char *proxy_407_resp_hdrs,
+                                 const char *proxy_200_resp_hdrs)
 {
     test_baton_t *tb;
     handler_baton_t handler_ctx[1];
@@ -2012,7 +2013,7 @@ static void ssltunnel_basic_auth(CuTest *tc, const char *server_resp_hdrs,
         "%s"
         CRLF
         "1" CRLF CRLF
-        "0" CRLF CRLF, proxy_resp_hdrs);
+        "0" CRLF CRLF, proxy_407_resp_hdrs);
     action_list_proxy[1].kind = SERVER_RESPOND;
     action_list_proxy[1].text = apr_psprintf(test_pool,
         "HTTP/1.1 407 Unauthorized" CRLF
@@ -2021,7 +2022,7 @@ static void ssltunnel_basic_auth(CuTest *tc, const char *server_resp_hdrs,
         "%s"
         CRLF
         "1" CRLF CRLF
-        "0" CRLF CRLF, proxy_resp_hdrs);
+        "0" CRLF CRLF, proxy_407_resp_hdrs);
 
     action_list_proxy[2].kind = SERVER_RESPOND;
     action_list_proxy[2].text = apr_psprintf(test_pool,
@@ -2031,10 +2032,13 @@ static void ssltunnel_basic_auth(CuTest *tc, const char *server_resp_hdrs,
         "%s"
         CRLF
         "1" CRLF CRLF
-        "0" CRLF CRLF, proxy_resp_hdrs);
+        "0" CRLF CRLF, proxy_407_resp_hdrs);
 
     action_list_proxy[3].kind = SERVER_RESPOND;
-    action_list_proxy[3].text = CHUNKED_EMPTY_RESPONSE;
+    action_list_proxy[3].text = apr_psprintf(test_pool,
+        "HTTP/1.1 200 Connection Established" CRLF
+        "%s"
+        CRLF, proxy_200_resp_hdrs);
     /* Forward the remainder of the data to the server without validation */
     action_list_proxy[4].kind = PROXY_FORWARD;
     action_list_proxy[4].text = "https://localhost:" SERV_PORT_STR;
@@ -2120,19 +2124,25 @@ static void ssltunnel_basic_auth(CuTest *tc, const char *server_resp_hdrs,
 static void test_ssltunnel_basic_auth(CuTest *tc)
 {
     /* KeepAlive On for both proxy and server */
-    ssltunnel_basic_auth(tc, "", "");
+    ssltunnel_basic_auth(tc, "", "", "");
 }
 
 static void test_ssltunnel_basic_auth_server_has_keepalive_off(CuTest *tc)
 {
     /* Add Connection:Close header to server response */
-    ssltunnel_basic_auth(tc, "Connection: close" CRLF, "");
+    ssltunnel_basic_auth(tc, "Connection: close" CRLF, "", "");
 }
 
 static void test_ssltunnel_basic_auth_proxy_has_keepalive_off(CuTest *tc)
 {
-    /* Add Connection:Close header to proxy response */
-    ssltunnel_basic_auth(tc, "", "Connection: close" CRLF);
+    /* Add Connection:Close header to proxy 407 response */
+    ssltunnel_basic_auth(tc, "", "Connection: close" CRLF, "");
+}
+
+static void test_ssltunnel_basic_auth_proxy_close_conn_on_200resp(CuTest *tc)
+{
+    /* Add Connection:Close header to proxy 200 Conn. Establ. response  */
+    ssltunnel_basic_auth(tc, "", "", "Connection: close" CRLF);
 }
 
 static apr_status_t
@@ -2285,6 +2295,7 @@ CuSuite *test_context(void)
     SUITE_ADD_TEST(suite, test_ssltunnel_basic_auth);
     SUITE_ADD_TEST(suite, test_ssltunnel_basic_auth_server_has_keepalive_off);
     SUITE_ADD_TEST(suite, test_ssltunnel_basic_auth_proxy_has_keepalive_off);
+    SUITE_ADD_TEST(suite, test_ssltunnel_basic_auth_proxy_close_conn_on_200resp);
     SUITE_ADD_TEST(suite, test_ssltunnel_digest_auth);
 
     return suite;
