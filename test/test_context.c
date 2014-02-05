@@ -1772,7 +1772,7 @@ static void ssltunnel_basic_auth(CuTest *tc, int serv_close_conn,
                                                handler_ctx, tb->pool);
     CuAssertIntEquals(tc, APR_SUCCESS, status);
     Verify(tb->mh)
-      CuAssertTrue(tc, VerifyAllRequestsReceivedInOrder);
+      CuAssertTrue(tc, mhVerifyAllRequestsReceived);
     EndVerify
 
     CuAssertIntEquals(tc, num_requests_recvd, tb->sent_requests->nelts);
@@ -1856,6 +1856,8 @@ static void test_ssltunnel_digest_auth(CuTest *tc)
     serf_config_authn_types(tb->context, SERF_AUTHN_BASIC | SERF_AUTHN_DIGEST);
     serf_config_credentials_callback(tb->context, proxy_digest_authn_callback);
 
+    /* Response string includes port 30080, so test will fail if the server
+       runs on another port */
     digest = apr_psprintf(tb->pool, "Digest realm=\"Test Suite Proxy\", "
         "username=\"serf\", nonce=\"ABCDEF1234567890\", uri=\"localhost:%u\", "
         "response=\"b1d5a4f26e5a73a7d154defb95a74a26\", opaque=\"myopaque\", "
