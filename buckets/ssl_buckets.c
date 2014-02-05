@@ -655,7 +655,11 @@ static apr_status_t ssl_decrypt(void *baton, apr_size_t bufsize,
                 status = ctx->pending_err;
                 ctx->pending_err = APR_SUCCESS;
             } else {
-                ctx->fatal_err = status = SERF_ERROR_SSL_COMM_FAILED;
+                if (SSL_in_init(ctx->ssl)
+                    ctx->fatal_err = SERF_ERROR_SSL_SETUP_FAILED;
+                else
+                    ctx->fatal_err = SERF_ERROR_SSL_COMM_FAILED;
+                status = SERF_ERROR_SSL_COMM_FAILED;
                 log_ssl_error(ctx);
             }
             break;
@@ -824,7 +828,11 @@ static apr_status_t ssl_encrypt(void *baton, apr_size_t bufsize,
                             ctx->pending_err = APR_SUCCESS;
                         }
                         else {
-                            ctx->fatal_err = status = SERF_ERROR_SSL_COMM_FAILED;
+                            if (SSL_in_init(ctx->ssl)
+                                ctx->fatal_err = SERF_ERROR_SSL_SETUP_FAILED;
+                            else
+                                ctx->fatal_err = SERF_ERROR_SSL_COMM_FAILED;
+                            status = ctx->fatal_err;
                             log_ssl_error(ctx);
                         }
                         break;

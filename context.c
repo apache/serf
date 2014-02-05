@@ -386,6 +386,8 @@ const char *serf_error_string(apr_status_t errcode)
         return "The connection timed out";
     case SERF_ERROR_SSL_COMM_FAILED:
         return "An error occurred during SSL communication";
+    case SERF_ERROR_SSL_SETUP_FAILED:
+        return "An error occurred during SSL setup";
     case SERF_ERROR_SSL_CERT_FAILED:
         return "An SSL certificate related error occurred ";
     case SERF_ERROR_AUTHN_FAILED:

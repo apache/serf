@@ -107,6 +107,9 @@ typedef struct serf_config_t serf_config_t;
 /* SSL communications related errors */
 #define SERF_ERROR_SSL_COMM_FAILED (SERF_ERROR_START + 71)
 
+/* SSL handshake failed */
+#define SERF_ERROR_SSL_SETUP_FAILED (SERF_ERROR_START + 72)
+
 /* General authentication related errors */
 #define SERF_ERROR_AUTHN_FAILED (SERF_ERROR_START + 90)
 
