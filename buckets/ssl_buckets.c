@@ -659,7 +659,7 @@ static apr_status_t ssl_decrypt(void *baton, apr_size_t bufsize,
                     ctx->fatal_err = SERF_ERROR_SSL_SETUP_FAILED;
                 else
                     ctx->fatal_err = SERF_ERROR_SSL_COMM_FAILED;
-                status = SERF_ERROR_SSL_COMM_FAILED;
+                status = ctx->fatal_err;
                 log_ssl_error(ctx);
             }
             break;
