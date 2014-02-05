@@ -636,9 +636,13 @@ static apr_status_t ssl_decrypt(void *baton, apr_size_t bufsize,
         case SSL_ERROR_SYSCALL:
             /* bio_bucket_read() or bio_bucket_write() returned -1. */
             *len = 0;
-            /* Return the underlying status that caused OpenSSL to fail */
+            /* Return the underlying status that caused OpenSSL to fail.
+
+               There is no ssl status to log here, as the only reason
+               the call failed is that our data delivery function didn't
+               deliver data. And even that is already logged by the info
+               callback if you turn up the logging level high enough. */
             status = ctx->crypt_status;
-            log_ssl_error(ctx);
             break;
         case SSL_ERROR_WANT_READ:
         case SSL_ERROR_WANT_WRITE:
