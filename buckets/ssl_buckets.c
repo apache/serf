@@ -655,7 +655,7 @@ static apr_status_t ssl_decrypt(void *baton, apr_size_t bufsize,
                 status = ctx->pending_err;
                 ctx->pending_err = APR_SUCCESS;
             } else {
-                if (SSL_in_init(ctx->ssl)
+                if (SSL_in_init(ctx->ssl))
                     ctx->fatal_err = SERF_ERROR_SSL_SETUP_FAILED;
                 else
                     ctx->fatal_err = SERF_ERROR_SSL_COMM_FAILED;
@@ -828,7 +828,7 @@ static apr_status_t ssl_encrypt(void *baton, apr_size_t bufsize,
                             ctx->pending_err = APR_SUCCESS;
                         }
                         else {
-                            if (SSL_in_init(ctx->ssl)
+                            if (SSL_in_init(ctx->ssl))
                                 ctx->fatal_err = SERF_ERROR_SSL_SETUP_FAILED;
                             else
                                 ctx->fatal_err = SERF_ERROR_SSL_COMM_FAILED;
