@@ -428,7 +428,7 @@ run_client_and_mock_servers_loops_expect_ok(CuTest *tc, test_baton_t *tb,
     /* Check that the requests were sent and reveived by the server in the order
      we created them */
     Verify(tb->mh)
-      CuAssertTrue(tc, VerifyAllRequestsReceivedInOrder);
+      CuAssert(tc, ErrorMessage, VerifyAllRequestsReceivedInOrder);
     EndVerify
 
     CuAssertIntEquals(tc, num_requests, tb->sent_requests->nelts);
