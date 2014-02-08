@@ -392,8 +392,10 @@ run_client_and_mock_servers_loops(test_baton_t *tb,
 
         /* run server event loop */
         err = mhRunServerLoop(mh);
-        if (err == MOCKHTTP_TEST_FAILED)
-            return SERF_ERROR_ISSUE_IN_TESTSUITE;
+
+        /* Even if the mock server returned an error, it may have written 
+           something to the client. So process that data first, handle the error
+           later. */
 
         /* run client event loop */
         status = serf_context_run(tb->context, 0, iter_pool);
@@ -407,6 +409,9 @@ run_client_and_mock_servers_loops(test_baton_t *tb,
 
         if (!done && (apr_time_now() > finish_time))
             return APR_ETIMEDOUT;
+
+        if (err == MOCKHTTP_TEST_FAILED)
+            return SERF_ERROR_ISSUE_IN_TESTSUITE;
     }
     apr_pool_destroy(iter_pool);
     
@@ -467,7 +472,7 @@ apr_status_t setup_test_mock_proxy(test_baton_t *tb)
 void setup_test_mock_https_server(test_baton_t *tb,
                                   const char *keyfile,
                                   const char **certfiles,
-                                  const char *client_cn) /* TODO: remove arg */
+                                  test_verify_clientcert_t t)
 {
     if (!tb->mh)
         tb->mh = mhInit();
@@ -476,7 +481,10 @@ void setup_test_mock_https_server(test_baton_t *tb,
       SetupServer(WithHTTPS, WithPort(30080),
                   WithCertificateKeyFile(keyfile),
                   WithCertificateFileArray(certfiles),
-                  WithOptionalClientCertificate)
+                  t == test_clientcert_mandatory ?
+                          WithRequiredClientCertificate :
+                      t == test_clientcert_optional ?
+                              WithOptionalClientCertificate : 0)
     EndInit
     tb->serv_port = mhServerPortNr(tb->mh);
     tb->serv_host = apr_psprintf(tb->pool, "%s:%d", "localhost", tb->serv_port);

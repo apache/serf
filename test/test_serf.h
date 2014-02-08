@@ -97,6 +97,12 @@ typedef struct test_baton_t {
     MockHTTP *mh;
 } test_baton_t;
 
+typedef enum test_verify_clientcert_t {
+    test_clientcert_none,
+    test_clientcert_optional,
+    test_clientcert_mandatory,
+} test_verify_clientcert_t;
+
 apr_status_t default_https_conn_setup(apr_socket_t *skt,
                                       serf_bucket_t **input_bkt,
                                       serf_bucket_t **output_bkt,
@@ -231,7 +237,7 @@ void setup_test_mock_server(test_baton_t *tb);
 void setup_test_mock_https_server(test_baton_t *tb,
                                   const char *keyfile,
                                   const char **certfiles,
-                                  const char *client_cn);
+                                  test_verify_clientcert_t t);
 
 apr_status_t setup_test_mock_proxy(test_baton_t *tb);
 
