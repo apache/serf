@@ -104,7 +104,7 @@ struct mhServCtx_t {
     /* HTTPS specific */
     const char *keyFile;
     apr_array_header_t *certFiles;
-    bool clientCert;
+    mhClientCertVerification_t clientCert;
 
     apr_array_header_t *reqsReceived;   /* array of mhRequest_t *'s */
     apr_array_header_t *reqMatchers;    /* array of ReqMatcherRespPair_t *'s */

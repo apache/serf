@@ -476,7 +476,7 @@ void setup_test_mock_https_server(test_baton_t *tb,
       SetupServer(WithHTTPS, WithPort(30080),
                   WithCertificateKeyFile(keyfile),
                   WithCertificateFileArray(certfiles),
-                  WithClientCertificate)
+                  WithOptionalClientCertificate)
     EndInit
     tb->serv_port = mhServerPortNr(tb->mh);
     tb->serv_host = apr_psprintf(tb->pool, "%s:%d", "localhost", tb->serv_port);
