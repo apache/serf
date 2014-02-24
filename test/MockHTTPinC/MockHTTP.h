@@ -54,6 +54,17 @@ typedef enum mhClientCertVerification_t {
     mhCCVerifyFailIfNoPeerSet,
 } mhClientCertVerification_t;
 
+typedef enum mhSSLProtocol_t {
+    mhProtoUnspecified = 0x00,
+    mhProtoAllSecure   = 0x1E,
+    mhProtoAll    = 0xFF,
+    mhProtoSSLv2  = 0x01,
+    mhProtoSSLv3  = 0x02,
+    mhProtoTLSv1  = 0x04,
+    mhProtoTLSv11 = 0x08,
+    mhProtoTLSv12 = 0x10,
+} mhSSLProtocol_t;
+
 /* Note: the variadic macro's used here require C99. */
 /* TODO: we can provide xxx1(x), xxx2(x,y)... macro's for C89 compilers */
 
@@ -111,6 +122,11 @@ typedef enum mhClientCertVerification_t {
 #define     WithRequiredClientCertificate\
                 mhSetServerRequestClientCert(__servctx,\
                                              mhCCVerifyFailIfNoPeerSet)
+#define     WithSSLv2     mhAddSSLProtocol(__servctx, mhProtoSSLv2)
+#define     WithSSLv3     mhAddSSLProtocol(__servctx, mhProtoSSLv3)
+#define     WithTLSv1     mhAddSSLProtocol(__servctx, mhProtoTLSv1)
+#define     WithTLSv11    mhAddSSLProtocol(__servctx, mhProtoTLSv11)
+#define     WithTLSv12    mhAddSSLProtocol(__servctx, mhProtoTLSv12)
 
 /**
  * Stub requests to the proxy or server, return canned responses. Define the
@@ -410,6 +426,7 @@ int mhSetServerCertKeyFile(mhServCtx_t *ctx, const char *keyFile);
 int mhAddServerCertFiles(mhServCtx_t *ctx, ...);
 int mhAddServerCertFileArray(mhServCtx_t *ctx, const char **certFiles);
 int mhSetServerRequestClientCert(mhServCtx_t *ctx, mhClientCertVerification_t v);
+int mhAddSSLProtocol(mhServCtx_t *ctx, mhSSLProtocol_t proto);
 
 /* Define request stubs */
 mhRequestMatcher_t *mhGivenRequest(MockHTTP *mh, const char *method, ...);

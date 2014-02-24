@@ -1009,6 +1009,57 @@ static void test_ssl_handshake(CuTest *tc)
                                                 handler_ctx, tb->pool);
 }
 
+/* Validate that connecting to a SSLv2 only server fails. */
+static void test_ssl_handshake_nosslv2(CuTest *tc)
+{
+    test_baton_t *tb = tc->testBaton;
+    handler_baton_t handler_ctx[1];
+    const int num_requests = sizeof(handler_ctx)/sizeof(handler_ctx[0]);
+    int expected_failures;
+    apr_status_t status;
+    static const char *server_cert[] = { "test/certs/serfservercert.pem",
+        NULL };
+
+
+    /* Set up a test context and a https server */
+    tb->mh = mhInit();
+
+    InitMockServers(tb->mh)
+      SetupServer(WithHTTPS, WithPort(30080),
+                  WithCertificateKeyFile("test/certs/serfserverkey.pem"),
+                  WithCertificateFileArray(server_cert),
+                  WithSSLv2)  /* SSLv2 only */
+    EndInit
+
+    tb->serv_port = mhServerPortNr(tb->mh);
+    tb->serv_host = apr_psprintf(tb->pool, "%s:%d", "localhost", tb->serv_port);
+    tb->serv_url = apr_psprintf(tb->pool, "https://%s", tb->serv_host);
+
+    status = setup_test_client_https_context(tb, NULL,
+                                             ssl_server_cert_cb_expect_failures,
+                                             tb->pool);
+    CuAssertIntEquals(tc, APR_SUCCESS, status);
+
+    /* This unknown failures is X509_V_ERR_UNABLE_TO_VERIFY_LEAF_SIGNATURE, 
+       meaning the chain has only the server cert. A good candidate for its
+       own failure code. */
+    expected_failures = SERF_SSL_CERT_UNKNOWNCA;
+    tb->user_baton = &expected_failures;
+
+    Given(tb->mh)
+      GETRequest(URLEqualTo("/"), ChunkedBodyEqualTo("1"),
+                 HeaderEqualTo("Host", tb->serv_host))
+        Respond(WithCode(200), WithChunkedBody(""))
+    EndGiven
+
+    create_new_request(tb, &handler_ctx[0], "GET", "/", 1);
+
+    status = run_client_and_mock_servers_loops(tb, num_requests,
+                                               handler_ctx, tb->pool);
+    CuAssert(tc, "Serf does not disable SSLv2, but it should!",
+             status != APR_SUCCESS);
+}
+
 /* Set up the ssl context with the CA and root CA certificates needed for
    successful valiation of the server certificate. */
 static apr_status_t
@@ -2062,6 +2113,7 @@ CuSuite *test_context(void)
     SUITE_ADD_TEST(suite, test_connection_large_response);
     SUITE_ADD_TEST(suite, test_connection_large_request);
     SUITE_ADD_TEST(suite, test_ssl_handshake);
+    SUITE_ADD_TEST(suite, test_ssl_handshake_nosslv2);
     SUITE_ADD_TEST(suite, test_ssl_trust_rootca);
     SUITE_ADD_TEST(suite, test_ssl_application_rejects_cert);
     SUITE_ADD_TEST(suite, test_ssl_certificate_chain_with_anchor);

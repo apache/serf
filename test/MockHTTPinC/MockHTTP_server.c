@@ -70,6 +70,7 @@ struct _mhClientCtx_t {
     apr_int16_t reqevents;
     bool closeConn;
     sslCtx_t *ssl_ctx;
+    int protocols;                  /* SSL protocol versions */
 
     send_func_t send;
     receive_func_t read;
@@ -228,6 +229,7 @@ initServCtx(const MockHTTP *mh, const char *hostname, apr_port_t port)
                                                sizeof(ReqMatcherRespPair_t *));
     ctx->mode = ModeServer;
     ctx->clientCert = mhCCVerifyNone;
+    ctx->protocols = mhProtoUnspecified;
 
     apr_pool_cleanup_register(pool, ctx,
                               cleanupServer,
@@ -1007,6 +1009,7 @@ static _mhClientCtx_t *initClientCtx(apr_pool_t *pool, mhServCtx_t *serv_ctx,
         cctx->keyFile = serv_ctx->keyFile;
         cctx->certFiles = serv_ctx->certFiles;
         cctx->clientCert = serv_ctx->clientCert;
+        cctx->protocols = serv_ctx->protocols;
         initSSLCtx(cctx);
     }
 #endif
@@ -1104,7 +1107,10 @@ void mhConfigAndStartServer(mhServCtx_t *serv_ctx, ...)
     apr_status_t status;
     mhError_t err;
 
-    /* No config to do here, has been done during parameter evaluation */
+    if (serv_ctx->protocols == mhProtoUnspecified) {
+        serv_ctx->protocols = mhProtoAllSecure;
+    }
+    /* No more config to do here, has been done during parameter evaluation */
     status = startServer(serv_ctx);
     if (status == MH_STATUS_WAITING)
         err = MOCKHTTP_WAITING;
@@ -1193,6 +1199,11 @@ int mhSetServerRequestClientCert(mhServCtx_t *ctx, mhClientCertVerification_t v)
     return YES;
 }
 
+int mhAddSSLProtocol(mhServCtx_t *ctx, mhSSLProtocol_t proto)
+{
+    ctx->protocols |= proto;
+    return YES;
+}
 
 mhServCtx_t *mhNewProxy(MockHTTP *mh)
 {
@@ -1417,7 +1428,23 @@ static apr_status_t initSSLCtx(_mhClientCtx_t *cctx)
         const char *certfile;
         int i;
 
+        /* Configure supported protocol versions */
         ssl_ctx->ctx = SSL_CTX_new(SSLv23_server_method());
+        if (! (cctx->protocols & mhProtoSSLv2))
+            SSL_CTX_set_options(ssl_ctx->ctx, SSL_OP_NO_SSLv2);
+        if (! (cctx->protocols & mhProtoSSLv3))
+            SSL_CTX_set_options(ssl_ctx->ctx, SSL_OP_NO_SSLv3);
+        if (! (cctx->protocols & mhProtoTLSv1))
+            SSL_CTX_set_options(ssl_ctx->ctx, SSL_OP_NO_TLSv1);
+#ifdef SSL_OP_NO_TLSv1_1
+        if (! (cctx->protocols & mhProtoTLSv11))
+            SSL_CTX_set_options(ssl_ctx->ctx, SSL_OP_NO_TLSv1_1);
+#endif
+#ifdef SSL_OP_NO_TLSv1_2
+        if (! (cctx->protocols & mhProtoTLSv12))
+            SSL_CTX_set_options(ssl_ctx->ctx, SSL_OP_NO_TLSv1_2);
+#endif
+
         SSL_CTX_set_default_passwd_cb(ssl_ctx->ctx, pem_passwd_cb);
         if (SSL_CTX_use_PrivateKey_file(ssl_ctx->ctx, cctx->keyFile,
                                         SSL_FILETYPE_PEM) != 1) {
