@@ -1352,18 +1352,36 @@ apr_status_t serf_ssl_load_cert_file(
     const char *file_path,
     apr_pool_t *pool)
 {
-    FILE *fp = fopen(file_path, "r");
+    apr_file_t *cert_file;
+    apr_status_t status;
+    BIO *bio;
+    X509 *ssl_cert;
 
-    if (fp) {
-        X509 *ssl_cert = PEM_read_X509(fp, NULL, NULL, NULL);
-        fclose(fp);
+    /* We use an apr file instead of an stdio.h file to avoid usage problems
+       on Windows. See http://www.openssl.org/support/faq.html#prog2 */
+    status = apr_file_open(&cert_file, file_path, APR_READ, APR_OS_DEFAULT,
+                           pool);
 
-        if (ssl_cert) {
-            *cert = apr_palloc(pool, sizeof(serf_ssl_certificate_t));
-            (*cert)->ssl_cert = ssl_cert;
+    if (status) {
+        return status;
+    }
 
-            return APR_SUCCESS;
-        }
+    init_ssl_libraries();
+
+    bio = BIO_new(&bio_file_method);
+    bio->ptr = cert_file;
+
+    ssl_cert = PEM_read_bio_X509(bio, NULL, NULL, NULL);
+
+    apr_file_close(cert_file);
+    BIO_free(bio);
+
+    if (ssl_cert) {
+        /* TODO: Setup pool cleanup to free certificate */
+        *cert = apr_palloc(pool, sizeof(serf_ssl_certificate_t));
+        (*cert)->ssl_cert = ssl_cert;
+
+        return APR_SUCCESS;
     }
 
     return SERF_ERROR_SSL_CERT_FAILED;
