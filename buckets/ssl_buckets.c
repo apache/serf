@@ -1090,6 +1090,7 @@ static int ssl_need_client_cert(SSL *ssl, X509 **cert, EVP_PKEY **pkey)
 
         ctx->cert_path = cert_path;
         p12 = d2i_PKCS12_bio(bio, NULL);
+        BIO_free(bio);
         apr_file_close(cert_file);
 
         i = PKCS12_parse(p12, NULL, pkey, cert, NULL);
