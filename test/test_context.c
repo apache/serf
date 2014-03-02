@@ -1858,6 +1858,133 @@ static void test_ssltunnel_basic_auth_proxy_close_conn_on_200resp(CuTest *tc)
 }
 
 static apr_status_t
+basic_authn_callback_2ndtry(char **username,
+                            char **password,
+                            serf_request_t *request, void *baton,
+                            int code, const char *authn_type,
+                            const char *realm,
+                            apr_pool_t *pool)
+{
+    handler_baton_t *handler_ctx = baton;
+    test_baton_t *tb = handler_ctx->tb;
+    int secondtry = tb->result_flags & TEST_RESULT_AUTHNCB_CALLED;
+
+    test__log(TEST_VERBOSE, __FILE__, "ssltunnel_basic_authn_callback\n");
+
+    tb->result_flags |= TEST_RESULT_AUTHNCB_CALLED;
+
+    if (strcmp("Basic", authn_type) != 0)
+        return SERF_ERROR_ISSUE_IN_TESTSUITE;
+
+    if (code == 401) {
+        if (strcmp(apr_psprintf(pool, "<%s> Test Suite", tb->serv_url),
+                   realm) != 0)
+            return SERF_ERROR_ISSUE_IN_TESTSUITE;
+
+        *username = "serf";
+        *password = secondtry ? "serftest" : "wrongpwd";
+    }
+    else if (code == 407) {
+        if (strcmp(apr_psprintf(pool, "<http://localhost:%u> Test Suite Proxy",
+                                tb->proxy_port), realm) != 0)
+            return SERF_ERROR_ISSUE_IN_TESTSUITE;
+
+        *username = "serfproxy";
+        *password = secondtry ? "serftest" : "wrongpwd";
+    } else
+        return SERF_ERROR_ISSUE_IN_TESTSUITE;
+
+    test__log(TEST_VERBOSE, __FILE__, "ssltunnel_basic_authn_callback finished successfully.\n");
+
+    return APR_SUCCESS;
+}
+
+
+/* This test used to make serf crash on Windows when the server aborting the
+   connection resulted in APR_ECONNRESET on the client side. 
+ 
+   This can be simulated by applying this change to serf__handle_auth_response 
+   right after the discard_body call.
+
+   if (request->conn->completed_responses > 0 && status == APR_EOF)
+       status = APR_ECONNRESET;
+ 
+   TODO: create a mock socket or socket bucket wrapper to simulate 
+         APR_ECONNRESET.
+ */
+static void test_ssltunnel_basic_auth_2ndtry(CuTest *tc)
+{
+    test_baton_t *tb = tc->testBaton;
+    handler_baton_t handler_ctx[1];
+    int num_requests_sent, num_requests_recvd;
+    apr_status_t status;
+
+    /* Set up a test context with a server and a proxy. Serf should send a
+       CONNECT request to the server. */
+    setup_test_mock_https_server(tb, "test/certs/serfserverkey.pem",
+                                 server_certs,
+                                 test_clientcert_none);
+    CuAssertIntEquals(tc, APR_SUCCESS, setup_test_mock_proxy(tb));
+    CuAssertIntEquals(tc, APR_SUCCESS,
+            setup_serf_https_context_with_proxy(tb, https_set_root_ca_conn_setup,
+                                                NULL, /* No server cert cb */
+                                                tb->pool));
+
+    serf_config_authn_types(tb->context, SERF_AUTHN_BASIC);
+    serf_config_credentials_callback(tb->context, basic_authn_callback_2ndtry);
+
+    Given(tb->mh)
+      RequestsReceivedByServer
+        GETRequest(URLEqualTo("/"))
+          Respond(WithCode(200),WithChunkedBody(""))
+
+      RequestsReceivedByProxy
+        /* Don't close connection when client didn't provide creds */
+        HTTPRequest("CONNECT", URLEqualTo(tb->serv_host),
+                    HeaderNotSet("Proxy-Authorization"))
+            Respond(WithCode(407), WithChunkedBody(""),
+                    WithHeader("Proxy-Authenticate",
+                               "Basic realm=\"Test Suite Proxy\""))
+        /* serfproxy:wrongpwd fails, close connection. */
+        HTTPRequest("CONNECT", URLEqualTo(tb->serv_host),
+                    HeaderNotEqualTo("Proxy-Authorization",
+                                     "Basic c2VyZnByb3h5OnNlcmZ0ZXN0"))
+            Respond(WithCode(407), WithChunkedBody(""),
+                    WithHeader("Proxy-Authenticate",
+                               "Basic realm=\"Test Suite Proxy\""))
+            CloseConnection
+        /* serfproxy:serftest succeeds */
+        HTTPRequest("CONNECT", URLEqualTo(tb->serv_host),
+                    HeaderEqualTo("Proxy-Authorization",
+                                  "Basic c2VyZnByb3h5OnNlcmZ0ZXN0"))
+          Respond(WithCode(200), WithChunkedBody(""))
+          SetupSSLTunnel
+    Expect
+      AllRequestsReceivedInOrder
+    EndGiven
+
+    create_new_request(tb, &handler_ctx[0], "GET", "/", 1);
+
+    /* Test that a request is retried and authentication headers are set
+       correctly. */
+    num_requests_sent = 1;
+    num_requests_recvd = 1;
+
+    status = run_client_and_mock_servers_loops(tb, num_requests_sent,
+                                               handler_ctx, tb->pool);
+    CuAssertIntEquals(tc, APR_SUCCESS, status);
+    Verify(tb->mh)
+      CuAssert(tc, ErrorMessage, VerifyAllRequestsReceived);
+    EndVerify
+
+    CuAssertIntEquals(tc, num_requests_recvd, tb->sent_requests->nelts);
+    CuAssertIntEquals(tc, num_requests_recvd, tb->accepted_requests->nelts);
+    CuAssertIntEquals(tc, num_requests_sent, tb->handled_requests->nelts);
+
+    CuAssertTrue(tc, tb->result_flags & TEST_RESULT_AUTHNCB_CALLED);
+}
+
+static apr_status_t
 proxy_digest_authn_callback(char **username,
                             char **password,
                             serf_request_t *request, void *baton,
@@ -2131,6 +2258,7 @@ CuSuite *test_context(void)
     SUITE_ADD_TEST(suite, test_ssltunnel_basic_auth_server_has_keepalive_off);
     SUITE_ADD_TEST(suite, test_ssltunnel_basic_auth_proxy_has_keepalive_off);
     SUITE_ADD_TEST(suite, test_ssltunnel_basic_auth_proxy_close_conn_on_200resp);
+    SUITE_ADD_TEST(suite, test_ssltunnel_basic_auth_2ndtry);
     SUITE_ADD_TEST(suite, test_ssltunnel_digest_auth);
     SUITE_ADD_TEST(suite, test_ssltunnel_spnego_authn);
     SUITE_ADD_TEST(suite, test_server_spnego_authn);

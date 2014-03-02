@@ -936,6 +936,8 @@ static apr_status_t processServer(mhServCtx_t *ctx, _mhClientCtx_t *cctx,
                         _mhLog(MH_VERBOSE, cctx->skt, "Renegotiating SSL "
                                "session.\n");
                         renegotiateSSLSession(cctx);
+                    } else if (action == mhActionCloseConnection) {
+                        resp->closeConn = YES; /* close conn after response */
                     }
                 } else {
                     ctx->mh->verifyStats->requestsNotMatched++;
@@ -1444,6 +1446,15 @@ static apr_status_t initSSLCtx(_mhClientCtx_t *cctx)
         if (! (cctx->protocols & mhProtoTLSv12))
             SSL_CTX_set_options(ssl_ctx->ctx, SSL_OP_NO_TLSv1_2);
 #endif
+
+        if (cctx->protocols == mhProtoSSLv2) {
+            /* In recent versions of OpenSSL, SSLv2 has been disabled by removing
+               all SSLv2 ciphers from the cipher string. 
+               If SSLv2 is the only protocol this test wants to be enabled,
+               re-add the SSLv2 ciphers. */
+            int result = SSL_CTX_set_cipher_list(ssl_ctx->ctx, "SSLv2");
+            /* ignore result */
+        }
 
         SSL_CTX_set_default_passwd_cb(ssl_ctx->ctx, pem_passwd_cb);
         if (SSL_CTX_use_PrivateKey_file(ssl_ctx->ctx, cctx->keyFile,

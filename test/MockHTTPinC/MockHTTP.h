@@ -46,6 +46,7 @@ typedef enum mhAction_t {
     mhActionInitiateProxyConn,
     mhActionInitiateSSLTunnel,
     mhActionSSLRenegotiate,
+    mhActionCloseConnection,
 } mhAction_t;
 
 typedef enum mhClientCertVerification_t {
@@ -189,6 +190,10 @@ typedef enum mhSSLProtocol_t {
 #define     HeaderEqualTo(h, v)\
                 mhMatchHeaderEqualTo(__mh, (h), (v))
 
+/* Match a request header's value. */
+#define     HeaderNotEqualTo(h, v)\
+                mhMatchHeaderNotEqualTo(__mh, (h), (v))
+
 /* Match a request with the specified header not set */
 #define     HeaderNotSet(h)\
                 mhMatchHeaderEqualTo(__mh, (h), NULL)
@@ -240,7 +245,9 @@ typedef enum mhSSLProtocol_t {
 #define   SSLRenegotiate\
                 mhNewActionForRequest(__servctx, __rm,\
                                       mhActionSSLRenegotiate);
-
+#define   CloseConnection\
+                mhNewActionForRequest(__servctx, __rm,\
+                                      mhActionCloseConnection);
 /* Set the HTTP response code. Default: 200 OK */
 #define     WithCode(x)\
                 mhRespSetCode(__resp, (x))
@@ -450,6 +457,8 @@ mhMatchingPattern_t *mhMatchChunkedBodyEqualTo(const MockHTTP *mh,
 mhMatchingPattern_t *mhMatchChunkedBodyChunksEqualTo(const MockHTTP *mh, ...);
 mhMatchingPattern_t *mhMatchHeaderEqualTo(const MockHTTP *mh,
                                           const char *hdr, const char *value);
+mhMatchingPattern_t *mhMatchHeaderNotEqualTo(const MockHTTP *mh,
+                                             const char *hdr, const char *value);
 
 void mhGivenConnSetup(MockHTTP *mh, ...);
 mhMatchingPattern_t *mhMatchClientCertCNEqualTo(const MockHTTP *mh,

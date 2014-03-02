@@ -406,6 +406,28 @@ mhMatchHeaderEqualTo(const MockHTTP *mh, const char *hdr, const char *value)
     return mp;
 }
 
+static bool
+header_not_matcher(apr_pool_t *pool, const mhMatchingPattern_t *mp,
+                   const mhRequest_t *req)
+{
+    const char *actual = getHeader(pool, req->hdrs, mp->baton2);
+    return !str_matcher(mp, actual);
+}
+
+mhMatchingPattern_t *
+mhMatchHeaderNotEqualTo(const MockHTTP *mh, const char *hdr, const char *value)
+{
+    apr_pool_t *pool = mh->pool;
+
+    mhMatchingPattern_t *mp = apr_pcalloc(pool, sizeof(mhMatchingPattern_t));
+    mp->baton = apr_pstrdup(pool, value);
+    mp->baton2 = apr_pstrdup(pool, hdr);
+    mp->matcher = header_not_matcher;
+    mp->describe_key = "Header not equal to";
+    mp->describe_value = apr_psprintf(pool, "%s: %s", hdr, value);
+    return mp;
+}
+
 static bool method_matcher(apr_pool_t *pool, const mhMatchingPattern_t *mp,
                            const mhRequest_t *req)
 {
