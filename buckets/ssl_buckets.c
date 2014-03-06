@@ -344,15 +344,12 @@ static int bio_file_read(BIO *bio, char *in, int inlen)
     apr_status_t status;
     apr_size_t len;
 
-    BIO_clear_retry_flags(bio);
-
     len = inlen;
     status = apr_file_read(file, in, &len);
 
     if (!SERF_BUCKET_READ_ERROR(status)) {
         /* Oh suck. */
         if (APR_STATUS_IS_EOF(status)) {
-            BIO_set_retry_read(bio);
             return -1;
         } else {
             return len;
@@ -378,7 +375,18 @@ static int bio_file_write(BIO *bio, const char *in, int inl)
 
 static int bio_file_gets(BIO *bio, char *in, int inlen)
 {
-    return bio_file_read(bio, in, inlen);
+    apr_file_t *file = bio->ptr;
+    apr_status_t status;
+
+    status = apr_file_gets(in, inlen, file);
+
+    if (! status) {
+        return (int)strlen(in);
+    } else if (APR_STATUS_IS_EOF(status)) {
+        return 0;
+    } else {
+        return -1; /* Signal generic error */
+    }
 }
 
 static int bio_bucket_create(BIO *bio)
