@@ -286,7 +286,7 @@ static void readLine(_mhClientCtx_t *cctx, const char **buf, apr_size_t *len)
 
             cctx->buflen -= *len; /* eat line */
             cctx->bufrem += *len;
-            memcpy(cctx->buf, cctx->buf + *len, cctx->buflen);
+            memmove(cctx->buf, cctx->buf + *len, cctx->buflen);
 
             break;
         }
@@ -402,7 +402,7 @@ static apr_status_t readBody(_mhClientCtx_t *cctx, mhRequest_t *req, bool *done)
 
     cctx->buflen -= len; /* eat body */
     cctx->bufrem += len;
-    memcpy(cctx->buf, cctx->buf + len, cctx->buflen);
+    memmove(cctx->buf, cctx->buf + len, cctx->buflen);
     if (req->bodyLen < cl)
         return APR_EAGAIN;
 
@@ -468,7 +468,7 @@ static apr_status_t readChunk(_mhClientCtx_t *cctx, mhRequest_t *req, bool *done
             }
             cctx->buflen -= len; /* eat (part of the) chunk */
             cctx->bufrem += len;
-            memcpy(cctx->buf, cctx->buf + len, cctx->buflen);
+            memmove(cctx->buf, cctx->buf + len, cctx->buflen);
 
             if (curchunklen < chlen) { /* More data is needed to read one chunk */
                 req->incomplete_chunk = YES;
