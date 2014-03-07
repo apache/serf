@@ -972,6 +972,15 @@ static apr_status_t handle_response(serf_request_t *request,
                                             request,
                                             request->resp_bkt,
                                             pool);
+
+        if (SERF_BUCKET_READ_ERROR(status)) {
+            /* Report the request as 'died'/'cancelled' to the application */
+            (void)(*request->handler)(request,
+                                      NULL,
+                                      request->handler_baton,
+                                      pool);
+        }
+
         if (status)
             return status;
     }
