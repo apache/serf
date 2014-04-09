@@ -55,19 +55,6 @@ static void test_ssl_init(CuTest *tc)
 }
 
 
-static const char * get_ca_file(apr_pool_t *pool, const char * file)
-{
-    char *srcdir = "";
-
-    if (apr_env_get(&srcdir, "srcdir", pool) == APR_SUCCESS) {
-        return apr_pstrcat(pool, srcdir, "/", file, NULL);
-    }
-    else {
-        return file;
-    }
-}
-
-
 /* Test that loading a custom CA certificate file works. */
 static void test_ssl_load_cert_file(CuTest *tc)
 {
@@ -75,7 +62,7 @@ static void test_ssl_load_cert_file(CuTest *tc)
     serf_ssl_certificate_t *cert = NULL;
 
     apr_status_t status = serf_ssl_load_cert_file(
-        &cert, get_ca_file(tb->pool, "test/serftestca.pem"), tb->pool);
+        &cert, get_srcdir_file(tb->pool, "test/serftestca.pem"), tb->pool);
 
     CuAssertIntEquals(tc, APR_SUCCESS, status);
     CuAssertPtrNotNull(tc, cert);
@@ -90,8 +77,9 @@ static void test_ssl_cert_subject(CuTest *tc)
     apr_status_t status;
 
 
-    status = serf_ssl_load_cert_file(&cert, get_ca_file(tb->pool,
-                                                        "test/serftestca.pem"),
+    status = serf_ssl_load_cert_file(&cert,
+                                     get_srcdir_file(tb->pool,
+                                                     "test/serftestca.pem"),
                                      tb->pool);
 
     CuAssertIntEquals(tc, APR_SUCCESS, status);
@@ -125,8 +113,9 @@ static void test_ssl_cert_issuer(CuTest *tc)
     apr_status_t status;
 
 
-    status = serf_ssl_load_cert_file(&cert, get_ca_file(tb->pool,
-                                                        "test/serftestca.pem"),
+    status = serf_ssl_load_cert_file(&cert,
+                                     get_srcdir_file(tb->pool,
+                                                     "test/serftestca.pem"),
                                      tb->pool);
 
     CuAssertIntEquals(tc, APR_SUCCESS, status);
@@ -163,8 +152,9 @@ static void test_ssl_cert_certificate(CuTest *tc)
     apr_status_t status;
 
 
-    status = serf_ssl_load_cert_file(&cert, get_ca_file(tb->pool,
-                                                        "test/serftestca.pem"),
+    status = serf_ssl_load_cert_file(&cert,
+                                     get_srcdir_file(tb->pool,
+                                                     "test/serftestca.pem"),
                                      tb->pool);
     CuAssertIntEquals(tc, APR_SUCCESS, status);
     CuAssertPtrNotNull(tc, cert);
@@ -253,15 +243,17 @@ static void test_ssl_cert_export(CuTest *tc)
     apr_status_t status;
 
 
-    status = serf_ssl_load_cert_file(&cert, get_ca_file(tb->pool,
-                                                        "test/serftestca.pem"),
+    status = serf_ssl_load_cert_file(&cert,
+                                     get_srcdir_file(tb->pool,
+                                                     "test/serftestca.pem"),
                                      tb->pool);
     CuAssertIntEquals(tc, APR_SUCCESS, status);
     CuAssertPtrNotNull(tc, cert);
 
     /* A .pem file contains a Base64 encoded DER certificate, which is exactly
        what serf_ssl_cert_export is supposed to be returning. */
-    status = apr_file_open(&fp, "test/serftestca.pem",
+    status = apr_file_open(&fp,
+                           get_srcdir_file(tb->pool, "test/serftestca.pem"),
                            APR_FOPEN_READ | APR_FOPEN_BINARY,
                            APR_FPROT_OS_DEFAULT, tb->pool);
     CuAssertIntEquals(tc, APR_SUCCESS, status);
