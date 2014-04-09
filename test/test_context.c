@@ -1026,7 +1026,8 @@ static void test_ssl_handshake_nosslv2(CuTest *tc)
 
     InitMockServers(tb->mh)
       SetupServer(WithHTTPS, WithPort(30080),
-                  WithCertificateFilesPrefix("test/certs"),
+                  WithCertificateFilesPrefix(get_srcdir_file(tb->pool,
+                                                             "test/certs")),
                   WithCertificateKeyFile("serfserverkey.pem"),
                   WithCertificateFileArray(server_cert),
                   WithSSLv2)  /* SSLv2 only */
@@ -1080,7 +1081,8 @@ https_set_root_ca_conn_setup(apr_socket_t *skt,
         return status;
 
     status = serf_ssl_load_cert_file(&rootcacert,
-                                     "test/certs/serfrootcacert.pem",
+                                     get_srcdir_file(pool,
+                                               "test/certs/serfrootcacert.pem"),
                                      pool);
     if (status)
         return status;
@@ -1462,7 +1464,7 @@ static apr_status_t client_cert_cb(void *data, const char **cert_path)
 
     tb->result_flags |= TEST_RESULT_CLIENT_CERTCB_CALLED;
 
-    *cert_path = "test/certs/serfclientcert.p12";
+    *cert_path = get_srcdir_file(tb->pool, "test/certs/serfclientcert.p12");
 
     return APR_SUCCESS;
 }
@@ -1475,7 +1477,8 @@ static apr_status_t client_cert_pw_cb(void *data,
 
     tb->result_flags |= TEST_RESULT_CLIENT_CERTPWCB_CALLED;
 
-    if (strcmp(cert_path, "test/certs/serfclientcert.p12") == 0)
+    if (strcmp(cert_path,
+               get_srcdir_file(tb->pool, "test/certs/serfclientcert.p12")) == 0)
     {
         *password = "serftest";
         return APR_SUCCESS;
