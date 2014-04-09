@@ -622,6 +622,10 @@ apr_status_t serf_ssl_trust_cert(
     serf_ssl_context_t *ssl_ctx,
     serf_ssl_certificate_t *cert);
 
+apr_status_t serf_ssl_load_crl_file(serf_ssl_context_t *ssl_ctx,
+                                    const char *file_path,
+                                    apr_pool_t *pool);
+
 /**
  * Enable or disable SSL compression on a SSL session.
  * @a enabled = 1 to enable compression, 0 to disable compression.

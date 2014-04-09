@@ -1642,6 +1642,75 @@ static void test_ssl_future_server_cert(CuTest *tc)
     CuAssertTrue(tc, tb->result_flags & TEST_RESULT_SERVERCERTCB_CALLED);
 }
 
+
+/* Set up the ssl context with the CA and root CA certificates needed for
+ successful valiation of the server certificate. */
+static apr_status_t
+https_load_crl_conn_setup(apr_socket_t *skt,
+                          serf_bucket_t **input_bkt,
+                          serf_bucket_t **output_bkt,
+                          void *setup_baton,
+                          apr_pool_t *pool)
+{
+    test_baton_t *tb = setup_baton;
+    apr_status_t status;
+
+    status = https_set_root_ca_conn_setup(skt, input_bkt, output_bkt,
+                                          setup_baton, pool);
+    if (status)
+        return status;
+
+    /* Load the certificate revocation list */
+    status = serf_ssl_load_crl_file(tb->ssl_context,
+                                    get_srcdir_file(pool,
+                                                "test/certs/serfservercrl.pem"),
+                                    tb->pool);
+
+    return status;
+}
+
+/* Validate that a CRL file can be loaded and revocation actually works. */
+static void test_ssl_revoked_server_cert(CuTest *tc)
+{
+    test_baton_t *tb = tc->testBaton;
+    handler_baton_t handler_ctx[1];
+    const int num_requests = sizeof(handler_ctx)/sizeof(handler_ctx[0]);
+    int expected_failures;
+    apr_status_t status;
+
+    static const char *future_server_certs[] = {
+        "serfservercert.pem",
+        "serfcacert.pem",
+        "serfrootcacert.pem",
+        NULL };
+
+    /* Set up a test context and a https server */
+    setup_test_mock_https_server(tb, "serfserverkey.pem",
+                                 future_server_certs,
+                                 test_clientcert_none);
+
+    status = setup_test_client_https_context(tb,
+                                             https_load_crl_conn_setup,
+                                             ssl_server_cert_cb_expect_failures,
+                                             tb->pool);
+    CuAssertIntEquals(tc, APR_SUCCESS, status);
+
+    expected_failures = SERF_SSL_CERT_REVOKED;
+    tb->user_baton = &expected_failures;
+
+    Given(tb->mh)
+      GETRequest(URLEqualTo("/"), ChunkedBodyEqualTo("1"),
+                 HeaderEqualTo("Host", tb->serv_host))
+        Respond(WithCode(200), WithChunkedBody(""))
+    EndGiven
+
+    create_new_request(tb, &handler_ctx[0], "GET", "/", 1);
+
+    run_client_and_mock_servers_loops_expect_ok(tc, tb, num_requests,
+                                                handler_ctx, tb->pool);
+    CuAssertTrue(tc, tb->result_flags & TEST_RESULT_SERVERCERTCB_CALLED);
+}
+
 /* Test if serf is sets up an SSL tunnel to the proxy and doesn't contact the
  https server directly. */
 static void test_setup_ssltunnel(CuTest *tc)
@@ -2269,6 +2338,8 @@ CuSuite *test_context(void)
 #if 0
     /* WIP: Test hangs */
     SUITE_ADD_TEST(suite, test_ssl_renegotiate);
+    /* WIP: Test fails */
+    SUITE_ADD_TEST(suite, test_ssl_revoked_server_cert);
 #endif
 
     return suite;
