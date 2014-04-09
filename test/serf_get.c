@@ -453,6 +453,7 @@ static const apr_getopt_option_t options[] =
     {"cert",    CERTFILE, 1, "<file> Use SSL client certificate <file>"},
     {"certpwd", CERTPWD, 1, "<password> Password for the SSL client certificate"},
     {NULL,      'r', 1, "<header:value> Use <header:value> as request header"},
+    {"debug",   'd', 0, "Enable debugging"},
 };
 
 static void print_usage(apr_pool_t *pool)
@@ -495,7 +496,7 @@ int main(int argc, const char **argv)
     const char *raw_url, *method, *req_body_path = NULL;
     int count, inflight;
     int i;
-    int print_headers;
+    int print_headers, debug;
     const char *username = NULL;
     const char *password = "";
     const char *pem_path = NULL, *pem_pwd = NULL;
@@ -517,6 +518,8 @@ int main(int argc, const char **argv)
     method = "GET";
     /* Do not print headers by default. */
     print_headers = 0;
+    /* Do not debug by default. */
+    debug = 0;
 
     
     apr_getopt_init(&opt, pool, argc, argv);
@@ -529,6 +532,9 @@ int main(int argc, const char **argv)
             break;
         case 'P':
             password = opt_arg;
+            break;
+        case 'd':
+            debug = 1;
             break;
         case 'f':
             req_body_path = opt_arg;
@@ -689,8 +695,8 @@ int main(int argc, const char **argv)
 
     serf_config_credentials_callback(context, credentials_callback);
 
-#if 0
     /* Setup debug logging */
+    if (debug)
     {
         serf_log_output_t *output;
         apr_status_t status;
@@ -706,7 +712,6 @@ int main(int argc, const char **argv)
         if (!status)
             serf_logging_add_output(context, output);
     }
-#endif
 
     /* ### Connection or Context should have an allocator? */
     app_ctx.bkt_alloc = bkt_alloc;
