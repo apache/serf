@@ -112,6 +112,8 @@ typedef enum mhSSLProtocol_t {
 /**
  * HTTPS Server configuration options
  */
+#define     WithCertificateFilesPrefix(prefix)\
+                mhSetServerCertPrefix(__servctx, prefix)
 #define     WithCertificateKeyFile(keyFile)\
                 mhSetServerCertKeyFile(__servctx, keyFile)
 #define     WithCertificateFiles(...)\
@@ -429,6 +431,7 @@ mhServCtx_t *mhGetServerCtx(MockHTTP *mh);
 mhServCtx_t *mhGetProxyCtx(MockHTTP *mh);
 int mhSetServerPort(mhServCtx_t *ctx, unsigned int port);
 int mhSetServerType(mhServCtx_t *ctx, mhServerType_t type);
+int mhSetServerCertPrefix(mhServCtx_t *ctx, const char *prefix);
 int mhSetServerCertKeyFile(mhServCtx_t *ctx, const char *keyFile);
 int mhAddServerCertFiles(mhServCtx_t *ctx, ...);
 int mhAddServerCertFileArray(mhServCtx_t *ctx, const char **certFiles);

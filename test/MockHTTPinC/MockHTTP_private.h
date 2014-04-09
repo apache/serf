@@ -102,6 +102,7 @@ struct mhServCtx_t {
     servMode_t mode;      /* default = server, but can switch to proxy/tunnel */
 
     /* HTTPS specific */
+    const char *certFilesPrefix;
     const char *keyFile;
     apr_array_header_t *certFiles;
     mhClientCertVerification_t clientCert;

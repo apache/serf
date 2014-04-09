@@ -491,6 +491,7 @@ void setup_test_mock_https_server(test_baton_t *tb,
 
     InitMockServers(tb->mh)
       SetupServer(WithHTTPS, WithPort(30080),
+                  WithCertificateFilesPrefix("test/certs"),
                   WithCertificateKeyFile(keyfile),
                   WithCertificateFileArray(certfiles),
                   t == test_clientcert_mandatory ?

@@ -1160,9 +1160,20 @@ int mhSetServerType(mhServCtx_t *ctx, mhServerType_t type)
     return YES;
 }
 
+int mhSetServerCertPrefix(mhServCtx_t *ctx, const char *prefix)
+{
+    ctx->certFilesPrefix = prefix;
+    return YES;
+}
+
 int mhSetServerCertKeyFile(mhServCtx_t *ctx, const char *keyFile)
 {
-    ctx->keyFile = keyFile;
+    if (ctx->certFilesPrefix) {
+        ctx->keyFile = apr_pstrcat(ctx->pool, ctx->certFilesPrefix, "/",
+                                   keyFile, NULL);
+    } else {
+        ctx->keyFile = keyFile;
+    }
     return YES;
 }
 
@@ -1177,6 +1188,9 @@ int mhAddServerCertFiles(mhServCtx_t *ctx, ...)
         const char *certFile = va_arg(argp, const char *);
         if (certFile == NULL)
             break;
+        if (ctx->certFilesPrefix)
+            certFile = apr_pstrcat(ctx->pool, ctx->certFilesPrefix, "/",
+                                   certFile, NULL);
         *((const char **)apr_array_push(ctx->certFiles)) = certFile;
     }
     va_end(argp);
