@@ -462,8 +462,13 @@ if sys.platform == 'win32':
 else:
   TEST_EXES = [ os.path.join('test', '%s' % (prog)) for prog in TEST_PROGRAMS ]
 
-env.AlwaysBuild(env.Alias('check', TEST_EXES, sys.executable + ' build/check.py',
-                          ENV={'PATH' : os.environ['PATH']}))
+check_script = env.File('build/check.py').rstr()
+test_dir = env.File('test/test_all.c').rfile().get_dir()
+src_dir = env.File('serf.h').rfile().get_dir()
+test_app = ("%s %s %s %s") % (sys.executable, check_script, test_dir, 'test')
+env.AlwaysBuild(env.Alias('check', TEST_EXES, test_app,
+                          ENV={'PATH' : os.environ['PATH'],
+                               'srcdir' : src_dir}))
 
 # Find the (dynamic) library in this directory
 tenv.Replace(RPATH=thisdir)

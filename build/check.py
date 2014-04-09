@@ -31,6 +31,11 @@ if __name__ == '__main__':
   else:
     testdir = 'test'
 
+  if len(sys.argv) > 2:
+    test_builddir = sys.argv[2]
+  else:
+    test_builddir = 'test'
+
   # define test executable paths
   if sys.platform == 'win32':
     SERF_RESPONSE_EXE = 'serf_response.exe'
@@ -38,8 +43,8 @@ if __name__ == '__main__':
   else:
     SERF_RESPONSE_EXE = 'serf_response'
     TEST_ALL_EXE = 'test_all'
-  SERF_RESPONSE_EXE = os.path.join(testdir, SERF_RESPONSE_EXE)
-  TEST_ALL_EXE = os.path.join(testdir, TEST_ALL_EXE)
+  SERF_RESPONSE_EXE = os.path.join(test_builddir, SERF_RESPONSE_EXE)
+  TEST_ALL_EXE = os.path.join(test_builddir, TEST_ALL_EXE)
 
   # Find test responses and run them one by one
   for case in glob.glob(testdir + "/testcases/*.response"):
