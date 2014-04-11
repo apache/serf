@@ -623,9 +623,20 @@ apr_status_t serf_ssl_trust_cert(
     serf_ssl_context_t *ssl_ctx,
     serf_ssl_certificate_t *cert);
 
+/** 
+ * Load a CRL .pem file from @a file_path and enable CRL checking.
+ */
 apr_status_t serf_ssl_load_crl_file(serf_ssl_context_t *ssl_ctx,
                                     const char *file_path,
                                     apr_pool_t *pool);
+
+/**
+ * Enable or disable CRL checking of all server certificates.
+ * @a enabled = 1 to enable CRL checking, 0 to disable CRL checking.
+ * Default = disabled.
+ */
+apr_status_t serf_ssl_check_crl(serf_ssl_context_t *ssl_ctx,
+                                int enabled);
 
 /**
  * Enable or disable SSL compression on a SSL session.

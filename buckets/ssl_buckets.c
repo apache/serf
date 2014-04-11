@@ -1422,6 +1422,19 @@ apr_status_t serf_ssl_trust_cert(
     return result ? APR_SUCCESS : SERF_ERROR_SSL_CERT_FAILED;
 }
 
+apr_status_t serf_ssl_check_crl(serf_ssl_context_t *ssl_ctx, int enabled)
+{
+    X509_STORE *store = SSL_CTX_get_cert_store(ssl_ctx->ctx);
+
+    if (enabled) {
+        X509_STORE_set_flags(store, X509_V_FLAG_CRL_CHECK|
+                             X509_V_FLAG_CRL_CHECK_ALL);
+    } else {
+        X509_VERIFY_PARAM_clear_flags(store->param, X509_V_FLAG_CRL_CHECK|
+                                      X509_V_FLAG_CRL_CHECK_ALL);
+    }
+    return APR_SUCCESS;
+}
 
 apr_status_t serf_ssl_load_crl_file(serf_ssl_context_t *ssl_ctx,
                                     const char *file_path,
@@ -1451,10 +1464,13 @@ apr_status_t serf_ssl_load_crl_file(serf_ssl_context_t *ssl_ctx,
     store = SSL_CTX_get_cert_store(ssl_ctx->ctx);
 
     result = X509_STORE_add_crl(store, crl);
+    if (!result) {
+        log_ssl_error(ssl_ctx);
+        return SERF_ERROR_SSL_CERT_FAILED;
+    }
 
-    X509_STORE_set_flags(store, X509_V_FLAG_CRL_CHECK|X509_V_FLAG_CRL_CHECK_ALL);
-
-    return result ? APR_SUCCESS : SERF_ERROR_SSL_CERT_FAILED;
+    /* TODO: free crl when closing ssl session */
+    return serf_ssl_check_crl(ssl_ctx, 1);
 }
 
 
