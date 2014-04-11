@@ -16,7 +16,9 @@
 #include "serf.h"
 #include "serf_private.h"
 
+/* For optimizations, we allow logging to be disabled entirely. */
 #ifdef SERF_LOGGING_ENABLED
+
 typedef struct log_baton_t {
     apr_array_header_t *output_list;
 } log_baton_t;
@@ -49,11 +51,9 @@ const char * loglvl_labels[] = {
     "",
     "DEBUG", /* 0x0008 */
 };
-#endif
 
 apr_status_t serf__log_init(serf_context_t *ctx)
 {
-#ifdef SERF_LOGGING_ENABLED
     log_baton_t *log_baton;
     serf_config_t *config = ctx->config;
 
@@ -83,12 +83,10 @@ apr_status_t serf__log_init(serf_context_t *ctx)
         if (status)
             return status;
     }
-#endif
 
     return APR_SUCCESS;
 }
 
-#ifdef SERF_LOGGING_ENABLED
 static void log_time(FILE *logfp)
 {
     apr_time_exp_t tm;
@@ -99,12 +97,10 @@ static void log_time(FILE *logfp)
             tm.tm_hour, tm.tm_min, tm.tm_sec, tm.tm_usec,
             tm.tm_gmtoff/3600);
 }
-#endif
 
 void serf__log_nopref(apr_uint32_t level, apr_uint32_t comp,
                       serf_config_t *config, const char *fmt, ...)
 {
-#ifdef SERF_LOGGING_ENABLED
     va_list argp;
     log_baton_t *log_baton;
     apr_status_t status;
@@ -132,13 +128,11 @@ void serf__log_nopref(apr_uint32_t level, apr_uint32_t comp,
             }
         }
     }
-#endif
 }
 
 void serf__log(apr_uint32_t level, apr_uint32_t comp, const char *prefix,
                serf_config_t *config, const char *fmt, ...)
 {
-#ifdef SERF_LOGGING_ENABLED
     va_list argp;
     log_baton_t *log_baton;
     apr_status_t status;
@@ -166,12 +160,10 @@ void serf__log(apr_uint32_t level, apr_uint32_t comp, const char *prefix,
             }
         }
     }
-#endif
 }
 
 /*** Output to system stream (stderr or stdout) or a file ***/
 
-#ifdef SERF_LOGGING_ENABLED
 static apr_status_t log_to_stream_output(serf_log_output_t *output,
                                          serf_config_t *config,
                                          apr_uint32_t level,
@@ -217,7 +209,6 @@ static apr_status_t log_to_stream_output(serf_log_output_t *output,
 
     return APR_EINVAL;
 }
-#endif
 
 apr_status_t serf_logging_create_stream_output(serf_log_output_t **output,
                                                serf_context_t *ctx,
@@ -227,7 +218,6 @@ apr_status_t serf_logging_create_stream_output(serf_log_output_t **output,
                                                FILE *fp,
                                                apr_pool_t *pool)
 {
-#ifdef SERF_LOGGING_ENABLED
     serf_log_output_t *baton;
 
     baton = apr_palloc(pool, sizeof(serf_log_output_t));
@@ -238,14 +228,12 @@ apr_status_t serf_logging_create_stream_output(serf_log_output_t **output,
     baton->layout = layout;
 
     *output = baton;
-#endif
     return APR_SUCCESS;
 }
 
 apr_status_t serf_logging_add_output(serf_context_t *ctx,
                                      const serf_log_output_t *output)
 {
-#ifdef SERF_LOGGING_ENABLED
     apr_status_t status;
     log_baton_t *log_baton;
 
@@ -256,7 +244,42 @@ apr_status_t serf_logging_add_output(serf_context_t *ctx,
     }
 
     return status;
-#else
-    return APR_SUCCESS;
-#endif
 }
+
+#else
+
+/* We wish to compile out all logging stubs. */
+
+apr_status_t serf__log_init(serf_context_t *ctx)
+{
+    return APR_SUCCESS;
+}
+
+void serf__log_nopref(apr_uint32_t level, apr_uint32_t comp,
+                      serf_config_t *config, const char *fmt, ...)
+{
+}
+
+void serf__log(apr_uint32_t level, apr_uint32_t comp, const char *prefix,
+               serf_config_t *config, const char *fmt, ...)
+{
+}
+
+apr_status_t serf_logging_create_stream_output(serf_log_output_t **output,
+                                               serf_context_t *ctx,
+                                               apr_uint32_t level,
+                                               apr_uint32_t comp_mask,
+                                               serf_log_layout_t *layout,
+                                               FILE *fp,
+                                               apr_pool_t *pool)
+{
+    return APR_SUCCESS;
+}
+
+apr_status_t serf_logging_add_output(serf_context_t *ctx,
+                                     const serf_log_output_t *output)
+{
+    return APR_SUCCESS;
+}
+
+#endif
