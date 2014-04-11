@@ -91,6 +91,8 @@ static void print_ssl_cert_errors(int failures)
             fprintf(stderr, "* The CA is unknown.\n");
         if (failures & SERF_SSL_CERT_UNKNOWN_FAILURE)
             fprintf(stderr, "* Unknown failure.\n");
+        if (failures & SERF_SSL_CERT_REVOKED)
+            fprintf(stderr, "* The certificate is revoked.\n");
     }
 }
 
