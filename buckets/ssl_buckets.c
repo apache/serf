@@ -464,7 +464,7 @@ validate_server_certificate(int cert_valid, X509_STORE_CTX *store_ctx)
     SSL *ssl;
     serf_ssl_context_t *ctx;
     X509 *server_cert;
-    int err, depth;
+    int depth;
     int failures = 0;
 
     ssl = X509_STORE_CTX_get_ex_data(store_ctx,
@@ -477,7 +477,7 @@ validate_server_certificate(int cert_valid, X509_STORE_CTX *store_ctx)
     /* If the certification was found invalid, get the error and convert it to
        something our caller will understand. */
     if (! cert_valid) {
-        err = X509_STORE_CTX_get_error(store_ctx);
+        int err = X509_STORE_CTX_get_error(store_ctx);
 
         switch(err) {
             case X509_V_ERR_CERT_NOT_YET_VALID: 
@@ -499,6 +499,9 @@ validate_server_certificate(int cert_valid, X509_STORE_CTX *store_ctx)
                     break;
             case X509_V_ERR_CERT_REVOKED:
                     failures |= SERF_SSL_CERT_REVOKED;
+                    break;
+            case X509_V_ERR_UNABLE_TO_GET_CRL:
+                    failures |= SERF_SSL_CERT_UNABLE_TO_GET_CRL;
                     break;
             default:
                     serf__log(LOGLVL_WARNING, LOGCOMP_SSL, __FILE__,

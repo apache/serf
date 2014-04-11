@@ -488,12 +488,13 @@ serf_bucket_t *serf_bucket_limit_create(
 
 
 /* ==================================================================== */
-#define SERF_SSL_CERT_NOTYETVALID       1
-#define SERF_SSL_CERT_EXPIRED           2
-#define SERF_SSL_CERT_UNKNOWNCA         4
-#define SERF_SSL_CERT_SELF_SIGNED       8
-#define SERF_SSL_CERT_UNKNOWN_FAILURE  16
-#define SERF_SSL_CERT_REVOKED          32
+#define SERF_SSL_CERT_NOTYETVALID        1
+#define SERF_SSL_CERT_EXPIRED            2
+#define SERF_SSL_CERT_UNKNOWNCA          4
+#define SERF_SSL_CERT_SELF_SIGNED        8
+#define SERF_SSL_CERT_UNKNOWN_FAILURE   16
+#define SERF_SSL_CERT_REVOKED           32
+#define SERF_SSL_CERT_UNABLE_TO_GET_CRL 64
 
 extern const serf_bucket_type_t serf_bucket_type_ssl_encrypt;
 #define SERF_BUCKET_IS_SSL_ENCRYPT(b) SERF_BUCKET_CHECK((b), ssl_encrypt)

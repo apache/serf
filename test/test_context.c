@@ -1669,13 +1669,42 @@ https_load_crl_conn_setup(apr_socket_t *skt,
     return status;
 }
 
+/* Logs failures for each depth in tb->user_baton, for later validation. */
+/* TODO: use this in place of ssl_server_cert_cb_expect_failures */
+static apr_status_t
+ssl_server_cert_cb_log_failures(void *baton, int failures,
+                                const serf_ssl_certificate_t *cert)
+{
+    test_baton_t *tb = baton;
+    apr_array_header_t *failure_list = (apr_array_header_t *)tb->user_baton;
+    int depth = serf_ssl_cert_depth(cert);
+    int *failures_for_depth;
+
+    if (!tb->user_baton) {
+        /* make the array big enough to not have to worry about resizing */
+        tb->user_baton = apr_array_make(tb->pool, 10, sizeof(int));
+    }
+    failure_list = tb->user_baton;
+
+    if (depth + 1 > failure_list->nalloc) {
+        return SERF_ERROR_ISSUE_IN_TESTSUITE;
+    }
+
+    failures_for_depth = &APR_ARRAY_IDX(failure_list, depth, int);
+    *failures_for_depth |= failures;
+
+    tb->result_flags |= TEST_RESULT_SERVERCERTCB_CALLED;
+
+    return APR_SUCCESS;
+}
+
 /* Validate that a CRL file can be loaded and revocation actually works. */
 static void test_ssl_revoked_server_cert(CuTest *tc)
 {
     test_baton_t *tb = tc->testBaton;
     handler_baton_t handler_ctx[1];
     const int num_requests = sizeof(handler_ctx)/sizeof(handler_ctx[0]);
-    int expected_failures;
+    int depth;
     apr_status_t status;
 
     static const char *future_server_certs[] = {
@@ -1684,19 +1713,30 @@ static void test_ssl_revoked_server_cert(CuTest *tc)
         "serfrootcacert.pem",
         NULL };
 
+    static int expected_failures[] = {
+        SERF_SSL_CERT_REVOKED,
+        SERF_SSL_CERT_UNABLE_TO_GET_CRL,
+        SERF_SSL_CERT_UNABLE_TO_GET_CRL
+    };
+
     /* Set up a test context and a https server */
     setup_test_mock_https_server(tb, "serfserverkey.pem",
                                  future_server_certs,
                                  test_clientcert_none);
 
+    /* OpenSSL first checks the revocation status before verifying the rest of
+       certificate. OpenSSL may call the application multiple times per depth,
+       e.g. once to tell that the cert is revoked, and a second time to tell
+       that the certificate itself is valid.
+       We'll have to combine the results of these multiple calls to the callback
+       to get a complete view of the certificate. That's why we use 
+       ssl_server_cert_cb_log_failures here, and then later check expected 
+       failures for each depth. */
     status = setup_test_client_https_context(tb,
                                              https_load_crl_conn_setup,
-                                             ssl_server_cert_cb_expect_failures,
+                                             ssl_server_cert_cb_log_failures,
                                              tb->pool);
     CuAssertIntEquals(tc, APR_SUCCESS, status);
-
-    expected_failures = SERF_SSL_CERT_REVOKED;
-    tb->user_baton = &expected_failures;
 
     Given(tb->mh)
       GETRequest(URLEqualTo("/"), ChunkedBodyEqualTo("1"),
@@ -1709,6 +1749,13 @@ static void test_ssl_revoked_server_cert(CuTest *tc)
     run_client_and_mock_servers_loops_expect_ok(tc, tb, num_requests,
                                                 handler_ctx, tb->pool);
     CuAssertTrue(tc, tb->result_flags & TEST_RESULT_SERVERCERTCB_CALLED);
+    for (depth = 0; depth < 3; depth++) {
+        apr_array_header_t *ary = tb->user_baton;
+
+        CuAssertIntEquals(tc, expected_failures[depth],
+                          APR_ARRAY_IDX(ary, depth, int));
+
+    }
 }
 
 /* Test if serf is sets up an SSL tunnel to the proxy and doesn't contact the
@@ -2324,6 +2371,7 @@ CuSuite *test_context(void)
     SUITE_ADD_TEST(suite, test_ssl_client_certificate);
     SUITE_ADD_TEST(suite, test_ssl_expired_server_cert);
     SUITE_ADD_TEST(suite, test_ssl_future_server_cert);
+    SUITE_ADD_TEST(suite, test_ssl_revoked_server_cert);
     SUITE_ADD_TEST(suite, test_setup_ssltunnel);
     SUITE_ADD_TEST(suite, test_ssltunnel_no_creds_cb);
     SUITE_ADD_TEST(suite, test_ssltunnel_basic_auth);
@@ -2338,8 +2386,6 @@ CuSuite *test_context(void)
 #if 0
     /* WIP: Test hangs */
     SUITE_ADD_TEST(suite, test_ssl_renegotiate);
-    /* WIP: Test fails */
-    SUITE_ADD_TEST(suite, test_ssl_revoked_server_cert);
 #endif
 
     return suite;
