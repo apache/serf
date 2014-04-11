@@ -1661,10 +1661,10 @@ https_load_crl_conn_setup(apr_socket_t *skt,
         return status;
 
     /* Load the certificate revocation list */
-    status = serf_ssl_load_crl_file(tb->ssl_context,
-                                    get_srcdir_file(pool,
+    status = serf_ssl_add_crl_from_file(tb->ssl_context,
+                                        get_srcdir_file(pool,
                                                 "test/certs/serfservercrl.pem"),
-                                    tb->pool);
+                                        tb->pool);
 
     return status;
 }
