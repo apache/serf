@@ -90,12 +90,17 @@ struct mhServCtx_t {
     apr_pool_t *pool;
     const MockHTTP *mh;        /* keep const to avoid thread race problems */
     const char *hostname;
+    const char *serverID;      /* unique id for this server */
     apr_port_t port;
     apr_pollset_t *pollset;
     apr_socket_t *skt;         /* Server listening socket */
     apr_socket_t *proxyskt;    /* Socket for conn proxy <-> server */
     const char *proxyhost;     /* Proxy host:port */
     mhServerType_t type;
+    int partialRequest;        /* 1 if a request is in progress, 0 if no req
+                                  received yet or read completely. */
+    unsigned int maxRequests;  /* Max. nr of reqs per connection. */
+
     /* TODO: allow more connections */
     _mhClientCtx_t *cctx;
 

@@ -825,6 +825,50 @@ static void test_connection_large_request(CuTest *tc)
                                                 handler_ctx, tb->pool);
 }
 
+static void test_max_keepalive_requests(CuTest *tc)
+{
+    test_baton_t *tb = tc->testBaton;
+    apr_status_t status;
+    handler_baton_t handler_ctx[200];
+    const int num_requests = sizeof(handler_ctx)/sizeof(handler_ctx[0]);
+    int i;
+
+    /* Set up a test context with a server */
+    setup_test_mock_server(tb);
+    status = setup_test_client_context(tb, NULL, tb->pool);
+    CuAssertIntEquals(tc, APR_SUCCESS, status);
+
+    InitMockServers(tb->mh)
+      ConfigServerWithID("server", WithMaxKeepAliveRequests(4))
+    EndInit
+
+    /* We will NUM_REQUESTS requests to the mock server, close connection after 
+       every 4th response. */
+    Given(tb->mh)
+      DefaultResponse(WithCode(200), WithRequestBody)
+
+      GETRequest(URLEqualTo("/index.html"))
+    EndGiven
+
+    /* Send some requests on the connections */
+    for (i = 0 ; i < num_requests ; i++) {
+        create_new_request(tb, &handler_ctx[i], "GET", "/index.html", i+1);
+    }
+
+    status = run_client_and_mock_servers_loops(tb, num_requests, handler_ctx,
+                                               tb->pool);
+    CuAssertIntEquals(tc, APR_SUCCESS, status);
+
+    /* Check that the requests were sent and reveived by the server */
+    Verify(tb->mh)
+      CuAssert(tc, ErrorMessage, VerifyAllRequestsReceived);
+      CuAssertIntEquals(tc, num_requests, VerifyStats->requestsResponded);
+    EndVerify
+    CuAssertTrue(tc, tb->sent_requests->nelts >= num_requests);
+    CuAssertIntEquals(tc, num_requests, tb->accepted_requests->nelts);
+    CuAssertIntEquals(tc, num_requests, tb->handled_requests->nelts);
+}
+
 /*****************************************************************************
  * SSL handshake tests
  *****************************************************************************/
@@ -2358,6 +2402,7 @@ CuSuite *test_context(void)
     SUITE_ADD_TEST(suite, test_request_timeout);
     SUITE_ADD_TEST(suite, test_connection_large_response);
     SUITE_ADD_TEST(suite, test_connection_large_request);
+    SUITE_ADD_TEST(suite, test_max_keepalive_requests);
     SUITE_ADD_TEST(suite, test_ssl_handshake);
     SUITE_ADD_TEST(suite, test_ssl_handshake_nosslv2);
     SUITE_ADD_TEST(suite, test_ssl_trust_rootca);

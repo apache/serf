@@ -64,8 +64,9 @@ struct _mhClientCtx_t {
     apr_size_t obufrem;
     const char *respBody;
     apr_size_t respRem;
-    apr_array_header_t *respQueue;  /*  test will queue a response */
-    mhResponse_t *currResp; /* response in progress */
+    apr_array_header_t *respQueue;  /* test will queue a response */
+    mhResponse_t *currResp;         /* response in progress */
+    unsigned int reqsReceived;      /* # of reqs received on this connection */
     mhRequest_t *req;
     apr_int16_t reqevents;
     bool closeConn;
@@ -914,6 +915,8 @@ static apr_status_t processServer(mhServCtx_t *ctx, _mhClientCtx_t *cctx,
                 mhAction_t action;
 
                 ctx->mh->verifyStats->requestsReceived++;
+                cctx->reqsReceived++;
+                ctx->partialRequest = 0;
                 *((mhRequest_t **)apr_array_push(ctx->reqsReceived)) = cctx->req;
                 if (_mhMatchRequest(ctx, cctx, cctx->req,
                                     &resp, &action) == YES) {
@@ -945,11 +948,16 @@ static apr_status_t processServer(mhServCtx_t *ctx, _mhClientCtx_t *cctx,
                            "Request found no match, queueing error response.\n");
                     resp = cloneResponse(ctx->pool, ctx->mh->defErrorResponse);
                 }
-
+                if (ctx->maxRequests && cctx->reqsReceived >= ctx->maxRequests) {
+                    setHeader(resp->hdrs, "Connection", "close");
+                    resp->closeConn = YES;
+                }
                 resp->req = cctx->req;
                 *((mhResponse_t **)apr_array_push(cctx->respQueue)) = resp;
                 cctx->req = NULL;
                 return APR_SUCCESS;
+            } else if (status == APR_SUCCESS || status == APR_EAGAIN) {
+                ctx->partialRequest = 1;
             }
 
             if (ctx->incompleteReqMatchers->nelts > 0) {
@@ -1104,15 +1112,19 @@ mhServCtx_t *mhNewServer(MockHTTP *mh)
     return mh->servCtx;
 }
 
-void mhConfigAndStartServer(mhServCtx_t *serv_ctx, ...)
+void mhConfigServer(mhServCtx_t *serv_ctx, ...)
 {
-    apr_status_t status;
-    mhError_t err;
-
     if (serv_ctx->protocols == mhProtoUnspecified) {
         serv_ctx->protocols = mhProtoAllSecure;
     }
     /* No more config to do here, has been done during parameter evaluation */
+}
+
+void mhStartServer(mhServCtx_t *serv_ctx)
+{
+    apr_status_t status;
+    mhError_t err;
+
     status = startServer(serv_ctx);
     if (status == MH_STATUS_WAITING)
         err = MOCKHTTP_WAITING;
@@ -1120,6 +1132,17 @@ void mhConfigAndStartServer(mhServCtx_t *serv_ctx, ...)
     err = MOCKHTTP_SETUP_FAILED;
 
     /* TODO: store error message */
+}
+
+int mhSetServerID(mhServCtx_t *ctx, const char *serverID)
+{
+    ctx->serverID = serverID;
+    return YES;
+}
+
+int mhSetServerMaxRequestsPerConn(mhServCtx_t *ctx, unsigned int maxRequests)
+{
+    ctx->maxRequests = maxRequests;
 }
 
 unsigned int mhServerPortNr(const MockHTTP *mh)
@@ -1226,6 +1249,19 @@ mhServCtx_t *mhNewProxy(MockHTTP *mh)
     mh->proxyCtx = initServCtx(mh, "localhost", DefaultSrvPort);
     mh->proxyCtx->type = mhGenericProxy;
     return mh->proxyCtx;
+}
+
+mhServCtx_t *mhFindServerByID(MockHTTP *mh, const char *serverID)
+{
+    if (mh->servCtx && mh->servCtx->serverID &&
+        strcmp(mh->servCtx->serverID, serverID) == 0) {
+        return mh->servCtx;
+    }
+
+    if (mh->proxyCtx && mh->proxyCtx->serverID &&
+        strcmp(mh->proxyCtx->serverID, serverID) == 0) {
+        return mh->proxyCtx;
+    }
 }
 
 mhServCtx_t *mhGetServerCtx(MockHTTP *mh)

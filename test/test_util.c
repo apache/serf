@@ -459,7 +459,7 @@ void setup_test_mock_server(test_baton_t *tb)
         tb->mh = mhInit();
 
     InitMockServers(tb->mh)
-      SetupServer(WithHTTP, WithPort(30080))
+      SetupServer(WithHTTP, WithID("server"), WithPort(30080))
     EndInit
     tb->serv_port = mhServerPortNr(tb->mh);
     tb->serv_host = apr_psprintf(tb->pool, "%s:%d", "localhost", tb->serv_port);
@@ -472,7 +472,7 @@ apr_status_t setup_test_mock_proxy(test_baton_t *tb)
         tb->mh = mhInit();
 
     InitMockServers(tb->mh)
-      SetupProxy(WithHTTP, WithPort(PROXY_PORT))
+      SetupProxy(WithHTTP, WithID("proxy"), WithPort(PROXY_PORT))
     EndInit
     tb->proxy_port = mhProxyPortNr(tb->mh);
     return apr_sockaddr_info_get(&tb->proxy_addr,
@@ -490,7 +490,7 @@ void setup_test_mock_https_server(test_baton_t *tb,
         tb->mh = mhInit();
 
     InitMockServers(tb->mh)
-      SetupServer(WithHTTPS, WithPort(30080),
+      SetupServer(WithHTTPS, WithID("server"), WithPort(30080),
                   WithCertificateFilesPrefix(get_srcdir_file(tb->pool,
                                                              "test/certs")),
                   WithCertificateKeyFile(keyfile),

@@ -132,19 +132,37 @@ void mhCleanup(MockHTTP *mh)
     /* mh ptr is now invalid */
 }
 
-mhError_t mhRunServerLoop(MockHTTP *mh)
+/**
+ * Runs both the proxy and the server loops. This function will block as long
+ * as there's data to read or write.
+ *
+ * partial: 1 if either proxy or server blocks on a partly read request. 0 if
+ *            all requests have been read completely.
+ */
+static apr_status_t runServerLoop(MockHTTP *mh, int *partial)
 {
     apr_status_t status = APR_EGENERAL;
 
+    *partial = 0;
     do {
         if (mh->proxyCtx) {
             status = _mhRunServerLoop(mh->proxyCtx);
+            *partial = mh->proxyCtx->partialRequest;
         }
         /* TODO: status? */
         if (mh->servCtx) {
             status = _mhRunServerLoop(mh->servCtx);
+            *partial |= mh->servCtx->partialRequest;
         }
     } while (status == APR_SUCCESS);
+
+    return status;
+}
+
+mhError_t mhRunServerLoop(MockHTTP *mh)
+{
+    int dummy;
+    apr_status_t status = runServerLoop(mh, &dummy);
 
     if (status == MH_STATUS_WAITING)
         return MOCKHTTP_WAITING;
@@ -153,6 +171,24 @@ mhError_t mhRunServerLoop(MockHTTP *mh)
         return MOCKHTTP_TEST_FAILED;
 
     return MOCKHTTP_NO_ERROR;
+}
+
+mhError_t mhRunServerLoopCompleteRequests(MockHTTP *mh)
+{
+    int partial = 0;
+    apr_status_t status = APR_EGENERAL;
+    apr_time_t finish_time = apr_time_now() + apr_time_from_sec(15);
+
+    do {
+        status = runServerLoop(mh, &partial);
+    } while (status == APR_EAGAIN &&
+             (apr_time_now() <= finish_time) &&
+             partial);
+
+    if (status == APR_EAGAIN)
+        return MOCKHTTP_TIMEOUT;
+
+    return status;
 }
 
 /* Define expectations*/
