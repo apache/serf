@@ -33,9 +33,9 @@ apr_status_t serf__config_store_init(serf_context_t *ctx)
     apr_pool_t *pool = ctx->pool;
 
     ctx->config_store.pool = pool;
-    ctx->config_store.per_context = apr_hash_make(pool);
-    ctx->config_store.per_host = apr_hash_make(pool);
-    ctx->config_store.per_conn = apr_hash_make(pool);
+    ctx->config_store.global_per_context = apr_hash_make(pool);
+    ctx->config_store.global_per_host = apr_hash_make(pool);
+    ctx->config_store.global_per_conn = apr_hash_make(pool);
 
     return APR_ENOTIMPL;
 }
@@ -67,7 +67,7 @@ apr_status_t serf__config_store_get_config(serf_context_t *ctx,
 
     serf_config_t *cfg = apr_pcalloc(out_pool, sizeof(serf_config_t));
     cfg->ctx_pool = ctx->pool;
-    cfg->per_context = config_store->per_context;
+    cfg->per_context = config_store->global_per_context;
 
     if (conn) {
         const char *host_key, *conn_key;
@@ -83,11 +83,11 @@ apr_status_t serf__config_store_get_config(serf_context_t *ctx,
         /* Find the config values for this connection, create empty structure
            if needed */
         conn_key = conn_key_for_conn(conn, tmp_pool);
-        per_conn = apr_hash_get(config_store->per_conn, conn_key,
+        per_conn = apr_hash_get(config_store->global_per_conn, conn_key,
                                 APR_HASH_KEY_STRING);
         if (!per_conn) {
             per_conn = apr_hash_make(conn->pool);
-            apr_hash_set(config_store->per_conn,
+            apr_hash_set(config_store->global_per_conn,
                          apr_pstrdup(conn->pool, conn_key),
                          APR_HASH_KEY_STRING, per_conn);
         }
@@ -96,12 +96,12 @@ apr_status_t serf__config_store_get_config(serf_context_t *ctx,
         /* Find the config values for this host, create empty structure
            if needed */
         host_key = host_key_for_conn(conn, tmp_pool);
-        per_host = apr_hash_get(config_store->per_host,
+        per_host = apr_hash_get(config_store->global_per_host,
                                 host_key,
                                 APR_HASH_KEY_STRING);
         if (!per_host) {
             per_host = apr_hash_make(config_store->pool);
-            apr_hash_set(config_store->per_host,
+            apr_hash_set(config_store->global_per_host,
                          apr_pstrdup(config_store->pool, host_key),
                          APR_HASH_KEY_STRING, per_host);
         }
@@ -149,7 +149,6 @@ apr_status_t serf_config_set_stringc(serf_config_t *config,
 
     if (keyint & SERF_CONFIG_PER_CONTEXT ||
         keyint & SERF_CONFIG_PER_HOST) {
-
         pool = config->ctx_pool;
     } else {
         pool = config->conn_pool;

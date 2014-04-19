@@ -173,19 +173,19 @@ typedef struct serf__config_store_t {
     apr_pool_t *pool;
 
     /* Configuration key/value pairs per context */
-    apr_hash_t *per_context;
+    apr_hash_t *global_per_context;
 
     /* Configuration per host, dual-layered:
      Key: hostname:port
      Value: hash table of per host key/value pairs
      */
-    apr_hash_t *per_host;
+    apr_hash_t *global_per_host;
 
     /* Configuration per connection, dual-layered:
      Key: string(connection ptr) (?)
      Value: hash table of per host key/value pairs
      */
-    apr_hash_t *per_conn;
+    apr_hash_t *global_per_conn;
 
 } serf__config_store_t;
 
