@@ -52,11 +52,6 @@ static const bool NO = 0;
 
 typedef struct _mhClientCtx_t _mhClientCtx_t;
 
-typedef bool (*reqmatchfunc_t)(apr_pool_t *pool, const mhMatchingPattern_t *mp,
-                               const mhRequest_t *req);
-typedef bool (*connmatchfunc_t)(apr_pool_t *pool, const mhMatchingPattern_t *mp,
-                                const _mhClientCtx_t *cctx);
-
 typedef enum expectation_t {
     RequestsReceivedOnce    = 0x00000001,
     RequestsReceivedInOrder = 0x00000002,
@@ -70,7 +65,7 @@ struct MockHTTP {
     mhStats_t *verifyStats;             /* Statistics gathered by the server */
     mhResponse_t *defResponse;          /* Default req matched response */
     mhResponse_t *defErrorResponse;     /* Default req not matched response */
-    mhConnectionMatcher_t *connMatcher; /* Connection-level matching */
+    apr_array_header_t *connMatchers;   /* array of mhConnMatcherBldr_t *'s */
     mhServCtx_t *proxyCtx;
 };
 
@@ -86,6 +81,13 @@ typedef enum servMode_t {
     ModeTunnel,
 } servMode_t;
 
+
+typedef enum loopRequestState_t {
+    NoReqsReceived = 0,
+    PartialReqReceived = 1,
+    FullReqReceived = 2,
+} loopRequestState_t;
+
 struct mhServCtx_t {
     apr_pool_t *pool;
     const MockHTTP *mh;        /* keep const to avoid thread race problems */
@@ -97,8 +99,9 @@ struct mhServCtx_t {
     apr_socket_t *proxyskt;    /* Socket for conn proxy <-> server */
     const char *proxyhost;     /* Proxy host:port */
     mhServerType_t type;
-    int partialRequest;        /* 1 if a request is in progress, 0 if no req
-                                  received yet or read completely. */
+    mhThreading_t threading;
+    loopRequestState_t reqState;  /* 1 if a request is in progress, 0 if
+                                  no req received yet or read completely. */
     unsigned int maxRequests;  /* Max. nr of reqs per connection. */
 
     /* TODO: allow more connections */
@@ -147,6 +150,7 @@ struct mhRequest_t {
 
 struct mhResponse_t {
     apr_pool_t *pool;
+    const MockHTTP *mh;
     bool built;
     unsigned int code;
     apr_table_t *hdrs;
@@ -154,29 +158,83 @@ struct mhResponse_t {
     apr_size_t bodyLen;
     bool chunked;
     /* array of iovec strings that form the dechunked body */
-    apr_array_header_t *chunks;
+    const apr_array_header_t *chunks;
     const char *raw_data;
     apr_array_header_t *builders;
     bool closeConn;
     mhRequest_t *req;  /* mhResponse_t instance is reply to req */
 };
 
+
+/* Builder structures for server setup, request matching and response creation */
+static const unsigned int MagicKey = 0x4D484244; /* MHBD */
+
+typedef enum builderType_t {
+    BuilderTypeReqMatcher,
+    BuilderTypeConnMatcher,
+    BuilderTypeServerSetup,
+    BuilderTypeResponse,
+    BuilderTypeNone,           /* A noop builder */
+} builderType_t;
+
+
+typedef struct builder_t {
+    unsigned int magic;
+    builderType_t type;
+} builder_t;
+
+
+typedef bool (*reqmatchfunc_t)(const mhReqMatcherBldr_t *mp,
+                               const mhRequest_t *req);
+
 struct mhRequestMatcher_t {
     apr_pool_t *pool;
 
     const char *method;
-    apr_array_header_t *matchers; /* array of mhMatchingPattern_t *'s. */
+    apr_array_header_t *matchers; /* array of mhReqMatcherBldr_t *'s. */
     bool incomplete;
 };
 
-struct mhMatchingPattern_t {
+struct mhReqMatcherBldr_t {
+    builder_t builder;
     const void *baton; /* use this for an expected string */
     const void *baton2;
     reqmatchfunc_t matcher;
-    connmatchfunc_t connmatcher;
     const char *describe_key;
     const char *describe_value;
     bool match_incomplete; /* Don't wait for full valid requests */
+};
+
+typedef bool (*connmatchfunc_t)(const mhConnMatcherBldr_t *cmb,
+                                const _mhClientCtx_t *cctx);
+
+struct mhConnMatcherBldr_t {
+    builder_t builder;
+    const void *baton;
+    connmatchfunc_t connmatcher;
+    const char *describe_key;
+    const char *describe_value;
+};
+
+typedef bool (*serversetupfunc_t)(const mhServerSetupBldr_t *ssb,
+                                  mhServCtx_t *ctx);
+
+struct mhServerSetupBldr_t {
+    builder_t builder;
+    const void *baton;
+    unsigned int ibaton;
+    serversetupfunc_t serversetup;
+};
+
+
+typedef bool (* respbuilderfunc_t)(const mhResponseBldr_t *rb,
+                                   mhResponse_t *resp);
+
+struct mhResponseBldr_t {
+    builder_t builder;
+    const void *baton;
+    unsigned int ibaton;
+    respbuilderfunc_t respbuilder;
 };
 
 const char *getHeader(apr_pool_t *pool, apr_table_t *hdrs, const char *hdr);
@@ -187,14 +245,17 @@ mhRequest_t *_mhInitRequest(apr_pool_t *pool);
 
 bool _mhRequestMatcherMatch(const mhRequestMatcher_t *rm,
                             const mhRequest_t *req);
-bool _mhClientcertcn_matcher(apr_pool_t *pool, const mhMatchingPattern_t *mp,
+bool _mhClientcertcn_matcher(const mhConnMatcherBldr_t *mp,
                              const _mhClientCtx_t *cctx);
-bool _mhClientcert_valid_matcher(apr_pool_t *pool, const mhMatchingPattern_t *mp,
+bool _mhClientcert_valid_matcher(const mhConnMatcherBldr_t *mp,
                                  const _mhClientCtx_t *cctx);
 _mhClientCtx_t *_mhGetClientCtx(mhServCtx_t *serv_ctx);
 
 /* Build a response */
 void _mhBuildResponse(mhResponse_t *resp);
+
+void _mhErrorUnexpectedBuilder(const MockHTTP *mh, void *actual,
+                               builderType_t expected);
 
 /* Test servers */
 apr_status_t _mhRunServerLoop(mhServCtx_t *ctx);

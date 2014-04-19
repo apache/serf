@@ -495,10 +495,10 @@ void setup_test_mock_https_server(test_baton_t *tb,
                                                              "test/certs")),
                   WithCertificateKeyFile(keyfile),
                   WithCertificateFileArray(certfiles),
-                  t == test_clientcert_mandatory ?
-                          WithRequiredClientCertificate :
-                      t == test_clientcert_optional ?
-                              WithOptionalClientCertificate : 0)
+                  OnConditionThat(t == test_clientcert_mandatory,
+                                  WithRequiredClientCertificate),
+                  OnConditionThat(t == test_clientcert_optional,
+                                  WithOptionalClientCertificate))
     EndInit
     tb->serv_port = mhServerPortNr(tb->mh);
     tb->serv_host = apr_psprintf(tb->pool, "%s:%d", "localhost", tb->serv_port);

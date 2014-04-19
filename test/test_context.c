@@ -1955,7 +1955,7 @@ static void ssltunnel_basic_auth(CuTest *tc, int serv_close_conn,
         GETRequest(URLEqualTo("/"), HeaderNotSet("Authorization"))
           Respond(WithCode(401),WithChunkedBody("1"),
                   WithHeader("www-Authenticate", "bAsIc realm=\"Test Suite\""),
-                  serv_close_conn ? WithConnectionCloseHeader : NULL)
+                  OnConditionThat(serv_close_conn, WithConnectionCloseHeader))
         GETRequest(URLEqualTo("/"),
                    HeaderEqualTo("Authorization", "Basic c2VyZjpzZXJmdGVzdA=="))
           Respond(WithCode(200),WithChunkedBody(""))
@@ -1965,13 +1965,14 @@ static void ssltunnel_basic_auth(CuTest *tc, int serv_close_conn,
           Respond(WithCode(407), WithChunkedBody(""),
                   WithHeader("Proxy-Authenticate",
                              "Basic realm=\"Test Suite Proxy\""),
-                  proxy407_close_conn ? WithConnectionCloseHeader : NULL)
+                  OnConditionThat(proxy407_close_conn, WithConnectionCloseHeader))
         HTTPRequest("CONNECT", URLEqualTo(tb->serv_host),
                     HeaderEqualTo("Proxy-Authorization",
                                   "Basic c2VyZnByb3h5OnNlcmZ0ZXN0"))
           Respond(WithCode(200), WithChunkedBody(""),
                   /* Don't kill the connection here, just send the header */
-                  proxy200_close_conn ? WithHeader("Connection", "close") : NULL)
+                  OnConditionThat(proxy200_close_conn,
+                                  WithHeader("Connection", "close")))
           SetupSSLTunnel
     Expect
       AllRequestsReceivedInOrder

@@ -66,6 +66,19 @@ typedef enum mhSSLProtocol_t {
     mhProtoTLSv12 = 0x10,
 } mhSSLProtocol_t;
 
+typedef enum mhThreading_t {
+    mhThreadMain,
+    mhThreadSeparate,
+} mhThreading_t;
+
+
+/******************************************************************************
+ * MockHTTPinC API                                                            *
+ * ---------------                                                            *
+ * This is the main API of the MockHTTPinC library. Most if the API consists  *
+ * of macro's providing a fluent-like API (as much as that's possible in C).  *
+ ******************************************************************************/
+
 /* Note: the variadic macro's used here require C99. */
 /* TODO: we can provide xxx1(x), xxx2(x,y)... macro's for C89 compilers */
 
@@ -110,6 +123,17 @@ typedef enum mhSSLProtocol_t {
 /* Set the maximum number of requests per connection. Default is unlimited */
 #define     WithMaxKeepAliveRequests(maxRequests)\
                 mhSetServerMaxRequestsPerConn(__servctx, maxRequests)
+
+/* Runs the mock server and proxy in separate threads, use this when testing a
+   blocking http client library */
+#define     InSeparateThread\
+                mhSetServerThreading(__servctx, mhThreadSeparate)
+
+/* Runs the mock server and proxy in the main thread, use this when testing a 
+   non-blocking http client library.
+   This is the default. */
+#define     InMainThread\
+                mhSetServerThreading(__servctx, mhThreadMain)
 
 /* Finalize MockHTTP library initialization */
 #define EndInit\
@@ -190,9 +214,13 @@ typedef enum mhSSLProtocol_t {
                 __rm = mhGivenRequest(__mh, method, __VA_ARGS__, NULL);\
                 mhPushRequest(__servctx, __rm);
 
-/* Match the request's URL */
-#define     URLEqualTo(x)\
-                mhMatchURLEqualTo(__mh, (x))
+/* Match the request's URL equal to EXP */
+#define     URLEqualTo(exp)\
+                mhMatchURLEqualTo(__mh, (exp))
+
+/* Match the request's URL not equal to EXP */
+#define     URLNotEqualTo(exp)\
+                mhMatchURLNotEqualTo(__mh, (exp))
 
 /* Match the request's body, ignoring transfer encoding (e.g. chunked) */
 #define     BodyEqualTo(x)\
@@ -205,6 +233,10 @@ typedef enum mhSSLProtocol_t {
 /* Match a request header's value. */
 #define     HeaderEqualTo(h, v)\
                 mhMatchHeaderEqualTo(__mh, (h), (v))
+
+/* Match a request with the specified header set */
+#define     HeaderSet(h)\
+                mhMatchHeaderNotEqualTo(__mh, (h), NULL)
 
 /* Match a request header's value. */
 #define     HeaderNotEqualTo(h, v)\
@@ -303,6 +335,11 @@ typedef enum mhSSLProtocol_t {
                 __resp = NULL; __rm = NULL; __mh = NULL;\
             }
 
+
+#define     OnConditionThat(condition, builder)\
+                mhSetOnConditionThat(condition, builder)
+
+
 /* Set expectations for a series of requests */
 #define   Expect
 
@@ -363,18 +400,6 @@ typedef enum mhSSLProtocol_t {
 #define EndVerify\
             }
 
-typedef struct MockHTTP MockHTTP;
-typedef struct mhMatchingPattern_t mhMatchingPattern_t;
-typedef struct mhMapping_t mhMapping_t;
-typedef struct mhRequest_t mhRequest_t;
-typedef struct mhRequestMatcher_t mhRequestMatcher_t;
-typedef struct mhResponse_t mhResponse_t;
-typedef struct mhRespBuilder_t mhRespBuilder_t;
-typedef struct mhServCtx_t mhServCtx_t;
-typedef struct mhServerBuilder_t mhServerBuilder_t;
-typedef struct mhRequestMatcher_t mhConnectionMatcher_t; /* TODO */
-
-typedef unsigned long mhError_t;
 
 typedef struct mhStats_t {
     /* Number of requests received and read by the server. This does not include
@@ -390,6 +415,8 @@ typedef struct mhStats_t {
     unsigned int requestsMatched;
 } mhStats_t;
 
+typedef unsigned long mhError_t;
+
 /* Everything ok */
 #define MOCKHTTP_NO_ERROR 0
 /* Responses pending in queueu but can't be sent now */
@@ -400,6 +427,8 @@ typedef struct mhStats_t {
 #define MOCKHTTP_SETUP_FAILED 100
 /* There was a problem while running a test */
 #define MOCKHTTP_TEST_FAILED 101
+
+typedef struct MockHTTP MockHTTP;
 
 /**
  * Initialize a MockHTTP context.
@@ -436,7 +465,7 @@ mhError_t mhRunServerLoopCompleteRequests(MockHTTP *mh);
  * MOCKHTTP_TIMEOUT  maximum timeout exceeded when waiting for a complete 
  *                   request
  */
-mhError_t mhRunServerLoopOneRequest(MockHTTP *mh);
+mhError_t mhRunServerLoop(MockHTTP *mh);
 
 /**
  * Get the actual port number on which the server is listening.
@@ -447,6 +476,25 @@ unsigned int mhServerPortNr(const MockHTTP *mh);
  * Get the actual port number on which the proxy is listening.
  */
 unsigned int mhProxyPortNr(const MockHTTP *mh);
+
+
+
+/******************************************************************************
+ * Semi-public API                                                            *
+ * ---------------                                                            *
+ * These are the functions that are used by the public API macro's.           *
+ * While they're tecnically part of the API (they have to be because we use   *
+ * macro's), we've made no effort to make them easy to use.                   *
+ ******************************************************************************/
+
+typedef struct mhRequest_t mhRequest_t;
+typedef struct mhRequestMatcher_t mhRequestMatcher_t;
+typedef struct mhResponse_t mhResponse_t;
+typedef struct mhServCtx_t mhServCtx_t;
+typedef struct mhReqMatcherBldr_t mhReqMatcherBldr_t;
+typedef struct mhConnMatcherBldr_t mhConnMatcherBldr_t;
+typedef struct mhServerSetupBldr_t mhServerSetupBldr_t;
+typedef struct mhResponseBldr_t mhResponseBldr_t;
 
 /**
    The following functions should not be used directly, as they can be quite
@@ -459,49 +507,54 @@ void mhConfigServer(mhServCtx_t *ctx, ...);
 void mhStartServer(mhServCtx_t *ctx);
 mhServCtx_t *mhGetServerCtx(MockHTTP *mh);
 mhServCtx_t *mhGetProxyCtx(MockHTTP *mh);
-int mhSetServerID(mhServCtx_t *ctx, const char *serverID);
-int mhSetServerPort(mhServCtx_t *ctx, unsigned int port);
-int mhSetServerType(mhServCtx_t *ctx, mhServerType_t type);
-int mhSetServerMaxRequestsPerConn(mhServCtx_t *ctx, unsigned int maxRequests);
-int mhSetServerCertPrefix(mhServCtx_t *ctx, const char *prefix);
-int mhSetServerCertKeyFile(mhServCtx_t *ctx, const char *keyFile);
-int mhAddServerCertFiles(mhServCtx_t *ctx, ...);
-int mhAddServerCertFileArray(mhServCtx_t *ctx, const char **certFiles);
-int mhSetServerRequestClientCert(mhServCtx_t *ctx, mhClientCertVerification_t v);
-int mhAddSSLProtocol(mhServCtx_t *ctx, mhSSLProtocol_t proto);
+mhServerSetupBldr_t *mhSetServerID(mhServCtx_t *ctx, const char *serverID);
+mhServerSetupBldr_t *mhSetServerPort(mhServCtx_t *ctx, unsigned int port);
+mhServerSetupBldr_t *mhSetServerType(mhServCtx_t *ctx, mhServerType_t type);
+mhServerSetupBldr_t *mhSetServerThreading(mhServCtx_t *ctx,
+                                          mhThreading_t threading);
+mhServerSetupBldr_t *mhSetServerMaxRequestsPerConn(mhServCtx_t *ctx,
+                                                   unsigned int maxRequests);
+mhServerSetupBldr_t *mhSetServerCertPrefix(mhServCtx_t *ctx, const char *prefix);
+mhServerSetupBldr_t *mhSetServerCertKeyFile(mhServCtx_t *ctx,
+                                            const char *keyFile);
+mhServerSetupBldr_t *mhAddServerCertFiles(mhServCtx_t *ctx, ...);
+mhServerSetupBldr_t *mhAddServerCertFileArray(mhServCtx_t *ctx,
+                                              const char **certFiles);
+mhServerSetupBldr_t *mhSetServerRequestClientCert(mhServCtx_t *ctx,
+                                                  mhClientCertVerification_t v);
+mhServerSetupBldr_t *mhAddSSLProtocol(mhServCtx_t *ctx, mhSSLProtocol_t proto);
 
 /* Define request stubs */
 mhRequestMatcher_t *mhGivenRequest(MockHTTP *mh, const char *method, ...);
 
 /* Request matching functions */
-mhMatchingPattern_t *mhMatchURLEqualTo(const MockHTTP *mh,
+mhReqMatcherBldr_t *mhMatchURLEqualTo(const MockHTTP *mh,
                                        const char *expected);
-mhMatchingPattern_t *mhMatchMethodEqualTo(const MockHTTP *mh,
+mhReqMatcherBldr_t *mhMatchURLNotEqualTo(const MockHTTP *mh,
                                           const char *expected);
-mhMatchingPattern_t *mhMatchBodyEqualTo(const MockHTTP *mh,
+mhReqMatcherBldr_t *mhMatchMethodEqualTo(const MockHTTP *mh,
+                                          const char *expected);
+mhReqMatcherBldr_t *mhMatchBodyEqualTo(const MockHTTP *mh,
                                         const char *expected);
-mhMatchingPattern_t *mhMatchRawBodyEqualTo(const MockHTTP *mh,
+mhReqMatcherBldr_t *mhMatchRawBodyEqualTo(const MockHTTP *mh,
                                            const char *expected);
-mhMatchingPattern_t *mhMatchIncompleteBodyEqualTo(const MockHTTP *mh,
+mhReqMatcherBldr_t *mhMatchIncompleteBodyEqualTo(const MockHTTP *mh,
                                                   const char *expected);
 /* Network level matching functions, for testing of http libraries */
-mhMatchingPattern_t *mhMatchBodyNotChunkedEqualTo(const MockHTTP *mh,
+mhReqMatcherBldr_t *mhMatchBodyNotChunkedEqualTo(const MockHTTP *mh,
                                                   const char *expected);
-mhMatchingPattern_t *mhMatchChunkedBodyEqualTo(const MockHTTP *mh,
+mhReqMatcherBldr_t *mhMatchChunkedBodyEqualTo(const MockHTTP *mh,
                                                const char *expected);
-mhMatchingPattern_t *mhMatchChunkedBodyChunksEqualTo(const MockHTTP *mh, ...);
-mhMatchingPattern_t *mhMatchHeaderEqualTo(const MockHTTP *mh,
+mhReqMatcherBldr_t *mhMatchChunkedBodyChunksEqualTo(const MockHTTP *mh, ...);
+mhReqMatcherBldr_t *mhMatchHeaderEqualTo(const MockHTTP *mh,
                                           const char *hdr, const char *value);
-mhMatchingPattern_t *mhMatchHeaderNotEqualTo(const MockHTTP *mh,
+mhReqMatcherBldr_t *mhMatchHeaderNotEqualTo(const MockHTTP *mh,
                                              const char *hdr, const char *value);
 
 void mhGivenConnSetup(MockHTTP *mh, ...);
-mhMatchingPattern_t *mhMatchClientCertCNEqualTo(const MockHTTP *mh,
+mhConnMatcherBldr_t *mhMatchClientCertCNEqualTo(const MockHTTP *mh,
                                                 const char *expected);
-mhMatchingPattern_t *mhMatchClientCertValid(const MockHTTP *mh);
-
-/* Response functions */
-typedef void (* respbuilder_t)(mhResponse_t *resp);
+mhConnMatcherBldr_t *mhMatchClientCertValid(const MockHTTP *mh);
 
 mhResponse_t *mhNewResponseForRequest(MockHTTP *mh, mhServCtx_t *ctx,
                                       mhRequestMatcher_t *rm);
@@ -510,14 +563,16 @@ mhResponse_t *mhNewDefaultResponse(MockHTTP *mh);
 void mhNewActionForRequest(mhServCtx_t *ctx, mhRequestMatcher_t *rm,
                            mhAction_t action);
 
-respbuilder_t mhRespSetCode(mhResponse_t *resp, unsigned int status);
-respbuilder_t mhRespSetBody(mhResponse_t *resp, const char *body);
-respbuilder_t mhRespSetChunkedBody(mhResponse_t *resp, ...);
-respbuilder_t mhRespAddHeader(mhResponse_t *resp, const char *header,
-                                 const char *value);
-respbuilder_t mhRespSetConnCloseHdr(mhResponse_t *resp);
-respbuilder_t mhRespSetUseRequestBody(mhResponse_t *resp);
-respbuilder_t mhRespSetRawData(mhResponse_t *resp, const char *raw_data);
+mhResponseBldr_t *mhRespSetCode(mhResponse_t *resp, unsigned int status);
+mhResponseBldr_t *mhRespSetBody(mhResponse_t *resp, const char *body);
+mhResponseBldr_t *mhRespSetChunkedBody(mhResponse_t *resp, ...);
+mhResponseBldr_t *mhRespAddHeader(mhResponse_t *resp, const char *header,
+                                  const char *value);
+mhResponseBldr_t *mhRespSetConnCloseHdr(mhResponse_t *resp);
+mhResponseBldr_t *mhRespSetUseRequestBody(mhResponse_t *resp);
+mhResponseBldr_t *mhRespSetRawData(mhResponse_t *resp, const char *raw_data);
+
+const void *mhSetOnConditionThat(int condition, void *builder);
 
 /* Define request/response pairs */
 void mhPushRequest(mhServCtx_t *ctx, mhRequestMatcher_t *rm);

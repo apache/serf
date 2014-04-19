@@ -156,7 +156,7 @@ static void basic_authentication(CuTest *tc, int close_conn)
       GETRequest(URLEqualTo("/"), HeaderNotSet("Authorization"))
         Respond(WithCode(401),WithChunkedBody("1"),
                 WithHeader("www-Authenticate", "bAsIc realm=\"Test Suite\""),
-                close_conn ? WithConnectionCloseHeader : NULL)
+                OnConditionThat(close_conn, WithConnectionCloseHeader))
       GETRequest(URLEqualTo("/"),
                  HeaderEqualTo("Authorization", "Basic c2VyZjpzZXJmdGVzdA=="))
         Respond(WithCode(200),WithChunkedBody(""))
@@ -268,7 +268,7 @@ static void digest_authentication(CuTest *tc, int close_conn)
                 WithHeader("www-Authenticate", "Digest realm=\"Test Suite\","
                            "nonce=\"ABCDEF1234567890\",opaque=\"myopaque\","
                            "algorithm=\"MD5\",qop-options=\"auth\""),
-                close_conn ? WithConnectionCloseHeader : NULL)
+                OnConditionThat(close_conn, WithConnectionCloseHeader))
       GETRequest(URLEqualTo("/test/index.html"),
                  HeaderEqualTo("Authorization", "Digest realm=\"Test Suite\", "
                                "username=\"serf\", nonce=\"ABCDEF1234567890\", "

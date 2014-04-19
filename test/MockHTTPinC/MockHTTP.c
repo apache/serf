@@ -27,6 +27,7 @@ static char *serializeArrayOfIovecs(apr_pool_t *pool,
                                     apr_array_header_t *blocks);
 static mhResponse_t *initResponse(MockHTTP *mh);
 
+
 /* private functions */
 static const char *toLower(apr_pool_t *pool, const char *str)
 {
@@ -136,23 +137,25 @@ void mhCleanup(MockHTTP *mh)
  * Runs both the proxy and the server loops. This function will block as long
  * as there's data to read or write.
  *
- * partial: 1 if either proxy or server blocks on a partly read request. 0 if
- *            all requests have been read completely.
+ * reqState: NoReqsReceived if no requests were received
+ *           PartialReqReceived if either proxy or server blocks on a partly 
+ *                              read request.
+ *           FullReqReceived if all requests have been read completely.
  */
-static apr_status_t runServerLoop(MockHTTP *mh, int *partial)
+static apr_status_t runServerLoop(MockHTTP *mh, loopRequestState_t *reqState)
 {
     apr_status_t status = APR_EGENERAL;
 
-    *partial = 0;
+    *reqState = NoReqsReceived;
     do {
         if (mh->proxyCtx) {
             status = _mhRunServerLoop(mh->proxyCtx);
-            *partial = mh->proxyCtx->partialRequest;
+            *reqState = mh->proxyCtx->reqState;
         }
         /* TODO: status? */
         if (mh->servCtx) {
             status = _mhRunServerLoop(mh->servCtx);
-            *partial |= mh->servCtx->partialRequest;
+            *reqState |= mh->servCtx->reqState;
         }
     } while (status == APR_SUCCESS);
 
@@ -161,7 +164,7 @@ static apr_status_t runServerLoop(MockHTTP *mh, int *partial)
 
 mhError_t mhRunServerLoop(MockHTTP *mh)
 {
-    int dummy;
+    loopRequestState_t dummy;
     apr_status_t status = runServerLoop(mh, &dummy);
 
     if (status == MH_STATUS_WAITING)
@@ -175,15 +178,20 @@ mhError_t mhRunServerLoop(MockHTTP *mh)
 
 mhError_t mhRunServerLoopCompleteRequests(MockHTTP *mh)
 {
-    int partial = 0;
+    loopRequestState_t reqState = NoReqsReceived;
     apr_status_t status = APR_EGENERAL;
     apr_time_t finish_time = apr_time_now() + apr_time_from_sec(15);
 
-    do {
-        status = runServerLoop(mh, &partial);
-    } while (status == APR_EAGAIN &&
-             (apr_time_now() <= finish_time) &&
-             partial);
+    while (1) {
+        status = runServerLoop(mh, &reqState);
+
+        if (status != APR_EAGAIN)
+            break;
+        if (apr_time_now() > finish_time)
+            break;
+        if (reqState == FullReqReceived)
+            break;
+    };
 
     if (status == APR_EAGAIN)
         return MOCKHTTP_TIMEOUT;
@@ -191,14 +199,31 @@ mhError_t mhRunServerLoopCompleteRequests(MockHTTP *mh)
     return status;
 }
 
-/* Define expectations*/
+static const builder_t NoopBuilder = { MagicKey, BuilderTypeNone };
+
+const void *mhSetOnConditionThat(int condition, void *builder)
+{
+    if (condition)
+        return builder;
+
+    return &NoopBuilder;
+}
 
 /******************************************************************************/
 /* Requests matchers: define criteria to match different aspects of a HTTP    */
 /* request received by the MockHTTP server.                                   */
 /******************************************************************************/
+
+static mhReqMatcherBldr_t *createReqMatcherBldr(apr_pool_t *pool)
+{
+    mhReqMatcherBldr_t *mp = apr_pcalloc(pool, sizeof(mhReqMatcherBldr_t));
+    mp->builder.magic = MagicKey;
+    mp->builder.type = BuilderTypeReqMatcher;
+    return mp;
+}
+
 static bool
-chunks_matcher(const mhMatchingPattern_t *mp, apr_array_header_t *chunks)
+chunks_matcher(const mhReqMatcherBldr_t *mp, apr_array_header_t *chunks)
 {
     const char *ptr, *expected = mp->baton;
     int i;
@@ -224,7 +249,7 @@ chunks_matcher(const mhMatchingPattern_t *mp, apr_array_header_t *chunks)
     return YES;
 }
 
-static bool str_matcher(const mhMatchingPattern_t *mp, const char *actual)
+static bool str_matcher(const mhReqMatcherBldr_t *mp, const char *actual)
 {
     const char *expected = mp->baton;
 
@@ -241,18 +266,17 @@ static bool str_matcher(const mhMatchingPattern_t *mp, const char *actual)
     return NO;
 }
 
-static bool url_matcher(apr_pool_t *pool, const mhMatchingPattern_t *mp,
-                        const mhRequest_t *req)
+static bool url_matcher(const mhReqMatcherBldr_t *mp, const mhRequest_t *req)
 {
     return str_matcher(mp, req->url);
 }
 
-mhMatchingPattern_t *
+mhReqMatcherBldr_t *
 mhMatchURLEqualTo(const MockHTTP *mh, const char *expected)
 {
     apr_pool_t *pool = mh->pool;
 
-    mhMatchingPattern_t *mp = apr_pcalloc(pool, sizeof(mhMatchingPattern_t));
+    mhReqMatcherBldr_t *mp = createReqMatcherBldr(pool);
     mp->baton = apr_pstrdup(pool, expected);
     mp->matcher = url_matcher;
     mp->describe_key = "URL equal to";
@@ -260,8 +284,27 @@ mhMatchURLEqualTo(const MockHTTP *mh, const char *expected)
     return mp;
 }
 
-static bool body_matcher(apr_pool_t *pool, const mhMatchingPattern_t *mp,
-                         const mhRequest_t *req)
+static bool
+url_not_matcher(const mhReqMatcherBldr_t *mp, const mhRequest_t *req)
+{
+    return !str_matcher(mp, req->url);
+}
+
+mhReqMatcherBldr_t *
+mhMatchURLNotEqualTo(const MockHTTP *mh, const char *expected)
+{
+    apr_pool_t *pool = mh->pool;
+
+    mhReqMatcherBldr_t *mp = createReqMatcherBldr(pool);
+    mp->baton = apr_pstrdup(pool, expected);
+    mp->matcher = url_not_matcher;
+    mp->describe_key = "URL not equal to";
+    mp->describe_value = expected;
+    return mp;
+}
+
+static bool
+body_matcher(const mhReqMatcherBldr_t *mp, const mhRequest_t *req)
 {
     /* ignore chunked or not chunked */
     if (req->chunked == YES)
@@ -271,12 +314,12 @@ static bool body_matcher(apr_pool_t *pool, const mhMatchingPattern_t *mp,
     }
 }
 
-mhMatchingPattern_t *
+mhReqMatcherBldr_t *
 mhMatchBodyEqualTo(const MockHTTP *mh, const char *expected)
 {
     apr_pool_t *pool = mh->pool;
 
-    mhMatchingPattern_t *mp = apr_pcalloc(pool, sizeof(mhMatchingPattern_t));
+    mhReqMatcherBldr_t *mp = createReqMatcherBldr(pool);
     mp->baton = apr_pstrdup(pool, expected);
     mp->matcher = body_matcher;
     mp->describe_key = "Body equal to";
@@ -284,18 +327,18 @@ mhMatchBodyEqualTo(const MockHTTP *mh, const char *expected)
     return mp;
 }
 
-static bool raw_body_matcher(apr_pool_t *pool, const mhMatchingPattern_t *mp,
-                             const mhRequest_t *req)
+static bool
+raw_body_matcher(const mhReqMatcherBldr_t *mp, const mhRequest_t *req)
 {
     return chunks_matcher(mp, req->body);
 }
 
-mhMatchingPattern_t *
+mhReqMatcherBldr_t *
 mhMatchRawBodyEqualTo(const MockHTTP *mh, const char *expected)
 {
     apr_pool_t *pool = mh->pool;
 
-    mhMatchingPattern_t *mp = apr_pcalloc(pool, sizeof(mhMatchingPattern_t));
+    mhReqMatcherBldr_t *mp = createReqMatcherBldr(pool);
     mp->baton = apr_pstrdup(pool, expected);
     mp->matcher = raw_body_matcher;
     mp->describe_key = "Raw body equal to";
@@ -303,12 +346,12 @@ mhMatchRawBodyEqualTo(const MockHTTP *mh, const char *expected)
     return mp;
 }
 
-mhMatchingPattern_t *
+mhReqMatcherBldr_t *
 mhMatchIncompleteBodyEqualTo(const MockHTTP *mh, const char *expected)
 {
     apr_pool_t *pool = mh->pool;
 
-    mhMatchingPattern_t *mp = apr_pcalloc(pool, sizeof(mhMatchingPattern_t));
+    mhReqMatcherBldr_t *mp = createReqMatcherBldr(pool);
     mp->baton = apr_pstrdup(pool, expected);
     mp->matcher = body_matcher;
     mp->match_incomplete = TRUE;
@@ -318,20 +361,19 @@ mhMatchIncompleteBodyEqualTo(const MockHTTP *mh, const char *expected)
 }
 
 static bool
-body_notchunked_matcher(apr_pool_t *pool, const mhMatchingPattern_t *mp,
-                        const mhRequest_t *req)
+body_notchunked_matcher(const mhReqMatcherBldr_t *mp, const mhRequest_t *req)
 {
     if (req->chunked == YES)
         return NO;
     return chunks_matcher(mp, req->body);
 }
 
-mhMatchingPattern_t *
+mhReqMatcherBldr_t *
 mhMatchBodyNotChunkedEqualTo(const MockHTTP *mh, const char *expected)
 {
     apr_pool_t *pool = mh->pool;
 
-    mhMatchingPattern_t *mp = apr_pcalloc(pool, sizeof(mhMatchingPattern_t));
+    mhReqMatcherBldr_t *mp = createReqMatcherBldr(pool);
     mp->baton = apr_pstrdup(pool, expected);
     mp->matcher = body_notchunked_matcher;
     mp->describe_key = "Body not chunked equal to";
@@ -340,8 +382,7 @@ mhMatchBodyNotChunkedEqualTo(const MockHTTP *mh, const char *expected)
 }
 
 static bool
-chunked_body_matcher(apr_pool_t *pool, const mhMatchingPattern_t *mp,
-                     const mhRequest_t *req)
+chunked_body_matcher(const mhReqMatcherBldr_t *mp, const mhRequest_t *req)
 {
     if (req->chunked == NO)
         return NO;
@@ -349,12 +390,12 @@ chunked_body_matcher(apr_pool_t *pool, const mhMatchingPattern_t *mp,
     return chunks_matcher(mp, req->chunks);
 }
 
-mhMatchingPattern_t *
+mhReqMatcherBldr_t *
 mhMatchChunkedBodyEqualTo(const MockHTTP *mh, const char *expected)
 {
     apr_pool_t *pool = mh->pool;
 
-    mhMatchingPattern_t *mp = apr_pcalloc(pool, sizeof(mhMatchingPattern_t));
+    mhReqMatcherBldr_t *mp = createReqMatcherBldr(pool);
     mp->baton = apr_pstrdup(pool, expected);
     mp->matcher = chunked_body_matcher;
     mp->describe_key = "Chunked body equal to";
@@ -362,8 +403,7 @@ mhMatchChunkedBodyEqualTo(const MockHTTP *mh, const char *expected)
     return mp;
 }
 
-static bool chunked_body_chunks_matcher(apr_pool_t *pool,
-                                        const mhMatchingPattern_t *mp,
+static bool chunked_body_chunks_matcher(const mhReqMatcherBldr_t *mp,
                                         const mhRequest_t *req)
 {
     const apr_array_header_t *chunks;
@@ -392,12 +432,12 @@ static bool chunked_body_chunks_matcher(apr_pool_t *pool,
     return YES;
 }
 
-mhMatchingPattern_t *
+mhReqMatcherBldr_t *
 mhMatchChunkedBodyChunksEqualTo(const MockHTTP *mh, ...)
 {
     apr_pool_t *pool = mh->pool;
     apr_array_header_t *chunks;
-    mhMatchingPattern_t *mp;
+    mhReqMatcherBldr_t *mp;
     va_list argp;
 
     chunks = apr_array_make(pool, 5, sizeof(struct iovec));
@@ -412,7 +452,7 @@ mhMatchChunkedBodyChunksEqualTo(const MockHTTP *mh, ...)
     }
     va_end(argp);
 
-    mp = apr_palloc(pool, sizeof(mhMatchingPattern_t));
+    mp = apr_palloc(pool, sizeof(mhReqMatcherBldr_t));
     mp->baton = chunks;
     mp->matcher = chunked_body_chunks_matcher;
     mp->describe_key = "Chunked body with chunks";
@@ -421,19 +461,20 @@ mhMatchChunkedBodyChunksEqualTo(const MockHTTP *mh, ...)
 }
 
 static bool
-header_matcher(apr_pool_t *pool, const mhMatchingPattern_t *mp,
-               const mhRequest_t *req)
+header_matcher(const mhReqMatcherBldr_t *mp, const mhRequest_t *req)
 {
-    const char *actual = getHeader(pool, req->hdrs, mp->baton2);
+    apr_pool_t *tmppool;
+    apr_pool_create(&tmppool, req->pool);
+    const char *actual = getHeader(tmppool, req->hdrs, mp->baton2);
     return str_matcher(mp, actual);
 }
 
-mhMatchingPattern_t *
+mhReqMatcherBldr_t *
 mhMatchHeaderEqualTo(const MockHTTP *mh, const char *hdr, const char *value)
 {
     apr_pool_t *pool = mh->pool;
 
-    mhMatchingPattern_t *mp = apr_pcalloc(pool, sizeof(mhMatchingPattern_t));
+    mhReqMatcherBldr_t *mp = createReqMatcherBldr(pool);
     mp->baton = apr_pstrdup(pool, value);
     mp->baton2 = apr_pstrdup(pool, hdr);
     mp->matcher = header_matcher;
@@ -443,19 +484,20 @@ mhMatchHeaderEqualTo(const MockHTTP *mh, const char *hdr, const char *value)
 }
 
 static bool
-header_not_matcher(apr_pool_t *pool, const mhMatchingPattern_t *mp,
-                   const mhRequest_t *req)
+header_not_matcher(const mhReqMatcherBldr_t *mp, const mhRequest_t *req)
 {
-    const char *actual = getHeader(pool, req->hdrs, mp->baton2);
+    apr_pool_t *tmppool;
+    apr_pool_create(&tmppool, req->pool);
+    const char *actual = getHeader(tmppool, req->hdrs, mp->baton2);
     return !str_matcher(mp, actual);
 }
 
-mhMatchingPattern_t *
+mhReqMatcherBldr_t *
 mhMatchHeaderNotEqualTo(const MockHTTP *mh, const char *hdr, const char *value)
 {
     apr_pool_t *pool = mh->pool;
 
-    mhMatchingPattern_t *mp = apr_pcalloc(pool, sizeof(mhMatchingPattern_t));
+    mhReqMatcherBldr_t *mp = createReqMatcherBldr(pool);
     mp->baton = apr_pstrdup(pool, value);
     mp->baton2 = apr_pstrdup(pool, hdr);
     mp->matcher = header_not_matcher;
@@ -464,8 +506,7 @@ mhMatchHeaderNotEqualTo(const MockHTTP *mh, const char *hdr, const char *value)
     return mp;
 }
 
-static bool method_matcher(apr_pool_t *pool, const mhMatchingPattern_t *mp,
-                           const mhRequest_t *req)
+static bool method_matcher(const mhReqMatcherBldr_t *mp, const mhRequest_t *req)
 {
     const char *expected = mp->baton;
 
@@ -475,12 +516,12 @@ static bool method_matcher(apr_pool_t *pool, const mhMatchingPattern_t *mp,
     return NO;
 }
 
-mhMatchingPattern_t *
+mhReqMatcherBldr_t *
 mhMatchMethodEqualTo(const MockHTTP *mh, const char *expected)
 {
     apr_pool_t *pool = mh->pool;
 
-    mhMatchingPattern_t *mp = apr_pcalloc(pool, sizeof(mhMatchingPattern_t));
+    mhReqMatcherBldr_t *mp = createReqMatcherBldr(pool);
     mp->baton = apr_pstrdup(pool, expected);
     mp->matcher = method_matcher;
     mp->describe_key = "Method equal to";
@@ -496,13 +537,20 @@ constructRequestMatcher(const MockHTTP *mh, const char *method, va_list argp)
     mhRequestMatcher_t *rm = apr_pcalloc(pool, sizeof(mhRequestMatcher_t));
     rm->pool = pool;
     rm->method = apr_pstrdup(pool, method);
-    rm->matchers = apr_array_make(pool, 5, sizeof(mhMatchingPattern_t *));
+    rm->matchers = apr_array_make(pool, 5, sizeof(mhReqMatcherBldr_t *));
 
     while (1) {
-        mhMatchingPattern_t *mp;
-        mp = va_arg(argp, mhMatchingPattern_t *);
-        if (mp == NULL) break;
-        *((mhMatchingPattern_t **)apr_array_push(rm->matchers)) = mp;
+        mhReqMatcherBldr_t *rmb;
+        rmb = va_arg(argp, mhReqMatcherBldr_t *);
+        if (rmb == NULL)
+            break;
+        if (rmb->builder.type == BuilderTypeNone)
+            continue;
+        if (rmb->builder.type != BuilderTypeReqMatcher) {
+            _mhErrorUnexpectedBuilder(mh, rmb, BuilderTypeReqMatcher);
+            break;
+        }
+        *((mhReqMatcherBldr_t **)apr_array_push(rm->matchers)) = rmb;
     }
     return rm;
 }
@@ -523,68 +571,66 @@ bool
 _mhRequestMatcherMatch(const mhRequestMatcher_t *rm, const mhRequest_t *req)
 {
     int i;
-    apr_pool_t *match_pool;
 
     if (apr_strnatcasecmp(rm->method, req->method) != 0) {
         return NO;
     }
 
-    apr_pool_create(&match_pool, rm->pool);
-
     for (i = 0 ; i < rm->matchers->nelts; i++) {
-        const mhMatchingPattern_t *mp;
+        const mhReqMatcherBldr_t *mp;
 
-        mp = APR_ARRAY_IDX(rm->matchers, i, mhMatchingPattern_t *);
-        if (mp->matcher(match_pool, mp, req) == NO)
+        mp = APR_ARRAY_IDX(rm->matchers, i, mhReqMatcherBldr_t *);
+        if (mp->matcher(mp, req) == NO)
             return NO;
     }
-    apr_pool_destroy(match_pool);
 
     return YES;
 }
 
 /******************************************************************************/
-/* Connection-leven matchers: define criteria to match different aspects of a */
+/* Connection-level matchers: define criteria to match different aspects of a */
 /* HTTP or HTTPS connection.                                                  */
 /******************************************************************************/
 
-static mhConnectionMatcher_t *
-constructConnectionMatcher(const MockHTTP *mh, va_list argp)
+static mhConnMatcherBldr_t *createConnMatcherBldr(apr_pool_t *pool)
 {
-    apr_pool_t *pool = mh->pool;
-
-    mhConnectionMatcher_t *cm = apr_pcalloc(pool, sizeof(mhRequestMatcher_t));
-    cm->pool = pool;
-    cm->matchers = apr_array_make(pool, 5, sizeof(mhMatchingPattern_t *));
-
-    while (1) {
-        mhMatchingPattern_t *mp;
-        mp = va_arg(argp, mhMatchingPattern_t *);
-        if (mp == NULL) break;
-        *((mhMatchingPattern_t **)apr_array_push(cm->matchers)) = mp;
-    }
-    return cm;
+    mhConnMatcherBldr_t *mp = apr_pcalloc(pool, sizeof(mhConnMatcherBldr_t));
+    mp->builder.magic = MagicKey;
+    mp->builder.type = BuilderTypeConnMatcher;
+    return mp;
 }
 
-/* Stores a mhConnectionMatcher_t * in the MockHTTP context */
+/* Stores a mhConnMatcherBldr_t * in the MockHTTP context */
 void mhGivenConnSetup(MockHTTP *mh, ...)
 {
     va_list argp;
-    mhConnectionMatcher_t *cm;
+    mhConnMatcherBldr_t *cmb;
+
+    mh->connMatchers = apr_array_make(mh->pool, 5,
+                                      sizeof(mhConnMatcherBldr_t *));
 
     va_start(argp, mh);
-    cm = constructConnectionMatcher(mh, argp);
+    while (1) {
+        cmb = va_arg(argp, mhConnMatcherBldr_t *);
+        if (cmb == NULL)
+            break;
+        if (cmb->builder.type == BuilderTypeNone)
+            continue;
+        if (cmb->builder.type != BuilderTypeConnMatcher) {
+            _mhErrorUnexpectedBuilder(mh, cmb, BuilderTypeConnMatcher);
+            break;
+        }
+        *((mhConnMatcherBldr_t **)apr_array_push(mh->connMatchers)) = cmb;
+    }
     va_end(argp);
-
-    mh->connMatcher = cm;
 }
 
-mhMatchingPattern_t *
+mhConnMatcherBldr_t *
 mhMatchClientCertCNEqualTo(const MockHTTP *mh, const char *expected)
 {
     apr_pool_t *pool = mh->pool;
 
-    mhMatchingPattern_t *mp = apr_pcalloc(pool, sizeof(mhMatchingPattern_t));
+    mhConnMatcherBldr_t *mp = createConnMatcherBldr(pool);
     mp->baton = apr_pstrdup(pool, expected);
     mp->connmatcher = _mhClientcertcn_matcher;
     mp->describe_key = "Client Certificate CN equal to";
@@ -592,11 +638,11 @@ mhMatchClientCertCNEqualTo(const MockHTTP *mh, const char *expected)
     return mp;
 }
 
-mhMatchingPattern_t *mhMatchClientCertValid(const MockHTTP *mh)
+mhConnMatcherBldr_t *mhMatchClientCertValid(const MockHTTP *mh)
 {
     apr_pool_t *pool = mh->pool;
 
-    mhMatchingPattern_t *mp = apr_pcalloc(pool, sizeof(mhMatchingPattern_t));
+    mhConnMatcherBldr_t *mp = createConnMatcherBldr(pool);
     mp->connmatcher = _mhClientcert_valid_matcher;
     mp->describe_key = "Client Certificate";
     mp->describe_value = "valid";
@@ -612,10 +658,11 @@ static mhResponse_t *initResponse(MockHTTP *mh)
 
     mhResponse_t *resp = apr_pcalloc(pool, sizeof(mhResponse_t));
     resp->pool = pool;
+    resp->mh = mh;
     resp->code = 200;
     resp->body = apr_array_make(pool, 5, sizeof(struct iovec));
     resp->hdrs = apr_table_make(pool, 5);
-    resp->builders = apr_array_make(pool, 5, sizeof(mhRespBuilder_t *));
+    resp->builders = apr_array_make(pool, 5, sizeof(mhResponseBldr_t *));
     return resp;
 }
 
@@ -665,8 +712,6 @@ mhResponse_t *mhNewDefaultResponse(MockHTTP *mh)
     return mh->defResponse;
 }
 
-static void noop(mhResponse_t *resp) { }
-
 void mhConfigResponse(mhResponse_t *resp, ...)
 {
     va_list argp;
@@ -674,23 +719,50 @@ void mhConfigResponse(mhResponse_t *resp, ...)
        is received, e.g. WithRequestBody. */
     va_start(argp, resp);
     while (1) {
-        respbuilder_t builder;
-        builder = va_arg(argp, respbuilder_t);
-        if (builder == NULL) break;
-        *((respbuilder_t *)apr_array_push(resp->builders)) = builder;
+        mhResponseBldr_t *rb;
+        rb = va_arg(argp, mhResponseBldr_t *);
+        if (rb == NULL)
+            break;
+        if (rb->builder.type == BuilderTypeNone)
+            continue;
+        if (rb->builder.type != BuilderTypeResponse) {
+            _mhErrorUnexpectedBuilder(resp->mh, rb, BuilderTypeResponse);
+            break;
+        }
+
+        *((mhResponseBldr_t **)apr_array_push(resp->builders)) = rb;
     }
     va_end(argp);
 }
 
-respbuilder_t mhRespSetCode(mhResponse_t *resp, unsigned int code)
+static mhResponseBldr_t *createResponseBldr(apr_pool_t *pool)
 {
-    resp->code = code;
-    return noop;
+    mhResponseBldr_t *rb = apr_pcalloc(pool, sizeof(mhResponseBldr_t));
+    rb->builder.magic = MagicKey;
+    rb->builder.type = BuilderTypeResponse;
+    return rb;
 }
 
-respbuilder_t mhRespSetBody(mhResponse_t *resp, const char *body)
+static bool resp_set_code(const mhResponseBldr_t *rb, mhResponse_t *resp)
+{
+    resp->code = rb->ibaton;
+    return YES;
+}
+
+mhResponseBldr_t *mhRespSetCode(mhResponse_t *resp, unsigned int code)
+{
+    apr_pool_t *pool = resp->pool;
+    mhResponseBldr_t *rb = createResponseBldr(pool);
+    rb->respbuilder = resp_set_code;
+    rb->ibaton = code;
+    return rb;
+}
+
+static bool resp_set_body(const mhResponseBldr_t *rb, mhResponse_t *resp)
 {
     struct iovec vec;
+    const char *body = rb->baton;
+
     vec.iov_base = (void *)body;
     vec.iov_len = strlen(body);
     *((struct iovec *)apr_array_push(resp->body)) = vec;
@@ -698,13 +770,35 @@ respbuilder_t mhRespSetBody(mhResponse_t *resp, const char *body)
     resp->chunked = NO;
     setHeader(resp->hdrs, "Content-Length",
               apr_itoa(resp->pool, resp->bodyLen));
-    return noop;
+    return YES;
 }
 
-respbuilder_t mhRespSetChunkedBody(mhResponse_t *resp, ...)
+mhResponseBldr_t *mhRespSetBody(mhResponse_t *resp, const char *body)
+{
+    apr_pool_t *pool = resp->pool;
+    mhResponseBldr_t *rb = createResponseBldr(pool);
+    rb->respbuilder = resp_set_body;
+    rb->baton = apr_pstrdup(pool, body);
+    return rb;
+}
+
+
+static bool
+resp_set_chunked_body(const mhResponseBldr_t *rb, mhResponse_t *resp)
+{
+    resp->chunks = rb->baton;
+    setHeader(resp->hdrs, "Transfer-Encoding", "chunked");
+    resp->chunked = YES;
+    return YES;
+}
+
+mhResponseBldr_t *mhRespSetChunkedBody(mhResponse_t *resp, ...)
 {
     apr_array_header_t *chunks;
     va_list argp;
+
+    apr_pool_t *pool = resp->pool;
+    mhResponseBldr_t *rb = createResponseBldr(pool);
 
     chunks = apr_array_make(resp->pool, 5, sizeof(struct iovec));
     va_start(argp, resp);
@@ -717,27 +811,65 @@ respbuilder_t mhRespSetChunkedBody(mhResponse_t *resp, ...)
         *((struct iovec *)apr_array_push(chunks)) = vec;
     }
     va_end(argp);
-    resp->chunks = chunks;
-    setHeader(resp->hdrs, "Transfer-Encoding", "chunked");
-    resp->chunked = YES;
-    return noop;
+
+    rb->baton = chunks;
+    rb->respbuilder = resp_set_chunked_body;
+    return rb;
 }
 
-respbuilder_t mhRespAddHeader(mhResponse_t *resp, const char *header,
-                              const char *value)
+static bool
+resp_add_header(const mhResponseBldr_t *rb, mhResponse_t *resp)
 {
-    setHeader(resp->hdrs, header, value);
-    return noop;
+    apr_hash_index_t *hi;
+    apr_hash_t *hdrs;
+    apr_pool_t *tmppool;
+
+    apr_pool_create(&tmppool, resp->pool);
+    /* get rid of const for call to apr_hash_first */
+    hdrs = apr_hash_copy(tmppool, rb->baton);
+    for (hi = apr_hash_first(tmppool, hdrs); hi; hi = apr_hash_next(hi)) {
+        void *val;
+        const void *key;
+        apr_ssize_t klen;
+        apr_hash_this(hi, &key, &klen, &val);
+
+        setHeader(resp->hdrs, (const char *)key, (const char *)val);
+    }
+    apr_pool_destroy(tmppool);
+
+    return YES;
 }
 
-respbuilder_t mhRespSetConnCloseHdr(mhResponse_t *resp)
+mhResponseBldr_t *mhRespAddHeader(mhResponse_t *resp, const char *header,
+                                  const char *value)
+{
+    apr_pool_t *pool = resp->pool;
+    mhResponseBldr_t *rb = createResponseBldr(pool);
+    apr_hash_t *hdrs = apr_hash_make(resp->pool);
+    apr_hash_set(hdrs, header, APR_HASH_KEY_STRING, value);
+    rb->baton = hdrs;
+    rb->respbuilder = resp_add_header;
+    return rb;
+}
+
+static bool
+resp_set_close_conn_header(const mhResponseBldr_t *rb, mhResponse_t *resp)
 {
     setHeader(resp->hdrs, "Connection", "close");
     resp->closeConn = YES;
-    return noop;
+    return YES;
 }
 
-static void respUseRequestBody(mhResponse_t *resp)
+mhResponseBldr_t *mhRespSetConnCloseHdr(mhResponse_t *resp)
+{
+    apr_pool_t *pool = resp->pool;
+    mhResponseBldr_t *rb = createResponseBldr(pool);
+    rb->respbuilder = resp_set_close_conn_header;
+    return rb;
+}
+
+static bool
+resp_use_request_body(const mhResponseBldr_t *rb, mhResponse_t *resp)
 {
     mhRequest_t *req = resp->req;
     if (req->chunked) {
@@ -751,17 +883,30 @@ static void respUseRequestBody(mhResponse_t *resp)
         setHeader(resp->hdrs, "Content-Length",
                   apr_itoa(resp->pool, resp->bodyLen));
     }
+    return YES;
 }
 
-respbuilder_t mhRespSetUseRequestBody(mhResponse_t *resp)
+mhResponseBldr_t *mhRespSetUseRequestBody(mhResponse_t *resp)
 {
-    return respUseRequestBody;
+    apr_pool_t *pool = resp->pool;
+    mhResponseBldr_t *rb = createResponseBldr(pool);
+    rb->respbuilder = resp_use_request_body;
+    return rb;
 }
 
-respbuilder_t mhRespSetRawData(mhResponse_t *resp, const char *raw_data)
+bool resp_set_raw_data(const mhResponseBldr_t *rb, mhResponse_t *resp)
 {
-    resp->raw_data = raw_data;
-    return noop;
+    resp->raw_data = rb->baton;
+    return YES;
+}
+
+mhResponseBldr_t *mhRespSetRawData(mhResponse_t *resp, const char *raw_data)
+{
+    apr_pool_t *pool = resp->pool;
+    mhResponseBldr_t *rb = createResponseBldr(pool);
+    rb->respbuilder = resp_set_raw_data;
+    rb->baton = apr_pstrdup(pool, raw_data);
+    return rb;
 }
 
 void _mhBuildResponse(mhResponse_t *resp)
@@ -771,10 +916,10 @@ void _mhBuildResponse(mhResponse_t *resp)
         return;
     resp->built = YES;
     for (i = 0 ; i < resp->builders->nelts; i++) {
-        respbuilder_t builder;
+        mhResponseBldr_t *rb;
 
-        builder = APR_ARRAY_IDX(resp->builders, i, respbuilder_t);
-        builder(resp);
+        rb = APR_ARRAY_IDX(resp->builders, i, mhResponseBldr_t *);
+        rb->respbuilder(rb, resp);
     }
 }
 
@@ -826,16 +971,31 @@ static char *serializeArrayOfIovecs(apr_pool_t *pool,
     return str;
 }
 
-static const char *serializeRawBody(apr_pool_t *pool, const mhRequest_t *req)
+static const char *formatBody(apr_pool_t *outpool, int indent, const char *body)
+{
+    const char *newbody = "";
+    char *nextkv, *line, *tmpbody;
+    apr_pool_t *tmppool;
+
+    /* Need a copy cuz we're going to write NUL characters into the string.  */
+    apr_pool_create(&tmppool, outpool);
+    tmpbody = apr_pstrdup(tmppool, body);
+
+    for ( ; (line = apr_strtok(tmpbody, "\n", &nextkv)) != NULL; tmpbody = NULL)
+    {
+        newbody = apr_psprintf(outpool, "%s%s\n%*s", newbody, line,
+                               indent, *nextkv != '\0' ? "|" : "");
+    }
+    apr_pool_destroy(tmppool);
+
+    return newbody;
+}
+
+static const char *
+serializeRawBody(apr_pool_t *pool, int indent, const mhRequest_t *req)
 {
     char *body = serializeArrayOfIovecs(pool, req->body);
-    const char *newbody = "";
-    char *nextkv, *line;
-    for ( ; (line = apr_strtok(body, "\n", &nextkv)) != NULL; body = NULL) {
-        newbody = apr_psprintf(pool, "%s%s\n%s", newbody, line,
-                               *nextkv != '\0' ? "                |" : "");
-    }
-    return newbody;
+    return formatBody(pool, indent, body);
 }
 
 static const char *serializeRequest(apr_pool_t *pool, const mhRequest_t *req)
@@ -852,7 +1012,7 @@ static const char *serializeRequest(apr_pool_t *pool, const mhRequest_t *req)
                        serializeHeaders(pool, req, "                 "),
                        req->bodyLen,
                        req->chunked ? "Chunked Body" : "        Body",
-                       serializeRawBody(pool, req));
+                       serializeRawBody(pool, 17, req));
     return str;
 }
 
@@ -864,14 +1024,24 @@ serializeRequestMatcher(apr_pool_t *pool, const mhRequestMatcher_t *rm,
     int i;
 
     for (i = 0 ; i < rm->matchers->nelts; i++) {
-        const mhMatchingPattern_t *mp;
+        const mhReqMatcherBldr_t *mp;
         bool matches;
 
-        mp = APR_ARRAY_IDX(rm->matchers, i, mhMatchingPattern_t *);
-        matches = mp->matcher(pool, mp, req);
-        str = apr_psprintf(pool, "%s%25s: %s%s\n", str,
-                           mp->describe_key, mp->describe_value,
-                           matches ? "" : "   <--- rule failed!");
+        mp = APR_ARRAY_IDX(rm->matchers, i, mhReqMatcherBldr_t *);
+        matches = mp->matcher(mp, req);
+
+        if (strstr(mp->describe_key, "body") != NULL) {
+            /* format the expected request body */
+            str = apr_psprintf(pool, "%s%25s:|%s%s\n", str,
+                               mp->describe_key,
+                               formatBody(pool, 27, mp->describe_value),
+                               matches ? "" : "   <--- rule failed!");
+
+        } else {
+            str = apr_psprintf(pool, "%s%25s: %s%s\n", str,
+                               mp->describe_key, mp->describe_value,
+                               matches ? "" : "   <--- rule failed!");
+        }
     }
     return str;
 }
@@ -983,6 +1153,29 @@ static int verifyAllRequestsReceived(const MockHTTP *mh, const mhServCtx_t *ctx,
         }
 
         if (matched == NO) {
+            apr_pool_t *tmppool;
+            apr_pool_create(&tmppool, mh->pool);
+            appendErrMessage(mh, "ERROR: No rule matched this request!\n");
+            appendErrMessage(mh, "====================================\n");
+            /* log all rules (yes this can be a long list) */
+            for (j = 0 ; j < ctx->reqMatchers->nelts; j++) {
+                const ReqMatcherRespPair_t *pair;
+
+                pair = APR_ARRAY_IDX(ctx->reqMatchers, j, ReqMatcherRespPair_t *);
+
+                if (breakOnNotOnce && isArrayElement(used, pair))
+                    continue; /* skip this match if request matched before */
+                appendErrMessage(mh, "Expected request(s) with:\n");
+                appendErrMessage(mh, serializeRequestMatcher(tmppool, pair->rm, req));
+                if (j + 1 < ctx->reqMatchers->nelts)
+                    appendErrMessage(mh, "        ------------------------\n");
+            }
+            appendErrMessage(mh, "---------------------------------\n");
+            appendErrMessage(mh, "Actual request:\n");
+            appendErrMessage(mh, serializeRequest(tmppool, req));
+            appendErrMessage(mh, "=================================\n");
+            apr_pool_destroy(tmppool);
+
             result = NO;
             break;
         }
@@ -1043,21 +1236,47 @@ int mhVerifyConnectionSetupOk(const MockHTTP *mh)
 {
     int i;
     apr_pool_t *match_pool;
-    mhConnectionMatcher_t *cm = mh->connMatcher;
     _mhClientCtx_t *cctx = _mhGetClientCtx(mh->servCtx); /* TODO: one conn? */
 
-    apr_pool_create(&match_pool, cm->pool);
+    apr_pool_create(&match_pool, mh->pool);
 
-    for (i = 0 ; i < cm->matchers->nelts; i++) {
-        const mhMatchingPattern_t *mp;
+    for (i = 0 ; i < mh->connMatchers->nelts; i++) {
+        const mhConnMatcherBldr_t *cmb;
 
-        mp = APR_ARRAY_IDX(cm->matchers, i, mhMatchingPattern_t *);
-        if (mp->connmatcher(match_pool, mp, cctx) == NO)
+        cmb = APR_ARRAY_IDX(mh->connMatchers, i, mhConnMatcherBldr_t *);
+        if (cmb->connmatcher(cmb, cctx) == NO)
             return NO;
     }
     apr_pool_destroy(match_pool);
 
     return YES;
+}
+
+static const char *buildertype_to_string(builderType_t type)
+{
+    switch (type) {
+        case BuilderTypeReqMatcher:
+            return "Request Matcher";
+        case BuilderTypeConnMatcher:
+            return "Connection Matcher";
+        case BuilderTypeResponse:
+            return "Response Builder";
+        case BuilderTypeServerSetup:
+            return "Server Setup";
+        default:
+            break;
+    }
+    return "<unknown type>";
+}
+
+void _mhErrorUnexpectedBuilder(const MockHTTP *mh, void *actual,
+                               builderType_t expected)
+{
+    builder_t *builder = actual;
+    appendErrMessage(mh, "A builder of type %s was provided, where a builder of "
+                         " type %s was expected!",
+                     buildertype_to_string(builder->type),
+                     buildertype_to_string(expected));
 }
 
 static void log_time(void)
