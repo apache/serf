@@ -507,7 +507,7 @@ validate_server_certificate(int cert_valid, X509_STORE_CTX *store_ctx)
                     serf__log(LOGLVL_WARNING, LOGCOMP_SSL, __FILE__,
                               ctx->config,
                               "validate_server_certificate, unknown cert "
-                              "failure %d\n", err);
+                              "failure %d at depth %d.\n", err, depth);
                     failures |= SERF_SSL_CERT_UNKNOWN_FAILURE;
                     break;
         }
