@@ -883,6 +883,8 @@ static const char *all_server_certs[] = {
     "serfrootcacert.pem",
     NULL };
 
+static const char *server_key = "private/serfserverkey.pem";
+
 static apr_status_t validate_servercert(const serf_ssl_certificate_t *cert,
                                         apr_pool_t *pool)
 {
@@ -1027,7 +1029,7 @@ static void test_ssl_handshake(CuTest *tc)
 
 
     /* Set up a test context and a https server */
-    setup_test_mock_https_server(tb, "serfserverkey.pem",
+    setup_test_mock_https_server(tb, server_key,
                                  server_cert,
                                  test_clientcert_none);
     status = setup_test_client_https_context(tb, NULL,
@@ -1072,7 +1074,7 @@ static void test_ssl_handshake_nosslv2(CuTest *tc)
       SetupServer(WithHTTPS, WithPort(30080),
                   WithCertificateFilesPrefix(get_srcdir_file(tb->pool,
                                                              "test/certs")),
-                  WithCertificateKeyFile("serfserverkey.pem"),
+                  WithCertificateKeyFile(server_key),
                   WithCertificateFileArray(server_cert),
                   WithSSLv2)  /* SSLv2 only */
     EndInit
@@ -1147,7 +1149,7 @@ static void test_ssl_trust_rootca(CuTest *tc)
     apr_status_t status;
 
     /* Set up a test context and a https server */
-    setup_test_mock_https_server(tb, "serfserverkey.pem",
+    setup_test_mock_https_server(tb, server_key,
                                  server_certs,
                                  test_clientcert_none);
     status = setup_test_client_https_context(tb,
@@ -1181,7 +1183,7 @@ static void test_ssl_application_rejects_cert(CuTest *tc)
 
     /* Set up a test context and a https server */
     /* The certificate is valid, but we tell serf to reject it. */
-    setup_test_mock_https_server(tb, "serfserverkey.pem",
+    setup_test_mock_https_server(tb, server_key,
                                  server_certs,
                                  test_clientcert_none);
     status = setup_test_client_https_context(tb,
@@ -1274,7 +1276,7 @@ static void test_ssl_certificate_chain_with_anchor(CuTest *tc)
     apr_status_t status;
 
     /* Set up a test context and a https server */
-    setup_test_mock_https_server(tb, "serfserverkey.pem",
+    setup_test_mock_https_server(tb, server_key,
                                  server_certs,
                                  test_clientcert_none);
     status = setup_test_client_https_context(tb,
@@ -1343,7 +1345,7 @@ static void test_ssl_certificate_chain_all_from_server(CuTest *tc)
     apr_status_t status;
 
     /* Set up a test context and a https server */
-    setup_test_mock_https_server(tb, "serfserverkey.pem",
+    setup_test_mock_https_server(tb, server_key,
                                  all_server_certs,
                                  test_clientcert_none);
     status = setup_test_client_https_context(tb,
@@ -1377,7 +1379,7 @@ static void test_ssl_no_servercert_callback_allok(CuTest *tc)
     apr_status_t status;
 
     /* Set up a test context and a https server */
-    setup_test_mock_https_server(tb, "serfserverkey.pem",
+    setup_test_mock_https_server(tb, server_key,
                                  server_certs,
                                  test_clientcert_none);
     status = setup_test_client_https_context(tb,
@@ -1408,7 +1410,7 @@ static void test_ssl_no_servercert_callback_fail(CuTest *tc)
     apr_status_t status;
 
     /* Set up a test context and a https server */
-    setup_test_mock_https_server(tb, "serfserverkey.pem",
+    setup_test_mock_https_server(tb, server_key,
                                  server_certs,
                                  test_clientcert_none);
     status = setup_test_client_https_context(tb,
@@ -1443,7 +1445,7 @@ static void test_ssl_large_response(CuTest *tc)
     const char *response;
 
     /* Set up a test context and a https server */
-    setup_test_mock_https_server(tb, "serfserverkey.pem",
+    setup_test_mock_https_server(tb, server_key,
                                  server_certs,
                                  test_clientcert_none);
     status = setup_test_client_https_context(tb,
@@ -1478,7 +1480,7 @@ static void test_ssl_large_request(CuTest *tc)
     apr_status_t status;
 
     /* Set up a test context and a https server */
-    setup_test_mock_https_server(tb, "serfserverkey.pem",
+    setup_test_mock_https_server(tb, server_key,
                                  server_certs,
                                  test_clientcert_none);
     status = setup_test_client_https_context(tb,
@@ -1570,7 +1572,7 @@ static void test_ssl_client_certificate(CuTest *tc)
     /* Set up a test context and a https server */
     /* The SSL server uses the complete certificate chain to validate the client
        certificate. */
-    setup_test_mock_https_server(tb, "serfserverkey.pem",
+    setup_test_mock_https_server(tb, server_key,
                                  all_server_certs,
                                  test_clientcert_optional);
     status = setup_test_client_https_context(tb,
@@ -1616,7 +1618,7 @@ static void test_ssl_expired_server_cert(CuTest *tc)
         NULL };
 
     /* Set up a test context and a https server */
-    setup_test_mock_https_server(tb, "serfserverkey.pem",
+    setup_test_mock_https_server(tb, server_key,
                                  expired_server_certs,
                                  test_clientcert_none);
     status = setup_test_client_https_context(tb,
@@ -1660,7 +1662,7 @@ static void test_ssl_future_server_cert(CuTest *tc)
         NULL };
 
     /* Set up a test context and a https server */
-    setup_test_mock_https_server(tb, "serfserverkey.pem",
+    setup_test_mock_https_server(tb, server_key,
                                  future_server_certs,
                                  test_clientcert_none);
     status = setup_test_client_https_context(tb,
@@ -1764,7 +1766,7 @@ static void test_ssl_revoked_server_cert(CuTest *tc)
     };
 
     /* Set up a test context and a https server */
-    setup_test_mock_https_server(tb, "serfserverkey.pem",
+    setup_test_mock_https_server(tb, server_key,
                                  future_server_certs,
                                  test_clientcert_none);
 
@@ -1814,7 +1816,7 @@ static void test_setup_ssltunnel(CuTest *tc)
     /* Set up a test context with a server and a proxy. Serf should send a
        CONNECT request to the server. */
     /* Set up a test context and a https server */
-    setup_test_mock_https_server(tb, "serfserverkey.pem",
+    setup_test_mock_https_server(tb, server_key,
                                  all_server_certs,
                                  test_clientcert_none);
     CuAssertIntEquals(tc, APR_SUCCESS, setup_test_mock_proxy(tb));
@@ -1856,7 +1858,7 @@ static void test_ssltunnel_no_creds_cb(CuTest *tc)
 
     /* Set up a test context with a server and a proxy. Serf should send a
        CONNECT request to the server. */
-    setup_test_mock_https_server(tb, "serfserverkey.pem",
+    setup_test_mock_https_server(tb, server_key,
                                  server_certs,
                                  test_clientcert_none);
     CuAssertIntEquals(tc, APR_SUCCESS, setup_test_mock_proxy(tb));
@@ -1936,7 +1938,7 @@ static void ssltunnel_basic_auth(CuTest *tc, int serv_close_conn,
 
     /* Set up a test context with a server and a proxy. Serf should send a
        CONNECT request to the server. */
-    setup_test_mock_https_server(tb, "serfserverkey.pem",
+    setup_test_mock_https_server(tb, server_key,
                                  server_certs,
                                  test_clientcert_none);
     CuAssertIntEquals(tc, APR_SUCCESS, setup_test_mock_proxy(tb));
@@ -2084,7 +2086,7 @@ static void test_ssltunnel_basic_auth_2ndtry(CuTest *tc)
 
     /* Set up a test context with a server and a proxy. Serf should send a
        CONNECT request to the server. */
-    setup_test_mock_https_server(tb, "serfserverkey.pem",
+    setup_test_mock_https_server(tb, server_key,
                                  server_certs,
                                  test_clientcert_none);
     CuAssertIntEquals(tc, APR_SUCCESS, setup_test_mock_proxy(tb));
@@ -2185,7 +2187,7 @@ static void test_ssltunnel_digest_auth(CuTest *tc)
 
     /* Set up a test context with a server and a proxy. Serf should send a
        CONNECT request to the server. */
-    setup_test_mock_https_server(tb, "serfserverkey.pem",
+    setup_test_mock_https_server(tb, server_key,
                                  server_certs,
                                  test_clientcert_none);
     CuAssertIntEquals(tc, APR_SUCCESS, setup_test_mock_proxy(tb));
@@ -2247,7 +2249,7 @@ static void test_ssltunnel_spnego_authn(CuTest *tc)
     apr_status_t status;
 
     /* Set up a test context with a proxy */
-    setup_test_mock_https_server(tb, "serfserverkey.pem",
+    setup_test_mock_https_server(tb, server_key,
                                  server_certs,
                                  test_clientcert_none);
     status = setup_test_mock_proxy(tb);
@@ -2320,7 +2322,7 @@ static void test_ssl_renegotiate(CuTest *tc)
     apr_status_t status;
 
     /* Set up a test context and a https server */
-    setup_test_mock_https_server(tb, "serfserverkey.pem",
+    setup_test_mock_https_server(tb, server_key,
                                  server_certs,
                                  test_clientcert_none);
     status = setup_test_client_https_context(tb,
@@ -2358,7 +2360,7 @@ static void test_ssl_missing_client_certificate(CuTest *tc)
     /* Set up a test context and a https server */
     /* The SSL server uses the complete certificate chain to validate the client
        certificate. */
-    setup_test_mock_https_server(tb, "serfserverkey.pem",
+    setup_test_mock_https_server(tb, server_key,
                                  all_server_certs,
                                  test_clientcert_mandatory);
     status = setup_test_client_https_context(tb,
