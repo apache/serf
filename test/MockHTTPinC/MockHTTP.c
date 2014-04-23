@@ -222,6 +222,9 @@ static mhReqMatcherBldr_t *createReqMatcherBldr(apr_pool_t *pool)
     return mp;
 }
 
+/**
+ * Builder callback, checks that the response body chunks match what's expected.
+ */
 static bool
 chunks_matcher(const mhReqMatcherBldr_t *mp, apr_array_header_t *chunks)
 {
@@ -249,6 +252,9 @@ chunks_matcher(const mhReqMatcherBldr_t *mp, apr_array_header_t *chunks)
     return YES;
 }
 
+/**
+ * Builder callback, checks that a string matches what's expected.
+ */
 static bool str_matcher(const mhReqMatcherBldr_t *mp, const char *actual)
 {
     const char *expected = mp->baton;
@@ -266,6 +272,9 @@ static bool str_matcher(const mhReqMatcherBldr_t *mp, const char *actual)
     return NO;
 }
 
+/**
+ * Builder callback, checks if the request url matches.
+ */
 static bool url_matcher(const mhReqMatcherBldr_t *mp, const mhRequest_t *req)
 {
     return str_matcher(mp, req->url);
@@ -284,6 +293,9 @@ mhMatchURLEqualTo(const MockHTTP *mh, const char *expected)
     return mp;
 }
 
+/**
+ * Builder callback, checks if the request url doesn't match.
+ */
 static bool
 url_not_matcher(const mhReqMatcherBldr_t *mp, const mhRequest_t *req)
 {
@@ -303,6 +315,10 @@ mhMatchURLNotEqualTo(const MockHTTP *mh, const char *expected)
     return mp;
 }
 
+/**
+ * Builder callback, checks if the body (chunked or not chunked) matches what's
+ * expected.
+ */
 static bool
 body_matcher(const mhReqMatcherBldr_t *mp, const mhRequest_t *req)
 {
@@ -327,6 +343,10 @@ mhMatchBodyEqualTo(const MockHTTP *mh, const char *expected)
     return mp;
 }
 
+
+/**
+ * Builder callback, checks if the raw body matches what's expected.
+ */
 static bool
 raw_body_matcher(const mhReqMatcherBldr_t *mp, const mhRequest_t *req)
 {
@@ -360,6 +380,11 @@ mhMatchIncompleteBodyEqualTo(const MockHTTP *mh, const char *expected)
     return mp;
 }
 
+
+/**
+ * Builder callback, checks if the body is not chunked and it matches the
+ * expected body.
+ */
 static bool
 body_notchunked_matcher(const mhReqMatcherBldr_t *mp, const mhRequest_t *req)
 {
@@ -381,6 +406,11 @@ mhMatchBodyNotChunkedEqualTo(const MockHTTP *mh, const char *expected)
     return mp;
 }
 
+
+/**
+ * Builder callback, checks if the body is chunked and matches what's
+ * expected.
+ */
 static bool
 chunked_body_matcher(const mhReqMatcherBldr_t *mp, const mhRequest_t *req)
 {
@@ -403,6 +433,10 @@ mhMatchChunkedBodyEqualTo(const MockHTTP *mh, const char *expected)
     return mp;
 }
 
+/**
+ * Builder callback, checks if the body is chunk and each chunk matches exactly
+ * the expected chunks.
+ */
 static bool chunked_body_chunks_matcher(const mhReqMatcherBldr_t *mp,
                                         const mhRequest_t *req)
 {
@@ -460,12 +494,20 @@ mhMatchChunkedBodyChunksEqualTo(const MockHTTP *mh, ...)
     return mp;
 }
 
+
+/**
+ * Builder callback, checks if a header's value matches the expected value.
+ * When a header isn't set its value will be NULL, so a NULL check can be used
+ * to check that the header doesn't exist.
+ */
 static bool
 header_matcher(const mhReqMatcherBldr_t *mp, const mhRequest_t *req)
 {
     apr_pool_t *tmppool;
+    const char *actual;
+
     apr_pool_create(&tmppool, req->pool);
-    const char *actual = getHeader(tmppool, req->hdrs, mp->baton2);
+    actual = getHeader(tmppool, req->hdrs, mp->baton2);
     return str_matcher(mp, actual);
 }
 
@@ -483,12 +525,20 @@ mhMatchHeaderEqualTo(const MockHTTP *mh, const char *hdr, const char *value)
     return mp;
 }
 
+/**
+ * Builder callback, checks if a header's value is not equal to the expected 
+ * value.
+ * When a header isn't set its value will be NULL, so a non-NULL check can be 
+ * used to check if the header exists.
+ */
 static bool
 header_not_matcher(const mhReqMatcherBldr_t *mp, const mhRequest_t *req)
 {
     apr_pool_t *tmppool;
+    const char *actual;
+
     apr_pool_create(&tmppool, req->pool);
-    const char *actual = getHeader(tmppool, req->hdrs, mp->baton2);
+    actual = getHeader(tmppool, req->hdrs, mp->baton2);
     return !str_matcher(mp, actual);
 }
 
@@ -506,6 +556,10 @@ mhMatchHeaderNotEqualTo(const MockHTTP *mh, const char *hdr, const char *value)
     return mp;
 }
 
+/**
+ * Builder callback, checks if the request method matches the expected method.
+ * (case insensitive).
+ */
 static bool method_matcher(const mhReqMatcherBldr_t *mp, const mhRequest_t *req)
 {
     const char *expected = mp->baton;
@@ -529,6 +583,11 @@ mhMatchMethodEqualTo(const MockHTTP *mh, const char *expected)
     return mp;
 }
 
+/**
+ * Takes a list of builders of type mhReqMatcherBldr_t *'s and stores them in
+ * a new request matcher. The builders will be evaluated later when a request
+ * arrives in the server.
+ */
 static mhRequestMatcher_t *
 constructRequestMatcher(const MockHTTP *mh, const char *method, va_list argp)
 {
@@ -894,7 +953,7 @@ mhResponseBldr_t *mhRespSetUseRequestBody(mhResponse_t *resp)
     return rb;
 }
 
-bool resp_set_raw_data(const mhResponseBldr_t *rb, mhResponse_t *resp)
+static bool resp_set_raw_data(const mhResponseBldr_t *rb, mhResponse_t *resp)
 {
     resp->raw_data = rb->baton;
     return YES;

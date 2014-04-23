@@ -1075,6 +1075,7 @@ static void test_ssl_handshake_nosslv2(CuTest *tc)
                   WithCertificateFilesPrefix(get_srcdir_file(tb->pool,
                                                              "test/certs")),
                   WithCertificateKeyFile(server_key),
+                  WithCertificateKeyPassPhrase("serftest"),
                   WithCertificateFileArray(server_cert),
                   WithSSLv2)  /* SSLv2 only */
     EndInit

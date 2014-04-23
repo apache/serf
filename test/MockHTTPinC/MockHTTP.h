@@ -154,6 +154,8 @@ typedef enum mhThreading_t {
                 mhSetServerCertPrefix(__servctx, prefix)
 #define     WithCertificateKeyFile(keyFile)\
                 mhSetServerCertKeyFile(__servctx, keyFile)
+#define     WithCertificateKeyPassPhrase(passphrase)\
+                mhSetServerCertKeyPassPhrase(__servctx, passphrase)
 #define     WithCertificateFiles(...)\
                 mhAddServerCertFiles(__servctx, __VA_ARGS__, NULL)
 #define     WithCertificateFileArray(files)\
@@ -517,6 +519,8 @@ mhServerSetupBldr_t *mhSetServerMaxRequestsPerConn(mhServCtx_t *ctx,
 mhServerSetupBldr_t *mhSetServerCertPrefix(mhServCtx_t *ctx, const char *prefix);
 mhServerSetupBldr_t *mhSetServerCertKeyFile(mhServCtx_t *ctx,
                                             const char *keyFile);
+mhServerSetupBldr_t *mhSetServerCertKeyPassPhrase(mhServCtx_t *ctx,
+                                                  const char *passphrase);
 mhServerSetupBldr_t *mhAddServerCertFiles(mhServCtx_t *ctx, ...);
 mhServerSetupBldr_t *mhAddServerCertFileArray(mhServCtx_t *ctx,
                                               const char **certFiles);

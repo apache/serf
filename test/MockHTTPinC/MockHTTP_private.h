@@ -112,6 +112,7 @@ struct mhServCtx_t {
     /* HTTPS specific */
     const char *certFilesPrefix;
     const char *keyFile;
+    const char *passphrase;
     apr_array_header_t *certFiles;
     mhClientCertVerification_t clientCert;
     int protocols;              /* SSL protocol versions */
@@ -167,7 +168,7 @@ struct mhResponse_t {
 
 
 /* Builder structures for server setup, request matching and response creation */
-static const unsigned int MagicKey = 0x4D484244; /* MHBD */
+enum { MagicKey = 0x4D484244 }; /* MHBD */
 
 typedef enum builderType_t {
     BuilderTypeReqMatcher,
