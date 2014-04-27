@@ -1,5 +1,4 @@
-Serf 1.3.5 [2014-04-2x, from /tags/1.3.5, rxxxx]
-
+Serf 1.3.5 [2014-04-27, from /tags/1.3.5, rxxxx]
   Fix issue #125: no reverse lookup during Negotiate authentication for proxies.
   Fix a crash caused by incorrect reuse of the ssltunnel CONNECT request (r2316)
   Cancel request if response parsing failed + authn callback set (r2319)
