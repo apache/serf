@@ -34,15 +34,15 @@ typedef struct response_context_t {
         STATE_DONE              /* we've sent EOF */
     } state;
 
-    /* Buffer for accumulating a line from the response. */
-    serf_linebuf_t linebuf;
-
     serf_status_line sl;
 
     int chunked;                /* Do we need to read trailers? */
     int head_req;               /* Was this a HEAD request? */
 
     serf_config_t *config;
+
+    /* Buffer for accumulating a line from the response. */
+    serf_linebuf_t linebuf;
 } response_context_t;
 
 /* Returns 1 if according to RFC2626 this response can have a body, 0 if it

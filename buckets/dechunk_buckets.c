@@ -28,12 +28,11 @@ typedef struct dechunk_context_t {
         STATE_DONE      /* body is done; we've returned EOF */
     } state;
 
-    /* Buffer for accumulating a chunk size. */
-    serf_linebuf_t linebuf;
-
     /* How much of the chunk, or the terminator, do we have left to read? */
     apr_int64_t body_left;
 
+    /* Buffer for accumulating a chunk size. */
+    serf_linebuf_t linebuf;
 } dechunk_context_t;
 
 
