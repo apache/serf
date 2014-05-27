@@ -16,9 +16,9 @@
 /* This file includes code originally submitted to the Serf project, covered by
  * the Apache License, Version 2.0, copyright Justin Erenkrantz & Greg Stein.
  */
-#include <apr_thread_proc.h>
 #include <apr_strings.h>
 #include <apr_uri.h>
+#include <apr_lib.h>
 
 #include <stdlib.h>
 
@@ -34,7 +34,6 @@
 
 /* Forward declarations */
 static apr_status_t initSSLCtx(_mhClientCtx_t *cctx);
-static apr_status_t setupTCPServer(mhServCtx_t *ctx, bool blocking);
 static apr_status_t sslHandshake(_mhClientCtx_t *cctx);
 static apr_status_t sslSocketWrite(_mhClientCtx_t *cctx, const char *data,
                                    apr_size_t *len);
@@ -59,7 +58,11 @@ static const int DefaultProxyPort = 38080;
 
 struct _mhClientCtx_t {
     apr_pool_t *pool;
-    apr_socket_t *skt;
+    apr_socket_t *skt;         /* Socket for conn client <-> proxy/server */
+    apr_int16_t reqevents;
+    apr_socket_t *proxyskt;    /* Socket for conn proxy <-> server */
+    apr_int16_t proxyreqevents;
+    const char *proxyhost;     /* Proxy host:port */
     char buf[BUFSIZE];  /* buffer for data received from the client @ server */
     apr_size_t buflen;
     apr_size_t bufrem;
@@ -72,10 +75,10 @@ struct _mhClientCtx_t {
     mhResponse_t *currResp;         /* response in progress */
     unsigned int reqsReceived;      /* # of reqs received on this connection */
     mhRequest_t *req;
-    apr_int16_t reqevents;
     bool closeConn;
     sslCtx_t *ssl_ctx;
     int protocols;                  /* SSL protocol versions */
+    servMode_t mode;      /* default = server, but can switch to proxy/tunnel */
 
     send_func_t send;
     receive_func_t read;
@@ -91,16 +94,15 @@ struct _mhClientCtx_t {
 /**
  * Start up a server in a separate thread.
  */
-static void * APR_THREAD_FUNC start_thread(apr_thread_t *tid, void *baton)
+static void * APR_THREAD_FUNC run_thread(apr_thread_t *tid, void *baton)
 {
     mhServCtx_t *ctx = baton;
 
-    setupTCPServer(ctx, YES);
-
-    while (1) {
+    while (!ctx->cancelThread) {
         _mhRunServerLoop(ctx);
     }
 
+    apr_thread_exit(tid, APR_SUCCESS);
     return NULL;
 }
 
@@ -112,14 +114,21 @@ static apr_status_t cleanupServer(void *baton)
     mhServCtx_t *ctx = baton;
     apr_status_t status = APR_SUCCESS;
 
-    /*    apr_thread_exit(tid, APR_SUCCESS);*/
-    if (ctx->pollset)
-        apr_pollset_destroy(ctx->pollset);
-    if (ctx->skt)
-        status = apr_socket_close(ctx->skt);
+    /* If mhCleanup() wasn't called before pool cleanup, the server is still
+       running. Stop it here to avoid a crash, but this will result in a 
+       (currently unidentified) pool cleanup crash.
+       Conclusion: Always run mhCleanup() at the end of a test!
+     */
+    mhStopServer(ctx);
 
-    ctx->skt = NULL;
-    ctx->pollset = NULL;
+    if (ctx->pollset) {
+        apr_pollset_destroy(ctx->pollset);
+        ctx->pollset = NULL;
+    }
+    if (ctx->skt) {
+        status = apr_socket_close(ctx->skt);
+        ctx->skt = NULL;
+    }
 
     return status;
 }
@@ -145,9 +154,8 @@ static apr_status_t socketRead(_mhClientCtx_t *cctx, char *data,
 
 /**
  * Sets up a listener on the socket stored in CTX.
- * TODO: blocking
  */
-static apr_status_t setupTCPServer(mhServCtx_t *ctx, bool blocking)
+static apr_status_t setupTCPServer(mhServCtx_t *ctx)
 {
     apr_sockaddr_t *serv_addr;
     apr_pool_t *pool = ctx->pool;
@@ -204,34 +212,36 @@ static apr_status_t setupTCPServer(mhServCtx_t *ctx, bool blocking)
  * Opens a non-blocking connection to a remote server at URL (in form 
  * localhost:30080).
  */
-static apr_status_t connectToServer(mhServCtx_t *ctx, const char *url)
+static apr_status_t connectToServer(mhServCtx_t *ctx, _mhClientCtx_t *cctx)
 {
     apr_sockaddr_t *address;
     char *host, *scopeid;
     apr_port_t port;
     apr_status_t status;
 
-    STATUSERR(apr_parse_addr_port(&host, &scopeid, &port, url, ctx->pool));
+    STATUSERR(apr_parse_addr_port(&host, &scopeid, &port, cctx->proxyhost,
+                                  cctx->pool));
     STATUSERR(apr_sockaddr_info_get(&address, host, APR_UNSPEC,
-                                    port, 0, ctx->pool));
+                                    port, 0, cctx->pool));
 
     /* Create server socket */
     /* Note: this call requires APR v1.0.0 or higher */
-    STATUSERR(apr_socket_create(&ctx->proxyskt, address->family,
-                                SOCK_STREAM, 0, ctx->pool));
-    STATUSERR(apr_socket_opt_set(ctx->proxyskt, APR_SO_NONBLOCK, 1));
-    STATUSERR(apr_socket_timeout_set(ctx->proxyskt, 0));
-    STATUSERR(apr_socket_opt_set(ctx->proxyskt, APR_SO_REUSEADDR, 1));
+    STATUSERR(apr_socket_create(&cctx->proxyskt, address->family,
+                                SOCK_STREAM, 0, cctx->pool));
+    STATUSERR(apr_socket_opt_set(cctx->proxyskt, APR_SO_NONBLOCK, 1));
+    STATUSERR(apr_socket_timeout_set(cctx->proxyskt, 0));
+    STATUSERR(apr_socket_opt_set(cctx->proxyskt, APR_SO_REUSEADDR, 1));
 
-    status = apr_socket_connect(ctx->proxyskt, address);
+    status = apr_socket_connect(cctx->proxyskt, address);
     if (status == APR_SUCCESS || APR_STATUS_IS_EINPROGRESS(status)) {
         apr_pollfd_t pfd = { 0 };
 
         pfd.desc_type = APR_POLL_SOCKET;
-        pfd.desc.s = ctx->proxyskt;
+        pfd.desc.s = cctx->proxyskt;
         pfd.reqevents = APR_POLLIN | APR_POLLOUT;
-
+        pfd.client_data = cctx;
         STATUSERR(apr_pollset_add(ctx->pollset, &pfd));
+        cctx->proxyreqevents = pfd.reqevents;
     }
 
     return status;
@@ -250,15 +260,15 @@ initServCtx(const MockHTTP *mh, const char *hostname, apr_port_t port)
     ctx->mh = mh;
     ctx->hostname = apr_pstrdup(pool, hostname);
     ctx->port = port;
+    ctx->clients = apr_array_make(pool, 5, sizeof(_mhClientCtx_t *));
     ctx->reqsReceived = apr_array_make(pool, 5, sizeof(mhRequest_t *));
-    ctx->reqMatchers = apr_array_make(pool, 5, sizeof(ReqMatcherRespPair_t *));
-    ctx->incompleteReqMatchers = apr_array_make(pool, 5,
-                                               sizeof(ReqMatcherRespPair_t *));
     /* Default settings */
-    ctx->mode = ModeServer;
     ctx->clientCert = mhCCVerifyNone;
     ctx->protocols = mhProtoUnspecified;
     ctx->threading = mhThreadMain;
+    ctx->reqMatchers = apr_array_make(pool, 5, sizeof(ReqMatcherRespPair_t *));
+    ctx->incompleteReqMatchers = apr_array_make(pool, 5,
+                                                sizeof(ReqMatcherRespPair_t *));
 
     apr_pool_cleanup_register(pool, ctx,
                               cleanupServer,
@@ -279,6 +289,7 @@ mhRequest_t *_mhInitRequest(apr_pool_t *pool)
     mhRequest_t *req = apr_pcalloc(pool, sizeof(mhRequest_t));
     req->pool = pool;
     req->hdrs = apr_table_make(pool, 5);
+    req->hdrHashes = apr_array_make(pool, 5, sizeof(unsigned long));
     req->body = apr_array_make(pool, 5, sizeof(struct iovec));
     req->chunks = apr_array_make(pool, 5, sizeof(struct iovec));
 
@@ -338,6 +349,7 @@ readReqLine(_mhClientCtx_t *cctx, mhRequest_t *req, bool *done)
     while (*ptr && *ptr != ' ' && *ptr != '\r') ptr++;
     FAIL_ON_EOL(ptr);
     req->method = apr_pstrndup(cctx->pool, start, ptr-start);
+    req->methodCode = methodToCode(req->method);
 
     ptr++; start = ptr;
     while (*ptr && *ptr != ' ' && *ptr != '\r') ptr++;
@@ -356,6 +368,34 @@ readReqLine(_mhClientCtx_t *cctx, mhRequest_t *req, bool *done)
     *done = TRUE;
 
     return APR_SUCCESS;
+}
+
+/* simple hash implementation (djb2). */
+unsigned long calculateHeaderHash(const char *hdr, const char *val)
+{
+    unsigned long hash = 5381;
+    int c;
+
+    if (!val)
+        return 0;
+
+    while ((c = apr_tolower(*hdr++)))
+        hash = ((hash << 5) + hash) + c; /* hash * 33 + c */
+    hash = ((hash << 5) + hash) + ':';
+    while ((c = *val++))
+        hash = ((hash << 5) + hash) + c;
+
+    return hash;
+}
+
+static void setRequestHeader(mhRequest_t *req, const char *hdr, const char *val)
+{
+    apr_table_t *hdrs = req->hdrs;
+    unsigned long hash;
+
+    apr_table_add(hdrs, hdr, val);
+    hash = calculateHeaderHash(hdr, val);
+    APR_ARRAY_PUSH(req->hdrHashes, unsigned long) = hash;
 }
 
 /**
@@ -382,22 +422,25 @@ readHeader(_mhClientCtx_t *cctx, mhRequest_t *req, bool *done)
     if (len == 2 && *buf == '\r' && *(buf+1) == '\n') {
         *done = YES;
         return APR_SUCCESS;
+    } if (len < 5) {
+        /* TODO: error handling. header line is too short */
+        return APR_EGENERAL;
     } else {
-        const char *start = buf, *ptr = buf;
+        const char *start = buf, *ptr = buf, *end = buf + len;
         const char *hdr, *val;
 
         /* Read header from a line in the form of 'Header: value' */
-        while (*ptr != ':' && *ptr != '\r') ptr++;
+        while (*ptr && ptr < end && *ptr != ':' && *ptr != '\r') ptr++;
         hdr = apr_pstrndup(cctx->pool, start, ptr-start);
 
-        /* skip blanks */
-        ptr++; while (*ptr == ' ') ptr++; start = ptr;
+        /* skip : and blanks */
+        ptr++; while (*ptr && ptr < end && *ptr == ' ') ptr++; start = ptr;
 
         /* Read value */
-        while (*ptr != '\r') ptr++;
+        while (*ptr && ptr < end && *ptr != '\r') ptr++;
         val = apr_pstrndup(cctx->pool, start, ptr-start);
 
-        setHeader(req->hdrs, hdr, val);
+        setRequestHeader(req, hdr, val);
     }
     return APR_SUCCESS;
 }
@@ -434,7 +477,7 @@ static apr_status_t readBody(_mhClientCtx_t *cctx, mhRequest_t *req, bool *done)
 
     req->chunked = NO;
 
-    clstr = getHeader(cctx->pool, req->hdrs, "Content-Length");
+    clstr = getHeader(req->hdrs, "Content-Length");
     /* TODO: error if no Content-Length header */
     cl = atol(clstr);
 
@@ -657,14 +700,13 @@ static apr_status_t readRequest(_mhClientCtx_t *cctx, mhRequest_t **preq)
             case ReadStateChunkedTrailer:
             {
                 const char *clstr, *chstr;
-                chstr = getHeader(cctx->pool, req->hdrs,
-                                  "Transfer-Encoding");
+                chstr = getHeader(req->hdrs, "Transfer-Encoding");
                 /* TODO: chunked can be one of more encodings */
                 /* Read Transfer-Encoding first, ignore C-L when T-E is set */
                 if (chstr && apr_strnatcasecmp(chstr, "chunked") == 0) {
                     STATUSREADERR(readChunked(cctx, req, &done));
                 } else {
-                    clstr = getHeader(cctx->pool, req->hdrs, "Content-Length");
+                    clstr = getHeader(req->hdrs, "Content-Length");
                     if (clstr) {
                         STATUSREADERR(readBody(cctx, req, &done));
                     } else {
@@ -841,16 +883,22 @@ static apr_status_t writeResponse(_mhClientCtx_t *cctx, mhResponse_t *resp)
 /**
  * Stores a request matcher RM on the list of matchers for server CTX.
  */
-void mhPushRequest(mhServCtx_t *ctx, mhRequestMatcher_t *rm)
+void mhPushRequest(MockHTTP *mh, mhServCtx_t *ctx, mhRequestMatcher_t *rm)
 {
+    apr_array_header_t *matchers;
     ReqMatcherRespPair_t *pair;
     int i;
 
-    pair = apr_palloc(ctx->pool, sizeof(ReqMatcherRespPair_t));
+    if (ctx) {
+        pair = apr_palloc(ctx->pool, sizeof(ReqMatcherRespPair_t));
+    } else {
+        pair = apr_palloc(mh->pool, sizeof(ReqMatcherRespPair_t));
+    }
     pair->rm = rm;
     pair->resp = NULL;
     pair->action = mhActionInitiateNone;
 
+    /* Check if any of this request's matchers work on an incomplete request. */
     for (i = 0 ; i < rm->matchers->nelts; i++) {
         const mhReqMatcherBldr_t *mp;
 
@@ -860,11 +908,13 @@ void mhPushRequest(mhServCtx_t *ctx, mhRequestMatcher_t *rm)
             break;
         }
     }
-    if (rm->incomplete)
-        *((ReqMatcherRespPair_t **)
-          apr_array_push(ctx->incompleteReqMatchers)) = pair;
-    else
-        *((ReqMatcherRespPair_t **)apr_array_push(ctx->reqMatchers)) = pair;
+
+    if (ctx) {
+        matchers = rm->incomplete ? ctx->incompleteReqMatchers : ctx->reqMatchers;
+    } else {
+        matchers = rm->incomplete ? mh->incompleteReqMatchers : mh->reqMatchers;
+    }
+    *((ReqMatcherRespPair_t **)apr_array_push(matchers)) = pair;
 }
 
 /**
@@ -872,9 +922,25 @@ void mhPushRequest(mhServCtx_t *ctx, mhRequestMatcher_t *rm)
  * Returns NO if the request wasn't matched.
  *         YES + *RESP + *ACTION if the request was matched successfully.
  */
+
+/* TOOD:
+   This function is the main bottleneck for performance. Possible fixes:
+   - if a test is setup to continuously add new request matchers while sending
+     requests, evaluation the matchers from last to first drastically
+     improves matching performance. Problem: user expects matches are run in
+     order of definition.
+   - when using a header with an unique value per request, we could create
+     an index on that header:value (hashtable or b-tree) to bypass this whole
+     loop. Probably requires a new API so the user can specify the index.
+   - create a universal string that contains the union of all criteria
+     of all matchers, e.g. "GET/header1:value1/header2:value2" and create an
+     index on that string. Problem is updating that index with new matchers when
+     they use new criteria (OTOH: as long as the criteria are sorted this
+     shouldn't be a problem, a criteria not defined = 0 bytes in the string).
+ */
 static bool
-matchRequest(const _mhClientCtx_t *cctx, mhRequest_t *req, mhResponse_t **resp,
-             mhAction_t *action, apr_array_header_t *matchers)
+matchRequest(mhRequest_t *req, mhResponse_t **resp,
+             mhAction_t *action, const apr_array_header_t *matchers)
 {
     int i;
 
@@ -889,7 +955,6 @@ matchRequest(const _mhClientCtx_t *cctx, mhRequest_t *req, mhResponse_t **resp,
             return YES;
         }
     }
-    _mhLog(MH_VERBOSE, cctx->skt, "Couldn't match request!\n");
 
     *resp = NULL;
     return NO;
@@ -897,7 +962,7 @@ matchRequest(const _mhClientCtx_t *cctx, mhRequest_t *req, mhResponse_t **resp,
 
 /**
  * Tries to match a complete request REQ with the list of complete request
- * matchers of server CTX.
+ * matchers.
  * Returns NO if the request wasn't matched.
  *         YES + *RESP + *ACTION if the request was matched successfully.
  */
@@ -905,12 +970,24 @@ static bool
 _mhMatchRequest(const mhServCtx_t *ctx, const _mhClientCtx_t *cctx,
                 mhRequest_t *req, mhResponse_t **resp, mhAction_t *action)
 {
-    return matchRequest(cctx, req, resp, action, ctx->reqMatchers);
+    bool found;
+    const MockHTTP *mh = ctx->mh;
+
+    /* Try to see if a request matcher for this server exists */
+    found = matchRequest(req, resp, action, ctx->reqMatchers);
+    if (found) return found;
+
+    /* Nope, then see of there's a request matcher for all servers */
+    found = matchRequest(req, resp, action, mh->reqMatchers);
+    if (found) return found;
+
+    _mhLog(MH_VERBOSE, cctx->skt, "Couldn't match request!\n");
+    return NO;
 }
 
 /**
  * Tries to match an incomplete (partial) request REQ with the list of 
- * incomplete request matchers of server CTX.
+ * incomplete request matchers.
  * Returns NO if the request wasn't matched.
  *         YES + *RESP + *ACTION if the request was matched successfully.
  */
@@ -919,7 +996,19 @@ _mhMatchIncompleteRequest(const mhServCtx_t *ctx, const _mhClientCtx_t *cctx,
                           mhRequest_t *req, mhResponse_t **resp,
                           mhAction_t *action)
 {
-    return matchRequest(cctx, req, resp, action, ctx->incompleteReqMatchers);
+    bool found;
+    const MockHTTP *mh = ctx->mh;
+
+    /* Try to see if a request matcher for this server exists */
+    found = matchRequest(req, resp, action, ctx->incompleteReqMatchers);
+    if (found) return found;
+
+    /* Nope, then see of there's a request matcher for all servers */
+    found = matchRequest(req, resp, action, mh->incompleteReqMatchers);
+    if (found) return found;
+
+    _mhLog(MH_VERBOSE, cctx->skt, "Couldn't match incomplete request!\n");
+    return NO;
 }
 
 /**
@@ -947,15 +1036,14 @@ static mhResponse_t *cloneResponse(apr_pool_t *pool, mhResponse_t *resp)
  * writes all outgoing data.
  * This only supports SSL TUNNEL mode at this time.
  */
-static apr_status_t processProxy(mhServCtx_t *ctx, const apr_pollfd_t *desc)
+static apr_status_t processProxy(_mhClientCtx_t *cctx, const apr_pollfd_t *desc)
 {
     apr_status_t status = APR_SUCCESS;
-    _mhClientCtx_t *cctx = ctx->cctx;
 
     if ((desc->rtnevents & APR_POLLOUT) && (cctx->buflen > 0)) {
         apr_size_t len = cctx->buflen;
-        STATUSREADERR(apr_socket_send(ctx->proxyskt, cctx->buf, &len));
-        _mhLog(MH_VERBOSE, ctx->proxyskt,
+        STATUSREADERR(apr_socket_send(cctx->proxyskt, cctx->buf, &len));
+        _mhLog(MH_VERBOSE, cctx->proxyskt,
                "Proxy sent to server, status %d:\n%.*s\n---- %d ----\n",
                status, (unsigned int)len, cctx->buf, (unsigned int)len);
         cctx->bufrem += len;
@@ -964,20 +1052,12 @@ static apr_status_t processProxy(mhServCtx_t *ctx, const apr_pollfd_t *desc)
     if (desc->rtnevents & APR_POLLIN) {
         char *buf = cctx->buf + cctx->obuflen;
         apr_size_t len = cctx->obufrem;
-        STATUSREADERR(apr_socket_recv(ctx->proxyskt, cctx->obuf, &len));
-        _mhLog(MH_VERBOSE, ctx->proxyskt,
+        STATUSREADERR(apr_socket_recv(cctx->proxyskt, cctx->obuf, &len));
+        _mhLog(MH_VERBOSE, cctx->proxyskt,
                "Proxy received from server, status %d:\n%.*s\n---- %d ----\n",
                status, (unsigned int)len, buf, (unsigned int)len);
         cctx->obuflen += len;
         cctx->obufrem -= len;
-    }
-
-    if (status == APR_EOF && cctx->obuflen == 0) {
-        apr_socket_close(ctx->proxyskt);
-        ctx->proxyskt = NULL;
-        apr_socket_close(cctx->skt);
-        cctx->skt = NULL;
-        ctx->mode = ModeServer;
     }
 
     return status;
@@ -987,6 +1067,8 @@ static apr_status_t processProxy(mhServCtx_t *ctx, const apr_pollfd_t *desc)
  * Process events on connection client <-> proxy or client <-> server
  * Reads all incoming data, tries to match complete and/or incomplete requests,
  * and the writes responses back to the socket CCTX.
+ *
+ * Returns APR_EOF when the connection should be closed.
  **/
 static apr_status_t processServer(mhServCtx_t *ctx, _mhClientCtx_t *cctx,
                                   const apr_pollfd_t *desc)
@@ -1022,8 +1104,6 @@ static apr_status_t processServer(mhServCtx_t *ctx, _mhClientCtx_t *cctx,
                 if (resp->closeConn) {
                     _mhLog(MH_VERBOSE, cctx->skt,
                            "Actively closing connection.\n");
-                    apr_socket_close(cctx->skt);
-                    ctx->cctx = NULL;
                     return APR_EOF;
                 }
                 status = APR_SUCCESS;
@@ -1038,7 +1118,7 @@ static apr_status_t processServer(mhServCtx_t *ctx, _mhClientCtx_t *cctx,
     if (desc->rtnevents & APR_POLLIN || cctx->buflen) {
         mhAction_t action;
 
-        switch (ctx->mode) {
+        switch (cctx->mode) {
           case ModeServer:
           case ModeProxy:
             /* Read partial or full requests */
@@ -1062,19 +1142,20 @@ static apr_status_t processServer(mhServCtx_t *ctx, _mhClientCtx_t *cctx,
                     if (resp) {
                         _mhLog(MH_VERBOSE, cctx->skt,
                                "Request matched, queueing response.\n");
-                        resp = cloneResponse(ctx->pool, resp);
+                        resp = cloneResponse(cctx->pool, resp);
                     } else {
                         _mhLog(MH_VERBOSE, cctx->skt,
                                "Request matched, queueing default response.\n");
-                        resp = cloneResponse(ctx->pool, ctx->mh->defResponse);
+                        resp = cloneResponse(cctx->pool, ctx->mh->defResponse);
                     }
 
                     switch (action) {
                       case mhActionInitiateSSLTunnel:
                         _mhLog(MH_VERBOSE, cctx->skt, "Initiating SSL tunnel.\n");
-                        ctx->mode = ModeTunnel;
-                        ctx->proxyhost = apr_pstrdup(ctx->pool, cctx->req->url);
-                        connectToServer(ctx, ctx->proxyhost);
+                        cctx->mode = ModeTunnel;
+                        cctx->proxyhost = apr_pstrdup(cctx->pool,
+                                                      cctx->req->url);
+                        connectToServer(ctx, cctx);
                         break;
                       case mhActionSSLRenegotiate:
                         _mhLog(MH_VERBOSE, cctx->skt, "Renegotiating SSL "
@@ -1092,7 +1173,7 @@ static apr_status_t processServer(mhServCtx_t *ctx, _mhClientCtx_t *cctx,
                     ctx->mh->verifyStats->requestsNotMatched++;
                     _mhLog(MH_VERBOSE, cctx->skt,
                            "Request found no match, queueing error response.\n");
-                    resp = cloneResponse(ctx->pool, ctx->mh->defErrorResponse);
+                    resp = cloneResponse(cctx->pool, ctx->mh->defErrorResponse);
                 }
                 if (ctx->maxRequests && cctx->reqsReceived >= ctx->maxRequests) {
                     setHeader(resp->hdrs, "Connection", "close");
@@ -1110,7 +1191,8 @@ static apr_status_t processServer(mhServCtx_t *ctx, _mhClientCtx_t *cctx,
                 ctx->reqState = PartialReqReceived;
             }
 
-            if (ctx->incompleteReqMatchers->nelts > 0) {
+            if (ctx->incompleteReqMatchers->nelts > 0 ||
+                ctx->mh->incompleteReqMatchers->nelts > 0) {
                 mhResponse_t *resp = NULL;
                 /* (currently) incomplete request received? */
                 if (_mhMatchIncompleteRequest(ctx, cctx, cctx->req,
@@ -1119,7 +1201,7 @@ static apr_status_t processServer(mhServCtx_t *ctx, _mhClientCtx_t *cctx,
                            "Incomplete request matched, queueing response.\n");
                     ctx->mh->verifyStats->requestsMatched++;
                     if (!resp)
-                        resp = cloneResponse(ctx->pool, ctx->mh->defResponse);
+                        resp = cloneResponse(cctx->pool, ctx->mh->defResponse);
                     resp->req = cctx->req;
                     *((mhResponse_t **)apr_array_push(cctx->respQueue)) = resp;
                     cctx->req = NULL;
@@ -1140,15 +1222,6 @@ static apr_status_t processServer(mhServCtx_t *ctx, _mhClientCtx_t *cctx,
 }
 
 /**
- * Temporary function: get the client of this server.
- * TODO: a server should accept more than one client socket.
- */
-_mhClientCtx_t *_mhGetClientCtx(mhServCtx_t *serv_ctx)
-{
-    return serv_ctx->cctx;
-}
-
-/**
  * Initialize the client context. This stores all info related to one client
  * socket in the server.
  */
@@ -1156,8 +1229,11 @@ static _mhClientCtx_t *initClientCtx(apr_pool_t *pool, mhServCtx_t *serv_ctx,
                                      apr_socket_t *cskt, mhServerType_t type)
 {
     _mhClientCtx_t *cctx;
-    cctx = apr_pcalloc(pool, sizeof(_mhClientCtx_t));
-    cctx->pool = pool;
+    apr_pool_t *ccpool;
+    apr_pool_create(&ccpool, pool);
+
+    cctx = apr_pcalloc(ccpool, sizeof(_mhClientCtx_t));
+    cctx->pool = ccpool;
     cctx->skt = cskt;
     cctx->buflen = 0;
     cctx->bufrem = BUFSIZE;
@@ -1166,6 +1242,7 @@ static _mhClientCtx_t *initClientCtx(apr_pool_t *pool, mhServCtx_t *serv_ctx,
     cctx->closeConn = NO;
     cctx->respQueue = apr_array_make(pool, 5, sizeof(mhResponse_t *));
     cctx->currResp = NULL;
+    cctx->mode = ModeServer;
     if (type == mhHTTPServer || type == mhHTTPProxy) {
         cctx->read = socketRead;
         cctx->send = socketWrite;
@@ -1186,6 +1263,44 @@ static _mhClientCtx_t *initClientCtx(apr_pool_t *pool, mhServCtx_t *serv_ctx,
     return cctx;
 }
 
+static void closeAndRemoveClientCtx(mhServCtx_t *ctx, _mhClientCtx_t *cctx)
+{
+    int i;
+    apr_array_header_t *clients = ctx->clients;
+    apr_pollfd_t pfd = { 0 };
+
+    /* Close socket and clean up client context */
+    pfd.desc_type = APR_POLL_SOCKET;
+    pfd.desc.s = cctx->skt;
+    pfd.reqevents = cctx->reqevents;
+    apr_pollset_remove(ctx->pollset, &pfd);
+    apr_socket_close(cctx->skt);
+
+    if (cctx->proxyskt) {
+        pfd.desc_type = APR_POLL_SOCKET;
+        pfd.desc.s = cctx->proxyskt;
+        pfd.reqevents = cctx->proxyreqevents;
+        apr_pollset_remove(ctx->pollset, &pfd);
+        apr_socket_close(cctx->proxyskt);
+    }
+
+    /* TODO: a linked list would be more efficient. */
+    /* Swap the last element to the location of the element to be
+     deleted, then decrease the size of the array by 1 */
+    for (i = 0; i < clients->nelts; i++) {
+        _mhClientCtx_t *tmp = APR_ARRAY_IDX(clients, i, _mhClientCtx_t *);
+        if (cctx == tmp) {
+            if (i+1 < clients->nelts) {
+                _mhClientCtx_t *last;
+                last = APR_ARRAY_IDX(clients, clients->nelts - 1,
+                                     _mhClientCtx_t *);
+                *(_mhClientCtx_t **)&clients->elts[i] = last;
+            }
+            clients->nelts--;
+        }
+    }
+}
+
 /**
  * Process all events on all sockets related to this server CTX, i.e. the server
  * socket for incoming connections, the client socket(s) and the outgoing
@@ -1195,14 +1310,15 @@ apr_status_t _mhRunServerLoop(mhServCtx_t *ctx)
 {
     apr_int32_t num;
     const apr_pollfd_t *desc;
-    _mhClientCtx_t *cctx;
-    apr_pollfd_t pfd = { 0 };
     apr_status_t status;
 
-    cctx = ctx->cctx;
     if (ctx->reqState == FullReqReceived)
         ctx->reqState = NoReqsReceived;
 #if 0
+    /* TODO: add a dirty flag to every socket wrapping context, only listen
+       for writeable events with the socket is dirty */
+    apr_pollfd_t pfd = { 0 };
+    cctx = ctx->cctx;
     /* something to write */
     if (cctx && cctx->skt) {
         pfd.desc_type = APR_POLL_SOCKET;
@@ -1224,6 +1340,7 @@ apr_status_t _mhRunServerLoop(mhServCtx_t *ctx)
     /* The same socket can be returned multiple times by apr_pollset_poll() */
     while (num--) {
         if (desc->desc.s == ctx->skt) {
+            _mhClientCtx_t *cctx;
             apr_socket_t *cskt;
             apr_pollfd_t pfd = { 0 };
 
@@ -1234,32 +1351,49 @@ apr_status_t _mhRunServerLoop(mhServCtx_t *ctx)
             STATUSERR(apr_socket_opt_set(cskt, APR_SO_NONBLOCK, 1));
             STATUSERR(apr_socket_timeout_set(cskt, 0));
 
+            /* Push a client context on the ctx->clients stack */
             cctx = initClientCtx(ctx->pool, ctx, cskt, ctx->type);
             pfd.desc_type = APR_POLL_SOCKET;
             pfd.desc.s = cskt;
             pfd.reqevents = APR_POLLIN | APR_POLLOUT;
             pfd.client_data = cctx;
-
             STATUSERR(apr_pollset_add(ctx->pollset, &pfd));
             cctx->reqevents = pfd.reqevents;
-            ctx->cctx = cctx;
-        } else if (desc->desc.s == ctx->proxyskt) {
-            STATUSREADERR(processProxy(ctx, desc));
+            *((_mhClientCtx_t **)apr_array_push(ctx->clients)) = cctx;
+
         } else {
-            /* one of the client sockets */
             _mhClientCtx_t *cctx = desc->client_data;
 
-            /* socket already closed? */
-            if (!cctx->skt)
-                continue;
+            if (!cctx || !cctx->skt) {
+                _mhLog(MH_VERBOSE, NULL, "Getting event from unknown socket.\n");
+            } else if (desc->desc.s == cctx->proxyskt) {
+                /* Connection proxy <-> server */
+                STATUSREADERR(processProxy(cctx, desc));
+                if (status == APR_EOF) {
+                    apr_pollfd_t pfd = { 0 };
+                    pfd.desc_type = APR_POLL_SOCKET;
+                    pfd.desc.s = cctx->proxyskt;
+                    pfd.reqevents = cctx->proxyreqevents;
+                    apr_pollset_remove(ctx->pollset, &pfd);
+                    apr_socket_close(cctx->proxyskt);
 
-            if (cctx->handshake) {
-                status = cctx->handshake(cctx);
-                if (status)
-                    continue;
-                /* APR_SUCCESS -> handshake finished */
+                }
+            } else {
+                /* Connection client <-> proxy/server */
+                status = APR_SUCCESS;
+
+                if (cctx->handshake)
+                    status = cctx->handshake(cctx);
+
+                /* APR_SUCCESS -> handshake finished or not needed */
+                if (status == APR_SUCCESS) {
+                    STATUSREADERR(processServer(ctx, cctx, desc));
+                    if (status == APR_EOF) {
+                        /* Close the socket and an associated proxy skt */
+                        closeAndRemoveClientCtx(ctx, cctx);
+                    }
+                }
             }
-            STATUSREADERR(processServer(ctx, cctx, desc));
         }
         desc++;
     }
@@ -1294,7 +1428,7 @@ mhServCtx_t *mhNewProxy(MockHTTP *mh)
 /**
  * Returns the server context associated with id SERVERID.
  */
-mhServCtx_t *mhFindServerByID(MockHTTP *mh, const char *serverID)
+mhServCtx_t *mhFindServerByID(const MockHTTP *mh, const char *serverID)
 {
     if (mh->servCtx && mh->servCtx->serverID &&
         strcmp(mh->servCtx->serverID, serverID) == 0) {
@@ -1306,16 +1440,6 @@ mhServCtx_t *mhFindServerByID(MockHTTP *mh, const char *serverID)
         return mh->proxyCtx;
     }
     return NULL;
-}
-
-mhServCtx_t *mhGetServerCtx(MockHTTP *mh)
-{
-    return mh->servCtx;
-}
-
-mhServCtx_t *mhGetProxyCtx(MockHTTP *mh)
-{
-    return mh->proxyCtx;
 }
 
 /**
@@ -1347,6 +1471,13 @@ void mhConfigServer(mhServCtx_t *serv_ctx, ...)
     if (serv_ctx->protocols == mhProtoUnspecified) {
         serv_ctx->protocols = mhProtoAllSecure;
     }
+    if (!serv_ctx->serverID) {
+        if (serv_ctx->type == mhGenericProxy) {
+            serv_ctx->serverID = DEFAULT_PROXY_ID;
+        } else {
+            serv_ctx->serverID = DEFAULT_SERVER_ID;
+        }
+    }
 }
 
 /**
@@ -1358,24 +1489,41 @@ void mhStartServer(mhServCtx_t *ctx)
     mhError_t err = MOCKHTTP_NO_ERROR;
     apr_status_t status;
 
-    /* TODO: second thread doesn't work. */
     if (ctx->threading == mhThreadSeparate) {
-        /* Setup a non-blocking TCP server in a separate thread */
-        apr_thread_create(&thread, NULL, start_thread, ctx, ctx->pool);
-        err = MOCKHTTP_SETUP_FAILED;
-    } else if (ctx->threading == mhThreadMain) {
+#if APR_HAS_THREADS
         /* Setup a non-blocking TCP server */
-        status = setupTCPServer(ctx, NO);
-        if (status == MH_STATUS_WAITING)
-            err = MOCKHTTP_WAITING;
-        else if (status)
-            err = MOCKHTTP_SETUP_FAILED;
+        status = setupTCPServer(ctx);
+        if (!status) {
+            status = apr_thread_create(&thread, NULL, run_thread,
+                                       ctx, ctx->pool);
+            if (!status)
+                ctx->threadid = thread;
+        }
+#else
+        status = APR_EGENERAL;
+#endif
     } else {
-        err = MOCKHTTP_SETUP_FAILED;
+        /* Setup a non-blocking TCP server */
+        status = setupTCPServer(ctx);
     }
 
+    if (status) {
+        err = MOCKHTTP_SETUP_FAILED;
+    }
     /* TODO: store error message */
 }
+
+void mhStopServer(mhServCtx_t *ctx)
+{
+    apr_status_t status;
+#ifdef APR_HAS_THREADS
+    if (ctx->threading == mhThreadSeparate && ctx->threadid) {
+        ctx->cancelThread = YES;
+        apr_thread_join(&status, ctx->threadid);
+    }
+#endif
+}
+
 
 /**
  * Factory function, creates a builder of type mhServerSetupBldr_t.
@@ -1435,14 +1583,22 @@ mhSetServerMaxRequestsPerConn(mhServCtx_t *ctx, unsigned int maxRequests)
     return ssb;
 }
 
+unsigned int mhServerByIDPortNr(const MockHTTP *mh, const char *serverID)
+{
+    mhServCtx_t *ctx = mhFindServerByID(mh, serverID);
+    if (ctx)
+        return ctx->port;
+    return 0;
+}
+
 unsigned int mhServerPortNr(const MockHTTP *mh)
 {
-    return mh->servCtx->port;
+    return mhServerByIDPortNr(mh, DEFAULT_SERVER_ID);
 }
 
 unsigned int mhProxyPortNr(const MockHTTP *mh)
 {
-    return mh->proxyCtx->port;
+    return mhServerByIDPortNr(mh, DEFAULT_PROXY_ID);
 }
 
 /**
@@ -2206,7 +2362,8 @@ bool _mhClientcertcn_matcher(const mhConnMatcherBldr_t *mp,
 }
 
 /**
- * Performs the SSL handshake, can be called multiple times.
+ * Performs the SSL handshake on the connection client/proxy <-> server, can be
+ * called multiple times until successful.
  * Returns APR_EAGAIN when handshake in progress.
  *         APR_SUCCESS when handshake finished
  *         error in case of error during handshake.

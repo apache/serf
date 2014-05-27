@@ -658,7 +658,8 @@ static void test_request_timeout(CuTest *tc)
     CuAssertIntEquals(tc, APR_SUCCESS, status);
 
     Given(tb->mh)
-      HTTPRequest("PROPFIND", URLEqualTo("/"),
+      HTTPRequest(MethodEqualTo("PROPFIND"),
+                  URLEqualTo("/"),
                   IncompleteBodyEqualTo(REQUEST_BODY_PART1))
         Respond(WithRawData(RESPONSE_408))
     EndGiven
@@ -1833,7 +1834,8 @@ static void test_setup_ssltunnel(CuTest *tc)
           Respond(WithCode(200), WithChunkedBody(""))
 
       RequestsReceivedByProxy
-        HTTPRequest("CONNECT", URLEqualTo(tb->serv_host))
+        HTTPRequest(MethodEqualTo("CONNECT"),
+                    URLEqualTo(tb->serv_host))
           Respond(WithCode(200), WithChunkedBody(""))
           SetupSSLTunnel
     EndGiven
@@ -1870,7 +1872,8 @@ static void test_ssltunnel_no_creds_cb(CuTest *tc)
 
     Given(tb->mh)
       RequestsReceivedByProxy
-        HTTPRequest("CONNECT", URLEqualTo(tb->serv_host))
+        HTTPRequest(MethodEqualTo("CONNECT"),
+                    URLEqualTo(tb->serv_host))
           Respond(WithCode(407), WithChunkedBody(""),
                   WithHeader("Proxy-Authentication",
                              "Basic realm=\"Test Suite Proxy\""))
@@ -1961,13 +1964,15 @@ static void ssltunnel_basic_auth(CuTest *tc, int serv_close_conn,
                    HeaderEqualTo("Authorization", "Basic c2VyZjpzZXJmdGVzdA=="))
           Respond(WithCode(200),WithChunkedBody(""))
       RequestsReceivedByProxy
-        HTTPRequest("CONNECT", URLEqualTo(tb->serv_host),
+        HTTPRequest(MethodEqualTo("CONNECT"),
+                    URLEqualTo(tb->serv_host),
                     HeaderNotSet("Proxy-Authorization"))
           Respond(WithCode(407), WithChunkedBody(""),
                   WithHeader("Proxy-Authenticate",
                              "Basic realm=\"Test Suite Proxy\""),
                   OnConditionThat(proxy407_close_conn, WithConnectionCloseHeader))
-        HTTPRequest("CONNECT", URLEqualTo(tb->serv_host),
+        HTTPRequest(MethodEqualTo("CONNECT"),
+                    URLEqualTo(tb->serv_host),
                     HeaderEqualTo("Proxy-Authorization",
                                   "Basic c2VyZnByb3h5OnNlcmZ0ZXN0"))
           Respond(WithCode(200), WithChunkedBody(""),
@@ -2107,13 +2112,15 @@ static void test_ssltunnel_basic_auth_2ndtry(CuTest *tc)
 
       RequestsReceivedByProxy
         /* Don't close connection when client didn't provide creds */
-        HTTPRequest("CONNECT", URLEqualTo(tb->serv_host),
+        HTTPRequest(MethodEqualTo("CONNECT"),
+                    URLEqualTo(tb->serv_host),
                     HeaderNotSet("Proxy-Authorization"))
             Respond(WithCode(407), WithChunkedBody(""),
                     WithHeader("Proxy-Authenticate",
                                "Basic realm=\"Test Suite Proxy\""))
         /* serfproxy:wrongpwd fails, close connection. */
-        HTTPRequest("CONNECT", URLEqualTo(tb->serv_host),
+        HTTPRequest(MethodEqualTo("CONNECT"),
+                    URLEqualTo(tb->serv_host),
                     HeaderNotEqualTo("Proxy-Authorization",
                                      "Basic c2VyZnByb3h5OnNlcmZ0ZXN0"))
             Respond(WithCode(407), WithChunkedBody(""),
@@ -2121,7 +2128,8 @@ static void test_ssltunnel_basic_auth_2ndtry(CuTest *tc)
                                "Basic realm=\"Test Suite Proxy\""))
             CloseConnection
         /* serfproxy:serftest succeeds */
-        HTTPRequest("CONNECT", URLEqualTo(tb->serv_host),
+        HTTPRequest(MethodEqualTo("CONNECT"),
+                    URLEqualTo(tb->serv_host),
                     HeaderEqualTo("Proxy-Authorization",
                                   "Basic c2VyZnByb3h5OnNlcmZ0ZXN0"))
           Respond(WithCode(200), WithChunkedBody(""))
@@ -2218,7 +2226,8 @@ static void test_ssltunnel_digest_auth(CuTest *tc)
     /* Use non standard case for Proxy-Authenticate header to test case
        insensitivity for http headers. */
       RequestsReceivedByProxy
-        HTTPRequest("CONNECT", URLEqualTo(tb->serv_host),
+        HTTPRequest(MethodEqualTo("CONNECT"),
+                    URLEqualTo(tb->serv_host),
                     HeaderNotSet("Proxy-Authorization"))
           Respond(WithCode(407), WithChunkedBody("1"),
                   WithHeader("Proxy-Authenticate",
@@ -2227,7 +2236,8 @@ static void test_ssltunnel_digest_auth(CuTest *tc)
                   WithHeader("proXy-Authenticate", "Digest "
                    "realm=\"Test Suite Proxy\",nonce=\"ABCDEF1234567890\","
                    "opaque=\"myopaque\",algorithm=\"MD5\""))
-        HTTPRequest("CONNECT", URLEqualTo(tb->serv_host),
+        HTTPRequest(MethodEqualTo("CONNECT"),
+                    URLEqualTo(tb->serv_host),
                     HeaderEqualTo("Proxy-Authorization", digest))
           Respond(WithCode(200), WithChunkedBody(""))
           SetupSSLTunnel
@@ -2265,9 +2275,9 @@ static void test_ssltunnel_spnego_authn(CuTest *tc)
 
     Given(tb->mh)
       RequestsReceivedByProxy
-        HTTPRequest("CONNECT",
-            URLEqualTo(tb->serv_host),
-            HeaderEqualTo("Host", tb->serv_host))
+        HTTPRequest(MethodEqualTo("CONNECT"),
+                    URLEqualTo(tb->serv_host),
+                    HeaderEqualTo("Host", tb->serv_host))
           Respond(WithCode(407),
                   WithHeader("Proxy-Authenticate", "Negotiate"),
                   WithHeader("Proxy-Authenticate", "Kerberos"),
@@ -2300,9 +2310,8 @@ static void test_server_spnego_authn(CuTest *tc)
     serf_config_credentials_callback(tb->context, ssltunnel_basic_authn_callback);
 
     Given(tb->mh)
-      HTTPRequest("GET",
-          URLEqualTo("/"),
-          HeaderEqualTo("Host", tb->serv_host))
+      GETRequest(URLEqualTo("/"),
+                 HeaderEqualTo("Host", tb->serv_host))
         Respond(WithCode(401),
                 WithHeader("WWW-Authenticate", "Negotiate"),
                 WithHeader("Content-Type", "text/html"),

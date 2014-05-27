@@ -29,39 +29,12 @@ static mhResponse_t *initResponse(MockHTTP *mh);
 
 
 /* private functions */
-static const char *toLower(apr_pool_t *pool, const char *str)
-{
-    char *lstr, *l;
-    const char *u;
 
-    lstr = apr_palloc(pool, strlen(str) + 1);
-    for (u = str, l = lstr; *u != 0; u++, l++)
-        *l = (char)apr_tolower(*u);
-    *l = '\0';
-
-    return lstr;
-}
-
-/* header should be stored with their original case to use them in responses.
+/* Header should be stored with their original case to use them in responses.
    Search on header name is case-insensitive per RFC2616. */
-const char *
-getHeader(apr_pool_t *pool, apr_table_t *hdrs, const char *hdr)
+const char *getHeader(apr_table_t *hdrs, const char *hdr)
 {
-    const char *lhdr = toLower(pool, hdr);
-    const apr_table_entry_t *elts;
-    const apr_array_header_t *arr;
-    int i;
-
-    arr = apr_table_elts(hdrs);
-    elts = (const apr_table_entry_t *)arr->elts;
-
-    for (i = 0; i < arr->nelts; ++i) {
-        const char *tmp = toLower(pool, elts[i].key);
-        if (strcmp(tmp, lhdr) == 0)
-            return elts[i].val;
-    }
-
-    return NULL;
+    return apr_table_get(hdrs, hdr);
 }
 
 void setHeader(apr_table_t *hdrs, const char *hdr, const char *val)
@@ -118,6 +91,9 @@ MockHTTP *mhInit()
     __resp = mh->defErrorResponse = initResponse(__mh);
     mhConfigResponse(__resp, WithCode(500),
                      WithBody("Mock server error."), NULL);
+    mh->reqMatchers = apr_array_make(pool, 5, sizeof(ReqMatcherRespPair_t *));
+    mh->incompleteReqMatchers = apr_array_make(pool, 5,
+                                               sizeof(ReqMatcherRespPair_t *));
     return mh;
 }
 
@@ -125,6 +101,15 @@ void mhCleanup(MockHTTP *mh)
 {
     if (!mh)
         return;
+
+    if (mh->servCtx) {
+        mhStopServer(mh->servCtx);
+    }
+
+    if (mh->proxyCtx) {
+        mhStopServer(mh->proxyCtx);
+    }
+
 
     /* The MockHTTP * is also allocated from mh->pool, so this will destroy
        the MockHTTP structure and all its allocated memory. */
@@ -148,12 +133,12 @@ static apr_status_t runServerLoop(MockHTTP *mh, loopRequestState_t *reqState)
 
     *reqState = NoReqsReceived;
     do {
-        if (mh->proxyCtx) {
+        if (mh->proxyCtx && mh->proxyCtx->threading != mhThreadSeparate) {
             status = _mhRunServerLoop(mh->proxyCtx);
             *reqState = mh->proxyCtx->reqState;
         }
         /* TODO: status? */
-        if (mh->servCtx) {
+        if (mh->servCtx && mh->servCtx->threading != mhThreadSeparate) {
             status = _mhRunServerLoop(mh->servCtx);
             *reqState |= mh->servCtx->reqState;
         }
@@ -486,7 +471,7 @@ mhMatchChunkedBodyChunksEqualTo(const MockHTTP *mh, ...)
     }
     va_end(argp);
 
-    mp = apr_palloc(pool, sizeof(mhReqMatcherBldr_t));
+    mp = createReqMatcherBldr(pool);
     mp->baton = chunks;
     mp->matcher = chunked_body_chunks_matcher;
     mp->describe_key = "Chunked body with chunks";
@@ -503,11 +488,24 @@ mhMatchChunkedBodyChunksEqualTo(const MockHTTP *mh, ...)
 static bool
 header_matcher(const mhReqMatcherBldr_t *mp, const mhRequest_t *req)
 {
-    apr_pool_t *tmppool;
     const char *actual;
+    int i, found = 0;
+    unsigned long exphash = mp->ibaton;
 
-    apr_pool_create(&tmppool, req->pool);
-    actual = getHeader(tmppool, req->hdrs, mp->baton2);
+    /* exphash == 0 means testing that header is NOT set */
+    if (exphash) {
+        for (i = 0; i < req->hdrHashes->nelts; i++) {
+            unsigned long acthash = APR_ARRAY_IDX(req->hdrHashes, i, unsigned long);
+            if (exphash == acthash) {
+                found = 1;
+                break;
+            }
+        }
+        if (found == 0)
+            return NO;
+    }
+
+    actual = getHeader(req->hdrs, mp->baton2);
     return str_matcher(mp, actual);
 }
 
@@ -519,6 +517,7 @@ mhMatchHeaderEqualTo(const MockHTTP *mh, const char *hdr, const char *value)
     mhReqMatcherBldr_t *mp = createReqMatcherBldr(pool);
     mp->baton = apr_pstrdup(pool, value);
     mp->baton2 = apr_pstrdup(pool, hdr);
+    mp->ibaton = calculateHeaderHash(hdr, value);
     mp->matcher = header_matcher;
     mp->describe_key = "Header equal to";
     mp->describe_value = apr_psprintf(pool, "%s: %s", hdr, value);
@@ -534,11 +533,7 @@ mhMatchHeaderEqualTo(const MockHTTP *mh, const char *hdr, const char *value)
 static bool
 header_not_matcher(const mhReqMatcherBldr_t *mp, const mhRequest_t *req)
 {
-    apr_pool_t *tmppool;
-    const char *actual;
-
-    apr_pool_create(&tmppool, req->pool);
-    actual = getHeader(tmppool, req->hdrs, mp->baton2);
+    const char *actual = getHeader(req->hdrs, mp->baton2);
     return !str_matcher(mp, actual);
 }
 
@@ -556,18 +551,71 @@ mhMatchHeaderNotEqualTo(const MockHTTP *mh, const char *hdr, const char *value)
     return mp;
 }
 
+method_t methodToCode(const char *code)
+{
+    char ch1, ch2;
+    ch1 = toupper(*code);
+
+    if (ch1 == 'G' && strcasecmp(code, "GET") == 0)
+        return MethodGET;
+    if (ch1 == 'H' && strcasecmp(code, "HEAD") == 0)
+        return MethodHEAD;
+
+    ch2 = toupper(*(code+1));
+    if (ch1 == 'P') {
+        if (ch2 == 'O' && strcasecmp(code, "POST") == 0)
+            return MethodPOST;
+        if (ch2 == 'A' && strcasecmp(code, "PATCH") == 0)
+            return MethodPATCH;
+        if (ch2 == 'A' && strcasecmp(code, "PUT") == 0)
+            return MethodPUT;
+        if (ch2 == 'R') {
+            if (strcasecmp(code, "PROPFIND") == 0)
+                return MethodPROPFIND;
+            if (strcasecmp(code, "PROPPATCH") == 0)
+                return MethodPROPPATCH;
+        }
+        return MethodOther;
+    }
+    if (ch1 == 'O') {
+        if (ch2 == 'P' && strcasecmp(code, "OPTIONS") == 0)
+            return MethodOPTIONS;
+        if (ch2 == 'R' && strcasecmp(code, "ORDERPATCH") == 0)
+            return MethodORDERPATCH;
+        return MethodOther;
+    }
+
+    if (ch1 == 'A' && strcasecmp(code, "ACL") == 0)
+        return MethodACL;
+    if (ch1 == 'B' && strcasecmp(code, "BASELINE-CONTROL") == 0)
+        return MethodBASELINE_CONTROL;
+    if (ch1 == 'L' && strcasecmp(code, "LABEL") == 0)
+        return MethodLABEL;
+    if (ch1 == 'D' && strcasecmp(code, "DELETE") == 0)
+        return MethodDELETE;
+    return MethodOther;
+}
+
 /**
  * Builder callback, checks if the request method matches the expected method.
  * (case insensitive).
+ * TODO: not used at this time!!
  */
 static bool method_matcher(const mhReqMatcherBldr_t *mp, const mhRequest_t *req)
 {
-    const char *expected = mp->baton;
+    const char *method = mp->baton;
+    method_t methodCode = mp->ibaton;
 
-    if (apr_strnatcasecmp(expected, req->method) == 0)
-        return YES;
-
-    return NO;
+    if (methodCode != req->methodCode) {
+        return NO;
+    } else {
+        if (methodCode != MethodOther)
+            return YES;
+        if (strcasecmp(method, req->method) == 0) {
+            return YES;
+        }
+        return NO;
+    }
 }
 
 mhReqMatcherBldr_t *
@@ -577,6 +625,7 @@ mhMatchMethodEqualTo(const MockHTTP *mh, const char *expected)
 
     mhReqMatcherBldr_t *mp = createReqMatcherBldr(pool);
     mp->baton = apr_pstrdup(pool, expected);
+    mp->ibaton = methodToCode(expected);
     mp->matcher = method_matcher;
     mp->describe_key = "Method equal to";
     mp->describe_value = expected;
@@ -589,13 +638,12 @@ mhMatchMethodEqualTo(const MockHTTP *mh, const char *expected)
  * arrives in the server.
  */
 static mhRequestMatcher_t *
-constructRequestMatcher(const MockHTTP *mh, const char *method, va_list argp)
+constructRequestMatcher(const MockHTTP *mh, va_list argp)
 {
     apr_pool_t *pool = mh->pool;
 
     mhRequestMatcher_t *rm = apr_pcalloc(pool, sizeof(mhRequestMatcher_t));
     rm->pool = pool;
-    rm->method = apr_pstrdup(pool, method);
     rm->matchers = apr_array_make(pool, 5, sizeof(mhReqMatcherBldr_t *));
 
     while (1) {
@@ -614,13 +662,13 @@ constructRequestMatcher(const MockHTTP *mh, const char *method, va_list argp)
     return rm;
 }
 
-mhRequestMatcher_t *mhGivenRequest(MockHTTP *mh, const char *method, ...)
+mhRequestMatcher_t *mhGivenRequest(MockHTTP *mh, ...)
 {
     va_list argp;
     mhRequestMatcher_t *rm;
 
-    va_start(argp, method);
-    rm = constructRequestMatcher(mh, method, argp);
+    va_start(argp, mh);
+    rm = constructRequestMatcher(mh, argp);
     va_end(argp);
 
     return rm;
@@ -630,10 +678,6 @@ bool
 _mhRequestMatcherMatch(const mhRequestMatcher_t *rm, const mhRequest_t *req)
 {
     int i;
-
-    if (apr_strnatcasecmp(rm->method, req->method) != 0) {
-        return NO;
-    }
 
     for (i = 0 ; i < rm->matchers->nelts; i++) {
         const mhReqMatcherBldr_t *mp;
@@ -713,7 +757,9 @@ mhConnMatcherBldr_t *mhMatchClientCertValid(const MockHTTP *mh)
 /******************************************************************************/
 static mhResponse_t *initResponse(MockHTTP *mh)
 {
-    apr_pool_t *pool = mh->pool;
+    apr_pool_t *pool;
+
+    apr_pool_create(&pool, mh->pool);
 
     mhResponse_t *resp = apr_pcalloc(pool, sizeof(mhResponse_t));
     resp->pool = pool;
@@ -733,8 +779,13 @@ mhResponse_t *mhNewResponseForRequest(MockHTTP *mh, mhServCtx_t *ctx,
 
     mhResponse_t *resp = initResponse(mh);
 
-    matchers = rm->incomplete ? ctx->incompleteReqMatchers : ctx->reqMatchers;
-    for (i = 0 ; i < matchers->nelts; i++) {
+    if (ctx)
+        matchers = rm->incomplete ? ctx->incompleteReqMatchers : ctx->reqMatchers;
+    else
+        matchers = rm->incomplete ? mh->incompleteReqMatchers : mh->reqMatchers;
+
+    /* TODO: how can this not be the last element?? */
+    for (i = matchers->nelts - 1 ; i >= 0; i--) {
         ReqMatcherRespPair_t *pair;
 
         pair = APR_ARRAY_IDX(matchers, i, ReqMatcherRespPair_t *);
@@ -747,14 +798,17 @@ mhResponse_t *mhNewResponseForRequest(MockHTTP *mh, mhServCtx_t *ctx,
     return resp;
 }
 
-void mhNewActionForRequest(mhServCtx_t *ctx, mhRequestMatcher_t *rm,
-                           mhAction_t action)
+void mhNewActionForRequest(MockHTTP *mh, mhServCtx_t *ctx,
+                           mhRequestMatcher_t *rm, mhAction_t action)
 {
     apr_array_header_t *matchers;
     int i;
 
-    matchers = rm->incomplete ? ctx->incompleteReqMatchers : ctx->reqMatchers;
-    for (i = 0 ; i < matchers->nelts; i++) {
+    if (ctx)
+        matchers = rm->incomplete ? ctx->incompleteReqMatchers : ctx->reqMatchers;
+    else
+        matchers = rm->incomplete ? mh->incompleteReqMatchers : mh->reqMatchers;
+    for (i = matchers->nelts - 1 ; i >= 0; i--) {
         ReqMatcherRespPair_t *pair;
 
         pair = APR_ARRAY_IDX(matchers, i, ReqMatcherRespPair_t *);
@@ -927,6 +981,27 @@ mhResponseBldr_t *mhRespSetConnCloseHdr(mhResponse_t *resp)
     return rb;
 }
 
+
+static bool
+resp_use_request_header(const mhResponseBldr_t *rb, mhResponse_t *resp)
+{
+    mhRequest_t *req = resp->req;
+    const char *value = getHeader(req->hdrs, rb->baton);
+    if (value)
+        setHeader(resp->hdrs, rb->baton, value);
+    return YES;
+}
+
+mhResponseBldr_t *
+mhRespSetUseRequestHeader(mhResponse_t *resp, const char *header)
+{
+    apr_pool_t *pool = resp->pool;
+    mhResponseBldr_t *rb = createResponseBldr(pool);
+    rb->respbuilder = resp_use_request_header;
+    rb->baton = header;
+    return rb;
+}
+
 static bool
 resp_use_request_body(const mhResponseBldr_t *rb, mhResponse_t *resp)
 {
@@ -965,6 +1040,40 @@ mhResponseBldr_t *mhRespSetRawData(mhResponse_t *resp, const char *raw_data)
     mhResponseBldr_t *rb = createResponseBldr(pool);
     rb->respbuilder = resp_set_raw_data;
     rb->baton = apr_pstrdup(pool, raw_data);
+    return rb;
+}
+
+static bool
+resp_set_repeat_pattern(const mhResponseBldr_t *rb, mhResponse_t *resp)
+{
+    unsigned int i, n = rb->ibaton;
+    const char *pattern = rb->baton;
+    apr_size_t len = strlen(pattern);
+    apr_pool_t *tmppool;
+    struct iovec *vecs;
+
+    /* TODO: the whole reponse body should be converted to buckets so that
+       we can generate the body on the fly. */
+    apr_pool_create(&tmppool, resp->pool);
+    vecs = apr_pcalloc(tmppool, sizeof(struct iovec) * n);
+
+    for (i = 0; i < n; i++) {
+        vecs[i].iov_base = (void *)pattern;
+        vecs[i].iov_len = len;
+    }
+    resp->raw_data = apr_pstrcatv(resp->pool, vecs, n, NULL);
+
+    return YES;
+}
+
+mhResponseBldr_t *mhRespSetBodyPattern(mhResponse_t *resp, const char *pattern,
+                                       unsigned int n)
+{
+    apr_pool_t *pool = resp->pool;
+    mhResponseBldr_t *rb = createResponseBldr(pool);
+    rb->respbuilder = resp_set_repeat_pattern;
+    rb->baton = apr_pstrdup(pool, pattern);
+    rb->ibaton = n;
     return rb;
 }
 
@@ -1294,21 +1403,30 @@ int mhVerifyAllExpectationsOk(const MockHTTP *mh)
 int mhVerifyConnectionSetupOk(const MockHTTP *mh)
 {
     int i;
+    bool result = NO;
     apr_pool_t *match_pool;
-    _mhClientCtx_t *cctx = _mhGetClientCtx(mh->servCtx); /* TODO: one conn? */
+    apr_array_header_t *clients = mh->servCtx->clients;
 
     apr_pool_create(&match_pool, mh->pool);
+    for (i = 0; i < clients->nelts; i++) {
+        _mhClientCtx_t *cctx = APR_ARRAY_IDX(clients, i, _mhClientCtx_t *);
 
-    for (i = 0 ; i < mh->connMatchers->nelts; i++) {
-        const mhConnMatcherBldr_t *cmb;
+        for (i = 0 ; i < mh->connMatchers->nelts; i++) {
+            const mhConnMatcherBldr_t *cmb;
 
-        cmb = APR_ARRAY_IDX(mh->connMatchers, i, mhConnMatcherBldr_t *);
-        if (cmb->connmatcher(cmb, cctx) == NO)
-            return NO;
+            cmb = APR_ARRAY_IDX(mh->connMatchers, i, mhConnMatcherBldr_t *);
+            if (cmb->connmatcher(cmb, cctx) == NO) {
+                result = NO;
+                goto cleanup;
+            }
+        }
     }
+    result = YES;
+
+cleanup:
     apr_pool_destroy(match_pool);
 
-    return YES;
+    return result;
 }
 
 static const char *buildertype_to_string(builderType_t type)
@@ -1354,17 +1472,19 @@ void _mhLog(int verbose_flag, apr_socket_t *skt, const char *fmt, ...)
     va_list argp;
 
     if (verbose_flag) {
-        apr_sockaddr_t *sa;
-        apr_port_t lp = 0, rp = 0;
-
         log_time();
 
-        /* Log client (remote) and server (local) port */
-        if (apr_socket_addr_get(&sa, APR_LOCAL, skt) == APR_SUCCESS)
-            lp = sa->port;
-        if (apr_socket_addr_get(&sa, APR_REMOTE, skt) == APR_SUCCESS)
-            rp = sa->port;
-        fprintf(stderr, "[cp:%u sp:%u] ", rp, lp);
+        if (skt) {
+            apr_sockaddr_t *sa;
+            apr_port_t lp = 0, rp = 0;
+
+            /* Log client (remote) and server (local) port */
+            if (apr_socket_addr_get(&sa, APR_LOCAL, skt) == APR_SUCCESS)
+                lp = sa->port;
+            if (apr_socket_addr_get(&sa, APR_REMOTE, skt) == APR_SUCCESS)
+                rp = sa->port;
+            fprintf(stderr, "[cp:%u sp:%u] ", rp, lp);
+        }
 
         va_start(argp, fmt);
         vfprintf(stderr, fmt, argp);

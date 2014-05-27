@@ -71,6 +71,17 @@ typedef enum mhThreading_t {
     mhThreadSeparate,
 } mhThreading_t;
 
+typedef struct mhRequest_t mhRequest_t;
+typedef struct mhRequestMatcher_t mhRequestMatcher_t;
+typedef struct mhResponse_t mhResponse_t;
+typedef struct mhServCtx_t mhServCtx_t;
+typedef struct mhReqMatcherBldr_t mhReqMatcherBldr_t;
+typedef struct mhConnMatcherBldr_t mhConnMatcherBldr_t;
+typedef struct mhServerSetupBldr_t mhServerSetupBldr_t;
+typedef struct mhResponseBldr_t mhResponseBldr_t;
+
+#define DEFAULT_SERVER_ID "server"
+#define DEFAULT_PROXY_ID  "proxy"
 
 /******************************************************************************
  * MockHTTPinC API                                                            *
@@ -126,6 +137,7 @@ typedef enum mhThreading_t {
 
 /* Runs the mock server and proxy in separate threads, use this when testing a
    blocking http client library */
+/* EXPERIMENTAL: this feature doesn't work in all cases, can cause crashes! */
 #define     InSeparateThread\
                 mhSetServerThreading(__servctx, mhThreadSeparate)
 
@@ -188,33 +200,41 @@ typedef enum mhThreading_t {
                 MockHTTP *__mh = mh;\
                 mhResponse_t *__resp;\
                 mhRequestMatcher_t *__rm;\
-                mhServCtx_t *__servctx = mhGetServerCtx(__mh);
+                mhServCtx_t *__servctx = mhFindServerByID(__mh, DEFAULT_SERVER_ID);
+
 
 #define RequestsReceivedByServer\
-                __servctx = mhGetServerCtx(__mh);
+                __servctx = mhFindServerByID(__mh, DEFAULT_SERVER_ID);
 
 #define RequestsReceivedByProxy\
-                __servctx = mhGetProxyCtx(__mh);
+                __servctx = mhFindServerByID(__mh, DEFAULT_PROXY_ID);
 
 /* Stub a GET request */
 #define   GETRequest(...)\
-                __rm = mhGivenRequest(__mh, "GET", __VA_ARGS__, NULL);\
-                mhPushRequest(__servctx, __rm);
+                __rm = mhGivenRequest(__mh, MethodEqualTo("GET"),\
+                       __VA_ARGS__, NULL);\
+                mhPushRequest(__mh, __servctx, __rm);
 
 /* Stub a POST request */
 #define   POSTRequest(...)\
-                __rm = mhGivenRequest(__mh, "POST", __VA_ARGS__, NULL);\
-                mhPushRequest(__servctx, __rm);
+                __rm = mhGivenRequest(__mh, MethodEqualTo("POST"),\
+                                      __VA_ARGS__, NULL);\
+                mhPushRequest(__mh, __servctx, __rm);
 
 /* Stub a HEAD request */
 #define   HEADRequest(...)\
-                __rm = mhGivenRequest(__mh, "HEAD", __VA_ARGS__, NULL);\
-                mhPushRequest(__servctx, __rm);
+                __rm = mhGivenRequest(__mh, MethodEqualTo("HEAD"),\
+                                            __VA_ARGS__, NULL);\
+                mhPushRequest(__mh, __servctx, __rm);
 
 /* Stub a HTTP request, first parameter is HTTP method (e.g. PROPFIND) */
-#define   HTTPRequest(method, ...)\
-                __rm = mhGivenRequest(__mh, method, __VA_ARGS__, NULL);\
-                mhPushRequest(__servctx, __rm);
+#define   HTTPRequest(...)\
+                __rm = mhGivenRequest(__mh, __VA_ARGS__, NULL);\
+                mhPushRequest(__mh, __servctx, __rm);
+
+/* Match the request's METHOD equal to EXP */
+#define     MethodEqualTo(exp)\
+                mhMatchMethodEqualTo(__mh, (exp))
 
 /* Match the request's URL equal to EXP */
 #define     URLEqualTo(exp)\
@@ -290,13 +310,13 @@ typedef enum mhThreading_t {
                 mhConfigResponse(__resp, __VA_ARGS__, NULL);
 
 #define   SetupSSLTunnel\
-                mhNewActionForRequest(__servctx, __rm,\
+                mhNewActionForRequest(__mh, __servctx, __rm,\
                                       mhActionInitiateSSLTunnel);
 #define   SSLRenegotiate\
-                mhNewActionForRequest(__servctx, __rm,\
+                mhNewActionForRequest(__mh, __servctx, __rm,\
                                       mhActionSSLRenegotiate);
 #define   CloseConnection\
-                mhNewActionForRequest(__servctx, __rm,\
+                mhNewActionForRequest(__mh, __servctx, __rm,\
                                       mhActionCloseConnection);
 /* Set the HTTP response code. Default: 200 OK */
 #define     WithCode(x)\
@@ -321,6 +341,10 @@ typedef enum mhThreading_t {
 #define     WithRequestBody\
                 mhRespSetUseRequestBody(__resp)
 
+/* If HEADER is set on the request, set it with its value on the response */
+#define     WithRequestHeader(header)\
+                mhRespSetUseRequestHeader(__resp, header)
+
 /* Adds a "Connection: close" header to the response, makes the mock server
    close the connection after sending the response. */
 #define     WithConnectionCloseHeader\
@@ -331,10 +355,13 @@ typedef enum mhThreading_t {
 #define     WithRawData(data)\
                 mhRespSetRawData(__resp, (data))
 
+#define     WithBodyRepeatedPattern(pattern, repeat)\
+                mhRespSetBodyPattern(__resp, (pattern), (repeat))
+
 #define EndGiven\
                 /* Assign local variables to NULL to avoid 'variable unused' 
                    warnings. */\
-                __resp = NULL; __rm = NULL; __mh = NULL;\
+                (void)__resp; (void)__rm; (void)__mh;\
             }
 
 
@@ -479,6 +506,10 @@ unsigned int mhServerPortNr(const MockHTTP *mh);
  */
 unsigned int mhProxyPortNr(const MockHTTP *mh);
 
+/**
+ * Get the actual port number on which server with id serverID is listening.
+ */
+unsigned int mhServerByIDPortNr(const MockHTTP *mh, const char *serverID);
 
 
 /******************************************************************************
@@ -489,26 +520,16 @@ unsigned int mhProxyPortNr(const MockHTTP *mh);
  * macro's), we've made no effort to make them easy to use.                   *
  ******************************************************************************/
 
-typedef struct mhRequest_t mhRequest_t;
-typedef struct mhRequestMatcher_t mhRequestMatcher_t;
-typedef struct mhResponse_t mhResponse_t;
-typedef struct mhServCtx_t mhServCtx_t;
-typedef struct mhReqMatcherBldr_t mhReqMatcherBldr_t;
-typedef struct mhConnMatcherBldr_t mhConnMatcherBldr_t;
-typedef struct mhServerSetupBldr_t mhServerSetupBldr_t;
-typedef struct mhResponseBldr_t mhResponseBldr_t;
-
 /**
    The following functions should not be used directly, as they can be quite
    complex to use. Use the macro's instead.
  **/
 mhServCtx_t *mhNewServer(MockHTTP *mh);
 mhServCtx_t *mhNewProxy(MockHTTP *mh);
-mhServCtx_t *mhFindServerByID(MockHTTP *mh, const char *serverID);
+mhServCtx_t *mhFindServerByID(const MockHTTP *mh, const char *serverID);
 void mhConfigServer(mhServCtx_t *ctx, ...);
 void mhStartServer(mhServCtx_t *ctx);
-mhServCtx_t *mhGetServerCtx(MockHTTP *mh);
-mhServCtx_t *mhGetProxyCtx(MockHTTP *mh);
+void mhStopServer(mhServCtx_t *ctx);
 mhServerSetupBldr_t *mhSetServerID(mhServCtx_t *ctx, const char *serverID);
 mhServerSetupBldr_t *mhSetServerPort(mhServCtx_t *ctx, unsigned int port);
 mhServerSetupBldr_t *mhSetServerType(mhServCtx_t *ctx, mhServerType_t type);
@@ -529,7 +550,7 @@ mhServerSetupBldr_t *mhSetServerRequestClientCert(mhServCtx_t *ctx,
 mhServerSetupBldr_t *mhAddSSLProtocol(mhServCtx_t *ctx, mhSSLProtocol_t proto);
 
 /* Define request stubs */
-mhRequestMatcher_t *mhGivenRequest(MockHTTP *mh, const char *method, ...);
+mhRequestMatcher_t *mhGivenRequest(MockHTTP *mh, ...);
 
 /* Request matching functions */
 mhReqMatcherBldr_t *mhMatchURLEqualTo(const MockHTTP *mh,
@@ -564,22 +585,26 @@ mhResponse_t *mhNewResponseForRequest(MockHTTP *mh, mhServCtx_t *ctx,
                                       mhRequestMatcher_t *rm);
 void mhConfigResponse(mhResponse_t *resp, ...);
 mhResponse_t *mhNewDefaultResponse(MockHTTP *mh);
-void mhNewActionForRequest(mhServCtx_t *ctx, mhRequestMatcher_t *rm,
-                           mhAction_t action);
+void mhNewActionForRequest(MockHTTP *mh, mhServCtx_t *ctx,
+                           mhRequestMatcher_t *rm, mhAction_t action);
 
 mhResponseBldr_t *mhRespSetCode(mhResponse_t *resp, unsigned int status);
-mhResponseBldr_t *mhRespSetBody(mhResponse_t *resp, const char *body);
-mhResponseBldr_t *mhRespSetChunkedBody(mhResponse_t *resp, ...);
 mhResponseBldr_t *mhRespAddHeader(mhResponse_t *resp, const char *header,
                                   const char *value);
 mhResponseBldr_t *mhRespSetConnCloseHdr(mhResponse_t *resp);
+mhResponseBldr_t *mhRespSetUseRequestHeader(mhResponse_t *resp,
+                                            const char *header);
+mhResponseBldr_t *mhRespSetBody(mhResponse_t *resp, const char *body);
+mhResponseBldr_t *mhRespSetChunkedBody(mhResponse_t *resp, ...);
 mhResponseBldr_t *mhRespSetUseRequestBody(mhResponse_t *resp);
 mhResponseBldr_t *mhRespSetRawData(mhResponse_t *resp, const char *raw_data);
+mhResponseBldr_t *mhRespSetBodyPattern(mhResponse_t *resp, const char *pattern,
+                                       unsigned int n);
 
 const void *mhSetOnConditionThat(int condition, void *builder);
 
 /* Define request/response pairs */
-void mhPushRequest(mhServCtx_t *ctx, mhRequestMatcher_t *rm);
+void mhPushRequest(MockHTTP *mh, mhServCtx_t *ctx, mhRequestMatcher_t *rm);
 
 /* Define expectations */
 void mhExpectAllRequestsReceivedOnce(MockHTTP *mh);

@@ -21,6 +21,7 @@
 #include <apr_tables.h>
 #include <apr_poll.h>
 #include <apr_time.h>
+#include <apr_thread_proc.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -65,8 +66,10 @@ struct MockHTTP {
     mhStats_t *verifyStats;             /* Statistics gathered by the server */
     mhResponse_t *defResponse;          /* Default req matched response */
     mhResponse_t *defErrorResponse;     /* Default req not matched response */
-    apr_array_header_t *connMatchers;   /* array of mhConnMatcherBldr_t *'s */
     mhServCtx_t *proxyCtx;
+    apr_array_header_t *connMatchers;   /* array of mhConnMatcherBldr_t *'s */
+    apr_array_header_t *reqMatchers;    /* array of ReqMatcherRespPair_t *'s */
+    apr_array_header_t *incompleteReqMatchers;       /*       .... same type */
 };
 
 typedef struct ReqMatcherRespPair_t {
@@ -96,18 +99,18 @@ struct mhServCtx_t {
     apr_port_t port;
     apr_pollset_t *pollset;
     apr_socket_t *skt;         /* Server listening socket */
-    apr_socket_t *proxyskt;    /* Socket for conn proxy <-> server */
-    const char *proxyhost;     /* Proxy host:port */
     mhServerType_t type;
     mhThreading_t threading;
+#if APR_HAS_THREADS
+    bool cancelThread;         /* Variable used to signal that the thread should
+                                  be cancelled. */
+    apr_thread_t * threadid;
+#endif
     loopRequestState_t reqState;  /* 1 if a request is in progress, 0 if
                                   no req received yet or read completely. */
     unsigned int maxRequests;  /* Max. nr of reqs per connection. */
 
-    /* TODO: allow more connections */
-    _mhClientCtx_t *cctx;
-
-    servMode_t mode;      /* default = server, but can switch to proxy/tunnel */
+    apr_array_header_t *clients;        /* array of _mhClientCtx_t *'s */
 
     /* HTTPS specific */
     const char *certFilesPrefix;
@@ -118,6 +121,7 @@ struct mhServCtx_t {
     int protocols;              /* SSL protocol versions */
 
     apr_array_header_t *reqsReceived;   /* array of mhRequest_t *'s */
+    apr_array_header_t *connMatchers;   /* array of mhConnMatcherBldr_t *'s */
     apr_array_header_t *reqMatchers;    /* array of ReqMatcherRespPair_t *'s */
     apr_array_header_t *incompleteReqMatchers;       /*       .... same type */
 };
@@ -134,11 +138,48 @@ typedef enum reqReadState_t {
     ReadStateDone
 } reqReadState_t;
 
+
+typedef enum method_t {
+    MethodOther = 0,
+    MethodACL,
+    MethodBASELINE_CONTROL,
+    MethodCHECKIN,
+    MethodCHECKOUT,
+    MethodCONNECT,
+    MethodCOPY,
+    MethodDELETE,
+    MethodGET,
+    MethodHEAD,
+    MethodLABEL,
+    MethodLOCK,
+    MethodMERGE,
+    MethodMKACTIVITY,
+    MethodMKCOL,
+    MethodMKWORKSPACE,
+    MethodMOVE,
+    MethodOPTIONS,
+    MethodORDERPATCH,
+    MethodPATCH,
+    MethodPOST,
+    MethodPROPFIND,
+    MethodPROPPATCH,
+    MethodPUT,
+    MethodREPORT,
+    MethodSEARCH,
+    MethodTRACE,
+    MethodUNCHECKOUT,
+    MethodUNLOCK,
+    MethodUPDATE,
+    MethodVERSION_CONTROL
+} method_t;
+
 struct mhRequest_t {
     apr_pool_t *pool;
     const char *method;
+    method_t methodCode;
     const char *url;
     apr_table_t *hdrs;
+    apr_array_header_t *hdrHashes;
     int version;
     apr_array_header_t *body; /* array of iovec strings that form the raw body */
     apr_size_t bodyLen;
@@ -184,14 +225,12 @@ typedef struct builder_t {
     builderType_t type;
 } builder_t;
 
-
 typedef bool (*reqmatchfunc_t)(const mhReqMatcherBldr_t *mp,
                                const mhRequest_t *req);
 
 struct mhRequestMatcher_t {
     apr_pool_t *pool;
 
-    const char *method;
     apr_array_header_t *matchers; /* array of mhReqMatcherBldr_t *'s. */
     bool incomplete;
 };
@@ -199,6 +238,7 @@ struct mhRequestMatcher_t {
 struct mhReqMatcherBldr_t {
     builder_t builder;
     const void *baton; /* use this for an expected string */
+    unsigned long ibaton;
     const void *baton2;
     reqmatchfunc_t matcher;
     const char *describe_key;
@@ -238,7 +278,10 @@ struct mhResponseBldr_t {
     respbuilderfunc_t respbuilder;
 };
 
-const char *getHeader(apr_pool_t *pool, apr_table_t *hdrs, const char *hdr);
+method_t methodToCode(const char *code);
+unsigned long calculateHeaderHash(const char *hdr, const char *val);
+
+const char *getHeader(apr_table_t *hdrs, const char *hdr);
 void setHeader(apr_table_t *hdrs, const char *hdr, const char *val);
 
 /* Initialize a mhRequest_t object. */
@@ -250,7 +293,6 @@ bool _mhClientcertcn_matcher(const mhConnMatcherBldr_t *mp,
                              const _mhClientCtx_t *cctx);
 bool _mhClientcert_valid_matcher(const mhConnMatcherBldr_t *mp,
                                  const _mhClientCtx_t *cctx);
-_mhClientCtx_t *_mhGetClientCtx(mhServCtx_t *serv_ctx);
 
 /* Build a response */
 void _mhBuildResponse(mhResponse_t *resp);
