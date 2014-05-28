@@ -981,7 +981,7 @@ static apr_status_t handle_response(serf_request_t *request,
                                             pool);
 
         if (SERF_BUCKET_READ_ERROR(status)
-            && !APR_STATUS_IMPLIES_HANGUP(status) {
+            && !APR_STATUS_IMPLIES_HANGUP(status)) {
 
             /* Report the request as 'died'/'cancelled' to the application,
                but only if our caller doesn't handle this status specifically,
