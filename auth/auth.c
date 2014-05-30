@@ -320,8 +320,10 @@ static apr_status_t dispatch_auth(int code,
     return APR_SUCCESS;
 }
 
-/* Read the headers of the response and try the available
-   handlers if authentication or validation is needed. */
+/* Read the headers of the response and try the available handlers if 
+   authentication or validation is needed.
+   *CONSUMED_RESPONSE will be 1 if authentication is involved (either a 401/407
+   response or a response with an authn header), 0 otherwise. */
 apr_status_t serf__handle_auth_response(int *consumed_response,
                                         serf_request_t *request,
                                         serf_bucket_t *response,
