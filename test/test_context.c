@@ -2595,6 +2595,68 @@ static void test_ssl_missing_client_certificate(CuTest *tc)
     CuAssertIntEquals(tc, SERF_ERROR_SSL_SETUP_FAILED, status);
 }
 
+static apr_status_t handle_response_set_flag(serf_request_t *request,
+                                             serf_bucket_t *response,
+                                             void *handler_baton,
+                                             apr_pool_t *pool)
+{
+    handler_baton_t *ctx = handler_baton;
+    test_baton_t *tb = ctx->tb;
+
+#if 0
+    /* TODO: this is the expected behahior: if there was an error reading
+       the response while looking for authn headers, serf should pass the
+       response to the application to let it read the error from the response.
+       Not passing the response will make the application think the response
+       get cancelled, and it will requeue it. */
+    if (!response)
+        return SERF_ERROR_ISSUE_IN_TESTSUITE;
+#endif
+
+    tb->result_flags |= TEST_RESULT_HANDLE_RESPONSECB_CALLED;
+
+    return handle_response(request, response, handler_baton, pool);
+}
+
+/* Test that serf doesn't crash when connecting to a non-HTTP server. */
+static void test_connect_to_non_http_server(CuTest *tc)
+{
+    test_baton_t *tb = tc->testBaton;
+    handler_baton_t handler_ctx[1];
+    const int num_requests = sizeof(handler_ctx)/sizeof(handler_ctx[0]);
+    apr_status_t status;
+
+    /* Set up a test context and a http server */
+    setup_test_mock_server(tb);
+    status = setup_test_client_context(tb, NULL, tb->pool);
+    CuAssertIntEquals(tc, APR_SUCCESS, status);
+
+    serf_config_credentials_callback(tb->context, dummy_authn_callback);
+
+    Given(tb->mh)
+      GETRequest(URLEqualTo("/"), ChunkedBodyEqualTo("1"))
+        /* Assume that extraterrestrials also use CRLF as line ending symbol. */
+        Respond(WithRawData("6EQUJ5 6EQUJ5 hello stranger!\r\n"))
+    EndGiven
+
+    create_new_request(tb, &handler_ctx[0], "GET", "/", 1);
+    handler_ctx[0].handler = handle_response_set_flag;
+
+    status = run_client_and_mock_servers_loops(tb, num_requests, handler_ctx,
+                                               tb->pool);
+    CuAssertIntEquals(tc, SERF_ERROR_BAD_HTTP_RESPONSE, status);
+
+    /* Check that the requests were sent and reveived by the server */
+    Verify(tb->mh)
+      CuAssert(tc, ErrorMessage, VerifyAllRequestsReceived);
+    EndVerify
+    CuAssertIntEquals(tc, num_requests, tb->sent_requests->nelts);
+    CuAssertIntEquals(tc, num_requests, tb->accepted_requests->nelts);
+    /* The response will not have been handled completely, but at least make
+       sure that the handler got called. */
+    CuAssertTrue(tc, tb->result_flags & TEST_RESULT_HANDLE_RESPONSECB_CALLED);
+}
+
 /*****************************************************************************/
 CuSuite *test_context(void)
 {
@@ -2646,6 +2708,7 @@ CuSuite *test_context(void)
     SUITE_ADD_TEST(suite, test_ssltunnel_spnego_authn);
     SUITE_ADD_TEST(suite, test_server_spnego_authn);
     SUITE_ADD_TEST(suite, test_ssl_missing_client_certificate);
+    SUITE_ADD_TEST(suite, test_connect_to_non_http_server);
 #if 0
     /* WIP: Test hangs */
     SUITE_ADD_TEST(suite, test_ssl_renegotiate);
