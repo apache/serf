@@ -166,6 +166,205 @@ static void test_closed_connection(CuTest *tc)
     CuAssertIntEquals(tc, num_requests, tb->handled_requests->nelts);
 }
 
+/* Dummy authn callback, shouldn't be called! */
+static apr_status_t
+dummy_authn_callback(char **username,
+                     char **password,
+                     serf_request_t *request, void *baton,
+                     int code, const char *authn_type,
+                     const char *realm,
+                     apr_pool_t *pool)
+{
+    handler_baton_t *handler_ctx = baton;
+    test_baton_t *tb = handler_ctx->tb;
+
+    test__log(TEST_VERBOSE, __FILE__, "dummy_authn_callback\n");
+
+    tb->result_flags |= TEST_RESULT_AUTHNCB_CALLED;
+
+    return SERF_ERROR_ISSUE_IN_TESTSUITE;
+}
+
+/* Default implementation of a serf_connection_setup_t callback. */
+static apr_status_t http_conn_setup_mock_socket(apr_socket_t *skt,
+                                                serf_bucket_t **input_bkt,
+                                                serf_bucket_t **output_bkt,
+                                                void *setup_baton,
+                                                apr_pool_t *pool)
+{
+    test_baton_t *tb = setup_baton;
+
+    serf_bucket_t *skt_bkt = serf_context_bucket_socket_create(tb->context,
+                                                               skt,
+                                                               tb->bkt_alloc);
+    *input_bkt = serf_bucket_mock_sock_create(skt_bkt,
+                                              tb->user_baton_l,
+                                              tb->bkt_alloc);
+
+    return APR_SUCCESS;
+}
+
+static void
+send_more_requests_than_keepalive_of_server(CuTest *tc)
+{
+    test_baton_t *tb = tc->testBaton;
+    handler_baton_t handler_ctx[10];
+    const int num_requests = sizeof(handler_ctx)/sizeof(handler_ctx[0]);
+    int i;
+    apr_status_t status;
+
+    /* We will send 10 requests to the mock server, close connection after the
+       4th and the 8th response */
+    Given(tb->mh)
+      DefaultResponse(WithCode(200), WithRequestBody)
+
+      GETRequest(URLEqualTo("/"), ChunkedBodyEqualTo("1"))
+      GETRequest(URLEqualTo("/"), ChunkedBodyEqualTo("2"))
+      GETRequest(URLEqualTo("/"), ChunkedBodyEqualTo("3"))
+      GETRequest(URLEqualTo("/"), ChunkedBodyEqualTo("4"))
+        Respond(WithCode(200), WithRequestBody)
+        CloseConnection
+      /* All messages from hereon can potentially be sent (but not responded to)
+         twice */
+      GETRequest(URLEqualTo("/"), ChunkedBodyEqualTo("5"))
+      GETRequest(URLEqualTo("/"), ChunkedBodyEqualTo("6"))
+      GETRequest(URLEqualTo("/"), ChunkedBodyEqualTo("7"))
+      GETRequest(URLEqualTo("/"), ChunkedBodyEqualTo("8"))
+        Respond(WithCode(200), WithRequestBody)
+        CloseConnection
+      /* All messages from hereon can potentially be sent (but not responded to)
+         three times */
+      GETRequest(URLEqualTo("/"), ChunkedBodyEqualTo("9"))
+      GETRequest(URLEqualTo("/"), ChunkedBodyEqualTo("10"))
+    EndGiven
+
+    /* Send some requests on the connections */
+    for (i = 0 ; i < num_requests ; i++) {
+        create_new_request(tb, &handler_ctx[i], "GET", "/", i+1);
+    }
+
+    status = run_client_and_mock_servers_loops(tb, num_requests, handler_ctx,
+                                               tb->pool);
+    CuAssertIntEquals(tc, APR_SUCCESS, status);
+
+    /* Check that the requests were sent and reveived by the server */
+    Verify(tb->mh)
+      CuAssert(tc, ErrorMessage, VerifyAllRequestsReceived);
+    EndVerify
+    CuAssertTrue(tc, tb->sent_requests->nelts >= num_requests);
+    CuAssertTrue(tc, tb->accepted_requests->nelts >= num_requests);
+    CuAssertIntEquals(tc, num_requests, tb->handled_requests->nelts);
+
+}
+
+/* Test that serf correctly handles suddenly closed connections (where the last
+   response didn't have a Connection: close header). It should be handled as a
+   normal connection closure. */
+static void test_eof_connection(CuTest *tc)
+{
+    test_baton_t *tb = tc->testBaton;
+    apr_status_t status;
+
+    /* Set up a test context with a server. */
+    setup_test_mock_server(tb);
+    status = setup_test_client_context(tb, NULL, tb->pool);
+    CuAssertIntEquals(tc, APR_SUCCESS, status);
+
+    send_more_requests_than_keepalive_of_server(tc);
+}
+
+/* The same test as test_eof_connection, but with the authn callback set.
+   This makes serf follow a slightly different code path in handle_response(). */
+static void test_eof_connection_with_authn_cb(CuTest *tc)
+{
+    test_baton_t *tb = tc->testBaton;
+    apr_status_t status;
+
+    /* Set up a test context with a server. */
+    setup_test_mock_server(tb);
+    status = setup_test_client_context(tb, NULL, tb->pool);
+    CuAssertIntEquals(tc, APR_SUCCESS, status);
+
+    serf_config_credentials_callback(tb->context, dummy_authn_callback);
+    send_more_requests_than_keepalive_of_server(tc);
+}
+
+/* Test that serf correctly handles aborted connections. This can happen
+   on Windows when the server (cleanly) closes the connection, and where it 
+   happens between responses, it should be handled as a normal connection
+   closure. */
+static void test_aborted_connection(CuTest *tc)
+{
+    test_baton_t *tb = tc->testBaton;
+    apr_status_t status;
+
+    /* Set up a test context with a server. Use the mock socket to return
+       APR_ECONNABORTED instead of APR_EOF. */
+    setup_test_mock_server(tb);
+    tb->user_baton_l = APR_ECONNABORTED;
+    status = setup_test_client_context(tb, http_conn_setup_mock_socket,
+                                       tb->pool);
+    CuAssertIntEquals(tc, APR_SUCCESS, status);
+
+    send_more_requests_than_keepalive_of_server(tc);
+}
+
+/* The same test as test_aborted_connection, but with the authn callback set.
+   This makes serf follow a slightly different code path in handle_response(). */
+static void test_aborted_connection_with_authn_cb(CuTest *tc)
+{
+    test_baton_t *tb = tc->testBaton;
+    apr_status_t status;
+
+    /* Set up a test context with a server. Use the mock socket to return
+     APR_ECONNABORTED instead of APR_EOF. */
+    setup_test_mock_server(tb);
+    tb->user_baton_l = APR_ECONNABORTED;
+    status = setup_test_client_context(tb, http_conn_setup_mock_socket,
+                                       tb->pool);
+    CuAssertIntEquals(tc, APR_SUCCESS, status);
+
+    serf_config_credentials_callback(tb->context, dummy_authn_callback);
+    send_more_requests_than_keepalive_of_server(tc);
+}
+
+/* The same test as test_aborted_connection, but with APR_ECONNRESET instead
+   of APR_ECONNABORTED. */
+static void test_reset_connection(CuTest *tc)
+{
+    test_baton_t *tb = tc->testBaton;
+    apr_status_t status;
+
+    /* Set up a test context with a server. Use the mock socket to return
+       APR_ECONNRESET instead of APR_EOF. */
+    setup_test_mock_server(tb);
+    tb->user_baton_l = APR_ECONNRESET;
+    status = setup_test_client_context(tb, http_conn_setup_mock_socket,
+                                       tb->pool);
+    CuAssertIntEquals(tc, APR_SUCCESS, status);
+
+    send_more_requests_than_keepalive_of_server(tc);
+}
+
+/* The same test as test_reset_connection, but with the authn callback set.
+   This makes serf follow a slightly different code path in handle_response(). */
+static void test_reset_connection_with_authn_cb(CuTest *tc)
+{
+    test_baton_t *tb = tc->testBaton;
+    apr_status_t status;
+
+    /* Set up a test context with a server. Use the mock socket to return
+       APR_ECONNRESET instead of APR_EOF. */
+    setup_test_mock_server(tb);
+    tb->user_baton_l = APR_ECONNRESET;
+    status = setup_test_client_context(tb, http_conn_setup_mock_socket,
+                                       tb->pool);
+    CuAssertIntEquals(tc, APR_SUCCESS, status);
+
+    serf_config_credentials_callback(tb->context, dummy_authn_callback);
+    send_more_requests_than_keepalive_of_server(tc);
+}
+
 /* Test if serf is sending the request to the proxy, not to the server
    directly. */
 static void test_setup_proxy(CuTest *tc)
@@ -2407,6 +2606,12 @@ CuSuite *test_context(void)
     SUITE_ADD_TEST(suite, test_serf_connection_request_create);
     SUITE_ADD_TEST(suite, test_serf_connection_priority_request_create);
     SUITE_ADD_TEST(suite, test_closed_connection);
+    SUITE_ADD_TEST(suite, test_eof_connection);
+    SUITE_ADD_TEST(suite, test_eof_connection_with_authn_cb);
+    SUITE_ADD_TEST(suite, test_aborted_connection);
+    SUITE_ADD_TEST(suite, test_aborted_connection_with_authn_cb);
+    SUITE_ADD_TEST(suite, test_reset_connection);
+    SUITE_ADD_TEST(suite, test_reset_connection_with_authn_cb);
     SUITE_ADD_TEST(suite, test_setup_proxy);
     SUITE_ADD_TEST(suite, test_keepalive_limit_one_by_one);
     SUITE_ADD_TEST(suite, test_keepalive_limit_one_by_one_and_burst);

@@ -81,8 +81,9 @@ typedef struct test_baton_t {
     const char *serv_url;
     serf_connection_setup_t conn_setup;
 
-    /* An extra baton which can be freely used by tests. */
+    /* Extra batons which can be freely used by tests. */
     void *user_baton;
+    long user_baton_l;
 
     /* Flags that can be used to report situations, e.g. that a callback was
        called. */
@@ -191,13 +192,20 @@ void readlines_and_check_bucket(CuTest *tc, serf_bucket_t *bkt,
                                 const char *expected,
                                 int expected_nr_of_lines);
 
-extern const serf_bucket_type_t serf_bucket_type_mock;
-#define SERF_BUCKET_IS_MOCK(b) SERF_BUCKET_CHECK((b), mock)
+extern const serf_bucket_type_t serf_bucket_type_mock_socket;
+#define SERF_BUCKET_IS_MOCK_SOCKET(b) SERF_BUCKET_CHECK((b), mock_socket)
 
 serf_bucket_t *serf_bucket_mock_create(mockbkt_action *actions,
                                        int len,
                                        serf_bucket_alloc_t *allocator);
 apr_status_t serf_bucket_mock_more_data_arrived(serf_bucket_t *bucket);
+
+extern const serf_bucket_type_t serf_bucket_type_mock;
+#define SERF_BUCKET_IS_MOCK(b) SERF_BUCKET_CHECK((b), mock)
+
+serf_bucket_t *serf_bucket_mock_sock_create(serf_bucket_t *stream,
+                                            apr_status_t eof_status,
+                                            serf_bucket_alloc_t *allocator);
 
 /*****************************************************************************/
 /* Test utility functions, to be used with the MockHTTPinC framework         */
