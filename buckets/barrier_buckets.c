@@ -19,30 +19,20 @@
 #include "serf_bucket_util.h"
 
 
-typedef struct barrier_context_t {
-    serf_bucket_t *stream;
-} barrier_context_t;
-
-
 serf_bucket_t *serf_bucket_barrier_create(
     serf_bucket_t *stream,
     serf_bucket_alloc_t *allocator)
 {
-    barrier_context_t *ctx;
-
-    ctx = serf_bucket_mem_alloc(allocator, sizeof(*ctx));
-    ctx->stream = stream;
-
-    return serf_bucket_create(&serf_bucket_type_barrier, allocator, ctx);
+    return serf_bucket_create(&serf_bucket_type_barrier, allocator, stream);
 }
 
 static apr_status_t serf_barrier_read(serf_bucket_t *bucket,
                                      apr_size_t requested,
                                      const char **data, apr_size_t *len)
 {
-    barrier_context_t *ctx = bucket->data;
+    serf_bucket_t *stream = bucket->data;
 
-    return serf_bucket_read(ctx->stream, requested, data, len);
+    return serf_bucket_read(stream, requested, data, len);
 }
 
 static apr_status_t serf_barrier_read_iovec(serf_bucket_t *bucket,
@@ -50,28 +40,27 @@ static apr_status_t serf_barrier_read_iovec(serf_bucket_t *bucket,
                                             int vecs_size, struct iovec *vecs,
                                             int *vecs_used)
 {
-    barrier_context_t *ctx = bucket->data;
+    serf_bucket_t *stream = bucket->data;
 
-    return serf_bucket_read_iovec(ctx->stream, requested, vecs_size, vecs,
-                                  vecs_used);
+    return serf_bucket_read_iovec(stream, requested, vecs_size, vecs, vecs_used);
 }
 
 static apr_status_t serf_barrier_readline(serf_bucket_t *bucket,
                                          int acceptable, int *found,
                                          const char **data, apr_size_t *len)
 {
-    barrier_context_t *ctx = bucket->data;
+    serf_bucket_t *stream = bucket->data;
 
-    return serf_bucket_readline(ctx->stream, acceptable, found, data, len);
+    return serf_bucket_readline(stream, acceptable, found, data, len);
 }
 
 static apr_status_t serf_barrier_peek(serf_bucket_t *bucket,
                                      const char **data,
                                      apr_size_t *len)
 {
-    barrier_context_t *ctx = bucket->data;
+    serf_bucket_t *stream = bucket->data;
 
-    return serf_bucket_peek(ctx->stream, data, len);
+    return serf_bucket_peek(stream, data, len);
 }
 
 static void serf_barrier_destroy(serf_bucket_t *bucket)
@@ -82,14 +71,14 @@ static void serf_barrier_destroy(serf_bucket_t *bucket)
     /* The option is for us to go ahead and 'eat' this bucket now,
      * or just ignore the deletion entirely.
      */
-    serf_default_destroy_and_data(bucket);
+    serf_default_destroy(bucket);
 }
 
 static apr_uint64_t serf_barrier_get_remaining(serf_bucket_t *bucket)
 {
-    barrier_context_t *ctx = bucket->data;
+    serf_bucket_t *stream = bucket->data;
 
-    return serf_bucket_get_remaining(ctx->stream);
+    return serf_bucket_get_remaining(stream);
 }
 
 static apr_status_t serf_barrier_set_config(serf_bucket_t *bucket,
@@ -97,9 +86,9 @@ static apr_status_t serf_barrier_set_config(serf_bucket_t *bucket,
 {
     /* This bucket doesn't need/update any shared config, but we need to pass
      it along to our wrapped bucket. */
-    barrier_context_t *ctx = bucket->data;
+    serf_bucket_t *stream = bucket->data;
 
-    return serf_bucket_set_config(ctx->stream, config);
+    return serf_bucket_set_config(stream, config);
 }
 
 const serf_bucket_type_t serf_bucket_type_barrier = {
