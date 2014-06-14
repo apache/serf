@@ -90,13 +90,9 @@ static void serialize_data(serf_bucket_t *bucket)
 {
     request_context_t *ctx = bucket->data;
     serf_bucket_t *new_bucket;
-    const char *new_data;
     struct iovec iov[4];
-    apr_size_t nbytes;
 
-    /* Serialize the request-line and headers into one mother string,
-     * and wrap a bucket around it.
-     */
+    /* Create a bucket for the request-line. */
     iov[0].iov_base = (char*)ctx->method;
     iov[0].iov_len = strlen(ctx->method);
     iov[1].iov_base = " ";
@@ -106,12 +102,9 @@ static void serialize_data(serf_bucket_t *bucket)
     iov[3].iov_base = " HTTP/1.1\r\n";
     iov[3].iov_len = sizeof(" HTTP/1.1\r\n") - 1;
 
-    /* Create a new bucket for this string with a flat string.  */
-    new_data = serf_bstrcatv(bucket->allocator, iov, 4, &nbytes);
-    new_bucket = serf_bucket_simple_own_create(new_data, nbytes,
-                                               bucket->allocator);
+    new_bucket = serf_bucket_iovec_create(iov, 4, bucket->allocator);
 
-    /* Build up the new bucket structure.
+    /* Build up the new bucket structure with the request-line and the headers.
      *
      * Note that self needs to become an aggregate bucket so that a
      * pointer to self still represents the "right" data.
