@@ -38,8 +38,10 @@ serf_bucket_t *serf_bucket_iovec_create(
     iovec_context_t *ctx;
     int i;
 
-    ctx = serf_bucket_mem_alloc(allocator, sizeof(*ctx));
-    ctx->vecs = serf_bucket_mem_alloc(allocator, len * sizeof(struct iovec));
+    void *buf = serf_bucket_mem_alloc(allocator, sizeof(*ctx) +
+                                                 len * sizeof(struct iovec));
+    ctx = buf;
+    ctx->vecs = buf + sizeof(*ctx);
     ctx->vecs_len = len;
     ctx->current_vec = 0;
     ctx->offset = 0;
@@ -148,14 +150,6 @@ static apr_status_t serf_iovec_peek(serf_bucket_t *bucket,
     return APR_SUCCESS;
 }
 
-static void serf_iovec_destroy(serf_bucket_t *bucket)
-{
-    iovec_context_t *ctx = bucket->data;
-
-    serf_bucket_mem_free(bucket->allocator, ctx->vecs);
-    serf_default_destroy_and_data(bucket);
-}
-
 
 const serf_bucket_type_t serf_bucket_type_iovec = {
     "IOVEC",
@@ -165,5 +159,5 @@ const serf_bucket_type_t serf_bucket_type_iovec = {
     serf_default_read_for_sendfile,
     serf_default_read_bucket,
     serf_iovec_peek,
-    serf_iovec_destroy,
+    serf_default_destroy_and_data,
 };
