@@ -1262,8 +1262,9 @@ static apr_status_t read_from_connection(serf_connection_t *conn)
 
         conn->completed_responses++;
 
-        /* We have received a response. If there are no more pending requests
-           on this connection, we can stop polling for READ events for now. */
+        /* We have received a response. If there are no more outstanding
+           requests on this connection, we should stop polling for READ events
+           for now. */
         if (!conn->requests) {
             conn->dirty_conn = 1;
             conn->ctx->dirty_pollset = 1;
