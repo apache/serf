@@ -349,8 +349,10 @@ struct serf_connection_t {
     serf_bucket_t *ssltunnel_ostream;
 
     /* The list of active requests. */
-    serf_request_t *requests;
-    serf_request_t *requests_tail;
+    serf_request_t *written_reqs;
+    serf_request_t *written_reqs_tail;
+    serf_request_t *unwritten_reqs;
+    serf_request_t *unwritten_reqs_tail;
 
     struct iovec vec[IOV_MAX];
     int vec_len;

@@ -103,11 +103,9 @@ static apr_status_t clean_conn(void *data)
 static int
 request_or_data_pending(serf_request_t **next_req, serf_connection_t *conn)
 {
-    serf_request_t *request = conn->requests;
-
-    while (request != NULL && request->req_bkt == NULL &&
-           request->writing_started)
-        request = request->next;
+    /* Skip all requests that have been written completely but we're still
+       waiting for a response. */
+    serf_request_t *request = conn->unwritten_reqs;
 
     if (next_req)
         *next_req = request;
@@ -158,7 +156,7 @@ apr_status_t serf__conn_update_pollset(serf_connection_t *conn)
 
     /* Now put it back in with the correct read/write values. */
     desc.reqevents = APR_POLLHUP | APR_POLLERR;
-    if (conn->requests &&
+    if ((conn->written_reqs || conn->unwritten_reqs) &&
         conn->state != SERF_CONN_INIT) {
         /* If there are any outstanding events, then we want to read. */
         /* ### not true. we only want to read IF we have sent some data */
@@ -401,7 +399,7 @@ apr_status_t serf__open_connections(serf_context_t *ctx)
         }
 
         /* Delay opening until we have something to deliver! */
-        if (conn->requests == NULL) {
+        if (conn->unwritten_reqs == NULL) {
             continue;
         }
 
@@ -627,13 +625,23 @@ static apr_status_t reset_connection(serf_connection_t *conn,
     conn->completed_requests = 0;
     conn->completed_responses = 0;
 
-    old_reqs = conn->requests;
+    /* Clear the unwritten_reqs queue, so the application can requeue cancelled
+       requests on it for the new socket. */
+    old_reqs = conn->unwritten_reqs;
+    conn->unwritten_reqs = NULL;
+    conn->unwritten_reqs_tail = NULL;
 
-    conn->requests = NULL;
-    conn->requests_tail = NULL;
+    /* First, cancel all written requests for which we haven't received a 
+       response yet. Inform the application that the request is cancelled, 
+       so it can requeue them if needed. */
+    while (conn->written_reqs) {
+        cancel_request(conn->written_reqs, &conn->written_reqs,
+                       requeue_requests);
+    }
+    conn->written_reqs_tail = NULL;
 
-    /* Handle all outstanding requests. These have either not been written yet,
-       or have been written but the expected reply wasn't received yet. */
+    /* Handle all outstanding unwritten requests.
+       TODO: what about a partially written request? */
     while (old_reqs) {
         /* If we haven't started to write the connection, bring it over
          * unchanged to our new socket.
@@ -646,12 +654,12 @@ static apr_status_t reset_connection(serf_connection_t *conn,
             serf_request_t *req = old_reqs;
             old_reqs = old_reqs->next;
             req->next = NULL;
-            link_requests(&conn->requests, &conn->requests_tail, req);
+            link_requests(&conn->unwritten_reqs, &conn->unwritten_reqs_tail,
+                          req);
         }
         else {
-            /* Request has been consumed, or we don't want to requeue the
-               request. Either way, inform the application that the request
-               is cancelled. */
+            /* We don't want to requeue the request or this request was partially
+               written. Inform the application that the request is cancelled. */
             cancel_request(old_reqs, &old_reqs, requeue_requests);
         }
     }
@@ -935,11 +943,17 @@ static apr_status_t write_to_connection(serf_connection_t *conn)
             serf_bucket_destroy(request->req_bkt);
             request->req_bkt = NULL;
 
+            /* Move the request to the written queue */
+            link_requests(&conn->written_reqs, &conn->written_reqs_tail,
+                          request);
+            conn->unwritten_reqs = conn->unwritten_reqs->next;
+            request->next = NULL;
+
             /* If our connection has async responses enabled, we're not
              * going to get a reply back, so kill the request.
              */
             if (conn->async_responses) {
-                conn->requests = request->next;
+                conn->unwritten_reqs = request->next;
                 destroy_request(request);
             }
 
@@ -1055,7 +1069,11 @@ serf__provide_credentials(serf_context_t *ctx,
            this connection, and use that request and its handler_baton to
            call back to the application. */
 
+        /* request->next will be NULL if this was the last request written */
         authn_req = request->next;
+        if (!authn_req)
+            authn_req = conn->unwritten_reqs;
+
         /* assert: app_request != NULL */
         if (!authn_req)
             return APR_EGENERAL;
@@ -1091,7 +1109,11 @@ static apr_status_t read_from_connection(serf_connection_t *conn)
     /* Whatever is coming in on the socket corresponds to the first request
      * on our chain.
      */
-    serf_request_t *request = conn->requests;
+    serf_request_t *request = conn->written_reqs;
+    if (!request) {
+        /* Request wasn't completely written yet! */
+        request = conn->unwritten_reqs;
+    }
 
     /* If the stop_writing flag was set on the connection, reset it now because
        there is some data to read. */
@@ -1249,15 +1271,22 @@ static apr_status_t read_from_connection(serf_connection_t *conn)
          $ received.
          * Remove it from our queue and loop to read another response.
          */
-        conn->requests = request->next;
+        if (request == conn->written_reqs) {
+            conn->written_reqs = request->next;
+        } else {
+            conn->unwritten_reqs = request->next;
+        }
 
         destroy_request(request);
 
-        request = conn->requests;
-
-        /* If we're truly empty, update our tail. */
-        if (request == NULL) {
-            conn->requests_tail = NULL;
+        request = conn->written_reqs;
+        if (!request) {
+            /* Received responses for all written requests */
+            conn->written_reqs_tail = NULL;
+            /* Request wasn't completely written yet! */
+            request = conn->unwritten_reqs;
+            if (!request)
+                conn->unwritten_reqs_tail = NULL;
         }
 
         conn->completed_responses++;
@@ -1265,7 +1294,7 @@ static apr_status_t read_from_connection(serf_connection_t *conn)
         /* We have received a response. If there are no more outstanding
            requests on this connection, we should stop polling for READ events
            for now. */
-        if (!conn->requests) {
+        if (!conn->written_reqs && !conn->unwritten_reqs) {
             conn->dirty_conn = 1;
             conn->ctx->dirty_pollset = 1;
         }
@@ -1516,8 +1545,13 @@ apr_status_t serf_connection_close(
         serf_connection_t *conn_seq = GET_CONN(ctx, i);
 
         if (conn_seq == conn) {
-            while (conn->requests) {
-                serf_request_cancel(conn->requests);
+            /* The application asked to close the connection, no need to notify
+               it for each cancelled request. */
+            while (conn->written_reqs) {
+                cancel_request(conn->written_reqs, &conn->written_reqs, 0);
+            }
+            while (conn->unwritten_reqs) {
+                cancel_request(conn->unwritten_reqs, &conn->unwritten_reqs, 0);
             }
             if (conn->skt != NULL) {
                 remove_connection(ctx, conn);
@@ -1628,7 +1662,7 @@ serf_request_t *serf_connection_request_create(
                              0  /* ssl tunnel */);
 
     /* Link the request to the end of the request chain. */
-    link_requests(&conn->requests, &conn->requests_tail, request);
+    link_requests(&conn->unwritten_reqs, &conn->unwritten_reqs_tail, request);
     
     /* Ensure our pollset becomes writable in context run */
     conn->ctx->dirty_pollset = 1;
@@ -1651,9 +1685,10 @@ priority_request_create(serf_connection_t *conn,
                              ssltunnelreq);
 
     /* Link the new request after the last written request. */
-    iter = conn->requests;
+    iter = conn->unwritten_reqs;
     prev = NULL;
 
+    /* TODO: what if a request is partially written? */
     /* Find a request that has data which needs to be delivered. */
     while (iter != NULL && iter->req_bkt == NULL && iter->writing_started) {
         prev = iter;
@@ -1678,7 +1713,7 @@ priority_request_create(serf_connection_t *conn,
         prev->next = request;
     } else {
         request->next = iter;
-        conn->requests = request;
+        conn->unwritten_reqs = request;
     }
 
     /* Ensure our pollset becomes writable in context run */
@@ -1720,7 +1755,18 @@ serf_request_t *serf__request_requeue(const serf_request_t *request)
 
 apr_status_t serf_request_cancel(serf_request_t *request)
 {
-    return cancel_request(request, &request->conn->requests, 0);
+    serf_connection_t *conn = request->conn;
+    serf_request_t *tmp = conn->unwritten_reqs;
+
+    /* Find out which queue holds the request */
+    while (tmp != NULL && tmp != request)
+        tmp = tmp->next;
+
+    if (tmp)
+        return cancel_request(request, &conn->unwritten_reqs, 0);
+    else
+        return cancel_request(request, &conn->written_reqs, 0);
+
 }
 
 apr_status_t serf_request_is_written(serf_request_t *request)
