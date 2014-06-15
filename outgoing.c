@@ -1262,9 +1262,12 @@ static apr_status_t read_from_connection(serf_connection_t *conn)
 
         conn->completed_responses++;
 
-        /* We've to rebuild pollset since completed_responses is changed. */
-        conn->dirty_conn = 1;
-        conn->ctx->dirty_pollset = 1;
+        /* We have received a response. If there are no more pending requests
+           on this connection, we can stop polling for READ events for now. */
+        if (!conn->requests) {
+            conn->dirty_conn = 1;
+            conn->ctx->dirty_pollset = 1;
+        }
 
         /* This means that we're being advised that the connection is done. */
         if (close_connection == SERF_ERROR_CLOSING) {
