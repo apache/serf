@@ -168,7 +168,23 @@ get_canonical_hostname(const char **canonname,
     }
 
     if (addrinfo) {
-        *canonname = apr_pstrdup(pool, addrinfo->ai_canonname);
+        /* We got the canonical name and address. Try to perform
+         * reverse DNS lookup to find the true hostname.
+         * This is how MIT KRB works by default.*/
+        char rdnshost[NI_MAXHOST];
+        int gaierr;
+
+        gaierr = getnameinfo(addrinfo->ai_addr, addrinfo->ai_addrlen,
+                             rdnshost, sizeof(rdnshost),
+                             NULL, 0, NI_NAMEREQD);
+        if (gaierr) {
+            /* Reverse DNS lookup failed -- use canonical name is that case. */
+            *canonname = apr_pstrdup(pool, addrinfo->ai_canonname);
+        }
+        else {
+            /* We got the hostname -- use it for SPN. */
+            *canonname = apr_pstrdup(pool, rdnshost);
+        }
     }
     else {
         *canonname = apr_pstrdup(pool, hostname);
