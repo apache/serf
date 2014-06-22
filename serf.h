@@ -1321,7 +1321,7 @@ apr_status_t serf_logging_add_output(serf_context_t *ctx,
 
 
 /*** Connection and protocol API v2 ***/
-
+#if 0
 /* ### docco.  */
 apr_status_t serf_connection_switch_protocol(
     serf_connection_t *conn,
@@ -1481,7 +1481,7 @@ serf_queue_item_t *serf_http_request_queue(
     int priority,
     void *request_baton);
 
-
+#endif /* Connection and protocol API v2 */
 /** @} */
 
 
