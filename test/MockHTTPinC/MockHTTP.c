@@ -13,7 +13,6 @@
  * limitations under the License.
  */
 
-#include "MockHTTP.h"
 #include "MockHTTP_private.h"
 
 #include <stdlib.h>
@@ -452,7 +451,7 @@ static bool chunked_body_chunks_matcher(const mhReqMatcherBldr_t *mp,
 }
 
 mhReqMatcherBldr_t *
-mhMatchChunkedBodyChunksEqualTo(const MockHTTP *mh, ...)
+mhMatchBodyChunksEqualTo(const MockHTTP *mh, ...)
 {
     apr_pool_t *pool = mh->pool;
     apr_array_header_t *chunks;
@@ -1031,15 +1030,18 @@ mhResponseBldr_t *mhRespSetUseRequestBody(mhResponse_t *resp)
 static bool resp_set_raw_data(const mhResponseBldr_t *rb, mhResponse_t *resp)
 {
     resp->raw_data = rb->baton;
+    resp->raw_data_length = rb->ibaton;
     return YES;
 }
 
-mhResponseBldr_t *mhRespSetRawData(mhResponse_t *resp, const char *raw_data)
+mhResponseBldr_t *
+mhRespSetRawData(mhResponse_t *resp, const char *raw_data, size_t length)
 {
     apr_pool_t *pool = resp->pool;
     mhResponseBldr_t *rb = createResponseBldr(pool);
     rb->respbuilder = resp_set_raw_data;
     rb->baton = apr_pstrdup(pool, raw_data);
+    rb->ibaton = length;
     return rb;
 }
 
@@ -1061,7 +1063,7 @@ resp_set_repeat_pattern(const mhResponseBldr_t *rb, mhResponse_t *resp)
         vecs[i].iov_base = (void *)pattern;
         vecs[i].iov_len = len;
     }
-    resp->raw_data = apr_pstrcatv(resp->pool, vecs, n, NULL);
+    resp->raw_data = apr_pstrcatv(resp->pool, vecs, n, &resp->raw_data_length);
 
     return YES;
 }

@@ -23,6 +23,8 @@
 #include <apr_time.h>
 #include <apr_thread_proc.h>
 
+#include "MockHTTP.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif /* __cplusplus */
@@ -202,6 +204,7 @@ struct mhResponse_t {
     /* array of iovec strings that form the dechunked body */
     const apr_array_header_t *chunks;
     const char *raw_data;
+    size_t raw_data_length;
     apr_array_header_t *builders;
     bool closeConn;
     mhRequest_t *req;  /* mhResponse_t instance is reply to req */

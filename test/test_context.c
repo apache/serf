@@ -860,7 +860,7 @@ static void test_request_timeout(CuTest *tc)
       HTTPRequest(MethodEqualTo("PROPFIND"),
                   URLEqualTo("/"),
                   IncompleteBodyEqualTo(REQUEST_BODY_PART1))
-        Respond(WithRawData(RESPONSE_408))
+        Respond(WithRawData(RESPONSE_408, strlen(RESPONSE_408)))
     EndGiven
 
     /* Send a incomplete requesta on the connection */
@@ -941,7 +941,7 @@ static void test_connection_large_response(CuTest *tc)
 
     Given(tb->mh)
       GETRequest(URLEqualTo("/"), ChunkedBodyEqualTo("1"))
-        Respond(WithRawData(response))
+        Respond(WithRawData(response, strlen(response)))
     EndGiven
 
     create_new_request(tb, &handler_ctx[0], "GET", "/", 1);
@@ -1660,7 +1660,7 @@ static void test_ssl_large_response(CuTest *tc)
 
     Given(tb->mh)
       GETRequest(URLEqualTo("/"), ChunkedBodyEqualTo("1"))
-        Respond(WithRawData(response))
+        Respond(WithRawData(response, strlen(response)))
     EndGiven
 
     create_new_request(tb, &handler_ctx[0], "GET", "/", 1);
@@ -2633,11 +2633,13 @@ static void test_connect_to_non_http_server(CuTest *tc)
 
     serf_config_credentials_callback(tb->context, dummy_authn_callback);
 
+#define RESPONSE "6EQUJ5 6EQUJ5 hello stranger!\r\n"
     Given(tb->mh)
       GETRequest(URLEqualTo("/"), ChunkedBodyEqualTo("1"))
         /* Assume that extraterrestrials also use CRLF as line ending symbol. */
-        Respond(WithRawData("6EQUJ5 6EQUJ5 hello stranger!\r\n"))
+        Respond(WithRawData(RESPONSE, strlen(RESPONSE)))
     EndGiven
+#undef RESPONSE
 
     create_new_request(tb, &handler_ctx[0], "GET", "/", 1);
     handler_ctx[0].handler = handle_response_set_flag;

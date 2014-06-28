@@ -22,7 +22,6 @@
 
 #include <stdlib.h>
 
-#include "MockHTTP.h"
 #include "MockHTTP_private.h"
 
 /* Copied from serf.  */
@@ -37,7 +36,7 @@ static apr_status_t initSSLCtx(_mhClientCtx_t *cctx);
 static apr_status_t sslHandshake(_mhClientCtx_t *cctx);
 static apr_status_t sslSocketWrite(_mhClientCtx_t *cctx, const char *data,
                                    apr_size_t *len);
-static apr_status_t sslSocketRead(_mhClientCtx_t *cctx, char *data,
+static apr_status_t sslSocketRead(apr_socket_t *skt, void *baton, char *data,
                                   apr_size_t *len);
 static apr_status_t renegotiateSSLSession(_mhClientCtx_t *cctx);
 
@@ -45,11 +44,11 @@ typedef apr_status_t (*handshake_func_t)(_mhClientCtx_t *cctx);
 typedef apr_status_t (*reset_conn_func_t)(_mhClientCtx_t *cctx);
 typedef apr_status_t (*send_func_t)(_mhClientCtx_t *cctx, const char *data,
                                     apr_size_t *len);
-typedef apr_status_t (*receive_func_t)(_mhClientCtx_t *cctx, char *data,
-                                       apr_size_t *len);
+typedef apr_status_t (*receive_func_t)(apr_socket_t *skt, void *baton,
+                                       char *data, apr_size_t *len);
 
 typedef struct sslCtx_t sslCtx_t;
-
+typedef struct bucket_t bucket_t;
 static const int DefaultSrvPort =   30080;
 static const int DefaultProxyPort = 38080;
 
@@ -63,12 +62,7 @@ struct _mhClientCtx_t {
     apr_socket_t *proxyskt;    /* Socket for conn proxy <-> server */
     apr_int16_t proxyreqevents;
     const char *proxyhost;     /* Proxy host:port */
-    char buf[BUFSIZE];  /* buffer for data received from the client @ server */
-    apr_size_t buflen;
-    apr_size_t bufrem;
-    char obuf[BUFSIZE]; /* buffer for data to be sent from server to client */
-    apr_size_t obuflen;
-    apr_size_t obufrem;
+
     const char *respBody;
     apr_size_t respRem;
     apr_array_header_t *respQueue;  /* test will queue a response */
@@ -82,6 +76,19 @@ struct _mhClientCtx_t {
 
     send_func_t send;
     receive_func_t read;
+
+    bucket_t *stream; /* Bucket for incoming data */
+
+    /* Proxy buffers */
+    char osbuf[BUFSIZE]; /* buffer for data to be sent from proxy to the server */
+    apr_size_t osbuflen;
+    apr_size_t osbufrem;
+
+    char ocbuf[BUFSIZE]; /* buffer for data to be sent from proxy/server to client */
+    apr_size_t ocbuflen;
+    apr_size_t ocbufrem;
+
+
     /* SSL-only callback functions, should be NULL when not implemented */
     handshake_func_t handshake;
     reset_conn_func_t reset;
@@ -146,10 +153,10 @@ static apr_status_t socketWrite(_mhClientCtx_t *cctx, const char *data,
  * Callback, reads data from the socket stored in CCTX and stores it in DATA,
  * the available bytes will be stored in *LEN.
  */
-static apr_status_t socketRead(_mhClientCtx_t *cctx, char *data,
+static apr_status_t socketRead(apr_socket_t *skt, void *baton, char *data,
                                apr_size_t *len)
 {
-    return apr_socket_recv(cctx->skt, data, len);
+    return apr_socket_recv(skt, data, len);
 }
 
 /**
@@ -296,29 +303,172 @@ mhRequest_t *_mhInitRequest(apr_pool_t *pool)
     return req;
 }
 
+/******************* BUCKETS **************************************************/
+typedef struct _mhBucketType_t {
+
+    const char *name;
+
+    apr_status_t (*read)(bucket_t *bucket, apr_size_t requested,
+                         const char **data, apr_size_t *len);
+
+    apr_status_t (*readLine)(bucket_t *bucket,
+                             /* int acceptable, int *found, CR, LF? */
+                             const char **data, apr_size_t *len);
+
+    apr_status_t (*peek)(bucket_t *bucket, apr_size_t *len);
+
+} _mhBucketType_t;
+
+struct bucket_t {
+
+    /** the type of this bucket */
+    const _mhBucketType_t *type;
+
+    /** bucket-private data */
+    void *data;
+};
+
+/* Buffered Socket buffer */
+typedef struct _bufferedSocketCtx_t {
+    apr_socket_t *skt;
+    receive_func_t read;
+    void *read_baton;
+    char buf[BUFSIZE];  /* buffer for data received from the client @ server */
+    apr_size_t remaining;  /* remaining bytes in the buffer */
+    apr_size_t offset;  /* offset of the first available byte */
+} _bufferedSocketCtx_t;
+
+/**
+ * Reads data from the socket and stores it in CCTX->buf.
+ */
+static apr_status_t readFromSocket(bucket_t *bkt)
+{
+    _bufferedSocketCtx_t *ctx = bkt->data;
+    apr_status_t status;
+
+    // assert(ctx->offset = 0);
+    apr_size_t len = BUFSIZE - ctx->remaining;
+    STATUSREADERR(ctx->read(ctx->skt, ctx->read_baton,
+                            ctx->buf + ctx->remaining, &len));
+    if (len) {
+        _mhLog(MH_VERBOSE, ctx->skt,
+               "recvd with status %d:\n%.*s\n---- %d ----\n",
+               status, (unsigned int)len, ctx->buf + ctx->remaining,
+               (unsigned int)len);
+        ctx->remaining += len;
+    }
+    return status;
+}
+
 /**
  * Read a complete line from the buffer in CCTX.
  * *LEN will be non-0 if a line ending with CRLF was found. BUF will be copied
  * in mem allocatod from cctx->pool, cctx->buf ptrs will be moved.
  */
-static void readLine(_mhClientCtx_t *cctx, const char **buf, apr_size_t *len)
+static apr_status_t
+buffSktReadLine(bucket_t *bkt, const char **data, apr_size_t *len)
 {
-    const char *ptr = cctx->buf;
+    _bufferedSocketCtx_t *ctx = bkt->data;
+    const char *ptr = ctx->buf;
+    apr_status_t status;
 
+    /* eat data read in a previous read call */
+    if (ctx->offset > 0) {
+        memmove(ctx->buf, ctx->buf + ctx->offset, BUFSIZE - ctx->offset);
+        ctx->offset = 0;
+    }
+
+    status = readFromSocket(bkt);
+
+    /* return one line of data */
     *len = 0;
-    while (*ptr && ptr - cctx->buf < cctx->buflen) {
+    while (*ptr && ptr - ctx->buf < ctx->remaining) {
         if (*ptr == '\r' && *(ptr+1) == '\n') {
-            *len = ptr - cctx->buf + 2;
-            *buf = apr_pstrndup(cctx->pool, cctx->buf, *len);
+            *len = ptr - ctx->buf + 2;
+            *data = ctx->buf;
 
-            cctx->buflen -= *len; /* eat line */
-            cctx->bufrem += *len;
-            memmove(cctx->buf, cctx->buf + *len, cctx->buflen);
+            ctx->offset += *len;
+            ctx->remaining -= *len;
 
             break;
         }
         ptr++;
     }
+
+    if (ctx->remaining > 0)
+        return APR_SUCCESS;
+
+    return status;
+}
+
+static apr_status_t buffSktRead(bucket_t *bkt, apr_size_t requested,
+                                const char **data, apr_size_t *len)
+{
+    _bufferedSocketCtx_t *ctx = bkt->data;
+    apr_status_t status;
+
+    /* eat data read in a previous read call */
+    if (ctx->offset > 0) {
+        memmove(ctx->buf, ctx->buf + ctx->offset, BUFSIZE - ctx->offset);
+        ctx->offset = 0;
+    }
+
+    status = readFromSocket(bkt);
+
+    /* return requested data */
+    *len = ctx->remaining <= requested ? ctx->remaining : requested; /* this packet */
+    *data = ctx->buf;
+
+    ctx->offset += *len;
+    ctx->remaining -= *len;
+
+    if (ctx->remaining > 0)
+        return APR_SUCCESS;
+
+    return status;
+}
+
+
+static apr_status_t buffSktPeek(bucket_t *bkt, apr_size_t *len)
+{
+    _bufferedSocketCtx_t *ctx = bkt->data;
+    apr_status_t status;
+
+    /* eat data read in a previous read call */
+    if (ctx->offset > 0) {
+        memmove(ctx->buf, ctx->buf + ctx->offset, BUFSIZE - ctx->offset);
+        ctx->offset = 0;
+    }
+
+    status = readFromSocket(bkt);
+
+    *len = ctx->remaining;
+    if (ctx->remaining > *len)
+        return APR_SUCCESS;
+
+    return status;
+}
+
+const _mhBucketType_t BufferedSocketBucketType = {
+    "BUFFSOCKET",
+    buffSktRead,
+    buffSktReadLine,
+    buffSktPeek,
+};
+
+static bucket_t *
+createBufferedSocketBucket(apr_socket_t *skt, receive_func_t read,
+                           void *baton, apr_pool_t *pool)
+{
+    _bufferedSocketCtx_t *ctx = apr_pcalloc(pool, sizeof(_bufferedSocketCtx_t));
+    bucket_t *bkt = apr_palloc(pool, sizeof(bucket_t));
+
+    ctx->skt = skt;
+    ctx->read = read;
+    ctx->read_baton = baton;
+    bkt->type = &BufferedSocketBucketType;
+    bkt->data = ctx;
+    return bkt;
 }
 
 #define FAIL_ON_EOL(ptr)\
@@ -333,35 +483,36 @@ static void readLine(_mhClientCtx_t *cctx, const char **buf, apr_size_t *len)
  *         error in case the request line couldn't be parsed successfully
  */
 static apr_status_t
-readReqLine(_mhClientCtx_t *cctx, mhRequest_t *req, bool *done)
+readReqLine(bucket_t *bkt, mhRequest_t *req, bool *done)
 {
     const char *start, *ptr, *version;
     const char *buf;
     apr_size_t len;
+    apr_status_t status;
 
     *done = FALSE;
 
-    readLine(cctx, &buf, &len);
-    if (!len) return APR_EAGAIN;
+    status = bkt->type->readLine(bkt, &buf, &len);
+    if (!len) return status;
 
     /* TODO: add checks for incomplete request line */
     start = ptr = buf;
     while (*ptr && *ptr != ' ' && *ptr != '\r') ptr++;
     FAIL_ON_EOL(ptr);
-    req->method = apr_pstrndup(cctx->pool, start, ptr-start);
+    req->method = apr_pstrndup(req->pool, start, ptr-start);
     req->methodCode = methodToCode(req->method);
 
     ptr++; start = ptr;
     while (*ptr && *ptr != ' ' && *ptr != '\r') ptr++;
     FAIL_ON_EOL(ptr);
-    req->url = apr_pstrndup(cctx->pool, start, ptr-start);
+    req->url = apr_pstrndup(req->pool, start, ptr-start);
 
     ptr++; start = ptr;
     while (*ptr && *ptr != ' ' && *ptr != '\r') ptr++;
     if (ptr - start != strlen("HTTP/x.y")) {
         return APR_EGENERAL;
     }
-    version = apr_pstrndup(cctx->pool, start, ptr-start);
+    version = apr_pstrndup(req->pool, start, ptr-start);
     req->version = (version[5] - '0') * 10 +
     version[7] - '0';
 
@@ -408,14 +559,15 @@ static void setRequestHeader(mhRequest_t *req, const char *hdr, const char *val)
  *         error in case the header line couldn't be parsed successfully
  */
 static apr_status_t
-readHeader(_mhClientCtx_t *cctx, mhRequest_t *req, bool *done)
+readHeader(bucket_t *bkt, mhRequest_t *req, bool *done)
 {
     const char *buf;
     apr_size_t len;
+    apr_status_t status;
 
     *done = NO;
 
-    readLine(cctx, &buf, &len);
+    STATUSREADERR(bkt->type->readLine(bkt, &buf, &len));
     if (!len) return APR_EAGAIN;
 
     /* Last header? */
@@ -431,14 +583,14 @@ readHeader(_mhClientCtx_t *cctx, mhRequest_t *req, bool *done)
 
         /* Read header from a line in the form of 'Header: value' */
         while (*ptr && ptr < end && *ptr != ':' && *ptr != '\r') ptr++;
-        hdr = apr_pstrndup(cctx->pool, start, ptr-start);
+        hdr = apr_pstrndup(req->pool, start, ptr-start);
 
         /* skip : and blanks */
         ptr++; while (*ptr && ptr < end && *ptr == ' ') ptr++; start = ptr;
 
         /* Read value */
         while (*ptr && ptr < end && *ptr != '\r') ptr++;
-        val = apr_pstrndup(cctx->pool, start, ptr-start);
+        val = apr_pstrndup(req->pool, start, ptr-start);
 
         setRequestHeader(req, hdr, val);
     }
@@ -468,12 +620,13 @@ storeRawDataBlock(mhRequest_t *req, const char *buf, apr_size_t len)
  *         APR_SUCCESS + *DONE = YES when the whole body was read completely.
  *         error in case the "Content-Length" header isn't set.
  */
-static apr_status_t readBody(_mhClientCtx_t *cctx, mhRequest_t *req, bool *done)
+static apr_status_t readBody(bucket_t *bkt, mhRequest_t *req, bool *done)
 {
-    const char *clstr;
+    const char *clstr, *data;
     char *body;
     long cl;
     apr_size_t len;
+    apr_status_t status;
 
     req->chunked = NO;
 
@@ -482,20 +635,18 @@ static apr_status_t readBody(_mhClientCtx_t *cctx, mhRequest_t *req, bool *done)
     cl = atol(clstr);
 
     len = cl - req->bodyLen; /* remaining # of bytes */
-    len = cctx->buflen <= len ? cctx->buflen : len; /* this packet */
 
+    STATUSREADERR(bkt->type->read(bkt, len, &data, &len));
+
+    /* copy data to the request */
     if (req->body == NULL) {
-        req->body = apr_palloc(cctx->pool, sizeof(struct iovec) * 256);
+        req->body = apr_palloc(req->pool, sizeof(struct iovec) * 256);
     }
-    body = apr_palloc(cctx->pool, len + 1);
-
-    memcpy(body, cctx->buf, len);
+    body = apr_palloc(req->pool, len + 1);
+    memcpy(body, data, len);
     *(body + len) = '\0';
     storeRawDataBlock(req, body, len);
 
-    cctx->buflen -= len; /* eat body */
-    cctx->bufrem += len;
-    memmove(cctx->buf, cctx->buf + len, cctx->buflen);
     if (req->bodyLen < cl)
         return APR_EAGAIN;
 
@@ -514,12 +665,10 @@ static apr_status_t readBody(_mhClientCtx_t *cctx, mhRequest_t *req, bool *done)
  *           + *DONE = YES when the last chunk and the trailer were read.
  *         error in case of problems parsing the chunk header, length or trailer.
  */
-static apr_status_t readChunk(_mhClientCtx_t *cctx, mhRequest_t *req, bool *done)
+static apr_status_t readChunk(bucket_t *bkt, mhRequest_t *req, bool *done)
 {
-    const char *buf;
-    apr_size_t len, chlen;
-
     *done = NO;
+    apr_status_t status;
 
     switch (req->readState) {
         case ReadStateBody:
@@ -529,13 +678,15 @@ static apr_status_t readChunk(_mhClientCtx_t *cctx, mhRequest_t *req, bool *done
         case ReadStateChunkedHeader:
         {
             struct iovec vec;
-            apr_size_t chlen;
-            readLine(cctx, &buf, &len);
+            const char *data;
+            apr_size_t len, chlen;
+            
+            STATUSREADERR(bkt->type->readLine(bkt, &data, &len));
             if (!len)
                 return APR_EAGAIN;
-            storeRawDataBlock(req, buf, len);
+            storeRawDataBlock(req, data, len);
 
-            chlen = apr_strtoi64(buf, NULL, 16); /* read hex chunked length */
+            chlen = apr_strtoi64(data, NULL, 16); /* read hex chunked length */
             vec.iov_len = chlen;
             *((struct iovec *)apr_array_push(req->chunks)) = vec;
             if (chlen == 0) {
@@ -548,6 +699,7 @@ static apr_status_t readChunk(_mhClientCtx_t *cctx, mhRequest_t *req, bool *done
         }
         case ReadStateChunkedChunk:
         {
+            const char *data;
             struct iovec *vec;
             apr_size_t chlen, curchunklen, len;
 
@@ -559,25 +711,20 @@ static apr_status_t readChunk(_mhClientCtx_t *cctx, mhRequest_t *req, bool *done
             if (req->incomplete_chunk) {
                 const char *tmp;
                 curchunklen = strlen(vec->iov_base);
-                /* partial or full chunk? */
-                len = (cctx->buflen + curchunklen) >= chlen ?
-                           chlen - curchunklen : cctx->buflen;
-                tmp = apr_pstrndup(req->pool, cctx->buf, len);
-                storeRawDataBlock(req, cctx->buf, len);
+                /* read as much as possible from remaining part */
+                STATUSREADERR(bkt->type->read(bkt, chlen - curchunklen,
+                                              &data, &len));
+                tmp = apr_pstrndup(req->pool, data, len);
+                storeRawDataBlock(req, data, len);
                 vec->iov_base = apr_pstrcat(req->pool, vec->iov_base, tmp, NULL);
                 curchunklen += len;
             } else {
-                /* partial or full chunk? */
-                len = cctx->buflen >= chlen ? chlen : cctx->buflen;
-                vec->iov_base = apr_pstrndup(req->pool, cctx->buf, len);
-                storeRawDataBlock(req, cctx->buf, len);
+                /* read as much as possible */
+                STATUSREADERR(bkt->type->read(bkt, chlen, &data, &len));
+                vec->iov_base = apr_pstrndup(req->pool, data, len);
+                storeRawDataBlock(req, data, len);
                 curchunklen = len;
             }
-
-            /* eat (part of the) chunk */
-            cctx->buflen -= len;
-            cctx->bufrem += len;
-            memmove(cctx->buf, cctx->buf + len, cctx->buflen);
 
             if (curchunklen < chlen) {
                 /* More data is needed to read one chunk */
@@ -591,15 +738,18 @@ static apr_status_t readChunk(_mhClientCtx_t *cctx, mhRequest_t *req, bool *done
         }
         case ReadStateChunkedTrailer:
         {
+            const char *data;
+            apr_size_t len, chlen;
             struct iovec vec;
+
             vec = APR_ARRAY_IDX(req->chunks, req->chunks->nelts - 1, struct iovec);
             chlen = vec.iov_len;
 
-            readLine(cctx, &buf, &len);
+            STATUSREADERR(bkt->type->readLine(bkt, &data, &len));
             if (len < 2)
                 return APR_EAGAIN;
-            storeRawDataBlock(req, buf, len);
-            if (len == 2 && *buf == '\r' && *(buf+1) == '\n') {
+            storeRawDataBlock(req, data, len);
+            if (len == 2 && *data == '\r' && *(data+1) == '\n') {
                 if (chlen == 0) {
                     /* body ends with chunk of length 0 */
                     *done = YES;
@@ -630,7 +780,7 @@ static apr_status_t readChunk(_mhClientCtx_t *cctx, mhRequest_t *req, bool *done
  *         error in case of problems parsing the chunk header, length or trailer.
  */
 static apr_status_t
-readChunked(_mhClientCtx_t *cctx, mhRequest_t *req, bool *done)
+readChunked(bucket_t *bkt, mhRequest_t *req, bool *done)
 {
     apr_status_t status;
 
@@ -638,27 +788,8 @@ readChunked(_mhClientCtx_t *cctx, mhRequest_t *req, bool *done)
     req->chunked = YES;
 
     while (*done == NO)
-        STATUSERR(readChunk(cctx, req, done));
+        STATUSERR(readChunk(bkt, req, done));
 
-    return status;
-}
-
-/**
- * Reads data from the socket and stores it in CCTX->buf.
- */
-static apr_status_t readData(_mhClientCtx_t *cctx)
-{
-    apr_status_t status;
-    apr_size_t len = cctx->bufrem;
-    STATUSREADERR(cctx->read(cctx, cctx->buf + cctx->buflen, &len));
-    if (len) {
-        _mhLog(MH_VERBOSE, cctx->skt,
-               "recvd with status %d:\n%.*s\n---- %d ----\n",
-               status, (unsigned int)len, cctx->buf + cctx->buflen,
-               (unsigned int)len);
-        cctx->buflen += len;
-        cctx->bufrem -= len;
-    }
     return status;
 }
 
@@ -673,24 +804,28 @@ static apr_status_t readData(_mhClientCtx_t *cctx)
 static apr_status_t readRequest(_mhClientCtx_t *cctx, mhRequest_t **preq)
 {
     mhRequest_t *req = *preq;
+    bucket_t *bkt;
     apr_status_t status = APR_SUCCESS;
 
+    bkt = cctx->stream;
     if (req == NULL) {
+        apr_size_t len;
+        STATUSREADERR(bkt->type->peek(bkt, &len));
+        if (!len)
+            return status;
         req = *preq = _mhInitRequest(cctx->pool);
     }
 
     while (!status) { /* read all available data */
         bool done = NO;
 
-        STATUSREADERR(readData(cctx));
-
         switch(cctx->req->readState) {
             case ReadStateStatusLine: /* status line */
-                STATUSREADERR(readReqLine(cctx, req, &done));
+                STATUSREADERR(readReqLine(bkt, req, &done));
                 if (done) req->readState = ReadStateHeaders;
                 break;
             case ReadStateHeaders: /* headers */
-                STATUSREADERR(readHeader(cctx, req, &done));
+                STATUSREADERR(readHeader(bkt, req, &done));
                 if (done) req->readState = ReadStateBody;
                 break;
             case ReadStateBody: /* body */
@@ -704,11 +839,11 @@ static apr_status_t readRequest(_mhClientCtx_t *cctx, mhRequest_t **preq)
                 /* TODO: chunked can be one of more encodings */
                 /* Read Transfer-Encoding first, ignore C-L when T-E is set */
                 if (chstr && apr_strnatcasecmp(chstr, "chunked") == 0) {
-                    STATUSREADERR(readChunked(cctx, req, &done));
+                    STATUSREADERR(readChunked(bkt, req, &done));
                 } else {
                     clstr = getHeader(req->hdrs, "Content-Length");
                     if (clstr) {
-                        STATUSREADERR(readBody(cctx, req, &done));
+                        STATUSREADERR(readBody(bkt, req, &done));
                     } else {
                         done = YES; /* no body to read */
                     }
@@ -723,13 +858,15 @@ static apr_status_t readRequest(_mhClientCtx_t *cctx, mhRequest_t **preq)
                 break;
         }
     }
-
+#if 0
+    /* TODO: fix or cleanup */
     if (!cctx->buflen) {
         if (APR_STATUS_IS_EOF(status))
             return MH_STATUS_INCOMPLETE_REQUEST;
 
         return status;
     }
+#endif
 
     return status;
 }
@@ -802,6 +939,7 @@ static char *respToString(apr_pool_t *pool, mhResponse_t *resp)
     str = apr_psprintf(pool, "HTTP/1.1 %d %s\r\n", resp->code,
                        codeToString(resp->code));
 
+    /* headers */
     arr = apr_table_elts(resp->hdrs);
     elts = (const apr_table_entry_t *)arr->elts;
 
@@ -852,10 +990,11 @@ static apr_status_t writeResponse(_mhClientCtx_t *cctx, mhResponse_t *resp)
         _mhBuildResponse(resp);
         if (resp->raw_data) {
             cctx->respBody = resp->raw_data;
+            cctx->respRem = resp->raw_data_length;
         } else {
             cctx->respBody = respToString(pool, resp);
+            cctx->respRem = strlen(cctx->respBody);
         }
-        cctx->respRem = strlen(cctx->respBody);
     }
 
     len = cctx->respRem;
@@ -1040,33 +1179,35 @@ static apr_status_t processProxy(_mhClientCtx_t *cctx, const apr_pollfd_t *desc)
 {
     apr_status_t status = APR_SUCCESS;
 
-    if ((desc->rtnevents & APR_POLLOUT) && (cctx->buflen > 0)) {
-        apr_size_t len = cctx->buflen;
-        STATUSREADERR(apr_socket_send(cctx->proxyskt, cctx->buf, &len));
+    if ((desc->rtnevents & APR_POLLOUT) && (cctx->osbuflen > 0)) {
+        apr_size_t len = cctx->osbuflen;
+        STATUSREADERR(apr_socket_send(cctx->proxyskt, cctx->osbuf, &len));
         _mhLog(MH_VERBOSE, cctx->proxyskt,
                "Proxy sent to server, status %d:\n%.*s\n---- %d ----\n",
-               status, (unsigned int)len, cctx->buf, (unsigned int)len);
-        cctx->bufrem += len;
-        cctx->buflen -= len;
+               status, (unsigned int)len, cctx->osbuf, (unsigned int)len);
+        cctx->osbufrem += len;
+        cctx->osbuflen -= len;
     }
+
     if (desc->rtnevents & APR_POLLIN) {
-        char *buf = cctx->buf + cctx->obuflen;
-        apr_size_t len = cctx->obufrem;
-        STATUSREADERR(apr_socket_recv(cctx->proxyskt, cctx->obuf, &len));
+        char *buf = cctx->ocbuf + cctx->ocbuflen;
+        apr_size_t len = cctx->ocbufrem;
+        STATUSREADERR(apr_socket_recv(cctx->proxyskt, buf, &len));
         _mhLog(MH_VERBOSE, cctx->proxyskt,
                "Proxy received from server, status %d:\n%.*s\n---- %d ----\n",
                status, (unsigned int)len, buf, (unsigned int)len);
-        cctx->obuflen += len;
-        cctx->obufrem -= len;
+        cctx->ocbuflen += len;
+        cctx->ocbufrem -= len;
     }
 
     return status;
+
 }
 
 /**
  * Process events on connection client <-> proxy or client <-> server
  * Reads all incoming data, tries to match complete and/or incomplete requests,
- * and the writes responses back to the socket CCTX.
+ * and then writes responses back to the socket CCTX.
  *
  * Returns APR_EOF when the connection should be closed.
  **/
@@ -1074,20 +1215,23 @@ static apr_status_t processServer(mhServCtx_t *ctx, _mhClientCtx_t *cctx,
                                   const apr_pollfd_t *desc)
 {
     apr_status_t status = APR_EAGAIN;
+    bucket_t *stream = cctx->stream;
+    apr_size_t len;
 
     /* First sent any pending responses before reading the next request. */
     if (desc->rtnevents & APR_POLLOUT &&
-        (cctx->currResp || cctx->respQueue->nelts || cctx->obuflen)) {
+        (cctx->currResp || cctx->respQueue->nelts || cctx->ocbuflen)) {
         mhResponse_t *resp;
 
-        if (cctx->obuflen) {
-            apr_size_t len = cctx->obuflen;
-            STATUSREADERR(apr_socket_send(cctx->skt, cctx->obuf, &len));
+        if (cctx->ocbuflen) {
+            apr_size_t len = cctx->ocbuflen;
+            STATUSREADERR(apr_socket_send(cctx->skt, cctx->ocbuf, &len));
             _mhLog(MH_VERBOSE, cctx->skt,
                    "Proxy/Server sent to client, status %d:\n%.*s\n---- %d ----\n",
-                   status, (unsigned int)len, cctx->obuf, (unsigned int)len);
-            cctx->obufrem += len;
-            cctx->obuflen -= len;
+                   status, (unsigned int)len, cctx->ocbuf, (unsigned int)len);
+            cctx->ocbufrem += len;
+            cctx->ocbuflen -= len;
+            /* TODO: len < ocbuflen? */
             return status; /* can't send more data */
         }
 
@@ -1117,7 +1261,9 @@ static apr_status_t processServer(mhServCtx_t *ctx, _mhClientCtx_t *cctx,
             }
         }
     }
-    if (desc->rtnevents & APR_POLLIN || cctx->buflen) {
+
+    status = stream->type->peek(stream, &len);
+    if (desc->rtnevents & APR_POLLIN || len > 0) {
         mhAction_t action;
 
         switch (cctx->mode) {
@@ -1212,8 +1358,22 @@ static apr_status_t processServer(mhServCtx_t *ctx, _mhClientCtx_t *cctx,
             }
             break;
           case ModeTunnel:
-            /* Forward raw data */
-            STATUSREADERR(readData(cctx));
+            {
+                const char *data;
+                /* Forward raw data */
+                len = cctx->osbufrem;
+                STATUSREADERR(stream->type->read(stream, len, &data, &len));
+
+                if (len) {
+                    memmove(cctx->osbuf, data, len);
+                    _mhLog(MH_VERBOSE, cctx->skt,
+                           "recvd with status %d:\n%.*s\n---- %d ----\n",
+                           status, (unsigned int)len, cctx->osbuf + cctx->osbuflen,
+                           (unsigned int)len);
+                    cctx->osbuflen += len;
+                    cctx->osbufrem -= len;
+                }
+            }
             break;
           default:
             break;
@@ -1237,20 +1397,21 @@ static _mhClientCtx_t *initClientCtx(apr_pool_t *pool, mhServCtx_t *serv_ctx,
     cctx = apr_pcalloc(ccpool, sizeof(_mhClientCtx_t));
     cctx->pool = ccpool;
     cctx->skt = cskt;
-    cctx->buflen = 0;
-    cctx->bufrem = BUFSIZE;
-    cctx->obuflen = 0;
-    cctx->obufrem = BUFSIZE;
+    cctx->ocbuflen = 0;
+    cctx->ocbufrem = BUFSIZE;
+    cctx->osbuflen = 0;
+    cctx->osbufrem = BUFSIZE;
     cctx->closeConn = NO;
     cctx->respQueue = apr_array_make(pool, 5, sizeof(mhResponse_t *));
     cctx->currResp = NULL;
     cctx->mode = ModeServer;
-    if (type == mhHTTPServer || type == mhHTTPProxy) {
+    if (type == mhHTTPv1Server || type == mhHTTPv11Server ||
+        type == mhHTTPv1Proxy || type == mhHTTPv11Proxy) {
         cctx->read = socketRead;
         cctx->send = socketWrite;
     }
 #ifdef MOCKHTTP_OPENSSL
-    if (type == mhHTTPSServer) {
+    if (type == mhHTTPSv1Server || type == mhHTTPSv11Server) {
         cctx->handshake = sslHandshake;
         cctx->read = sslSocketRead;
         cctx->send = sslSocketWrite;
@@ -1262,6 +1423,8 @@ static _mhClientCtx_t *initClientCtx(apr_pool_t *pool, mhServCtx_t *serv_ctx,
         initSSLCtx(cctx);
     }
 #endif
+    cctx->stream = createBufferedSocketBucket(cskt, cctx->read,
+                                              cctx->ssl_ctx, ccpool);
     return cctx;
 }
 
@@ -1633,16 +1796,24 @@ static bool set_server_type(const mhServerSetupBldr_t *ssb, mhServCtx_t *ctx)
 
     switch (ctx->type) {
         case mhGenericServer:
-            if (type == mhHTTP)
-                ctx->type = mhHTTPServer;
+            if (type == mhHTTPv1)
+                ctx->type = mhHTTPv1Server;
+            else if (type == mhHTTPv11)
+                ctx->type = mhHTTPv11Server;
+            else if (type == mhHTTPSv1)
+                ctx->type = mhHTTPSv1Server;
             else
-                ctx->type = mhHTTPSServer;
+                ctx->type = mhHTTPSv11Server;
             break;
         case mhGenericProxy:
-            if (type == mhHTTP)
-                ctx->type = mhHTTPProxy;
+            if (type == mhHTTPv1)
+                ctx->type = mhHTTPv1Proxy;
+            else if (type == mhHTTPv11)
+                ctx->type = mhHTTPv11Proxy;
+            else if (type == mhHTTPSv1)
+                ctx->type = mhHTTPSv1Proxy;
             else
-                ctx->type = mhHTTPSProxy;
+                ctx->type = mhHTTPSv11Proxy;
             break;
         default:
             /* TODO: error in test configuration. */
@@ -2254,9 +2425,9 @@ sslSocketWrite(_mhClientCtx_t *cctx, const char *data, apr_size_t *len)
  * returned in DATA.
  */
 static apr_status_t
-sslSocketRead(_mhClientCtx_t *cctx, char *data, apr_size_t *len)
+sslSocketRead(apr_socket_t *skt, void *baton, char *data, apr_size_t *len)
 {
-    sslCtx_t *ssl_ctx = cctx->ssl_ctx;
+    sslCtx_t *ssl_ctx = baton;
 
     int result = SSL_read(ssl_ctx->ssl, data, *len);
     if (result > 0) {
@@ -2277,7 +2448,7 @@ sslSocketRead(_mhClientCtx_t *cctx, char *data, apr_size_t *len)
             case SSL_ERROR_SSL:
             default:
                 *len = 0;
-                _mhLog(MH_VERBOSE, cctx->skt,
+                _mhLog(MH_VERBOSE, skt,
                           "ssl_socket_read SSL Error %d: ", ssl_err);
                 ERR_print_errors_fp(stderr);
                 return APR_EGENERAL;
