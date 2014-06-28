@@ -62,6 +62,7 @@ log_error(int verbose_flag, serf_config_t *config,
                                       &stat_buff);
         if (maj_stat == GSS_S_COMPLETE ||
             maj_stat == GSS_S_FAILURE) {
+            gss_release_buffer(&min_stat, &stat_buff);
             maj_stat = gss_display_status(&min_stat,
                                           err_min_stat,
                                           GSS_C_MECH_CODE,
@@ -73,6 +74,7 @@ log_error(int verbose_flag, serf_config_t *config,
         serf__log(verbose_flag, LOGCOMP_AUTHN, __FILE__, config,
                   "%s (%x,%d): %s\n", msg,
                   err_maj_stat, err_min_stat, stat_buff.value);
+        gss_release_buffer(&min_stat, &stat_buff);
     }
 }
 
@@ -157,7 +159,7 @@ serf__spnego_init_sec_context(serf_connection_t *conn,
 {
     gss_buffer_desc gss_input_buf = GSS_C_EMPTY_BUFFER;
     gss_buffer_desc *gss_output_buf_p;
-    OM_uint32 gss_min_stat, gss_maj_stat;
+    OM_uint32 gss_min_stat, gss_maj_stat, dummy_stat;
     gss_name_t host_gss_name;
     gss_buffer_desc bufdesc;
     gss_OID dummy; /* unused */
@@ -171,10 +173,11 @@ serf__spnego_init_sec_context(serf_connection_t *conn,
     gss_maj_stat = gss_import_name (&gss_min_stat, &bufdesc,
                                     GSS_C_NT_HOSTBASED_SERVICE,
                                     &host_gss_name);
-    if(GSS_ERROR(gss_maj_stat)) {
+    if (GSS_ERROR(gss_maj_stat)) {
         log_error(LOGLVL_ERROR, conn->config, ctx,
                   gss_maj_stat, gss_min_stat,
                   "Error converting principal name to GSS internal format ");
+        gss_release_name(&dummy, &host_gss_name);
         return SERF_ERROR_AUTHN_FAILED;
     }
 
@@ -202,6 +205,7 @@ serf__spnego_init_sec_context(serf_connection_t *conn,
          NULL                       /* not interested in remaining validity */
          );
 
+    gss_release_name(&dummy_stat, &host_gss_name);
     apr_pool_cleanup_register(result_pool, gss_output_buf_p,
                               cleanup_sec_buffer,
                               apr_pool_cleanup_null);
