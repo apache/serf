@@ -33,12 +33,18 @@ extern "C" {
 typedef enum mhServerType_t {
     mhGenericServer,  /* Abstract type */
     mhGenericProxy,   /* Abstract type */
-    mhHTTP,           /* Abstract type */
-    mhHTTPS,          /* Abstract type */
-    mhHTTPServer,
-    mhHTTPSServer,
-    mhHTTPProxy,
-    mhHTTPSProxy,     /* Sets up SSL tunnel on CONNECT request. */
+    mhHTTPv1,         /* Abstract type */
+    mhHTTPSv1,        /* Abstract type */
+    mhHTTPv11,        /* Abstract type */
+    mhHTTPSv11,       /* Abstract type */
+    mhHTTPv1Server,
+    mhHTTPv11Server,
+    mhHTTPSv1Server,
+    mhHTTPSv11Server,
+    mhHTTPv1Proxy,
+    mhHTTPv11Proxy,
+    mhHTTPSv1Proxy,     /* Sets up SSL tunnel on CONNECT request. */
+    mhHTTPSv11Proxy,    /* Sets up SSL tunnel on CONNECT request. */
 } mhServerType_t;
 
 typedef enum mhAction_t {
@@ -115,12 +121,26 @@ typedef struct mhResponseBldr_t mhResponseBldr_t;
                 mhStartServer(__servctx);
 
 /* Setup a HTTP server */
+
+/* WithHTTP defaults to HTTP v1.1 */
 #define     WithHTTP\
-                mhSetServerType(__servctx, mhHTTP)
+                mhSetServerType(__servctx, mhHTTPv11)
+
+#define     WithHTTPv1\
+                mhSetServerType(__servctx, mhHTTPv1)
+
+#define     WithHTTPv11\
+                mhSetServerType(__servctx, mhHTTPv11)
 
 /* Setup a HTTPS server */
+
+/* WithHTTPS defaults to HTTPS v1.1 */
 #define     WithHTTPS\
-                mhSetServerType(__servctx, mhHTTPS)
+                mhSetServerType(__servctx, mhHTTPSv11)
+#define     WithHTTPSv1\
+                mhSetServerType(__servctx, mhHTTPSv1)
+#define     WithHTTPSv11\
+                mhSetServerType(__servctx, mhHTTPSv11)
 
 /* Give the server a name, so it can be found (optional, only needed when
    using multiple servers and requiring post-init configuration) */
@@ -221,9 +241,27 @@ typedef struct mhResponseBldr_t mhResponseBldr_t;
                                       __VA_ARGS__, NULL);\
                 mhPushRequest(__mh, __servctx, __rm);
 
+/* Stub a PUT request */
+#define   PUTRequest(...)\
+                __rm = mhGivenRequest(__mh, MethodEqualTo("PUT"),\
+                                      __VA_ARGS__, NULL);\
+                mhPushRequest(__mh, __servctx, __rm);
+
+/* Stub a DELETE request */
+#define   DELETERequest(...)\
+                __rm = mhGivenRequest(__mh, MethodEqualTo("DELETE"),\
+                                      __VA_ARGS__, NULL);\
+                mhPushRequest(__mh, __servctx, __rm);
+
 /* Stub a HEAD request */
 #define   HEADRequest(...)\
                 __rm = mhGivenRequest(__mh, MethodEqualTo("HEAD"),\
+                                            __VA_ARGS__, NULL);\
+                mhPushRequest(__mh, __servctx, __rm);
+
+/* Stub an OPTIONS request */
+#define   OPTIONSRequest(...)\
+                __rm = mhGivenRequest(__mh, MethodEqualTo("OPTIONS"),\
                                             __VA_ARGS__, NULL);\
                 mhPushRequest(__mh, __servctx, __rm);
 
@@ -281,9 +319,9 @@ typedef struct mhResponseBldr_t mhResponseBldr_t;
 
 /* Match a request's body which should be chunked encoded with a list of
    chunks.
-   e.g. ChunkedBodyChunksEqualTo("chunk1", "chunk2") */
-#define     ChunkedBodyChunksEqualTo(...)\
-                mhMatchChunkedBodyChunksEqualTo(__mh, __VA_ARGS__, NULL)
+   e.g. BodyChunksEqualTo("chunk1", "chunk2") */
+#define     BodyChunksEqualTo(...)\
+                mhMatchBodyChunksEqualTo(__mh, __VA_ARGS__, NULL)
 
 #define     IncompleteBodyEqualTo(x)\
                 mhMatchIncompleteBodyEqualTo(__mh, (x))
@@ -352,8 +390,8 @@ typedef struct mhResponseBldr_t mhResponseBldr_t;
 
 /* Use the provided string as raw response data. The response need not be
    valid HTTP.*/
-#define     WithRawData(data)\
-                mhRespSetRawData(__resp, (data))
+#define     WithRawData(data, len)\
+                mhRespSetRawData(__resp, (data), (len))
 
 #define     WithBodyRepeatedPattern(pattern, repeat)\
                 mhRespSetBodyPattern(__resp, (pattern), (repeat))
@@ -435,13 +473,16 @@ typedef struct mhStats_t {
        pipelined requests that were received after the server closed the socket.
      */
     unsigned int requestsReceived;
+
     /* Number of requests the server responded to. This includes default 
        responses or 500 Internal Server Error responses */
     unsigned int requestsResponded;
+
     /* Number of requests for which a match was found. */
-    unsigned int requestsNotMatched;
-    /* Number of requests for which no match was found. */
     unsigned int requestsMatched;
+
+    /* Number of requests for which no match was found. */
+    unsigned int requestsNotMatched;
 } mhStats_t;
 
 typedef unsigned long mhError_t;
@@ -570,7 +611,7 @@ mhReqMatcherBldr_t *mhMatchBodyNotChunkedEqualTo(const MockHTTP *mh,
                                                   const char *expected);
 mhReqMatcherBldr_t *mhMatchChunkedBodyEqualTo(const MockHTTP *mh,
                                                const char *expected);
-mhReqMatcherBldr_t *mhMatchChunkedBodyChunksEqualTo(const MockHTTP *mh, ...);
+mhReqMatcherBldr_t *mhMatchBodyChunksEqualTo(const MockHTTP *mh, ...);
 mhReqMatcherBldr_t *mhMatchHeaderEqualTo(const MockHTTP *mh,
                                           const char *hdr, const char *value);
 mhReqMatcherBldr_t *mhMatchHeaderNotEqualTo(const MockHTTP *mh,
@@ -597,7 +638,8 @@ mhResponseBldr_t *mhRespSetUseRequestHeader(mhResponse_t *resp,
 mhResponseBldr_t *mhRespSetBody(mhResponse_t *resp, const char *body);
 mhResponseBldr_t *mhRespSetChunkedBody(mhResponse_t *resp, ...);
 mhResponseBldr_t *mhRespSetUseRequestBody(mhResponse_t *resp);
-mhResponseBldr_t *mhRespSetRawData(mhResponse_t *resp, const char *raw_data);
+mhResponseBldr_t *mhRespSetRawData(mhResponse_t *resp, const char *raw_data,
+                                   size_t length);
 mhResponseBldr_t *mhRespSetBodyPattern(mhResponse_t *resp, const char *pattern,
                                        unsigned int n);
 
@@ -622,7 +664,7 @@ const char *mhGetLastErrorString(const MockHTTP *mh);
 
 mhError_t mhInitHTTPSserver(MockHTTP *mh, ...);
 
-#define MOCKHTTP_VERSION 0.1
+#define MOCKHTTP_VERSION 0.2.0
 
 #ifdef __cplusplus
 }
