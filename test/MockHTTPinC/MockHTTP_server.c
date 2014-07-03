@@ -22,6 +22,10 @@
 
 #include <stdlib.h>
 
+#ifndef OPENSSL_NO_OCSP /* requeires openssl 0.9.7 or later */
+#include <openssl/ocsp.h>
+#endif
+
 #include "MockHTTP_private.h"
 
 /* Copied from serf.  */
@@ -51,12 +55,14 @@ typedef struct sslCtx_t sslCtx_t;
 typedef struct bucket_t bucket_t;
 static const int DefaultSrvPort =   30080;
 static const int DefaultProxyPort = 38080;
+static const int DefaultOCSPResponderPort = 39080;
 
 /* Buffer size for incoming and outgoing data */
 #define BUFSIZE 32768
 
 struct _mhClientCtx_t {
     apr_pool_t *pool;
+    mhServCtx_t *serv_ctx;
     apr_socket_t *skt;         /* Socket for conn client <-> proxy/server */
     apr_int16_t reqevents;
     apr_socket_t *proxyskt;    /* Socket for conn proxy <-> server */
@@ -96,6 +102,7 @@ struct _mhClientCtx_t {
     const char *passphrase;
     apr_array_header_t *certFiles;
     mhClientCertVerification_t clientCert;
+    bool ocspEnabled;
 };
 
 /**
@@ -291,10 +298,11 @@ initServCtx(const MockHTTP *mh, const char *hostname, apr_port_t port)
 /**
  * Initialize a mhRequest_t object
  */
-mhRequest_t *_mhInitRequest(apr_pool_t *pool)
+mhRequest_t *_mhInitRequest(apr_pool_t *pool, requestType_t type)
 {
     mhRequest_t *req = apr_pcalloc(pool, sizeof(mhRequest_t));
     req->pool = pool;
+    req->type = type;
     req->hdrs = apr_table_make(pool, 5);
     req->hdrHashes = apr_array_make(pool, 5, sizeof(unsigned long));
     req->body = apr_array_make(pool, 5, sizeof(struct iovec));
@@ -813,7 +821,7 @@ static apr_status_t readRequest(_mhClientCtx_t *cctx, mhRequest_t **preq)
         STATUSREADERR(bkt->type->peek(bkt, &len));
         if (!len)
             return status;
-        req = *preq = _mhInitRequest(cctx->pool);
+        req = *preq = _mhInitRequest(cctx->pool, RequestTypeHTTP);
     }
 
     while (!status) { /* read all available data */
@@ -1048,10 +1056,19 @@ void mhPushRequest(MockHTTP *mh, mhServCtx_t *ctx, mhRequestMatcher_t *rm)
         }
     }
 
-    if (ctx) {
-        matchers = rm->incomplete ? ctx->incompleteReqMatchers : ctx->reqMatchers;
-    } else {
-        matchers = rm->incomplete ? mh->incompleteReqMatchers : mh->reqMatchers;
+    switch (rm->type) {
+        case RequestTypeHTTP:
+            if (ctx) {
+                matchers = rm->incomplete ? ctx->incompleteReqMatchers :
+                                            ctx->reqMatchers;
+            } else {
+                matchers = rm->incomplete ? mh->incompleteReqMatchers :
+                                            mh->reqMatchers;
+            }
+            break;
+        case RequestTypeOCSP:
+            matchers = mh->ocspReqMatchers;
+            break;
     }
     *((ReqMatcherRespPair_t **)apr_array_push(matchers)) = pair;
 }
@@ -1396,6 +1413,7 @@ static _mhClientCtx_t *initClientCtx(apr_pool_t *pool, mhServCtx_t *serv_ctx,
 
     cctx = apr_pcalloc(ccpool, sizeof(_mhClientCtx_t));
     cctx->pool = ccpool;
+    cctx->serv_ctx = serv_ctx;
     cctx->skt = cskt;
     cctx->ocbuflen = 0;
     cctx->ocbufrem = BUFSIZE;
@@ -1420,6 +1438,7 @@ static _mhClientCtx_t *initClientCtx(apr_pool_t *pool, mhServCtx_t *serv_ctx,
         cctx->certFiles = serv_ctx->certFiles;
         cctx->clientCert = serv_ctx->clientCert;
         cctx->protocols = serv_ctx->protocols;
+        cctx->ocspEnabled = serv_ctx->ocspEnabled;
         initSSLCtx(cctx);
     }
 #endif
@@ -1588,6 +1607,16 @@ mhServCtx_t *mhNewProxy(MockHTTP *mh)
     mh->proxyCtx = initServCtx(mh, "localhost", DefaultProxyPort);
     mh->proxyCtx->type = mhGenericProxy;
     return mh->proxyCtx;
+}
+
+/**
+ * Creates a new OCSP responder on localhost and on its default port.
+ */
+mhServCtx_t *mhNewOCSPResponder(MockHTTP *mh)
+{
+    mh->ocspRespCtx = initServCtx(mh, "localhost", DefaultOCSPResponderPort);
+    mh->ocspRespCtx->type = mhOCSPResponder;
+    return mh->ocspRespCtx;
 }
 
 /**
@@ -2062,6 +2091,29 @@ mhServerSetupBldr_t *mhAddSSLProtocol(mhServCtx_t *ctx, mhSSLProtocol_t proto)
     return ssb;
 }
 
+/**
+ * Builder callback, sets the "OCSP Enabled" flag.
+ */
+static bool
+enable_server_ocsp(const mhServerSetupBldr_t *ssb, mhServCtx_t *ctx)
+{
+    ctx->ocspEnabled = ssb->ibaton;
+    return YES;
+}
+
+/**
+ * Create a builder of type mhServerSetupBldr_t, enable OCSP stapling support.
+ */
+mhServerSetupBldr_t *
+mhSetServerEnableOCSP(mhServCtx_t *ctx)
+{
+    apr_pool_t *pool = ctx->pool;
+    mhServerSetupBldr_t *ssb = createServerSetupBldr(pool);
+    ssb->ibaton = YES;
+    ssb->serversetup = enable_server_ocsp;
+    return ssb;
+}
+
 
 #ifdef MOCKHTTP_OPENSSL
 /******************************************************************************/
@@ -2213,6 +2265,82 @@ static BIO_METHOD bio_apr_socket_method = {
     NULL /* sslc does not have the callback_ctrl field */
 #endif
 };
+
+static int ocspCreateResponse(OCSP_RESPONSE **resp, mhOCSPRespnseStatus_t status)
+{
+    int ret = 1;
+    int ocspStatus;
+/*
+    OCSP_BASICRESP *basicResp = NULL;
+
+    basicResp = OCSP_BASICRESP_new();
+
+    *resp = OCSP_response_create(OCSP_RESPONSE_STATUS_SUCCESSFUL, bs);
+
+    OCSP_BASICRESP_free(basicResp);
+*/
+
+    switch (status) {
+        case mhOCSPRespnseStatusSuccessful:
+            ocspStatus = OCSP_RESPONSE_STATUS_SUCCESSFUL;
+            break;
+        case mhOCSPRespnseStatusMalformedRequest:
+            ocspStatus = OCSP_RESPONSE_STATUS_MALFORMEDREQUEST;
+            break;
+        case mhOCSPRespnseStatusInternalError:
+            ocspStatus = OCSP_RESPONSE_STATUS_INTERNALERROR;
+            break;
+        case mhOCSPRespnseStatusTryLater:
+            ocspStatus = OCSP_RESPONSE_STATUS_TRYLATER;
+            break;
+        case mhOCSPRespnseStatusSigRequired:
+            ocspStatus = OCSP_RESPONSE_STATUS_SIGREQUIRED;
+            break;
+        case mhOCSPRespnseStatusUnauthorized:
+            ocspStatus = OCSP_RESPONSE_STATUS_UNAUTHORIZED;
+            break;
+    }
+
+    *resp = OCSP_response_create(ocspStatus, NULL);
+
+    return ret;
+}
+
+/**
+ * OpenSSL callback, executed on the server when the client has enabled OCSP
+ * support. If an OCSP responder was defined in the test, call it now with an 
+ * OCSP request to get an OCSP response that can be returned to the client.
+ */
+static int ocspStatusCallback(SSL *ssl, void *userdata)
+{
+    _mhClientCtx_t *cctx = userdata;
+    const MockHTTP *mh = cctx->serv_ctx->mh;
+    OCSP_RESPONSE *ocspResp;
+    int result;
+    int rspderlen;
+    unsigned char *rspder = NULL;
+    mhResponse_t *resp;
+    mhAction_t dummy;
+    mhRequest_t *req;
+    req = _mhInitRequest(cctx->pool, RequestTypeOCSP);
+    /* Nope, then see if there's a request matcher for all servers */
+    if (matchRequest(req, &resp, &dummy, mh->ocspReqMatchers) == YES) {
+        _mhBuildResponse(resp);
+
+        if ((result = ocspCreateResponse(&ocspResp,
+                                         resp->ocsp_response_status)) <= 0)
+            return result;
+
+        rspderlen = i2d_OCSP_RESPONSE(ocspResp, &rspder);
+        if (rspderlen <= 0)
+            return SSL_TLSEXT_ERR_ALERT_FATAL;
+
+        SSL_set_tlsext_status_ocsp_resp(ssl, rspder, rspderlen);
+        return SSL_TLSEXT_ERR_OK;
+    }
+    /* Couldn't find match */
+    return SSL_TLSEXT_ERR_ALERT_FATAL;
+}
 
 /**
  * Action: renegotiates a SSL session on client socket CCTX.
@@ -2385,6 +2513,14 @@ static apr_status_t initSSLCtx(_mhClientCtx_t *cctx)
             default:
                 break;
         }
+
+#ifndef OPENSSL_NO_TLSEXT
+        if (cctx->ocspEnabled)
+		{
+            SSL_CTX_set_tlsext_status_cb(ssl_ctx->ctx, ocspStatusCallback);
+            SSL_CTX_set_tlsext_status_arg(ssl_ctx->ctx, cctx);
+		}
+#endif
 
         SSL_CTX_set_mode(ssl_ctx->ctx, SSL_MODE_ENABLE_PARTIAL_WRITE);
 

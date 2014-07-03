@@ -93,6 +93,8 @@ MockHTTP *mhInit()
     mh->reqMatchers = apr_array_make(pool, 5, sizeof(ReqMatcherRespPair_t *));
     mh->incompleteReqMatchers = apr_array_make(pool, 5,
                                                sizeof(ReqMatcherRespPair_t *));
+    mh->ocspReqMatchers = apr_array_make(pool, 5, sizeof(ReqMatcherRespPair_t *));
+
     return mh;
 }
 
@@ -631,18 +633,35 @@ mhMatchMethodEqualTo(const MockHTTP *mh, const char *expected)
     return mp;
 }
 
+static bool any_matcher(const mhReqMatcherBldr_t *mp, const mhRequest_t *req)
+{
+    return YES;
+}
+
+mhConnMatcherBldr_t *mhMatchAny(const MockHTTP *mh)
+{
+    apr_pool_t *pool = mh->pool;
+
+    mhReqMatcherBldr_t *mp = createReqMatcherBldr(pool);
+    mp->matcher = any_matcher;
+    mp->describe_key = "Matches all";
+    mp->describe_value = "";
+    return mp;
+}
+
 /**
  * Takes a list of builders of type mhReqMatcherBldr_t *'s and stores them in
  * a new request matcher. The builders will be evaluated later when a request
  * arrives in the server.
  */
 static mhRequestMatcher_t *
-constructRequestMatcher(const MockHTTP *mh, va_list argp)
+constructRequestMatcher(const MockHTTP *mh, requestType_t type, va_list argp)
 {
     apr_pool_t *pool = mh->pool;
 
     mhRequestMatcher_t *rm = apr_pcalloc(pool, sizeof(mhRequestMatcher_t));
     rm->pool = pool;
+    rm->type = type;
     rm->matchers = apr_array_make(pool, 5, sizeof(mhReqMatcherBldr_t *));
 
     while (1) {
@@ -667,7 +686,19 @@ mhRequestMatcher_t *mhGivenRequest(MockHTTP *mh, ...)
     mhRequestMatcher_t *rm;
 
     va_start(argp, mh);
-    rm = constructRequestMatcher(mh, argp);
+    rm = constructRequestMatcher(mh, RequestTypeHTTP, argp);
+    va_end(argp);
+
+    return rm;
+}
+
+mhRequestMatcher_t *mhGivenOCSPRequest(MockHTTP *mh, ...)
+{
+    va_list argp;
+    mhRequestMatcher_t *rm;
+
+    va_start(argp, mh);
+    rm = constructRequestMatcher(mh, RequestTypeOCSP, argp);
     va_end(argp);
 
     return rm;
@@ -677,6 +708,9 @@ bool
 _mhRequestMatcherMatch(const mhRequestMatcher_t *rm, const mhRequest_t *req)
 {
     int i;
+
+    if (rm->type != req->type)
+        return NO;
 
     for (i = 0 ; i < rm->matchers->nelts; i++) {
         const mhReqMatcherBldr_t *mp;
@@ -778,10 +812,19 @@ mhResponse_t *mhNewResponseForRequest(MockHTTP *mh, mhServCtx_t *ctx,
 
     mhResponse_t *resp = initResponse(mh);
 
-    if (ctx)
-        matchers = rm->incomplete ? ctx->incompleteReqMatchers : ctx->reqMatchers;
-    else
-        matchers = rm->incomplete ? mh->incompleteReqMatchers : mh->reqMatchers;
+    switch (rm->type) {
+        case RequestTypeHTTP:
+            if (ctx)
+                matchers = rm->incomplete ? ctx->incompleteReqMatchers :
+                                            ctx->reqMatchers;
+            else
+                matchers = rm->incomplete ? mh->incompleteReqMatchers :
+                                            mh->reqMatchers;
+            break;
+        case RequestTypeOCSP:
+            matchers = mh->ocspReqMatchers;
+            break;
+    }
 
     /* TODO: how can this not be the last element?? */
     for (i = matchers->nelts - 1 ; i >= 0; i--) {
@@ -1077,6 +1120,25 @@ mhResponseBldr_t *mhRespSetBodyPattern(mhResponse_t *resp, const char *pattern,
     rb->baton = apr_pstrdup(pool, pattern);
     rb->ibaton = n;
     return rb;
+}
+
+static bool
+resp_set_ocsp_response_status(const mhResponseBldr_t *rb, mhResponse_t *resp)
+{
+    unsigned int status = rb->ibaton;
+    resp->ocsp_response_status = status;
+    return YES;
+}
+
+mhResponseBldr_t *
+mhRespOCSPResponseStatus(mhResponse_t *resp, mhOCSPRespnseStatus_t status)
+{
+    apr_pool_t *pool = resp->pool;
+    mhResponseBldr_t *rb = createResponseBldr(pool);
+    rb->respbuilder = resp_set_ocsp_response_status;
+    rb->ibaton = status;
+    return rb;
+
 }
 
 void _mhBuildResponse(mhResponse_t *resp)

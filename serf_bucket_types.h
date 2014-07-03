@@ -488,13 +488,17 @@ serf_bucket_t *serf_bucket_limit_create(
 
 
 /* ==================================================================== */
-#define SERF_SSL_CERT_NOTYETVALID        1
-#define SERF_SSL_CERT_EXPIRED            2
-#define SERF_SSL_CERT_UNKNOWNCA          4
-#define SERF_SSL_CERT_SELF_SIGNED        8
-#define SERF_SSL_CERT_UNKNOWN_FAILURE   16
-#define SERF_SSL_CERT_REVOKED           32
-#define SERF_SSL_CERT_UNABLE_TO_GET_CRL 64
+#define SERF_SSL_CERT_NOTYETVALID       0x0001
+#define SERF_SSL_CERT_EXPIRED           0x0002
+#define SERF_SSL_CERT_UNKNOWNCA         0x0004
+#define SERF_SSL_CERT_SELF_SIGNED       0x0008
+#define SERF_SSL_CERT_UNKNOWN_FAILURE   0x0010
+#define SERF_SSL_CERT_REVOKED           0x0020
+#define SERF_SSL_CERT_UNABLE_TO_GET_CRL 0x0040
+
+#define SERF_SSL_OCSP_RESPONDER_TRYLATER        0x0100
+#define SERF_SSL_OCSP_RESPONDER_ERROR           0x0200
+#define SERF_SSL_OCSP_RESPONDER_UNKNOWN_FAILURE 0x0400
 
 extern const serf_bucket_type_t serf_bucket_type_ssl_encrypt;
 #define SERF_BUCKET_IS_SSL_ENCRYPT(b) SERF_BUCKET_CHECK((b), ssl_encrypt)
@@ -511,6 +515,8 @@ typedef apr_status_t (*serf_ssl_need_cert_password_t)(
     const char *cert_path,
     const char **password);
 
+/* Callback type for server certificate status info and OCSP responses.
+   Note that CERT can be NULL in case its called from the OCSP callback. */
 typedef apr_status_t (*serf_ssl_need_server_cert_t)(
     void *data, 
     int failures,
@@ -637,6 +643,15 @@ apr_status_t serf_ssl_add_crl_from_file(serf_ssl_context_t *ssl_ctx,
  */
 apr_status_t serf_ssl_check_crl(serf_ssl_context_t *ssl_ctx,
                                 int enabled);
+
+/**
+ * Enable or disable certificate status request (OCSP stapling) checking of all
+ * server certificates.
+ * @a enabled = 1 to enable checking, 0 to disable checking.
+ * Default = disabled.
+ */
+apr_status_t
+serf_ssl_check_cert_status_request(serf_ssl_context_t *ssl_ctx, int enabled);
 
 /**
  * Enable or disable SSL compression on a SSL session.

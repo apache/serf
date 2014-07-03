@@ -69,8 +69,10 @@ struct MockHTTP {
     mhResponse_t *defResponse;          /* Default req matched response */
     mhResponse_t *defErrorResponse;     /* Default req not matched response */
     mhServCtx_t *proxyCtx;
+    mhServCtx_t *ocspRespCtx;
     apr_array_header_t *connMatchers;   /* array of mhConnMatcherBldr_t *'s */
     apr_array_header_t *reqMatchers;    /* array of ReqMatcherRespPair_t *'s */
+    apr_array_header_t *ocspReqMatchers;    /* array of ReqMatcherRespPair_t *'s */
     apr_array_header_t *incompleteReqMatchers;       /*       .... same type */
 };
 
@@ -121,6 +123,7 @@ struct mhServCtx_t {
     apr_array_header_t *certFiles;
     mhClientCertVerification_t clientCert;
     int protocols;              /* SSL protocol versions */
+    bool ocspEnabled;
 
     apr_array_header_t *reqsReceived;   /* array of mhRequest_t *'s */
     apr_array_header_t *connMatchers;   /* array of mhConnMatcherBldr_t *'s */
@@ -175,8 +178,14 @@ typedef enum method_t {
     MethodVERSION_CONTROL
 } method_t;
 
+typedef enum requestType_t {
+    RequestTypeHTTP,
+    RequestTypeOCSP,
+} requestType_t;
+
 struct mhRequest_t {
     apr_pool_t *pool;
+    requestType_t type;
     const char *method;
     method_t methodCode;
     const char *url;
@@ -208,6 +217,10 @@ struct mhResponse_t {
     apr_array_header_t *builders;
     bool closeConn;
     mhRequest_t *req;  /* mhResponse_t instance is reply to req */
+
+    /* This is a OCSP response */
+    bool ocspResponse;
+    mhOCSPRespnseStatus_t ocsp_response_status;
 };
 
 
@@ -233,7 +246,7 @@ typedef bool (*reqmatchfunc_t)(const mhReqMatcherBldr_t *mp,
 
 struct mhRequestMatcher_t {
     apr_pool_t *pool;
-
+    requestType_t type;
     apr_array_header_t *matchers; /* array of mhReqMatcherBldr_t *'s. */
     bool incomplete;
 };
@@ -288,7 +301,7 @@ const char *getHeader(apr_table_t *hdrs, const char *hdr);
 void setHeader(apr_table_t *hdrs, const char *hdr, const char *val);
 
 /* Initialize a mhRequest_t object. */
-mhRequest_t *_mhInitRequest(apr_pool_t *pool);
+mhRequest_t *_mhInitRequest(apr_pool_t *pool, requestType_t type);
 
 bool _mhRequestMatcherMatch(const mhRequestMatcher_t *rm,
                             const mhRequest_t *req);

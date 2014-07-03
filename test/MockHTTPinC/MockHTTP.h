@@ -45,6 +45,7 @@ typedef enum mhServerType_t {
     mhHTTPv11Proxy,
     mhHTTPSv1Proxy,     /* Sets up SSL tunnel on CONNECT request. */
     mhHTTPSv11Proxy,    /* Sets up SSL tunnel on CONNECT request. */
+    mhOCSPResponder,
 } mhServerType_t;
 
 typedef enum mhAction_t {
@@ -167,12 +168,13 @@ typedef struct mhResponseBldr_t mhResponseBldr_t;
 #define     InMainThread\
                 mhSetServerThreading(__servctx, mhThreadMain)
 
-/* Finalize MockHTTP library initialization */
-#define EndInit\
-            }
-
 #define   SetupProxy(...)\
                 __servctx = mhNewProxy(__mh);\
+                mhConfigServer(__servctx, __VA_ARGS__, NULL);\
+                mhStartServer(__servctx);
+
+#define   SetupOCSPResponder(...)\
+                __servctx = mhNewOCSPResponder(__mh);\
                 mhConfigServer(__servctx, __VA_ARGS__, NULL);\
                 mhStartServer(__servctx);
 
@@ -203,6 +205,11 @@ typedef struct mhResponseBldr_t mhResponseBldr_t;
 #define     WithTLSv11    mhAddSSLProtocol(__servctx, mhProtoTLSv11)
 #define     WithTLSv12    mhAddSSLProtocol(__servctx, mhProtoTLSv12)
 
+#define     WithOCSPEnabled mhSetServerEnableOCSP(__servctx)
+
+/* Finalize MockHTTP library initialization */
+#define EndInit\
+            }
 /**
  * Stub requests to the proxy or server, return canned responses. Define the
  * expected results before starting the test, so the server can exit early
@@ -331,6 +338,10 @@ typedef struct mhResponseBldr_t mhResponseBldr_t;
 
 #define     ClientCertificateCNEqualTo(x)\
                 mhMatchClientCertCNEqualTo(__mh, (x))
+
+#define     MatchAny\
+                mhMatchAny(__mh)
+
 
 /* Connection-level aspect matching */
 #define   ConnectionSetup(...)\
@@ -467,6 +478,23 @@ typedef struct mhResponseBldr_t mhResponseBldr_t;
 #define EndVerify\
             }
 
+typedef enum mhOCSPRespnseStatus_t {
+    mhOCSPRespnseStatusSuccessful,
+    mhOCSPRespnseStatusMalformedRequest,
+    mhOCSPRespnseStatusInternalError,
+    mhOCSPRespnseStatusTryLater,
+    mhOCSPRespnseStatusSigRequired,
+    mhOCSPRespnseStatusUnauthorized,
+} mhOCSPRespnseStatus_t;
+
+/* Stub a OCSP request (certificate status request). */
+#define   OCSPRequest(...)\
+                __rm = mhGivenOCSPRequest(__mh, __VA_ARGS__, NULL);\
+                mhPushRequest(__mh, __servctx, __rm);
+
+#define     WithOCSPResponseStatus(status)\
+                mhRespOCSPResponseStatus(__resp, (status))
+
 
 typedef struct mhStats_t {
     /* Number of requests received and read by the server. This does not include
@@ -567,6 +595,7 @@ unsigned int mhServerByIDPortNr(const MockHTTP *mh, const char *serverID);
  **/
 mhServCtx_t *mhNewServer(MockHTTP *mh);
 mhServCtx_t *mhNewProxy(MockHTTP *mh);
+mhServCtx_t *mhNewOCSPResponder(MockHTTP *mh);
 mhServCtx_t *mhFindServerByID(const MockHTTP *mh, const char *serverID);
 void mhConfigServer(mhServCtx_t *ctx, ...);
 void mhStartServer(mhServCtx_t *ctx);
@@ -588,10 +617,13 @@ mhServerSetupBldr_t *mhAddServerCertFileArray(mhServCtx_t *ctx,
                                               const char **certFiles);
 mhServerSetupBldr_t *mhSetServerRequestClientCert(mhServCtx_t *ctx,
                                                   mhClientCertVerification_t v);
+mhServerSetupBldr_t *mhSetServerEnableOCSP(mhServCtx_t *ctx);
+
 mhServerSetupBldr_t *mhAddSSLProtocol(mhServCtx_t *ctx, mhSSLProtocol_t proto);
 
 /* Define request stubs */
 mhRequestMatcher_t *mhGivenRequest(MockHTTP *mh, ...);
+mhRequestMatcher_t *mhGivenOCSPRequest(MockHTTP *mh, ...);
 
 /* Request matching functions */
 mhReqMatcherBldr_t *mhMatchURLEqualTo(const MockHTTP *mh,
@@ -621,6 +653,7 @@ void mhGivenConnSetup(MockHTTP *mh, ...);
 mhConnMatcherBldr_t *mhMatchClientCertCNEqualTo(const MockHTTP *mh,
                                                 const char *expected);
 mhConnMatcherBldr_t *mhMatchClientCertValid(const MockHTTP *mh);
+mhConnMatcherBldr_t *mhMatchAny(const MockHTTP *mh);
 
 mhResponse_t *mhNewResponseForRequest(MockHTTP *mh, mhServCtx_t *ctx,
                                       mhRequestMatcher_t *rm);
@@ -642,6 +675,8 @@ mhResponseBldr_t *mhRespSetRawData(mhResponse_t *resp, const char *raw_data,
                                    size_t length);
 mhResponseBldr_t *mhRespSetBodyPattern(mhResponse_t *resp, const char *pattern,
                                        unsigned int n);
+mhResponseBldr_t *
+    mhRespOCSPResponseStatus(mhResponse_t *resp, mhOCSPRespnseStatus_t status);
 
 const void *mhSetOnConditionThat(int condition, void *builder);
 
