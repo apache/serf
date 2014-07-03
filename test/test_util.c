@@ -98,6 +98,9 @@ apr_status_t default_https_conn_setup(apr_socket_t *skt,
                                           tb->server_cert_cb,
                                           tb);
 
+    if (tb->enable_ocsp_stapling)
+        serf_ssl_check_cert_status_request(tb->ssl_context, 1);
+
     serf_ssl_set_hostname(tb->ssl_context, "localhost");
 
     return APR_SUCCESS;

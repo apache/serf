@@ -2659,6 +2659,72 @@ static void test_connect_to_non_http_server(CuTest *tc)
     CuAssertTrue(tc, tb->result_flags & TEST_RESULT_HANDLE_RESPONSECB_CALLED);
 }
 
+static apr_status_t
+ocsp_response_cb_expect_failures(void *baton, int failures,
+                                     const serf_ssl_certificate_t *cert)
+{
+    test_baton_t *tb = baton;
+    int expected_failures = tb->user_baton_l;
+
+    /* Root CA cert is selfsigned, ignore this 'failure'. */
+    failures &= ~SERF_SSL_CERT_SELF_SIGNED;
+
+    /* This callback gets called with both the server certificate and the ocsp
+       response status */
+    tb->result_flags |= TEST_RESULT_SERVERCERTCB_CALLED;
+
+    /* We expect an error from the certificate validation function. */
+    if (!failures)
+        return APR_SUCCESS;
+    if (failures & expected_failures) {
+        tb->result_flags |= TEST_RESULT_OCSP_CHECK_SUCCESSFUL;
+        return APR_SUCCESS;
+    }
+
+    return SERF_ERROR_ISSUE_IN_TESTSUITE;
+}
+
+static void test_ssl_ocsp_response_error_and_override(CuTest *tc)
+{
+    test_baton_t *tb = tc->testBaton;
+    handler_baton_t handler_ctx[1];
+    const int num_requests = sizeof(handler_ctx)/sizeof(handler_ctx[0]);
+    apr_status_t status;
+
+    /* Set up a test context, a https server, and a OCSP responder */
+    setup_test_mock_https_server(tb, server_key,
+                                 all_server_certs,
+                                 test_clientcert_none);
+    status = setup_test_client_https_context(tb,
+                                             default_https_conn_setup,
+                                             ocsp_response_cb_expect_failures,
+                                             tb->pool);
+    CuAssertIntEquals(tc, APR_SUCCESS, status);
+    tb->enable_ocsp_stapling = 1;
+    
+    InitMockServers(tb->mh)
+      ConfigServerWithID("server", WithOCSPEnabled)
+    EndInit
+
+    Given(tb->mh)
+      OCSPRequest(MatchAny)
+        Respond(WithOCSPResponseStatus(mhOCSPRespnseStatusInternalError))
+      GETRequest(URLEqualTo("/"), ChunkedBodyEqualTo("1"),
+                 HeaderEqualTo("Host", tb->serv_host))
+        Respond(WithCode(200), WithChunkedBody(""))
+    EndGiven
+    /* Expect this error */
+    tb->user_baton_l = SERF_SSL_OCSP_RESPONDER_ERROR;
+
+    create_new_request(tb, &handler_ctx[0], "GET", "/", 1);
+
+    run_client_and_mock_servers_loops_expect_ok(tc, tb, num_requests,
+                                                handler_ctx, tb->pool);
+
+    CuAssertTrue(tc, tb->result_flags & TEST_RESULT_SERVERCERTCB_CALLED);
+    CuAssertTrue(tc, tb->result_flags & TEST_RESULT_OCSP_CHECK_SUCCESSFUL);
+}
+
 /*****************************************************************************/
 CuSuite *test_context(void)
 {
@@ -2666,7 +2732,6 @@ CuSuite *test_context(void)
 
     CuSuiteSetSetupTeardownCallbacks(suite, test_setup, test_teardown);
 
-    /* Converted to MockHTTPinC library */
     SUITE_ADD_TEST(suite, test_serf_connection_request_create);
     SUITE_ADD_TEST(suite, test_serf_connection_priority_request_create);
     SUITE_ADD_TEST(suite, test_closed_connection);
@@ -2711,6 +2776,7 @@ CuSuite *test_context(void)
     SUITE_ADD_TEST(suite, test_server_spnego_authn);
     SUITE_ADD_TEST(suite, test_ssl_missing_client_certificate);
     SUITE_ADD_TEST(suite, test_connect_to_non_http_server);
+    SUITE_ADD_TEST(suite, test_ssl_ocsp_response_error_and_override);
 #if 0
     /* WIP: Test hangs */
     SUITE_ADD_TEST(suite, test_ssl_renegotiate);
