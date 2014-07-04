@@ -1442,8 +1442,9 @@ apr_status_t serf_ssl_set_hostname(serf_ssl_context_t *context,
     if (SSL_set_tlsext_host_name(context->ssl, hostname) != 1) {
         ERR_clear_error();
     }
-#endif
     return APR_SUCCESS;
+#endif
+    return APR_ENOTIMPL;
 }
 
 apr_status_t serf_ssl_use_default_certificates(serf_ssl_context_t *ssl_ctx)
