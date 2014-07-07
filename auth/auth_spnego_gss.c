@@ -159,10 +159,11 @@ serf__spnego_init_sec_context(serf_connection_t *conn,
 {
     gss_buffer_desc gss_input_buf = GSS_C_EMPTY_BUFFER;
     gss_buffer_desc *gss_output_buf_p;
-    OM_uint32 gss_min_stat, gss_maj_stat, dummy_stat;
+    OM_uint32 gss_min_stat, gss_maj_stat;
     gss_name_t host_gss_name;
     gss_buffer_desc bufdesc;
-    gss_OID dummy; /* unused */
+    gss_OID dummy;        /* value unused */
+    OM_uint32 dummy_stat; /* value unused */
 
     /* Get the name for the HTTP service at the target host. */
     /* TODO: should be shared between multiple requests. */
@@ -177,7 +178,7 @@ serf__spnego_init_sec_context(serf_connection_t *conn,
         log_error(LOGLVL_ERROR, conn->config, ctx,
                   gss_maj_stat, gss_min_stat,
                   "Error converting principal name to GSS internal format ");
-        gss_release_name(&dummy, &host_gss_name);
+        gss_release_name(&dummy_stat, &host_gss_name);
         return SERF_ERROR_AUTHN_FAILED;
     }
 
