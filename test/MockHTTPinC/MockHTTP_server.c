@@ -356,6 +356,10 @@ static apr_status_t readFromSocket(bucket_t *bkt)
 
     // assert(ctx->offset = 0);
     apr_size_t len = BUFSIZE - ctx->remaining;
+    /* If our buffer is full, process more data first */
+    if (len == 0)
+        return APR_EAGAIN;
+
     STATUSREADERR(ctx->read(ctx->skt, ctx->read_baton,
                             ctx->buf + ctx->remaining, &len));
     if (len) {
@@ -450,9 +454,13 @@ static apr_status_t buffSktPeek(bucket_t *bkt, apr_size_t *len)
 
     status = readFromSocket(bkt);
 
+    if (ctx->remaining > *len) {
+        /* If there was a socket error, assume that it will be returned on the
+           next call to readFromSocket */
+        status = APR_SUCCESS;
+    }
+
     *len = ctx->remaining;
-    if (ctx->remaining > *len)
-        return APR_SUCCESS;
 
     return status;
 }
@@ -1439,6 +1447,7 @@ static _mhClientCtx_t *initClientCtx(apr_pool_t *pool, mhServCtx_t *serv_ctx,
         cctx->clientCert = serv_ctx->clientCert;
         cctx->protocols = serv_ctx->protocols;
         cctx->ocspEnabled = serv_ctx->ocspEnabled;
+        /* TODO: don't ignore status */
         initSSLCtx(cctx);
     }
 #endif
