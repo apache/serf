@@ -25,11 +25,11 @@ static serf_config_key_t
             per_host_test_key =      SERF_CONFIG_PER_HOST | 0xFFFFFF,
             per_context_test_key =   SERF_CONFIG_PER_CONTEXT | 0xFFFFFF,
             per_conn_unknown_key =   SERF_CONFIG_PER_CONNECTION | 0xFF0001,
-            per_host_unknown_key =   SERF_CONFIG_PER_HOST | 0xFF0002,
+/*            per_host_unknown_key =   SERF_CONFIG_PER_HOST | 0xFF0002, */
             per_context_unknown_key = SERF_CONFIG_PER_CONTEXT | 0xFF0003;
 
 #define PER_CONN_UNKNOWN_KEY    &per_conn_unknown_key
-#define PER_HOST_UNKNOWN_KEY    &per_host_unknown_key
+/* #define PER_HOST_UNKNOWN_KEY    &per_host_unknown_key */
 #define PER_CONTEXT_UNKNOWN_KEY &per_context_unknown_key
 #define PER_CONN_TEST_KEY       &per_conn_test_key
 #define PER_HOST_TEST_KEY       &per_host_test_key
