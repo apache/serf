@@ -683,8 +683,9 @@ static apr_status_t readBody(bucket_t *bkt, mhRequest_t *req, bool *done)
  */
 static apr_status_t readChunk(bucket_t *bkt, mhRequest_t *req, bool *done)
 {
-    *done = NO;
     apr_status_t status;
+
+    *done = NO;
 
     switch (req->readState) {
         case ReadStateBody:
@@ -1077,6 +1078,9 @@ void mhPushRequest(MockHTTP *mh, mhServCtx_t *ctx, mhRequestMatcher_t *rm)
         case RequestTypeOCSP:
             matchers = mh->ocspReqMatchers;
             break;
+        default:
+            /* Unsupported request type */
+            return;
     }
     *((ReqMatcherRespPair_t **)apr_array_push(matchers)) = pair;
 }
@@ -2308,6 +2312,9 @@ static int ocspCreateResponse(OCSP_RESPONSE **resp, mhOCSPRespnseStatus_t status
         case mhOCSPRespnseStatusUnauthorized:
             ocspStatus = OCSP_RESPONSE_STATUS_UNAUTHORIZED;
             break;
+        default:
+            /* Unsupported OCSP status */
+            return 0;
     }
 
     *resp = OCSP_response_create(ocspStatus, NULL);

@@ -14,7 +14,6 @@
  */
 
 #include "serf.h"
-#include "serf_private.h"
 #include "serf_bucket_util.h"
 
 #include "test/test_serf.h"

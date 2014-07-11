@@ -21,7 +21,6 @@
 #include <apr_version.h>
 
 #include "serf.h"
-#include "serf_private.h"
 
 #include "test_serf.h"
 
