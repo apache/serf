@@ -181,6 +181,17 @@ create_new_request_with_resp_hdlr(test_baton_t *tb,
                                   int req_id,
                                   serf_response_handler_t handler);
 
+const char *create_large_response_message(apr_pool_t *pool);
+const char *create_large_request_message_body(apr_pool_t *pool);
+const char *create_large_request_message(apr_pool_t *pool, const char *body);
+apr_status_t dummy_authn_callback(char **username,
+                                  char **password,
+                                  serf_request_t *request, void *baton,
+                                  int code, const char *authn_type,
+                                  const char *realm,
+                                  apr_pool_t *pool);
+
+
 /* Mock bucket type and constructor */
 typedef struct mockbkt_action {
     int times;

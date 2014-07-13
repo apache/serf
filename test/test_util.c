@@ -315,6 +315,93 @@ create_new_request_with_resp_hdlr(test_baton_t *tb,
                                    handler_ctx);
 }
 
+const char *create_large_response_message(apr_pool_t *pool)
+{
+    const char *response = "HTTP/1.1 200 OK" CRLF
+                           "Transfer-Encoding: chunked" CRLF
+                           CRLF;
+    struct iovec vecs[500];
+    const int num_vecs = 500;
+    int i, j;
+    apr_size_t len;
+
+    vecs[0].iov_base = (char *)response;
+    vecs[0].iov_len = strlen(response);
+
+    for (i = 1; i < num_vecs; i++)
+    {
+        int chunk_len = 10 * i * 3;
+        char *chunk;
+        char *buf;
+
+        /* end with empty chunk */
+        if (i == num_vecs - 1)
+            chunk_len = 0;
+
+        buf = apr_pcalloc(pool, chunk_len + 1);
+        for (j = 0; j < chunk_len; j += 10)
+            memcpy(buf + j, "0123456789", 10);
+
+        chunk = apr_pstrcat(pool,
+                            apr_psprintf(pool, "%x", chunk_len),
+                            CRLF, buf, CRLF, NULL);
+        vecs[i].iov_base = chunk;
+        vecs[i].iov_len = strlen(chunk);
+    }
+
+    return apr_pstrcatv(pool, vecs, num_vecs, &len);
+}
+
+const char *create_large_request_message_body(apr_pool_t *pool)
+{
+    struct iovec vecs[500];
+    const int num_vecs = 500;
+    int i, j;
+    apr_size_t len;
+
+    for (i = 0; i < num_vecs; i++)
+    {
+        int chunk_len = 10 * (i + 1) * 3;
+        char *chunk;
+        char *buf;
+
+        /* end with empty chunk */
+        if (i == num_vecs - 1)
+            chunk_len = 0;
+
+        buf = apr_pcalloc(pool, chunk_len + 1);
+        for (j = 0; j < chunk_len; j += 10)
+            memcpy(buf + j, "0123456789", 10);
+
+        chunk = apr_pstrcat(pool,
+                            apr_psprintf(pool, "%x", chunk_len),
+                            CRLF, buf, CRLF, NULL);
+        vecs[i].iov_base = chunk;
+        vecs[i].iov_len = strlen(chunk);
+    }
+
+    return apr_pstrcatv(pool, vecs, num_vecs, &len);
+
+}
+
+/* Dummy authn callback, shouldn't be called! */
+apr_status_t dummy_authn_callback(char **username,
+                                  char **password,
+                                  serf_request_t *request, void *baton,
+                                  int code, const char *authn_type,
+                                  const char *realm,
+                                  apr_pool_t *pool)
+{
+    handler_baton_t *handler_ctx = baton;
+    test_baton_t *tb = handler_ctx->tb;
+
+    test__log(TEST_VERBOSE, __FILE__, "dummy_authn_callback\n");
+
+    tb->result_flags |= TEST_RESULT_AUTHNCB_CALLED;
+
+    return SERF_ERROR_ISSUE_IN_TESTSUITE;
+}
+
 /*****************************************************************************/
 /* Test utility functions, to be used with the MockHTTPinC framework         */
 /*****************************************************************************/
@@ -508,6 +595,16 @@ void setup_test_mock_https_server(test_baton_t *tb,
     tb->serv_port = mhServerPortNr(tb->mh);
     tb->serv_host = apr_psprintf(tb->pool, "%s:%d", "localhost", tb->serv_port);
     tb->serv_url = apr_psprintf(tb->pool, "https://%s", tb->serv_host);
+}
+
+const char *create_large_request_message(apr_pool_t *pool, const char *body)
+{
+    const char *request = "GET / HTTP/1.1" CRLF
+                          "Host: localhost:12345" CRLF
+                          "Transfer-Encoding: chunked" CRLF
+                          CRLF;
+
+    return apr_pstrcat(pool, request, body, NULL);
 }
 
 void *test_setup(void *dummy)
