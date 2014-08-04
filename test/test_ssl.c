@@ -1927,6 +1927,135 @@ static void test_ssl_ocsp_response_error_and_override(CuTest *tc)
     CuAssertTrue(tc, tb->result_flags & TEST_RESULT_OCSP_CHECK_SUCCESSFUL);
 }
 
+/* Validate that the subject's CN containing a '\0' byte is reported as failure
+   SERF_SSL_CERT_INVALID_HOST in the callback. */
+static void test_ssl_server_cert_with_cn_nul_byte(CuTest *tc)
+{
+    test_baton_t *tb = tc->testBaton;
+    handler_baton_t handler_ctx[1];
+    const int num_requests = sizeof(handler_ctx)/sizeof(handler_ctx[0]);
+    int expected_failures;
+    apr_status_t status;
+
+    static const char *nul_byte_server_certs[] = {
+        "servercert_cn_nul.pem",
+        "cacert_nul.pem",
+        NULL };
+    static const char *nul_byte_server_key = "servercert_cn_nul.key";
+
+    /* Set up a test context and a https server */
+    setup_test_mock_https_server(tb, nul_byte_server_key,
+                                 nul_byte_server_certs,
+                                 test_clientcert_none);
+    status = setup_test_client_https_context(tb,
+                                             NULL, /* default conn setup */
+                                             ssl_server_cert_cb_expect_failures,
+                                             tb->pool);
+    CuAssertIntEquals(tc, APR_SUCCESS, status);
+
+    expected_failures = SERF_SSL_CERT_SELF_SIGNED |
+                        SERF_SSL_CERT_INVALID_HOST; /* NUL byte error */
+    tb->user_baton = &expected_failures;
+
+    Given(tb->mh)
+      GETRequest(URLEqualTo("/"), ChunkedBodyEqualTo("1"),
+                 HeaderEqualTo("Host", tb->serv_host))
+        Respond(WithCode(200), WithChunkedBody(""))
+    EndGiven
+
+    create_new_request(tb, &handler_ctx[0], "GET", "/", 1);
+
+    run_client_and_mock_servers_loops_expect_ok(tc, tb, num_requests,
+                                                handler_ctx, tb->pool);
+    CuAssertTrue(tc, tb->result_flags & TEST_RESULT_SERVERCERTCB_CALLED);
+}
+
+/* Validate that the subject's SAN containing a '\0' byte is reported as failure
+   SERF_SSL_CERT_INVALID_HOST in the callback. */
+static void test_ssl_server_cert_with_san_nul_byte(CuTest *tc)
+{
+    test_baton_t *tb = tc->testBaton;
+    handler_baton_t handler_ctx[1];
+    const int num_requests = sizeof(handler_ctx)/sizeof(handler_ctx[0]);
+    int expected_failures;
+    apr_status_t status;
+
+    static const char *nul_byte_server_certs[] = {
+        "servercert_san_nul.pem",
+        "cacert_nul.pem",
+        NULL };
+    static const char *nul_byte_server_key = "servercert_san_nul.key";
+
+    /* Set up a test context and a https server */
+    setup_test_mock_https_server(tb, nul_byte_server_key,
+                                 nul_byte_server_certs,
+                                 test_clientcert_none);
+    status = setup_test_client_https_context(tb,
+                                             NULL, /* default conn setup */
+                                             ssl_server_cert_cb_expect_failures,
+                                             tb->pool);
+    CuAssertIntEquals(tc, APR_SUCCESS, status);
+
+    expected_failures = SERF_SSL_CERT_SELF_SIGNED |
+                        SERF_SSL_CERT_INVALID_HOST; /* NUL byte error */
+    tb->user_baton = &expected_failures;
+
+    Given(tb->mh)
+      GETRequest(URLEqualTo("/"), ChunkedBodyEqualTo("1"),
+                 HeaderEqualTo("Host", tb->serv_host))
+        Respond(WithCode(200), WithChunkedBody(""))
+    EndGiven
+
+    create_new_request(tb, &handler_ctx[0], "GET", "/", 1);
+
+    run_client_and_mock_servers_loops_expect_ok(tc, tb, num_requests,
+                                                handler_ctx, tb->pool);
+    CuAssertTrue(tc, tb->result_flags & TEST_RESULT_SERVERCERTCB_CALLED);
+}
+
+/* Validate that the subject's CN and SAN containing a '\0' byte is reported
+   as failure SERF_SSL_CERT_INVALID_HOST in the callback. */
+static void test_ssl_server_cert_with_cnsan_nul_byte(CuTest *tc)
+{
+    test_baton_t *tb = tc->testBaton;
+    handler_baton_t handler_ctx[1];
+    const int num_requests = sizeof(handler_ctx)/sizeof(handler_ctx[0]);
+    int expected_failures;
+    apr_status_t status;
+
+    static const char *nul_byte_server_certs[] = {
+        "servercert_cnsan_nul.pem",
+        "cacert_nul.pem",
+        NULL };
+    static const char *nul_byte_server_key = "servercert_cnsan_nul.key";
+
+    /* Set up a test context and a https server */
+    setup_test_mock_https_server(tb, nul_byte_server_key,
+                                 nul_byte_server_certs,
+                                 test_clientcert_none);
+    status = setup_test_client_https_context(tb,
+                                             NULL, /* default conn setup */
+                                             ssl_server_cert_cb_expect_failures,
+                                             tb->pool);
+    CuAssertIntEquals(tc, APR_SUCCESS, status);
+
+    expected_failures = SERF_SSL_CERT_SELF_SIGNED |
+                        SERF_SSL_CERT_INVALID_HOST; /* NUL byte error */
+    tb->user_baton = &expected_failures;
+
+    Given(tb->mh)
+      GETRequest(URLEqualTo("/"), ChunkedBodyEqualTo("1"),
+                 HeaderEqualTo("Host", tb->serv_host))
+        Respond(WithCode(200), WithChunkedBody(""))
+    EndGiven
+
+    create_new_request(tb, &handler_ctx[0], "GET", "/", 1);
+
+    run_client_and_mock_servers_loops_expect_ok(tc, tb, num_requests,
+                                                handler_ctx, tb->pool);
+    CuAssertTrue(tc, tb->result_flags & TEST_RESULT_SERVERCERTCB_CALLED);
+}
+
 CuSuite *test_ssl(void)
 {
     CuSuite *suite = CuSuiteNew();
@@ -1966,6 +2095,9 @@ CuSuite *test_ssl(void)
     SUITE_ADD_TEST(suite, test_ssl_missing_client_certificate);
     SUITE_ADD_TEST(suite, test_connect_to_non_http_server);
     SUITE_ADD_TEST(suite, test_ssl_ocsp_response_error_and_override);
+    SUITE_ADD_TEST(suite, test_ssl_server_cert_with_cn_nul_byte);
+    SUITE_ADD_TEST(suite, test_ssl_server_cert_with_san_nul_byte);
+    SUITE_ADD_TEST(suite, test_ssl_server_cert_with_cnsan_nul_byte);
 #if 0
     /* WIP: Test hangs */
     SUITE_ADD_TEST(suite, test_ssl_renegotiate);
