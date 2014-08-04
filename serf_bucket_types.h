@@ -495,6 +495,7 @@ serf_bucket_t *serf_bucket_limit_create(
 #define SERF_SSL_CERT_UNKNOWN_FAILURE   0x0010
 #define SERF_SSL_CERT_REVOKED           0x0020
 #define SERF_SSL_CERT_UNABLE_TO_GET_CRL 0x0040
+#define SERF_SSL_CERT_INVALID_HOST      0x0080
 
 #define SERF_SSL_OCSP_RESPONDER_TRYLATER        0x0100
 #define SERF_SSL_OCSP_RESPONDER_ERROR           0x0200
