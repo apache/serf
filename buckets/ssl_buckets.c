@@ -443,6 +443,10 @@ get_subject_alt_names(apr_array_header_t **san_arr, X509 *ssl_cert,
 
     /* assert: copy_action == ErrorOnNul || (san_arr && pool) */
 
+    if (san_arr) {
+        *san_arr = NULL;
+    }
+
     /* Get subjectAltNames */
     names = X509_get_ext_d2i(ssl_cert, NID_subject_alt_name, NULL, NULL);
     if (names) {
