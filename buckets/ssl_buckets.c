@@ -557,6 +557,12 @@ typedef enum san_copy_t {
 } san_copy_t;
 
 
+/* get_subject_alt_names can run in two modes:
+   COPY_ACTION = ErrorOnNul: return an error status if the san's (if any) contain
+       \0 chars. In this mode, SAN_ARR and POOL aren't used and can be NULL.
+   COPY_ACTION = EscapeNulAndCopy: copy the san's to the SAN_ARR array. Any \0
+       chars are escaped as '\00', the memory is allocated in pool POOL.
+ */
 static apr_status_t
 get_subject_alt_names(apr_array_header_t **san_arr, X509 *ssl_cert,
                       san_copy_t copy_action, apr_pool_t *pool)
