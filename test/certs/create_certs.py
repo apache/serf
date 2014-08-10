@@ -75,9 +75,17 @@ def create_crl(revokedcert, cakey, cacert, crlfile, next_crl_days=VALID_DAYS):
     crl.add_revoked(revoked)
     open(crlfile, "wt").write(crl.export(cacert, cakey, days=next_crl_days))
 
+# subjectAltName
 def create_cert(subjectkey, certfile, issuer=None, issuerkey=None, country='', 
                 state='', city='', org='', ou='', cn='', email='', ca=False, 
-                valid_before=0, days_valid=VALID_DAYS):
+                valid_before=0, days_valid=VALID_DAYS, subjectAltName=None):
+    '''
+    Create a X509 signed certificate.
+    
+    subjectAltName
+        Array of fully qualified subject alternative names (use OpenSSL syntax):
+        For a DNS entry, use: ['DNS:localhost']. Other options are 'email', 'URI', 'IP'.
+    '''
     cert = crypto.X509()
 
     cert.set_version(3-1) # version 3, starts at 0
@@ -86,7 +94,8 @@ def create_cert(subjectkey, certfile, issuer=None, issuerkey=None, country='',
     cert.get_subject().L  = city 
     cert.get_subject().O  = org 
     cert.get_subject().OU = ou
-    cert.get_subject().CN = cn
+    if cn:
+        cert.get_subject().CN = cn
     cert.get_subject().emailAddress = email
     cert.set_serial_number(SERIAL_NUMBER)
     cert.set_pubkey(subjectkey)
@@ -110,7 +119,12 @@ def create_cert(subjectkey, certfile, issuer=None, issuerkey=None, country='',
             crypto.X509Extension("authorityKeyIdentifier", False, 
                                  "keyid:always", issuer=issuer)
             ])
-    
+
+    if subjectAltName:
+        critical = True if not cn else False
+        cert.add_extensions([
+            crypto.X509Extension('subjectAltName', critical, ", ".join(subjectAltName))])
+
     cert.sign(issuerkey, SIGN_ALGO)
 
     open(certfile, "wt").write(crypto.dump_certificate(crypto.FILETYPE_PEM, 
@@ -172,6 +186,18 @@ if __name__ == '__main__':
                               email='serfserver@example.com',
                               valid_before=10*365,
                               days_valid=13*365)
+
+    # server certificate that will be valid in 10 years
+    san_nocncert = create_cert(subjectkey=serverkey,
+                               certfile='serfserver_san_nocn_cert.pem',
+                               issuer=cacert, issuerkey=cakey,
+                               country='BE', state='Antwerp', city='Mechelen',
+                               org='In Serf we trust, Inc.',
+                               ou='Test Suite Server',
+                               cn=None,
+                               email='serfserver@example.com',
+                               days_valid=13*365,
+                               subjectAltName=['DNS:localhost'])
 
     # client key pair and certificate
     clientkey = create_key('private/serfclientkey.pem', 'serftest')
