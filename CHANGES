@@ -1,4 +1,4 @@
-Serf 1.3.7 [2014-08-11, from /tags/1.3.7, rxxxx]
+Serf 1.3.7 [2014-08-11, from /tags/1.3.7, r2407]
   Handle NUL bytes in fields of an X.509 certificate. (r2393, r2399)
 
 Serf 1.3.6 [2014-06-09, from /tags/1.3.6, r2372]
