@@ -307,7 +307,7 @@ do_auth(peer_t peer,
                           "switching to (slower) stateless mode.\n");
 
                 gss_info->pstate = pstate_stateless;
-                serf_connection_set_max_outstanding_requests(conn, 1);
+                serf__connection_set_pipelining(conn, 0);
                 break;
             }
         case pstate_stateless:
@@ -403,7 +403,7 @@ serf__init_spnego_connection(const serf__authn_scheme_t *scheme,
     }
 
     /* Make serf send the initial requests one by one */
-    serf_connection_set_max_outstanding_requests(conn, 1);
+    serf__connection_set_pipelining(conn, 0);
 
     serf__log(LOGLVL_DEBUG, LOGCOMP_AUTHN, __FILE__, conn->config,
               "Initialized Kerberos context for this connection.\n");
@@ -637,7 +637,7 @@ serf__validate_response_spnego_auth(const serf__authn_scheme_t *scheme,
                    we didn't add an Authorization header to previous
                    request. That means it supports persistent authentication. */
                 gss_info->pstate = pstate_stateful;
-                serf_connection_set_max_outstanding_requests(conn, 0);
+                serf__connection_set_pipelining(conn, 1);
                 break;
             default:
                 /* Nothing to do here. */
