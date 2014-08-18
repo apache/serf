@@ -793,13 +793,15 @@ static apr_status_t write_to_connection(serf_connection_t *conn)
         apr_status_t read_status;
         serf_bucket_t *ostreamt;
         serf_bucket_t *ostreamh;
+        int reqs_in_progress;
+
+        reqs_in_progress = conn->completed_requests - conn->completed_responses;
 
         /* If we're setting up an ssl tunnel, we can't send real requests
            at yet, as they need to be encrypted and our encrypt buckets
            aren't created yet as we still need to read the unencrypted
            response of the CONNECT request. */
-        if (conn->state == SERF_CONN_SETUP_SSLTUNNEL
-            && conn->completed_requests > conn->completed_responses)
+        if (conn->state == SERF_CONN_SETUP_SSLTUNNEL && reqs_in_progress > 0)
         {
             return APR_SUCCESS;
         }
@@ -807,8 +809,14 @@ static apr_status_t write_to_connection(serf_connection_t *conn)
         /* We try to limit the number of in-flight requests so that we
            don't have to repeat too many if the connection drops.  */
         if (conn->max_outstanding_requests
-            && (conn->completed_requests - conn->completed_responses
-                >= conn->max_outstanding_requests))
+            && (reqs_in_progress >= conn->max_outstanding_requests))
+        {
+            /* backoff for now. */
+            return APR_SUCCESS;
+        }
+
+        /* If pipelining is disabled, max. one request should be in progress */
+        if (!conn->pipelining && reqs_in_progress > 0)
         {
             /* backoff for now. */
             return APR_SUCCESS;
@@ -1450,6 +1458,7 @@ serf_connection_t *serf_connection_create(
     conn->hit_eof = 0;
     conn->state = SERF_CONN_INIT;
     conn->latency = -1; /* unknown */
+    conn->pipelining = 1;
 
     /* Create a subpool for our connection. */
     apr_pool_create(&conn->skt_pool, conn->pool);
@@ -1609,6 +1618,15 @@ void serf_connection_set_max_outstanding_requests(
     conn->max_outstanding_requests = max_requests;
 }
 
+/* Disable HTTP pipelining, ensure that only one request is outstanding at a 
+   time. This is an internal method, an application that wants to disable
+   HTTP pipelining can achieve this by calling:
+     serf_connection_set_max_outstanding_requests(conn, 1) .
+ */
+void serf__connection_set_pipelining(serf_connection_t *conn, int enabled)
+{
+    conn->pipelining = enabled;
+}
 
 void serf_connection_set_async_responses(
     serf_connection_t *conn,

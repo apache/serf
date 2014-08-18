@@ -353,7 +353,7 @@ serf__handle_digest_auth(int code,
 
     /* If the handshake is finished tell serf it can send as much requests as it
        likes. */
-    serf_connection_set_max_outstanding_requests(conn, 0);
+    serf__connection_set_pipelining(conn, 1);
 
     return status;
 }
@@ -386,7 +386,7 @@ serf__init_digest_connection(const serf__authn_scheme_t *scheme,
     }
 
     /* Make serf send the initial requests one by one */
-    serf_connection_set_max_outstanding_requests(conn, 1);
+    serf__connection_set_pipelining(conn, 0);
 
     return APR_SUCCESS;
 }

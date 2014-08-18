@@ -365,6 +365,10 @@ struct serf_connection_t {
     /* Max. number of outstanding requests. */
     unsigned int max_outstanding_requests;
 
+    /* Flag to enable or disable HTTP pipelining. This flag is used internally
+       only. */
+    int pipelining;
+
     int hit_eof;
 
     /* Host url, path ommitted, syntax: https://svn.apache.org . */
@@ -539,6 +543,8 @@ apr_status_t serf__conn_update_pollset(serf_connection_t *conn);
 serf_request_t *serf__ssltunnel_request_create(serf_connection_t *conn,
                                                serf_request_setup_t setup,
                                                void *setup_baton);
+void serf__connection_set_pipelining(serf_connection_t *conn, int enabled);
+
 apr_status_t serf__provide_credentials(serf_context_t *ctx,
                                        char **username,
                                        char **password,
