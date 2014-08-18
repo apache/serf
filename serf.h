@@ -1205,13 +1205,13 @@ extern serf_config_key_t serf_config_ctx_logbaton;
 
    Category     Key          Value Type
    --------     ---          ----------
-   Context      logflags     int64_t
-   Context      proxyauthn   apr_hash_t *
+   Context      logbaton     log_baton_t *
+   Context      proxyauthn   apr_hash_t * (not implemented)
    Connection   localip      const char *
    Connection   remoteip     const char *
    Host         hostname     const char *
    Host         hostport     const char *
-   Host         authn        apr_hash_t *
+   Host         authn        apr_hash_t * (not implemented)
 */
 
 /* Set a value of type const char * for configuration item CATEGORY+KEY.
