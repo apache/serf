@@ -19,13 +19,61 @@
 #include "serf_bucket_util.h"
 #include "serf_private.h"
 
-/* APR requires the keys in its hash table to be pointers. */
-serf_config_key_t
-        serf_config_host_name = SERF_CONFIG_PER_HOST | 0x000001,
-        serf_config_host_port = SERF_CONFIG_PER_HOST | 0x000002,
-        serf_config_conn_localip =  SERF_CONFIG_PER_CONNECTION | 0x000003,
-        serf_config_conn_remoteip = SERF_CONFIG_PER_CONNECTION | 0x000004,
-        serf_config_ctx_logbaton = SERF_CONFIG_PER_CONTEXT | 0x000005;
+/* Use a linked list to store the config values, as we'll only store a couple
+   of values per context. */
+struct serf__config_hdr_t {
+    apr_pool_t *pool;
+    struct config_entry_t *first;
+};
+
+typedef struct config_entry_t {
+    apr_uint32_t key;
+    void *value;
+    struct config_entry_t *next;
+} config_entry_t;
+
+static serf__config_hdr_t *create_config_hdr(apr_pool_t *pool)
+{
+    serf__config_hdr_t *hdr = apr_pcalloc(pool, sizeof(serf__config_hdr_t));
+    hdr->pool = pool;
+    return hdr;
+}
+
+static apr_status_t
+add_or_replace_entry(serf__config_hdr_t *hdr, serf_config_key_t key, void *value)
+{
+    config_entry_t *iter = hdr->first;
+    config_entry_t *last = iter;
+    int found = FALSE;
+
+    /* Find the entry with the matching key. If it exists, replace its value. */
+    while (iter != NULL) {
+        if (iter->key == key) {
+            found = TRUE;
+            break;
+        }
+        last = iter;
+        iter = iter->next;
+    }
+
+    if (found) {
+        iter->key = key;
+        iter->value = value;
+    } else {
+        /* Not found, create a new entry and append it to the list. */
+        config_entry_t *entry = apr_palloc(hdr->pool, sizeof(config_entry_t));
+        entry->key = key;
+        entry->value = value;
+        entry->next = NULL;
+        
+        if (last)
+            last->next = entry;
+        else
+            hdr->first = entry;
+    }
+
+    return APR_SUCCESS;
+}
 
 /*** Config Store ***/
 apr_status_t serf__config_store_init(serf_context_t *ctx)
@@ -33,7 +81,7 @@ apr_status_t serf__config_store_init(serf_context_t *ctx)
     apr_pool_t *pool = ctx->pool;
 
     ctx->config_store.pool = pool;
-    ctx->config_store.global_per_context = apr_hash_make(pool);
+    ctx->config_store.global_per_context = create_config_hdr(pool);
     ctx->config_store.global_per_host = apr_hash_make(pool);
     ctx->config_store.global_per_conn = apr_hash_make(pool);
 
@@ -71,7 +119,7 @@ apr_status_t serf__config_store_get_config(serf_context_t *ctx,
 
     if (conn) {
         const char *host_key, *conn_key;
-        apr_hash_t *per_conn, *per_host;
+        serf__config_hdr_t *per_conn, *per_host;
         apr_pool_t *tmp_pool;
         apr_status_t status;
 
@@ -86,7 +134,7 @@ apr_status_t serf__config_store_get_config(serf_context_t *ctx,
         per_conn = apr_hash_get(config_store->global_per_conn, conn_key,
                                 APR_HASH_KEY_STRING);
         if (!per_conn) {
-            per_conn = apr_hash_make(conn->pool);
+            per_conn = create_config_hdr(conn->pool);
             apr_hash_set(config_store->global_per_conn,
                          apr_pstrdup(conn->pool, conn_key),
                          APR_HASH_KEY_STRING, per_conn);
@@ -100,7 +148,7 @@ apr_status_t serf__config_store_get_config(serf_context_t *ctx,
                                 host_key,
                                 APR_HASH_KEY_STRING);
         if (!per_host) {
-            per_host = apr_hash_make(config_store->pool);
+            per_host = create_config_hdr(config_store->pool);
             apr_hash_set(config_store->global_per_host,
                          apr_pstrdup(config_store->pool, host_key),
                          APR_HASH_KEY_STRING, per_host);
@@ -131,7 +179,7 @@ serf__config_store_remove_host(serf__config_store_t config_store,
 
 /*** Config ***/
 apr_status_t serf_config_set_string(serf_config_t *config,
-                                    serf_config_key_ptr_t key,
+                                    serf_config_key_t key,
                                     const char *value)
 {
     /* Cast away const is ok here, the callers should always use
@@ -140,15 +188,14 @@ apr_status_t serf_config_set_string(serf_config_t *config,
 }
 
 apr_status_t serf_config_set_stringc(serf_config_t *config,
-                                     serf_config_key_ptr_t key,
+                                     serf_config_key_t key,
                                      const char *value)
 {
     const char *cvalue;
-    serf_config_key_t keyint = *key;
     apr_pool_t *pool;
 
-    if (keyint & SERF_CONFIG_PER_CONTEXT ||
-        keyint & SERF_CONFIG_PER_HOST) {
+    if (key & SERF_CONFIG_PER_CONTEXT ||
+        key & SERF_CONFIG_PER_HOST) {
         pool = config->ctx_pool;
     } else {
         pool = config->conn_pool;
@@ -160,17 +207,16 @@ apr_status_t serf_config_set_stringc(serf_config_t *config,
 }
 
 apr_status_t serf_config_set_stringf(serf_config_t *config,
-                                     serf_config_key_ptr_t key,
+                                     serf_config_key_t key,
                                      const char *fmt, ...)
 {
     apr_pool_t *pool;
-    serf_config_key_t keyint = *key;
     va_list argp;
     char *cvalue;
 
-    if (keyint & SERF_CONFIG_PER_CONTEXT)
+    if (key & SERF_CONFIG_PER_CONTEXT)
         pool = config->ctx_pool;
-    else if (keyint & SERF_CONFIG_PER_HOST)
+    else if (key & SERF_CONFIG_PER_HOST)
         pool = config->ctx_pool;
     else
         pool = config->conn_pool;
@@ -183,64 +229,70 @@ apr_status_t serf_config_set_stringf(serf_config_t *config,
 }
 
 apr_status_t serf_config_set_object(serf_config_t *config,
-                                    serf_config_key_ptr_t key,
+                                    serf_config_key_t key,
                                     void *value)
 {
-    apr_hash_t *target;
-    serf_config_key_t keyint = *key;
+    serf__config_hdr_t *target;
 
     /* Set the value in the hash table of the selected category */
-    if (keyint & SERF_CONFIG_PER_CONTEXT)
+    if (key & SERF_CONFIG_PER_CONTEXT) {
         target = config->per_context;
-    else if (keyint & SERF_CONFIG_PER_HOST)
+    }
+    else if (key & SERF_CONFIG_PER_HOST) {
         target = config->per_host;
-    else
+    }
+    else {
         target = config->per_conn;
+    }
 
     if (!target) {
         /* Config object doesn't manage keys in this category */
         return APR_EINVAL;
     }
 
-    apr_hash_set(target, key, sizeof(serf_config_key_t), value);
-
-    return APR_SUCCESS;
+    return add_or_replace_entry(target, key, value);
 }
 
 apr_status_t serf_config_get_string(serf_config_t *config,
-                                    serf_config_key_ptr_t key,
+                                    serf_config_key_t key,
                                     const char **value)
 {
     return serf_config_get_object(config, key, (void**)value);
 }
 
 apr_status_t serf_config_get_object(serf_config_t *config,
-                                    serf_config_key_ptr_t key,
+                                    serf_config_key_t key,
                                     void **value)
 {
-    apr_hash_t *target;
-    serf_config_key_t keyint = *key;
+    serf__config_hdr_t *target;
 
-    if (keyint & SERF_CONFIG_PER_CONTEXT)
+    if (key & SERF_CONFIG_PER_CONTEXT)
         target = config->per_context;
-    else if (keyint & SERF_CONFIG_PER_HOST)
+    else if (key & SERF_CONFIG_PER_HOST)
         target = config->per_host;
     else
         target = config->per_conn;
 
-    if (!target) {
+    *value = NULL;
+    if (target) {
+        config_entry_t *iter = target->first;
+        /* Find the matching key and return its value */
+        while (iter != NULL) {
+            if (iter->key == key) {
+                *value = iter->value;
+                return APR_SUCCESS;
+            }
+            iter = iter->next;
+        }
+        return APR_SUCCESS;
+    } else {
         /* Config object doesn't manage keys in this category */
-        *value = NULL;
         return APR_EINVAL;
     }
-
-    *value = (char*)apr_hash_get(target, key, sizeof(serf_config_key_t));
-
-    return APR_SUCCESS;
 }
 
 apr_status_t serf_config_remove_value(serf_config_t *config,
-                                      serf_config_key_ptr_t key)
+                                      serf_config_key_t key)
 {
     return serf_config_set_object(config, key, NULL);
 }

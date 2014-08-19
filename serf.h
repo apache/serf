@@ -1175,7 +1175,6 @@ struct serf_connection_type_t {
 /*** Configuration store declarations ***/
 
 typedef const apr_uint32_t serf_config_key_t;
-typedef serf_config_key_t * serf_config_key_ptr_t;
 
 /* The left-most byte of the int32 key holds the category (bit flags).
    The other bytes are a number representing the key.
@@ -1189,17 +1188,11 @@ typedef enum {
     SERF_CONFIG_PER_CONNECTION = 0x40000000,
 } serf_config_categories_t;
 
-extern serf_config_key_t serf_config_host_name;
-extern serf_config_key_t serf_config_host_port;
-extern serf_config_key_t serf_config_conn_localip;
-extern serf_config_key_t serf_config_conn_remoteip;
-extern serf_config_key_t serf_config_ctx_logbaton;
-
-#define SERF_CONFIG_HOST_NAME &serf_config_host_name
-#define SERF_CONFIG_HOST_PORT &serf_config_host_port
-#define SERF_CONFIG_CONN_LOCALIP  &serf_config_conn_localip
-#define SERF_CONFIG_CONN_REMOTEIP &serf_config_conn_remoteip
-#define SERF_CONFIG_CTX_LOGBATON &serf_config_ctx_logbaton
+#define SERF_CONFIG_HOST_NAME       SERF_CONFIG_PER_HOST | 0x000001
+#define SERF_CONFIG_HOST_PORT       SERF_CONFIG_PER_HOST | 0x000002
+#define SERF_CONFIG_CONN_LOCALIP    SERF_CONFIG_PER_CONNECTION | 0x000003
+#define SERF_CONFIG_CONN_REMOTEIP   SERF_CONFIG_PER_CONNECTION | 0x000004
+#define SERF_CONFIG_CTX_LOGBATON    SERF_CONFIG_PER_CONTEXT | 0x000005
 
 /* Configuration values stored in the configuration store:
 
@@ -1218,14 +1211,14 @@ extern serf_config_key_t serf_config_ctx_logbaton;
    @since New in 1.4.
  */
 apr_status_t serf_config_set_string(serf_config_t *config,
-                                    serf_config_key_ptr_t key,
+                                    serf_config_key_t key,
                                     const char *value);
 /* Copy a value of type const char * and set it for configuration item
    CATEGORY+KEY.
    @since New in 1.4.
  */
 apr_status_t serf_config_set_stringc(serf_config_t *config,
-                                     serf_config_key_ptr_t key,
+                                     serf_config_key_t key,
                                      const char *value);
 
 /* Set a value of generic type for configuration item CATEGORY+KEY.
@@ -1233,7 +1226,7 @@ apr_status_t serf_config_set_stringc(serf_config_t *config,
    @since New in 1.4.
  */
 apr_status_t serf_config_set_stringf(serf_config_t *config,
-                                     serf_config_key_ptr_t key,
+                                     serf_config_key_t key,
                                      const char *fmt, ...);
 
 /* Set a value of generic type for configuration item CATEGORY+KEY.
@@ -1241,7 +1234,7 @@ apr_status_t serf_config_set_stringf(serf_config_t *config,
    @since New in 1.4.
  */
 apr_status_t serf_config_set_object(serf_config_t *config,
-                                    serf_config_key_ptr_t key,
+                                    serf_config_key_t key,
                                     void *value);
 
 /* Get the value for configuration item CATEGORY+KEY. The value's type will 
@@ -1251,11 +1244,11 @@ apr_status_t serf_config_set_object(serf_config_t *config,
    @since New in 1.4.
  */
 apr_status_t serf_config_get_string(serf_config_t *config,
-                                    serf_config_key_ptr_t key,
+                                    serf_config_key_t key,
                                     const char **value);
 
 apr_status_t serf_config_get_object(serf_config_t *config,
-                                    serf_config_key_ptr_t key,
+                                    serf_config_key_t key,
                                     void **value);
 
 /* Remove the value for configuration item CATEGORY+KEY from the configuration
@@ -1263,7 +1256,7 @@ apr_status_t serf_config_get_object(serf_config_t *config,
    @since New in 1.4.
  */
 apr_status_t serf_config_remove_value(serf_config_t *config,
-                                      serf_config_key_ptr_t key);
+                                      serf_config_key_t key);
 
 /*** Serf logging API ***/
 
