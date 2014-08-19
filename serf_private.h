@@ -154,6 +154,8 @@ typedef struct serf__authn_info_t {
 
 /*** Configuration store declarations ***/
 
+typedef struct serf__config_hdr_t serf__config_hdr_t;
+
 struct serf_config_t {
     /* Pool for per-connection configuration values */
     apr_pool_t *conn_pool;
@@ -162,18 +164,18 @@ struct serf_config_t {
 
 
     /* Configuration key/value pairs per context */
-    apr_hash_t *per_context;
+    serf__config_hdr_t *per_context;
     /* Configuration key/value pairs per host */
-    apr_hash_t *per_host;
+    serf__config_hdr_t *per_host;
     /* Configuration key/value pairs per connection */
-    apr_hash_t *per_conn;
+    serf__config_hdr_t *per_conn;
 };
 
 typedef struct serf__config_store_t {
     apr_pool_t *pool;
 
     /* Configuration key/value pairs per context */
-    apr_hash_t *global_per_context;
+    serf__config_hdr_t *global_per_context;
 
     /* Configuration per host, dual-layered:
      Key: hostname:port
