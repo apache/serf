@@ -143,7 +143,6 @@ static apr_status_t serf_deflate_read(serf_bucket_t *bucket,
                                       const char **data, apr_size_t *len)
 {
     deflate_context_t *ctx = bucket->data;
-    unsigned long compCRC, compLen;
     apr_status_t status;
     const char *private_data;
     apr_size_t private_len;
@@ -195,6 +194,9 @@ static apr_status_t serf_deflate_read(serf_bucket_t *bucket,
             ctx->state++;
             break;
         case STATE_VERIFY:
+        {
+            unsigned long compCRC, compLen, actualLen;
+
             /* Do the checksum computation. */
             compCRC = getLong((unsigned char*)ctx->hdr_buffer);
             if (ctx->crc != compCRC) {
@@ -204,7 +206,11 @@ static apr_status_t serf_deflate_read(serf_bucket_t *bucket,
                 return SERF_ERROR_DECOMPRESSION_FAILED;
             }
             compLen = getLong((unsigned char*)ctx->hdr_buffer + 4);
-            if (ctx->zstream.total_out != compLen) {
+            /* The length in the trailer is module 2^32, so do the same for
+               the actual length. */
+            actualLen = ctx->zstream.total_out;
+            actualLen &= 0xFFFFFFFF;
+            if (actualLen != compLen) {
                 serf__log(LOGLVL_ERROR, LOGCOMP_COMPR, __FILE__, ctx->config,
                           "Incorrect length. Expected: %ld, Actual:%ld\n",
                           compLen, ctx->zstream.total_out);
@@ -212,6 +218,7 @@ static apr_status_t serf_deflate_read(serf_bucket_t *bucket,
             }
             ctx->state++;
             break;
+        }
         case STATE_INIT:
             zRC = inflateInit2(&ctx->zstream, ctx->windowSize);
             if (zRC != Z_OK) {
