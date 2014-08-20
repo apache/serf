@@ -282,10 +282,14 @@ static apr_status_t serf_deflate_read(serf_bucket_t *bucket,
                 ctx->zstream.next_in = (unsigned char*)private_data;
                 ctx->zstream.avail_in = private_len;
             }
-            zRC = Z_OK;
-            while (ctx->zstream.avail_in != 0) {
-                /* We're full, clear out our buffer, reset, and return. */
-                if (ctx->zstream.avail_out == 0) {
+
+            while (1) {
+
+                zRC = inflate(&ctx->zstream, Z_NO_FLUSH);
+
+                /* We're full or zlib requires more space. Either case, clear
+                   out our buffer, reset, and return. */
+                if (zRC == Z_BUF_ERROR || ctx->zstream.avail_out == 0) {
                     serf_bucket_t *tmp;
                     ctx->zstream.next_out = ctx->buffer;
                     private_len = ctx->bufferSize - ctx->zstream.avail_out;
@@ -301,7 +305,6 @@ static apr_status_t serf_deflate_read(serf_bucket_t *bucket,
                     ctx->zstream.avail_out = ctx->bufferSize;
                     break;
                 }
-                zRC = inflate(&ctx->zstream, Z_NO_FLUSH);
 
                 if (zRC == Z_STREAM_END) {
                     serf_bucket_t *tmp;
@@ -349,12 +352,16 @@ static apr_status_t serf_deflate_read(serf_bucket_t *bucket,
 
                     break;
                 }
+
+                /* Any other error? */
                 if (zRC != Z_OK) {
                     serf__log(LOGLVL_ERROR, LOGCOMP_COMPR, __FILE__,
                               ctx->config, "inflate error %d - %s\n",
                               zRC, ctx->zstream.msg);
                     return SERF_ERROR_DECOMPRESSION_FAILED;
                 }
+
+                /* As long as zRC == Z_OK, just keep looping. */
             }
             /* Okay, we've inflated.  Try to read. */
             status = serf_bucket_read(ctx->inflate_stream, requested, data,
