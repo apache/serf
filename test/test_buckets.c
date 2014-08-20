@@ -16,6 +16,7 @@
 #include <apr.h>
 #include <apr_pools.h>
 #include <apr_strings.h>
+#include <zlib.h>
 
 #include "serf.h"
 #include "test_serf.h"
@@ -1309,6 +1310,160 @@ static void test_dechunk_buckets(CuTest *tc)
     CuAssert(tc, "Read less data than expected.", strlen(expected) == 0);
 }
 
+static apr_status_t deflate_compress(const char **data, apr_size_t *len,
+                                     z_stream *zdestr,
+                                     const char *orig, apr_size_t orig_len,
+                                     int last,
+                                     apr_pool_t *pool)
+{
+    int zerr;
+    apr_size_t buf_size;
+    void *write_buf;
+
+    /* The largest buffer we should need is 0.1% larger than the
+       uncompressed data, + 12 bytes. This info comes from zlib.h.  */
+    buf_size = orig_len + (orig_len / 1000) + 12;
+
+    write_buf = apr_palloc(pool, buf_size);
+
+    zdestr->next_in = (Bytef *)orig;  /* Casting away const! */
+    zdestr->avail_in = (uInt)orig_len;
+
+    zerr = Z_OK;
+    zdestr->next_out = write_buf;
+    zdestr->avail_out = (uInt)buf_size;
+
+    while (zdestr->avail_in > 0 && zerr != Z_STREAM_END)
+    {
+        zerr = deflate(zdestr, last ? Z_FINISH : Z_NO_FLUSH);
+        if (zerr < 0)
+            return APR_EGENERAL;
+    }
+
+    *data = write_buf;
+    *len = buf_size - zdestr->avail_out;
+    
+    return APR_SUCCESS;
+}
+
+/* Reads bucket until EOF found and compares read data with zero terminated
+ string expected. Report all failures using CuTest. */
+static void read_bucket_and_check_pattern(CuTest *tc, serf_bucket_t *bkt,
+                                          const char *pattern,
+                                          apr_size_t expected_len)
+{
+    apr_status_t status;
+    const char *expected;
+    const apr_size_t pattern_len = strlen(pattern);
+
+    apr_size_t exp_rem = 0;
+    apr_size_t actual_len = 0;
+
+    do
+    {
+        const char *data;
+        apr_size_t act_rem;
+
+        status = serf_bucket_read(bkt, SERF_READ_ALL_AVAIL, &data, &act_rem);
+
+        CuAssert(tc, "Got error during bucket reading.",
+                 !SERF_BUCKET_READ_ERROR(status));
+
+        actual_len += act_rem;
+
+        while (act_rem > 0) {
+            apr_size_t bytes_to_compare;
+
+            if (exp_rem == 0) {
+                expected = pattern;
+                exp_rem = pattern_len;
+            }
+
+            bytes_to_compare = act_rem < exp_rem ? act_rem : exp_rem;
+            CuAssert(tc, "Read data is not equal to expected.",
+                     strncmp(expected, data, bytes_to_compare) == 0);
+            data += bytes_to_compare;
+            act_rem -= bytes_to_compare;
+
+            expected += bytes_to_compare;
+            exp_rem -= bytes_to_compare;
+        }
+    } while(!APR_STATUS_IS_EOF(status));
+
+    CuAssertIntEquals_Msg(tc, "Read less data than expected.", 0, exp_rem);
+    CuAssertIntEquals_Msg(tc, "Read less/more data than expected.", actual_len,
+                          expected_len);
+}
+
+static void test_deflate_buckets(CuTest *tc)
+{
+    const char *msg = "12345678901234567890123456789012345678901234567890";
+
+    test_baton_t *tb = tc->testBaton;
+    serf_bucket_alloc_t *alloc = serf_bucket_allocator_create(tb->pool, NULL,
+                                                              NULL);
+    z_stream zdestr;
+    int i;
+    const char gzip_header[10] =
+    { '\037', '\213', Z_DEFLATED, 0,
+        0, 0, 0, 0, /* mtime */
+        0, 0x03 /* Unix OS_CODE */
+    };
+
+    serf_bucket_t *aggbkt = serf_bucket_aggregate_create(alloc);
+    serf_bucket_t *defbkt = serf_bucket_deflate_create(aggbkt, alloc,
+                                                       SERF_DEFLATE_GZIP);
+    serf_bucket_t *strbkt;
+
+#if 0 /* Enable logging */
+    {
+        serf_config_t *config;
+
+        serf_context_t *ctx = serf_context_create(tb->pool);
+        /* status = */ serf__config_store_get_config(ctx, NULL, &config, tb->pool);
+
+        serf_bucket_set_config(defbkt, config);
+    }
+#endif
+
+    memset(&zdestr, 0, sizeof(z_stream));
+    /* HTTP uses raw deflate format, so windows size => -15 */
+    CuAssert(tc, "zlib init failed.",
+             deflateInit2(&zdestr, Z_DEFAULT_COMPRESSION, Z_DEFLATED, -15, 8,
+                          Z_DEFAULT_STRATEGY) == Z_OK);
+
+    strbkt = SERF_BUCKET_SIMPLE_STRING_LEN(gzip_header, 10, alloc);
+    serf_bucket_aggregate_append(aggbkt, strbkt);
+
+#define NR_OF_LOOPS 200
+
+    for (i = 0; i < NR_OF_LOOPS; i++) {
+        const char *data;
+        apr_size_t len;
+
+        if (i == NR_OF_LOOPS - 1) {
+            CuAssertIntEquals(tc, APR_SUCCESS,
+                              deflate_compress(&data, &len, &zdestr, msg,
+                                               strlen(msg), 1, tb->pool));
+        } else {
+            CuAssertIntEquals(tc, APR_SUCCESS,
+                              deflate_compress(&data, &len, &zdestr, msg,
+                                               strlen(msg), 0, tb->pool));
+        }
+
+        if (len == 0)
+            continue;
+
+        strbkt = SERF_BUCKET_SIMPLE_STRING_LEN(data, len, alloc);
+
+        serf_bucket_aggregate_append(aggbkt, strbkt);
+    }
+
+    tb->user_baton_l = APR_EOF;
+    read_bucket_and_check_pattern(tc, defbkt, msg, NR_OF_LOOPS * strlen(msg));
+#undef NR_OF_LOOPS
+}
+
 CuSuite *test_buckets(void)
 {
     CuSuite *suite = CuSuiteNew();
@@ -1336,6 +1491,7 @@ CuSuite *test_buckets(void)
     SUITE_ADD_TEST(suite, test_response_no_body_expected);
     SUITE_ADD_TEST(suite, test_random_eagain_in_response);
     SUITE_ADD_TEST(suite, test_dechunk_buckets);
+    SUITE_ADD_TEST(suite, test_deflate_buckets);
 #if 0
     SUITE_ADD_TEST(suite, test_serf_default_read_iovec);
 #endif
