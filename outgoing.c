@@ -446,6 +446,13 @@ apr_status_t serf__open_connections(serf_context_t *ctx)
                 return status;
         }
 
+        status = serf_config_set_string(conn->config,
+                     SERF_CONFIG_CONN_PIPELINING,
+                     (conn->max_outstanding_requests != 1 &&
+                      conn->pipelining == 1) ? "Y" : "N");
+        if (status)
+            return status;
+
         /* Flag our pollset as dirty now that we have a new socket. */
         conn->dirty_conn = 1;
         ctx->dirty_pollset = 1;
@@ -1244,6 +1251,20 @@ static apr_status_t read_from_connection(serf_connection_t *conn)
             else if (status == SERF_ERROR_REQUEST_LOST) {
                 status = SERF_ERROR_ABORTED_CONNECTION;
             }
+            goto error;
+        }
+
+        /* This connection uses HTTP pipelining and the server asked for a 
+           renegotiation (e.g. to access the requested resource a specific
+           client certificate is required).
+           Because of a known problem in OpenSSL this won't work most of the 
+           time, so as a workaround, when the server asks for a renegotiation
+           on a connection using HTTP pipelining, we reset the connection,
+           disable pipelining and reconnect to the server. */
+        if (status == SERF_ERROR_SSL_NEGOTIATE_IN_PROGRESS) {
+            serf__connection_set_pipelining(conn, 0);
+            reset_connection(conn, 1);
+            status = APR_SUCCESS;
             goto error;
         }
 

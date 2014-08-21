@@ -214,7 +214,7 @@ static apr_status_t setupTCPServer(mhServCtx_t *ctx)
 
         pfd.desc_type = APR_POLL_SOCKET;
         pfd.desc.s = ctx->skt;
-        pfd.reqevents = APR_POLLIN;
+        pfd.reqevents = APR_POLLIN | APR_POLLHUP | APR_POLLERR;
 
         STATUSERR(apr_pollset_add(ctx->pollset, &pfd));
     }
@@ -1552,7 +1552,7 @@ apr_status_t _mhRunServerLoop(mhServCtx_t *ctx)
             cctx = initClientCtx(ctx->pool, ctx, cskt, ctx->type);
             pfd.desc_type = APR_POLL_SOCKET;
             pfd.desc.s = cskt;
-            pfd.reqevents = APR_POLLIN | APR_POLLOUT;
+            pfd.reqevents = APR_POLLIN | APR_POLLOUT | APR_POLLHUP | APR_POLLERR;
             pfd.client_data = cctx;
             STATUSERR(apr_pollset_add(ctx->pollset, &pfd));
             cctx->reqevents = pfd.reqevents;
@@ -1588,6 +1588,7 @@ apr_status_t _mhRunServerLoop(mhServCtx_t *ctx)
                     if (status == APR_EOF) {
                         /* Close the socket and an associated proxy skt */
                         closeAndRemoveClientCtx(ctx, cctx);
+                        break;
                     }
                 }
             }
@@ -2433,6 +2434,8 @@ static apr_status_t initSSLCtx(_mhClientCtx_t *cctx)
     sslCtx_t *ssl_ctx = apr_pcalloc(cctx->pool, sizeof(*ssl_ctx));
     cctx->ssl_ctx = ssl_ctx;
     ssl_ctx->bio_read_status = APR_SUCCESS;
+
+    _mhLog(MH_VERBOSE, cctx->skt, "Initializing SSL context.\n");
 
     /* Init OpenSSL globally */
     if (!init_done)
