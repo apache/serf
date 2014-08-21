@@ -1755,10 +1755,23 @@ static void test_ssl_renegotiate(CuTest *tc)
 
     create_new_request(tb, &handler_ctx[0], "GET", "/index1.html", 1);
 
-    run_client_and_mock_servers_loops_expect_ok(tc, tb, num_requests,
-                                                handler_ctx, tb->pool);
+    status = run_client_and_mock_servers_loops(tb, 1, handler_ctx,
+                                               tb->pool);
+    CuAssertIntEquals(tc, APR_SUCCESS, status);
 
     create_new_request(tb, &handler_ctx[1], "GET", "/index2.html", 2);
+
+    status = run_client_and_mock_servers_loops(tb, num_requests, handler_ctx,
+                                               tb->pool);
+    CuAssertIntEquals(tc, APR_SUCCESS, status);
+
+    /* Check that the requests were sent and reveived by the server */
+    /* Note: the test server will have received the first request twice, so
+       we can't check for VerifyAllRequestsReceivedInOrder here. */
+    Verify(tb->mh)
+      CuAssert(tc, ErrorMessage, VerifyAllRequestsReceived);
+    EndVerify
+    CuAssertIntEquals(tc, num_requests, tb->handled_requests->nelts);
 }
 
 static void test_ssl_missing_client_certificate(CuTest *tc)
@@ -2136,10 +2149,7 @@ CuSuite *test_ssl(void)
     SUITE_ADD_TEST(suite, test_ssl_server_cert_with_san_nul_byte);
     SUITE_ADD_TEST(suite, test_ssl_server_cert_with_cnsan_nul_byte);
     SUITE_ADD_TEST(suite, test_ssl_server_cert_with_san_and_empty_cb);
-#if 0
-    /* WIP: Test hangs */
     SUITE_ADD_TEST(suite, test_ssl_renegotiate);
-#endif
 
     return suite;
 }

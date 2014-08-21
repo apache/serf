@@ -110,6 +110,10 @@ typedef struct serf_config_t serf_config_t;
 /* SSL handshake failed */
 #define SERF_ERROR_SSL_SETUP_FAILED (SERF_ERROR_START + 72)
 
+/* Serf-internal error code, raised when the server initiates SSL renegotiation
+   on a connection that uses HTTP pipelining. */
+#define SERF_ERROR_SSL_NEGOTIATE_IN_PROGRESS (SERF_ERROR_START + 73)
+
 /* General authentication related errors */
 #define SERF_ERROR_AUTHN_FAILED (SERF_ERROR_START + 90)
 
@@ -1190,9 +1194,10 @@ typedef enum {
 
 #define SERF_CONFIG_HOST_NAME       SERF_CONFIG_PER_HOST | 0x000001
 #define SERF_CONFIG_HOST_PORT       SERF_CONFIG_PER_HOST | 0x000002
-#define SERF_CONFIG_CONN_LOCALIP    SERF_CONFIG_PER_CONNECTION | 0x000003
-#define SERF_CONFIG_CONN_REMOTEIP   SERF_CONFIG_PER_CONNECTION | 0x000004
-#define SERF_CONFIG_CTX_LOGBATON    SERF_CONFIG_PER_CONTEXT | 0x000005
+#define SERF_CONFIG_CONN_LOCALIP    SERF_CONFIG_PER_CONNECTION | 0x000001
+#define SERF_CONFIG_CONN_REMOTEIP   SERF_CONFIG_PER_CONNECTION | 0x000002
+#define SERF_CONFIG_CONN_PIPELINING SERF_CONFIG_PER_CONNECTION | 0x000003
+#define SERF_CONFIG_CTX_LOGBATON    SERF_CONFIG_PER_CONTEXT | 0x000001
 
 /* Configuration values stored in the configuration store:
 
