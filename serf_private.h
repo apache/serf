@@ -350,11 +350,16 @@ struct serf_connection_t {
     /* Aggregate bucket used to send the CONNECT request. */
     serf_bucket_t *ssltunnel_ostream;
 
-    /* The list of active requests. */
+    /* The list of requests that are written but no response has been received
+       yet. */
     serf_request_t *written_reqs;
     serf_request_t *written_reqs_tail;
+    unsigned int nr_of_written_reqs;
+
+    /* The list of requests that hasn't been written */
     serf_request_t *unwritten_reqs;
     serf_request_t *unwritten_reqs_tail;
+    unsigned int nr_of_unwritten_reqs;
 
     struct iovec vec[IOV_MAX];
     int vec_len;

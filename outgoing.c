@@ -598,6 +598,19 @@ static apr_status_t cancel_request(serf_request_t *request,
     return destroy_request(request);
 }
 
+/* Calculate the length of a linked list of requests. */
+static unsigned int req_list_length(serf_request_t *req)
+{
+    unsigned int length = 0;
+
+    while (req) {
+        length++;
+        req = req->next;
+    }
+
+    return length;
+}
+
 static apr_status_t remove_connection(serf_context_t *ctx,
                                       serf_connection_t *conn)
 {
@@ -698,6 +711,10 @@ static apr_status_t reset_connection(serf_connection_t *conn,
 
     /* Let our context know that we've 'reset' the socket already. */
     conn->seen_in_pollset |= APR_POLLHUP;
+
+    /* Recalculate the current list length */
+    conn->nr_of_written_reqs = 0;
+    conn->nr_of_unwritten_reqs = req_list_length(conn->unwritten_reqs);
 
     /* Found the connection. Closed it. All done. */
     return APR_SUCCESS;
@@ -961,7 +978,9 @@ static apr_status_t write_to_connection(serf_connection_t *conn)
             /* Move the request to the written queue */
             link_requests(&conn->written_reqs, &conn->written_reqs_tail,
                           request);
+            conn->nr_of_written_reqs++;
             conn->unwritten_reqs = conn->unwritten_reqs->next;
+            conn->nr_of_unwritten_reqs--;
             request->next = NULL;
 
             /* If our connection has async responses enabled, we're not
@@ -969,6 +988,7 @@ static apr_status_t write_to_connection(serf_connection_t *conn)
              */
             if (conn->async_responses) {
                 conn->unwritten_reqs = request->next;
+                conn->nr_of_unwritten_reqs--;
                 destroy_request(request);
             }
 
@@ -1302,8 +1322,10 @@ static apr_status_t read_from_connection(serf_connection_t *conn)
          */
         if (request == conn->written_reqs) {
             conn->written_reqs = request->next;
+            conn->nr_of_written_reqs--;
         } else {
             conn->unwritten_reqs = request->next;
+            conn->nr_of_unwritten_reqs--;
         }
 
         destroy_request(request);
@@ -1702,7 +1724,8 @@ serf_request_t *serf_connection_request_create(
 
     /* Link the request to the end of the request chain. */
     link_requests(&conn->unwritten_reqs, &conn->unwritten_reqs_tail, request);
-    
+    conn->nr_of_unwritten_reqs++;
+
     /* Ensure our pollset becomes writable in context run */
     conn->ctx->dirty_pollset = 1;
     conn->dirty_conn = 1;
@@ -1754,6 +1777,7 @@ priority_request_create(serf_connection_t *conn,
         request->next = iter;
         conn->unwritten_reqs = request;
     }
+    conn->nr_of_unwritten_reqs++;
 
     /* Ensure our pollset becomes writable in context run */
     conn->ctx->dirty_pollset = 1;
@@ -1908,4 +1932,14 @@ apr_interval_time_t serf_connection_get_latency(serf_connection_t *conn)
     }
 
     return conn->latency;
+}
+
+unsigned int serf_connection_queued_requests(serf_connection_t *conn)
+{
+    return conn->nr_of_unwritten_reqs;
+}
+
+unsigned int serf_connection_pending_requests(serf_connection_t *conn)
+{
+    return conn->nr_of_unwritten_reqs + conn->nr_of_written_reqs;
 }

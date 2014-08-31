@@ -602,6 +602,19 @@ serf_request_t *serf_connection_priority_request_create(
  */
 apr_interval_time_t serf_connection_get_latency(serf_connection_t *conn);
 
+/**
+ * Returns the number of requests waiting to be sent over connection CONN.
+ */
+unsigned int serf_connection_queued_requests(serf_connection_t *conn);
+
+/**
+ * Returns the total number of requests for which a response hasn't been
+ * received yet on connection CONN. This includes requests:
+ * - that are queued but not sent.
+ * - that have been sent but no response has been completely received yet.
+ */
+unsigned int serf_connection_pending_requests(serf_connection_t *conn);
+
 /** Check if a @a request has been completely written.
  *
  * Returns APR_SUCCESS if the request was written completely on the connection.
