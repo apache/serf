@@ -268,8 +268,7 @@ serf__spnego_init_sec_context(serf_connection_t *conn,
         ctx->initalized ? &ctx->sspi_context : NULL,
         ctx->target_name,
         ISC_REQ_ALLOCATE_MEMORY
-        | ISC_REQ_MUTUAL_AUTH
-        | ISC_REQ_CONFIDENTIALITY,
+        | ISC_REQ_MUTUAL_AUTH,
         0,                          /* Reserved1 */
         SECURITY_NETWORK_DREP,
         &sspi_in_buffer_desc,
