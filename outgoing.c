@@ -24,13 +24,6 @@
 
 #include "serf_private.h"
 
-/* Some implementations -like Windows- report some hangup errors via a
-   different event than the specific HUP event. */
-#define APR_STATUS_IMPLIES_HANGUP(status)               \
-        (APR_STATUS_IS_ECONNRESET(status) ||            \
-         APR_STATUS_IS_ECONNABORTED(status) ||          \
-         status == SERF_ERROR_REQUEST_LOST)
-
 /* cleanup for sockets */
 static apr_status_t clean_skt(void *data)
 {
@@ -1029,8 +1022,7 @@ static apr_status_t handle_response(serf_request_t *request,
                                             request->resp_bkt,
                                             pool);
 
-        if (SERF_BUCKET_READ_ERROR(status)
-            && !APR_STATUS_IMPLIES_HANGUP(status)) {
+        if (SERF_BUCKET_READ_ERROR(status)) {
 
             /* Report the request as 'died'/'cancelled' to the application,
                but only if our caller doesn't handle this status specifically,
@@ -1255,12 +1247,10 @@ static apr_status_t read_from_connection(serf_connection_t *conn)
 
         /* Some systems will not generate a HUP poll event so we have to
          * handle the ECONNRESET issue and ECONNABORT here.
-         *
-         * ### Update similar code in handle_response() if this condition
-         *     changes, or requests will get lost and/or accidentally reported
-         *     cancelled.
          */
-        if (APR_STATUS_IMPLIES_HANGUP(status)) {
+        if (APR_STATUS_IS_ECONNRESET(status) ||
+            APR_STATUS_IS_ECONNABORTED(status) ||
+            status == SERF_ERROR_REQUEST_LOST) {
             /* If the connection had ever been good, be optimistic & try again.
              * If it has never tried again (incl. a retry), fail.
              */
