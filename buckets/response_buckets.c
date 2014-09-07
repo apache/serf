@@ -43,6 +43,11 @@ typedef struct response_context_t {
 
     /* Buffer for accumulating a line from the response. */
     serf_linebuf_t linebuf;
+
+    /* Error status that will be returned instead of APR_EOF when the response
+       body was read completely. */
+    apr_status_t error_on_eof;
+
 } response_context_t;
 
 /* Returns 1 if according to RFC2626 this response can have a body, 0 if it
@@ -82,6 +87,7 @@ serf_bucket_t *serf_bucket_response_create(
     ctx->state = STATE_STATUS_LINE;
     ctx->chunked = 0;
     ctx->head_req = 0;
+    ctx->error_on_eof = 0;
 
     serf_linebuf_init(&ctx->linebuf);
 
@@ -408,31 +414,36 @@ static apr_status_t serf_response_read(serf_bucket_t *bucket,
                                        const char **data, apr_size_t *len)
 {
     response_context_t *ctx = bucket->data;
-    apr_status_t rv;
+    apr_status_t status;
 
-    rv = wait_for_body(bucket, ctx);
-    if (rv) {
+    status = wait_for_body(bucket, ctx);
+    if (status) {
         /* It's not possible to have read anything yet! */
-        if (APR_STATUS_IS_EOF(rv) || APR_STATUS_IS_EAGAIN(rv)) {
+        if (APR_STATUS_IS_EOF(status) || APR_STATUS_IS_EAGAIN(status)) {
             *len = 0;
         }
-        return rv;
+        goto fake_eof;
     }
 
-    rv = serf_bucket_read(ctx->body, requested, data, len);
-    if (SERF_BUCKET_READ_ERROR(rv))
-        return rv;
+    status = serf_bucket_read(ctx->body, requested, data, len);
+    if (SERF_BUCKET_READ_ERROR(status))
+        return status;
 
-    if (APR_STATUS_IS_EOF(rv)) {
+    if (APR_STATUS_IS_EOF(status)) {
         if (ctx->chunked) {
             ctx->state = STATE_TRAILERS;
             /* Mask the result. */
-            rv = APR_SUCCESS;
+            status = APR_SUCCESS;
         } else {
             ctx->state = STATE_DONE;
         }
     }
-    return rv;
+
+fake_eof:
+    if (APR_STATUS_IS_EOF(status) && ctx->error_on_eof)
+        return ctx->error_on_eof;
+
+    return status;
 }
 
 static apr_status_t serf_response_readline(serf_bucket_t *bucket,
@@ -440,15 +451,21 @@ static apr_status_t serf_response_readline(serf_bucket_t *bucket,
                                            const char **data, apr_size_t *len)
 {
     response_context_t *ctx = bucket->data;
-    apr_status_t rv;
+    apr_status_t status;
 
-    rv = wait_for_body(bucket, ctx);
-    if (rv) {
-        return rv;
+    status = wait_for_body(bucket, ctx);
+    if (status) {
+        goto fake_eof;
     }
 
     /* Delegate to the stream bucket to do the readline. */
-    return serf_bucket_readline(ctx->body, acceptable, found, data, len);
+    status = serf_bucket_readline(ctx->body, acceptable, found, data, len);
+
+fake_eof:
+    if (APR_STATUS_IS_EOF(status) && ctx->error_on_eof)
+        return ctx->error_on_eof;
+
+    return status;
 }
 
 apr_status_t serf_response_full_become_aggregate(serf_bucket_t *bucket)
@@ -496,6 +513,13 @@ static apr_status_t serf_response_set_config(serf_bucket_t *bucket,
 
 /* ### need to implement */
 #define serf_response_peek NULL
+
+void serf__bucket_response_set_error_on_eof(serf_bucket_t *bucket,
+                                            apr_status_t error)
+{
+    response_context_t *ctx = bucket->data;
+    ctx->error_on_eof = error;
+}
 
 const serf_bucket_type_t serf_bucket_type_response = {
     "RESPONSE",

@@ -1024,11 +1024,47 @@ static apr_status_t handle_response(serf_request_t *request,
 
         if (SERF_BUCKET_READ_ERROR(status)) {
 
-            /* Report the request as 'died'/'cancelled' to the application,
-               but only if our caller doesn't handle this status specifically,
-               with something like a retry */
+            /* There was an error while checking the authentication headers of
+               the response. Depending on the cause of the error, we need to 
+               inform the application in a different way.
+             
+               1. A communication error while reading the response status line,
+                  headers or while discarding the response body: pass the
+                  response unchanged to the application, it will see the same
+                  error as serf did.
+             
+               2. A 401/407 response status for a supported authn scheme that
+                  resulted in authn failure:
+                  Pass the response as received to the application, the response
+                  body can contain an error description. Terminate the response
+                  body with the AUTHN error instead of APR_EOF.
+
+               3. A 401/407 response status for a supported authn scheme that
+                  resulted in an unknown error returned by the application in
+                  the credentials callback (Basic/Digest):
+                  Handle the same as 2.
+
+               4. A 2xx response status for a supported authn scheme that
+                  resulted in authn failure:
+                  Pass the response headers to the application. The response
+                  body is untrusted, so we should drop it and return the AUTHN
+                  error instead of APR_EOF.
+             
+                  serf__handle_auth_response will already discard the response
+                  body, so we can handle this case the same as 2.
+
+               In summary, all these cases can be handled in the same way: call
+               the application's response handler with the response, but return
+               error code STATUS instead of APR_EOF after reading the response
+               body.
+            */
+
+            serf__bucket_response_set_error_on_eof(request->resp_bkt, status);
+
+            /* Ignore the application's status code here, use the error status
+               from serf__handle_auth_response. */
             (void)(*request->handler)(request,
-                                      NULL,
+                                      request->resp_bkt,
                                       request->handler_baton,
                                       pool);
         }
