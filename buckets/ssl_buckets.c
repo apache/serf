@@ -624,7 +624,7 @@ get_subject_alt_names(apr_array_header_t **san_arr, X509 *ssl_cert,
             switch (nm->type) {
                 case GEN_DNS:
                     if (copy_action == ErrorOnNul &&
-                        strlen(nm->d.ia5->data) != nm->d.ia5->length)
+                        strlen((const char *)nm->d.ia5->data) != nm->d.ia5->length)
                         return SERF_ERROR_SSL_CERT_FAILED;
                     if (san_arr && *san_arr)
                         p = pstrdup_escape_nul_bytes((const char *)nm->d.ia5->data,
