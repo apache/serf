@@ -648,12 +648,13 @@ mhReqMatcherBldr_t *mhMatchHeaderEqualTo(const MockHTTP *mh,
                                           const char *hdr, const char *value);
 mhReqMatcherBldr_t *mhMatchHeaderNotEqualTo(const MockHTTP *mh,
                                              const char *hdr, const char *value);
+/* TODO: make this a generic matcher */
+mhReqMatcherBldr_t *mhMatchAny(const MockHTTP *mh);
 
 void mhGivenConnSetup(MockHTTP *mh, ...);
 mhConnMatcherBldr_t *mhMatchClientCertCNEqualTo(const MockHTTP *mh,
                                                 const char *expected);
 mhConnMatcherBldr_t *mhMatchClientCertValid(const MockHTTP *mh);
-mhConnMatcherBldr_t *mhMatchAny(const MockHTTP *mh);
 
 mhResponse_t *mhNewResponseForRequest(MockHTTP *mh, mhServCtx_t *ctx,
                                       mhRequestMatcher_t *rm);
