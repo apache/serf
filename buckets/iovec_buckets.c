@@ -41,7 +41,7 @@ serf_bucket_t *serf_bucket_iovec_create(
     void *buf = serf_bucket_mem_alloc(allocator, sizeof(*ctx) +
                                                  len * sizeof(struct iovec));
     ctx = buf;
-    ctx->vecs = (char*)buf + sizeof(*ctx);
+    ctx->vecs = (struct iovec *)((char*)buf + sizeof(*ctx));
     ctx->vecs_len = len;
     ctx->current_vec = 0;
     ctx->offset = 0;
