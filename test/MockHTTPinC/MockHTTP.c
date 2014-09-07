@@ -791,10 +791,11 @@ mhConnMatcherBldr_t *mhMatchClientCertValid(const MockHTTP *mh)
 static mhResponse_t *initResponse(MockHTTP *mh)
 {
     apr_pool_t *pool;
+    mhResponse_t *resp;
 
     apr_pool_create(&pool, mh->pool);
 
-    mhResponse_t *resp = apr_pcalloc(pool, sizeof(mhResponse_t));
+    resp = apr_pcalloc(pool, sizeof(mhResponse_t));
     resp->pool = pool;
     resp->mh = mh;
     resp->code = 200;
@@ -807,7 +808,7 @@ static mhResponse_t *initResponse(MockHTTP *mh)
 mhResponse_t *mhNewResponseForRequest(MockHTTP *mh, mhServCtx_t *ctx,
                                       mhRequestMatcher_t *rm)
 {
-    apr_array_header_t *matchers;
+    apr_array_header_t *matchers = NULL;
     int i;
 
     mhResponse_t *resp = initResponse(mh);
