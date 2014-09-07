@@ -2605,7 +2605,9 @@ sslSocketRead(apr_socket_t *skt, void *baton, char *data, apr_size_t *len)
                 *len = 0;
                 _mhLog(MH_VERBOSE, skt,
                           "ssl_socket_read SSL Error %d: ", ssl_err);
+#if MH_VERBOSE
                 ERR_print_errors_fp(stderr);
+#endif
                 return APR_EGENERAL;
         }
     }
@@ -2618,8 +2620,9 @@ static void appendSSLErrMessage(const MockHTTP *mh, long result)
 {
     apr_size_t startpos = strlen(mh->errmsg);
     ERR_error_string(result, mh->errmsg + startpos);
-    /* TODO: debug */
+#if MH_VERBOSE
     ERR_print_errors_fp(stderr);
+#endif
 }
 
 /******************************************************************************/
@@ -2728,7 +2731,9 @@ static apr_status_t sslHandshake(_mhClientCtx_t *cctx)
                 return ssl_ctx->bio_read_status; /* Usually APR_EAGAIN */
             default:
                 _mhLog(MH_VERBOSE, cctx->skt, "SSL Error %d: ", ssl_err);
+#if MH_VERBOSE
                 ERR_print_errors_fp(stderr);
+#endif
                 return APR_EGENERAL;
         }
     }
