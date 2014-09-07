@@ -414,6 +414,13 @@ struct serf_connection_t {
 apr_status_t serf_response_full_become_aggregate(serf_bucket_t *bucket);
 
 /**
+ * Replace the response body's EOF status with an error status. This can be used
+ * to signal an error to the application (see handle_response in outgoing.c).
+ */
+void serf__bucket_response_set_error_on_eof(serf_bucket_t *bucket,
+                                            apr_status_t error);
+
+/**
  * Remove the header from the list, do nothing if the header wasn't added.
  */
 void serf__bucket_headers_remove(serf_bucket_t *headers_bucket,
