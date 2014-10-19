@@ -340,8 +340,13 @@ static apr_status_t serf_deflate_read(serf_bucket_t *bucket,
             /* Hide EOF. */
             if (APR_STATUS_IS_EOF(status)) {
                 status = ctx->stream_status;
-                /* If our stream is finished too, return SUCCESS so
-                 * we'll iterate one more time.
+
+                /* If the inflation wasn't finished, return APR_SUCCESS. */
+                if (zRC != Z_STREAM_END)
+                    return APR_SUCCESS;
+
+                /* If our stream is finished too and all data was inflated,
+                 * return SUCCESS so we'll iterate one more time.
                  */
                 if (APR_STATUS_IS_EOF(status)) {
                     /* No more data to read from the stream, and everything

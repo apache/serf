@@ -108,8 +108,9 @@ typedef struct {
     const char *serv_url;
     serf_connection_setup_t conn_setup;
 
-    /* An extra baton which can be freely used by tests. */
+    /* Extra batons which can be freely used by tests. */
     void *user_baton;
+    long user_baton_l;
 
     /* Flags that can be used to report situations, e.g. that a callback was
        called. */
