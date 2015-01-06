@@ -13,6 +13,9 @@
  * limitations under the License.
  */
 
+#define APR_WANT_MEMFUNC
+#include <apr_want.h>
+
 #include <apr_pools.h>
 
 #include "serf.h"
@@ -460,6 +463,9 @@ apr_status_t serf_linebuf_fetch(
      */
     if (linebuf->state == SERF_LINEBUF_READY) {
         linebuf->state = SERF_LINEBUF_EMPTY;
+
+        /* Clear stale line buffer. */
+        memset(linebuf->line, 0, SERF_LINEBUF_LIMIT);
 
         /* Reset the line_used, too, so we don't have to test the state
          * before using this value.
