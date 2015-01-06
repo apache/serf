@@ -545,7 +545,8 @@ apr_status_t serf_linebuf_fetch(
                 linebuf->state = SERF_LINEBUF_CRLF_SPLIT;
 
                 /* Toss the partial CR. We won't ever need it. */
-                --len;
+		if (len > 0)
+                  --len;
             }
             else {
                 /* We got a newline (of some form). We don't need it
