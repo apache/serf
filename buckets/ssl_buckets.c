@@ -34,6 +34,8 @@
  * Originally developed by Aaron Bannert and Justin Erenkrantz, eBuilt.
  */
 
+#define APR_WANT_MEMFUNC
+#include <apr_want.h>
 #include <apr_pools.h>
 #include <apr_network_io.h>
 #include <apr_portable.h>
