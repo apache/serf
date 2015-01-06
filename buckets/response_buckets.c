@@ -144,7 +144,7 @@ static apr_status_t parse_status_line(response_context_t *ctx,
         return SERF_ERROR_BAD_HTTP_RESPONSE;
 
     /* Skip leading spaces for the reason string. */
-    if (apr_isspace(*reason)) {
+    while (apr_isspace(*reason)) {
         reason++;
     }
 
