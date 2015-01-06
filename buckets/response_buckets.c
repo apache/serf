@@ -140,6 +140,8 @@ static apr_status_t parse_status_line(response_context_t *ctx,
     ctx->sl.version = SERF_HTTP_VERSION(ctx->linebuf.line[5] - '0',
                                         ctx->linebuf.line[7] - '0');
     ctx->sl.code = apr_strtoi64(ctx->linebuf.line + 8, &reason, 10);
+    if (errno == ERANGE || reason == ctx->linebuf.line + 8)
+        return SERF_ERROR_BAD_HTTP_RESPONSE;
 
     /* Skip leading spaces for the reason string. */
     if (apr_isspace(*reason)) {
