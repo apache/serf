@@ -148,14 +148,10 @@ static apr_status_t parse_status_line(response_context_t *ctx,
         reason++;
     }
 
-    if (*reason) {
-        /* Copy the reason value out of the line buffer. */
-        ctx->sl.reason = serf_bstrmemdup(allocator, reason,
-                                         ctx->linebuf.used
-                                         - (reason - ctx->linebuf.line));
-    } else {
-        ctx->sl.reason = "";
-    }
+    /* Copy the reason value out of the line buffer. */
+    ctx->sl.reason = serf_bstrmemdup(allocator, reason,
+                                     ctx->linebuf.used
+                                     - (reason - ctx->linebuf.line));
 
     return APR_SUCCESS;
 }
