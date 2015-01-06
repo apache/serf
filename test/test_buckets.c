@@ -13,6 +13,8 @@
  * limitations under the License.
  */
 
+#define APR_WANT_MEMFUNC
+#include <apr_want.h>
 #include <apr.h>
 #include <apr_pools.h>
 #include <apr_strings.h>
