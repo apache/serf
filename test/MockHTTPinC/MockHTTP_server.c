@@ -16,6 +16,8 @@
 /* This file includes code originally submitted to the Serf project, covered by
  * the Apache License, Version 2.0, copyright Justin Erenkrantz & Greg Stein.
  */
+#define APR_WANT_MEMFUNC
+#include <apr_want.h>
 #include <apr_strings.h>
 #include <apr_uri.h>
 #include <apr_lib.h>
