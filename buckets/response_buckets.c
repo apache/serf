@@ -130,8 +130,17 @@ static apr_status_t parse_status_line(response_context_t *ctx,
     int res;
     char *reason; /* ### stupid APR interface makes this non-const */
 
+    /* Ensure a valid length, to avoid over-/underflows */
+    if (ctx->linebuf.used < 13 /* 13 = strlen("HTTP/#.# ### ") */
+        || ctx->linebuf.used >= SERF_LINEBUF_LIMIT) {
+       return SERF_ERROR_BAD_HTTP_RESPONSE;
+    }
+
+    /* apr_date_checkmask assumes its arguments are valid C strings */
+    ctx->linebuf.line[ctx->linebuf.used] = 0;
+
     /* ctx->linebuf.line should be of form: HTTP/1.1 200 OK */
-    res = apr_date_checkmask(ctx->linebuf.line, "HTTP/#.# ###*");
+    res = apr_date_checkmask(ctx->linebuf.line, "HTTP/#.# ### *");
     if (!res) {
         /* Not an HTTP response?  Well, at least we won't understand it. */
         return SERF_ERROR_BAD_HTTP_RESPONSE;
