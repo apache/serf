@@ -302,9 +302,9 @@ apr_status_t serf_context_run(
     }
 
     while (num--) {
-        serf_connection_t *conn = desc->client_data;
+        serf_io_baton_t *io  = desc->client_data;
 
-        status = serf_event_trigger(ctx, conn, desc);
+        status = serf_event_trigger(ctx, io, desc);
         if (status) {
             /* Don't return APR_TIMEUP as a connection error, as our caller
                will use that as a trigger to call us again */
