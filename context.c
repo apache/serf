@@ -219,7 +219,7 @@ apr_status_t serf_event_trigger(
             tdesc.desc.s = conn->skt;
             tdesc.reqevents = conn->reqevents;
             ctx->pollset_rm(ctx->pollset_baton,
-                            &tdesc, conn);
+                            &tdesc, &conn->baton);
             return conn->status;
         }
         /* apr_pollset_poll() can return a conn multiple times... */
@@ -240,7 +240,7 @@ apr_status_t serf_event_trigger(
                 tdesc.desc.s = conn->skt;
                 tdesc.reqevents = conn->reqevents;
                 ctx->pollset_rm(ctx->pollset_baton,
-                                &tdesc, conn);
+                                &tdesc, &conn->baton);
             }
             return conn->status;
         }
