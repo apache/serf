@@ -803,7 +803,7 @@ static apr_status_t readChunk(bucket_t *bkt, mhRequest_t *req, bool *done)
 static apr_status_t
 readChunked(bucket_t *bkt, mhRequest_t *req, bool *done)
 {
-    apr_status_t status;
+    apr_status_t status = APR_SUCCESS;
 
     *done = NO;
     req->chunked = YES;

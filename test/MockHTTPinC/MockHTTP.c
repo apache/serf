@@ -638,7 +638,7 @@ static bool any_matcher(const mhReqMatcherBldr_t *mp, const mhRequest_t *req)
     return YES;
 }
 
-mhConnMatcherBldr_t *mhMatchAny(const MockHTTP *mh)
+mhReqMatcherBldr_t *mhMatchAny(const MockHTTP *mh)
 {
     apr_pool_t *pool = mh->pool;
 
