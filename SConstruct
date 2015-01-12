@@ -290,7 +290,9 @@ if sys.platform == 'win32':
 
   # Get apr/apu information into our build
   env.Append(CPPDEFINES=['WIN32','WIN32_LEAN_AND_MEAN','NOUSER',
-                         'NOGDI', 'NONLS','NOCRYPT'])
+                         'NOGDI', 'NONLS','NOCRYPT',
+                         '_CRT_SECURE_NO_WARNINGS',
+                         '_CRT_NONSTDC_NO_WARNINGS'])
 
   if env.get('TARGET_ARCH', None) == 'x86_64':
     env.Append(CPPDEFINES=['WIN64'])
