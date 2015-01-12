@@ -141,7 +141,6 @@ static apr_status_t parse_status_line(response_context_t *ctx,
     /* ctx->linebuf.line should be of form: 'HTTP/1.1 200 OK',
        but we also explicitly allow the forms 'HTTP/1.1 200' (no reason)
        and 'HTTP/1.1 401.1 Logon failed' (iis extended error codes) */
-     */
     res = apr_date_checkmask(ctx->linebuf.line, "HTTP/#.# ###*");
     if (!res) {
         /* Not an HTTP response?  Well, at least we won't understand it. */
