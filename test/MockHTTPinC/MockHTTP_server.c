@@ -456,9 +456,11 @@ static apr_status_t buffSktPeek(bucket_t *bkt, apr_size_t *len)
 
     status = readFromSocket(bkt);
 
-    if (ctx->remaining > *len) {
-        /* If there was a socket error, assume that it will be returned on the
-           next call to readFromSocket */
+    if (status && !APR_STATUS_IS_EOF(status) && !APR_STATUS_IS_EAGAIN(status)
+        && ctx->remaining > 0) {
+
+        /* If there was a socket read error, assume that it will be returned
+           on the next call to readFromSocket */
         status = APR_SUCCESS;
     }
 
