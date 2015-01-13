@@ -168,6 +168,7 @@ serf_bucket_t *serf__bucket_log_wrapper_create(serf_bucket_t *wrapped,
 
     ctx->old_type = wrapped->type;
     ctx->prefix = prefix;
+    ctx->config = NULL;
 
     /* Construct the new extended bucket. */
     bkt->wrapped_bkt.type = bkt_type;
