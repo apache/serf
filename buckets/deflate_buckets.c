@@ -162,10 +162,16 @@ static apr_status_t serf_deflate_read(serf_bucket_t *bucket,
                 return status;
             }
 
-            memcpy(ctx->hdr_buffer + (ctx->stream_size - ctx->stream_left),
-                   private_data, private_len);
+            /* The C99 standard (7.21.1/2) requires valid data pointer
+             * even for zero length array for all functions unless explicitly
+             * stated otherwise. So don't copy data even most mempy()
+             * implementations have special handling for zero length copy. */
+            if (private_len) {
+                memcpy(ctx->hdr_buffer + (ctx->stream_size - ctx->stream_left),
+                       private_data, private_len);
 
-            ctx->stream_left -= private_len;
+                ctx->stream_left -= private_len;
+            }
 
             if (ctx->stream_left == 0) {
                 ctx->state++;
@@ -289,8 +295,15 @@ static apr_status_t serf_deflate_read(serf_bucket_t *bucket,
                     return status;
                 }
 
-                ctx->zstream.next_in = (unsigned char*)private_data;
-                ctx->zstream.avail_in = private_len;
+                /* Make valgrind happy and explictly initialize next_in to specific
+                 * value for empty buffer. */
+                if (private_len) {
+                    ctx->zstream.next_in = (unsigned char*)private_data;
+                    ctx->zstream.avail_in = private_len;
+                } else {
+                    ctx->zstream.next_in = Z_NULL;
+                    ctx->zstream.avail_in = 0;
+                }
             }
 
             while (1) {
