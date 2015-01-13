@@ -1687,6 +1687,58 @@ static void test_deflate_4GBplus_buckets(CuTest *tc)
 #undef BUFSIZE
 }
 
+/* Basic test for serf_linebuf_fetch(). */
+static void test_linebuf_fetch_crlf(CuTest *tc)
+{
+    test_baton_t *tb = tc->testBaton;
+    mockbkt_action actions[]= {
+        { 1, "line1" CRLF, APR_SUCCESS },
+        { 1, "line2" CR, APR_EAGAIN },
+        { 1, "" LF, APR_SUCCESS },
+        { 1, "" CRLF, APR_EOF},
+    };
+    serf_bucket_t *bkt;
+    serf_linebuf_t linebuf;
+    
+    serf_bucket_alloc_t *alloc = serf_bucket_allocator_create(tb->pool, NULL,
+                                                              NULL);
+
+    bkt = serf_bucket_mock_create(actions, sizeof(actions)/sizeof(actions[0]),
+                                  alloc);
+
+    serf_linebuf_init(&linebuf);
+    CuAssertStrEquals(tc, "", linebuf.line);
+    CuAssertIntEquals(tc, 0, linebuf.used);
+    CuAssertIntEquals(tc, SERF_LINEBUF_EMPTY, linebuf.state);
+
+    CuAssertIntEquals(tc, APR_SUCCESS,
+                      serf_linebuf_fetch(&linebuf, bkt, SERF_NEWLINE_CRLF));
+    /* We got first line in one call. */
+    CuAssertIntEquals(tc, SERF_LINEBUF_READY, linebuf.state);
+    CuAssertStrEquals(tc, "line1", linebuf.line);
+    CuAssertIntEquals(tc, 5, linebuf.used);
+
+    /* The second line CR and LF splitted across packets. */
+    CuAssertIntEquals(tc, APR_EAGAIN,
+                      serf_linebuf_fetch(&linebuf, bkt, SERF_NEWLINE_CRLF));
+    CuAssertIntEquals(tc, SERF_LINEBUF_CRLF_SPLIT, linebuf.state);
+
+    CuAssertIntEquals(tc, APR_SUCCESS,
+                      serf_linebuf_fetch(&linebuf, bkt, SERF_NEWLINE_CRLF));
+
+    CuAssertIntEquals(tc, SERF_LINEBUF_READY, linebuf.state);
+    CuAssertIntEquals(tc, 5, linebuf.used);
+    CuAssertStrnEquals(tc, "line2", 0, linebuf.line);
+
+    /* Last line is empty. */
+    CuAssertIntEquals(tc, APR_EOF,
+                      serf_linebuf_fetch(&linebuf, bkt, SERF_NEWLINE_CRLF));
+    CuAssertIntEquals(tc, SERF_LINEBUF_READY, linebuf.state);
+    CuAssertStrEquals(tc, "", linebuf.line);
+    CuAssertIntEquals(tc, 0, linebuf.used);
+
+}
+
 CuSuite *test_buckets(void)
 {
     CuSuite *suite = CuSuiteNew();
@@ -1725,6 +1777,8 @@ CuSuite *test_buckets(void)
 #if 0
     SUITE_ADD_TEST(suite, test_serf_default_read_iovec);
 #endif
+
+    SUITE_ADD_TEST(suite, test_linebuf_fetch_crlf);
 
     return suite;
 }
