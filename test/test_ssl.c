@@ -1755,9 +1755,9 @@ static void test_ssl_renegotiate(CuTest *tc)
 
     create_new_request(tb, &handler_ctx[0], "GET", "/index1.html", 1);
 
-    status = run_client_and_mock_servers_loops(tb, 1, handler_ctx,
+/*    status = run_client_and_mock_servers_loops(tb, 1, handler_ctx,
                                                tb->pool);
-    CuAssertIntEquals(tc, APR_SUCCESS, status);
+    CuAssertIntEquals(tc, APR_SUCCESS, status);*/
 
     create_new_request(tb, &handler_ctx[1], "GET", "/index2.html", 2);
 
