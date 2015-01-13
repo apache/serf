@@ -557,12 +557,18 @@ apr_status_t serf_linebuf_fetch(
                 linebuf->state = SERF_LINEBUF_READY;
             }
 
-            /* ### it would be nice to avoid this copy if at all possible,
-               ### and just return the a data/len pair to the caller. we're
-               ### keeping it simple for now. */
-            memcpy(&linebuf->line[linebuf->used], data, len);
-            linebuf->line[linebuf->used + len] = '\0';
-            linebuf->used += len;
+            /* The C99 standard (7.21.1/2) requires valid data pointer
+             * even for zero length array for all functions unless explicitly
+             * stated otherwise. So don't copy data even most mempy()
+             * implementations have special handling for zero length copy. */
+            if (len > 0) {
+                /* ### it would be nice to avoid this copy if at all possible,
+                   ### and just return the a data/len pair to the caller. we're
+                   ### keeping it simple for now. */
+                memcpy(&linebuf->line[linebuf->used], data, len);
+                linebuf->line[linebuf->used + len] = '\0';
+                linebuf->used += len;
+            }
         }
 
         /* If we saw anything besides "success. please read again", then
