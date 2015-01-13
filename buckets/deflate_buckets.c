@@ -95,6 +95,7 @@ serf_bucket_t *serf_bucket_deflate_create(
     ctx->inflate_stream = serf_bucket_aggregate_create(allocator);
     ctx->format = format;
     ctx->crc = 0;
+    ctx->config = NULL;
     /* zstream must be NULL'd out. */
     memset(&ctx->zstream, 0, sizeof(ctx->zstream));
 

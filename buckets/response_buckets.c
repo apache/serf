@@ -82,6 +82,7 @@ serf_bucket_t *serf_bucket_response_create(
     ctx->state = STATE_STATUS_LINE;
     ctx->chunked = 0;
     ctx->head_req = 0;
+    ctx->config = NULL;
 
     serf_linebuf_init(&ctx->linebuf);
 
