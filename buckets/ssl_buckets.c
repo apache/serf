@@ -1483,6 +1483,7 @@ static serf_ssl_context_t *ssl_init_context(serf_bucket_alloc_t *allocator)
     ssl_ctx->pending_err = APR_SUCCESS;
     ssl_ctx->fatal_err = APR_SUCCESS;
     ssl_ctx->renegotiation = 0;
+    ssl_ctx->config = NULL;
 
     ssl_ctx->cert_callback = NULL;
     ssl_ctx->cert_pw_callback = NULL;
