@@ -450,6 +450,7 @@ void serf_linebuf_init(serf_linebuf_t *linebuf)
 {
     linebuf->state = SERF_LINEBUF_EMPTY;
     linebuf->used = 0;
+    linebuf->line[0] = '\0';
 }
 
 
@@ -468,6 +469,7 @@ apr_status_t serf_linebuf_fetch(
          * before using this value.
          */
         linebuf->used = 0;
+        linebuf->line[0] = '\0';
     }
 
     while (1) {
@@ -523,7 +525,7 @@ apr_status_t serf_linebuf_fetch(
             if (APR_STATUS_IS_EOF(status) && len == 0) {
                 return status;
             }
-            if (linebuf->used + len > sizeof(linebuf->line)) {
+            if (linebuf->used + len + 1 > sizeof(linebuf->line)) {
                 return SERF_ERROR_LINE_TOO_LONG;
             }
 
@@ -559,6 +561,7 @@ apr_status_t serf_linebuf_fetch(
                ### and just return the a data/len pair to the caller. we're
                ### keeping it simple for now. */
             memcpy(&linebuf->line[linebuf->used], data, len);
+            linebuf->line[linebuf->used + len] = '\0';
             linebuf->used += len;
         }
 
