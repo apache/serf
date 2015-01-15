@@ -367,6 +367,7 @@ static apr_status_t serf_aggregate_readline(serf_bucket_t *bucket,
     aggregate_context_t *ctx = bucket->data;
     apr_status_t status;
 
+    *found = SERF_NEWLINE_NONE;
     cleanup_aggregate(ctx, bucket->allocator);
 
     do {

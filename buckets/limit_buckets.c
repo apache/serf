@@ -80,6 +80,7 @@ static apr_status_t serf_limit_readline(serf_bucket_t *bucket,
 
     if (!ctx->remaining) {
         *len = 0;
+        *found = SERF_NEWLINE_NONE;
         return APR_EOF;
     }
 

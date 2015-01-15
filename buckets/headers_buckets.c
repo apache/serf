@@ -389,8 +389,10 @@ static apr_status_t serf_headers_readline(serf_bucket_t *bucket,
 
     /* get whatever is in this chunk */
     select_value(ctx, data, len);
-    if (ctx->state == READ_DONE)
+    if (ctx->state == READ_DONE) {
+        *found = SERF_NEWLINE_NONE;
         return APR_EOF;
+    }
 
     /* we consumed this chunk. advance the state. */
     status = consume_chunk(ctx);
