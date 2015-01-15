@@ -402,8 +402,10 @@ apr_status_t serf_databuf_readline(
     apr_size_t *len)
 {
     apr_status_t status = common_databuf_prep(databuf, len);
-    if (status)
+    if (status) {
+        *found = SERF_NEWLINE_NONE;
         return status;
+    }
 
     /* the returned line will start at the current position. */
     *data = databuf->current;

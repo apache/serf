@@ -450,6 +450,8 @@ static apr_status_t serf_response_readline(serf_bucket_t *bucket,
 
     rv = wait_for_body(bucket, ctx);
     if (rv) {
+        *len = 0;
+        *found = SERF_NEWLINE_NONE;
         return rv;
     }
 
