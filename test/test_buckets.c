@@ -13,6 +13,8 @@
  * limitations under the License.
  */
 
+#define APR_WANT_MEMFUNC
+#include <apr_want.h>
 #include <apr.h>
 #include <apr_pools.h>
 #include <apr_strings.h>
@@ -1137,6 +1139,35 @@ static void test_response_bucket_iis_status_code(CuTest *tc)
     CuAssertStrEquals(tc, ".1 Logon failed.", sline.reason);
 }
 
+/* Test handling responses without a reason by response buckets. */
+static void test_response_bucket_no_reason(CuTest *tc)
+{
+    test_baton_t *tb = tc->testBaton;
+    serf_bucket_t *bkt, *tmp;
+    serf_status_line sline;
+    serf_bucket_alloc_t *alloc = serf_bucket_allocator_create(tb->pool, NULL,
+                                                              NULL);
+
+    tmp = SERF_BUCKET_SIMPLE_STRING("HTTP/1.1 401" CRLF
+                                    "Content-Type: text/plain" CRLF
+                                    "Content-Length: 2" CRLF
+                                    CRLF
+                                    "AB",
+                                    alloc);
+
+    bkt = serf_bucket_response_create(tmp, alloc);
+
+    read_and_check_bucket(tc, bkt, "AB");
+
+    serf_bucket_response_status(bkt, &sline);
+    CuAssertTrue(tc, sline.version == SERF_HTTP_11);
+    CuAssertIntEquals(tc, 401, sline.code);
+
+    /* Probably better to have just "Logon failed" as reason. But current
+       behavior is also acceptable.*/
+    CuAssertStrEquals(tc, "", sline.reason);
+}
+
 /* Test that serf can handle lines that don't arrive completely in one go.
    It doesn't really run random, it tries inserting APR_EAGAIN in all possible
    places in the response message, only one currently. */
@@ -1323,9 +1354,9 @@ static apr_status_t deflate_compress(const char **data, apr_size_t *len,
 
     /* The largest buffer we should need is 0.1% larger than the
        uncompressed data, + 12 bytes. This info comes from zlib.h.
+       buf_size = orig_len + (orig_len / 1000) + 12;
        Note: This isn't sufficient when using Z_NO_FLUSH and extremely compressed
        data. Use a buffer bigger than what we need. */
-//    buf_size = orig_len + (orig_len / 1000) + 12;
     buf_size = 100000;
 
     write_buf = apr_palloc(pool, buf_size);
@@ -1400,12 +1431,12 @@ static void read_bucket_and_check_pattern(CuTest *tc, serf_bucket_t *bkt,
                           expected_len);
 }
 
-static void deflate_buckets(CuTest *tc, int nr_of_loops)
+static void deflate_buckets(CuTest *tc, int nr_of_loops, apr_pool_t *pool)
 {
     const char *msg = "12345678901234567890123456789012345678901234567890";
 
     test_baton_t *tb = tc->testBaton;
-    serf_bucket_alloc_t *alloc = serf_bucket_allocator_create(tb->pool, NULL,
+    serf_bucket_alloc_t *alloc = serf_bucket_allocator_create(pool, NULL,
                                                               NULL);
     z_stream zdestr;
     int i;
@@ -1424,8 +1455,8 @@ static void deflate_buckets(CuTest *tc, int nr_of_loops)
     {
         serf_config_t *config;
 
-        serf_context_t *ctx = serf_context_create(tb->pool);
-        /* status = */ serf__config_store_get_config(ctx, NULL, &config, tb->pool);
+        serf_context_t *ctx = serf_context_create(pool);
+        /* status = */ serf__config_store_get_config(ctx, NULL, &config, pool);
 
         serf_bucket_set_config(defbkt, config);
     }
@@ -1447,11 +1478,11 @@ static void deflate_buckets(CuTest *tc, int nr_of_loops)
         if (i == nr_of_loops - 1) {
             CuAssertIntEquals(tc, APR_SUCCESS,
                               deflate_compress(&data, &len, &zdestr, msg,
-                                               strlen(msg), 1, tb->pool));
+                                               strlen(msg), 1, pool));
         } else {
             CuAssertIntEquals(tc, APR_SUCCESS,
                               deflate_compress(&data, &len, &zdestr, msg,
-                                               strlen(msg), 0, tb->pool));
+                                               strlen(msg), 0, pool));
         }
 
         if (len == 0)
@@ -1469,10 +1500,15 @@ static void deflate_buckets(CuTest *tc, int nr_of_loops)
 static void test_deflate_buckets(CuTest *tc)
 {
     int i;
+    apr_pool_t *iterpool;
+    test_baton_t *tb = tc->testBaton;
 
+    apr_pool_create(&iterpool, tb->pool);
     for (i = 1; i < 1000; i++) {
-        deflate_buckets(tc, i);
+        apr_pool_clear(iterpool);
+        deflate_buckets(tc, i, iterpool);
     }
+    apr_pool_destroy(iterpool);
 }
 
 static apr_status_t discard_data(serf_bucket_t *bkt,
@@ -1651,6 +1687,58 @@ static void test_deflate_4GBplus_buckets(CuTest *tc)
 #undef BUFSIZE
 }
 
+/* Basic test for serf_linebuf_fetch(). */
+static void test_linebuf_fetch_crlf(CuTest *tc)
+{
+    test_baton_t *tb = tc->testBaton;
+    mockbkt_action actions[]= {
+        { 1, "line1" CRLF, APR_SUCCESS },
+        { 1, "line2" CR, APR_EAGAIN },
+        { 1, "" LF, APR_SUCCESS },
+        { 1, "" CRLF, APR_EOF},
+    };
+    serf_bucket_t *bkt;
+    serf_linebuf_t linebuf;
+    
+    serf_bucket_alloc_t *alloc = serf_bucket_allocator_create(tb->pool, NULL,
+                                                              NULL);
+
+    bkt = serf_bucket_mock_create(actions, sizeof(actions)/sizeof(actions[0]),
+                                  alloc);
+
+    serf_linebuf_init(&linebuf);
+    CuAssertStrEquals(tc, "", linebuf.line);
+    CuAssertIntEquals(tc, 0, linebuf.used);
+    CuAssertIntEquals(tc, SERF_LINEBUF_EMPTY, linebuf.state);
+
+    CuAssertIntEquals(tc, APR_SUCCESS,
+                      serf_linebuf_fetch(&linebuf, bkt, SERF_NEWLINE_CRLF));
+    /* We got first line in one call. */
+    CuAssertIntEquals(tc, SERF_LINEBUF_READY, linebuf.state);
+    CuAssertStrEquals(tc, "line1", linebuf.line);
+    CuAssertIntEquals(tc, 5, linebuf.used);
+
+    /* The second line CR and LF splitted across packets. */
+    CuAssertIntEquals(tc, APR_EAGAIN,
+                      serf_linebuf_fetch(&linebuf, bkt, SERF_NEWLINE_CRLF));
+    CuAssertIntEquals(tc, SERF_LINEBUF_CRLF_SPLIT, linebuf.state);
+
+    CuAssertIntEquals(tc, APR_SUCCESS,
+                      serf_linebuf_fetch(&linebuf, bkt, SERF_NEWLINE_CRLF));
+
+    CuAssertIntEquals(tc, SERF_LINEBUF_READY, linebuf.state);
+    CuAssertIntEquals(tc, 5, linebuf.used);
+    CuAssertStrnEquals(tc, "line2", 0, linebuf.line);
+
+    /* Last line is empty. */
+    CuAssertIntEquals(tc, APR_EOF,
+                      serf_linebuf_fetch(&linebuf, bkt, SERF_NEWLINE_CRLF));
+    CuAssertIntEquals(tc, SERF_LINEBUF_READY, linebuf.state);
+    CuAssertStrEquals(tc, "", linebuf.line);
+    CuAssertIntEquals(tc, 0, linebuf.used);
+
+}
+
 CuSuite *test_buckets(void)
 {
     CuSuite *suite = CuSuiteNew();
@@ -1668,6 +1756,7 @@ CuSuite *test_buckets(void)
     SUITE_ADD_TEST(suite, test_response_body_chunked_gzip_small);
     SUITE_ADD_TEST(suite, test_response_bucket_peek_at_headers);
     SUITE_ADD_TEST(suite, test_response_bucket_iis_status_code);
+    SUITE_ADD_TEST(suite, test_response_bucket_no_reason);
     SUITE_ADD_TEST(suite, test_bucket_header_set);
     SUITE_ADD_TEST(suite, test_bucket_header_do);
     SUITE_ADD_TEST(suite, test_iovec_buckets);
@@ -1688,6 +1777,8 @@ CuSuite *test_buckets(void)
 #if 0
     SUITE_ADD_TEST(suite, test_serf_default_read_iovec);
 #endif
+
+    SUITE_ADD_TEST(suite, test_linebuf_fetch_crlf);
 
     return suite;
 }

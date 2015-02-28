@@ -16,6 +16,8 @@
 /* This file includes code originally submitted to the Serf project, covered by
  * the Apache License, Version 2.0, copyright Justin Erenkrantz & Greg Stein.
  */
+#define APR_WANT_MEMFUNC
+#include <apr_want.h>
 #include <apr_strings.h>
 #include <apr_uri.h>
 #include <apr_lib.h>
@@ -454,9 +456,11 @@ static apr_status_t buffSktPeek(bucket_t *bkt, apr_size_t *len)
 
     status = readFromSocket(bkt);
 
-    if (ctx->remaining > *len) {
-        /* If there was a socket error, assume that it will be returned on the
-           next call to readFromSocket */
+    if (status && !APR_STATUS_IS_EOF(status) && !APR_STATUS_IS_EAGAIN(status)
+        && ctx->remaining > 0) {
+
+        /* If there was a socket read error, assume that it will be returned
+           on the next call to readFromSocket */
         status = APR_SUCCESS;
     }
 
@@ -799,7 +803,7 @@ static apr_status_t readChunk(bucket_t *bkt, mhRequest_t *req, bool *done)
 static apr_status_t
 readChunked(bucket_t *bkt, mhRequest_t *req, bool *done)
 {
-    apr_status_t status;
+    apr_status_t status = APR_SUCCESS;
 
     *done = NO;
     req->chunked = YES;
@@ -1416,8 +1420,9 @@ static apr_status_t processServer(mhServCtx_t *ctx, _mhClientCtx_t *cctx,
  * Initialize the client context. This stores all info related to one client
  * socket in the server.
  */
-static _mhClientCtx_t *initClientCtx(apr_pool_t *pool, mhServCtx_t *serv_ctx,
-                                     apr_socket_t *cskt, mhServerType_t type)
+static apr_status_t initClientCtx(_mhClientCtx_t **ppctx,
+                                  apr_pool_t *pool, mhServCtx_t *serv_ctx,
+                                  apr_socket_t *cskt, mhServerType_t type)
 {
     _mhClientCtx_t *cctx;
     apr_pool_t *ccpool;
@@ -1442,6 +1447,8 @@ static _mhClientCtx_t *initClientCtx(apr_pool_t *pool, mhServCtx_t *serv_ctx,
     }
 #ifdef MOCKHTTP_OPENSSL
     if (type == mhHTTPSv1Server || type == mhHTTPSv11Server) {
+        apr_status_t status;
+
         cctx->handshake = sslHandshake;
         cctx->read = sslSocketRead;
         cctx->send = sslSocketWrite;
@@ -1451,13 +1458,19 @@ static _mhClientCtx_t *initClientCtx(apr_pool_t *pool, mhServCtx_t *serv_ctx,
         cctx->clientCert = serv_ctx->clientCert;
         cctx->protocols = serv_ctx->protocols;
         cctx->ocspEnabled = serv_ctx->ocspEnabled;
-        /* TODO: don't ignore status */
-        initSSLCtx(cctx);
+
+        status = initSSLCtx(cctx);
+
+        if (status)
+            return status;
     }
 #endif
     cctx->stream = createBufferedSocketBucket(cskt, cctx->read,
                                               cctx->ssl_ctx, ccpool);
-    return cctx;
+
+    *ppctx = cctx;
+
+    return APR_SUCCESS;
 }
 
 static void closeAndRemoveClientCtx(mhServCtx_t *ctx, _mhClientCtx_t *cctx)
@@ -1549,7 +1562,7 @@ apr_status_t _mhRunServerLoop(mhServCtx_t *ctx)
             STATUSERR(apr_socket_timeout_set(cskt, 0));
 
             /* Push a client context on the ctx->clients stack */
-            cctx = initClientCtx(ctx->pool, ctx, cskt, ctx->type);
+            STATUSERR(initClientCtx(&cctx, ctx->pool, ctx, cskt, ctx->type));
             pfd.desc_type = APR_POLL_SOCKET;
             pfd.desc.s = cskt;
             pfd.reqevents = APR_POLLIN | APR_POLLOUT | APR_POLLHUP | APR_POLLERR;

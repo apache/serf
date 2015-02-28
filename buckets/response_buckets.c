@@ -88,6 +88,7 @@ serf_bucket_t *serf_bucket_response_create(
     ctx->chunked = 0;
     ctx->head_req = 0;
     ctx->error_on_eof = 0;
+    ctx->config = NULL;
 
     serf_linebuf_init(&ctx->linebuf);
 
@@ -136,7 +137,10 @@ static apr_status_t parse_status_line(response_context_t *ctx,
     int res;
     char *reason; /* ### stupid APR interface makes this non-const */
 
-    /* ctx->linebuf.line should be of form: HTTP/1.1 200 OK */
+    /* ctx->linebuf.line should be of form: 'HTTP/1.1 200 OK',
+       but we also explicitly allow the forms 'HTTP/1.1 200' (no reason)
+       and 'HTTP/1.1 401.1 Logon failed' (iis extended error codes)
+       NOTE: Since r2465 linebuf.line is always NUL terminated string. */
     res = apr_date_checkmask(ctx->linebuf.line, "HTTP/#.# ###*");
     if (!res) {
         /* Not an HTTP response?  Well, at least we won't understand it. */
@@ -146,9 +150,11 @@ static apr_status_t parse_status_line(response_context_t *ctx,
     ctx->sl.version = SERF_HTTP_VERSION(ctx->linebuf.line[5] - '0',
                                         ctx->linebuf.line[7] - '0');
     ctx->sl.code = apr_strtoi64(ctx->linebuf.line + 8, &reason, 10);
+    if (errno == ERANGE || reason == ctx->linebuf.line + 8)
+        return SERF_ERROR_BAD_HTTP_RESPONSE;
 
     /* Skip leading spaces for the reason string. */
-    if (apr_isspace(*reason)) {
+    while (apr_isspace(*reason)) {
         reason++;
     }
 
@@ -462,8 +468,11 @@ static apr_status_t serf_response_readline(serf_bucket_t *bucket,
     status = serf_bucket_readline(ctx->body, acceptable, found, data, len);
 
 fake_eof:
-    if (APR_STATUS_IS_EOF(status) && ctx->error_on_eof)
+    if (APR_STATUS_IS_EOF(status) && ctx->error_on_eof) {
+        *len = 0;
+        *found = SERF_NEWLINE_NONE;
         return ctx->error_on_eof;
+    }
 
     return status;
 }

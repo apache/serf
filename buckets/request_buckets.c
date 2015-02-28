@@ -46,6 +46,7 @@ serf_bucket_t *serf_bucket_request_create(
     ctx->headers = serf_bucket_headers_create(allocator);
     ctx->body = body;
     ctx->len = LENGTH_UNKNOWN;
+    ctx->config = NULL;
 
     return serf_bucket_create(&serf_bucket_type_request, allocator, ctx);
 }

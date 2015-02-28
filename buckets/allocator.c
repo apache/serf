@@ -15,6 +15,8 @@
 
 #include <stdlib.h>
 
+#define APR_WANT_MEMFUNC
+#include <apr_want.h>
 #include <apr_pools.h>
 
 #include "serf.h"
