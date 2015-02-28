@@ -653,6 +653,7 @@ void mhGivenConnSetup(MockHTTP *mh, ...);
 mhConnMatcherBldr_t *mhMatchClientCertCNEqualTo(const MockHTTP *mh,
                                                 const char *expected);
 mhConnMatcherBldr_t *mhMatchClientCertValid(const MockHTTP *mh);
+    /* TODO: make this a generic matcher */
 mhReqMatcherBldr_t *mhMatchAny(const MockHTTP *mh);
 
 mhResponse_t *mhNewResponseForRequest(MockHTTP *mh, mhServCtx_t *ctx,
