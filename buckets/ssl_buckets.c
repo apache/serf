@@ -34,6 +34,8 @@
  * Originally developed by Aaron Bannert and Justin Erenkrantz, eBuilt.
  */
 
+#define APR_WANT_MEMFUNC
+#include <apr_want.h>
 #include <apr_pools.h>
 #include <apr_network_io.h>
 #include <apr_portable.h>
@@ -1471,9 +1473,9 @@ static serf_ssl_context_t *ssl_init_context(serf_bucket_alloc_t *allocator)
     ssl_ctx->pool = serf_bucket_allocator_get_pool(allocator);
     ssl_ctx->allocator = allocator;
 
-    /* Use the best possible protocol version, but disable the broken SSLv2 */
+    /* Use the best possible protocol version, but disable the broken SSLv2/3 */
     ssl_ctx->ctx = SSL_CTX_new(SSLv23_client_method());
-    SSL_CTX_set_options(ssl_ctx->ctx, SSL_OP_NO_SSLv2);
+    SSL_CTX_set_options(ssl_ctx->ctx, SSL_OP_NO_SSLv2 | SSL_OP_NO_SSLv3);
 
     SSL_CTX_set_client_cert_cb(ssl_ctx->ctx, ssl_need_client_cert);
     ssl_ctx->cached_cert = 0;
@@ -1481,6 +1483,7 @@ static serf_ssl_context_t *ssl_init_context(serf_bucket_alloc_t *allocator)
     ssl_ctx->pending_err = APR_SUCCESS;
     ssl_ctx->fatal_err = APR_SUCCESS;
     ssl_ctx->renegotiation = 0;
+    ssl_ctx->config = NULL;
 
     ssl_ctx->cert_callback = NULL;
     ssl_ctx->cert_pw_callback = NULL;

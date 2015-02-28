@@ -15,6 +15,8 @@
 
 #include <stdlib.h>
 
+#define APR_WANT_MEMFUNC
+#include <apr_want.h>
 #include <apr.h>
 #include <apr_uri.h>
 #include <apr_strings.h>

@@ -47,6 +47,7 @@ serf_bucket_t *serf_bucket_chunk_create(
     ctx->state = STATE_FETCH;
     ctx->chunk = serf_bucket_aggregate_create(allocator);
     ctx->stream = stream;
+    ctx->config = NULL;
 
     return serf_bucket_create(&serf_bucket_type_chunk, allocator, ctx);
 }

@@ -13,6 +13,8 @@
  * limitations under the License.
  */
 
+#define APR_WANT_MEMFUNC
+#include <apr_want.h>
 #include "apr.h"
 #include "apr_pools.h"
 #include <apr_strings.h>
@@ -607,10 +609,18 @@ const char *create_large_request_message(apr_pool_t *pool, const char *body)
     return apr_pstrcat(pool, request, body, NULL);
 }
 
+static int pool_abort_func(int retcode)
+{
+    fprintf(stderr, "Out of memory\n");
+    abort();
+    return 0;
+}
+
 void *test_setup(void *dummy)
 {
     apr_pool_t *test_pool;
     apr_pool_create(&test_pool, NULL);
+    apr_pool_abort_set(pool_abort_func, test_pool);
     return initTestCtx(test_pool);
 }
 

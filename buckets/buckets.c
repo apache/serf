@@ -13,6 +13,9 @@
  * limitations under the License.
  */
 
+#define APR_WANT_MEMFUNC
+#include <apr_want.h>
+
 #include <apr_pools.h>
 
 #include "serf.h"
@@ -399,8 +402,10 @@ apr_status_t serf_databuf_readline(
     apr_size_t *len)
 {
     apr_status_t status = common_databuf_prep(databuf, len);
-    if (status)
+    if (status) {
+        *found = SERF_NEWLINE_NONE;
         return status;
+    }
 
     /* the returned line will start at the current position. */
     *data = databuf->current;
@@ -447,6 +452,7 @@ void serf_linebuf_init(serf_linebuf_t *linebuf)
 {
     linebuf->state = SERF_LINEBUF_EMPTY;
     linebuf->used = 0;
+    linebuf->line[0] = '\0';
 }
 
 
@@ -465,6 +471,7 @@ apr_status_t serf_linebuf_fetch(
          * before using this value.
          */
         linebuf->used = 0;
+        linebuf->line[0] = '\0';
     }
 
     while (1) {
@@ -520,7 +527,7 @@ apr_status_t serf_linebuf_fetch(
             if (APR_STATUS_IS_EOF(status) && len == 0) {
                 return status;
             }
-            if (linebuf->used + len > sizeof(linebuf->line)) {
+            if (linebuf->used + len + 1 > sizeof(linebuf->line)) {
                 return SERF_ERROR_LINE_TOO_LONG;
             }
 
@@ -539,7 +546,8 @@ apr_status_t serf_linebuf_fetch(
                 linebuf->state = SERF_LINEBUF_CRLF_SPLIT;
 
                 /* Toss the partial CR. We won't ever need it. */
-                --len;
+                if (len > 0)
+                    --len;
             }
             else {
                 /* We got a newline (of some form). We don't need it
@@ -551,11 +559,18 @@ apr_status_t serf_linebuf_fetch(
                 linebuf->state = SERF_LINEBUF_READY;
             }
 
-            /* ### it would be nice to avoid this copy if at all possible,
-               ### and just return the a data/len pair to the caller. we're
-               ### keeping it simple for now. */
-            memcpy(&linebuf->line[linebuf->used], data, len);
-            linebuf->used += len;
+            /* The C99 standard (7.21.1/2) requires valid data pointer
+             * even for zero length array for all functions unless explicitly
+             * stated otherwise. So don't copy data even most mempy()
+             * implementations have special handling for zero length copy. */
+            if (len > 0) {
+                /* ### it would be nice to avoid this copy if at all possible,
+                   ### and just return the a data/len pair to the caller. we're
+                   ### keeping it simple for now. */
+                memcpy(&linebuf->line[linebuf->used], data, len);
+                linebuf->line[linebuf->used + len] = '\0';
+                linebuf->used += len;
+            }
         }
 
         /* If we saw anything besides "success. please read again", then

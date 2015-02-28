@@ -1100,7 +1100,13 @@ typedef struct serf_linebuf_t {
     /* How much of the buffer have we used? */
     apr_size_t used;
 
-    /* The line is read into this buffer, minus CR/LF */
+    /* The line is read into this buffer, minus CR/LF.
+     *
+     * NOTE: Before serf 2.0 buffer IS NOT NUL terminated
+     * and @a used should be used to find line length.
+     *
+     * Since serf 2.0 buffer is always NUL terminated.
+     **/
     char line[SERF_LINEBUF_LIMIT];
 
 } serf_linebuf_t;
@@ -1205,12 +1211,12 @@ typedef enum {
     SERF_CONFIG_PER_CONNECTION = 0x40000000,
 } serf_config_categories_t;
 
-#define SERF_CONFIG_HOST_NAME       SERF_CONFIG_PER_HOST | 0x000001
-#define SERF_CONFIG_HOST_PORT       SERF_CONFIG_PER_HOST | 0x000002
-#define SERF_CONFIG_CONN_LOCALIP    SERF_CONFIG_PER_CONNECTION | 0x000001
-#define SERF_CONFIG_CONN_REMOTEIP   SERF_CONFIG_PER_CONNECTION | 0x000002
-#define SERF_CONFIG_CONN_PIPELINING SERF_CONFIG_PER_CONNECTION | 0x000003
-#define SERF_CONFIG_CTX_LOGBATON    SERF_CONFIG_PER_CONTEXT | 0x000001
+#define SERF_CONFIG_HOST_NAME       (SERF_CONFIG_PER_HOST | 0x000001)
+#define SERF_CONFIG_HOST_PORT       (SERF_CONFIG_PER_HOST | 0x000002)
+#define SERF_CONFIG_CONN_LOCALIP    (SERF_CONFIG_PER_CONNECTION | 0x000001)
+#define SERF_CONFIG_CONN_REMOTEIP   (SERF_CONFIG_PER_CONNECTION | 0x000002)
+#define SERF_CONFIG_CONN_PIPELINING (SERF_CONFIG_PER_CONNECTION | 0x000003)
+#define SERF_CONFIG_CTX_LOGBATON    (SERF_CONFIG_PER_CONTEXT | 0x000001)
 
 /* Configuration values stored in the configuration store:
 
