@@ -1025,9 +1025,11 @@ static apr_status_t handle_response(serf_request_t *request,
         if (SERF_BUCKET_READ_ERROR(status)) {
 
             /* There was an error while checking the authentication headers of
-               the response. Depending on the cause of the error, we need to 
-               inform the application in a different way.
+               the response. We need to inform the application - which
+               hasn't seen this response yet - of the error.
              
+               These are the possible causes of the error:
+
                1. A communication error while reading the response status line,
                   headers or while discarding the response body: pass the
                   response unchanged to the application, it will see the same
@@ -1054,9 +1056,9 @@ static apr_status_t handle_response(serf_request_t *request,
                   body, so we can handle this case the same as 2.
 
                In summary, all these cases can be handled in the same way: call
-               the application's response handler with the response, but return
-               error code STATUS instead of APR_EOF after reading the response
-               body.
+               the application's response handler with the response bucket, but
+               make sure that the application sees error code STATUS instead of
+               APR_EOF after reading the response body.
             */
 
             serf__bucket_response_set_error_on_eof(request->resp_bkt, status);
