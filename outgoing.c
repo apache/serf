@@ -1260,13 +1260,21 @@ static apr_status_t read_from_connection(serf_connection_t *conn)
             }
 
             /* Unexpected response from the server */
-
         }
 
         /* If the request doesn't have a response bucket, then call the
          * acceptor to get one created.
          */
         if (request->resp_bkt == NULL) {
+            if (request->req_bkt == NULL) {
+                /* Request wasn't even setup.
+                   Server replying before it received anything? */
+                apr_status_t setup_status = setup_request(request);
+                if (setup_status) {
+                    /* Something bad happened. Propagate any errors. */
+                    return setup_status;
+                }
+            }
             request->resp_bkt = (*request->acceptor)(request, conn->stream,
                                                      request->acceptor_baton,
                                                      tmppool);
