@@ -397,7 +397,8 @@ apr_status_t serf__open_connections(serf_context_t *ctx)
         }
 
         apr_pool_clear(conn->skt_pool);
-        apr_pool_cleanup_register(conn->skt_pool, conn, clean_skt, clean_skt);
+        apr_pool_cleanup_register(conn->skt_pool, conn, clean_skt,
+                                  apr_pool_cleanup_null);
 
         status = apr_socket_create(&skt, conn->address->family,
                                    SOCK_STREAM,
@@ -774,7 +775,7 @@ static apr_status_t setup_request(serf_request_t *request)
     request->allocator = serf_bucket_allocator_create(request->respool,
                                                       NULL, NULL);
     apr_pool_cleanup_register(request->respool, request,
-                              clean_resp, clean_resp);
+                              clean_resp, apr_pool_cleanup_null);
 
     /* Fill in the rest of the values for the request. */
     status = request->setup(request, request->setup_baton,
