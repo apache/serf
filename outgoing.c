@@ -1267,15 +1267,12 @@ static apr_status_t read_from_connection(serf_connection_t *conn)
          * acceptor to get one created.
          */
         if (request->resp_bkt == NULL) {
-            if (request->req_bkt == NULL) {
+            if (! request->acceptor) {
                 /* Request wasn't even setup.
                    Server replying before it received anything? */
-                apr_status_t setup_status = setup_request(request);
-                if (setup_status) {
-                    /* Something bad happened. Propagate any errors. */
-                    return setup_status;
-                }
+              return SERF_ERROR_BAD_HTTP_RESPONSE;
             }
+
             request->resp_bkt = (*request->acceptor)(request, conn->stream,
                                                      request->acceptor_baton,
                                                      tmppool);
