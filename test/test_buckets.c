@@ -1350,8 +1350,8 @@ static void deflate_buckets(CuTest *tc, int nr_of_loops)
     serf_bucket_aggregate_append(aggbkt, strbkt);
 
     for (i = 0; i < nr_of_loops; i++) {
-        const char *data;
-        apr_size_t len;
+        const char *data = NULL;
+        apr_size_t len = 0;
 
         if (i == nr_of_loops - 1) {
             CuAssertIntEquals(tc, APR_SUCCESS,
@@ -1430,18 +1430,17 @@ create_gzip_deflate_bucket(serf_bucket_t *stream, z_stream *outzstr,
     serf_bucket_t *defbkt = serf_bucket_deflate_create(stream, alloc,
                                                        SERF_DEFLATE_GZIP);
     int zerr;
-
-    memset(outzstr, 0, sizeof(z_stream));
-
     const char gzip_header[10] =
     { '\037', '\213', Z_DEFLATED, 0,
         0, 0, 0, 0, /* mtime */
         0, 0x03 /* Unix OS_CODE */
     };
 
+    memset(outzstr, 0, sizeof(z_stream));
+
     /* HTTP uses raw deflate format, so windows size => -15 */
     zerr = deflateInit2(outzstr, Z_DEFAULT_COMPRESSION, Z_DEFLATED, -15, 8,
-                            Z_DEFAULT_STRATEGY);
+                        Z_DEFAULT_STRATEGY);
     if (zerr != Z_OK)
         return NULL;
 
@@ -1556,7 +1555,7 @@ static void test_deflate_4GBplus_buckets(CuTest *tc)
             break;
     }
 
-    CuAssertIntEquals(tc, NR_OF_LOOPS * BUFSIZE, actual_size);
+    CuAssertTrue(tc, actual_size == (apr_size_t)NR_OF_LOOPS * BUFSIZE);
 #undef NR_OF_LOOPS
 #undef BUFSIZE
 }
