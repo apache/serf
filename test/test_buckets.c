@@ -1232,9 +1232,9 @@ static apr_status_t deflate_compress(const char **data, apr_size_t *len,
 
     /* The largest buffer we should need is 0.1% larger than the
        uncompressed data, + 12 bytes. This info comes from zlib.h.
+       buf_size = orig_len + (orig_len / 1000) + 12;
        Note: This isn't sufficient when using Z_NO_FLUSH and extremely compressed
        data. Use a buffer bigger than what we need. */
-//    buf_size = orig_len + (orig_len / 1000) + 12;
     buf_size = 100000;
 
     write_buf = apr_palloc(pool, buf_size);
