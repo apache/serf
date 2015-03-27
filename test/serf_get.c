@@ -32,21 +32,25 @@ typedef struct app_baton_t {
     const char *hostinfo;
     int using_ssl;
     int head_request;
-    serf_ssl_context_t *ssl_ctx;
     const char *pem_path;
     const char *pem_pwd;
     serf_bucket_alloc_t *bkt_alloc;
     serf_context_t *serf_ctx;
 } app_baton_t;
 
+typedef struct conn_baton_t {
+    app_baton_t *app;
+    serf_ssl_context_t *ssl_ctx;
+} conn_baton_t;
+
 static void closed_connection(serf_connection_t *conn,
                               void *closed_baton,
                               apr_status_t why,
                               apr_pool_t *pool)
 {
-    app_baton_t *ctx = closed_baton;
+    conn_baton_t *conn_ctx = closed_baton;
 
-    ctx->ssl_ctx = NULL;
+    conn_ctx->ssl_ctx = NULL;
 
     if (why) {
         abort();
@@ -179,31 +183,33 @@ static apr_status_t conn_setup(apr_socket_t *skt,
                                 apr_pool_t *pool)
 {
     serf_bucket_t *c;
-    app_baton_t *ctx = setup_baton;
+    conn_baton_t *conn_ctx = setup_baton;
+    app_baton_t *ctx = conn_ctx->app;
 
     c = serf_context_bucket_socket_create(ctx->serf_ctx, skt,
                                           ctx->bkt_alloc);
     if (ctx->using_ssl) {
-        c = serf_bucket_ssl_decrypt_create(c, ctx->ssl_ctx, ctx->bkt_alloc);
-        if (!ctx->ssl_ctx) {
-            ctx->ssl_ctx = serf_bucket_ssl_decrypt_context_get(c);
+        c = serf_bucket_ssl_decrypt_create(c, conn_ctx->ssl_ctx, ctx->bkt_alloc);
+        if (!conn_ctx->ssl_ctx) {
+            conn_ctx->ssl_ctx = serf_bucket_ssl_decrypt_context_get(c);
         }
-        serf_ssl_server_cert_chain_callback_set(ctx->ssl_ctx, 
+        serf_ssl_server_cert_chain_callback_set(conn_ctx->ssl_ctx, 
                                                 ignore_all_cert_errors, 
                                                 print_certs, NULL);
-        serf_ssl_set_hostname(ctx->ssl_ctx, ctx->hostinfo);
+        serf_ssl_set_hostname(conn_ctx->ssl_ctx, ctx->hostinfo);
 
-        *output_bkt = serf_bucket_ssl_encrypt_create(*output_bkt, ctx->ssl_ctx,
-                                                    ctx->bkt_alloc);
+        *output_bkt = serf_bucket_ssl_encrypt_create(*output_bkt,
+                                                     conn_ctx->ssl_ctx,
+                                                     ctx->bkt_alloc);
         if (ctx->pem_path) {
-            serf_ssl_client_cert_provider_set(ctx->ssl_ctx,
+            serf_ssl_client_cert_provider_set(conn_ctx->ssl_ctx,
                                               client_cert_cb,
                                               ctx,
                                               pool);
         }
 
         if (ctx->pem_pwd) {
-            serf_ssl_client_cert_password_set(ctx->ssl_ctx,
+            serf_ssl_client_cert_password_set(conn_ctx->ssl_ctx,
                                               client_cert_pw_cb,
                                               ctx,
                                               pool);
@@ -446,6 +452,7 @@ static const apr_getopt_option_t options[] =
     {NULL,      'v', 0, "Display version"},
     {NULL,      'H', 0, "Print response headers"},
     {NULL,      'n', 1, "<count> Fetch URL <count> times"},
+    {NULL,      'c', 1, "<count> Use <count> concurrent connections"},
     {NULL,   'x', 1, "<count> Number of maximum outstanding requests inflight"},
     {"user",    'U', 1, "<user> Username for Basic/Digest authentication"},
     {"pwd",     'P', 1, "<password> Password for Basic/Digest authentication"},
@@ -489,14 +496,14 @@ int main(int argc, const char **argv)
     apr_pool_t *pool;
     serf_bucket_alloc_t *bkt_alloc;
     serf_context_t *context;
-    serf_connection_t *connection;
+    serf_connection_t **connections;
     app_baton_t app_ctx;
     handler_baton_t handler_ctx;
     serf_bucket_t *req_hdrs = NULL;
     apr_uri_t url;
     const char *proxy = NULL;
     const char *raw_url, *method, *req_body_path = NULL;
-    int count, inflight;
+    int count, inflight, conn_count;
     int i;
     int print_headers, debug;
     const char *username = NULL;
@@ -516,6 +523,7 @@ int main(int argc, const char **argv)
     /* Default to one round of fetching with no limit to max inflight reqs. */
     count = 1;
     inflight = 0;
+    conn_count = 1;
     /* Default to GET. */
     method = "GET";
     /* Do not print headers by default. */
@@ -558,6 +566,21 @@ int main(int argc, const char **argv)
                 printf("Problem converting number of times to fetch URL (%d)\n",
                        errno);
                 return errno;
+            }
+            break;
+        case 'c':
+            errno = 0;
+            conn_count = apr_strtoi64(opt_arg, NULL, 10);
+            if (errno) {
+                printf("Problem converting number of concurrent connections to use (%d)\n",
+                       errno);
+                return errno;
+            }
+
+            if (conn_count <= 0) {
+                printf("Invalid number of concurrent connections to use (%d)\n",
+                       conn_count);
+                return 1;
             }
             break;
         case 'x':
@@ -717,16 +740,25 @@ int main(int argc, const char **argv)
 
     /* ### Connection or Context should have an allocator? */
     app_ctx.bkt_alloc = bkt_alloc;
-    app_ctx.ssl_ctx = NULL;
 
-    status = serf_connection_create2(&connection, context, url,
-                                     conn_setup, &app_ctx,
-                                     closed_connection, &app_ctx,
-                                     pool);
-    if (status) {
-        printf("Error creating connection: %d\n", status);
-        apr_pool_destroy(pool);
-        exit(1);
+    connections = apr_pcalloc(pool, conn_count * sizeof(serf_connection_t*));
+    for (i = 0; i < conn_count; i++)
+    {
+        conn_baton_t *conn_ctx = apr_pcalloc(pool, sizeof(*conn_ctx));
+        conn_ctx->app = &app_ctx;
+        conn_ctx->ssl_ctx = NULL;
+
+        status = serf_connection_create2(&connections[i], context, url,
+                                         conn_setup, conn_ctx,
+                                         closed_connection, conn_ctx,
+                                         pool);
+        if (status) {
+            printf("Error creating connection: %d\n", status);
+            apr_pool_destroy(pool);
+            exit(1);
+        }
+
+        serf_connection_set_max_outstanding_requests(connections[i], inflight);
     }
 
     handler_ctx.completed_requests = 0;
@@ -756,12 +788,10 @@ int main(int argc, const char **argv)
     handler_ctx.handler = handle_response;
     handler_ctx.req_hdrs = req_hdrs;
 
-    serf_connection_set_max_outstanding_requests(connection, inflight);
-
     for (i = 0; i < count; i++) {
         /* We don't need the returned request here. */
-        serf_connection_request_create(connection, setup_request,
-                                       &handler_ctx);
+        serf_connection_request_create(connections[i % conn_count],
+                                       setup_request, &handler_ctx);
     }
 
     while (1) {
@@ -789,7 +819,10 @@ int main(int argc, const char **argv)
 
     apr_file_close(handler_ctx.output_file);
 
-    serf_connection_close(connection);
+    for (i = 0; i < conn_count; i++)
+    {
+        serf_connection_close(connections[i]);
+    }
 
     apr_pool_destroy(pool);
     return 0;
