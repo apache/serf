@@ -144,6 +144,5 @@ const serf_bucket_type_t serf_bucket_type_response_body = {
     serf_response_body_peek,
     serf_response_body_destroy,
     serf_default_read_bucket,
-    NULL,
     serf_response_body_set_config,
 };

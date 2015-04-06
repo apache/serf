@@ -540,6 +540,5 @@ const serf_bucket_type_t serf_bucket_type_response = {
     serf_response_peek,
     serf_response_destroy_and_data,
     serf_default_read_bucket,
-    NULL,
     serf_response_set_config,
 };

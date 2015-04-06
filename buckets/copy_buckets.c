@@ -193,6 +193,5 @@ const serf_bucket_type_t serf_bucket_type_copy = {
     serf_copy_peek,
     serf_copy_destroy,
     serf_copy_read_bucket,
-    NULL,
     serf_copy_set_config,
 };
