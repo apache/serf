@@ -774,11 +774,6 @@ serf_bucket_t *serf_request_bucket_request_create(
  */
 #define SERF_NEWLINE_CRLF_SPLIT 0x0010
 
-/** Used to indicate that length of remaining data in bucket is unknown. See 
- * serf_bucket_type_t->get_remaining().
- */
-#define SERF_LENGTH_UNKNOWN ((apr_uint64_t) -1)
-
 struct serf_bucket_type_t {
 
     /** name of this bucket type */
@@ -923,13 +918,6 @@ struct serf_bucket_type_t {
     serf_bucket_t * (*read_bucket_v2)(serf_bucket_t *bucket,
                                       const serf_bucket_type_t *type);
 
-    /* Returns length of remaining data to be read in @a bucket. Returns
-     * SERF_LENGTH_UNKNOWN if length is unknown.
-     *
-     * @since New in 1.4.
-     */
-    apr_uint64_t (*get_remaining)(serf_bucket_t *bucket);
-
     /* Provides a reference to a config object containing all configuration
      * values relevant for this bucket.
      *
@@ -988,10 +976,6 @@ serf_bucket_t * serf_buckets_are_v2(serf_bucket_t *bucket,
 #define serf_bucket_read_bucket(b,t) ((b)->type->read_bucket(b,t))
 #define serf_bucket_peek(b,d,l) ((b)->type->peek(b,d,l))
 #define serf_bucket_destroy(b) ((b)->type->destroy(b))
-#define serf_bucket_get_remaining(b) \
-            ((b)->type->read_bucket == serf_buckets_are_v2 ? \
-             (b)->type->get_remaining(b) : \
-             SERF_LENGTH_UNKNOWN)
 #define serf_bucket_set_config(b,c) \
             ((b)->type->read_bucket == serf_buckets_are_v2 ? \
             (b)->type->set_config(b,c) : \

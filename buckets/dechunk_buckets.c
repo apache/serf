@@ -207,6 +207,5 @@ const serf_bucket_type_t serf_bucket_type_dechunk = {
     serf_dechunk_peek,
     serf_dechunk_destroy_and_data,
     serf_default_read_bucket,
-    NULL,
     serf_dechunk_set_config,
 };

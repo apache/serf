@@ -22,7 +22,6 @@ typedef struct file_context_t {
     apr_file_t *file;
 
     serf_databuf_t databuf;
-    apr_uint64_t remaining;
 } file_context_t;
 
 
@@ -41,11 +40,11 @@ serf_bucket_t *serf_bucket_file_create(
 {
     apr_status_t status;
     file_context_t *ctx;
+#if APR_HAS_MMAP
     apr_finfo_t finfo;
 
     status = apr_file_info_get(&finfo, APR_FINFO_SIZE, file);
 
-#if APR_HAS_MMAP
     /* See if we'd be better off mmap'ing this file instead.
      *
      * Note that there is a failure case here that we purposely fall through:
@@ -73,13 +72,6 @@ serf_bucket_t *serf_bucket_file_create(
     ctx->databuf.read = file_reader;
     ctx->databuf.read_baton = ctx;
 
-    if (status == APR_SUCCESS) {
-        ctx->remaining = finfo.size;
-    }
-    else {
-        ctx->remaining = SERF_LENGTH_UNKNOWN;
-    }
-
     return serf_bucket_create(&serf_bucket_type_file, allocator, ctx);
 }
 
@@ -88,21 +80,8 @@ static apr_status_t serf_file_read(serf_bucket_t *bucket,
                                    const char **data, apr_size_t *len)
 {
     file_context_t *ctx = bucket->data;
-    apr_status_t status;
 
-    status = serf_databuf_read(&ctx->databuf, requested, data, len);
-
-    if (SERF_BUCKET_READ_ERROR(status))
-    {
-        return status;
-    }
-
-    /* Update remaining length if known. */
-    if (ctx->remaining != SERF_LENGTH_UNKNOWN) {
-        ctx->remaining -= *len;
-    }
-
-    return status;
+    return serf_databuf_read(&ctx->databuf, requested, data, len);
 }
 
 static apr_status_t serf_file_readline(serf_bucket_t *bucket,
@@ -110,22 +89,8 @@ static apr_status_t serf_file_readline(serf_bucket_t *bucket,
                                        const char **data, apr_size_t *len)
 {
     file_context_t *ctx = bucket->data;
-    apr_status_t status;
 
-    status = serf_databuf_readline(&ctx->databuf, acceptable, found, data, len);
-
-    if (SERF_BUCKET_READ_ERROR(status))
-    {
-        return status;
-    }
-
-    /* Update remaining length if known. */
-    if (ctx->remaining != SERF_LENGTH_UNKNOWN) {
-        ctx->remaining -= *len;
-    }
-
-    return status;
-
+    return serf_databuf_readline(&ctx->databuf, acceptable, found, data, len);
 }
 
 static apr_status_t serf_file_peek(serf_bucket_t *bucket,
@@ -135,12 +100,6 @@ static apr_status_t serf_file_peek(serf_bucket_t *bucket,
     file_context_t *ctx = bucket->data;
 
     return serf_databuf_peek(&ctx->databuf, data, len);
-}
-
-static apr_uint64_t serf_file_get_remaining(serf_bucket_t *bucket)
-{
-    file_context_t *ctx = bucket->data;
-    return ctx->remaining;
 }
 
 const serf_bucket_type_t serf_bucket_type_file = {
@@ -153,6 +112,5 @@ const serf_bucket_type_t serf_bucket_type_file = {
     serf_file_peek,
     serf_default_destroy_and_data,
     serf_default_read_bucket,
-    serf_file_get_remaining,
     serf_default_ignore_config,
 };

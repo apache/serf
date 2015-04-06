@@ -148,12 +148,6 @@ static void serf_simple_destroy(serf_bucket_t *bucket)
     serf_default_destroy_and_data(bucket);
 }
 
-static apr_uint64_t serf_simple_get_remaining(serf_bucket_t *bucket)
-{
-    simple_context_t *ctx = bucket->data;
-    return ctx->remaining;
-}
-
 const serf_bucket_type_t serf_bucket_type_simple = {
     "SIMPLE",
     serf_simple_read,
@@ -164,6 +158,5 @@ const serf_bucket_type_t serf_bucket_type_simple = {
     serf_simple_peek,
     serf_simple_destroy,
     serf_default_read_bucket,
-    serf_simple_get_remaining,
     serf_default_ignore_config,
 };

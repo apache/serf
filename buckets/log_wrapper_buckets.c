@@ -156,7 +156,6 @@ serf_bucket_t *serf__bucket_log_wrapper_create(serf_bucket_t *wrapped,
     bkt_type->read_for_sendfile = wrapped->type->read_for_sendfile;
     if (wrapped->type->read_bucket == serf_buckets_are_v2) {
         bkt_type->read_bucket_v2 = wrapped->type->read_bucket_v2;
-        bkt_type->get_remaining = wrapped->type->get_remaining;
     }
 
     /* Wrap these functions */

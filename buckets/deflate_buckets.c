@@ -453,6 +453,5 @@ const serf_bucket_type_t serf_bucket_type_deflate = {
     serf_deflate_peek,
     serf_deflate_destroy_and_data,
     serf_default_read_bucket,
-    NULL,
     serf_deflate_set_config,
 };
