@@ -1361,7 +1361,7 @@ static apr_status_t processServer(mhServCtx_t *ctx, _mhClientCtx_t *cctx,
                     resp->closeConn = YES;
                 }
 
-                /* Link the request to the response, and push the request on the
+                /* Link the request to the response, and push the response on the
                    queue back to the client */
                 resp->req = cctx->req;
                 *((mhResponse_t **)apr_array_push(cctx->respQueue)) = resp;
