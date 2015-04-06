@@ -1131,72 +1131,6 @@ apr_status_t serf_linebuf_fetch(
     serf_bucket_t *bucket,
     int acceptable);
 
-
-/**
- * ### rationalize against "serf connections and request" group above
- *
- * @defgroup serf connections
- * @ingroup serf
- * @{
- */
-
-struct serf_connection_type_t {
-    /** Name of this connection type.  */
-    const char *name;
-
-    /** Vtable version.  */
-    int version;
-#define SERF_CONNECTION_TYPE_VERSION 1
-
-    /**
-     * Initiate a connection to the server.
-     *
-     * ### docco. note async. note that request(s) may be queued.
-     * ### can we somehow defer the SSL tunnel's CONNECT to the higher
-     * ### layer? then have the HTTP protocol layer wrap a CONN_PLAIN
-     * ### into a CONN_TLS connection once the tunnel is established?
-     */
-    apr_status_t (*connect)(serf_connection_t *conn);
-
-    /**
-     * Returns a bucket for reading from this connection.
-     *
-     * This bucket remains constant for the lifetime of the connection. It has
-     * built-in BARRIER bucket protection, so it can safely be "destroyed"
-     * without problem (and a later call to this vtable function will return
-     * the same bucket again).
-     *
-     * For all intents and purposes, this bucket is borrowed by the caller.
-     *
-     * This bucket effectively maps to the underlying socket, or possibly to
-     * a decrypting bucket layered over the socket.
-     */
-    serf_bucket_t * (*get_read_bucket)(serf_connection_t *conn);
-
-    /**
-     * Write some data into into the connection.
-     *
-     * Attempt to write a number of iovecs into the connection. The number of
-     * vectors *completely* written will be returned in @a vecs_written. If that
-     * equals @a vecs_size, then @a last_written will be set to 0. If it is less
-     * (not all iovecs were written), then the amount written from the next,
-     * incompletely written iovec is returned in @a last_written.
-     *
-     * In other words, the first byte of unwritten content is located at:
-     *
-     * <pre>
-     *   first = vecs[vecs_written][last_written];
-     * </pre>
-     *
-     * If all bytes are written, then APR_SUCCESS is returned. If only a portion
-     * was written, then APR_EAGAIN will be returned.
-     */
-    apr_status_t (*writev)(serf_connection_t *conn,
-                           int vecs_size, struct iovec *vecs,
-                           int *vecs_written, apr_size_t *last_written);
-};
-
-
 /*** Configuration store declarations ***/
 
 typedef const apr_uint32_t serf_config_key_t;
@@ -1499,6 +1433,70 @@ serf_queue_item_t *serf_http_request_queue(
     serf_protocol_t *proto,
     int priority,
     void *request_baton);
+
+/**
+ * ### rationalize against "serf connections and request" group above
+ *
+ * @defgroup serf connections
+ * @ingroup serf
+ * @{
+ */
+
+struct serf_connection_type_t {
+    /** Name of this connection type.  */
+    const char *name;
+
+    /** Vtable version.  */
+    int version;
+#define SERF_CONNECTION_TYPE_VERSION 1
+
+    /**
+     * Initiate a connection to the server.
+     *
+     * ### docco. note async. note that request(s) may be queued.
+     * ### can we somehow defer the SSL tunnel's CONNECT to the higher
+     * ### layer? then have the HTTP protocol layer wrap a CONN_PLAIN
+     * ### into a CONN_TLS connection once the tunnel is established?
+     */
+    apr_status_t (*connect)(serf_connection_t *conn);
+
+    /**
+     * Returns a bucket for reading from this connection.
+     *
+     * This bucket remains constant for the lifetime of the connection. It has
+     * built-in BARRIER bucket protection, so it can safely be "destroyed"
+     * without problem (and a later call to this vtable function will return
+     * the same bucket again).
+     *
+     * For all intents and purposes, this bucket is borrowed by the caller.
+     *
+     * This bucket effectively maps to the underlying socket, or possibly to
+     * a decrypting bucket layered over the socket.
+     */
+    serf_bucket_t * (*get_read_bucket)(serf_connection_t *conn);
+
+    /**
+     * Write some data into into the connection.
+     *
+     * Attempt to write a number of iovecs into the connection. The number of
+     * vectors *completely* written will be returned in @a vecs_written. If that
+     * equals @a vecs_size, then @a last_written will be set to 0. If it is less
+     * (not all iovecs were written), then the amount written from the next,
+     * incompletely written iovec is returned in @a last_written.
+     *
+     * In other words, the first byte of unwritten content is located at:
+     *
+     * <pre>
+     *   first = vecs[vecs_written][last_written];
+     * </pre>
+     *
+     * If all bytes are written, then APR_SUCCESS is returned. If only a portion
+     * was written, then APR_EAGAIN will be returned.
+     */
+    apr_status_t (*writev)(serf_connection_t *conn,
+                           int vecs_size, struct iovec *vecs,
+                           int *vecs_written, apr_size_t *last_written);
+};
 
 #endif /* Connection and protocol API v2 */
 /** @} */
