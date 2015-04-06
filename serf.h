@@ -48,9 +48,11 @@ typedef struct serf_incoming_request_t serf_incoming_request_t;
 
 typedef struct serf_request_t serf_request_t;
 
+#if 0
 typedef struct serf_connection_type_t serf_connection_type_t;
 typedef struct serf_protocol_t serf_protocol_t;
 typedef struct serf_protocol_type_t serf_protocol_type_t;
+#endif /* Connection and protocol API v2 */
 
 typedef struct serf_config_t serf_config_t;
 
