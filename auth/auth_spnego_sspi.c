@@ -13,6 +13,7 @@
  * limitations under the License.
  */
 
+#include "auth.h"
 #include "auth_spnego.h"
 #include "serf.h"
 #include "serf_private.h"
