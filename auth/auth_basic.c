@@ -110,14 +110,6 @@ serf__handle_basic_auth(int code,
     return APR_SUCCESS;
 }
 
-static apr_status_t
-serf__init_basic(int code,
-                 serf_context_t *ctx,
-                 apr_pool_t *pool)
-{
-    return APR_SUCCESS;
-}
-
 /* For Basic authentication we expect all authn info to be the same for all
    connections in the context to the same server (same realm, username,
    password). Therefore we can keep the header value in the per-server store
@@ -191,7 +183,6 @@ const serf__authn_scheme_t serf__basic_authn_scheme = {
     "Basic",
     "basic",
     SERF_AUTHN_BASIC,
-    serf__init_basic,
     serf__init_basic_connection,
     serf__handle_basic_auth,
     serf__setup_request_basic_auth,

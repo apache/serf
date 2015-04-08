@@ -359,14 +359,6 @@ serf__handle_digest_auth(int code,
 }
 
 static apr_status_t
-serf__init_digest(int code,
-                  serf_context_t *ctx,
-                  apr_pool_t *pool)
-{
-    return APR_SUCCESS;
-}
-
-static apr_status_t
 serf__init_digest_connection(const serf__authn_scheme_t *scheme,
                              int code,
                              serf_connection_t *conn,
@@ -559,7 +551,6 @@ const serf__authn_scheme_t serf__digest_authn_scheme = {
     "Digest",
     "digest",
     SERF_AUTHN_DIGEST,
-    serf__init_digest,
     serf__init_digest_connection,
     serf__handle_digest_auth,
     serf__setup_request_digest_auth,

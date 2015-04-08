@@ -37,16 +37,6 @@ typedef apr_status_t
 
 /**
  * For each authentication scheme we need an initialization function of type
- * serf__init_context_func_t. This function will be called the first time
- * serf tries a specific authentication scheme handler.
- */
-typedef apr_status_t
-(*serf__init_context_func_t)(int code,
-                             serf_context_t *conn,
-                             apr_pool_t *pool);
-
-/**
- * For each authentication scheme we need an initialization function of type
  * serf__init_conn_func_t. This function will be called when a new
  * connection is opened.
  */
@@ -99,9 +89,6 @@ struct serf__authn_scheme_t {
 
     /* Internal code used for this authn type. */
     int type;
-
-    /* The context initialization function if any; otherwise, NULL */
-    serf__init_context_func_t init_ctx_func;
 
     /* The connection initialization function if any; otherwise, NULL */
     serf__init_conn_func_t init_conn_func;

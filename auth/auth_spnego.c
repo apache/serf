@@ -358,14 +358,6 @@ do_auth(peer_t peer,
     return APR_SUCCESS;
 }
 
-apr_status_t
-serf__init_spnego(int code,
-                  serf_context_t *ctx,
-                  apr_pool_t *pool)
-{
-    return APR_SUCCESS;
-}
-
 /* A new connection is created to a server that's known to use
    Kerberos. */
 static apr_status_t
@@ -652,7 +644,6 @@ const serf__authn_scheme_t serf__spnego_authn_scheme = {
     "Negotiate",
     "negotiate",
     SERF_AUTHN_NEGOTIATE,
-    serf__init_spnego,
     serf__init_spnego_connection,
     serf__handle_spnego_auth,
     serf__setup_request_spnego_auth,
@@ -664,7 +655,6 @@ const serf__authn_scheme_t serf__ntlm_authn_scheme = {
     "NTLM",
     "ntlm",
     SERF_AUTHN_NTLM,
-    serf__init_spnego,
     serf__init_spnego_connection,
     serf__handle_spnego_auth,
     serf__setup_request_spnego_auth,
