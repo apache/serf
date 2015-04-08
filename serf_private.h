@@ -524,6 +524,17 @@ struct serf__authn_scheme_t {
     serf__validate_response_func_t validate_response_func;
 };
 
+/* Perform authentication related initialization of connection CONN. */
+apr_status_t serf__auth_setup_connection(peer_t peer,
+                                         serf_connection_t *conn);
+
+/* Perform authentication related initialization of request REQUEST. */
+apr_status_t serf__auth_setup_request(peer_t peer,
+                                      serf_request_t *request,
+                                      const char *method,
+                                      const char *uri,
+                                      serf_bucket_t *hdrs_bkt);
+
 /**
  * Handles a 401 or 407 response, tries the different available authentication
  * handlers.

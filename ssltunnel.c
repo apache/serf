@@ -154,12 +154,7 @@ static apr_status_t setup_request(serf_request_t *request,
     serf_bucket_headers_setn(hdrs_bkt, "Host", ctx->uri);
 
     /* If proxy authn is required, then set it up.  */
-    if (request->conn->ctx->proxy_authn_info.scheme)
-        request->conn->ctx->proxy_authn_info.scheme->setup_request_func(
-                                                       PROXY, 0,
-                                                       request->conn, request,
-                                                       "CONNECT", ctx->uri,
-                                                       hdrs_bkt);
+    serf__auth_setup_request(PROXY, request, "CONNECT", ctx->uri, hdrs_bkt);
 
     *acceptor = accept_response;
     *acceptor_baton = ctx;
