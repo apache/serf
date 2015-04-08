@@ -227,7 +227,7 @@ build_auth_header(const char **out_header,
     return APR_SUCCESS;
 }
 
-apr_status_t
+static apr_status_t
 serf__handle_digest_auth(int code,
                          serf_request_t *request,
                          serf_bucket_t *response,
@@ -358,7 +358,7 @@ serf__handle_digest_auth(int code,
     return status;
 }
 
-apr_status_t
+static apr_status_t
 serf__init_digest(int code,
                   serf_context_t *ctx,
                   apr_pool_t *pool)
@@ -366,7 +366,7 @@ serf__init_digest(int code,
     return APR_SUCCESS;
 }
 
-apr_status_t
+static apr_status_t
 serf__init_digest_connection(const serf__authn_scheme_t *scheme,
                              int code,
                              serf_connection_t *conn,
@@ -391,7 +391,7 @@ serf__init_digest_connection(const serf__authn_scheme_t *scheme,
     return APR_SUCCESS;
 }
 
-apr_status_t
+static apr_status_t
 serf__setup_request_digest_auth(peer_t peer,
                                 int code,
                                 serf_connection_t *conn,
@@ -455,7 +455,7 @@ serf__setup_request_digest_auth(peer_t peer,
     return APR_SUCCESS;
 }
 
-apr_status_t
+static apr_status_t
 serf__validate_response_digest_auth(const serf__authn_scheme_t *scheme,
                                     peer_t peer,
                                     int code,
@@ -554,3 +554,14 @@ serf__validate_response_digest_auth(const serf__authn_scheme_t *scheme,
 
     return APR_SUCCESS;
 }
+
+const serf__authn_scheme_t serf__digest_authn_scheme = {
+    "Digest",
+    "digest",
+    SERF_AUTHN_DIGEST,
+    serf__init_digest,
+    serf__init_digest_connection,
+    serf__handle_digest_auth,
+    serf__setup_request_digest_auth,
+    serf__validate_response_digest_auth,
+};

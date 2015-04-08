@@ -22,18 +22,6 @@
 #include <apr_strings.h>
 #include <apr_lib.h>
 
-static apr_status_t
-default_auth_response_handler(const serf__authn_scheme_t *scheme,
-                              peer_t peer,
-                              int code,
-                              serf_connection_t *conn,
-                              serf_request_t *request,
-                              serf_bucket_t *response,
-                              apr_pool_t *pool)
-{
-    return APR_SUCCESS;
-}
-
 /* These authentication schemes are in order of decreasing security, the topmost
    scheme will be used first when the server supports it.
  
@@ -42,55 +30,19 @@ default_auth_response_handler(const serf__authn_scheme_t *scheme,
  
    Use lower case for the scheme names to enable case insensitive matching.
  */
-static const serf__authn_scheme_t serf_authn_schemes[] = {
+static const serf__authn_scheme_t *serf_authn_schemes[] = {
 #ifdef SERF_HAVE_SPNEGO
-    {
-        "Negotiate",
-        "negotiate",
-        SERF_AUTHN_NEGOTIATE,
-        serf__init_spnego,
-        serf__init_spnego_connection,
-        serf__handle_spnego_auth,
-        serf__setup_request_spnego_auth,
-        serf__validate_response_spnego_auth,
-    },
+    &serf__spnego_authn_scheme,
 #ifdef WIN32
-    {
-        "NTLM",
-        "ntlm",
-        SERF_AUTHN_NTLM,
-        serf__init_spnego,
-        serf__init_spnego_connection,
-        serf__handle_spnego_auth,
-        serf__setup_request_spnego_auth,
-        serf__validate_response_spnego_auth,
-    },
+    &serf__ntlm_authn_scheme,
 #endif /* #ifdef WIN32 */
 #endif /* SERF_HAVE_SPNEGO */
-    {
-        "Digest",
-        "digest",
-        SERF_AUTHN_DIGEST,
-        serf__init_digest,
-        serf__init_digest_connection,
-        serf__handle_digest_auth,
-        serf__setup_request_digest_auth,
-        serf__validate_response_digest_auth,
-    },
-    {
-        "Basic",
-        "basic",
-        SERF_AUTHN_BASIC,
-        serf__init_basic,
-        serf__init_basic_connection,
-        serf__handle_basic_auth,
-        serf__setup_request_basic_auth,
-        default_auth_response_handler,
-    },
+    &serf__digest_authn_scheme,
+    &serf__basic_authn_scheme,
     /* ADD NEW AUTHENTICATION IMPLEMENTATIONS HERE (as they're written) */
 
     /* sentinel */
-    { 0 }
+    NULL
 };
 
 
@@ -125,7 +77,7 @@ static int handle_auth_headers(int code,
                                serf_bucket_t *response,
                                apr_pool_t *pool)
 {
-    const serf__authn_scheme_t *scheme;
+    int scheme_idx;
     serf_connection_t *conn = request->conn;
     serf_context_t *ctx = conn->ctx;
     apr_status_t status;
@@ -135,10 +87,11 @@ static int handle_auth_headers(int code,
     /* Find the matching authentication handler.
        Note that we don't reuse the auth scheme stored in the context,
        as that may have changed. (ex. fallback from ntlm to basic.) */
-    for (scheme = serf_authn_schemes; scheme->name != 0; ++scheme) {
+    for (scheme_idx = 0; serf_authn_schemes[scheme_idx]; ++scheme_idx) {
         const char *auth_hdr;
         serf__auth_handler_func_t handler;
         serf__authn_info_t *authn_info;
+        const serf__authn_scheme_t *scheme = serf_authn_schemes[scheme_idx];
 
         if (! (ctx->authn_types & scheme->type))
             continue;
