@@ -378,7 +378,6 @@ apr_status_t serf__open_connections(serf_context_t *ctx)
 
     for (i = ctx->conns->nelts; i--; ) {
         serf_connection_t *conn = GET_CONN(ctx, i);
-        serf__authn_info_t *authn_info;
         apr_status_t status;
         apr_socket_t *skt;
 
@@ -455,18 +454,15 @@ apr_status_t serf__open_connections(serf_context_t *ctx)
            prepare this connection (it might be possible to skip some
            part of the handshaking). */
         if (ctx->proxy_address) {
-            authn_info = &ctx->proxy_authn_info;
-            if (authn_info->scheme) {
-                authn_info->scheme->init_conn_func(authn_info->scheme, 407,
-                                                   conn, conn->pool);
+            status = serf__auth_setup_connection(PROXY, conn);
+            if (status){
+                return status;
             }
         }
 
-        authn_info = serf__get_authn_info_for_server(conn);
-        if (authn_info->scheme) {
-            authn_info->scheme->init_conn_func(authn_info->scheme, 401,
-                                               conn, conn->pool);
-        }
+        status = serf__auth_setup_connection(HOST, conn);
+        if (status)
+            return status;
 
         /* Does this connection require a SSL tunnel over the proxy? */
         if (ctx->proxy_address && strcmp(conn->host_info.scheme, "https") == 0)
@@ -1916,7 +1912,6 @@ serf_bucket_t *serf_request_bucket_request_create(
     serf_connection_t *conn = request->conn;
     serf_context_t *ctx = conn->ctx;
     int tunneled;
-    serf__authn_info_t *authn_info;
 
     tunneled = ctx->proxy_address
                && (strcmp(conn->host_info.scheme, "https") == 0);
@@ -1937,22 +1932,11 @@ serf_bucket_t *serf_request_bucket_request_create(
     }
 
     /* Setup server authentication headers.  */
-    authn_info = serf__get_authn_info_for_server(conn);
-    if (authn_info->scheme)
-    {
-        authn_info->scheme->setup_request_func(HOST, 0, conn, request,
-                                               method, uri,
-                                               hdrs_bkt);
-    }
+    serf__auth_setup_request(HOST, request, method, uri, hdrs_bkt);
 
     /* Setup proxy authentication headers, unless we're tunneling.  */
-    if (ctx->proxy_authn_info.scheme && !tunneled)
-    {
-        ctx->proxy_authn_info.scheme->setup_request_func(PROXY, 0, conn,
-                                                         request,
-                                                         method, uri,
-                                                         hdrs_bkt);
-    }
+    if (!tunneled)
+        serf__auth_setup_request(PROXY, request, method, uri, hdrs_bkt);
 
     return req_bkt;
 }

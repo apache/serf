@@ -487,3 +487,55 @@ serf__authn_info_t *serf__get_authn_info_for_server(serf_connection_t *conn)
 
     return authn_info;
 }
+
+apr_status_t serf__auth_setup_connection(peer_t peer,
+                                         serf_connection_t *conn)
+{
+    serf__authn_info_t *authn_info;
+    serf_context_t *ctx = conn->ctx;
+
+    if (peer == PROXY) {
+        authn_info = &ctx->proxy_authn_info;
+        if (authn_info->scheme) {
+            authn_info->scheme->init_conn_func(authn_info->scheme, 407,
+                                               conn, conn->pool);
+        }
+    }
+    else {
+        authn_info = serf__get_authn_info_for_server(conn);
+        if (authn_info->scheme) {
+            authn_info->scheme->init_conn_func(authn_info->scheme, 401,
+                                               conn, conn->pool);
+        }
+    }
+
+    return APR_SUCCESS;
+}
+
+apr_status_t serf__auth_setup_request(peer_t peer,
+                                      serf_request_t *request,
+                                      const char *method,
+                                      const char *uri,
+                                      serf_bucket_t *hdrs_bkt)
+{
+    if (peer == PROXY && request->conn->ctx->proxy_authn_info.scheme) {
+        request->conn->ctx->proxy_authn_info.scheme->setup_request_func(
+                                                       peer, 0,
+                                                       request->conn, request,
+                                                       method, uri,
+                                                       hdrs_bkt);
+    }
+    else if (peer == HOST)
+    {
+        serf__authn_info_t *authn_info;
+
+        authn_info = serf__get_authn_info_for_server(request->conn);
+        if (authn_info->scheme) {
+            authn_info->scheme->setup_request_func(HOST, 0, request->conn,
+                                                   request, method, uri,
+                                                   hdrs_bkt);
+        }
+    }
+
+    return APR_SUCCESS;
+}
