@@ -123,19 +123,15 @@ static int handle_auth_headers(int code,
         serf__log(LOGLVL_INFO, LOGCOMP_AUTHN, __FILE__, conn->config,
                   "... matched: %s\n", scheme->name);
 
-        /* If this is the first time we use this scheme on this context and/or
-           this connection, make sure to initialize the authentication handler 
-           first. */
+        /* If this is the first time we use this scheme on this connection,
+           make sure to initialize the authentication handler first. */
         if (authn_info->scheme != scheme) {
-            status = scheme->init_ctx_func(code, ctx, ctx->pool);
-            if (!status) {
-                status = scheme->init_conn_func(scheme, code, conn,
-                                                conn->pool);
-                if (!status)
-                    authn_info->scheme = scheme;
-                else
-                    authn_info->scheme = NULL;
-            }
+            status = scheme->init_conn_func(scheme, code, conn,
+                                            conn->pool);
+            if (!status)
+                authn_info->scheme = scheme;
+            else
+                authn_info->scheme = NULL;
         }
 
         if (!status) {
