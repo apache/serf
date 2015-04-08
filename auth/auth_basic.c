@@ -30,7 +30,7 @@ typedef struct basic_authn_info_t {
     const char *value;
 } basic_authn_info_t;
 
-apr_status_t
+static apr_status_t
 serf__handle_basic_auth(int code,
                         serf_request_t *request,
                         serf_bucket_t *response,
@@ -110,7 +110,7 @@ serf__handle_basic_auth(int code,
     return APR_SUCCESS;
 }
 
-apr_status_t
+static apr_status_t
 serf__init_basic(int code,
                  serf_context_t *ctx,
                  apr_pool_t *pool)
@@ -124,7 +124,7 @@ serf__init_basic(int code,
    context instead of per connection.
    TODO: we currently don't cache this info per realm, so each time a request
    'switches realms', we have to ask the application for new credentials. */
-apr_status_t
+static apr_status_t
 serf__init_basic_connection(const serf__authn_scheme_t *scheme,
                             int code,
                             serf_connection_t *conn,
@@ -146,7 +146,7 @@ serf__init_basic_connection(const serf__authn_scheme_t *scheme,
     return APR_SUCCESS;
 }
 
-apr_status_t
+static apr_status_t
 serf__setup_request_basic_auth(peer_t peer,
                                int code,
                                serf_connection_t *conn,
@@ -174,3 +174,26 @@ serf__setup_request_basic_auth(peer_t peer,
 
     return SERF_ERROR_AUTHN_FAILED;
 }
+
+static apr_status_t
+validate_response_func(const serf__authn_scheme_t *scheme,
+                       peer_t peer,
+                       int code,
+                       serf_connection_t *conn,
+                       serf_request_t *request,
+                       serf_bucket_t *response,
+                       apr_pool_t *pool)
+{
+    return APR_SUCCESS;
+}
+
+const serf__authn_scheme_t serf__basic_authn_scheme = {
+    "Basic",
+    "basic",
+    SERF_AUTHN_BASIC,
+    serf__init_basic,
+    serf__init_basic_connection,
+    serf__handle_basic_auth,
+    serf__setup_request_basic_auth,
+    validate_response_func,
+};

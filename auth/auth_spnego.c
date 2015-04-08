@@ -368,7 +368,7 @@ serf__init_spnego(int code,
 
 /* A new connection is created to a server that's known to use
    Kerberos. */
-apr_status_t
+static apr_status_t
 serf__init_spnego_connection(const serf__authn_scheme_t *scheme,
                              int code,
                              serf_connection_t *conn,
@@ -412,7 +412,7 @@ serf__init_spnego_connection(const serf__authn_scheme_t *scheme,
 }
 
 /* A 40x response was received, handle the authentication. */
-apr_status_t
+static apr_status_t
 serf__handle_spnego_auth(int code,
                          serf_request_t *request,
                          serf_bucket_t *response,
@@ -435,7 +435,7 @@ serf__handle_spnego_auth(int code,
 }
 
 /* Setup the authn headers on this request message. */
-apr_status_t
+static apr_status_t
 serf__setup_request_spnego_auth(peer_t peer,
                                 int code,
                                 serf_connection_t *conn,
@@ -647,5 +647,29 @@ serf__validate_response_spnego_auth(const serf__authn_scheme_t *scheme,
 
     return APR_SUCCESS;
 }
+
+const serf__authn_scheme_t serf__spnego_authn_scheme = {
+    "Negotiate",
+    "negotiate",
+    SERF_AUTHN_NEGOTIATE,
+    serf__init_spnego,
+    serf__init_spnego_connection,
+    serf__handle_spnego_auth,
+    serf__setup_request_spnego_auth,
+    serf__validate_response_spnego_auth,
+};
+
+#ifdef WIN32
+const serf__authn_scheme_t serf__ntlm_authn_scheme = {
+    "NTLM",
+    "ntlm",
+    SERF_AUTHN_NTLM,
+    serf__init_spnego,
+    serf__init_spnego_connection,
+    serf__handle_spnego_auth,
+    serf__setup_request_spnego_auth,
+    serf__validate_response_spnego_auth,
+};
+#endif /* #ifdef WIN32 */
 
 #endif /* SERF_HAVE_SPNEGO */
