@@ -157,7 +157,7 @@ static int handle_auth_headers(int code,
         /* Clear per-request auth_baton when switching to next auth scheme. */
         request->auth_baton = NULL;
 
-        /* Remember failed auth types to skip in future. */
+        /* Remember failed auth types to skip it in future. */
         authn_info->failed_authn_types |= scheme->type;
     }
 
