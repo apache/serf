@@ -2075,7 +2075,6 @@ static void test_ssl_server_cert_with_san_and_empty_cb(CuTest *tc)
     test_baton_t *tb = tc->testBaton;
     handler_baton_t handler_ctx[1];
     const int num_requests = sizeof(handler_ctx)/sizeof(handler_ctx[0]);
-    int expected_failures;
     apr_status_t status;
 
     static const char *san_server_certs[] = {
