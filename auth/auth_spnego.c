@@ -359,7 +359,7 @@ do_auth(peer_t peer,
 }
 
 /* A new connection is created to a server that's known to use
-   Kerberos. */
+   Kerberos. Implements serf__init_conn_func_t callback. */
 static apr_status_t
 serf__init_spnego_connection(const serf__authn_scheme_t *scheme,
                              int code,
@@ -403,7 +403,8 @@ serf__init_spnego_connection(const serf__authn_scheme_t *scheme,
     return APR_SUCCESS;
 }
 
-/* A 40x response was received, handle the authentication. */
+/* Implements serf__auth_handler_func_t callback.
+   A 40x response was received, handle the authentication. */
 static apr_status_t
 serf__handle_spnego_auth(int code,
                          serf_request_t *request,
@@ -426,7 +427,8 @@ serf__handle_spnego_auth(int code,
                    pool);
 }
 
-/* Setup the authn headers on this request message. */
+/* Callback function (implements serf__setup_request_func_t). Setup the authn
+   headers on this request message. */
 static apr_status_t
 serf__setup_request_spnego_auth(peer_t peer,
                                 int code,
@@ -564,7 +566,8 @@ get_auth_header(serf_bucket_t *hdrs,
     return b.hdr_value;
 }
 
-/* Function is called when 2xx responses are received. Normally we don't
+/* Callback function (implements serf__validate_response_func_t).
+ * Function is called when 2xx responses are received. Normally we don't
  * have to do anything, except for the first response after the
  * authentication handshake. This specific response includes authentication
  * data which should be validated by the client (mutual authentication).
