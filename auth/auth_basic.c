@@ -30,6 +30,7 @@ typedef struct basic_authn_info_t {
     const char *value;
 } basic_authn_info_t;
 
+/* Implements serf__auth_handler_func_t callback. */
 static apr_status_t
 serf__handle_basic_auth(int code,
                         serf_request_t *request,
@@ -113,7 +114,8 @@ serf__handle_basic_auth(int code,
 /* For Basic authentication we expect all authn info to be the same for all
    connections in the context to the same server (same realm, username,
    password). Therefore we can keep the header value in the per-server store
-   context instead of per connection.
+   context instead of per connection. Implements serf__init_conn_func_t
+   callback.
    TODO: we currently don't cache this info per realm, so each time a request
    'switches realms', we have to ask the application for new credentials. */
 static apr_status_t
@@ -138,6 +140,7 @@ serf__init_basic_connection(const serf__authn_scheme_t *scheme,
     return APR_SUCCESS;
 }
 
+/* Implements serf__setup_request_func_t callback. */
 static apr_status_t
 serf__setup_request_basic_auth(peer_t peer,
                                int code,
@@ -167,6 +170,7 @@ serf__setup_request_basic_auth(peer_t peer,
     return SERF_ERROR_AUTHN_FAILED;
 }
 
+/* Implements serf__validate_response_func_t callback. */
 static apr_status_t
 validate_response_func(const serf__authn_scheme_t *scheme,
                        peer_t peer,

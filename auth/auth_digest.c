@@ -227,6 +227,7 @@ build_auth_header(const char **out_header,
     return APR_SUCCESS;
 }
 
+/* Implements serf__auth_handler_func_t callback. */
 static apr_status_t
 serf__handle_digest_auth(int code,
                          serf_request_t *request,
@@ -358,6 +359,7 @@ serf__handle_digest_auth(int code,
     return status;
 }
 
+/* Implements serf__init_conn_func_t callback. */
 static apr_status_t
 serf__init_digest_connection(const serf__authn_scheme_t *scheme,
                              int code,
@@ -383,6 +385,7 @@ serf__init_digest_connection(const serf__authn_scheme_t *scheme,
     return APR_SUCCESS;
 }
 
+/* Implements serf__setup_request_func_t callback. */
 static apr_status_t
 serf__setup_request_digest_auth(peer_t peer,
                                 int code,
@@ -447,6 +450,7 @@ serf__setup_request_digest_auth(peer_t peer,
     return APR_SUCCESS;
 }
 
+/* Implements serf__validate_response_func_t callback. */
 static apr_status_t
 serf__validate_response_digest_auth(const serf__authn_scheme_t *scheme,
                                     peer_t peer,
