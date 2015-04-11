@@ -32,7 +32,8 @@ typedef struct basic_authn_info_t {
 
 /* Implements serf__auth_handler_func_t callback. */
 static apr_status_t
-serf__handle_basic_auth(int code,
+serf__handle_basic_auth(const serf__authn_scheme_t *scheme,
+                        int code,
                         serf_request_t *request,
                         serf_bucket_t *response,
                         const char *auth_hdr,
@@ -92,7 +93,7 @@ serf__handle_basic_auth(int code,
     status = serf__provide_credentials(ctx,
                                        &username, &password,
                                        request,
-                                       code, authn_info->scheme->name,
+                                       code, scheme->name,
                                        realm, cred_pool);
     if (status) {
         apr_pool_destroy(cred_pool);
@@ -104,7 +105,7 @@ serf__handle_basic_auth(int code,
     apr_pool_destroy(cred_pool);
 
     serf__encode_auth_header(&basic_info->value,
-                             authn_info->scheme->name,
+                             scheme->name,
                              tmp, tmp_len, pool);
     basic_info->header = (code == 401) ? "Authorization" : "Proxy-Authorization";
 
@@ -142,7 +143,8 @@ serf__init_basic_connection(const serf__authn_scheme_t *scheme,
 
 /* Implements serf__setup_request_func_t callback. */
 static apr_status_t
-serf__setup_request_basic_auth(peer_t peer,
+serf__setup_request_basic_auth(const serf__authn_scheme_t *scheme,
+                               peer_t peer,
                                int code,
                                serf_connection_t *conn,
                                serf_request_t *request,

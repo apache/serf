@@ -28,7 +28,8 @@ extern "C" {
  * authentication challenge is received in a session.
  */
 typedef apr_status_t
-(*serf__auth_handler_func_t)(int code,
+(*serf__auth_handler_func_t)(const serf__authn_scheme_t *scheme,
+                             int code,
                              serf_request_t *request,
                              serf_bucket_t *response,
                              const char *auth_hdr,
@@ -53,7 +54,8 @@ typedef apr_status_t
  * authentication headers (if needed).
  */
 typedef apr_status_t
-(*serf__setup_request_func_t)(peer_t peer,
+(*serf__setup_request_func_t)(const serf__authn_scheme_t *scheme,
+                              peer_t peer,
                               int code,
                               serf_connection_t *conn,
                               serf_request_t *request,
