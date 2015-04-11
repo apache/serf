@@ -246,7 +246,8 @@ gss_api_get_credentials(serf_connection_t *conn,
    code and use the resulting Server Ticket on the next request to the
    server. */
 static apr_status_t
-do_auth(peer_t peer,
+do_auth(const serf__authn_scheme_t *scheme,
+        peer_t peer,
         int code,
         gss_authn_info_t *gss_info,
         serf_connection_t *conn,
@@ -347,7 +348,7 @@ do_auth(peer_t peer,
 
     /* On the next request, add an Authorization header. */
     if (tmp_len) {
-        serf__encode_auth_header(&gss_info->value, authn_info->scheme->name,
+        serf__encode_auth_header(&gss_info->value, scheme->name,
                                  tmp,
                                  tmp_len,
                                  pool);
@@ -406,7 +407,8 @@ serf__init_spnego_connection(const serf__authn_scheme_t *scheme,
 /* Implements serf__auth_handler_func_t callback.
    A 40x response was received, handle the authentication. */
 static apr_status_t
-serf__handle_spnego_auth(int code,
+serf__handle_spnego_auth(const serf__authn_scheme_t *scheme,
+                         int code,
                          serf_request_t *request,
                          serf_bucket_t *response,
                          const char *auth_hdr,
@@ -418,7 +420,8 @@ serf__handle_spnego_auth(int code,
     gss_authn_info_t *gss_info = (code == 401) ? conn->authn_info.baton :
                                                  ctx->proxy_authn_info.baton;
 
-    return do_auth(code == 401 ? HOST : PROXY,
+    return do_auth(scheme,
+                   code == 401 ? HOST : PROXY,
                    code,
                    gss_info,
                    request->conn,
@@ -430,7 +433,8 @@ serf__handle_spnego_auth(int code,
 /* Callback function (implements serf__setup_request_func_t). Setup the authn
    headers on this request message. */
 static apr_status_t
-serf__setup_request_spnego_auth(peer_t peer,
+serf__setup_request_spnego_auth(const serf__authn_scheme_t *scheme,
+                                peer_t peer,
                                 int code,
                                 serf_connection_t *conn,
                                 serf_request_t *request,
@@ -490,7 +494,8 @@ serf__setup_request_spnego_auth(peer_t peer,
                 serf__log(LOGLVL_DEBUG, LOGCOMP_AUTHN, __FILE__, conn->config,
                           "Add initial Negotiate header to request.\n");
 
-                status = do_auth(peer,
+                status = do_auth(scheme,
+                                 peer,
                                  code,
                                  gss_info,
                                  conn,
@@ -606,8 +611,8 @@ serf__validate_response_spnego_auth(const serf__authn_scheme_t *scheme,
                                        pool);
 
         if (auth_hdr_val) {
-            status = do_auth(peer, code, gss_info, conn, request, auth_hdr_val,
-                             pool);
+            status = do_auth(scheme, peer, code, gss_info, conn, request,
+                             auth_hdr_val, pool);
             if (status) {
                 return status;
             }

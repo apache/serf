@@ -140,7 +140,7 @@ static int handle_auth_headers(int code,
                 auth_attr++;
             }
 
-            status = handler(code, request, response,
+            status = handler(scheme, code, request, response,
                              auth_hdr, auth_attr, ctx->pool);
         }
 
@@ -467,12 +467,14 @@ apr_status_t serf__auth_setup_request(peer_t peer,
                                       const char *uri,
                                       serf_bucket_t *hdrs_bkt)
 {
+
     if (peer == PROXY && request->conn->ctx->proxy_authn_info.scheme) {
-        request->conn->ctx->proxy_authn_info.scheme->setup_request_func(
-                                                       peer, 0,
-                                                       request->conn, request,
-                                                       method, uri,
-                                                       hdrs_bkt);
+        serf__authn_info_t *authn_info = &request->conn->ctx->proxy_authn_info;
+        authn_info->scheme->setup_request_func(authn_info->scheme,
+                                               peer, 0,
+                                               request->conn, request,
+                                               method, uri,
+                                               hdrs_bkt);
     }
     else if (peer == HOST)
     {
@@ -480,7 +482,8 @@ apr_status_t serf__auth_setup_request(peer_t peer,
 
         authn_info = serf__get_authn_info_for_server(request->conn);
         if (authn_info->scheme) {
-            authn_info->scheme->setup_request_func(HOST, 0, request->conn,
+            authn_info->scheme->setup_request_func(authn_info->scheme,
+                                                   HOST, 0, request->conn,
                                                    request, method, uri,
                                                    hdrs_bkt);
         }
