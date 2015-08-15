@@ -96,16 +96,29 @@ static apr_status_t clean_conn(void *data)
 static int
 request_or_data_pending(serf_request_t **next_req, serf_connection_t *conn)
 {
-    /* Skip all requests that have been written completely but we're still
-       waiting for a response. */
-    serf_request_t *request = conn->unwritten_reqs;
+    int reqs_in_progress;
+
+    reqs_in_progress = conn->completed_requests - conn->completed_responses;
+
+    /* Prepare the next request */
+    if (conn->pipelining || (!conn->pipelining && reqs_in_progress == 0))
+    {
+        /* Skip all requests that have been written completely but we're still
+         waiting for a response. */
+        serf_request_t *request = conn->unwritten_reqs;
+
+        if (next_req)
+            *next_req = request;
+
+        if (request != NULL) {
+            return 1;
+        }
+    }
 
     if (next_req)
-        *next_req = request;
+        *next_req = NULL;
 
-    if (request != NULL) {
-        return 1;
-    } else if (conn->ostream_head) {
+    if (conn->ostream_head) {
         const char *dummy;
         apr_size_t len;
         apr_status_t status;
@@ -114,7 +127,7 @@ request_or_data_pending(serf_request_t **next_req, serf_connection_t *conn)
                                   &len);
         if (!SERF_BUCKET_READ_ERROR(status) && len) {
             serf__log(LOGLVL_DEBUG, LOGCOMP_CONN, __FILE__, conn->config,
-                      "All requests written but still data pending.\n");
+                      "Extra data to be written after sending complete requests.\n");
             return 1;
         }
     }
@@ -829,13 +842,6 @@ static apr_status_t write_to_connection(serf_connection_t *conn)
             return APR_SUCCESS;
         }
 
-        /* If pipelining is disabled, max. one request should be in progress */
-        if (!conn->pipelining && reqs_in_progress > 0)
-        {
-            /* backoff for now. */
-            return APR_SUCCESS;
-        }
-
         /* If we have unwritten data, then write what we can. */
         while (conn->vec_len) {
             status = socket_writev(conn);
@@ -1312,6 +1318,10 @@ static apr_status_t read_from_connection(serf_connection_t *conn)
            on a connection using HTTP pipelining, we reset the connection,
            disable pipelining and reconnect to the server. */
         if (status == SERF_ERROR_SSL_NEGOTIATE_IN_PROGRESS) {
+            serf__log(LOGLVL_WARNING, LOGCOMP_CONN, __FILE__, conn->config,
+                      "The server requested renegotiation. Disable HTTP "
+                      "pipelining and reset the connection.\n", conn);
+
             serf__connection_set_pipelining(conn, 0);
             reset_connection(conn, 1);
             status = APR_SUCCESS;
