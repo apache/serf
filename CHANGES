@@ -14,6 +14,7 @@ Serf 1.4.0 [2014-xx-xx, from /tags/1.4.0, rxxxx]
 
   Fixes
   -----
+  serf is now Apache Serf; apply header changes (r1700062)
   Fix issue #135+#172: handle server-triggered renegotiation
   Fix issue #152: handle compressed responses > 4GB
   Fix issue #147: remove unneeded ISC_REQ_CONFIDENTIALITY flag in SSPI code
@@ -21,36 +22,37 @@ Serf 1.4.0 [2014-xx-xx, from /tags/1.4.0, rxxxx]
   Fix issue #156+#164: C++ comment style breaks C89 build
   Fix issue #167: Explicitly use the  ANSI version of SSPI
   Fix problems with NTLM authentication when accessing local server using
-    alias hostname on Windows (r2382)
-  Fix incorrect use of bio file handlers (r2318)
+    alias hostname on Windows (r1699914)
+  Fix incorrect use of bio file handlers (r1699852)
   Initialize OpenSSL when using serf_ssl_load_cert_file outside a serf context
-    (r2314)
+    (r1699848)
   Resolve a bucket (aka "memory") leak when a request bucket is
-    destroyed before it is morphed into an aggregate bucket (r2254)
-  Simplify the ssl bucket code by removing unneeded layer of buffering (r2229)
+    destroyed before it is morphed into an aggregate bucket (r1699791)
+  Simplify the ssl bucket code by removing unneeded layer of buffering
+    (r1699766)
 
   Performance improvements
   ------------------------
-  Remove pending requests loop from request_or_data_pending() (r2380)
-  Drastically reduce the amount of pollset_add/pollset_remove calls (r2378)
-  Optimize creation of the request/iovec/barrier buckets (r2377, r2376, r2375)
+  Remove pending requests loop from request_or_data_pending() (r1699912)
+  Drastically reduce the amount of pollset_add/pollset_remove calls (r1699910)
+  Optimize creation of the request/iovec/barrier buckets (r1699907-r1699909)
   Improve performance a tiny bit by ensuring often used struct
-    member variables are read from and written to cache. (r2357)
+    member variables are read from and written to cache. (r1699890)
 
   Build improvements
   ------------------
-  Fix issue #170: Allow building with the Visual Studio '14' CTP and 2015
+  Fix issue #170: Allow building with Microsoft Visual Studio 2015
   Fix issue #151: SCons build broken when only one library in ENVPATH
   Fix build of 'check' target when using VPATH-style builds (r2324)
     (builddir != srcdir).
-  Make unix build work with APR-2 (r2274)
-  Add a version resource to libserf-N.dll on Windows (r2152)
+  Make unix build work with APR-2 (r1699809)
+  Add a version resource to libserf-N.dll on Windows (r1699689)
 
   Test suite
   ----------
   All tests have been migrated to the MockHTTPinC test framework.
   serf_get changes: add -d/--debug flag, make serf_get accept a client
-    certificate and associated password (r2238)
+    certificate and associated password (r1699775)
   Fix issue #157: Segmentation fault in test_ssl_init
 
 
