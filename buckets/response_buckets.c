@@ -145,7 +145,7 @@ static apr_status_t parse_status_line(response_context_t *ctx,
     /* ctx->linebuf.line should be of form: 'HTTP/1.1 200 OK',
        but we also explicitly allow the forms 'HTTP/1.1 200' (no reason)
        and 'HTTP/1.1 401.1 Logon failed' (iis extended error codes)
-       NOTE: Since r2465 linebuf.line is always NUL terminated string. */
+       NOTE: Since r1699995 linebuf.line is always NUL terminated string. */
     res = apr_date_checkmask(ctx->linebuf.line, "HTTP/#.# ###*");
     if (!res) {
         /* Not an HTTP response?  Well, at least we won't understand it. */
@@ -287,7 +287,7 @@ static apr_status_t run_machine(serf_bucket_t *bkt, response_context_t *ctx)
             /* Advance the state. */
             ctx->state = STATE_BODY;
 
-            /* If this is a response to a HEAD request, or code == 1xx,204 or304
+            /* If this is a response to a HEAD request, or code 1xx, 204 or 304
                then we don't receive a real body. */
             if (!expect_body(ctx)) {
                 ctx->body = serf_bucket_simple_create(NULL, 0, NULL, NULL,
