@@ -5,4 +5,4 @@ XBitHack On
 RedirectMatch ^/download http://serf.apache.org/#download
 
 # Simple issue redirector
-RedirectMatch ^/issue[^A-Za-z0-9]?(\d+)$ https://issues.apache.org/jira/browse/SERF-$1?
+RedirectMatch ^/issue[^A-Za-z0-9]?(\d+)$ https://issues.apache.org/jira/browse/SERF-$1
