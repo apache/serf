@@ -1,5 +1,4 @@
 Options +Includes
-XBitHack On
 
 # For now redirect this location to the homepage
 RedirectMatch ^/download http://serf.apache.org/#download
