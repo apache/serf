@@ -291,7 +291,8 @@ if aprstatic:
 
 if sys.platform == 'win32':
   env.Append(LIBS=['user32.lib', 'advapi32.lib', 'gdi32.lib', 'ws2_32.lib',
-                   'crypt32.lib', 'mswsock.lib', 'rpcrt4.lib', 'secur32.lib'])
+                   'crypt32.lib', 'mswsock.lib', 'rpcrt4.lib', 'secur32.lib',
+                   'shell32.lib'])
 
   # Get apr/apu information into our build
   env.Append(CPPDEFINES=['WIN32','WIN32_LEAN_AND_MEAN','NOUSER',
