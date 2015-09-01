@@ -11,6 +11,29 @@ Status of 1.3.9:
 Candidate changes:
 ==================
 
+ * r1699986, r1699987
+   Fix types of some currently unused batons
+   Justification:
+     Without proper types these typing errors make debugging harder
+     than necessary.
+   Votes:
+     +1: rhuijben
+
+ * r1699791
+   Resolve memory leak in cancel scenario.
+   Justification:
+     Memory leak.
+   Votes:
+     +1: rhuijben
+
+ * r1699985, r1699993, r1699994
+   Improve status line verifications
+   Justification:
+     Avoids handling bad data as a real status line, stalling the
+     connection until timeout.
+   Votes:
+     +1: rhuijben
+
 Veto-blocked changes:
 =====================
 
