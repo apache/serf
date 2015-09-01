@@ -291,6 +291,7 @@ if sys.platform == 'win32':
   if aprstatic:
     apr_libs='apr-1.lib'
     apu_libs='aprutil-1.lib'
+    env.Append(LIBS=['shell32.lib', 'xml.lib'])
   else:
     apr_libs='libapr-1.lib'
     apu_libs='libaprutil-1.lib'
