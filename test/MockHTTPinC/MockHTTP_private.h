@@ -23,6 +23,15 @@
 #include <apr_time.h>
 #include <apr_thread_proc.h>
 
+#if !defined(HAVE_STDBOOL_H) && defined(_MSC_VER) && (_MSC_VER >= 1800)
+/* VS 2015 errors out when redefining bool */
+#define HAVE_STDBOOL_H 1
+#endif
+
+#ifdef HAVE_STDBOOL_H
+#include <stdbool.h>
+#endif
+
 #include "MockHTTP.h"
 
 #ifdef __cplusplus
@@ -49,7 +58,10 @@ extern "C" {
 
 #define MH_STATUS_INCOMPLETE_REQUEST (MH_STATUS_START + 1)
 
+#ifndef HAVE_STDBOOL_H
 typedef short int bool;
+#endif
+
 static const bool YES = 1;
 static const bool NO = 0;
 
