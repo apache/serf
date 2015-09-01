@@ -135,7 +135,8 @@ if sys.platform == 'win32':
     EnumVariable('MSVC_VERSION',
                  "Visual C++ to use for building (E.g. 11.0, 9.0)",
                  None,
-                 allowed_values=('12.0', '11.0', '10.0', '9.0', '8.0', '6.0')
+                 allowed_values=('14.0', '12.0',
+                                 '11.0', '10.0', '9.0', '8.0', '6.0')
                 ),
 
     # We always documented that we handle an install layout, but in fact we
