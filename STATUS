@@ -32,7 +32,7 @@ Candidate changes:
      Avoids handling bad data as a real status line, stalling the
      connection until timeout.
    Votes:
-     +1: rhuijben
+     +1: rhuijben, ivan
 
  * r1699542
    Explicitly use ANSI version of SSPI.
