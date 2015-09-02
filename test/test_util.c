@@ -406,7 +406,7 @@ apr_status_t dummy_authn_callback(char **username,
 
     tb->result_flags |= TEST_RESULT_AUTHNCB_CALLED;
 
-    return SERF_ERROR_ISSUE_IN_TESTSUITE;
+    return REPORT_TEST_SUITE_ERROR();
 }
 
 /*****************************************************************************/
@@ -521,7 +521,7 @@ run_client_and_mock_servers_loops(test_baton_t *tb,
             return APR_ETIMEDOUT;
 
         if (err == MOCKHTTP_TEST_FAILED)
-            return SERF_ERROR_ISSUE_IN_TESTSUITE;
+            return REPORT_TEST_SUITE_ERROR();
     }
     apr_pool_destroy(iter_pool);
     
@@ -636,6 +636,13 @@ void *test_teardown(void *baton)
         mhCleanup(tb->mh);
     apr_pool_destroy(tb->pool);      /* tb is now an invalid pointer */
     return NULL;
+}
+
+apr_status_t test__report_suite_error(const char *filename, long line)
+{
+    test__log(TEST_VERBOSE, __FILE__, "Error in test suite at line %ld\n", line);
+
+    return SERF_ERROR_ISSUE_IN_TESTSUITE;
 }
 
 /*****************************************************************************/

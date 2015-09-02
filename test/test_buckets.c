@@ -55,7 +55,7 @@ static apr_status_t read_all(serf_bucket_t *bkt,
             {
                 /* Buffer is not large enough to read all data */
                 data_len = buf_len - read;
-                status = SERF_ERROR_ISSUE_IN_TESTSUITE;
+                status = REPORT_TEST_SUITE_ERROR();
             }
             memcpy(buf + read, data, data_len);
             read += data_len;

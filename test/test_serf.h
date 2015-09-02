@@ -284,6 +284,12 @@ run_client_and_mock_servers_loops_expect_ok(CuTest *tc, test_baton_t *tb,
                                             handler_baton_t handler_ctx[],
                                             apr_pool_t *pool);
 
+/* Logs a test suite error with its code location, and return status 
+   SERF_ERROR_ISSUE_IN_TESTSUITE. */
+#define REPORT_TEST_SUITE_ERROR()\
+     test__report_suite_error(__FILE__, __LINE__)
+apr_status_t test__report_suite_error(const char *filename, long line);
+
 /* Logs a standard event, with filename & timestamp header */
 void test__log(int verbose_flag, const char *filename, const char *fmt, ...);
 
