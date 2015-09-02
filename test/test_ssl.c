@@ -299,25 +299,25 @@ static apr_status_t validate_servercert(const serf_ssl_certificate_t *cert,
     subject = serf_ssl_cert_subject(cert, pool);
     if (strcmp("localhost",
                apr_hash_get(subject, "CN", APR_HASH_KEY_STRING)) != 0)
-        return SERF_ERROR_ISSUE_IN_TESTSUITE;
+        return REPORT_TEST_SUITE_ERROR();
     if (strcmp("Test Suite Server",
                apr_hash_get(subject, "OU", APR_HASH_KEY_STRING)) != 0)
-        return SERF_ERROR_ISSUE_IN_TESTSUITE;
+        return REPORT_TEST_SUITE_ERROR();
     if (strcmp("In Serf we trust, Inc.",
                apr_hash_get(subject, "O", APR_HASH_KEY_STRING)) != 0)
-        return SERF_ERROR_ISSUE_IN_TESTSUITE;
+        return REPORT_TEST_SUITE_ERROR();
     if (strcmp("Mechelen",
                apr_hash_get(subject, "L", APR_HASH_KEY_STRING)) != 0)
-        return SERF_ERROR_ISSUE_IN_TESTSUITE;
+        return REPORT_TEST_SUITE_ERROR();
     if (strcmp("Antwerp",
                apr_hash_get(subject, "ST", APR_HASH_KEY_STRING)) != 0)
-        return SERF_ERROR_ISSUE_IN_TESTSUITE;
+        return REPORT_TEST_SUITE_ERROR();
     if (strcmp("BE",
                apr_hash_get(subject, "C", APR_HASH_KEY_STRING)) != 0)
-        return SERF_ERROR_ISSUE_IN_TESTSUITE;
+        return REPORT_TEST_SUITE_ERROR();
     if (strcmp("serfserver@example.com",
                apr_hash_get(subject, "E", APR_HASH_KEY_STRING)) != 0)
-        return SERF_ERROR_ISSUE_IN_TESTSUITE;
+        return REPORT_TEST_SUITE_ERROR();
 
     return APR_SUCCESS;
 }
@@ -329,25 +329,25 @@ static apr_status_t validate_cacert(const serf_ssl_certificate_t *cert,
     subject = serf_ssl_cert_subject(cert, pool);
     if (strcmp("Serf CA",
                apr_hash_get(subject, "CN", APR_HASH_KEY_STRING)) != 0)
-        return SERF_ERROR_ISSUE_IN_TESTSUITE;
+        return REPORT_TEST_SUITE_ERROR();
     if (strcmp("Test Suite CA",
                apr_hash_get(subject, "OU", APR_HASH_KEY_STRING)) != 0)
-        return SERF_ERROR_ISSUE_IN_TESTSUITE;
+        return REPORT_TEST_SUITE_ERROR();
     if (strcmp("In Serf we trust, Inc.",
                apr_hash_get(subject, "O", APR_HASH_KEY_STRING)) != 0)
-        return SERF_ERROR_ISSUE_IN_TESTSUITE;
+        return REPORT_TEST_SUITE_ERROR();
     if (strcmp("Mechelen",
                apr_hash_get(subject, "L", APR_HASH_KEY_STRING)) != 0)
-        return SERF_ERROR_ISSUE_IN_TESTSUITE;
+        return REPORT_TEST_SUITE_ERROR();
     if (strcmp("Antwerp",
                apr_hash_get(subject, "ST", APR_HASH_KEY_STRING)) != 0)
-        return SERF_ERROR_ISSUE_IN_TESTSUITE;
+        return REPORT_TEST_SUITE_ERROR();
     if (strcmp("BE",
                apr_hash_get(subject, "C", APR_HASH_KEY_STRING)) != 0)
-        return SERF_ERROR_ISSUE_IN_TESTSUITE;
+        return REPORT_TEST_SUITE_ERROR();
     if (strcmp("serfca@example.com",
                apr_hash_get(subject, "E", APR_HASH_KEY_STRING)) != 0)
-        return SERF_ERROR_ISSUE_IN_TESTSUITE;
+        return REPORT_TEST_SUITE_ERROR();
 
     return APR_SUCCESS;
 }
@@ -359,25 +359,25 @@ static apr_status_t validate_rootcacert(const serf_ssl_certificate_t *cert,
     subject = serf_ssl_cert_subject(cert, pool);
     if (strcmp("Serf Root CA",
                apr_hash_get(subject, "CN", APR_HASH_KEY_STRING)) != 0)
-        return SERF_ERROR_ISSUE_IN_TESTSUITE;
+        return REPORT_TEST_SUITE_ERROR();
     if (strcmp("Test Suite Root CA",
                apr_hash_get(subject, "OU", APR_HASH_KEY_STRING)) != 0)
-        return SERF_ERROR_ISSUE_IN_TESTSUITE;
+        return REPORT_TEST_SUITE_ERROR();
     if (strcmp("In Serf we trust, Inc.",
                apr_hash_get(subject, "O", APR_HASH_KEY_STRING)) != 0)
-        return SERF_ERROR_ISSUE_IN_TESTSUITE;
+        return REPORT_TEST_SUITE_ERROR();
     if (strcmp("Mechelen",
                apr_hash_get(subject, "L", APR_HASH_KEY_STRING)) != 0)
-        return SERF_ERROR_ISSUE_IN_TESTSUITE;
+        return REPORT_TEST_SUITE_ERROR();
     if (strcmp("Antwerp",
                apr_hash_get(subject, "ST", APR_HASH_KEY_STRING)) != 0)
-        return SERF_ERROR_ISSUE_IN_TESTSUITE;
+        return REPORT_TEST_SUITE_ERROR();
     if (strcmp("BE",
                apr_hash_get(subject, "C", APR_HASH_KEY_STRING)) != 0)
-        return SERF_ERROR_ISSUE_IN_TESTSUITE;
+        return REPORT_TEST_SUITE_ERROR();
     if (strcmp("serfrootca@example.com",
                apr_hash_get(subject, "E", APR_HASH_KEY_STRING)) != 0)
-        return SERF_ERROR_ISSUE_IN_TESTSUITE;
+        return REPORT_TEST_SUITE_ERROR();
 
     return APR_SUCCESS;
 }
@@ -395,7 +395,7 @@ ssl_server_cert_cb_expect_failures(void *baton, int failures,
     if (failures & expected_failures)
         return APR_SUCCESS;
     else
-        return SERF_ERROR_ISSUE_IN_TESTSUITE;
+        return REPORT_TEST_SUITE_ERROR();
 }
 
 static apr_status_t
@@ -407,7 +407,7 @@ ssl_server_cert_cb_expect_allok(void *baton, int failures,
 
     /* No error expected, certificate is valid. */
     if (failures)
-        return SERF_ERROR_ISSUE_IN_TESTSUITE;
+        return REPORT_TEST_SUITE_ERROR();
     else
         return APR_SUCCESS;
 }
@@ -419,7 +419,7 @@ ssl_server_cert_cb_reject(void *baton, int failures,
     test_baton_t *tb = baton;
     tb->result_flags |= TEST_RESULT_SERVERCERTCB_CALLED;
 
-    return SERF_ERROR_ISSUE_IN_TESTSUITE;
+    return REPORT_TEST_SUITE_ERROR();
 }
 
 /* Validate that we can connect successfully to an https server. This
@@ -630,10 +630,10 @@ cert_chain_cb(void *baton,
     tb->result_flags |= TEST_RESULT_SERVERCERTCHAINCB_CALLED;
 
     if (failures)
-        return SERF_ERROR_ISSUE_IN_TESTSUITE;
+        return REPORT_TEST_SUITE_ERROR();
 
     if (certs_len != 3)
-        return SERF_ERROR_ISSUE_IN_TESTSUITE;
+        return REPORT_TEST_SUITE_ERROR();
 
     status = validate_rootcacert(certs[2], tb->pool);
     if (status)
@@ -938,7 +938,7 @@ static apr_status_t client_cert_pw_cb(void *data,
         return APR_SUCCESS;
     }
 
-    return SERF_ERROR_ISSUE_IN_TESTSUITE;
+    return REPORT_TEST_SUITE_ERROR();
 }
 
 static apr_status_t
@@ -1141,7 +1141,7 @@ ssl_server_cert_cb_log_failures(void *baton, int failures,
     failure_list = tb->user_baton;
 
     if (depth + 1 > failure_list->nalloc) {
-        return SERF_ERROR_ISSUE_IN_TESTSUITE;
+        return REPORT_TEST_SUITE_ERROR();
     }
 
     failures_for_depth = &APR_ARRAY_IDX(failure_list, depth, int);
@@ -1309,12 +1309,12 @@ ssltunnel_basic_authn_callback(char **username,
     tb->result_flags |= TEST_RESULT_AUTHNCB_CALLED;
 
     if (strcmp("Basic", authn_type) != 0)
-        return SERF_ERROR_ISSUE_IN_TESTSUITE;
+        return REPORT_TEST_SUITE_ERROR();
 
     if (code == 401) {
         if (strcmp(apr_psprintf(pool, "<%s> Test Suite", tb->serv_url),
                    realm) != 0)
-            return SERF_ERROR_ISSUE_IN_TESTSUITE;
+            return REPORT_TEST_SUITE_ERROR();
 
         *username = "serf";
         *password = "serftest";
@@ -1322,12 +1322,12 @@ ssltunnel_basic_authn_callback(char **username,
     else if (code == 407) {
         if (strcmp(apr_psprintf(pool, "<http://localhost:%u> Test Suite Proxy",
                                 tb->proxy_port), realm) != 0)
-            return SERF_ERROR_ISSUE_IN_TESTSUITE;
+            return REPORT_TEST_SUITE_ERROR();
 
         *username = "serfproxy";
         *password = "serftest";
     } else
-        return SERF_ERROR_ISSUE_IN_TESTSUITE;
+        return REPORT_TEST_SUITE_ERROR();
 
     test__log(TEST_VERBOSE, __FILE__, "ssltunnel_basic_authn_callback finished successfully.\n");
 
@@ -1452,12 +1452,12 @@ basic_authn_callback_2ndtry(char **username,
     tb->result_flags |= TEST_RESULT_AUTHNCB_CALLED;
 
     if (strcmp("Basic", authn_type) != 0)
-        return SERF_ERROR_ISSUE_IN_TESTSUITE;
+        return REPORT_TEST_SUITE_ERROR();
 
     if (code == 401) {
         if (strcmp(apr_psprintf(pool, "<%s> Test Suite", tb->serv_url),
                    realm) != 0)
-            return SERF_ERROR_ISSUE_IN_TESTSUITE;
+            return REPORT_TEST_SUITE_ERROR();
 
         *username = "serf";
         *password = secondtry ? "serftest" : "wrongpwd";
@@ -1465,12 +1465,12 @@ basic_authn_callback_2ndtry(char **username,
     else if (code == 407) {
         if (strcmp(apr_psprintf(pool, "<http://localhost:%u> Test Suite Proxy",
                                 tb->proxy_port), realm) != 0)
-            return SERF_ERROR_ISSUE_IN_TESTSUITE;
+            return REPORT_TEST_SUITE_ERROR();
 
         *username = "serfproxy";
         *password = secondtry ? "serftest" : "wrongpwd";
     } else
-        return SERF_ERROR_ISSUE_IN_TESTSUITE;
+        return REPORT_TEST_SUITE_ERROR();
 
     test__log(TEST_VERBOSE, __FILE__, "ssltunnel_basic_authn_callback finished successfully.\n");
 
@@ -1579,12 +1579,12 @@ proxy_digest_authn_callback(char **username,
     tb->result_flags |= TEST_RESULT_AUTHNCB_CALLED;
 
     if (code != 407)
-        return SERF_ERROR_ISSUE_IN_TESTSUITE;
+        return REPORT_TEST_SUITE_ERROR();
     if (strcmp("Digest", authn_type) != 0)
-        return SERF_ERROR_ISSUE_IN_TESTSUITE;
+        return REPORT_TEST_SUITE_ERROR();
     if (strcmp(apr_psprintf(pool, "<http://localhost:%u> Test Suite Proxy",
                             tb->proxy_port), realm) != 0)
-        return SERF_ERROR_ISSUE_IN_TESTSUITE;
+        return REPORT_TEST_SUITE_ERROR();
 
     *username = "serf";
     *password = "serftest";
@@ -1830,7 +1830,7 @@ static apr_status_t handle_response_set_flag(serf_request_t *request,
        Not passing the response will make the application think the response
        get cancelled, and it will requeue it. */
     if (!response)
-        return SERF_ERROR_ISSUE_IN_TESTSUITE;
+        return REPORT_TEST_SUITE_ERROR();
 #endif
 
     tb->result_flags |= TEST_RESULT_HANDLE_RESPONSECB_CALLED;
@@ -1901,7 +1901,7 @@ ocsp_response_cb_expect_failures(void *baton, int failures,
         return APR_SUCCESS;
     }
 
-    return SERF_ERROR_ISSUE_IN_TESTSUITE;
+    return REPORT_TEST_SUITE_ERROR();
 }
 
 static void test_ssl_ocsp_response_error_and_override(CuTest *tc)

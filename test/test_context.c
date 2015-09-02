@@ -797,7 +797,7 @@ static apr_status_t handle_response_timeout(
     }
 
     if (serf_request_is_written(request) != APR_EBUSY) {
-        return SERF_ERROR_ISSUE_IN_TESTSUITE;
+        return REPORT_TEST_SUITE_ERROR();
     }
 
 

@@ -37,7 +37,7 @@ authn_callback_expect_not_called(char **username,
     tb->result_flags |= TEST_RESULT_AUTHNCB_CALLED;
 
     /* Should not have been called. */
-    return SERF_ERROR_ISSUE_IN_TESTSUITE;
+    return REPORT_TEST_SUITE_ERROR();
 }
 
 /* Tests that authn fails if all authn schemes are disabled. */
@@ -120,12 +120,12 @@ basic_authn_callback(char **username,
     tb->result_flags |= TEST_RESULT_AUTHNCB_CALLED;
 
     if (code != 401)
-        return SERF_ERROR_ISSUE_IN_TESTSUITE;
+        return REPORT_TEST_SUITE_ERROR();
     if (strcmp("Basic", authn_type) != 0)
-        return SERF_ERROR_ISSUE_IN_TESTSUITE;
+        return REPORT_TEST_SUITE_ERROR();
     if (strcmp(apr_psprintf(pool, "<http://localhost:%d> Test Suite",
                             tb->serv_port), realm) != 0)
-        return SERF_ERROR_ISSUE_IN_TESTSUITE;
+        return REPORT_TEST_SUITE_ERROR();
 
     *username = "serf";
     *password = "serftest";
@@ -223,12 +223,12 @@ digest_authn_callback(char **username,
     tb->result_flags |= TEST_RESULT_AUTHNCB_CALLED;
 
     if (code != 401)
-        return SERF_ERROR_ISSUE_IN_TESTSUITE;
+        return REPORT_TEST_SUITE_ERROR();
     if (strcmp("Digest", authn_type) != 0)
-        return SERF_ERROR_ISSUE_IN_TESTSUITE;
+        return REPORT_TEST_SUITE_ERROR();
     if (strcmp(apr_psprintf(pool, "<http://localhost:%d> Test Suite",
                             tb->serv_port), realm) != 0)
-        return SERF_ERROR_ISSUE_IN_TESTSUITE;
+        return REPORT_TEST_SUITE_ERROR();
 
     *username = "serf";
     *password = "serftest";
@@ -324,9 +324,9 @@ switched_realm_authn_callback(char **username,
     tb->result_flags |= TEST_RESULT_AUTHNCB_CALLED;
 
     if (code != 401)
-        return SERF_ERROR_ISSUE_IN_TESTSUITE;
+        return REPORT_TEST_SUITE_ERROR();
     if (strcmp(exp_realm, realm) != 0)
-        return SERF_ERROR_ISSUE_IN_TESTSUITE;
+        return REPORT_TEST_SUITE_ERROR();
 
     if (strcmp(apr_psprintf(pool, "<http://localhost:%d> Test Suite",
                             tb->serv_port), realm) == 0) {
