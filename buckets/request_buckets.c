@@ -194,14 +194,15 @@ static apr_status_t serf_request_peek(serf_bucket_t *bucket,
    hasn't been called on the bucket */
 static void serf_request_destroy(serf_bucket_t *bucket)
 {
-  request_context_t *ctx = bucket->data;
+    request_context_t *ctx = bucket->data;
 
-  serf_bucket_destroy(ctx->headers);
+    serf_bucket_destroy(ctx->headers);
 
-  if (ctx->body)
-    serf_bucket_destroy(ctx->body);
+    if (ctx->body) {
+        serf_bucket_destroy(ctx->body);
+    }
 
-  serf_default_destroy_and_data(bucket);
+    serf_default_destroy_and_data(bucket);
 }
 
 void serf_bucket_request_become(
