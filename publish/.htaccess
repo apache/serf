@@ -6,4 +6,4 @@ RedirectMatch ^/download(/)?$ /download.html
 # Simple issue redirector
 RedirectMatch ^/issue[^A-Za-z0-9]?(\d+)$ https://issues.apache.org/jira/browse/SERF-$1
 
-RedirectMatch ^/buildbot$ http://ci.apache.org/waterfall?category=serf-prod\&show_events=true
+RedirectMatch ^/buildbot$ http://ci.apache.org/waterfall?category=serf-prod\&category=serf-compat\&show_events=true
