@@ -103,6 +103,14 @@ void serf_default_destroy_and_data(
     serf_bucket_t *bucket);
 
 /**
+ * Default implementation of the @see get_remaining functionality.
+ *
+ * This function will just return SERF_LENGTH_UNKNOWN.
+ */
+apr_uint64_t *serf_default_get_remaining(
+    serf_bucket_t *bucket);
+
+/**
  * Default implementation of the @see set_config functionality.
  *
  * This function will not do anything, it should be used in buckets

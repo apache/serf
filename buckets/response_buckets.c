@@ -542,9 +542,9 @@ const serf_bucket_type_t serf_bucket_type_response = {
     serf_default_read_iovec,
     serf_default_read_for_sendfile,
     serf_buckets_are_v2,
-    serf_response_peek,
+    serf_response_peek /* ### TODO */,
     serf_response_destroy_and_data,
     serf_default_read_bucket,
-    NULL,
+    serf_default_get_remaining,
     serf_response_set_config,
 };

@@ -95,6 +95,6 @@ const serf_bucket_type_t serf_bucket_type_mock_socket = {
     serf_mock_sock_peek,
     serf_default_destroy_and_data,
     serf_default_read_bucket,
-    NULL,
+    serf_default_get_remaining,
     serf_mock_sock_set_config,
 };
