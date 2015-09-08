@@ -606,6 +606,12 @@ static void test_aggregate_buckets(CuTest *tc)
     bkt = SERF_BUCKET_SIMPLE_STRING(BODY, alloc);
     serf_bucket_aggregate_append(aggbkt, bkt);
 
+    /* If you see result -1 in the next line, this is most likely caused by
+       not properly detecting v2 buckets via the magic function pointer.
+       Most likely you are seeing a linkage problem which causes seeing
+       different pointers for serf_buckets_are_v2() */
+    CuAssertIntEquals(tc, 62, (int)serf_bucket_get_remaining(aggbkt));
+
     status = serf_bucket_read_iovec(aggbkt, 0, 32,
                                     tgt_vecs, &vecs_used);
     CuAssertIntEquals(tc, APR_SUCCESS, status);
@@ -635,6 +641,8 @@ static void test_aggregate_buckets(CuTest *tc)
     bkt = SERF_BUCKET_SIMPLE_STRING_LEN(BODY+15, strlen(BODY)-15, alloc);
     serf_bucket_aggregate_append(aggbkt, bkt);
 
+    CuAssertTrue(tc, serf_bucket_get_remaining(aggbkt) == 62);
+
     read_and_check_bucket(tc, aggbkt, BODY);
 
     /* Test 5: multiple child buckets prepended. */
@@ -644,6 +652,8 @@ static void test_aggregate_buckets(CuTest *tc)
     serf_bucket_aggregate_prepend(aggbkt, bkt);
     bkt = SERF_BUCKET_SIMPLE_STRING_LEN(BODY, 15, alloc);
     serf_bucket_aggregate_prepend(aggbkt, bkt);
+
+    CuAssertTrue(tc, serf_bucket_get_remaining(aggbkt) == 62);
 
     read_and_check_bucket(tc, aggbkt, BODY);
 

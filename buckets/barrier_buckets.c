@@ -79,6 +79,13 @@ static void serf_barrier_destroy(serf_bucket_t *bucket)
     serf_default_destroy(bucket);
 }
 
+static apr_uint64_t serf_barrier_get_remaining(serf_bucket_t *bucket)
+{
+    serf_bucket_t *stream = bucket->data;
+
+    return serf_bucket_get_remaining(stream);
+}
+
 static apr_status_t serf_barrier_set_config(serf_bucket_t *bucket,
                                             serf_config_t *config)
 {
@@ -99,5 +106,6 @@ const serf_bucket_type_t serf_bucket_type_barrier = {
     serf_barrier_peek,
     serf_barrier_destroy,
     serf_default_read_bucket,
+    serf_barrier_get_remaining,
     serf_barrier_set_config,
 };
