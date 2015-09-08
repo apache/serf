@@ -15,6 +15,7 @@
 
 #include "apr.h"
 #include "apr_pools.h"
+#include <apr_env.h>
 #include <apr_strings.h>
 
 #include <stdlib.h>
@@ -31,6 +32,18 @@
 
 #define HTTP_SERV_URL  "http://localhost:" SERV_PORT_STR
 #define HTTPS_SERV_URL "https://localhost:" SERV_PORT_STR
+
+const char * get_srcdir_file(apr_pool_t *pool, const char * file)
+{
+    char *srcdir = "";
+
+    if (apr_env_get(&srcdir, "srcdir", pool) == APR_SUCCESS) {
+        return apr_pstrcat(pool, srcdir, "/", file, NULL);
+    }
+    else {
+        return file;
+    }
+}
 
 /* cleanup for conn */
 static apr_status_t cleanup_conn(void *baton)

@@ -282,4 +282,8 @@ serf_bucket_t *serf_bucket_mock_create(mockbkt_action *actions,
                                        serf_bucket_alloc_t *allocator);
 apr_status_t serf_bucket_mock_more_data_arrived(serf_bucket_t *bucket);
 
+/* Helper to get a file relative to our source directory by looking at
+ * 'srcdir' env variable. */
+const char * get_srcdir_file(apr_pool_t *pool, const char * file);
+
 #endif /* TEST_SERF_H */

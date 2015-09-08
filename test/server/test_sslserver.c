@@ -200,7 +200,7 @@ init_ssl_context(serv_ctx_t *serv_ctx,
         certfile = certfiles[0];
         rv = SSL_CTX_use_certificate_file(ssl_ctx->ctx, certfile, SSL_FILETYPE_PEM);
         if (rv != 1) {
-            fprintf(stderr, "Cannot load certficate from file '%s'\n", keyfile);
+            fprintf(stderr, "Cannot load certficate from file '%s'\n", certfile);
             exit(1);
         }
 

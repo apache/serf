@@ -1016,6 +1016,22 @@ static const char *all_server_certs[] = {
     "test/server/serfrootcacert.pem",
     NULL };
 
+static const char **server_certs_srcdir(const char **certs,
+                                         apr_pool_t *result_pool)
+{
+  const char **result;
+  int i = 0;
+  while (certs[i])
+    i++;
+
+  result = apr_pcalloc(result_pool, sizeof(result[0]) * (i + 1));
+
+  while (i-- > 0)
+    result[i] = get_srcdir_file(result_pool, certs[i]);
+
+  return result;
+}
+
 static apr_status_t validate_servercert(const serf_ssl_certificate_t *cert,
                                         apr_pool_t *pool)
 {
@@ -1170,8 +1186,8 @@ static void test_ssl_handshake(CuTest *tc)
                                      message_list, num_requests,
                                      action_list, num_requests, 0,
                                      NULL, /* default conn setup */
-                                     "test/server/serfserverkey.pem",
-                                     server_cert,
+                                     get_srcdir_file(test_pool, "test/server/serfserverkey.pem"),
+                                     server_certs_srcdir(server_cert, test_pool),
                                      NULL, /* no client cert */
                                      ssl_server_cert_cb_expect_failures,
                                      test_pool);
@@ -1208,7 +1224,8 @@ https_set_root_ca_conn_setup(apr_socket_t *skt,
         return status;
 
     status = serf_ssl_load_cert_file(&rootcacert,
-                                     "test/server/serfrootcacert.pem",
+                                     get_srcdir_file(pool,
+                                               "test/server/serfrootcacert.pem"),
                                      pool);
     if (status)
         return status;
@@ -1241,8 +1258,8 @@ static void test_ssl_trust_rootca(CuTest *tc)
                                      message_list, num_requests,
                                      action_list, num_requests, 0,
                                      https_set_root_ca_conn_setup,
-                                     "test/server/serfserverkey.pem",
-                                     server_certs,
+                                     get_srcdir_file(test_pool, "test/server/serfserverkey.pem"),
+                                     server_certs_srcdir(server_certs, test_pool),
                                      NULL, /* no client cert */
                                      ssl_server_cert_cb_expect_allok,
                                      test_pool);
@@ -1278,8 +1295,8 @@ static void test_ssl_application_rejects_cert(CuTest *tc)
                                      message_list, num_requests,
                                      action_list, num_requests, 0,
                                      https_set_root_ca_conn_setup,
-                                     "test/server/serfserverkey.pem",
-                                     server_certs,
+                                     get_srcdir_file(test_pool, "test/server/serfserverkey.pem"),
+                                     server_certs_srcdir(server_certs, test_pool),
                                      NULL, /* no client cert */
                                      ssl_server_cert_cb_reject,
                                      test_pool);
@@ -1375,8 +1392,8 @@ static void test_ssl_certificate_chain_with_anchor(CuTest *tc)
                                      message_list, num_requests,
                                      action_list, num_requests, 0,
                                      chain_rootca_callback_conn_setup,
-                                     "test/server/serfserverkey.pem",
-                                     server_certs,
+                                     get_srcdir_file(test_pool, "test/server/serfserverkey.pem"),
+                                     server_certs_srcdir(server_certs, test_pool),
                                      NULL, /* no client cert */
                                      ssl_server_cert_cb_expect_allok,
                                      test_pool);
@@ -1450,8 +1467,8 @@ static void test_ssl_certificate_chain_all_from_server(CuTest *tc)
                                      message_list, num_requests,
                                      action_list, num_requests, 0,
                                      chain_callback_conn_setup,
-                                     "test/server/serfserverkey.pem",
-                                     all_server_certs,
+                                     get_srcdir_file(test_pool, "test/server/serfserverkey.pem"),
+                                     server_certs_srcdir(all_server_certs, test_pool),
                                      NULL, /* no client cert */
                                      ssl_server_cert_cb_expect_allok,
                                      test_pool);
@@ -1488,8 +1505,8 @@ static void test_ssl_no_servercert_callback_allok(CuTest *tc)
                                      message_list, num_requests,
                                      action_list, num_requests, 0,
                                      https_set_root_ca_conn_setup,
-                                     "test/server/serfserverkey.pem",
-                                     server_certs,
+                                     get_srcdir_file(test_pool, "test/server/serfserverkey.pem"),
+                                     server_certs_srcdir(server_certs, test_pool),
                                      NULL, /* no client cert */
                                      NULL, /* No server cert callback */
                                      test_pool);
@@ -1523,8 +1540,8 @@ static void test_ssl_no_servercert_callback_fail(CuTest *tc)
                                      message_list, num_requests,
                                      action_list, num_requests, 0,
                                      NULL, /* default conn setup, no certs */
-                                     "test/server/serfserverkey.pem",
-                                     server_certs,
+                                     get_srcdir_file(test_pool, "test/server/serfserverkey.pem"),
+                                     server_certs_srcdir(server_certs, test_pool),
                                      NULL, /* no client cert */
                                      NULL, /* No server cert callback */
                                      test_pool);
@@ -1559,8 +1576,8 @@ static void test_ssl_large_response(CuTest *tc)
                                      message_list, num_requests,
                                      action_list, num_requests, 0,
                                      https_set_root_ca_conn_setup,
-                                     "test/server/serfserverkey.pem",
-                                     server_certs,
+                                     get_srcdir_file(test_pool, "test/server/serfserverkey.pem"),
+                                     server_certs_srcdir(server_certs, test_pool),
                                      NULL, /* no client cert */
                                      NULL, /* No server cert callback */
                                      test_pool);
@@ -1598,8 +1615,8 @@ static void test_ssl_large_request(CuTest *tc)
                                      message_list, num_requests,
                                      action_list, num_requests, 0,
                                      https_set_root_ca_conn_setup,
-                                     "test/server/serfserverkey.pem",
-                                     server_certs,
+                                     get_srcdir_file(test_pool, "test/server/serfserverkey.pem"),
+                                     server_certs_srcdir(server_certs, test_pool),
                                      NULL, /* no client cert */
                                      NULL, /* No server cert callback */
                                      test_pool);
@@ -1622,7 +1639,7 @@ static apr_status_t client_cert_cb(void *data, const char **cert_path)
 
     tb->result_flags |= TEST_RESULT_CLIENT_CERTCB_CALLED;
 
-    *cert_path = "test/server/serfclientcert.p12";
+    *cert_path = get_srcdir_file(tb->pool, "test/server/serfclientcert.p12");
 
     return APR_SUCCESS;
 }
@@ -1634,8 +1651,8 @@ static apr_status_t client_cert_pw_cb(void *data,
     test_baton_t *tb = data;
 
     tb->result_flags |= TEST_RESULT_CLIENT_CERTPWCB_CALLED;
-    
-    if (strcmp(cert_path, "test/server/serfclientcert.p12") == 0)
+    if (strcmp(cert_path,
+               get_srcdir_file(tb->pool, "test/server/serfclientcert.p12")) == 0)
     {
         *password = "serftest";
         return APR_SUCCESS;
@@ -1694,8 +1711,8 @@ static void test_ssl_client_certificate(CuTest *tc)
                                      message_list, num_requests,
                                      action_list, num_requests, 0,
                                      client_cert_conn_setup,
-                                     "test/server/serfserverkey.pem",
-                                     all_server_certs,
+                                     get_srcdir_file(test_pool, "test/server/serfserverkey.pem"),
+                                     server_certs_srcdir(all_server_certs, test_pool),
                                      "Serf Client",
                                      NULL, /* No server cert callback */
                                      test_pool);
@@ -1739,8 +1756,8 @@ static void test_ssl_expired_server_cert(CuTest *tc)
                                      message_list, num_requests,
                                      action_list, num_requests, 0,
                                      NULL, /* default conn setup */
-                                     "test/server/serfserverkey.pem",
-                                     expired_server_certs,
+                                     get_srcdir_file(test_pool, "test/server/serfserverkey.pem"),
+                                     server_certs_srcdir(expired_server_certs, test_pool),
                                      NULL, /* no client cert */
                                      ssl_server_cert_cb_expect_failures,
                                      test_pool);
@@ -1785,8 +1802,8 @@ static void test_ssl_future_server_cert(CuTest *tc)
                                      message_list, num_requests,
                                      action_list, num_requests, 0,
                                      NULL, /* default conn setup */
-                                     "test/server/serfserverkey.pem",
-                                     future_server_certs,
+                                     get_srcdir_file(test_pool, "test/server/serfserverkey.pem"),
+                                     server_certs_srcdir(future_server_certs, test_pool),
                                      NULL, /* no client cert */
                                      ssl_server_cert_cb_expect_failures,
                                      test_pool);
@@ -1852,8 +1869,8 @@ static void test_setup_ssltunnel(CuTest *tc)
                                            action_list_proxy, 2,
                                            0,
                                            https_set_root_ca_conn_setup,
-                                           "test/server/serfserverkey.pem",
-                                           server_certs,
+                                           get_srcdir_file(test_pool, "test/server/serfserverkey.pem"),
+                                           server_certs_srcdir(server_certs, test_pool),
                                            NULL, /* no client cert */
                                            NULL, /* No server cert callback */
                                            test_pool);
@@ -1913,8 +1930,8 @@ static void test_ssltunnel_no_creds_cb(CuTest *tc)
                                            action_list_proxy, 1,
                                            0,
                                            https_set_root_ca_conn_setup,
-                                           "test/server/serfserverkey.pem",
-                                           server_certs,
+                                           get_srcdir_file(test_pool, "test/server/serfserverkey.pem"),
+                                           server_certs_srcdir(server_certs, test_pool),
                                            NULL, /* no client cert */
                                            NULL, /* No server cert callback */
                                            test_pool);
@@ -2093,8 +2110,8 @@ static void ssltunnel_basic_auth(CuTest *tc, const char *server_resp_hdrs,
                                            action_list_proxy, 7,
                                            0,
                                            https_set_root_ca_conn_setup,
-                                           "test/server/serfserverkey.pem",
-                                           server_certs,
+                                           get_srcdir_file(test_pool, "test/server/serfserverkey.pem"),
+                                           server_certs_srcdir(server_certs, test_pool),
                                            NULL, /* no client cert */
                                            NULL, /* No server cert callback */
                                            test_pool);
@@ -2242,8 +2259,8 @@ static void test_ssltunnel_digest_auth(CuTest *tc)
                                            action_list_proxy, 3,
                                            0,
                                            https_set_root_ca_conn_setup,
-                                           "test/server/serfserverkey.pem",
-                                           server_certs,
+                                           get_srcdir_file(test_pool, "test/server/serfserverkey.pem"),
+                                           server_certs_srcdir(server_certs, test_pool),
                                            NULL, /* no client cert */
                                            NULL, /* No server cert callback */
                                            test_pool);
