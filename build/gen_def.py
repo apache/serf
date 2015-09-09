@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env python
+#!/usr/bin/env python
 #
 # gen_def.py :  Generate the .DEF file for Windows builds
 #
