@@ -192,7 +192,7 @@ if __name__ == '__main__':
                               valid_before=10*365,
                               days_valid=13*365)
 
-    # server certificate that will be valid in 10 years
+    # server certificate with SubjectAltName and empty CN
     san_nocncert = create_cert(subjectkey=serverkey,
                                certfile='serfserver_san_nocn_cert.pem',
                                issuer=cacert, issuerkey=cakey,
