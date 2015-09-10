@@ -211,7 +211,8 @@ incdir = '$PREFIX/include/serf-$MAJOR'
 # Unfortunately we can't set the .dylib compatibility_version option separately
 # from current_version, so don't use the PATCH level to avoid that build and
 # runtime patch levels have to be identical.
-env['SHLIBVERSION'] = '%d.%d.%d' % (MAJOR, MINOR, 0)
+if sys.platform != 'sunos5':
+  env['SHLIBVERSION'] = '%d.%d.%d' % (MAJOR, MINOR, 0)
 
 LIBNAME = 'libserf-%d' % (MAJOR,)
 if sys.platform != 'win32':
@@ -227,12 +228,23 @@ if sys.platform == 'darwin':
   env.Append(LINKFLAGS=['-Wl,-install_name,%s/%s.dylib' % (thisdir, LIBNAME,)])
 
 if sys.platform != 'win32':
-  ### gcc only. figure out appropriate test / better way to check these
-  ### flags, and check for gcc.
-  env.Append(CFLAGS=['-std=c89'])
+  def CheckGnuCC(context):
+    src = '''
+    #ifndef __GNUC__
+    oh noes!
+    #endif
+    '''
+    context.Message('Checking for GNU-compatible C compiler...')
+    result = context.TryCompile(src, '.c')
+    context.Result(result)
+    return result
 
-  ### These warnings are not available on Solaris
-  if sys.platform != 'sunos5': 
+  conf = Configure(env, custom_tests = dict(CheckGnuCC=CheckGnuCC))
+  have_gcc = conf.CheckGnuCC()
+  env = conf.Finish()
+
+  if have_gcc:
+    env.Append(CFLAGS=['-std=c89'])
     env.Append(CCFLAGS=['-Wdeclaration-after-statement',
                         '-Wmissing-prototypes',
                         '-Wall'])
@@ -249,6 +261,7 @@ if sys.platform != 'win32':
 
   if sys.platform == 'sunos5':
     env.Append(LIBS=['m'])
+    env.Append(PLATFORM='posix')
 else:
   # Warning level 4, no unused argument warnings
   env.Append(CCFLAGS=['/W4', '/wd4100'])
@@ -443,18 +456,22 @@ if sys.platform == 'win32':
 else:
   TEST_EXES = [ os.path.join('test', '%s' % (prog)) for prog in TEST_PROGRAMS ]
 
-check_script = env.File('build/check.py').rstr()
-test_dir = env.File('test/test_all.c').rfile().get_dir()
-src_dir = env.File('serf.h').rfile().get_dir()
-test_app = ("%s %s %s %s") % (sys.executable, check_script, test_dir, 'test')
-env.AlwaysBuild(env.Alias('check', TEST_EXES, test_app,
-                          ENV={'PATH' : os.environ['PATH'],
-                               'srcdir' : src_dir}))
-
 # Find the (dynamic) library in this directory
 tenv.Replace(RPATH=thisdir)
 tenv.Prepend(LIBS=[LIBNAMESTATIC, ],
              LIBPATH=[thisdir, ])
+
+check_script = env.File('build/check.py').rstr()
+test_dir = env.File('test/test_all.c').rfile().get_dir()
+src_dir = env.File('serf.h').rfile().get_dir()
+test_app = ("%s %s %s %s") % (sys.executable, check_script, test_dir, 'test')
+
+# Set the library search path for the test programs
+test_env = {'PATH' : os.environ['PATH'],
+            'srcdir' : src_dir}
+if sys.platform != 'win32':
+  test_env['LD_LIBRARY_PATH'] = ':'.join(tenv.get('LIBPATH', []))
+env.AlwaysBuild(env.Alias('check', TEST_EXES, test_app, ENV=test_env))
 
 testall_files = [
         'test/test_all.c',
