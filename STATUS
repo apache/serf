@@ -39,7 +39,7 @@ Candidate changes:
    Justification:
      Fix compilation on Windows with UNICODE defined.
    Votes:
-     +1: ivan
+     +1: ivan, rhuijben
 
 Veto-blocked changes:
 =====================
