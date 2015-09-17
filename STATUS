@@ -19,13 +19,6 @@ Candidate changes:
    Votes:
      +1: rhuijben
 
- * r1699542
-   Explicitly use ANSI version of SSPI.
-   Justification:
-     Fix compilation on Windows with UNICODE defined.
-   Votes:
-     +1: ivan, rhuijben
-
 Veto-blocked changes:
 =====================
 
