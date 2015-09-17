@@ -19,13 +19,6 @@ Candidate changes:
    Votes:
      +1: rhuijben
 
- * r1699791
-   Resolve memory leak in cancel scenario.
-   Justification:
-     Memory leak.
-   Votes:
-     +1: rhuijben, ivan
-
  * r1699985, r1699993, r1699994
    Improve status line verifications
    Justification:
