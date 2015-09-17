@@ -19,14 +19,6 @@ Candidate changes:
    Votes:
      +1: rhuijben
 
- * r1699985, r1699993, r1699994
-   Improve status line verifications
-   Justification:
-     Avoids handling bad data as a real status line, stalling the
-     connection until timeout.
-   Votes:
-     +1: rhuijben, ivan
-
  * r1699542
    Explicitly use ANSI version of SSPI.
    Justification:
