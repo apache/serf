@@ -538,7 +538,7 @@ run_client_and_mock_servers_loops_expect_ok(CuTest *tc, test_baton_t *tb,
 
     status = run_client_and_mock_servers_loops(tb, num_requests, handler_ctx,
                                                pool);
-    CuAssertIntEquals(tc, APR_SUCCESS, status);
+    CuAssertIntEquals_Msg(tc, serf_error_string(status), APR_SUCCESS, status);
 
     /* Check that the requests were sent and reveived by the server in the order
      we created them */
