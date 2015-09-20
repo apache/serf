@@ -56,6 +56,7 @@ static void appendErrMessage(const MockHTTP *mh, const char *fmt, ...)
     const char *msg;
     va_list argp;
 
+    va_start(argp, fmt);
     apr_pool_create(&scratchpool, mh->pool);
     msg = apr_pvsprintf(scratchpool, fmt, argp);
 
