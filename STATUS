@@ -22,7 +22,7 @@ Candidate changes:
  * r1699852
    Fix incorrect use of bio file handlers (r1699852)
    Votes:
-     +1: rhuijben
+     +1: rhuijben, ivan
 
  * r1699914
    Fix problems with NTLM authentication when accessing local server using
