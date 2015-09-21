@@ -17,7 +17,7 @@ Candidate changes:
      Without proper types these typing errors make debugging harder
      than necessary.
    Votes:
-     +1: rhuijben
+     +1: rhuijben, ivan
 
  * r1699852
    Fix incorrect use of bio file handlers (r1699852)
