@@ -29,7 +29,7 @@ ONE_SECOND = 1000000
 
 
 def main():
-  fetch('serf.googlecode.com', 80, '/svn/trunk/NOTICE')
+  fetch('svn.apache.org', 80, '/repos/asf/serf/trunk/NOTICE')
 
 
 def fetch(hostname, port, path):
