@@ -1,6 +1,6 @@
 #!/bin/sh
 
-REPOS="http://serf.googlecode.com/svn/"
+REPOS="https://svn.apache.org/repos/asf/serf"
 
 if test $# != 1; then
   echo "USAGE: $0 TAG"
