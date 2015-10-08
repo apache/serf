@@ -61,6 +61,10 @@ void serf_bucket_request_set_CL(
 serf_bucket_t *serf_bucket_request_get_headers(
     serf_bucket_t *request);
 
+/** Transform @a bucket in-place into a request bucket.
+ *
+ * It is callers responsibility to free resources held by the original
+ * bucket */
 void serf_bucket_request_become(
     serf_bucket_t *bucket,
     const char *method,
@@ -225,7 +229,10 @@ serf_bucket_t *serf__bucket_stream_create(
     serf_bucket_aggregate_eof_t fn,
     void *baton);
 
-/** Transform @a bucket in-place into an aggregate bucket. */
+/** Transform @a bucket in-place into an aggregate bucket.
+ *
+ * It is callers responsibility to free resources held by the original
+ * bucket */
 void serf_bucket_aggregate_become(
     serf_bucket_t *bucket);
 
