@@ -142,10 +142,6 @@ void serf_bucket_aggregate_become(serf_bucket_t *bucket)
     bucket->data = ctx;
 
     /* The allocator remains the same. */
-
-    /* ### How does this handle the data of the original bucket?
-       ### We should probably undo this step on destroy, to
-       ### allow proper cleanup */
 }
 
 
