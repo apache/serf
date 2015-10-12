@@ -112,6 +112,17 @@ serf_bucket_t *serf_default_read_bucket(
     return NULL;
 }
 
+apr_status_t serf_default_peek(
+    serf_bucket_t *bucket,
+    const char **data,
+    apr_size_t *len)
+{
+    /* State: no data available */
+    *data = "";
+    *len = 0;
+    return APR_SUCCESS;
+}
+
 
 void serf_default_destroy(serf_bucket_t *bucket)
 {
