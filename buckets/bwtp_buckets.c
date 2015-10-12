@@ -586,9 +586,6 @@ static apr_status_t bwtp_incoming_readline(serf_bucket_t *bucket,
     return serf_bucket_readline(ctx->body, acceptable, found, data, len);
 }
 
-/* ### need to implement */
-#define bwtp_incoming_peek NULL
-
 const serf_bucket_type_t serf_bucket_type_bwtp_incoming_frame = {
     "BWTP-INCOMING",
     bwtp_incoming_read,
@@ -596,6 +593,6 @@ const serf_bucket_type_t serf_bucket_type_bwtp_incoming_frame = {
     serf_default_read_iovec,
     serf_default_read_for_sendfile,
     serf_default_read_bucket,
-    bwtp_incoming_peek,
+    serf_default_peek /* ### TODO */,
     bwtp_incoming_destroy_and_data,
 };

@@ -85,6 +85,18 @@ serf_bucket_t *serf_default_read_bucket(
     const serf_bucket_type_t *type);
 
 /**
+ * Default implementation of the @see peek functionality.
+ *
+ * This function will always state that there is no data available.
+ *
+ * @since New in 1.4.
+ */
+apr_status_t serf_default_peek(
+    serf_bucket_t *bucket,
+    const char **data,
+    apr_size_t *len);
+
+/**
  * Default implementation of the @see destroy functionality.
  *
  * This function will return the @a bucket to its allcoator.

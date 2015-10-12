@@ -446,7 +446,6 @@ static apr_status_t serf_deflate_set_config(serf_bucket_t *bucket,
 
 /* ### need to implement */
 #define serf_deflate_readline NULL
-#define serf_deflate_peek NULL
 
 const serf_bucket_type_t serf_bucket_type_deflate = {
     "DEFLATE",
@@ -455,7 +454,7 @@ const serf_bucket_type_t serf_bucket_type_deflate = {
     serf_default_read_iovec,
     serf_default_read_for_sendfile,
     serf_buckets_are_v2,
-    serf_deflate_peek /* ### TODO */,
+    serf_default_peek /* ### TODO */,
     serf_deflate_destroy_and_data,
     serf_default_read_bucket,
     serf_default_get_remaining,

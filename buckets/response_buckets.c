@@ -525,9 +525,6 @@ static apr_status_t serf_response_set_config(serf_bucket_t *bucket,
     return serf_bucket_set_config(ctx->stream, config);
 }
 
-/* ### need to implement */
-#define serf_response_peek NULL
-
 void serf__bucket_response_set_error_on_eof(serf_bucket_t *bucket,
                                             apr_status_t error)
 {
@@ -542,7 +539,7 @@ const serf_bucket_type_t serf_bucket_type_response = {
     serf_default_read_iovec,
     serf_default_read_for_sendfile,
     serf_buckets_are_v2,
-    serf_response_peek /* ### TODO */,
+    serf_default_peek /* ### TODO */,
     serf_response_destroy_and_data,
     serf_default_read_bucket,
     serf_default_get_remaining,
