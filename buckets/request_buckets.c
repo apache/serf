@@ -245,6 +245,7 @@ const serf_bucket_type_t serf_bucket_type_request = {
     serf_request_peek,
     serf_request_destroy,
     serf_default_read_bucket,
+    serf_default_get_remaining,
     serf_request_set_config,
 };
 

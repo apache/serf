@@ -255,5 +255,6 @@ const serf_bucket_type_t serf_bucket_type_chunk = {
     serf_chunk_peek,
     serf_chunk_destroy,
     serf_default_read_bucket,
+    serf_default_get_remaining,
     serf_chunk_set_config,
 };

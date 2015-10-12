@@ -118,6 +118,12 @@ static apr_status_t serf_mmap_peek(serf_bucket_t *bucket,
     return APR_EOF;
 }
 
+static apr_uint64_t serf_mmap_get_remaining(serf_bucket_t *bucket)
+{
+    mmap_context_t *ctx = bucket->data;
+    return ctx->remaining;
+}
+
 const serf_bucket_type_t serf_bucket_type_mmap = {
     "MMAP",
     serf_mmap_read,
@@ -128,6 +134,7 @@ const serf_bucket_type_t serf_bucket_type_mmap = {
     serf_mmap_peek,
     serf_default_destroy_and_data,
     serf_default_read_bucket,
+    serf_mmap_get_remaining,
     serf_default_ignore_config,
 };
 
@@ -141,6 +148,7 @@ serf_bucket_t *serf_bucket_mmap_create(apr_mmap_t *file_mmap,
 
 const serf_bucket_type_t serf_bucket_type_mmap = {
     "MMAP",
+    NULL,
     NULL,
     NULL,
     NULL,

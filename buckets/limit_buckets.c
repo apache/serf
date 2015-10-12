@@ -121,6 +121,13 @@ static void serf_limit_destroy(serf_bucket_t *bucket)
     serf_default_destroy_and_data(bucket);
 }
 
+static apr_uint64_t serf_limit_get_remaining(serf_bucket_t *bucket)
+{
+    limit_context_t *ctx = bucket->data;
+
+    return ctx->remaining;
+}
+
 static apr_status_t serf_limit_set_config(serf_bucket_t *bucket,
                                           serf_config_t *config)
 {
@@ -141,5 +148,6 @@ const serf_bucket_type_t serf_bucket_type_limit = {
     serf_limit_peek,
     serf_limit_destroy,
     serf_default_read_bucket,
+    serf_limit_get_remaining,
     serf_limit_set_config,
 };
