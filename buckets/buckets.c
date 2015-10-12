@@ -129,6 +129,10 @@ void serf_default_destroy_and_data(serf_bucket_t *bucket)
     serf_default_destroy(bucket);
 }
 
+apr_uint64_t *serf_default_get_remaining(serf_bucket_t *bucket)
+{
+    return SERF_LENGTH_UNKNOWN;
+}
 
 serf_bucket_t * serf_buckets_are_v2(serf_bucket_t *bucket,
                                     const serf_bucket_type_t *type)
