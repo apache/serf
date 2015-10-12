@@ -107,7 +107,7 @@ void serf_default_destroy_and_data(
  *
  * This function will just return SERF_LENGTH_UNKNOWN.
  */
-apr_uint64_t *serf_default_get_remaining(
+apr_uint64_t serf_default_get_remaining(
     serf_bucket_t *bucket);
 
 /**

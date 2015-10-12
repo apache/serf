@@ -129,7 +129,7 @@ void serf_default_destroy_and_data(serf_bucket_t *bucket)
     serf_default_destroy(bucket);
 }
 
-apr_uint64_t *serf_default_get_remaining(serf_bucket_t *bucket)
+apr_uint64_t serf_default_get_remaining(serf_bucket_t *bucket)
 {
     return SERF_LENGTH_UNKNOWN;
 }
