@@ -134,9 +134,33 @@ apr_uint64_t serf_default_get_remaining(serf_bucket_t *bucket)
     return SERF_LENGTH_UNKNOWN;
 }
 
+/* serf_bucket_type_t that is only used for version checking
+   between serf_buckets_are_v2() and serf_get_type().
+
+  Use a specific value for the name that API users can't depend
+  on, but that the compiler and linker can't optimize away
+  as 100% the same as another instance */
+static const serf_bucket_type_t v2_check =
+{
+  "\0serf_buckets_are_v2",
+  NULL /* read */,
+  NULL /* readline */,
+  NULL /* read_iovec */,
+  NULL /* read_for_sendfile */,
+  NULL /* buckets_are_v2 */,
+  NULL /* peek */,
+  NULL /* destroy */,
+  NULL /* read_bucket_v2 */,
+  NULL /* get_remaining */,
+  NULL /* set_config */
+};
+
 serf_bucket_t * serf_buckets_are_v2(serf_bucket_t *bucket,
                                     const serf_bucket_type_t *type)
 {
+    if (type == &v2_check)
+        return bucket;
+
     return bucket->type->read_bucket_v2(bucket, type);
 }
 
@@ -145,6 +169,53 @@ apr_status_t serf_default_ignore_config(serf_bucket_t *bucket,
 {
     return APR_SUCCESS;
 }
+
+/* Fallback type definition to return for buckets that don't implement
+   a specific version of the bucket spec */
+static const serf_bucket_type_t fallback_bucket_type =
+{
+  "\0serf_buckets_old",
+  NULL /* read */,
+  NULL /* readline */,
+  NULL /* read_iovec */,
+  NULL /* read_for_sendfile */,
+  NULL /* read_bucket */,
+  NULL /* peek */,
+  NULL /* destroy */,
+  serf_buckets_are_v2,
+  serf_default_get_remaining,
+  serf_default_ignore_config,
+};
+
+const serf_bucket_type_t *serf_get_type(const serf_bucket_t *bucket,
+                                        int min_version)
+{
+    serf_bucket_t *r;
+
+    switch (min_version) {
+        case 1:
+            r = bucket; /* Always supported */
+            break;
+#if 0
+        case 3:
+            r = bucket->type->read_bucket(bucket, &v3_check);
+            break;
+#endif
+
+        case 2:
+            r = bucket->type->read_bucket(bucket, &v2_check);
+            break;
+
+        default:
+            abort();
+    }
+
+    if (r != NULL)
+        return r->type;
+
+    return &fallback_bucket_type;
+}
+
 /* ==================================================================== */
 
 

@@ -921,24 +921,27 @@ struct serf_bucket_type_t {
     void (*destroy)(serf_bucket_t *bucket);
 
     /* The following members are valid only if read_bucket equals to
-     * serf_buckets_are_v2(). */
+     * serf_buckets_are_v2() (or in a future spec _v3, etc.). */
 
     /* Real pointer to read_bucket() method when read_bucket is
-     * serf_buckets_are_v2(). */
+     * serf_buckets_are_v2().
+     *
+     * @since New in 1.4 / Buckets v2.
+     */
     serf_bucket_t * (*read_bucket_v2)(serf_bucket_t *bucket,
                                       const serf_bucket_type_t *type);
 
     /* Returns length of remaining data to be read in @a bucket. Returns
      * SERF_LENGTH_UNKNOWN if length is unknown.
      *
-     * @since New in 1.4.
+     * @since New in 1.4 / Buckets v2.
      */
     apr_uint64_t (*get_remaining)(serf_bucket_t *bucket);
 
     /* Provides a reference to a config object containing all configuration
      * values relevant for this bucket.
      *
-     * @since New in 1.4.
+     * @since New in 1.4 / Buckets v2
      */
     apr_status_t (*set_config)(serf_bucket_t *bucket, serf_config_t *config);
 
@@ -976,6 +979,14 @@ struct serf_bucket_type_t {
 serf_bucket_t * serf_buckets_are_v2(serf_bucket_t *bucket,
                                     const serf_bucket_type_t *type);
 
+/** Gets the serf bucket type of the bucket if the bucket implements at least
+ * buckets version, or if not a bucket type providing a default implementation
+ *
+ * @since New in 1.4.
+ */
+const serf_bucket_type_t *serf_get_type(const serf_bucket_t *bucket,
+                                        int min_version);
+
 /* Internal macros for tracking bucket use. */
 #ifdef SERF_DEBUG_BUCKET_USE
 #define SERF__RECREAD(b,s) serf_debug__record_read(b,s)
@@ -993,14 +1004,8 @@ serf_bucket_t * serf_buckets_are_v2(serf_bucket_t *bucket,
 #define serf_bucket_read_bucket(b,t) ((b)->type->read_bucket(b,t))
 #define serf_bucket_peek(b,d,l) ((b)->type->peek(b,d,l))
 #define serf_bucket_destroy(b) ((b)->type->destroy(b))
-#define serf_bucket_get_remaining(b) \
-            ((b)->type->read_bucket == serf_buckets_are_v2 ? \
-             (b)->type->get_remaining(b) : \
-             SERF_LENGTH_UNKNOWN)
-#define serf_bucket_set_config(b,c) \
-            ((b)->type->read_bucket == serf_buckets_are_v2 ? \
-            (b)->type->set_config(b,c) : \
-            APR_ENOTIMPL)
+#define serf_bucket_get_remaining(b) (serf_get_type(b, 2)->get_remaining(b))
+#define serf_bucket_set_config(b,c) (serf_get_type(b, 2)->set_config(b, c))
 
 /**
  * Check whether a real error occurred. Note that bucket read functions
