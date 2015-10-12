@@ -157,11 +157,13 @@ serf_bucket_t *serf__bucket_log_wrapper_create(serf_bucket_t *wrapped,
     bkt_type->name = wrapped->type->name;
     bkt_type->peek = wrapped->type->peek;
     /* These read functions are not used by serf, so no need to add logging. */
-    bkt_type->read_bucket = wrapped->type->read_bucket;
     bkt_type->read_for_sendfile = wrapped->type->read_for_sendfile;
-    if (wrapped->type->read_bucket == serf_buckets_are_v2) {
+    if (serf_get_type(wrapped, 2) != NULL) {
+        bkt_type->read_bucket = serf_buckets_are_v2;
         bkt_type->read_bucket_v2 = wrapped->type->read_bucket_v2;
         bkt_type->get_remaining = wrapped->type->get_remaining;
+    } else {
+        bkt_type->read_bucket = wrapped->type->read_bucket;
     }
 
     /* Wrap these functions */
