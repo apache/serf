@@ -1429,6 +1429,11 @@ static apr_status_t processServer(mhServCtx_t *ctx, _mhClientCtx_t *cctx,
         }
     }
 
+    if (desc->rtnevents & APR_POLLHUP) {
+        /* may overwrite the result of stream->type->peek */
+        status = APR_EOF;
+    }
+
     return status;
 }
 
@@ -2169,7 +2174,7 @@ mhSetServerEnableOCSP(mhServCtx_t *ctx)
 struct sslCtx_t {
     bool handshake_done;
     bool renegotiate;
-    apr_status_t bio_read_status;
+    apr_status_t bio_status;
 
     SSL_CTX* ctx;
     SSL* ssl;
@@ -2255,7 +2260,7 @@ static int bio_apr_socket_read(BIO *bio, char *in, int inlen)
     BIO_clear_retry_flags(bio);
 
     status = apr_socket_recv(cctx->skt, in, &len);
-    ssl_ctx->bio_read_status = status;
+    ssl_ctx->bio_status = status;
 
     if (len || status != APR_EAGAIN)
         _mhLog(MH_VERBOSE, cctx->skt, "Read %d bytes from ssl socket with "
@@ -2280,12 +2285,18 @@ static int bio_apr_socket_write(BIO *bio, const char *in, int inlen)
 {
     apr_size_t len = inlen;
     _mhClientCtx_t *cctx = bio->ptr;
+    sslCtx_t *ssl_ctx = cctx->ssl_ctx;
+
+    BIO_clear_retry_flags(bio);
 
     apr_status_t status = apr_socket_send(cctx->skt, in, &len);
+    ssl_ctx->bio_status = status;
 
-    if (len || status != APR_EAGAIN)
+    if (len || !APR_STATUS_IS_EAGAIN(status))
         _mhLog(MH_VERBOSE, cctx->skt, "Wrote %d of %d bytes to ssl socket with "
                "status %d.\n", len, inlen, status);
+    else if (APR_STATUS_IS_EAGAIN(status))
+      BIO_set_retry_write(bio);
 
     if (READ_ERROR(status))
         return -1;
@@ -2462,7 +2473,7 @@ static apr_status_t initSSLCtx(_mhClientCtx_t *cctx)
 {
     sslCtx_t *ssl_ctx = apr_pcalloc(cctx->pool, sizeof(*ssl_ctx));
     cctx->ssl_ctx = ssl_ctx;
-    ssl_ctx->bio_read_status = APR_SUCCESS;
+    ssl_ctx->bio_status = APR_SUCCESS;
 
     _mhLog(MH_VERBOSE, cctx->skt, "Initializing SSL context.\n");
 
@@ -2588,9 +2599,11 @@ static apr_status_t initSSLCtx(_mhClientCtx_t *cctx)
 static apr_status_t
 sslSocketWrite(_mhClientCtx_t *cctx, const char *data, apr_size_t *len)
 {
+    int result;
     sslCtx_t *ssl_ctx = cctx->ssl_ctx;
 
-    int result = SSL_write(ssl_ctx->ssl, data, *len);
+    ssl_ctx->bio_status = APR_SUCCESS;
+    result = SSL_write(ssl_ctx->ssl, data, *len);
     if (result > 0) {
         *len = result;
         return APR_SUCCESS;
@@ -2601,7 +2614,7 @@ sslSocketWrite(_mhClientCtx_t *cctx, const char *data, apr_size_t *len)
 
     _mhLog(MH_VERBOSE, cctx->skt, "ssl_socket_write: ssl error?\n");
 
-    return APR_EGENERAL;
+    return ssl_ctx->bio_status ? ssl_ctx->bio_status : APR_EGENERAL;
 }
 
 /**
@@ -2613,6 +2626,7 @@ sslSocketRead(apr_socket_t *skt, void *baton, char *data, apr_size_t *len)
 {
     sslCtx_t *ssl_ctx = baton;
 
+    ssl_ctx->bio_status = APR_SUCCESS;
     int result = SSL_read(ssl_ctx->ssl, data, *len);
     if (result > 0) {
         *len = result;
@@ -2625,11 +2639,18 @@ sslSocketRead(apr_socket_t *skt, void *baton, char *data, apr_size_t *len)
             case SSL_ERROR_SYSCALL:
                 /* error in bio_bucket_read, probably APR_EAGAIN or APR_EOF */
                 *len = 0;
-                return ssl_ctx->bio_read_status;
+                return ssl_ctx->bio_status;
             case SSL_ERROR_WANT_READ:
                 *len = 0;
                 return APR_EAGAIN;
             case SSL_ERROR_SSL:
+              if (ssl_ctx->renegotiate) {
+                /* The client kills the connection, so we can expect protocol
+                   errors... Let's just return that we didn't see an error,
+                   but that the connection was closed. */
+                *len = 0;
+                return APR_EOF;
+              }
             default:
                 *len = 0;
                 _mhLog(MH_VERBOSE, skt,
@@ -2757,7 +2778,7 @@ static apr_status_t sslHandshake(_mhClientCtx_t *cctx)
             case SSL_ERROR_WANT_WRITE:
                 return APR_EAGAIN;
             case SSL_ERROR_SYSCALL:
-                return ssl_ctx->bio_read_status; /* Usually APR_EAGAIN */
+                return ssl_ctx->bio_status; /* Usually APR_EAGAIN */
             default:
                 _mhLog(MH_VERBOSE, cctx->skt, "SSL Error %d: ", ssl_err);
 #if MH_VERBOSE
