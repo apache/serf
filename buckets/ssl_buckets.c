@@ -308,15 +308,17 @@ static int bio_bucket_read(BIO *bio, char *in, int inlen)
     apr_status_t status;
     apr_size_t len;
 
-    /* The server initiated a renegotiation and we were instructed to report
-       that as an error asap. */
-    if (ctx->renegotiation)
-        return -1;
-
     serf__log(LOGLVL_DEBUG, LOGCOMP_SSL, __FILE__, ctx->config,
               "bio_bucket_read called for %d bytes\n", inlen);
 
     BIO_clear_retry_flags(bio); /* Clear retry hints */
+
+    /* The server initiated a renegotiation and we were instructed to report
+       that as an error asap. */
+    if (ctx->renegotiation) {
+      ctx->crypt_status = SERF_ERROR_SSL_NEGOTIATE_IN_PROGRESS;
+      return -1;
+    }
 
     status = serf_bucket_read(ctx->decrypt.stream, inlen, &data, &len);
     ctx->crypt_status = status;
@@ -347,15 +349,18 @@ static int bio_bucket_write(BIO *bio, const char *in, int inl)
     serf_ssl_context_t *ctx = bio->ptr;
     serf_bucket_t *tmp;
 
-    /* The server initiated a renegotiation and we were instructed to report
-       that as an error asap. */
-    if (ctx->renegotiation)
-        return -1;
-
     serf__log(LOGLVL_DEBUG, LOGCOMP_SSL, __FILE__, ctx->config,
               "bio_bucket_write called for %d bytes\n", inl);
 
     BIO_clear_retry_flags(bio); /* Clear retry hints */
+
+    /* The server initiated a renegotiation and we were instructed to report
+       that as an error asap. */
+    if (ctx->renegotiation) {
+      ctx->crypt_status = SERF_ERROR_SSL_NEGOTIATE_IN_PROGRESS;
+      return -1;
+    }
+
     ctx->crypt_status = APR_SUCCESS;
 
     tmp = serf_bucket_simple_copy_create(in, inl,
