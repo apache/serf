@@ -2286,10 +2286,11 @@ static int bio_apr_socket_write(BIO *bio, const char *in, int inlen)
     apr_size_t len = inlen;
     _mhClientCtx_t *cctx = bio->ptr;
     sslCtx_t *ssl_ctx = cctx->ssl_ctx;
+    apr_status_t status;
 
     BIO_clear_retry_flags(bio);
 
-    apr_status_t status = apr_socket_send(cctx->skt, in, &len);
+    status = apr_socket_send(cctx->skt, in, &len);
     ssl_ctx->bio_status = status;
 
     if (len || !APR_STATUS_IS_EAGAIN(status))
