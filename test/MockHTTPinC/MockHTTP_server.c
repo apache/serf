@@ -2626,9 +2626,10 @@ static apr_status_t
 sslSocketRead(apr_socket_t *skt, void *baton, char *data, apr_size_t *len)
 {
     sslCtx_t *ssl_ctx = baton;
+    int result;
 
     ssl_ctx->bio_status = APR_SUCCESS;
-    int result = SSL_read(ssl_ctx->ssl, data, *len);
+    result = SSL_read(ssl_ctx->ssl, data, *len);
     if (result > 0) {
         *len = result;
         return APR_SUCCESS;
