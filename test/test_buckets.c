@@ -1388,7 +1388,8 @@ static apr_status_t deflate_compress(const char **data, apr_size_t *len,
 }
 
 /* Reads bucket until EOF found and compares read data with zero terminated
- string expected. Report all failures using CuTest. */
+   string expected. The expected pattern is looped when necessary to match
+   the number of expected bytes. Report all failures using CuTest. */
 static void read_bucket_and_check_pattern(CuTest *tc, serf_bucket_t *bkt,
                                           const char *pattern,
                                           apr_size_t expected_len)
@@ -1416,6 +1417,7 @@ static void read_bucket_and_check_pattern(CuTest *tc, serf_bucket_t *bkt,
             apr_size_t bytes_to_compare;
 
             if (exp_rem == 0) {
+                /* Init pattern. Potentially again */
                 expected = pattern;
                 exp_rem = pattern_len;
             }
