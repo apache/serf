@@ -1429,8 +1429,11 @@ static apr_status_t processServer(mhServCtx_t *ctx, _mhClientCtx_t *cctx,
         }
     }
 
-    if (desc->rtnevents & APR_POLLHUP) {
-        /* may overwrite the result of stream->type->peek */
+    if ((desc->rtnevents & (APR_POLLHUP | APR_POLLERR))
+        || APR_STATUS_IS_ECONNRESET(status)
+        || APR_STATUS_IS_ECONNABORTED(status)) {
+
+        /* overwrites the result of stream->type->peek() */
         status = APR_EOF;
     }
 
