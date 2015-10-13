@@ -2649,13 +2649,11 @@ sslSocketRead(apr_socket_t *skt, void *baton, char *data, apr_size_t *len)
                 *len = 0;
                 return APR_EAGAIN;
             case SSL_ERROR_SSL:
-              if (ssl_ctx->renegotiate) {
-                /* The client kills the connection, so we can expect protocol
+                /* When the client kills the connection, we can expect protocol
                    errors... Let's just return that we didn't see an error,
                    but that the connection was closed. */
                 *len = 0;
                 return APR_EOF;
-              }
             default:
                 *len = 0;
                 _mhLog(MH_VERBOSE, skt,
