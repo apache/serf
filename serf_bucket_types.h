@@ -585,6 +585,31 @@ apr_status_t serf_ssl_use_default_certificates(
 apr_status_t serf_ssl_set_hostname(
     serf_ssl_context_t *context, const char *hostname);
 
+
+typedef apr_status_t (*serf_ssl_protocol_result_cb_t)(
+    void *data,
+    const char *protocol);
+
+/**
+ * Enables ALPN negotiation with the server. Setups that the supported protocols
+ * will be sent to the server, and enables handling the response via a callback.
+ *
+ * SUPPORTED_PROTOCOLS is a comma separated list of protocols. No whitespace
+ * should be added as the values are used literally. E.g. "h2,http/1.1,h2-16"
+ *
+ * Returns APR_ENOTIMPL when the ssl library doesn't implement ALPN.
+ *
+ * If successfull CALLBACK will be called as soon as the protocol is negotiated
+ * or directly after the secured stream is connected.
+ *
+ * @since New in 1.4.
+ */
+apr_status_t serf_ssl_negotiate_protocol(
+    serf_ssl_context_t *context,
+    const char *protocols,
+    serf_ssl_protocol_result_cb_t callback,
+    void *callback_data);
+
 /**
  * Return the depth of the certificate.
  */
