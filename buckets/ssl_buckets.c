@@ -171,6 +171,12 @@ struct serf_ssl_context_t {
 
     /* Flag is set to 1 when a renegotiation is in progress. */
     int renegotiation;
+    int init_finished; /* True after SSL internal connection is 'connected' */
+
+    const char *selected_protocol; /* Cached protocol value once available */
+    /* Protocol callback */
+    serf_ssl_protocol_result_cb_t protocol_callback; 
+    void *protocol_userdata;
 
     serf_config_t *config;
 };
@@ -194,6 +200,8 @@ struct serf_ssl_certificate_t {
 static void disable_compression(serf_ssl_context_t *ssl_ctx);
 static char *
     pstrdup_escape_nul_bytes(const char *buf, int len, apr_pool_t *pool);
+
+static const char *ssl_get_selected_protocol(serf_ssl_context_t *context);
 
 #ifdef SERF_LOGGING_ENABLED
 /* Log all ssl alerts that we receive from the server. */
@@ -927,6 +935,34 @@ static apr_status_t ssl_decrypt(void *baton, apr_size_t bufsize,
                     "---\n%.*s\n-(%d)-\n", *len, buf, *len);
     }
  
+
+    if (!ctx->init_finished
+        && !SERF_BUCKET_READ_ERROR(status)) {
+
+        apr_status_t s = APR_SUCCESS;
+
+        ctx->init_finished = SSL_is_init_finished(ctx->ssl);
+
+        /* Call the protocol callback as soon as possible as this triggers
+           pipelining data for the selected protocol. */
+        if (ctx->protocol_callback) {
+            const char *protocol = ssl_get_selected_protocol(ctx);
+
+            /* When ctx->init_finished is TRUE protocol will never be NULL,
+               reporting the final result if not already handled */
+            if (protocol) {
+                s = ctx->protocol_callback(ctx->protocol_userdata, protocol);
+                ctx->protocol_callback = NULL;
+            }
+        }
+
+        if (SERF_BUCKET_READ_ERROR(s)) {
+            serf__log(LOGLVL_ERROR, LOGCOMP_SSL, __FILE__, ctx->config,
+                      "ssl_decrypt: negotiation reported: %d\n", status);
+            status = s;
+        }
+    }
+
     serf__log(LOGLVL_DEBUG, LOGCOMP_SSL, __FILE__, ctx->config,
               "ssl_decrypt: %d %d\n", status, *len);
 
@@ -1483,6 +1519,11 @@ static serf_ssl_context_t *ssl_init_context(serf_bucket_alloc_t *allocator)
     ssl_ctx->server_cert_callback = NULL;
     ssl_ctx->server_cert_chain_callback = NULL;
 
+    ssl_ctx->selected_protocol = "";
+    ssl_ctx->init_finished = FALSE;
+    ssl_ctx->protocol_callback = NULL;
+    ssl_ctx->protocol_userdata = NULL;
+
     SSL_CTX_set_verify(ssl_ctx->ctx, SSL_VERIFY_PEER,
                        validate_server_certificate);
     SSL_CTX_set_options(ssl_ctx->ctx, SSL_OP_ALL);
@@ -1568,6 +1609,97 @@ apr_status_t serf_ssl_set_hostname(serf_ssl_context_t *context,
 #endif
     return APR_ENOTIMPL;
 }
+
+apr_status_t serf_ssl_negotiate_protocol(serf_ssl_context_t *context,
+                                         const char *protocols,
+                                         serf_ssl_protocol_result_cb_t callback,
+                                         void *callback_data)
+{
+    apr_pool_t *subpool;
+    char *raw_header;
+    char *at;
+    const char *next;
+    apr_size_t raw_len = strlen(protocols)+1;
+    apr_size_t len;
+
+    if (raw_len >= 65536)
+        return APR_EINVAL;
+
+    /* The OpenSSL api wants the value in network format.
+       A length byte followed by the value for all items. */
+
+    apr_pool_create(&subpool, context->pool);
+
+    at = raw_header = apr_palloc(subpool, raw_len);
+
+    while (next = strchr(protocols, ',')) {
+        len = (next - protocols);
+
+        if (len > 255) {
+            apr_pool_destroy(subpool);
+            return APR_EINVAL;
+        }
+
+        *at = len;
+        at++;
+        memcpy(at, protocols, len);
+        at += len;
+
+        protocols = next + 1;
+    }
+
+    len = strlen(protocols);
+    if (len > 255) {
+      apr_pool_destroy(subpool);
+      return APR_EINVAL;
+    }
+
+    *at = len;
+    at++;
+    memcpy(at, protocols, len);
+    at += len;
+
+#if OPENSSL_VERSION_NUMBER >= 0x10002000L /* >= 1.0.2 */
+    if (SSL_set_alpn_protos(context->ssl, raw_header, raw_len)) {
+        ERR_clear_error();
+    }
+    apr_pool_destroy(subpool);
+
+    context->protocol_callback = callback;
+    context->protocol_userdata = callback_data;
+    context->selected_protocol = NULL;
+    return APR_SUCCESS;
+#else
+    apr_pool_destroy(subpool);
+    return APR_ENOTIMPL;
+#endif
+}
+
+/* Gets the protocol selected by the server via ALPN. Returns NULL if
+ * ALPN and "" if no selection is made.
+ *
+ * ### Should we make this public as serf_ssl_get_selected_protocol(),
+ *     or is the callback the only relevant scenario?
+ */
+static const char *ssl_get_selected_protocol(serf_ssl_context_t *context)
+{
+    if (! context->selected_protocol) {
+#if OPENSSL_VERSION_NUMBER >= 0x10002000L /* >= 1.0.2 */
+        const unsigned char *data = NULL;
+        unsigned len = 0;
+
+        SSL_get0_alpn_selected(context->ssl, &data, &len);
+
+        if (data && len)
+            context->selected_protocol = apr_pstrmemdup(context->pool,
+                                                        data, len);
+        else if (context->init_finished)
+            context->selected_protocol = "";
+#endif
+    }
+    return context->selected_protocol;
+}
+
 
 apr_status_t serf_ssl_use_default_certificates(serf_ssl_context_t *ssl_ctx)
 {
