@@ -112,8 +112,7 @@ serf_log_wrapped_read(serf_bucket_t *bucket, apr_size_t requested,
     if (SERF_BUCKET_READ_ERROR(status))
         serf__log(LOGLVL_ERROR, LOGCOMP_CONN, ctx->prefix, ctx->config,
                   "Error %d while reading.\n", status);
-
-    if (*len) {
+    else if (*len) {
         serf__log(LOGLVL_DEBUG, LOGCOMP_CONN, ctx->prefix, ctx->config,
                   "--- %d bytes. --\n", *len);
         serf__log(LOGLVL_DEBUG, LOGCOMP_RAWMSG, ctx->prefix, ctx->config,
