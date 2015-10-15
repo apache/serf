@@ -96,7 +96,7 @@
  */
 
 /* Current state of the authentication of the current request. */
-typedef enum {
+typedef enum gss_api_auth_state {
     gss_api_auth_not_started,
     gss_api_auth_in_progress,
     gss_api_auth_completed,
@@ -155,7 +155,7 @@ typedef enum {
     -----                                                 -----/
 
  **/
-typedef enum {
+typedef enum authn_persistence_state_t {
     pstate_init,
     pstate_undecided,
     pstate_stateless,
