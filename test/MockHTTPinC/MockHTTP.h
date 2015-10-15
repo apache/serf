@@ -152,6 +152,10 @@ typedef struct mhResponseBldr_t mhResponseBldr_t;
 #define     WithPort(port)\
                 mhSetServerPort(__servctx, port)
 
+/* Specify which protocol the server should choose */
+#define     WithProtocol(protocol)\
+                mhSetServerProtocol(__servctx, protocol)
+
 /* Set the maximum number of requests per connection. Default is unlimited */
 #define     WithMaxKeepAliveRequests(maxRequests)\
                 mhSetServerMaxRequestsPerConn(__servctx, maxRequests)
@@ -602,6 +606,7 @@ void mhStartServer(mhServCtx_t *ctx);
 void mhStopServer(mhServCtx_t *ctx);
 mhServerSetupBldr_t *mhSetServerID(mhServCtx_t *ctx, const char *serverID);
 mhServerSetupBldr_t *mhSetServerPort(mhServCtx_t *ctx, unsigned int port);
+mhServerSetupBldr_t *mhSetServerProtocol(mhServCtx_t *ctx, const char *protocols);
 mhServerSetupBldr_t *mhSetServerType(mhServCtx_t *ctx, mhServerType_t type);
 mhServerSetupBldr_t *mhSetServerThreading(mhServCtx_t *ctx,
                                           mhThreading_t threading);

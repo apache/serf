@@ -37,6 +37,7 @@ typedef struct app_baton_t {
     const char *hostinfo;
     int using_ssl;
     int head_request;
+    int negotiate_http2;
     const char *pem_path;
     const char *pem_pwd;
     serf_bucket_alloc_t *bkt_alloc;
@@ -46,6 +47,7 @@ typedef struct app_baton_t {
 typedef struct conn_baton_t {
     app_baton_t *app;
     serf_ssl_context_t *ssl_ctx;
+    serf_connection_t *conn;
 } conn_baton_t;
 
 static void closed_connection(serf_connection_t *conn,
@@ -181,11 +183,30 @@ static apr_status_t print_certs(void *data, int failures, int error_depth,
     return APR_SUCCESS;
 }
 
+/* Implements serf_ssl_protocol_result_cb_t for conn_setup */
+static apr_status_t conn_set_protocol(void *baton,
+                                      const char *protocol)
+{
+    conn_baton_t *conn_ctx = baton;
+
+    if (!strcmp(protocol, "h2")) {
+        serf_connection_set_framing_type(
+                  conn_ctx->conn,
+                  SERF_CONNECTION_FRAMING_TYPE_HTTP2);
+    } else /* "http/1.1" or "" */ {
+        serf_connection_set_framing_type(
+                  conn_ctx->conn,
+                  SERF_CONNECTION_FRAMING_TYPE_HTTP1);
+    }
+
+    return APR_SUCCESS;
+}
+
 static apr_status_t conn_setup(apr_socket_t *skt,
-                                serf_bucket_t **input_bkt,
-                                serf_bucket_t **output_bkt,
-                                void *setup_baton,
-                                apr_pool_t *pool)
+                               serf_bucket_t **input_bkt,
+                               serf_bucket_t **output_bkt,
+                               void *setup_baton,
+                               apr_pool_t *pool)
 {
     serf_bucket_t *c;
     conn_baton_t *conn_ctx = setup_baton;
@@ -218,6 +239,20 @@ static apr_status_t conn_setup(apr_socket_t *skt,
                                               client_cert_pw_cb,
                                               ctx,
                                               pool);
+        }
+
+        if (ctx->negotiate_http2) {
+            if (!serf_ssl_negotiate_protocol(conn_ctx->ssl_ctx,
+                                             "h2,http/1.1",
+                                             conn_set_protocol, conn_ctx))
+            {
+                serf_bucket_t *bkt;
+
+                /* Disable sending initial data until negotiate is done */
+                serf_connection_set_framing_type(
+                              conn_ctx->conn,
+                              SERF_CONNECTION_FRAMING_TYPE_NONE);
+            }
         }
     }
 
@@ -449,6 +484,7 @@ credentials_callback(char **username,
 /* Value for 'no short code' should be > 255 */
 #define CERTFILE 256
 #define CERTPWD  257
+#define HTTP2FLAG 258
 
 static const apr_getopt_option_t options[] =
 {
@@ -468,6 +504,9 @@ static const apr_getopt_option_t options[] =
     {"certpwd", CERTPWD, 1, "<password> Password for the SSL client certificate"},
     {NULL,      'r', 1, "<header:value> Use <header:value> as request header"},
     {"debug",   'd', 0, "Enable debugging"},
+#if 0
+    {"http2",   HTTP2FLAG, 0, "Enable http2 (https only)"}
+#endif
 };
 
 static void print_usage(apr_pool_t *pool)
@@ -510,7 +549,7 @@ int main(int argc, const char **argv)
     const char *raw_url, *method, *req_body_path = NULL;
     int count, inflight, conn_count;
     int i;
-    int print_headers, debug;
+    int print_headers, debug, negotiate_http2;
     const char *username = NULL;
     const char *password = "";
     const char *pem_path = NULL, *pem_pwd = NULL;
@@ -535,8 +574,8 @@ int main(int argc, const char **argv)
     print_headers = 0;
     /* Do not debug by default. */
     debug = 0;
+    negotiate_http2 = 0;
 
-    
     apr_getopt_init(&opt, pool, argc, argv);
     while ((status = apr_getopt_long(opt, options, &opt_c, &opt_arg)) ==
            APR_SUCCESS) {
@@ -628,6 +667,9 @@ int main(int argc, const char **argv)
         case CERTPWD:
             pem_pwd = opt_arg;
             break;
+        case HTTP2FLAG:
+            negotiate_http2 = 1;
+            break;
         case 'v':
             puts("Serf version: " SERF_VERSION_STRING);
             exit(0);
@@ -653,9 +695,12 @@ int main(int argc, const char **argv)
 
     if (strcasecmp(url.scheme, "https") == 0) {
         app_ctx.using_ssl = 1;
+
+        app_ctx.negotiate_http2 = negotiate_http2;
     }
     else {
         app_ctx.using_ssl = 0;
+        app_ctx.negotiate_http2 = FALSE;
     }
 
     if (strcasecmp(method, "HEAD") == 0) {
@@ -762,6 +807,8 @@ int main(int argc, const char **argv)
             apr_pool_destroy(pool);
             exit(1);
         }
+
+        conn_ctx->conn = connections[i];
 
         serf_connection_set_max_outstanding_requests(connections[i], inflight);
     }

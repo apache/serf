@@ -1867,6 +1867,21 @@ mhServerSetupBldr_t *mhSetServerPort(mhServCtx_t *ctx, unsigned int port)
     return ssb;
 }
 
+static bool set_server_protocol(const mhServerSetupBldr_t *ssb, mhServCtx_t *ctx)
+{
+  ctx->alpn = ssb->ibaton;
+  return YES;
+}
+
+mhServerSetupBldr_t *mhSetServerProtocol(mhServCtx_t *ctx, const char *protocols)
+{
+  apr_pool_t *pool = ctx->pool;
+  mhServerSetupBldr_t *ssb = createServerSetupBldr(pool);
+  ssb->ibaton = apr_pstrdup(pool, protocols);
+  ssb->serversetup = set_server_protocol;
+  return ssb;
+}
+
 /**
  * Builder callback, sets the server type on server CTX.
  */
@@ -2499,6 +2514,21 @@ static apr_status_t initSSL(_mhClientCtx_t *cctx)
     return APR_SUCCESS;
 }
 
+static int alpn_select_callback(SSL *ssl,
+                                const unsigned char **out,
+                                unsigned char *outlen,
+                                const unsigned char *in,
+                                unsigned int inlen,
+                                void *arg)
+{
+  const char *select = arg;
+
+  *out = select;
+  *outlen = strlen(select);
+
+  return SSL_TLSEXT_ERR_OK;
+}
+
 /**
  * Inits the OpenSSL context.
  */
@@ -2541,6 +2571,14 @@ static apr_status_t initSSLCtx(_mhClientCtx_t *cctx)
 #ifdef SSL_OP_NO_TLSv1_2
         if (! (cctx->protocols & mhProtoTLSv12))
             SSL_CTX_set_options(ssl_ctx->ctx, SSL_OP_NO_TLSv1_2);
+#endif
+
+#if OPENSSL_VERSION_NUMBER >= 0x10002000L /* >= 1.0.2 */
+        if (cctx->serv_ctx->alpn) {
+            SSL_CTX_set_alpn_select_cb(ssl_ctx->ctx,
+                                       alpn_select_callback,
+                                       cctx->serv_ctx->alpn);
+        }
 #endif
 
         if (cctx->protocols == mhProtoSSLv2) {

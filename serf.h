@@ -539,6 +539,24 @@ void serf_connection_set_async_responses(
     serf_response_handler_t handler,
     void *handler_baton);
 
+typedef enum serf_connection_framing_type_t {
+  SERF_CONNECTION_FRAMING_TYPE_NONE = 0,
+  SERF_CONNECTION_FRAMING_TYPE_HTTP1,
+  SERF_CONNECTION_FRAMING_TYPE_HTTP2
+} serf_connection_framing_type_t;
+
+/**
+* Sets the connection framing on the connection to the specified type. The
+* NONE type specifies that the framing type is undetermined yet and no
+* requests should be written to the connection until the framing type is
+* set. Connections default to HTTP1 framing.
+*
+* @since New in 1.4.
+*/
+void serf_connection_set_framing_type(
+  serf_connection_t *conn,
+  serf_connection_framing_type_t framing_type);
+
 /**
  * Setup the @a request for delivery on its connection.
  *

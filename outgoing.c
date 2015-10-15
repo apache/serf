@@ -106,7 +106,8 @@ request_or_data_pending(serf_request_t **next_req, serf_connection_t *conn)
     reqs_in_progress = conn->completed_requests - conn->completed_responses;
 
     /* Prepare the next request */
-    if (conn->pipelining || (!conn->pipelining && reqs_in_progress == 0))
+    if (conn->framing_type != SERF_CONNECTION_FRAMING_TYPE_NONE
+        && (conn->pipelining || (!conn->pipelining && reqs_in_progress == 0)))
     {
         /* Skip all requests that have been written completely but we're still
          waiting for a response. */
@@ -174,7 +175,7 @@ apr_status_t serf__conn_update_pollset(serf_connection_t *conn)
         desc.reqevents |= APR_POLLIN;
 
         /* Don't write if OpenSSL told us that it needs to read data first. */
-        if (conn->stop_writing != 1) {
+        if (! conn->stop_writing) {
 
             /* If the connection is not closing down and
              *   has unwritten data or
@@ -201,7 +202,9 @@ apr_status_t serf__conn_update_pollset(serf_connection_t *conn)
     }
 
     /* If we can have async responses, always look for something to read. */
-    if (conn->async_responses) {
+    if (conn->framing_type != SERF_CONNECTION_FRAMING_TYPE_HTTP1
+        || conn->async_responses)
+    {
         desc.reqevents |= APR_POLLIN;
     }
 
@@ -719,6 +722,7 @@ static apr_status_t reset_connection(serf_connection_t *conn,
     conn->connect_time = 0;
     conn->latency = -1;
     conn->stop_writing = 0;
+    conn->write_now = 0;
     /* conn->pipelining */
 
     conn->status = APR_SUCCESS;
@@ -1274,7 +1278,16 @@ static apr_status_t read_from_connection(serf_connection_t *conn)
             }
 
             /* Unexpected response from the server */
+            if (conn->write_now) {
+                status = write_to_connection(conn);
+
+                if (!SERF_BUCKET_READ_ERROR(status))
+                    status = APR_SUCCESS;
+            }
         }
+
+        if (conn->framing_type == SERF_CONNECTION_FRAMING_TYPE_NONE)
+            break;
 
         /* If the request doesn't have a response bucket, then call the
          * acceptor to get one created.
@@ -1552,7 +1565,10 @@ serf_connection_t *serf_connection_create(
     conn->hit_eof = 0;
     conn->state = SERF_CONN_INIT;
     conn->latency = -1; /* unknown */
+    conn->stop_writing = 0;
+    conn->write_now = 0;
     conn->pipelining = 1;
+    conn->framing_type = SERF_CONNECTION_FRAMING_TYPE_HTTP1;
 
     /* Create a subpool for our connection. */
     apr_pool_create(&conn->skt_pool, conn->pool);
@@ -1734,6 +1750,21 @@ void serf_connection_set_async_responses(
     conn->async_acceptor_baton = acceptor_baton;
     conn->async_handler = handler;
     conn->async_handler_baton = handler_baton;
+}
+
+void serf_connection_set_framing_type(
+    serf_connection_t *conn,
+    serf_connection_framing_type_t framing_type)
+{
+    conn->framing_type = framing_type;
+
+    if (conn->skt) {
+        conn->dirty_conn = 1;
+        conn->ctx->dirty_pollset = 1;
+        conn->stop_writing = 0;
+        conn->write_now = 1;
+        serf__conn_update_pollset(conn);
+    }
 }
 
 static serf_request_t *
