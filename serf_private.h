@@ -377,6 +377,9 @@ struct serf_connection_t {
     /* Max. number of outstanding requests. */
     unsigned int max_outstanding_requests;
 
+    /* Framing type to use on the connection */
+    serf_connection_framing_type_t framing_type;
+
     /* Flag to enable or disable HTTP pipelining. This flag is used internally
        only. */
     int pipelining;
@@ -401,6 +404,9 @@ struct serf_connection_t {
 
     /* Needs to read first before we can write again. */
     int stop_writing;
+
+    /* Write out information now */
+    int write_now;
 
     /* Configuration shared with buckets and authn plugins */
     serf_config_t *config;

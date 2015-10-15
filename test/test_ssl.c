@@ -31,7 +31,14 @@
 #if defined(WIN32) && defined(_DEBUG)
 /* Include this file to allow running a Debug build of serf with a Release
    build of OpenSSL. */
+#if defined(_MSC_VER) && _MSC_VER >= 1400
+#pragma warning(push)
+#pragma warning(disable: 4152)
+#endif
 #include <openssl/applink.c>
+#if defined(_MSC_VER) && _MSC_VER >= 1400
+#pragma warning(pop)
+#endif
 #endif
 
 /* Test setting up the openssl library. */
@@ -2110,6 +2117,95 @@ static void test_ssl_server_cert_with_san_and_empty_cb(CuTest *tc)
     CuAssertTrue(tc, tb->result_flags & TEST_RESULT_SERVERCERTCB_CALLED);
 }
 
+static apr_status_t http11_select_protocol(void *baton,
+                                           const char *protocol)
+{
+  test_baton_t *tb = baton;
+
+  if (! strcmp(protocol, "http/1.1"))
+      serf_connection_set_framing_type(tb->connection,
+                                       SERF_CONNECTION_FRAMING_TYPE_HTTP1);
+  else
+      return APR_EGENERAL; /* Failure */
+
+  return APR_SUCCESS;
+}
+
+static apr_status_t http11_alpn_setup(apr_socket_t *skt,
+                                      serf_bucket_t **input_bkt,
+                                      serf_bucket_t **output_bkt,
+                                      void *setup_baton,
+                                      apr_pool_t *pool)
+{
+  test_baton_t *tb = setup_baton;
+  apr_status_t status;
+
+  status = default_https_conn_setup(skt, input_bkt, output_bkt,
+                                    setup_baton, pool);
+  if (status)
+    return status;
+
+  status = serf_ssl_negotiate_protocol(tb->ssl_context, "h2,http/1.1",
+                                       http11_select_protocol, tb);
+
+  if (!status) {
+      /* Delay writing out the protocol type until we know how */
+      serf_connection_set_framing_type(tb->connection,
+                                       SERF_CONNECTION_FRAMING_TYPE_NONE);
+  }
+
+  return APR_SUCCESS;
+}
+
+
+static void test_ssl_alpn_negotiate(CuTest *tc)
+{
+    test_baton_t *tb = tc->testBaton;
+    handler_baton_t handler_ctx[1];
+    const int num_requests = sizeof(handler_ctx)/sizeof(handler_ctx[0]);
+    int expected_failures;
+    apr_status_t status;
+    static const char *server_cert[] = { "serfservercert.pem",
+                                         NULL };
+
+    /* Set up a test context and a https server */
+    tb->mh = mhInit();
+
+    InitMockServers(tb->mh)
+      SetupServer(WithHTTPS, WithID("server"), WithPort(30080),
+                  WithProtocol("http/1.1Q"),
+                  WithCertificateFilesPrefix(get_srcdir_file(tb->pool,
+                                                             "test/certs")),
+                  WithCertificateKeyFile(server_key),
+                  WithCertificateKeyPassPhrase("serftest"),
+                  WithCertificateFileArray(server_cert))
+    EndInit
+
+    tb->serv_port = mhServerPortNr(tb->mh);
+    tb->serv_host = apr_psprintf(tb->pool, "%s:%d", "localhost", tb->serv_port);
+    tb->serv_url = apr_psprintf(tb->pool, "https://%s", tb->serv_host);
+
+    status = setup_test_client_https_context(tb,
+                                             http11_alpn_setup,
+                                             ssl_server_cert_cb_expect_failures,
+                                             tb->pool);
+    CuAssertIntEquals(tc, APR_SUCCESS, status);
+
+    expected_failures = SERF_SSL_CERT_UNKNOWNCA;
+    tb->user_baton = &expected_failures;
+
+    Given(tb->mh)
+      GETRequest(URLEqualTo("/"), ChunkedBodyEqualTo("1"),
+                 HeaderEqualTo("Host", tb->serv_host))
+        Respond(WithCode(200), WithChunkedBody(""))
+    EndGiven
+
+    create_new_request(tb, &handler_ctx[0], "GET", "/", 1);
+
+    run_client_and_mock_servers_loops_expect_ok(tc, tb, num_requests,
+                                                handler_ctx, tb->pool);
+}
+
 CuSuite *test_ssl(void)
 {
     CuSuite *suite = CuSuiteNew();
@@ -2154,6 +2250,7 @@ CuSuite *test_ssl(void)
     SUITE_ADD_TEST(suite, test_ssl_server_cert_with_cnsan_nul_byte);
     SUITE_ADD_TEST(suite, test_ssl_server_cert_with_san_and_empty_cb);
     SUITE_ADD_TEST(suite, test_ssl_renegotiate);
+    SUITE_ADD_TEST(suite, test_ssl_alpn_negotiate);
 
     return suite;
 }
