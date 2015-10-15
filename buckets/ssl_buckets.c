@@ -140,6 +140,7 @@ struct serf_ssl_context_t {
 
     /* Should we read before we can write again? */
     int want_read;
+    int handshake_done;
 
     /* Client cert callbacks */
     serf_ssl_need_client_cert_t cert_callback;
@@ -899,6 +900,26 @@ static apr_status_t status_from_ssl_error(serf_ssl_context_t *ctx,
     return status;
 }
 
+/* Explicitly perform the SSL handshake without waiting for the first
+   write */
+static apr_status_t ssl_handshake(serf_ssl_context_t *ctx,
+                                  int do_want_read)
+{
+    int ssl_result;
+
+    ssl_result = SSL_do_handshake(ctx->ssl);
+    if (ssl_result <= 0) {
+        apr_status_t status = status_from_ssl_error(ctx, ssl_result,
+                                                    do_want_read);
+
+        if (SERF_BUCKET_READ_ERROR(status)) {
+            return status;
+        }
+    }
+
+    return APR_SUCCESS;
+}
+
 /* This function reads an encrypted stream and returns the decrypted stream.
    Implements serf_databuf_reader_t */
 static apr_status_t ssl_decrypt(void *baton, apr_size_t bufsize,
@@ -910,6 +931,18 @@ static apr_status_t ssl_decrypt(void *baton, apr_size_t bufsize,
 
     if (ctx->fatal_err)
         return ctx->fatal_err;
+
+    if (!ctx->handshake_done) {
+
+        ctx->handshake_done = TRUE;
+
+        status = ssl_handshake(ctx, FALSE);
+
+        if (SERF_BUCKET_READ_ERROR(status)) {
+            *len = 0;
+            return status;
+        }
+    }
 
     serf__log(LOGLVL_DEBUG, LOGCOMP_SSL, __FILE__, ctx->config,
               "ssl_decrypt: begin %d\n", bufsize);
@@ -1005,6 +1038,17 @@ static apr_status_t ssl_encrypt(void *baton, apr_size_t bufsize,
 
     serf__log(LOGLVL_DEBUG, LOGCOMP_SSL, __FILE__, ctx->config,
               "ssl_encrypt: begin %d\n", bufsize);
+
+    if (!ctx->handshake_done) {
+
+        ctx->handshake_done = TRUE;
+
+        status = ssl_handshake(ctx, TRUE);
+
+        if (SERF_BUCKET_READ_ERROR(status)) {
+            return status;
+        }
+    }
 
     /* Try to read already encrypted but unread data first. */
     status = serf_bucket_read(ctx->encrypt_pending, bufsize, &data, len);
@@ -1542,6 +1586,7 @@ static serf_ssl_context_t *ssl_init_context(serf_bucket_alloc_t *allocator)
 
     ssl_ctx->crypt_status = APR_SUCCESS;
     ssl_ctx->want_read = FALSE;
+    ssl_ctx->handshake_done = FALSE;
 
     return ssl_ctx;
 }
@@ -2241,6 +2286,9 @@ static apr_status_t serf_ssl_set_config(serf_bucket_t *bucket,
     apr_status_t err_status = APR_SUCCESS;
     const char *pipelining;
     apr_status_t status;
+
+    if (ssl_ctx->config == config)
+        return APR_SUCCESS; /* Don't loop */
 
     ssl_ctx->config = config;
 
