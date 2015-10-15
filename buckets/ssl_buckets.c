@@ -842,6 +842,63 @@ validate_server_certificate(int cert_valid, X509_STORE_CTX *store_ctx)
     return cert_valid;
 }
 
+/* Helper function to convert the ssl error code contained in ret_code + the
+   ssl context to a proper serf status code.
+
+   If DO_WANT_READ is true, handle the SSL_ERROR_WANT_* as SERF_ERROR_WAIT_CONN
+   and set ctx->want_read.
+ */
+static apr_status_t status_from_ssl_error(serf_ssl_context_t *ctx,
+                                          int ret_code,
+                                          int do_want_read)
+{
+    int ssl_err = SSL_get_error(ctx->ssl, ret_code);
+    apr_status_t status;
+
+    switch (ssl_err) {
+        case SSL_ERROR_SYSCALL:
+            /* One of the bio functions returned a failure by returning -1.
+               Return the underlying status that caused OpenSSL to fail.
+
+               There is no ssl status to log here, as the only reason
+               the call failed is that our data delivery function didn't
+               deliver data. And even that is already logged by the info
+               callback if you turn up the logging level high enough. */
+            status = ctx->crypt_status;
+            break;
+
+        case SSL_ERROR_WANT_READ:
+            if (do_want_read)
+                ctx->want_read = TRUE;
+            /* Fall through */
+
+        case SSL_ERROR_WANT_WRITE:
+            status = do_want_read ? SERF_ERROR_WAIT_CONN : APR_EAGAIN;
+            break;
+
+        case SSL_ERROR_SSL:
+            if (ctx->pending_err) {
+                status = ctx->pending_err;
+                ctx->pending_err = APR_SUCCESS;
+            } else {
+                if (SSL_in_init(ctx->ssl))
+                    ctx->fatal_err = SERF_ERROR_SSL_SETUP_FAILED;
+                else
+                    ctx->fatal_err = SERF_ERROR_SSL_COMM_FAILED;
+
+                status = ctx->fatal_err;
+                log_ssl_error(ctx);
+            }
+            break;
+        default:
+            status = ctx->fatal_err = SERF_ERROR_SSL_COMM_FAILED;
+            log_ssl_error(ctx);
+            break;
+    }
+
+    return status;
+}
+
 /* This function reads an encrypted stream and returns the decrypted stream.
    Implements serf_databuf_reader_t */
 static apr_status_t ssl_decrypt(void *baton, apr_size_t bufsize,
@@ -865,44 +922,8 @@ static apr_status_t ssl_decrypt(void *baton, apr_size_t bufsize,
     if (ssl_len < 0) {
         int ssl_err;
 
-        ssl_err = SSL_get_error(ctx->ssl, ssl_len);
-        switch (ssl_err) {
-        case SSL_ERROR_SYSCALL:
-            /* bio_bucket_read() or bio_bucket_write() returned -1. */
-            *len = 0;
-            /* Return the underlying status that caused OpenSSL to fail.
-
-               There is no ssl status to log here, as the only reason
-               the call failed is that our data delivery function didn't
-               deliver data. And even that is already logged by the info
-               callback if you turn up the logging level high enough. */
-            status = ctx->crypt_status;
-            break;
-        case SSL_ERROR_WANT_READ:
-        case SSL_ERROR_WANT_WRITE:
-            *len = 0;
-            status = APR_EAGAIN;
-            break;
-        case SSL_ERROR_SSL:
-            *len = 0;
-            if (ctx->pending_err) {
-                status = ctx->pending_err;
-                ctx->pending_err = APR_SUCCESS;
-            } else {
-                if (SSL_in_init(ctx->ssl))
-                    ctx->fatal_err = SERF_ERROR_SSL_SETUP_FAILED;
-                else
-                    ctx->fatal_err = SERF_ERROR_SSL_COMM_FAILED;
-                status = ctx->fatal_err;
-                log_ssl_error(ctx);
-            }
-            break;
-        default:
-            *len = 0;
-            ctx->fatal_err = status = SERF_ERROR_SSL_COMM_FAILED;
-            log_ssl_error(ctx);
-            break;
-        }
+        *len = 0;
+        status = status_from_ssl_error(ctx, ssl_len, FALSE);
     } else if (ssl_len == 0) {
         /* The server shut down the connection. */
         int ssl_err, shutdown;
@@ -1053,8 +1074,7 @@ static apr_status_t ssl_encrypt(void *baton, apr_size_t bufsize,
                           "ssl_encrypt: SSL write: %d\n", ssl_len);
 
                 /* If we failed to write... */
-                if (ssl_len < 0) {
-                    int ssl_err;
+                if (ssl_len <= 0) {
 
                     /* Ah, bugger. We need to put that data back.
                        Note: use the copy here, we do not own the original iovec
@@ -1066,43 +1086,7 @@ static apr_status_t ssl_encrypt(void *baton, apr_size_t bufsize,
                     serf_bucket_aggregate_prepend(ctx->encrypt.stream,
                                                   vecs_copy);
 
-                    ssl_err = SSL_get_error(ctx->ssl, ssl_len);
-
-                    switch (ssl_err) {
-                    case SSL_ERROR_SYSCALL:
-                        /* bio_bucket_read() or bio_bucket_write() returned
-                           a failure by returning -1. */
-                        status = ctx->crypt_status;
-                        if (SERF_BUCKET_READ_ERROR(status)) {
-                            return status;
-                        }
-                        break;
-
-                    case SSL_ERROR_WANT_READ:
-                        ctx->want_read = TRUE;
-                        /* Fall through */
-                    case SSL_ERROR_WANT_WRITE:
-                        status = SERF_ERROR_WAIT_CONN;
-                        break;
-                    case SSL_ERROR_SSL:
-                        if (ctx->pending_err) {
-                            status = ctx->pending_err;
-                            ctx->pending_err = APR_SUCCESS;
-                        }
-                        else {
-                            if (SSL_in_init(ctx->ssl))
-                                ctx->fatal_err = SERF_ERROR_SSL_SETUP_FAILED;
-                            else
-                                ctx->fatal_err = SERF_ERROR_SSL_COMM_FAILED;
-                            status = ctx->fatal_err;
-                            log_ssl_error(ctx);
-                        }
-                        break;
-                    default:
-                        ctx->fatal_err = status = SERF_ERROR_SSL_COMM_FAILED;
-                        log_ssl_error(ctx);
-                        break;
-                    }
+                    status = status_from_ssl_error(ctx, ssl_len, TRUE);
                 } else {
                     /* We're done with this data. */
                     serf_bucket_mem_free(ctx->allocator, vecs_data);
