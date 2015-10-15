@@ -907,6 +907,7 @@ static apr_status_t ssl_handshake(serf_ssl_context_t *ctx,
 {
     int ssl_result;
 
+    ctx->crypt_status = APR_SUCCESS; /* Clear before calling SSL */
     ssl_result = SSL_do_handshake(ctx->ssl);
     if (ssl_result <= 0) {
         apr_status_t status = status_from_ssl_error(ctx, ssl_result,
