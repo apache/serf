@@ -715,6 +715,12 @@ static apr_status_t reset_connection(serf_connection_t *conn,
     conn->ctx->dirty_pollset = 1;
     conn->state = SERF_CONN_INIT;
 
+    conn->hit_eof = 0;
+    conn->connect_time = 0;
+    conn->latency = -1;
+    conn->stop_writing = 0;
+    /* conn->pipelining */
+
     conn->status = APR_SUCCESS;
 
     /* Let our context know that we've 'reset' the socket already. */
