@@ -1357,7 +1357,7 @@ static apr_status_t processServer(mhServCtx_t *ctx, _mhClientCtx_t *cctx,
                       case mhActionSSLRenegotiate:
                         _mhLog(MH_VERBOSE, cctx->skt, "Renegotiating SSL "
                                "session.\n");
-                        renegotiateSSLSession(cctx);
+                        STATUSREADERR(renegotiateSSLSession(cctx));
                         break;
                       case mhActionCloseConnection:
                         /* close conn after response */
@@ -2403,6 +2403,24 @@ static int ocspStatusCallback(SSL *ssl, void *userdata)
     return SSL_TLSEXT_ERR_ALERT_FATAL;
 }
 
+/* Convert an ssl error into an apr status code for a specific context */
+static apr_status_t status_from_ssl(sslCtx_t *ssl_ctx, int ret_code)
+{
+    int ssl_error = SSL_get_error(ssl_ctx->ssl, ret_code);
+
+    if (ret_code > 0)
+        return APR_SUCCESS;
+
+    switch (ssl_error) {
+        case 0:
+            return APR_EOF;
+        case SSL_ERROR_SYSCALL:
+            return ssl_ctx->bio_status;
+        default:
+            return APR_EGENERAL;
+    }
+}
+
 /**
  * Action: renegotiates a SSL session on client socket CCTX.
  * Returns APR_SUCCESS if the renegotiation handshake was successfull
@@ -2411,12 +2429,23 @@ static int ocspStatusCallback(SSL *ssl, void *userdata)
 static apr_status_t renegotiateSSLSession(_mhClientCtx_t *cctx)
 {
     sslCtx_t *ssl_ctx = cctx->ssl_ctx;
+    int ssl_result;
+    apr_status_t status;
 
     /* TODO: check for APR_EAGAIN situation */
-    if (!SSL_renegotiate(ssl_ctx->ssl))
-        return APR_EGENERAL;     /* TODO: log error */
-    if (!SSL_do_handshake(ssl_ctx->ssl))
-        return APR_EGENERAL;
+    ssl_result = SSL_renegotiate(ssl_ctx->ssl);
+    status = status_from_ssl(ssl_ctx, ssl_result);
+
+    if (status && !APR_STATUS_IS_EAGAIN(status)) {
+        return status;
+    }
+
+    ssl_result = SSL_do_handshake(ssl_ctx->ssl);
+    status = status_from_ssl(ssl_ctx, ssl_result);
+
+    if (status && !APR_STATUS_IS_EAGAIN(status)) {
+        return status;
+    }
 
     ssl_ctx->renegotiate = YES;
 
