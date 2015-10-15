@@ -2173,7 +2173,7 @@ static void test_ssl_alpn_negotiate(CuTest *tc)
 
     InitMockServers(tb->mh)
       SetupServer(WithHTTPS, WithID("server"), WithPort(30080),
-                  WithProtocol("http/1.1Q"),
+                  WithProtocol("http/1.1"),
                   WithCertificateFilesPrefix(get_srcdir_file(tb->pool,
                                                              "test/certs")),
                   WithCertificateKeyFile(server_key),
