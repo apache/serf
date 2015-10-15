@@ -2522,11 +2522,24 @@ static int alpn_select_callback(SSL *ssl,
                                 void *arg)
 {
   const char *select = arg;
+  apr_size_t select_sz = strlen(select);
 
-  *out = select;
-  *outlen = strlen(select);
+  unsigned char *p = in;
 
-  return SSL_TLSEXT_ERR_OK;
+  while ((p + *p) < (in + inlen)) {
+
+      if ((*p == select_sz)
+          && !strncmp(p+1, select, select_sz)) {
+
+          *out = select;
+          *outlen = strlen(select);
+          return SSL_TLSEXT_ERR_OK;
+      }
+
+      p += *p + 1;
+  }
+
+  return SSL_TLSEXT_ERR_ALERT_FATAL;
 }
 
 /**
