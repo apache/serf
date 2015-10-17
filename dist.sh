@@ -36,8 +36,9 @@ prepare_directory()
 cd "${release}"
 
 # Remove anything that should not be in the distribution
-echo "Removing from release: dist.sh"
+echo "Removing from release: dist.sh STATUS"
 rm dist.sh
+[ -r STATUS ] && rm STATUS
 
 major="`sed -n '/SERF_MAJOR_VERSION/s/[^0-9]*//gp' serf.h`"
 minor="`sed -n '/SERF_MINOR_VERSION/s/[^0-9]*//gp' serf.h`"
