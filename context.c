@@ -408,6 +408,36 @@ const char *serf_error_string(apr_status_t errcode)
     case SERF_ERROR_SSLTUNNEL_SETUP_FAILED:
         return "The proxy server returned an error while setting up the "
                "SSL tunnel.";
+
+    /* HTTP2 protocol errors */
+    case SERF_ERROR_HTTP2_NO_ERROR:
+        return "HTTP2: Graceful shutdown";
+    case SERF_ERROR_HTTP2_PROTOCOL_ERROR:
+        return "HTTP2 protocol error detected";
+    case SERF_ERROR_HTTP2_INTERNAL_ERROR:
+        return "HTTP2 internal error";
+    case SERF_ERROR_HTTP2_FLOW_CONTROL_ERROR:
+        return "HTTP2 flow control limits exceeded";
+    case SERF_ERROR_HTTP2_SETTINGS_TIMEOUT:
+        return "HTTP2 settings not acknowledged";
+    case SERF_ERROR_HTTP2_STREAM_CLOSED:
+        return "HTTP2 frame received for closed stream";
+    case SERF_ERROR_HTTP2_FRAME_SIZE_ERROR:
+        return "HTTP2 frame size incorrect";
+    case SERF_ERROR_HTTP2_REFUSED_STREAM:
+        return "HTTP2 stream not processed";
+    case SERF_ERROR_HTTP2_CANCEL:
+        return "HTTP2 stream cancelled";
+    case SERF_ERROR_HTTP2_COMPRESSION_ERROR:
+        return "HTTP2 compression state not updated";
+    case SERF_ERROR_HTTP2_CONNECT_ERROR:
+        return "TCP connection error for HTTP2 connect method";
+    case SERF_ERROR_HTTP2_ENHANCE_YOUR_CALM:
+        return "HTTP2 processing capacity exceeded";
+    case SERF_ERROR_HTTP2_INADEQUATE_SECURITY:
+        return "HTTP2 negotiated TLS parameters not acceptable";
+    case SERF_ERROR_HTTP2_HTTP_1_1_REQUIRED:
+        return "HTTP 1.1 is required for this request";
     default:
         return NULL;
     }
