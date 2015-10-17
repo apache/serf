@@ -1833,7 +1833,7 @@ static void test_http2_unframe_buckets(CuTest *tc)
                                                           &flags));
     CuAssertIntEquals(tc, 6, payload_len);
     CuAssertIntEquals(tc, 0x03040506, stream_id);
-    CuAssertIntEquals(tc, 0x01, frame_type, );
+    CuAssertIntEquals(tc, 0x01, frame_type);
     CuAssertIntEquals(tc, 0x02, flags);
   }
 
