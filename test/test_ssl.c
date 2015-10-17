@@ -22,6 +22,7 @@
 #include <apr_pools.h>
 #include <apr_strings.h>
 #include <apr_env.h>
+#include <apr_md5.h>
 
 #include "serf.h"
 #include "serf_bucket_types.h"
@@ -1599,6 +1600,26 @@ proxy_digest_authn_callback(char **username,
     return APR_SUCCESS;
 }
 
+/* Calculate the md5 over INPUT and return as string allocated in POOL */
+static const char *simple_md5(char *input,
+                              apr_pool_t *pool)
+{
+  unsigned char digest[APR_MD5_DIGESTSIZE];
+  const char *hexmap = "0123456789abcdef";
+  int i;
+  char *result = apr_palloc(pool, 2 * APR_MD5_DIGESTSIZE + 1);
+
+  if (apr_md5(&digest, input, strlen(input)))
+      REPORT_TEST_SUITE_ERROR();
+
+  for (i = 0; i < sizeof(digest); i++) {
+      result[i * 2] = hexmap[digest[i] >> 4];
+      result[i * 2 + 1] = hexmap[digest[i] & 0xF];
+  }
+  result[APR_MD5_DIGESTSIZE * 2] = 0;
+  return result;
+}
+
 /* Test if serf can successfully authenticate to a proxy used for an ssl
    tunnel. */
 static void test_ssltunnel_digest_auth(CuTest *tc)
@@ -1607,6 +1628,7 @@ static void test_ssltunnel_digest_auth(CuTest *tc)
     handler_baton_t handler_ctx[1];
     const int num_requests = sizeof(handler_ctx)/sizeof(handler_ctx[0]);
     const char *digest;
+    const char *response_md5;
 
     /* Set up a test context with a server and a proxy. Serf should send a
        CONNECT request to the server. */
@@ -1622,12 +1644,27 @@ static void test_ssltunnel_digest_auth(CuTest *tc)
     serf_config_authn_types(tb->context, SERF_AUTHN_BASIC | SERF_AUTHN_DIGEST);
     serf_config_credentials_callback(tb->context, proxy_digest_authn_callback);
 
-    /* Response string includes port 30080, so test will fail if the server
-       runs on another port */
+    /* Calculate the proper response. We can't use a hardcoded string as
+       that would make the test fail when the port is in use. */
+    {
+      const char *ha1 = simple_md5(apr_psprintf(tb->pool,
+                                                "%s:Test Suite Proxy:%s",
+                                                "serf", "serftest"),
+                                   tb->pool);
+      const char *ha2 = simple_md5(apr_psprintf(tb->pool,
+                                                "CONNECT:%s", tb->serv_host),
+                                   tb->pool);
+
+      response_md5 = simple_md5(apr_psprintf(tb->pool, "%s:%s:%s",
+                                             ha1,
+                                             "ABCDEF1234567890",
+                                             ha2),
+                                tb->pool);
+    }
     digest = apr_psprintf(tb->pool, "Digest realm=\"Test Suite Proxy\", "
         "username=\"serf\", nonce=\"ABCDEF1234567890\", uri=\"localhost:%u\", "
-        "response=\"b1d5a4f26e5a73a7d154defb95a74a26\", opaque=\"myopaque\", "
-        "algorithm=\"MD5\"", tb->serv_port);
+        "response=\"%s\", opaque=\"myopaque\", "
+        "algorithm=\"MD5\"", tb->serv_port, response_md5);
     Given(tb->mh)
       RequestsReceivedByServer
         GETRequest(URLEqualTo("/test/index.html"), ChunkedBodyEqualTo("1"))
