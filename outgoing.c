@@ -147,7 +147,7 @@ apr_status_t serf__conn_update_pollset(serf_connection_t *conn)
     desc.reqevents = conn->reqevents;
 
     status = ctx->pollset_rm(ctx->pollset_baton,
-                             &desc, conn);
+                             &desc, &conn->baton);
     if (status && !APR_STATUS_IS_NOTFOUND(status))
         return status;
 
@@ -552,7 +552,7 @@ static apr_status_t remove_connection(serf_context_t *ctx,
     desc.reqevents = conn->reqevents;
 
     return ctx->pollset_rm(ctx->pollset_baton,
-                           &desc, conn);
+                           &desc, &conn->baton);
 }
 
 /* A socket was closed, inform the application. */
