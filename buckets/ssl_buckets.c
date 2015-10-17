@@ -1662,7 +1662,7 @@ apr_status_t serf_ssl_negotiate_protocol(serf_ssl_context_t *context,
 
     at = raw_header = apr_palloc(subpool, raw_len);
 
-    while (next = strchr(protocols, ',')) {
+    while ((next = strchr(protocols, ','))) {
         len = (next - protocols);
 
         if (len > 255) {
