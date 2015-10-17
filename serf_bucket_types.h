@@ -756,6 +756,30 @@ serf_bucket_t *serf_bucket_copy_create(
 
 /* ==================================================================== */
 
+extern const serf_bucket_type_t serf_bucket_type_http2_unframe;
+#define SERF_BUCKET_IS_HTTP2_UNFRAME(b) SERF_BUCKET_CHECK((b), http2_unframe)
+
+serf_bucket_t *
+serf_bucket_http2_unframe_create(serf_bucket_t *stream,
+                                 apr_size_t max_payload_size,
+                                 serf_bucket_alloc_t *allocator);
+
+/* Obtains the frame header state, reading from the bucket if necessary.
+   If the header was read successfully (or was already read before calling)
+   the *payload_length, *stream_id, * frame_type and *flags values
+   (when not pointing to NULL) will be set to the requested values.
+
+   returns APR_SUCCESS when the header was already read before calling this,
+   function. Otherwise it will return the result of reading. */
+apr_status_t
+serf_http2_unframe_bucket_read_info(serf_bucket_t *bucket,
+                                    apr_size_t *payload_length,
+                                    apr_int32_t *stream_id,
+                                    unsigned char *frame_type,
+                                    unsigned char *flags);
+
+/* ==================================================================== */
+
 /* ### do we need a PIPE bucket type? they are simple apr_file_t objects */
 
 
