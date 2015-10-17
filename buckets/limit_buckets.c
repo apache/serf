@@ -88,9 +88,10 @@ static apr_status_t serf_limit_readline(serf_bucket_t *bucket,
         *found = SERF_NEWLINE_NONE;
         return APR_EOF;
     }
-
+    /* ### Where does this obey/verify the limit? -> It doesn't */
     status = serf_bucket_readline(ctx->stream, acceptable, found, data, len);
 
+    /* So this may potentially underflow! */
     if (!SERF_BUCKET_READ_ERROR(status)) {
         ctx->remaining -= *len;
     }
@@ -103,13 +104,62 @@ static apr_status_t serf_limit_readline(serf_bucket_t *bucket,
     return status;
 }
 
+static apr_status_t serf_limit_read_iovec(serf_bucket_t *bucket,
+                                          apr_size_t requested,
+                                          int vecs_size,
+                                          struct iovec *vecs,
+                                          int *vecs_used)
+{
+    limit_context_t *ctx = bucket->data;
+    apr_status_t status;
+
+    if (!ctx->remaining) {
+        *vecs_used = 0;
+        return APR_EOF;
+    }
+
+    if (requested == SERF_READ_ALL_AVAIL || requested > ctx->remaining) {
+        if (ctx->remaining <= REQUESTED_MAX) {
+            requested = (apr_size_t) ctx->remaining;
+        } else {
+            requested = REQUESTED_MAX;
+        }
+    }
+
+  status = serf_bucket_read_iovec(ctx->stream, requested,
+                                  vecs_size, vecs, vecs_used);
+  if (!SERF_BUCKET_READ_ERROR(status)) {
+      int i;
+      apr_size_t len = 0;
+
+      for (i = 0; i < *vecs_used; i++)
+        len += vecs[i].iov_len;
+
+      ctx->remaining -= len;
+  }
+
+  /* If we have met our limit and don't have a status, return EOF. */
+  if (!ctx->remaining && !status) {
+      status = APR_EOF;
+  }
+
+  return status;
+}
+
 static apr_status_t serf_limit_peek(serf_bucket_t *bucket,
                                      const char **data,
                                      apr_size_t *len)
 {
     limit_context_t *ctx = bucket->data;
+    apr_status_t status;
 
-    return serf_bucket_peek(ctx->stream, data, len);
+    status = serf_bucket_peek(ctx->stream, data, len);
+
+    if (!SERF_BUCKET_READ_ERROR(status)) {
+        if (*len > ctx->remaining)
+            *len = (apr_size_t)ctx->remaining;
+    }
+    return status;
 }
 
 static void serf_limit_destroy(serf_bucket_t *bucket)
@@ -142,7 +192,7 @@ const serf_bucket_type_t serf_bucket_type_limit = {
     "LIMIT",
     serf_limit_read,
     serf_limit_readline,
-    serf_default_read_iovec,
+    serf_limit_read_iovec,
     serf_default_read_for_sendfile,
     serf_buckets_are_v2,
     serf_limit_peek,
