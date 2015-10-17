@@ -1802,8 +1802,8 @@ static void test_http2_unframe_buckets(CuTest *tc)
                                                           &frame_type,
                                                           &flags));
     CuAssertIntEquals(tc, 12, payload_len);
-    CuAssertIntEquals(tc, 0, stream_id, 0);
-    CuAssertIntEquals(tc, 4, frame_type, 4);
+    CuAssertIntEquals(tc, 0, stream_id);
+    CuAssertIntEquals(tc, 4, frame_type);
     CuAssertIntEquals(tc, 0, flags);
   }
 
