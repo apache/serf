@@ -945,7 +945,6 @@ static void test_response_bucket_peek_at_headers(CuTest *tc)
     while (1) {
         const char *data;
         apr_size_t len;
-        apr_status_t status;
 
         status = serf_bucket_read(resp_bkt1, SERF_READ_ALL_AVAIL, &data, &len);
         CuAssert(tc, "Unexpected error when waiting for response headers",
@@ -1395,7 +1394,7 @@ static void read_bucket_and_check_pattern(CuTest *tc, serf_bucket_t *bkt,
                                           apr_size_t expected_len)
 {
     apr_status_t status;
-    const char *expected;
+    const char *expected = NULL;
     const apr_size_t pattern_len = strlen(pattern);
 
     apr_size_t exp_rem = 0;
@@ -1871,7 +1870,6 @@ static void test_http2_unpad_buckets(CuTest *tc)
   serf_bucket_t *unframe;
   serf_bucket_t *unpad;
   char result1[16];
-  char result2[5];
   apr_status_t status;
   apr_size_t read_len;
 
@@ -1884,7 +1882,7 @@ static void test_http2_unpad_buckets(CuTest *tc)
                                              alloc);
 
   {
-    apr_size_t streamid;
+    apr_int32_t streamid;
     unsigned char frame_type, flags;
 
     status = serf_http2_unframe_bucket_read_info(unframe, NULL, &streamid,
