@@ -203,7 +203,7 @@ static const serf_bucket_type_t fallback_bucket_type =
 const serf_bucket_type_t *serf_get_type(const serf_bucket_t *bucket,
                                         int min_version)
 {
-    serf_bucket_t *r;
+    const serf_bucket_t *r;
 
     switch (min_version) {
         case 1:
