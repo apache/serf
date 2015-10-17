@@ -761,6 +761,7 @@ extern const serf_bucket_type_t serf_bucket_type_http2_unframe;
 
 serf_bucket_t *
 serf_bucket_http2_unframe_create(serf_bucket_t *stream,
+                                 int destroy_stream,
                                  apr_size_t max_payload_size,
                                  serf_bucket_alloc_t *allocator);
 
@@ -777,6 +778,16 @@ serf_http2_unframe_bucket_read_info(serf_bucket_t *bucket,
                                     apr_int32_t *stream_id,
                                     unsigned char *frame_type,
                                     unsigned char *flags);
+
+/* ==================================================================== */
+
+extern const serf_bucket_type_t serf_bucket_type_http2_unpad;
+#define SERF_BUCKET_IS_HTTP2_UNPAD(b) SERF_BUCKET_CHECK((b), http2_unpad)
+
+serf_bucket_t *
+serf_bucket_http2_unpad_create(serf_bucket_t *stream,
+                               int destroy_stream,
+                               serf_bucket_alloc_t *allocator);
 
 /* ==================================================================== */
 

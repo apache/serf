@@ -42,10 +42,12 @@ typedef struct http2_unframe_context_t
   unsigned char flags;
 
   apr_size_t payload_remaining;
+  int destroy_stream;
 } http2_unframe_context_t;
 
 serf_bucket_t *
 serf_bucket_http2_unframe_create(serf_bucket_t *stream,
+                                 int destroy_stream,
                                  apr_size_t max_payload_size,
                                  serf_bucket_alloc_t *allocator)
 {
@@ -55,7 +57,7 @@ serf_bucket_http2_unframe_create(serf_bucket_t *stream,
   ctx->stream = stream;
   ctx->max_payload_size = max_payload_size;
   ctx->prefix_remaining = sizeof(ctx->prefix_buffer);
-
+  ctx->destroy_stream = destroy_stream;
 
   return serf_bucket_create(&serf_bucket_type_http2_unframe, allocator, ctx);
 }
@@ -139,7 +141,10 @@ serf_http2_unframe_read(serf_bucket_t *bucket,
                                                NULL, NULL);
 
   if (status)
-    return status;
+    {
+      *len = 0;
+      return status;
+    }
 
   if (ctx->payload_remaining == 0)
     {
@@ -176,7 +181,10 @@ serf_http2_unframe_read_iovec(serf_bucket_t *bucket,
                                                NULL, NULL);
 
   if (status)
-    return status;
+    {
+      *vecs_used = 0;
+      return status;
+    }
 
   if (ctx->payload_remaining == 0)
     {
@@ -218,7 +226,10 @@ serf_http2_unframe_peek(serf_bucket_t *bucket,
                                                NULL, NULL);
 
   if (status)
-    return status;
+    {
+      *len = 0;
+      return status;
+    }
 
   status = serf_bucket_peek(ctx->stream, data, len);
   if (!SERF_BUCKET_READ_ERROR(status))
@@ -228,6 +239,17 @@ serf_http2_unframe_peek(serf_bucket_t *bucket,
     }
 
   return status;
+}
+
+static void
+serf_http2_unframe_destroy(serf_bucket_t *bucket)
+{
+  http2_unframe_context_t *ctx = bucket->data;
+
+  if (ctx->destroy_stream)
+    serf_bucket_destroy(ctx->stream);
+
+  serf_default_destroy_and_data(bucket);
 }
 
 static apr_uint64_t
@@ -256,8 +278,245 @@ const serf_bucket_type_t serf_bucket_type_http2_unframe = {
   serf_default_read_for_sendfile,
   serf_buckets_are_v2,
   serf_http2_unframe_peek,
-  serf_default_destroy_and_data,
+  serf_http2_unframe_destroy,
   serf_default_read_bucket,
   serf_http2_unframe_get_remaining,
   serf_default_ignore_config
 };
+
+typedef struct http2_unpad_context_t
+{
+  serf_bucket_t *stream;
+  apr_size_t payload_remaining;
+  apr_size_t pad_remaining;
+  apr_size_t pad_length;
+  int padsize_read;
+  int destroy_stream;
+} http2_unpad_context_t;
+
+serf_bucket_t *
+serf_bucket_http2_unpad_create(serf_bucket_t *stream,
+                               int destroy_stream,
+                               serf_bucket_alloc_t *allocator)
+{
+  http2_unpad_context_t *ctx;
+
+  ctx = serf_bucket_mem_alloc(allocator, sizeof(*ctx));
+  ctx->stream = stream;
+  ctx->padsize_read = FALSE;
+  ctx->destroy_stream = destroy_stream;
+
+  return serf_bucket_create(&serf_bucket_type_http2_unpad, allocator, ctx);
+}
+
+static apr_status_t
+serf_http2_unpad_read_padsize(serf_bucket_t *bucket)
+{
+  http2_unpad_context_t *ctx = bucket->data;
+  apr_status_t status;
+  const char *data;
+  apr_size_t len;
+
+  if (ctx->padsize_read)
+    return APR_SUCCESS;
+
+  status = serf_bucket_read(ctx->stream, 1, &data, &len);
+  if (! SERF_BUCKET_READ_ERROR(status))
+    {
+      apr_int64_t remaining;
+      ctx->pad_length = *(unsigned char *)data;
+      ctx->pad_remaining = ctx->pad_length;
+      ctx->padsize_read = TRUE;
+
+      /* We call get_remaining() *after* reading from ctx->stream,
+         to allow the framing above us to be read before we call this */
+      remaining = serf_bucket_get_remaining(ctx->stream);
+
+      if (remaining == SERF_LENGTH_UNKNOWN
+          || remaining > APR_SIZE_MAX)
+        return APR_EGENERAL; /* Can't calculate padding size */
+
+      if (remaining < ctx->pad_length)
+        {
+          ctx->payload_remaining = 0;
+          ctx->pad_remaining = (apr_size_t)remaining;
+        }
+      else
+        {
+          ctx->payload_remaining = (apr_size_t)remaining - ctx->pad_length;
+        }
+    }
+  return status;
+}
+
+static apr_status_t
+serf_http2_unpad_read_padding(serf_bucket_t *bucket)
+{
+  http2_unpad_context_t *ctx = bucket->data;
+  apr_status_t status;
+
+  /* ### What is the most efficient way to skip data?
+         Should we use serf_bucket_read_iovec()? */
+
+  while (ctx->pad_remaining > 0)
+    {
+      apr_size_t pad_read;
+      const char *pad_data;
+
+      status = serf_bucket_read(ctx->stream, ctx->pad_remaining,
+                                &pad_data, &pad_read);
+
+      if (! SERF_BUCKET_READ_ERROR(status))
+        ctx->pad_remaining -= pad_read;
+
+      if (status)
+        return status;
+    }
+
+  return APR_EOF;
+}
+
+static apr_status_t
+serf_http2_unpad_read(serf_bucket_t *bucket,
+                      apr_size_t requested,
+                      const char **data,
+                      apr_size_t *len)
+{
+  http2_unpad_context_t *ctx = bucket->data;
+  apr_status_t status;
+
+  status = serf_http2_unpad_read_padsize(bucket);
+
+  if (status)
+    {
+      *len = 0;
+      return status;
+    }
+  else if (ctx->payload_remaining == 0)
+    {
+      *len = 0;
+      return serf_http2_unpad_read_padding(bucket);
+    }
+
+  if (requested > ctx->payload_remaining)
+    requested = ctx->payload_remaining;
+
+  status = serf_bucket_read(ctx->stream, requested, data, len);
+  if (! SERF_BUCKET_READ_ERROR(status))
+    {
+      ctx->payload_remaining -= *len;
+    }
+
+  return status;
+}
+
+static apr_status_t
+serf_http2_unpad_read_iovec(serf_bucket_t *bucket,
+                            apr_size_t requested,
+                            int vecs_size,
+                            struct iovec *vecs,
+                            int *vecs_used)
+{
+  http2_unpad_context_t *ctx = bucket->data;
+  apr_status_t status;
+
+  status = serf_http2_unpad_read_padsize(bucket);
+
+  if (status)
+    {
+      *vecs_used = 0;
+      return status;
+    }
+  else if (ctx->payload_remaining == 0)
+    {
+      *vecs_used = 0;
+      return serf_http2_unpad_read_padding(bucket);
+    }
+
+  if (requested > ctx->payload_remaining)
+    requested = ctx->payload_remaining;
+
+  status = serf_bucket_read_iovec(ctx->stream, requested,
+                                  vecs_size, vecs, vecs_used);
+  if (! SERF_BUCKET_READ_ERROR(status))
+    {
+      int i;
+      apr_size_t len = 0;
+
+      for (i = 0; i < *vecs_used; i++)
+        len += vecs[i].iov_len;
+
+      ctx->payload_remaining -= len;
+    }
+
+  return status;
+}
+
+static apr_status_t
+serf_http2_unpad_peek(serf_bucket_t *bucket,
+                      const char **data,
+                      apr_size_t *len)
+{
+  http2_unpad_context_t *ctx = bucket->data;
+  apr_status_t status;
+
+  status = serf_http2_unpad_read_padsize(bucket);
+
+  if (status)
+    {
+      *len = 0;
+      return status;
+    }
+
+  status = serf_bucket_peek(ctx->stream, data, len);
+  if (!SERF_BUCKET_READ_ERROR(status))
+    {
+      if (*len > ctx->payload_remaining)
+        *len = ctx->payload_remaining;
+    }
+
+  return status;
+}
+
+static void
+serf_http2_unpad_destroy(serf_bucket_t *bucket)
+{
+  http2_unpad_context_t *ctx = bucket->data;
+
+  if (ctx->destroy_stream)
+    serf_bucket_destroy(ctx->stream);
+
+  serf_default_destroy_and_data(bucket);
+}
+
+static apr_uint64_t
+serf_http2_unpad_get_remaining(serf_bucket_t *bucket)
+{
+  http2_unframe_context_t *ctx = bucket->data;
+  apr_status_t status;
+
+  status = serf_http2_unpad_read_padsize(bucket);
+
+  if (status)
+    return SERF_LENGTH_UNKNOWN;
+
+  return ctx->payload_remaining;
+}
+
+/* ### need to implement */
+#define serf_h2_dechunk_readline NULL
+
+const serf_bucket_type_t serf_bucket_type_http2_unpad = {
+  "H2-UNPAD",
+  serf_http2_unpad_read,
+  serf_h2_dechunk_readline /* ### TODO */,
+  serf_http2_unpad_read_iovec,
+  serf_default_read_for_sendfile,
+  serf_buckets_are_v2,
+  serf_http2_unpad_peek,
+  serf_http2_unpad_destroy,
+  serf_default_read_bucket,
+  serf_http2_unpad_get_remaining,
+  serf_default_ignore_config
+};
+
