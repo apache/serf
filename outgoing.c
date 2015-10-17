@@ -628,6 +628,11 @@ static apr_status_t reset_connection(serf_connection_t *conn,
     conn->ctx->dirty_pollset = 1;
     conn->state = SERF_CONN_INIT;
 
+    conn->hit_eof = 0;
+    conn->connect_time = 0;
+    conn->latency = -1;
+    conn->stop_writing = 0;
+
     serf__log(CONN_VERBOSE, __FILE__, "reset connection 0x%x\n", conn);
 
     conn->status = APR_SUCCESS;
