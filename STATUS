@@ -24,12 +24,6 @@ Candidate changes:
    Votes:
      +1: rhuijben, ivan
 
- * r1699914
-   Fix problems with NTLM authentication when accessing local server using
-   alias hostname on Windows (r1699914)
-   Votes:
-     +0: rhuijben
-
 Veto-blocked changes:
 =====================
 
