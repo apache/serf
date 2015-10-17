@@ -1869,7 +1869,7 @@ mhServerSetupBldr_t *mhSetServerPort(mhServCtx_t *ctx, unsigned int port)
 
 static bool set_server_protocol(const mhServerSetupBldr_t *ssb, mhServCtx_t *ctx)
 {
-  ctx->alpn = ssb->ibaton;
+  ctx->alpn = ssb->baton;
   return YES;
 }
 
@@ -1877,7 +1877,7 @@ mhServerSetupBldr_t *mhSetServerProtocol(mhServCtx_t *ctx, const char *protocols
 {
   apr_pool_t *pool = ctx->pool;
   mhServerSetupBldr_t *ssb = createServerSetupBldr(pool);
-  ssb->ibaton = apr_pstrdup(pool, protocols);
+  ssb->baton = apr_pstrdup(pool, protocols);
   ssb->serversetup = set_server_protocol;
   return ssb;
 }
