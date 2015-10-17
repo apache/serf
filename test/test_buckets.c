@@ -1746,6 +1746,109 @@ static void test_linebuf_fetch_crlf(CuTest *tc)
 
 }
 
+/* Basic test for unframe buckets. */
+static void test_http2_unframe_buckets(CuTest *tc)
+{
+  test_baton_t *tb = tc->testBaton;
+  const char raw_frame1[] = "\x00\x00\x0c"      /* 12 bytes payload */
+    "\x04\x00"          /* Settings frame, no flags*/
+    "\x00\x00\x00\x00"  /* Stream 0 */
+
+    "\x00\x01"          /* SETTINGS_HEADER_TABLE_SIZE */
+    "\x00\x00\x00\x00"  /* Value: 0 */
+
+    "\x00\x02"          /* 0x2: SETTINGS_ENABLE_PUSH */
+    "\x00\x00\x00\x00"  /* Value: 0 */
+    "";
+  const char raw_frame2[] = "\x00\x00\x06"      /* 6 bytes payload */
+    "\x01\x02"          /* Frame type 0x01, Flags 0x02 */
+    "\x83\x04\x05\x06"  /* Stream 0x03040506. Highest (undefined) bit set */
+
+    "\x00\x01"          /* SETTINGS_HEADER_TABLE_SIZE */
+    "\x00\x00\x00\x00"  /* Value: 0 */
+    "";
+  serf_bucket_alloc_t *alloc;
+  serf_bucket_t *raw;
+  serf_bucket_t *unframe;
+  char result1[12];
+  char result2[6];
+  apr_status_t status;
+  apr_size_t read_len;
+
+  alloc = serf_bucket_allocator_create(tb->pool, NULL, NULL);
+
+  raw = serf_bucket_simple_create(raw_frame1, sizeof(raw_frame1),
+                                  NULL, NULL, alloc);
+
+  unframe = serf_bucket_http2_unframe_create(raw, SERF_READ_ALL_AVAIL,
+                                             alloc);
+
+  status = read_all(unframe, result1, sizeof(result1), &read_len);
+  CuAssertIntEquals(tc, APR_EOF, status);
+  CuAssertIntEquals(tc, read_len, sizeof(result1));
+
+  CuAssertIntEquals(tc, 0, memcmp(result1, "\x00\x01\x00\x00\x00\x00"
+                                  "\x00\x02\x00\x00\x00\x00", read_len));
+
+  {
+    apr_size_t payload_len;
+    apr_int32_t stream_id;
+    unsigned char frame_type, flags;
+
+    CuAssertIntEquals(tc, 0,
+                      serf_http2_unframe_bucket_read_info(unframe,
+                                                          &payload_len,
+                                                          &stream_id,
+                                                          &frame_type,
+                                                          &flags));
+    CuAssertIntEquals(tc, 12, payload_len);
+    CuAssertIntEquals(tc, 0, stream_id, 0);
+    CuAssertIntEquals(tc, 4, frame_type, 4);
+    CuAssertIntEquals(tc, 0, flags);
+  }
+
+  raw = serf_bucket_simple_create(raw_frame2, sizeof(raw_frame2),
+                                  NULL, NULL, alloc);
+
+  unframe = serf_bucket_http2_unframe_create(raw, SERF_READ_ALL_AVAIL,
+                                             alloc);
+
+  status = read_all(unframe, result2, sizeof(result2), &read_len);
+  CuAssertIntEquals(tc, APR_EOF, status);
+  CuAssertIntEquals(tc, read_len, sizeof(result2));
+
+  CuAssertIntEquals(tc, 0, memcmp(result2, "\x00\x01\x00\x00\x00\x00",
+                                  read_len));
+
+  {
+    apr_size_t payload_len;
+    apr_int32_t stream_id;
+    unsigned char frame_type, flags;
+
+    CuAssertIntEquals(tc, 0,
+                      serf_http2_unframe_bucket_read_info(unframe,
+                                                          &payload_len,
+                                                          &stream_id,
+                                                          &frame_type,
+                                                          &flags));
+    CuAssertIntEquals(tc, 6, payload_len);
+    CuAssertIntEquals(tc, 0x03040506, stream_id);
+    CuAssertIntEquals(tc, 0x01, frame_type, );
+    CuAssertIntEquals(tc, 0x02, flags);
+  }
+
+  /* And now check the frame oversized error */
+  raw = serf_bucket_simple_create(raw_frame2, sizeof(raw_frame2),
+                                  NULL, NULL, alloc);
+
+  unframe = serf_bucket_http2_unframe_create(raw, 5,
+                                             alloc);
+
+  status = read_all(unframe, result2, sizeof(result2), &read_len);
+  CuAssertIntEquals(tc, SERF_ERROR_HTTP2_FRAME_SIZE_ERROR, status);
+}
+
+
 CuSuite *test_buckets(void)
 {
     CuSuite *suite = CuSuiteNew();
@@ -1775,6 +1878,7 @@ CuSuite *test_buckets(void)
     SUITE_ADD_TEST(suite, test_random_eagain_in_response);
     SUITE_ADD_TEST(suite, test_dechunk_buckets);
     SUITE_ADD_TEST(suite, test_deflate_buckets);
+    SUITE_ADD_TEST(suite, test_http2_unframe_buckets);
 #if 0
     /* This test for issue #152 takes a lot of time generating 4GB+ of random
        data so it's disabled by default. */
