@@ -524,7 +524,7 @@ serf_bucket_t *serf__bucket_log_wrapper_create(serf_bucket_t *wrapped,
 void serf__http2_protocol_init(serf_connection_t *conn);
 
 /* From http2_hpack_buckets.c */
-apr_status_t serf__hpack_huffman_decode(unsigned char *raw,
+apr_status_t serf__hpack_huffman_decode(const unsigned char *raw,
                                         apr_size_t raw_len,
                                         char *result,
                                         apr_size_t buf_len,
