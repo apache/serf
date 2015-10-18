@@ -731,9 +731,16 @@ static apr_status_t reset_connection(serf_connection_t *conn,
     /* conn->pipelining */
 
     conn->framing_type = SERF_CONNECTION_FRAMING_TYPE_HTTP1;
+
+    if (conn->protocol_baton) {
+        conn->perform_teardown(conn);
+        conn->protocol_baton = NULL;
+    }
+
     conn->perform_read = read_from_connection;
     conn->perform_write = write_to_connection;
     conn->perform_hangup = hangup_connection;
+    conn->perform_teardown = NULL;
 
     conn->status = APR_SUCCESS;
 
@@ -1589,6 +1596,8 @@ serf_connection_t *serf_connection_create(
     conn->perform_read = read_from_connection;
     conn->perform_write = write_to_connection;
     conn->perform_hangup = hangup_connection;
+    conn->perform_teardown = NULL;
+    conn->protocol_baton = NULL;
 
     /* Create a subpool for our connection. */
     apr_pool_create(&conn->skt_pool, conn->pool);
@@ -1706,6 +1715,11 @@ apr_status_t serf_connection_close(
 
             destroy_ostream(conn);
 
+            if (conn->protocol_baton) {
+                conn->perform_teardown(conn);
+                conn->protocol_baton = NULL;
+            }
+
             /* Remove the connection from the context. We don't want to
              * deal with it any more.
              */
@@ -1783,7 +1797,26 @@ void serf_connection_set_framing_type(
         conn->ctx->dirty_pollset = 1;
         conn->stop_writing = 0;
         conn->write_now = 1;
-        serf__conn_update_pollset(conn);
+
+        /* Close down existing protocol */
+        if (conn->protocol_baton) {
+            conn->perform_teardown(conn);
+            conn->protocol_baton = NULL;
+        }
+
+        /* Reset to default */
+        conn->perform_read = read_from_connection;
+        conn->perform_write = write_to_connection;
+        conn->perform_hangup = hangup_connection;
+        conn->perform_teardown = NULL;
+
+        switch (framing_type) {
+            case SERF_CONNECTION_FRAMING_TYPE_HTTP2:
+                serf__http2_protocol_init(conn);
+                break;
+            default:
+                break;
+        }
     }
 }
 
