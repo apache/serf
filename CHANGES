@@ -60,6 +60,7 @@ Serf 1.3.9 [2015-10-XX, from tags/1.3.9, rXXXXXXX]
   Reset state variables when resetting connection (r1708849)
   Fix types of passed, but unused batons (r1699986, r1699987)
   Fix some usages of the openssl BIO api (r1699852)
+  Improve handling of bad data in the response state line. (r1699985)
 
 
 Serf 1.3.8 [2014-10-20, from /tags/1.3.8, r2441]
