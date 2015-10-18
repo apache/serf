@@ -410,9 +410,13 @@ struct serf_connection_t {
 
     /* Event callbacks, called from serf__process_connection() to do the actual
        processing. */
-    apr_status_t(*perform_read)(serf_connection_t *conn);
-    apr_status_t(*perform_write)(serf_connection_t *conn);
-    apr_status_t(*perform_hangup)(serf_connection_t *conn);
+    apr_status_t (*perform_read)(serf_connection_t *conn);
+    apr_status_t (*perform_write)(serf_connection_t *conn);
+    apr_status_t (*perform_hangup)(serf_connection_t *conn);
+
+    /* Cleanup of protocol handling */
+    void (*perform_teardown)(serf_connection_t *conn);
+    void *protocol_baton;
 
     /* Configuration shared with buckets and authn plugins */
     serf_config_t *config;
@@ -514,6 +518,9 @@ apr_status_t serf__ssltunnel_connect(serf_connection_t *conn);
 serf_bucket_t *serf__bucket_log_wrapper_create(serf_bucket_t *wrapped,
                                                const char *prefix,
                                                serf_bucket_alloc_t *allocator);
+
+/* From http2_protocol.c: Initializes http2 state on connection */
+void serf__http2_protocol_init(serf_connection_t *conn);
 
 /** Logging functions. **/
 
