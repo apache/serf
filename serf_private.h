@@ -496,6 +496,7 @@ serf_request_t *serf__ssltunnel_request_create(serf_connection_t *conn,
                                                serf_request_setup_t setup,
                                                void *setup_baton);
 void serf__connection_set_pipelining(serf_connection_t *conn, int enabled);
+apr_status_t serf__connection_flush(serf_connection_t *conn);
 
 apr_status_t serf__provide_credentials(serf_context_t *ctx,
                                        char **username,
