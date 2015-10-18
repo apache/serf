@@ -408,6 +408,12 @@ struct serf_connection_t {
     /* Write out information now */
     int write_now;
 
+    /* Event callbacks, called from serf__process_connection() to do the actual
+       processing. */
+    apr_status_t(*perform_read)(serf_connection_t *conn);
+    apr_status_t(*perform_write)(serf_connection_t *conn);
+    apr_status_t(*perform_hangup)(serf_connection_t *conn);
+
     /* Configuration shared with buckets and authn plugins */
     serf_config_t *config;
 };

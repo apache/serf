@@ -29,6 +29,11 @@
 
 #include "serf_private.h"
 
+/* forward definitions */
+static apr_status_t read_from_connection(serf_connection_t *conn);
+static apr_status_t write_to_connection(serf_connection_t *conn);
+static apr_status_t hangup_connection(serf_connection_t *conn);
+
 /* cleanup for sockets */
 static apr_status_t clean_skt(void *data)
 {
@@ -724,6 +729,11 @@ static apr_status_t reset_connection(serf_connection_t *conn,
     conn->stop_writing = 0;
     conn->write_now = 0;
     /* conn->pipelining */
+
+    conn->framing_type = SERF_CONNECTION_FRAMING_TYPE_HTTP1;
+    conn->perform_read = read_from_connection;
+    conn->perform_write = write_to_connection;
+    conn->perform_hangup = hangup_connection;
 
     conn->status = APR_SUCCESS;
 
@@ -1449,6 +1459,20 @@ error:
     return status;
 }
 
+/* The connection got reset by the server. On Windows this can happen
+   when all data is read, so just cleanup the connection and open a new one.
+
+   If we haven't had any successful responses on this connection,
+   then error out as it is likely a server issue. */
+static apr_status_t hangup_connection(serf_connection_t *conn)
+{
+    if (conn->completed_responses) {
+        return reset_connection(conn, 1);
+    }
+
+    return SERF_ERROR_ABORTED_CONNECTION;
+}
+
 /* process all events on the connection */
 apr_status_t serf__process_connection(serf_connection_t *conn,
                                       apr_int16_t events)
@@ -1460,7 +1484,7 @@ apr_status_t serf__process_connection(serf_connection_t *conn,
      * it before we trigger a reset condition.
      */
     if ((events & APR_POLLIN) != 0) {
-        if ((status = read_from_connection(conn)) != APR_SUCCESS)
+        if ((status = conn->perform_read(conn)) != APR_SUCCESS)
             return status;
 
         /* If we decided to reset our connection, return now as we don't
@@ -1471,15 +1495,8 @@ apr_status_t serf__process_connection(serf_connection_t *conn,
         }
     }
     if ((events & APR_POLLHUP) != 0) {
-        /* The connection got reset by the server. On Windows this can happen
-           when all data is read, so just cleanup the connection and open
-           a new one.
-           If we haven't had any successful responses on this connection,
-           then error out as it is likely a server issue. */
-        if (conn->completed_responses) {
-            return reset_connection(conn, 1);
-        }
-        return SERF_ERROR_ABORTED_CONNECTION;
+        /* The connection got reset by the server. */
+        return conn->perform_hangup(conn);
     }
     if ((events & APR_POLLERR) != 0) {
         /* We might be talking to a buggy HTTP server that doesn't
@@ -1530,7 +1547,7 @@ apr_status_t serf__process_connection(serf_connection_t *conn,
         return APR_EGENERAL;
     }
     if ((events & APR_POLLOUT) != 0) {
-        if ((status = write_to_connection(conn)) != APR_SUCCESS)
+        if ((status = conn->perform_write(conn)) != APR_SUCCESS)
             return status;
     }
     return APR_SUCCESS;
@@ -1569,6 +1586,9 @@ serf_connection_t *serf_connection_create(
     conn->write_now = 0;
     conn->pipelining = 1;
     conn->framing_type = SERF_CONNECTION_FRAMING_TYPE_HTTP1;
+    conn->perform_read = read_from_connection;
+    conn->perform_write = write_to_connection;
+    conn->perform_hangup = hangup_connection;
 
     /* Create a subpool for our connection. */
     apr_pool_create(&conn->skt_pool, conn->pool);
