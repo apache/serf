@@ -1915,6 +1915,93 @@ static void test_http2_unpad_buckets(CuTest *tc)
   }
 }
 
+static void test_hpack_huffman_decode(CuTest *tc)
+{
+  char result[64];
+  apr_size_t len;
+  const unsigned char pre1[] = "\xF1\xE3\xC2\xE5\xF2\x3A\x6B\xA0\xAB\x90\xF4"
+    "\xFF";
+  const unsigned char pre2[] = "\xA8\xEB\x10\x64\x9C\xBF";
+  const unsigned char pre3[] = "\x25\xA8\x49\xE9\x5B\xA9\x7D\x7F";
+  const unsigned char pre4[] = "\x25\xA8\x49\xE9\x5B\xB8\xE8\xB4\xBF";
+  const unsigned char pre5[] = "\x64\x02";
+  const unsigned char pre6[] = "\xAE\xC3\x77\x1A\x4B";
+  const unsigned char pre7[] = "\xD0\x7A\xBE\x94\x10\x54\xD4\x44\xA8\x20\x05"
+                               "\x95\x04\x0B\x81\x66\xE0\x82\xA6\x2D\x1B\xFF";
+  const unsigned char pre8[] = "\x9D\x29\xAD\x17\x18\x63\xC7\x8F\x0B\x97\xC8"
+                               "\xE9\xAE\x82\xAE\x43\xD3";
+  const unsigned char pre9[] = "\x64\x0E\xFF";
+  const unsigned char preA[] = "\xD0\x7A\xBE\x94\x10\x54\xD4\x44\xA8\x20\x05"
+                               "\x95\x04\x0B\x81\x66\xE0\x84\xA6\x2D\x1B\xFF";
+  const unsigned char preB[] = "\x9B\xD9\xAB";
+  const unsigned char preC[] = "\x94\xE7\x82\x1D\xD7\xF2\xE6\xC7\xB3\x35\xDF"
+                               "\xDF\xCD\x5B\x39\x60\xD5\xAF\x27\x08\x7F\x36"
+                               "\x72\xC1\xAB\x27\x0F\xB5\x29\x1F\x95\x87\x31"
+                               "\x60\x65\xC0\x03\xED\x4E\xE5\xB1\x06\x3D\x50"
+                               "\x07";
+
+  CuAssertIntEquals(tc, 0, serf__hpack_huffman_decode(pre1, sizeof(pre1) - 1,
+                                                      result, sizeof(result),
+                                                      &len));
+  CuAssertStrEquals(tc, "www.example.com", result);
+
+  CuAssertIntEquals(tc, 0, serf__hpack_huffman_decode(pre2, sizeof(pre2) - 1,
+                                                      result, sizeof(result),
+                                                      &len));
+  CuAssertStrEquals(tc, "no-cache", result);
+
+  CuAssertIntEquals(tc, 0, serf__hpack_huffman_decode(pre3, sizeof(pre3) - 1,
+                                                      result, sizeof(result),
+                                                      &len));
+  CuAssertStrEquals(tc, "custom-key", result);
+
+  CuAssertIntEquals(tc, 0, serf__hpack_huffman_decode(pre4, sizeof(pre4) - 1,
+                                                      result, sizeof(result),
+                                                      &len));
+  CuAssertStrEquals(tc, "custom-value", result);
+
+  CuAssertIntEquals(tc, 0, serf__hpack_huffman_decode(pre5, sizeof(pre5) - 1,
+                                                      result, sizeof(result),
+                                                      &len));
+  CuAssertStrEquals(tc, "302", result);
+
+  CuAssertIntEquals(tc, 0, serf__hpack_huffman_decode(pre6, sizeof(pre6) - 1,
+                                                      result, sizeof(result),
+                                                      &len));
+  CuAssertStrEquals(tc, "private", result);
+
+  CuAssertIntEquals(tc, 0, serf__hpack_huffman_decode(pre7, sizeof(pre7) - 1,
+                                                      result, sizeof(result),
+                                                      &len));
+  CuAssertStrEquals(tc, "Mon, 21 Oct 2013 20:13:21 GMT", result);
+
+  CuAssertIntEquals(tc, 0, serf__hpack_huffman_decode(pre8, sizeof(pre8) - 1,
+                                                      result, sizeof(result),
+                                                      &len));
+  CuAssertStrEquals(tc, "https://www.example.com", result);
+
+  CuAssertIntEquals(tc, 0, serf__hpack_huffman_decode(pre9, sizeof(pre9) - 1,
+                                                      result, sizeof(result),
+                                                      &len));
+  CuAssertStrEquals(tc, "307", result);
+
+  CuAssertIntEquals(tc, 0, serf__hpack_huffman_decode(preA, sizeof(preA) - 1,
+                                                      result, sizeof(result),
+                                                      &len));
+  CuAssertStrEquals(tc, "Mon, 21 Oct 2013 20:13:22 GMT", result);
+
+  CuAssertIntEquals(tc, 0, serf__hpack_huffman_decode(preB, sizeof(preB) - 1,
+                                                      result, sizeof(result),
+                                                      &len));
+  CuAssertStrEquals(tc, "gzip", result);
+
+  CuAssertIntEquals(tc, 0, serf__hpack_huffman_decode(preC, sizeof(preC) - 1,
+                                                      result, sizeof(result),
+                                                      &len));
+  CuAssertStrEquals(tc, "foo=ASDJKHQKBZXOQWEOPIUAXQWEOIU; max-age=3600; "
+                        "version=1", result);
+}
+
 CuSuite *test_buckets(void)
 {
     CuSuite *suite = CuSuiteNew();
@@ -1946,6 +2033,7 @@ CuSuite *test_buckets(void)
     SUITE_ADD_TEST(suite, test_deflate_buckets);
     SUITE_ADD_TEST(suite, test_http2_unframe_buckets);
     SUITE_ADD_TEST(suite, test_http2_unpad_buckets);
+    SUITE_ADD_TEST(suite, test_hpack_huffman_decode);
 #if 0
     /* This test for issue #152 takes a lot of time generating 4GB+ of random
        data so it's disabled by default. */
