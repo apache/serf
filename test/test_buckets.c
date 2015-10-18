@@ -1792,17 +1792,14 @@ static void test_http2_unframe_buckets(CuTest *tc)
                                   "\x00\x02\x00\x00\x00\x00", read_len));
 
   {
-    apr_size_t payload_len;
     apr_int32_t stream_id;
     unsigned char frame_type, flags;
 
     CuAssertIntEquals(tc, 0,
-                      serf_http2_unframe_bucket_read_info(unframe,
-                                                          &payload_len,
+                      serf_bucket_http2_unframe_read_info(unframe,
                                                           &stream_id,
                                                           &frame_type,
                                                           &flags));
-    CuAssertIntEquals(tc, 12, payload_len);
     CuAssertIntEquals(tc, 0, stream_id);
     CuAssertIntEquals(tc, 4, frame_type);
     CuAssertIntEquals(tc, 0, flags);
@@ -1822,17 +1819,14 @@ static void test_http2_unframe_buckets(CuTest *tc)
                                   read_len));
 
   {
-    apr_size_t payload_len;
     apr_int32_t stream_id;
     unsigned char frame_type, flags;
 
     CuAssertIntEquals(tc, 0,
-                      serf_http2_unframe_bucket_read_info(unframe,
-                                                          &payload_len,
+                      serf_bucket_http2_unframe_read_info(unframe,
                                                           &stream_id,
                                                           &frame_type,
                                                           &flags));
-    CuAssertIntEquals(tc, 6, payload_len);
     CuAssertIntEquals(tc, 0x03040506, stream_id);
     CuAssertIntEquals(tc, 0x01, frame_type);
     CuAssertIntEquals(tc, 0x02, flags);
@@ -1885,7 +1879,7 @@ static void test_http2_unpad_buckets(CuTest *tc)
     apr_int32_t streamid;
     unsigned char frame_type, flags;
 
-    status = serf_http2_unframe_bucket_read_info(unframe, NULL, &streamid,
+    status = serf_bucket_http2_unframe_read_info(unframe, &streamid,
                                                  &frame_type, &flags);
 
     CuAssertIntEquals(tc, APR_SUCCESS, status);
@@ -1903,6 +1897,22 @@ static void test_http2_unpad_buckets(CuTest *tc)
   CuAssertIntEquals(tc, sizeof(result1), read_len);
 
   read_and_check_bucket(tc, raw, "Extra");
+
+  raw = serf_bucket_simple_create("\0a", 2, NULL, NULL, alloc);
+  unpad = serf_bucket_http2_unpad_create(raw, TRUE, alloc);
+  read_and_check_bucket(tc, unpad, "a");
+
+  raw = serf_bucket_simple_create("\5a", 2, NULL, NULL, alloc);
+  unpad = serf_bucket_http2_unpad_create(raw, TRUE, alloc);
+
+  {
+    const char *data;
+    apr_size_t sz;
+
+    CuAssertIntEquals(tc, SERF_ERROR_HTTP2_PROTOCOL_ERROR,
+                      serf_bucket_read(unpad, SERF_READ_ALL_AVAIL,
+                                       &data, &sz));
+  }
 }
 
 CuSuite *test_buckets(void)

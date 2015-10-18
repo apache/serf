@@ -767,14 +767,13 @@ serf_bucket_http2_unframe_create(serf_bucket_t *stream,
 
 /* Obtains the frame header state, reading from the bucket if necessary.
    If the header was read successfully (or was already read before calling)
-   the *payload_length, *stream_id, * frame_type and *flags values
-   (when not pointing to NULL) will be set to the requested values.
+   the *stream_id, * frame_type and *flags values (when not pointing to NULL)
+   will be set to the requested values.
 
    returns APR_SUCCESS when the header was already read before calling this,
    function. Otherwise it will return the result of reading. */
 apr_status_t
-serf_http2_unframe_bucket_read_info(serf_bucket_t *bucket,
-                                    apr_size_t *payload_length,
+serf_bucket_http2_unframe_read_info(serf_bucket_t *bucket,
                                     apr_int32_t *stream_id,
                                     unsigned char *frame_type,
                                     unsigned char *flags);
