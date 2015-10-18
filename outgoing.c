@@ -1187,7 +1187,7 @@ static apr_status_t read_from_connection(serf_connection_t *conn)
 {
     apr_status_t status;
     apr_pool_t *tmppool;
-    int close_connection = FALSE;
+    apr_status_t close_connection = APR_SUCCESS;
 
     /* Whatever is coming in on the socket corresponds to the first request
      * on our chain.
