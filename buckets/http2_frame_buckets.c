@@ -33,16 +33,15 @@ typedef struct http2_unframe_context_t
   apr_size_t max_payload_size;
 
   apr_size_t prefix_remaining;
-  unsigned char prefix_buffer[FRAME_PREFIX_SIZE];
 
   /* These fields are only set after prefix_remaining is 0 */
-  apr_size_t payload_length;  /* 0 <= payload_length < 2^24 */
-  apr_int32_t stream_id;      /* 0 <= stream_id < 2^31 */
+  apr_size_t payload_remaining;  /* 0 <= payload_length < 2^24 */
+  apr_int32_t stream_id;         /* 0 <= stream_id < 2^31 */
   unsigned char frame_type;
   unsigned char flags;
 
-  apr_size_t payload_remaining;
-  int destroy_stream;
+  unsigned char prefix_buffer[FRAME_PREFIX_SIZE];
+  char destroy_stream;
 } http2_unframe_context_t;
 
 serf_bucket_t *
@@ -57,14 +56,13 @@ serf_bucket_http2_unframe_create(serf_bucket_t *stream,
   ctx->stream = stream;
   ctx->max_payload_size = max_payload_size;
   ctx->prefix_remaining = sizeof(ctx->prefix_buffer);
-  ctx->destroy_stream = destroy_stream;
+  ctx->destroy_stream = (destroy_stream != 0);
 
   return serf_bucket_create(&serf_bucket_type_http2_unframe, allocator, ctx);
 }
 
 apr_status_t
-serf_http2_unframe_bucket_read_info(serf_bucket_t *bucket,
-                                    apr_size_t *payload_length,
+serf_bucket_http2_unframe_read_info(serf_bucket_t *bucket,
                                     apr_int32_t *stream_id,
                                     unsigned char *frame_type,
                                     unsigned char *flags)
@@ -76,8 +74,6 @@ serf_http2_unframe_bucket_read_info(serf_bucket_t *bucket,
 
   if (ctx->prefix_remaining == 0)
     {
-      if (payload_length)
-        *payload_length = ctx->payload_length;
       if (stream_id)
         *stream_id = ctx->stream_id;
       if (frame_type)
@@ -98,9 +94,9 @@ serf_http2_unframe_bucket_read_info(serf_bucket_t *bucket,
 
       if (ctx->prefix_remaining == 0)
         {
-          ctx->payload_length = (ctx->prefix_buffer[0] << 16)
-                                | (ctx->prefix_buffer[1] << 8)
-                                | (ctx->prefix_buffer[2]);
+          apr_size_t payload_length = (ctx->prefix_buffer[0] << 16)
+                                    | (ctx->prefix_buffer[1] << 8)
+                                    | (ctx->prefix_buffer[2]);
           ctx->frame_type = ctx->prefix_buffer[3];
           ctx->flags = ctx->prefix_buffer[4];
           /* Highest bit of stream_id MUST be ignored */
@@ -109,11 +105,11 @@ serf_http2_unframe_bucket_read_info(serf_bucket_t *bucket,
                            | (ctx->prefix_buffer[7] << 8)
                            | (ctx->prefix_buffer[8]);
 
-          ctx->payload_remaining = ctx->payload_length;
+          ctx->payload_remaining = payload_length;
 
           /* Use recursion to fill output arguments if necessary */
-          serf_http2_unframe_bucket_read_info(bucket, payload_length,
-                                              stream_id, frame_type, flags);
+          serf_bucket_http2_unframe_read_info(bucket, stream_id, frame_type,
+                                              flags);
 
           /* https://tools.ietf.org/html/rfc7540#section-4.2
             An endpoint MUST send an error code of FRAME_SIZE_ERROR if a frame
@@ -121,7 +117,7 @@ serf_http2_unframe_bucket_read_info(serf_bucket_t *bucket,
             limit defined for the frame type, or is too small to contain
             mandatory frame data.
           */
-          if (ctx->max_payload_size < ctx->payload_remaining)
+          if (ctx->max_payload_size < payload_length)
               return SERF_ERROR_HTTP2_FRAME_SIZE_ERROR;
         }
     }
@@ -137,8 +133,7 @@ serf_http2_unframe_read(serf_bucket_t *bucket,
   http2_unframe_context_t *ctx = bucket->data;
   apr_status_t status;
 
-  status = serf_http2_unframe_bucket_read_info(bucket, NULL, NULL,
-                                               NULL, NULL);
+  status = serf_bucket_http2_unframe_read_info(bucket, NULL, NULL, NULL);
 
   if (status)
     {
@@ -177,8 +172,7 @@ serf_http2_unframe_read_iovec(serf_bucket_t *bucket,
   http2_unframe_context_t *ctx = bucket->data;
   apr_status_t status;
 
-  status = serf_http2_unframe_bucket_read_info(bucket, NULL, NULL,
-                                               NULL, NULL);
+  status = serf_bucket_http2_unframe_read_info(bucket, NULL, NULL, NULL);
 
   if (status)
     {
@@ -222,8 +216,7 @@ serf_http2_unframe_peek(serf_bucket_t *bucket,
   http2_unframe_context_t *ctx = bucket->data;
   apr_status_t status;
 
-  status = serf_http2_unframe_bucket_read_info(bucket, NULL, NULL,
-                                               NULL, NULL);
+  status = serf_bucket_http2_unframe_read_info(bucket, NULL, NULL, NULL);
 
   if (status)
     {
@@ -258,8 +251,7 @@ serf_http2_unframe_get_remaining(serf_bucket_t *bucket)
   http2_unframe_context_t *ctx = bucket->data;
   apr_status_t status;
 
-  status = serf_http2_unframe_bucket_read_info(bucket, NULL, NULL,
-                                               NULL, NULL);
+  status = serf_bucket_http2_unframe_read_info(bucket, NULL, NULL, NULL);
 
   if (status)
     return SERF_LENGTH_UNKNOWN;
@@ -336,15 +328,17 @@ serf_http2_unpad_read_padsize(serf_bucket_t *bucket)
           || remaining > APR_SIZE_MAX)
         return APR_EGENERAL; /* Can't calculate padding size */
 
+      /* http://tools.ietf.org/html/rfc7540#section-6.1
+         If the length of the padding is the length of the
+         frame payload or greater, the recipient MUST treat this as a
+         connection error (Section 5.4.1) of type PROTOCOL_ERROR.
+
+         The frame payload includes the length byte, so when remaining
+         is 0, that isn't a protocol error */
       if (remaining < ctx->pad_length)
-        {
-          ctx->payload_remaining = 0;
-          ctx->pad_remaining = (apr_size_t)remaining;
-        }
-      else
-        {
-          ctx->payload_remaining = (apr_size_t)remaining - ctx->pad_length;
-        }
+        return SERF_ERROR_HTTP2_PROTOCOL_ERROR;
+
+      ctx->payload_remaining = (apr_size_t)remaining - ctx->pad_length;
     }
   return status;
 }
