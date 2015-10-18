@@ -806,6 +806,25 @@ static apr_status_t socket_writev(serf_connection_t *conn)
     return status;
 }
 
+apr_status_t serf__connection_flush(serf_connection_t *conn)
+{
+    apr_status_t status = APR_SUCCESS;
+
+    while (conn->vec_len && !status) {
+        status = socket_writev(conn);
+
+        /* If the write would have blocked, then we're done. Don't try
+         * to write anything else to the socket.
+         */
+        if (APR_STATUS_IS_EPIPE(status)
+            || APR_STATUS_IS_ECONNRESET(status)
+            || APR_STATUS_IS_ECONNABORTED(status))
+            return no_more_writes(conn);
+
+    }
+    return status;
+}
+
 static apr_status_t setup_request(serf_request_t *request)
 {
     serf_connection_t *conn = request->conn;
@@ -875,21 +894,12 @@ static apr_status_t write_to_connection(serf_connection_t *conn)
         }
 
         /* If we have unwritten data, then write what we can. */
-        while (conn->vec_len) {
-            status = socket_writev(conn);
+        status = serf__connection_flush(conn);
+        if (APR_STATUS_IS_EAGAIN(status))
+            return APR_SUCCESS;
+        else if (status)
+            return status;
 
-            /* If the write would have blocked, then we're done. Don't try
-             * to write anything else to the socket.
-             */
-            if (APR_STATUS_IS_EAGAIN(status))
-                return APR_SUCCESS;
-            if (APR_STATUS_IS_EPIPE(status)
-                || APR_STATUS_IS_ECONNRESET(status)
-                || APR_STATUS_IS_ECONNABORTED(status))
-                return no_more_writes(conn);
-            if (status)
-                return status;
-        }
         /* ### can we have a short write, yet no EAGAIN? a short write
            ### would imply unwritten_len > 0 ... */
         /* assert: unwritten_len == 0. */
@@ -967,21 +977,11 @@ static apr_status_t write_to_connection(serf_connection_t *conn)
 
         /* If we got some data, then deliver it. */
         /* ### what to do if we got no data?? is that a problem? */
-        if (conn->vec_len > 0) {
-            status = socket_writev(conn);
-
-            /* If we can't write any more, or an error occurred, then
-             * we're done here.
-             */
-            if (APR_STATUS_IS_EAGAIN(status))
-                return APR_SUCCESS;
-            if (APR_STATUS_IS_EPIPE(status)
-                || APR_STATUS_IS_ECONNRESET(status)
-                || APR_STATUS_IS_ECONNABORTED(status))
-                return no_more_writes(conn);
-            if (status)
-                return status;
-        }
+        status = serf__connection_flush(conn);
+        if (APR_STATUS_IS_EAGAIN(status))
+            return APR_SUCCESS;
+        else if (status)
+            return status;
 
         if (read_status == SERF_ERROR_WAIT_CONN) {
             stop_reading = 1;
