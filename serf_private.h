@@ -536,6 +536,17 @@ apr_status_t serf__hpack_huffman_encode(const char *text,
                                         unsigned char *encoded,
                                         apr_size_t *encoded_len);
 
+/* From connection_request.c */
+void serf__link_requests(serf_request_t **list, serf_request_t **tail,
+                         serf_request_t *request);
+apr_status_t serf__destroy_request(serf_request_t *request);
+apr_status_t serf__cancel_request(serf_request_t *request,
+                                  serf_request_t **list,
+                                  int notify_request);
+unsigned int serf__req_list_length(serf_request_t *req);
+apr_status_t serf__setup_request(serf_request_t *request);
+void serf__link_requests(serf_request_t **list, serf_request_t **tail,
+                         serf_request_t *request);
 
 /** Logging functions. **/
 
