@@ -524,11 +524,17 @@ serf_bucket_t *serf__bucket_log_wrapper_create(serf_bucket_t *wrapped,
 void serf__http2_protocol_init(serf_connection_t *conn);
 
 /* From http2_hpack_buckets.c */
-apr_status_t serf__hpack_huffman_decode(const unsigned char *raw,
-                                        apr_size_t raw_len,
-                                        char *result,
-                                        apr_size_t buf_len,
-                                        apr_size_t *result_len);
+apr_status_t serf__hpack_huffman_decode(const unsigned char *encoded,
+                                        apr_size_t encoded_len,
+                                        apr_size_t text_avail,
+                                        char *text,
+                                        apr_size_t *text_len);
+
+apr_status_t serf__hpack_huffman_encode(const char *text,
+                                        apr_size_t text_len,
+                                        apr_size_t encoded_avail,
+                                        unsigned char *encoded,
+                                        apr_size_t *encoded_len);
 
 
 /** Logging functions. **/

@@ -1939,68 +1939,191 @@ static void test_hpack_huffman_decode(CuTest *tc)
                                "\x72\xC1\xAB\x27\x0F\xB5\x29\x1F\x95\x87\x31"
                                "\x60\x65\xC0\x03\xED\x4E\xE5\xB1\x06\x3D\x50"
                                "\x07";
+  const unsigned char preD[] = "\0\0\0\0\0";
 
   CuAssertIntEquals(tc, 0, serf__hpack_huffman_decode(pre1, sizeof(pre1) - 1,
-                                                      result, sizeof(result),
+                                                      sizeof(result), result,
                                                       &len));
   CuAssertStrEquals(tc, "www.example.com", result);
+  CuAssertIntEquals(tc, strlen(result), len);
 
   CuAssertIntEquals(tc, 0, serf__hpack_huffman_decode(pre2, sizeof(pre2) - 1,
-                                                      result, sizeof(result),
+                                                      sizeof(result), result,
                                                       &len));
   CuAssertStrEquals(tc, "no-cache", result);
+  CuAssertIntEquals(tc, strlen(result), len);
 
   CuAssertIntEquals(tc, 0, serf__hpack_huffman_decode(pre3, sizeof(pre3) - 1,
-                                                      result, sizeof(result),
+                                                      sizeof(result), result,
                                                       &len));
   CuAssertStrEquals(tc, "custom-key", result);
+  CuAssertIntEquals(tc, strlen(result), len);
 
   CuAssertIntEquals(tc, 0, serf__hpack_huffman_decode(pre4, sizeof(pre4) - 1,
-                                                      result, sizeof(result),
+                                                      sizeof(result), result,
                                                       &len));
   CuAssertStrEquals(tc, "custom-value", result);
+  CuAssertIntEquals(tc, strlen(result), len);
 
   CuAssertIntEquals(tc, 0, serf__hpack_huffman_decode(pre5, sizeof(pre5) - 1,
-                                                      result, sizeof(result),
+                                                      sizeof(result), result,
                                                       &len));
   CuAssertStrEquals(tc, "302", result);
+  CuAssertIntEquals(tc, strlen(result), len);
 
   CuAssertIntEquals(tc, 0, serf__hpack_huffman_decode(pre6, sizeof(pre6) - 1,
-                                                      result, sizeof(result),
+                                                      sizeof(result), result,
                                                       &len));
   CuAssertStrEquals(tc, "private", result);
+  CuAssertIntEquals(tc, strlen(result), len);
 
   CuAssertIntEquals(tc, 0, serf__hpack_huffman_decode(pre7, sizeof(pre7) - 1,
-                                                      result, sizeof(result),
+                                                      sizeof(result), result,
                                                       &len));
   CuAssertStrEquals(tc, "Mon, 21 Oct 2013 20:13:21 GMT", result);
+  CuAssertIntEquals(tc, strlen(result), len);
 
   CuAssertIntEquals(tc, 0, serf__hpack_huffman_decode(pre8, sizeof(pre8) - 1,
-                                                      result, sizeof(result),
+                                                      sizeof(result), result,
                                                       &len));
   CuAssertStrEquals(tc, "https://www.example.com", result);
+  CuAssertIntEquals(tc, strlen(result), len);
 
   CuAssertIntEquals(tc, 0, serf__hpack_huffman_decode(pre9, sizeof(pre9) - 1,
-                                                      result, sizeof(result),
+                                                      sizeof(result), result,
                                                       &len));
   CuAssertStrEquals(tc, "307", result);
+  CuAssertIntEquals(tc, strlen(result), len);
 
   CuAssertIntEquals(tc, 0, serf__hpack_huffman_decode(preA, sizeof(preA) - 1,
-                                                      result, sizeof(result),
+                                                      sizeof(result), result,
                                                       &len));
   CuAssertStrEquals(tc, "Mon, 21 Oct 2013 20:13:22 GMT", result);
+  CuAssertIntEquals(tc, strlen(result), len);
 
   CuAssertIntEquals(tc, 0, serf__hpack_huffman_decode(preB, sizeof(preB) - 1,
-                                                      result, sizeof(result),
+                                                      sizeof(result), result,
                                                       &len));
   CuAssertStrEquals(tc, "gzip", result);
+  CuAssertIntEquals(tc, strlen(result), len);
 
   CuAssertIntEquals(tc, 0, serf__hpack_huffman_decode(preC, sizeof(preC) - 1,
-                                                      result, sizeof(result),
+                                                      sizeof(result), result,
                                                       &len));
   CuAssertStrEquals(tc, "foo=ASDJKHQKBZXOQWEOPIUAXQWEOIU; max-age=3600; "
                         "version=1", result);
+  CuAssertIntEquals(tc, strlen(result), len);
+
+  CuAssertIntEquals(tc, 0, serf__hpack_huffman_decode(preD, sizeof(preD) - 1,
+                                                      sizeof(result), result,
+                                                      &len));
+  CuAssertStrEquals(tc, "00000000", result);
+  CuAssertIntEquals(tc, strlen(result), len);
+
+  /* And now check some corner cases as specified in the RFC:
+
+     The remaining bits must be filled out with the prefix of EOS */
+  CuAssertIntEquals(tc, 0,
+                    serf__hpack_huffman_decode((const unsigned char*)"\x07", 1,
+                                               sizeof(result), result,
+                                               &len));
+  CuAssertStrEquals(tc, "0", result);
+  CuAssertIntEquals(tc, 1, len);
+
+  CuAssertIntEquals(tc, APR_EINVAL,
+                    serf__hpack_huffman_decode((const unsigned char*)"\x06", 1,
+                                               sizeof(result),
+                                               result, &len));
+  CuAssertIntEquals(tc, APR_EINVAL,
+                    serf__hpack_huffman_decode((const unsigned char*)"\x01", 1,
+                                               sizeof(result),
+                                               result, &len));
+
+  /* EOS may not appear itself */
+  CuAssertIntEquals(tc, APR_EINVAL,
+                    serf__hpack_huffman_decode((const unsigned char*)
+                                                    "\xFF\xFF\xFF\xFF", 4,
+                                               sizeof(result), result, &len));
 }
+
+#define VERIFY_REVERSE(x)                                                  \
+  do                                                                       \
+   {                                                                       \
+     const char *v = (x);                                                  \
+     apr_size_t sz2;                                                       \
+     CuAssertIntEquals(tc, 0,                                              \
+                       serf__hpack_huffman_encode(v, strlen(v),            \
+                                                  sizeof(encoded),         \
+                                                  encoded, &encoded_len)); \
+     CuAssertIntEquals(tc, 0,                                              \
+                       serf__hpack_huffman_encode(v, strlen(v),            \
+                                                  0, NULL, &sz2));         \
+     CuAssertIntEquals(tc, encoded_len, sz2);                              \
+     CuAssertIntEquals(tc, 0,                                              \
+                       serf__hpack_huffman_decode(encoded, encoded_len,    \
+                                                  sizeof(text), text,      \
+                                                  &text_len));             \
+     CuAssertStrEquals(tc, v, text);                                       \
+     CuAssertIntEquals(tc, strlen(v), text_len);                           \
+   }                                                                       \
+  while(0)
+
+static void test_hpack_huffman_encode(CuTest *tc)
+{
+  unsigned char encoded[1024];
+  char text[1024];
+  apr_size_t encoded_len;
+  apr_size_t text_len;
+
+  VERIFY_REVERSE("1234567890");
+  VERIFY_REVERSE("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz");
+
+  {
+    char from[256];
+    int i;
+
+    for (i = 0; i < sizeof(from); i++)
+      from[i] = (char)i;
+
+    CuAssertIntEquals(tc, 0,
+                      serf__hpack_huffman_encode(from, sizeof(from),
+                                                 sizeof(encoded),
+                                                 encoded, &encoded_len));
+    /* Nice.. need 583 bytes to encode these 256 bytes :-) */
+    CuAssertIntEquals(tc, 583, encoded_len); 
+    text[256] = 0xFE;
+    CuAssertIntEquals(tc, 0,
+                      serf__hpack_huffman_decode(encoded, encoded_len,
+                                                 sizeof(text), text,
+                                                 &text_len));
+    CuAssertIntEquals(tc, 256, text_len);
+    CuAssertIntEquals(tc, 0, memcmp(from, text, sizeof(from)));
+    /* If there is space in the buffer serf__hpack_huffman_decode will add
+       a final '\0' after the buffer */
+    CuAssertIntEquals(tc, 0, text[256]);
+
+    for (i = 0; i < sizeof(from); i++)
+      from[i] = '0';
+
+    CuAssertIntEquals(tc, 0,
+                      serf__hpack_huffman_encode(from, sizeof(from),
+                                                 sizeof(encoded),
+                                                 encoded, &encoded_len));
+    /* Ok, 160 to encode 256. Maybe there is some use case */
+    CuAssertIntEquals(tc, 160, encoded_len);
+    text[256] = 0xEF;
+    CuAssertIntEquals(tc, 0,
+                      serf__hpack_huffman_decode(encoded, encoded_len,
+                                                 sizeof(text), text,
+                                                 &text_len));
+    CuAssertIntEquals(tc, 256, text_len);
+    CuAssertIntEquals(tc, 0, memcmp(from, text, sizeof(from)));
+    /* If there is space in the buffer serf__hpack_huffman_decode will add
+    a final '\0' after the buffer */
+    CuAssertIntEquals(tc, 0, text[256]);
+  }
+}
+#undef VERIFY_REVERSE
 
 CuSuite *test_buckets(void)
 {
@@ -2034,6 +2157,7 @@ CuSuite *test_buckets(void)
     SUITE_ADD_TEST(suite, test_http2_unframe_buckets);
     SUITE_ADD_TEST(suite, test_http2_unpad_buckets);
     SUITE_ADD_TEST(suite, test_hpack_huffman_decode);
+    SUITE_ADD_TEST(suite, test_hpack_huffman_encode);
 #if 0
     /* This test for issue #152 takes a lot of time generating 4GB+ of random
        data so it's disabled by default. */
