@@ -2125,6 +2125,33 @@ static void test_hpack_huffman_encode(CuTest *tc)
 }
 #undef VERIFY_REVERSE
 
+static void test_hpack_header_encode(CuTest *tc)
+{
+  test_baton_t *tb = tc->testBaton;
+  serf_bucket_alloc_t *alloc;
+  serf_bucket_t *hpack;
+  char resultbuffer[1024];
+  apr_size_t sz;
+
+  alloc = serf_bucket_allocator_create(tb->pool, NULL, NULL);
+
+  hpack = serf_bucket_hpack_create(NULL, alloc);
+
+  CuAssertTrue(tc, SERF_BUCKET_IS_HPACK(hpack));
+
+  serf_bucket_hpack_setc(hpack, ":method", "PUT");
+  serf_bucket_hpack_setc(hpack, ":scheme", "https");
+  serf_bucket_hpack_setc(hpack, ":path", "/");
+  serf_bucket_hpack_setc(hpack, ":authority", "localhost");
+
+  CuAssertIntEquals(tc, APR_EOF,
+                    read_all(hpack, resultbuffer, sizeof(resultbuffer), &sz));
+
+  /* CuAssertTrue(tc, ! SERF_BUCKET_IS_HPACK(hpack)); */
+  CuAssertTrue(tc, sz > 4);
+  CuAssertTrue(tc, sz <= 59); /* The all literal approach takes 59 bytes */
+}
+
 CuSuite *test_buckets(void)
 {
     CuSuite *suite = CuSuiteNew();
@@ -2158,6 +2185,7 @@ CuSuite *test_buckets(void)
     SUITE_ADD_TEST(suite, test_http2_unpad_buckets);
     SUITE_ADD_TEST(suite, test_hpack_huffman_decode);
     SUITE_ADD_TEST(suite, test_hpack_huffman_encode);
+    SUITE_ADD_TEST(suite, test_hpack_header_encode);
 #if 0
     /* This test for issue #152 takes a lot of time generating 4GB+ of random
        data so it's disabled by default. */
