@@ -790,6 +790,79 @@ serf_bucket_http2_unpad_create(serf_bucket_t *stream,
 
 /* ==================================================================== */
 
+extern const serf_bucket_type_t serf_bucket_type_hpack;
+#define SERF_BUCKET_IS_HPACK(b) SERF_BUCKET_CHECK((b), hpack)
+
+typedef struct serf_hpack_table_t serf_hpack_table_t;
+
+serf_bucket_t *
+serf_bucket_hpack_create(serf_hpack_table_t *hpack_table,
+                         serf_bucket_alloc_t *allocator);
+
+/**
+ * Set, copies: header and value copied.
+ *
+ * Copy the specified @a header and @a value into the bucket, using space
+ * from this bucket's allocator.
+ */
+void serf_bucket_hpack_setc(serf_bucket_t *hpack_bucket,
+                            const char *key,
+                            const char *value);
+
+/**
+ * Set, extended: fine grained copy control of key and value.
+ *
+ * Set the specified @a key, with length @a key_size with the
+ * @a value, and length @a value_size, into the bucket. The header will
+ * be copied if @a header_copy is set, and the value is copied if
+ * @a value_copy is set. If the values are not copied, then they should
+ * remain in scope at least as long as the bucket.
+ *
+ * If @a headers_bucket already contains a header with the same name
+ * as @a header, then append @a value to the existing value,
+ * separating with a comma (as per RFC 2616, section 4.2).  In this
+ * case, the new value must be allocated and the header re-used, so
+ * behave as if @a value_copy were true and @a header_copy false.
+ */
+void serf_bucket_hpack_setx(serf_bucket_t *hpack_bucket,
+                            const char *key,
+                            apr_size_t key_size,
+                            int header_copy,
+                            const char *value,
+                            apr_size_t value_size,
+                            int value_copy);
+
+const char *serf_bucket_hpack_get(serf_bucket_t *hpack_bucket,
+                                  const char *key,
+                                  apr_size_t hey_len);
+
+/**
+ * @param baton opaque baton as passed to @see serf_bucket_hpack_do
+ * @param key The header key from this iteration through the table
+ * @param value The header value from this iteration through the table
+ */
+typedef int (serf_bucket_hpack_do_callback_fn_t)(void *baton,
+                                                 const char *key,
+                                                 apr_size_t keylen,
+                                                 const char *value,
+                                                 apr_size_t value_len);
+
+/**
+ * Iterates over all headers of the message and invokes the callback 
+ * function with header key and value. Stop iterating when no more
+ * headers are available or when the callback function returned a 
+ * non-0 value.
+ *
+ * @param headers_bucket headers to iterate over
+ * @param func callback routine to invoke for every header in the bucket
+ * @param baton baton to pass on each invocation to func
+ */
+void serf_bucket_hpack_do(serf_bucket_t *hpack_bucket,
+                          serf_bucket_hpack_do_callback_fn_t func,
+                          void *baton);
+
+/* ==================================================================== */
+
 /* ### do we need a PIPE bucket type? they are simple apr_file_t objects */
 
 
