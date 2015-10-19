@@ -447,6 +447,21 @@ void serf__bucket_response_set_error_on_eof(serf_bucket_t *bucket,
 void serf__bucket_headers_remove(serf_bucket_t *headers_bucket,
                                  const char *header);
 
+/**
+ * Read raw information stored in request REQUEST_BUCKET. All output values
+ * are directly copied from the internal state.
+ *
+ * Output values can be passed as NULL when not interested.
+ */
+void serf__bucket_request_read(serf_bucket_t *request_bucket,
+                               serf_bucket_t **body_bkt,
+                               const char **uri,
+                               const char **method);
+
+serf_bucket_t *serf_bucket_request_get_body(
+  serf_bucket_t *bucket);
+
+
 /*** Authentication handler declarations ***/
 
 typedef enum { PROXY, HOST } peer_t;
@@ -535,6 +550,13 @@ apr_status_t serf__hpack_huffman_encode(const char *text,
                                         apr_size_t encoded_avail,
                                         unsigned char *encoded,
                                         apr_size_t *encoded_len);
+
+apr_status_t serf__bucket_hpack_create_from_request(
+                                        serf_bucket_t **new_hpack_bucket,
+                                        serf_hpack_table_t *hpack_table,
+                                        serf_bucket_t *request,
+                                        const char *scheme,
+                                        serf_bucket_alloc_t *allocator);
 
 /* From connection_request.c */
 void serf__link_requests(serf_request_t **list, serf_request_t **tail,

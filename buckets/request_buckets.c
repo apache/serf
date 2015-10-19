@@ -71,6 +71,22 @@ serf_bucket_t *serf_bucket_request_get_headers(
     return ((request_context_t *)bucket->data)->headers;
 }
 
+void serf__bucket_request_read(serf_bucket_t *request_bucket,
+                               serf_bucket_t **body_bkt,
+                               const char **uri,
+                               const char **method)
+{
+    request_context_t *ctx = request_bucket->data;
+
+    if (body_bkt)
+        *body_bkt = ctx->body;
+    if (uri)
+        *uri = ctx->uri;
+    if (method)
+        *method = ctx->method;
+}
+
+
 void serf_bucket_request_set_root(
     serf_bucket_t *bucket,
     const char *root_url)
