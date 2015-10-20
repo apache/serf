@@ -232,7 +232,6 @@ void serf_bucket_aggregate_append_iovec(
 
     new_bucket = serf_bucket_iovec_create(vecs, vecs_count,
                                           aggregate_bucket->allocator);
-    serf_bucket_set_config(new_bucket, ctx->config);
 
     serf_bucket_aggregate_append(aggregate_bucket, new_bucket);
 }
