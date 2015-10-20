@@ -44,7 +44,6 @@ http2_protocol_teardown(serf_connection_t *conn);
 
 typedef struct serf_http2_stream_t
 {
-  /* -1 until allocated. Odd is client side initiated, even server side */
   struct serf_http2_procotol_state_t *ctx;
 
   /* Linked list of currently existing streams */
@@ -53,7 +52,10 @@ typedef struct serf_http2_stream_t
 
   serf_request_t *request; /* May be NULL as streams may outlive requests */
 
-  apr_int64_t stream_window;
+  apr_int64_t lr_window; /* local->remote */
+  apr_int64_t rl_window; /* remote->local */
+
+  /* -1 until allocated. Odd is client side initiated, even server side */
   apr_int32_t streamid;
 
   enum
@@ -74,7 +76,9 @@ typedef struct serf_http2_procotol_state_t
 {
   apr_pool_t *pool;
   serf_bucket_t *ostream;
-  apr_int64_t connection_window;
+
+  apr_int64_t lr_window; /* local->remote */
+  apr_int64_t rl_window; /* remote->local */
   apr_int32_t next_local_streamid;
   apr_int32_t next_remote_streamid;
 
@@ -110,7 +114,8 @@ void serf__http2_protocol_init(serf_connection_t *conn)
   ctx = apr_pcalloc(protocol_pool, sizeof(*ctx));
   ctx->pool = protocol_pool;
   ctx->ostream = conn->ostream_tail;
-  ctx->connection_window = HTTP2_DEFAULT_WINDOW_SIZE;
+  ctx->lr_window = HTTP2_DEFAULT_WINDOW_SIZE;
+  ctx->rl_window = HTTP2_DEFAULT_WINDOW_SIZE;
   ctx->next_local_streamid = 1; /* 2 if we would be the server */
   ctx->next_remote_streamid = 2; /* 1 if we would be the client */
 
