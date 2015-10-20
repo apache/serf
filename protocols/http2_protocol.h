@@ -30,6 +30,8 @@ extern "C" {
 
 /* The standard maximum framesize. Always supported */
 #define HTTP2_DEFAULT_MAX_FRAMESIZE 16384
+/* The default stream and connection window size before updates */
+#define HTTP2_DEFAULT_WINDOW_SIZE   65535
 
 /* Frame type is an 8 bit unsigned integer */
 
@@ -50,10 +52,9 @@ extern "C" {
 
 /* ********** HTTP2 Flags ********** */
 
-/* Flags are currently unique over all frame types, but perhaps this
-   may change in future specs */
 
-
+/* Defined on SETTINGS and PING */
+#define HTTP2_FLAG_ACK            0x01
 /* Defined on DATA and HEADERS */
 #define HTTP2_FLAG_END_STREAM     0x01
 /* Defined on HEADERS and CONTINUATION */
