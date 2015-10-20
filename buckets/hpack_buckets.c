@@ -389,11 +389,45 @@ void serf_bucket_hpack_setx(serf_bucket_t *hpack_bucket,
     ctx->first = ctx->last = hi;
 }
 
+const char *serf_bucket_hpack_getc(serf_bucket_t *hpack_bucket,
+                                   const char *key)
+{
+  serf_hpack_context_t *ctx = hpack_bucket->data;
+  serf_hpack_item_t *hi;
+  apr_size_t key_len = strlen(key);
+
+  for (hi = ctx->first; hi; hi = hi->next)
+    {
+      if (key_len == hi->key_len
+          && !strncasecmp(key, hi->key, key_len))
+      {
+        return hi->value;
+      }
+    }
+
+  return NULL;
+}
+
+void serf_bucket_hpack_do(serf_bucket_t *hpack_bucket,
+                          serf_bucket_hpack_do_callback_fn_t func,
+                          void *baton)
+{
+  serf_hpack_context_t *ctx = hpack_bucket->data;
+  serf_hpack_item_t *hi;
+
+  for (hi = ctx->first; hi; hi = hi->next)
+    {
+      if (func(baton, hi->key, hi->key_len, hi->value, hi->value_len))
+        break;
+    }
+}
+
 static void hpack_int(unsigned char flags, int bits, apr_uint64_t value, char to[10], apr_size_t *used)
 {
   unsigned char max_direct;
-  flags = flags & ~((1 << bits) - 1);
   apr_size_t u;
+
+  flags = flags & ~((1 << bits) - 1);
 
   max_direct = (unsigned char)(((apr_uint16_t)1 << bits) - 1);
 
