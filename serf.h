@@ -1018,7 +1018,7 @@ serf_bucket_t * serf_buckets_are_v2(serf_bucket_t *bucket,
  *
  * @since New in 1.4.
  */
-const serf_bucket_type_t *serf_get_type(const serf_bucket_t *bucket,
+const serf_bucket_type_t *serf_get_type(serf_bucket_t *bucket,
                                         int min_version);
 
 /* Internal macros for tracking bucket use. */
