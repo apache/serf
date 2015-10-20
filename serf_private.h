@@ -570,6 +570,9 @@ apr_status_t serf__setup_request(serf_request_t *request);
 void serf__link_requests(serf_request_t **list, serf_request_t **tail,
                          serf_request_t *request);
 
+apr_status_t serf__handle_response(serf_request_t *request,
+                                   apr_pool_t *pool);
+
 /** Logging functions. **/
 
 /* Initialize the logging subsystem. This will store a log baton in the 
