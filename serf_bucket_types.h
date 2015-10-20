@@ -832,9 +832,9 @@ void serf_bucket_hpack_setx(serf_bucket_t *hpack_bucket,
                             apr_size_t value_size,
                             int value_copy);
 
-const char *serf_bucket_hpack_get(serf_bucket_t *hpack_bucket,
-                                  const char *key,
-                                  apr_size_t hey_len);
+const char *serf_bucket_hpack_getc(serf_bucket_t *hpack_bucket,
+                                   const char *key,
+                                   apr_size_t key_len);
 
 /**
  * @param baton opaque baton as passed to @see serf_bucket_hpack_do
