@@ -692,9 +692,60 @@ static apr_status_t socket_writev(serf_connection_t *conn)
     return status;
 }
 
-apr_status_t serf__connection_flush(serf_connection_t *conn)
+apr_status_t serf__connection_flush(serf_connection_t *conn,
+                                    int pump)
 {
     apr_status_t status = APR_SUCCESS;
+    apr_status_t read_status = APR_SUCCESS;
+
+    if (pump) {
+        serf_bucket_t *ostreamt, *ostreamh;
+
+        status = prepare_conn_streams(conn, &ostreamt, &ostreamh);
+        if (status) {
+            return status;
+        }
+
+        /* ### optimize at some point by using read_for_sendfile */
+        /* TODO: now that read_iovec will effectively try to return as much
+           data as available, we probably don't want to read ALL_AVAIL, but
+           a lower number, like the size of one or a few TCP packets, the
+           available TCP buffer size ... */
+        conn->hit_eof = 0;
+        read_status = serf_bucket_read_iovec(ostreamh,
+                                             SERF_READ_ALL_AVAIL,
+                                             IOV_MAX,
+                                             conn->vec,
+                                             &conn->vec_len);
+
+        if (read_status == SERF_ERROR_WAIT_CONN) {
+            /* The bucket told us that it can't provide more data until
+            more data is read from the socket. This normally happens
+            during a SSL handshake.
+
+            We should avoid looking for writability for a while so
+            that (hopefully) something will appear in the bucket so
+            we can actually write something. otherwise, we could
+            end up in a CPU spin: socket wants something, but we
+            don't have anything (and keep returning EAGAIN) */
+            conn->stop_writing = 1;
+            conn->dirty_conn = 1;
+            conn->ctx->dirty_pollset = 1;
+
+            read_status = APR_EAGAIN;
+        }
+        else if (APR_STATUS_IS_EAGAIN(read_status)) {
+
+            /* We read some stuff, but did we read everything ? */
+            if (conn->hit_eof)
+                read_status = APR_SUCCESS;
+        }
+        else if (SERF_BUCKET_READ_ERROR(read_status)) {
+
+            /* Something bad happened. Propagate any errors. */
+            return read_status;
+        }
+    }
 
     while (conn->vec_len && !status) {
         status = socket_writev(conn);
@@ -708,7 +759,8 @@ apr_status_t serf__connection_flush(serf_connection_t *conn)
             return no_more_writes(conn);
 
     }
-    return status;
+
+    return status ? status : read_status;
 }
 
 /* write data out to the connection */
@@ -729,7 +781,6 @@ static apr_status_t write_to_connection(serf_connection_t *conn)
      */
     while (1) {
         serf_request_t *request;
-        int stop_reading = 0;
         apr_status_t status;
         apr_status_t read_status;
         serf_bucket_t *ostreamt;
@@ -757,7 +808,7 @@ static apr_status_t write_to_connection(serf_connection_t *conn)
         }
 
         /* If we have unwritten data, then write what we can. */
-        status = serf__connection_flush(conn);
+        status = serf__connection_flush(conn, FALSE);
         if (APR_STATUS_IS_EAGAIN(status))
             return APR_SUCCESS;
         else if (status)
@@ -801,59 +852,15 @@ static apr_status_t write_to_connection(serf_connection_t *conn)
             }
         }
 
-        /* ### optimize at some point by using read_for_sendfile */
-        /* TODO: now that read_iovec will effectively try to return as much
-           data as available, we probably don't want to read ALL_AVAIL, but
-           a lower number, like the size of one or a few TCP packets, the
-           available TCP buffer size ... */
-        conn->hit_eof = 0;
-        read_status = serf_bucket_read_iovec(ostreamh,
-                                             SERF_READ_ALL_AVAIL,
-                                             IOV_MAX,
-                                             conn->vec,
-                                             &conn->vec_len);
-
-        if (read_status == SERF_ERROR_WAIT_CONN) {
-
-            /* The bucket told us that it can't provide more data until
-               more data is read from the socket. This normally happens
-               during a SSL handshake.
-
-               We should avoid looking for writability for a while so
-               that (hopefully) something will appear in the bucket so
-               we can actually write something. otherwise, we could
-               end up in a CPU spin: socket wants something, but we
-               don't have anything (and keep returning EAGAIN) */
-            conn->stop_writing = 1;
-            conn->dirty_conn = 1;
-            conn->ctx->dirty_pollset = 1;
-        }
-        else if (APR_STATUS_IS_EAGAIN(read_status)) {
-
-            /* We read some stuff, but should not try to read again. */
-
-            if (! conn->hit_eof)
-                stop_reading = 1;
-        }
-        else if (SERF_BUCKET_READ_ERROR(read_status)) {
-
-            /* Something bad happened. Propagate any errors. */
-
-            return read_status;
-        }
-
         /* If we got some data, then deliver it. */
         /* ### what to do if we got no data?? is that a problem? */
-        status = serf__connection_flush(conn);
+        status = serf__connection_flush(conn, TRUE);
         if (APR_STATUS_IS_EAGAIN(status))
             return APR_SUCCESS;
         else if (status)
             return status;
 
-        if (read_status == SERF_ERROR_WAIT_CONN) {
-            stop_reading = 1;
-        }
-        else if (request && conn->hit_eof && conn->vec_len == 0) {
+        if (request && conn->hit_eof && conn->vec_len == 0) {
             /* If we hit the end of the request bucket and all of its data has
              * been written, then clear it out to signify that we're done
              * sending the request. On the next iteration through this loop:
@@ -887,12 +894,8 @@ static apr_status_t write_to_connection(serf_connection_t *conn)
             if (conn->probable_keepalive_limit &&
                 conn->completed_requests > conn->probable_keepalive_limit) {
                 /* backoff for now. */
-                stop_reading = 1;
+                return APR_SUCCESS;
             }
-        }
-
-        if (stop_reading) {
-            return APR_SUCCESS;
         }
     }
     /* NOTREACHED */
