@@ -200,7 +200,7 @@ static const serf_bucket_type_t fallback_bucket_type =
   serf_default_ignore_config,
 };
 
-const serf_bucket_type_t *serf_get_type(const serf_bucket_t *bucket,
+const serf_bucket_type_t *serf_get_type(serf_bucket_t *bucket,
                                         int min_version)
 {
     const serf_bucket_t *r;
