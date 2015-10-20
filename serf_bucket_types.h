@@ -861,6 +861,33 @@ void serf_bucket_hpack_do(serf_bucket_t *hpack_bucket,
                           void *baton);
 
 /* ==================================================================== */
+extern const serf_bucket_type_t serf_bucket_type_http2_frame;
+
+#define SERF_BUCKET_IS_HTTP2_FRAME(b) SERF_BUCKET_CHECK((b), http2_frame)
+
+serf_bucket_t *
+serf_bucket_http2_frame_create(serf_bucket_t *stream,
+                               unsigned char frame_type,
+                               unsigned char flags,
+                               apr_int32_t *stream_id,
+                               void(*stream_id_alloc)(
+                                 void *baton,
+                                 apr_int32_t *stream_id),
+                               void *stream_id_baton,
+                               apr_size_t max_payload_size,
+                               apr_int32_t(*alloc_window)(
+                                 void *baton,
+                                 unsigned char frametype,
+                                 apr_int32_t stream_id,
+                                 apr_size_t requested,
+                                 int peek),
+                               void *alloc_window_baton,
+                               serf_bucket_alloc_t *alloc);
+
+int
+serf_bucket_http2_frame_within_frame(serf_bucket_t *bucket);
+
+/* ==================================================================== */
 
 /* ### do we need a PIPE bucket type? they are simple apr_file_t objects */
 

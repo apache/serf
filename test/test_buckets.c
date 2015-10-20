@@ -2152,6 +2152,48 @@ static void test_hpack_header_encode(CuTest *tc)
   CuAssertTrue(tc, sz <= 59); /* The all literal approach takes 59 bytes */
 }
 
+static void test_http2_frame_bucket_basic(CuTest *tc)
+{
+  test_baton_t *tb = tc->testBaton;
+  serf_bucket_alloc_t *alloc;
+  serf_bucket_t *hpack;
+  apr_size_t sz;
+  serf_bucket_t *body_in;
+  serf_bucket_t *frame_in;
+  serf_bucket_t *frame_out;
+  apr_int32_t exp_streamid = 0x01020304;
+
+  alloc = serf_bucket_allocator_create(tb->pool, NULL, NULL);
+
+  body_in = SERF_BUCKET_SIMPLE_STRING("This is no config!", alloc);
+  frame_in = serf_bucket_http2_frame_create(body_in, 99, 7, &exp_streamid,
+                                            NULL, NULL,
+                                            16384, NULL, NULL, alloc);
+  frame_out = serf_bucket_http2_unframe_create(frame_in, FALSE, 16384, alloc);
+
+  read_and_check_bucket(tc, frame_out, "This is no config!");
+
+  {
+    apr_int32_t streamid;
+    unsigned char frametype;
+    unsigned char flags;
+    const char *buffer;
+    apr_size_t sz;
+
+    CuAssertIntEquals(tc, 0,
+                      serf_bucket_http2_unframe_read_info(frame_out, &streamid,
+                                                          &frametype, &flags));
+    CuAssertIntEquals(tc, 0x01020304, streamid);
+    CuAssertIntEquals(tc, 99, frametype);
+    CuAssertIntEquals(tc, 7, flags);
+
+    CuAssertIntEquals(tc, APR_EOF,
+                      serf_bucket_read(frame_in, SERF_READ_ALL_AVAIL,
+                                       &buffer, &sz));
+    CuAssertIntEquals(tc, 0, sz);
+  }
+}
+
 CuSuite *test_buckets(void)
 {
     CuSuite *suite = CuSuiteNew();
@@ -2186,6 +2228,7 @@ CuSuite *test_buckets(void)
     SUITE_ADD_TEST(suite, test_hpack_huffman_decode);
     SUITE_ADD_TEST(suite, test_hpack_huffman_encode);
     SUITE_ADD_TEST(suite, test_hpack_header_encode);
+    SUITE_ADD_TEST(suite, test_http2_frame_bucket_basic);
 #if 0
     /* This test for issue #152 takes a lot of time generating 4GB+ of random
        data so it's disabled by default. */
