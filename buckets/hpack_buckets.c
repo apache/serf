@@ -465,11 +465,11 @@ serialize(serf_bucket_t *bucket)
   serf_hpack_context_t *ctx = bucket->data;
   serf_bucket_alloc_t *alloc = ctx->alloc;
 
-  /* Put on our aggregate bucket cloak */
-  serf_bucket_aggregate_become(bucket);
-
   serf_hpack_item_t *hi;
   serf_hpack_item_t *next;
+
+  /* Put on our aggregate bucket cloak */
+  serf_bucket_aggregate_become(bucket);
 
   for (hi = ctx->first; hi; hi = next)
     {
@@ -510,7 +510,7 @@ serialize(serf_bucket_t *bucket)
   return APR_SUCCESS;
 }
 
-apr_status_t
+static apr_status_t
 serf_hpack_read(serf_bucket_t *bucket,
                 apr_size_t requested,
                 const char **data,
@@ -524,7 +524,7 @@ serf_hpack_read(serf_bucket_t *bucket,
   return serf_bucket_read(bucket, requested, data, len);
 }
 
-apr_status_t
+static apr_status_t
 serf_hpack_read_iovec(serf_bucket_t *bucket,
                       apr_size_t requested,
                       int vecs_size,
