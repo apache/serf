@@ -42,15 +42,46 @@ http2_protocol_hangup(serf_connection_t *conn);
 static void
 http2_protocol_teardown(serf_connection_t *conn);
 
-#define HTTP2_DEFAULT_MAX_FRAME_SIZE 16384
+typedef struct serf_http2_stream_t
+{
+  /* -1 until allocated. Odd is client side initiated, even server side */
+  struct serf_http2_procotol_state_t *ctx;
 
-#define HTTP2_FLAG_PADDED 0x08
+  /* Linked list of currently existing streams */
+  struct serf_http2_stream_t *next;
+  struct serf_http2_stream_t *prev;
+
+  serf_request_t *request; /* May be NULL as streams may outlive requests */
+
+  apr_int64_t stream_window;
+  apr_int32_t streamid;
+
+  enum
+  {
+    H2S_IDLE = 0,
+    H2S_RESERVED_REMOTE,
+    H2S_RESERVED_LOCAL,
+    H2S_OPEN,
+    H2S_HALFCLOSED_REMOTE,
+    H2S_HALFCLOSED_LOCAL,
+    H2S_CLOSED
+  } status;
+
+  /* TODO: Priority, etc. */
+} serf_http2_stream_t;
 
 typedef struct serf_http2_procotol_state_t
 {
   apr_pool_t *pool;
+  serf_bucket_t *ostream;
+  apr_int64_t connection_window;
+  apr_int32_t next_local_streamid;
+  apr_int32_t next_remote_streamid;
 
-  char buffer[HTTP2_DEFAULT_MAX_FRAME_SIZE];
+  serf_http2_stream_t *first;
+  serf_http2_stream_t *last;
+
+  char buffer[HTTP2_DEFAULT_MAX_FRAMESIZE];
   apr_size_t buffer_used;
   serf_bucket_t *cur_frame;
   serf_bucket_t *cur_payload;
@@ -78,6 +109,12 @@ void serf__http2_protocol_init(serf_connection_t *conn)
 
   ctx = apr_pcalloc(protocol_pool, sizeof(*ctx));
   ctx->pool = protocol_pool;
+  ctx->ostream = conn->ostream_tail;
+  ctx->connection_window = HTTP2_DEFAULT_WINDOW_SIZE;
+  ctx->next_local_streamid = 1; /* 2 if we would be the server */
+  ctx->next_remote_streamid = 2; /* 1 if we would be the client */
+
+  ctx->first = ctx->last = NULL;
 
   apr_pool_cleanup_register(protocol_pool, conn, http2_protocol_cleanup,
                             apr_pool_cleanup_null);
@@ -95,29 +132,41 @@ void serf__http2_protocol_init(serf_connection_t *conn)
   /* Send the HTTP/2 Connection Preface */
   tmp = SERF_BUCKET_SIMPLE_STRING("PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n",
                                   conn->allocator);
-  serf_bucket_aggregate_append(conn->ostream_tail, tmp);
+  serf_bucket_aggregate_append(ctx->ostream, tmp);
 
-  /* And now a settings frame */
+  /* And now a settings frame and a huge window */
   {
     serf_bucket_t *no_settings;
+    serf_bucket_t *window_size;
     apr_int32_t frame_id = 0;
 
     no_settings = serf_bucket_simple_create("", 0, NULL, NULL, conn->allocator);
     tmp = serf_bucket_http2_frame_create(no_settings, HTTP2_FRAME_TYPE_SETTINGS, 0,
                                          &frame_id, NULL, NULL, /* Static id: 0*/
-                                         16384 /* max_framesize */,
+                                         HTTP2_DEFAULT_MAX_FRAMESIZE,
                                          NULL, NULL, conn->allocator);
 
-    serf_bucket_aggregate_append(conn->ostream_tail, tmp);
+    serf_bucket_aggregate_append(ctx->ostream, tmp);
+
+    /* Add 2GB - 65535 to the current window.
+       (Adding 2GB -1 appears to overflow at at least one server) */
+    window_size = serf_bucket_simple_create("\x7F\xFF\x00\x00", 4, NULL, NULL,
+                                            conn->allocator);
+    tmp = serf_bucket_http2_frame_create(window_size,
+                                         HTTP2_FRAME_TYPE_WINDOW_UPDATE, 0,
+                                         &frame_id, NULL, NULL,
+                                         HTTP2_DEFAULT_MAX_FRAMESIZE,
+                                         NULL, NULL, conn->allocator);
+    serf_bucket_aggregate_append(ctx->ostream, tmp);
   }
 }
 
 /* Creates a HTTP/2 request from a serf request */
 static apr_status_t
-setup_for_http2(serf_request_t *request)
+setup_for_http2(serf_http2_procotol_state_t *ctx,
+                serf_request_t *request)
 {
   apr_status_t status;
-  serf_bucket_t *rq;
   serf_bucket_t *hpack;
   serf_bucket_t *body;
   static apr_int32_t NEXT_frame = 1;
@@ -125,15 +174,28 @@ setup_for_http2(serf_request_t *request)
   apr_int32_t streamid = NEXT_frame;
   NEXT_frame += 2;
 
-  rq = request->req_bkt;
+  if (!request->req_bkt)
+    {
+      status = serf__setup_request(request);
+      if (status)
+        return status;
+    }
 
-  status = serf__bucket_hpack_create_from_request(&hpack, NULL,
-                                                  rq,
+  serf__bucket_request_read(request->req_bkt, &body, NULL, NULL);
+  status = serf__bucket_hpack_create_from_request(&hpack, NULL, request->req_bkt,
                                                   request->conn->host_info.scheme,
                                                   request->allocator);
   if (status)
     return status;
 
+  if (!body)
+    {
+      /* This destroys the body... Perhaps we should make an extract
+         and clear api */
+      serf_bucket_destroy(request->req_bkt);
+      request->req_bkt = NULL;
+    }
+  
   hpack = serf_bucket_http2_frame_create(hpack, HTTP2_FRAME_TYPE_HEADERS,
                                          HTTP2_FLAG_END_STREAM
                                          | HTTP2_FLAG_END_HEADERS,
@@ -141,8 +203,7 @@ setup_for_http2(serf_request_t *request)
                                          HTTP2_DEFAULT_MAX_FRAMESIZE,
                                          NULL, NULL, request->allocator);
 
-  serf_bucket_aggregate_append(request->conn->ostream_tail,
-                               hpack);
+  serf_bucket_aggregate_append(ctx->ostream, hpack);
 
   return APR_SUCCESS;
 }
@@ -153,45 +214,30 @@ http2_read(serf_connection_t *conn)
   serf_http2_procotol_state_t *ctx = conn->protocol_baton;
   apr_status_t status = APR_SUCCESS;
 
-
   while (TRUE)
     {
+      serf_request_t *request = conn->unwritten_reqs;
       status = APR_SUCCESS;
 
-      {
-        serf_request_t *request = conn->unwritten_reqs;
+      if (request)
+        {
+          /* Yuck.. there must be easier ways to do this, but I don't
+              want to change outgoing.c all the time just yet. */
+          conn->unwritten_reqs = request->next;
+          if (conn->unwritten_reqs_tail == request)
+            conn->unwritten_reqs = conn->unwritten_reqs_tail = NULL;
 
-        if (request)
-          {
-            apr_status_t status;
-            serf_bucket_t *req_bkt;
+          request->next = NULL;
 
-            /* Yuck.. there must be easier ways to do this, but I don't
-               want to change outgoing.c all the time just yet. */
-            conn->unwritten_reqs = request->next;
-            if (conn->unwritten_reqs_tail == request)
-              conn->unwritten_reqs = conn->unwritten_reqs_tail = NULL;
+          if (conn->written_reqs_tail)
+            conn->written_reqs_tail->next = request;
+          else
+            conn->written_reqs = conn->written_reqs_tail = request;
 
-            request->next = NULL;
-
-            if (conn->written_reqs_tail)
-              conn->written_reqs_tail->next = request;
-            else
-              conn->written_reqs = conn->written_reqs_tail = request;
-
-            if (!request->req_bkt
-                || !SERF_BUCKET_IS_REQUEST(request->req_bkt))
-              {
-                status = serf__setup_request(request);
-                if (status)
-                  return status;
-              }
-
-            status = setup_for_http2(request);
-            if (status)
-              return status;
-          }
-      }
+          status = setup_for_http2(ctx, request);
+          if (status)
+            return status;
+        }
 
       if (ctx->cur_frame)
         {
@@ -282,7 +328,7 @@ http2_read(serf_connection_t *conn)
 
       ctx->cur_frame = ctx->cur_payload =
             serf_bucket_http2_unframe_create(conn->stream, FALSE,
-                                             HTTP2_DEFAULT_MAX_FRAME_SIZE,
+                                             HTTP2_DEFAULT_MAX_FRAMESIZE,
                                              conn->stream->allocator);
     }
 
