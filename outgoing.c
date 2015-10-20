@@ -806,6 +806,7 @@ static apr_status_t write_to_connection(serf_connection_t *conn)
            data as available, we probably don't want to read ALL_AVAIL, but
            a lower number, like the size of one or a few TCP packets, the
            available TCP buffer size ... */
+        conn->hit_eof = 0;
         read_status = serf_bucket_read_iovec(ostreamh,
                                              SERF_READ_ALL_AVAIL,
                                              IOV_MAX,
@@ -852,8 +853,7 @@ static apr_status_t write_to_connection(serf_connection_t *conn)
         if (read_status == SERF_ERROR_WAIT_CONN) {
             stop_reading = 1;
         }
-        else if (request && read_status && conn->hit_eof &&
-                 conn->vec_len == 0) {
+        else if (request && conn->hit_eof && conn->vec_len == 0) {
             /* If we hit the end of the request bucket and all of its data has
              * been written, then clear it out to signify that we're done
              * sending the request. On the next iteration through this loop:
@@ -862,7 +862,6 @@ static apr_status_t write_to_connection(serf_connection_t *conn)
              * - we'll see if there are other requests that need to be sent 
              * ("pipelining").
              */
-            conn->hit_eof = 0;
             serf_bucket_destroy(request->req_bkt);
             request->req_bkt = NULL;
 
