@@ -1024,14 +1024,15 @@ static apr_status_t read_from_connection(serf_connection_t *conn)
 
             /* Unexpected response from the server */
             if (conn->write_now) {
-                status = write_to_connection(conn);
+                conn->write_now = 0;
+                status = conn->perform_write(conn);
 
                 if (!SERF_BUCKET_READ_ERROR(status))
                     status = APR_SUCCESS;
             }
         }
 
-        if (conn->framing_type == SERF_CONNECTION_FRAMING_TYPE_NONE)
+        if (conn->framing_type != SERF_CONNECTION_FRAMING_TYPE_HTTP1)
             break;
 
         /* If the request doesn't have a response bucket, then call the
