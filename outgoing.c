@@ -812,30 +812,33 @@ static apr_status_t write_to_connection(serf_connection_t *conn)
                                              conn->vec,
                                              &conn->vec_len);
 
-        if (!conn->hit_eof) {
-            if (APR_STATUS_IS_EAGAIN(read_status)) {
-                /* We read some stuff, but should not try to read again. */
-                stop_reading = 1;
-            }
-            else if (read_status == SERF_ERROR_WAIT_CONN) {
-                /* The bucket told us that it can't provide more data until
-                   more data is read from the socket. This normally happens
-                   during a SSL handshake.
+        if (read_status == SERF_ERROR_WAIT_CONN) {
 
-                   We should avoid looking for writability for a while so
-                   that (hopefully) something will appear in the bucket so
-                   we can actually write something. otherwise, we could
-                   end up in a CPU spin: socket wants something, but we
-                   don't have anything (and keep returning EAGAIN)
-                 */
-                conn->stop_writing = 1;
-                conn->dirty_conn = 1;
-                conn->ctx->dirty_pollset = 1;
-            }
-            else if (read_status && !APR_STATUS_IS_EOF(read_status)) {
-                /* Something bad happened. Propagate any errors. */
-                return read_status;
-            }
+            /* The bucket told us that it can't provide more data until
+               more data is read from the socket. This normally happens
+               during a SSL handshake.
+
+               We should avoid looking for writability for a while so
+               that (hopefully) something will appear in the bucket so
+               we can actually write something. otherwise, we could
+               end up in a CPU spin: socket wants something, but we
+               don't have anything (and keep returning EAGAIN) */
+            conn->stop_writing = 1;
+            conn->dirty_conn = 1;
+            conn->ctx->dirty_pollset = 1;
+        }
+        else if (APR_STATUS_IS_EAGAIN(read_status)) {
+
+            /* We read some stuff, but should not try to read again. */
+
+            if (! conn->hit_eof)
+                stop_reading = 1;
+        }
+        else if (SERF_BUCKET_READ_ERROR(read_status)) {
+
+            /* Something bad happened. Propagate any errors. */
+
+            return read_status;
         }
 
         /* If we got some data, then deliver it. */
@@ -848,9 +851,6 @@ static apr_status_t write_to_connection(serf_connection_t *conn)
 
         if (read_status == SERF_ERROR_WAIT_CONN) {
             stop_reading = 1;
-            conn->stop_writing = 1;
-            conn->dirty_conn = 1;
-            conn->ctx->dirty_pollset = 1;
         }
         else if (request && read_status && conn->hit_eof &&
                  conn->vec_len == 0) {
