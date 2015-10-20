@@ -1,22 +1,22 @@
 /* ====================================================================
-*    Licensed to the Apache Software Foundation (ASF) under one
-*    or more contributor license agreements.  See the NOTICE file
-*    distributed with this work for additional information
-*    regarding copyright ownership.  The ASF licenses this file
-*    to you under the Apache License, Version 2.0 (the
-*    "License"); you may not use this file except in compliance
-*    with the License.  You may obtain a copy of the License at
-*
-*      http://www.apache.org/licenses/LICENSE-2.0
-*
-*    Unless required by applicable law or agreed to in writing,
-*    software distributed under the License is distributed on an
-*    "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-*    KIND, either express or implied.  See the License for the
-*    specific language governing permissions and limitations
-*    under the License.
-* ====================================================================
-*/
+ *    Licensed to the Apache Software Foundation (ASF) under one
+ *    or more contributor license agreements.  See the NOTICE file
+ *    distributed with this work for additional information
+ *    regarding copyright ownership.  The ASF licenses this file
+ *    to you under the Apache License, Version 2.0 (the
+ *    "License"); you may not use this file except in compliance
+ *    with the License.  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *    Unless required by applicable law or agreed to in writing,
+ *    software distributed under the License is distributed on an
+ *    "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ *    KIND, either express or implied.  See the License for the
+ *    specific language governing permissions and limitations
+ *    under the License.
+ * ====================================================================
+ */
 
 #include <apr_pools.h>
 
@@ -511,6 +511,240 @@ const serf_bucket_type_t serf_bucket_type_http2_unpad = {
   serf_http2_unpad_destroy,
   serf_default_read_bucket,
   serf_http2_unpad_get_remaining,
+  serf_default_ignore_config
+};
+
+/* ==================================================================== */
+
+typedef struct serf_http2_frame_context_t {
+  serf_bucket_t *stream;
+  serf_bucket_alloc_t *alloc;
+  serf_bucket_t *chunk;
+  apr_status_t stream_status;
+  apr_size_t max_payload_size;
+  apr_int32_t stream_id;
+
+  unsigned char frametype;
+  unsigned char flags;
+  char end_of_stream;
+  char end_of_headers;
+  char created_frame;
+
+  apr_int32_t *p_stream_id;
+  void *stream_id_baton;
+  void (*stream_id_alloc)(void *baton, apr_int32_t *stream_id);
+
+  apr_size_t current_window;
+  void *alloc_window_baton;
+  apr_int32_t (*alloc_window)(void *baton,
+                              unsigned char frametype,
+                              apr_int32_t stream_id,
+                              apr_size_t requested,
+                              int peek);
+
+} serf_http2_frame_context_t;
+
+serf_bucket_t *
+serf_bucket_http2_frame_create(serf_bucket_t *stream,
+                               unsigned char frame_type,
+                               unsigned char flags,
+                               apr_int32_t *stream_id,
+                               void (*stream_id_alloc)(
+                                                  void *baton,
+                                                  apr_int32_t *stream_id),
+                               void *stream_id_baton,
+                               apr_size_t max_payload_size,
+                               apr_int32_t (*alloc_window)(
+                                                  void *baton,
+                                                  unsigned char frametype,
+                                                  apr_int32_t stream_id,
+                                                  apr_size_t requested,
+                                                  int peek),
+                               void *alloc_window_baton,
+                               serf_bucket_alloc_t *alloc)
+{
+  serf_http2_frame_context_t *ctx = serf_bucket_mem_alloc(alloc, sizeof(*ctx));
+
+  ctx->alloc = alloc;
+  ctx->stream = stream;
+  ctx->chunk = serf_bucket_aggregate_create(alloc);
+  ctx->stream_status = APR_SUCCESS;
+  ctx->max_payload_size = max_payload_size;
+  ctx->frametype = frame_type;
+  ctx->flags = flags;
+
+  if (max_payload_size > 0xFFFFFF)
+    max_payload_size = 0xFFFFFF;
+
+  ctx->stream_id = (stream_id && *stream_id >= 0) ? *stream_id : -1;
+  ctx->p_stream_id = stream_id ? stream_id : &ctx->stream_id;
+  ctx->stream_id_alloc = stream_id_alloc;
+  ctx->stream_id_baton = stream_id_baton;
+  ctx->current_window = 0;
+  ctx->alloc_window = alloc_window;
+  ctx->alloc_window_baton = alloc_window_baton;
+
+  ctx->end_of_stream = ctx->end_of_headers = ctx->created_frame = FALSE;
+
+  return serf_bucket_create(&serf_bucket_type_http2_frame, alloc, ctx);
+}
+
+
+int
+serf_bucket_http2_frame_within_frame(serf_bucket_t *bucket)
+{
+  const char *data;
+  apr_size_t len;
+  apr_status_t status = serf_bucket_peek(bucket, &data, &len);
+
+  return APR_STATUS_IS_EOF(status);
+}
+
+static apr_status_t
+http2_prepare_frame(serf_bucket_t *bucket)
+{
+  serf_http2_frame_context_t *ctx = bucket->data;
+  struct iovec vecs[512];
+  int vecs_used;
+  apr_size_t len;
+  unsigned char frame[FRAME_PREFIX_SIZE];
+  int i;
+
+  if (ctx->created_frame)
+    return APR_SUCCESS;
+
+  ctx->created_frame = TRUE;
+
+  ctx->stream_status = serf_bucket_read_iovec(ctx->stream,
+                                              ctx->max_payload_size,
+                                              512, vecs, &vecs_used);
+
+  if (SERF_BUCKET_READ_ERROR(ctx->stream_status))
+    return ctx->stream_status;
+
+  /* For this first version assume that everything fits in a single frame */
+  if (! APR_STATUS_IS_EOF(ctx->stream_status))
+    abort(); /* Not implemented yet */
+
+  if (ctx->stream_id < 0 && ctx->stream_id_alloc)
+    {
+      ctx->stream_id_alloc(ctx->stream_id_baton, ctx->p_stream_id);
+      ctx->stream_id = *ctx->p_stream_id;
+    }
+
+  len = 0;
+  for (i = 0; i < vecs_used; i++)
+    len += vecs[i].iov_len;
+
+  frame[0] = (len >> 16) & 0xFF;
+  frame[1] = (len >> 8) & 0xFF;
+  frame[2] = len & 0xFF;
+  frame[3] = ctx->frametype;
+  frame[4] = ctx->flags;
+  frame[5] = ((apr_uint32_t)ctx->stream_id >> 24) & 0x7F;
+  frame[6] = ((apr_uint32_t)ctx->stream_id >> 16) & 0xFF;
+  frame[7] = ((apr_uint32_t)ctx->stream_id >> 8) & 0xFF;
+  frame[8] = ctx->stream_id & 0xFF;
+
+  serf_bucket_aggregate_append(ctx->chunk,
+              serf_bucket_simple_copy_create((const char *)&frame,
+                                             FRAME_PREFIX_SIZE,
+                                             ctx->alloc));
+  if (vecs_used > 0)
+    serf_bucket_aggregate_append_iovec(ctx->chunk, vecs, vecs_used);
+
+  return APR_SUCCESS;
+}
+
+static apr_status_t
+serf_http2_frame_read(serf_bucket_t *bucket,
+                      apr_size_t requested,
+                      const char **data,
+                      apr_size_t *len)
+{
+  serf_http2_frame_context_t *ctx = bucket->data;
+  apr_status_t status;
+
+  status = http2_prepare_frame(bucket);
+  if (status)
+    return status;
+
+  status = serf_bucket_read(ctx->chunk, requested, data, len);
+
+  if (APR_STATUS_IS_EOF(status))
+    return ctx->stream_status;
+
+  return status;
+}
+
+static apr_status_t
+serf_http2_frame_read_iovec(serf_bucket_t *bucket,
+                            apr_size_t requested,
+                            int vecs_size,
+                            struct iovec *vecs,
+                            int *vecs_used)
+{
+  serf_http2_frame_context_t *ctx = bucket->data;
+  apr_status_t status;
+
+  status = http2_prepare_frame(bucket);
+  if (status)
+    return status;
+
+  status = serf_bucket_read_iovec(ctx->chunk, requested, vecs_size, vecs,
+                                  vecs_used);
+
+  if (APR_STATUS_IS_EOF(status))
+    return ctx->stream_status;
+
+  return status;
+}
+
+static apr_status_t
+serf_http2_frame_peek(serf_bucket_t *bucket,
+                      const char **data,
+                      apr_size_t *len)
+{
+  serf_http2_frame_context_t *ctx = bucket->data;
+  apr_status_t status;
+
+  status = http2_prepare_frame(bucket);
+  if (status)
+    return status;
+
+  status = serf_bucket_peek(ctx->chunk, data, len);
+
+  if (APR_STATUS_IS_EOF(status))
+    return ctx->stream_status;
+
+  return status;
+}
+
+static void
+serf_http2_frame_destroy(serf_bucket_t *bucket)
+{
+  serf_http2_frame_context_t *ctx = bucket->data;
+
+  serf_bucket_destroy(ctx->stream);
+  serf_bucket_destroy(ctx->chunk);
+
+  serf_default_destroy_and_data(bucket);
+}
+
+/* ### need to implement */
+#define serf_http2_frame_readline NULL
+
+const serf_bucket_type_t serf_bucket_type_http2_frame = {
+  "H2-FRAME",
+  serf_http2_frame_read,
+  serf_http2_frame_readline,
+  serf_http2_frame_read_iovec,
+  serf_default_read_for_sendfile,
+  serf_buckets_are_v2,
+  serf_http2_frame_peek,
+  serf_http2_frame_destroy,
+  serf_default_read_bucket,
+  serf_default_get_remaining,
   serf_default_ignore_config
 };
 
