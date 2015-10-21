@@ -172,7 +172,8 @@ struct serf_ssl_context_t {
 
     /* Flag is set to 1 when a renegotiation is in progress. */
     int renegotiation;
-    int init_finished; /* True after SSL internal connection is 'connected' */
+    int handshake_finished; /* True after SSL internal connection is through
+                               the handshake */
 
     const char *selected_protocol; /* Cached protocol value once available */
     /* Protocol callback */
@@ -991,12 +992,16 @@ static apr_status_t ssl_decrypt(void *baton, apr_size_t bufsize,
     }
  
 
-    if (!ctx->init_finished
+    if (!ctx->handshake_finished
         && !SERF_BUCKET_READ_ERROR(status)) {
 
         apr_status_t s = APR_SUCCESS;
 
-        ctx->init_finished = SSL_is_init_finished(ctx->ssl);
+        /* Once we got through the initial handshake, we should have received
+           the ALPN information if there is such information. */
+        ctx->handshake_finished = SSL_is_init_finished(ctx->ssl)
+                                  || (SSL_state(ctx->ssl)
+                                      & SSL_CB_HANDSHAKE_DONE);
 
         /* Call the protocol callback as soon as possible as this triggers
            pipelining data for the selected protocol. */
@@ -1549,7 +1554,7 @@ static serf_ssl_context_t *ssl_init_context(serf_bucket_alloc_t *allocator)
     ssl_ctx->server_cert_chain_callback = NULL;
 
     ssl_ctx->selected_protocol = "";
-    ssl_ctx->init_finished = FALSE;
+    ssl_ctx->handshake_finished = FALSE;
     ssl_ctx->protocol_callback = NULL;
     ssl_ctx->protocol_userdata = NULL;
 
@@ -1723,7 +1728,7 @@ static const char *ssl_get_selected_protocol(serf_ssl_context_t *context)
         if (data && len)
             context->selected_protocol = apr_pstrmemdup(context->pool,
                                                         data, len);
-        else if (context->init_finished)
+        else if (context->handshake_finished)
             context->selected_protocol = "";
 #endif
     }
