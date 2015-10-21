@@ -1313,7 +1313,8 @@ apr_status_t serf__process_connection(serf_connection_t *conn,
             conn->dirty_conn = TRUE;
             conn->ctx->dirty_pollset = TRUE;
 
-            return connect_connection(conn);
+            if ((status = connect_connection(conn)) != APR_SUCCESS)
+                return status;
         }
 
         if ((status = conn->perform_write(conn)) != APR_SUCCESS)
