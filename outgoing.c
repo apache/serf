@@ -143,7 +143,12 @@ apr_status_t serf__conn_update_pollset(serf_connection_t *conn)
 
     /* Now put it back in with the correct read/write values. */
     desc.reqevents = APR_POLLHUP | APR_POLLERR;
-    if ((conn->written_reqs || conn->unwritten_reqs) &&
+
+    /* If we are not connected yet, we just want to know when we are */
+    if (conn->wait_for_connect) {
+        desc.reqevents |= APR_POLLOUT;
+    }
+    else if ((conn->written_reqs || conn->unwritten_reqs) &&
         conn->state != SERF_CONN_INIT) {
         /* If there are any outstanding events, then we want to read. */
         /* ### not true. we only want to read IF we have sent some data */
@@ -365,6 +370,36 @@ static void store_ipaddresses_in_config(serf_config_t *config,
     }
 }
 
+static apr_status_t connect_connection(serf_connection_t *conn)
+{
+    serf_context_t *ctx = conn->ctx;
+    apr_status_t status;
+
+    /* If the authentication was already started on another connection,
+       prepare this connection (it might be possible to skip some
+       part of the handshaking). */
+    if (ctx->proxy_address) {
+        status = serf__auth_setup_connection(PROXY, conn);
+        if (status) {
+            return status;
+        }
+    }
+
+    status = serf__auth_setup_connection(HOST, conn);
+    if (status)
+        return status;
+
+    /* Does this connection require a SSL tunnel over the proxy? */
+    if (ctx->proxy_address && strcmp(conn->host_info.scheme, "https") == 0)
+        serf__ssltunnel_connect(conn);
+    else {
+        conn->state = SERF_CONN_CONNECTED;
+        status = do_conn_setup(conn);
+    }
+
+    return APR_SUCCESS;
+}
+
 /* Create and connect sockets for any connections which don't have them
  * yet. This is the core of our lazy-connect behavior.
  */
@@ -433,6 +468,9 @@ apr_status_t serf__open_connections(serf_context_t *ctx)
         if (status != APR_SUCCESS) {
             if (!APR_STATUS_IS_EINPROGRESS(status))
                 return status;
+
+            /* Keep track of when we really connect */
+            conn->wait_for_connect = TRUE;
         }
 
         status = serf_config_set_string(conn->config,
@@ -446,28 +484,11 @@ apr_status_t serf__open_connections(serf_context_t *ctx)
         conn->dirty_conn = 1;
         ctx->dirty_pollset = 1;
 
-        /* If the authentication was already started on another connection,
-           prepare this connection (it might be possible to skip some
-           part of the handshaking). */
-        if (ctx->proxy_address) {
-            status = serf__auth_setup_connection(PROXY, conn);
-            if (status){
-                return status;
-            }
-        }
+        if (! conn->wait_for_connect) {
+            status = connect_connection(conn);
 
-        status = serf__auth_setup_connection(HOST, conn);
-        if (status)
-            return status;
-
-        /* Does this connection require a SSL tunnel over the proxy? */
-        if (ctx->proxy_address && strcmp(conn->host_info.scheme, "https") == 0)
-            serf__ssltunnel_connect(conn);
-        else {
-            conn->state = SERF_CONN_CONNECTED;
-            status = do_conn_setup(conn);
             if (status)
-                return status;
+              return status;
         }
     }
 
@@ -1219,7 +1240,9 @@ apr_status_t serf__process_connection(serf_connection_t *conn,
      * the like sitting on the connection, we give the app a chance to read
      * it before we trigger a reset condition.
      */
-    if ((events & APR_POLLIN) != 0) {
+    if ((events & APR_POLLIN) != 0
+        && !conn->wait_for_connect) {
+
         if ((status = conn->perform_read(conn)) != APR_SUCCESS)
             return status;
 
@@ -1283,6 +1306,16 @@ apr_status_t serf__process_connection(serf_connection_t *conn,
         return APR_EGENERAL;
     }
     if ((events & APR_POLLOUT) != 0) {
+        if (conn->wait_for_connect) {
+            conn->wait_for_connect = FALSE;
+
+            /* We are now connected. Socket is now usable */
+            conn->dirty_conn = TRUE;
+            conn->ctx->dirty_pollset = TRUE;
+
+            return connect_connection(conn);
+        }
+
         if ((status = conn->perform_write(conn)) != APR_SUCCESS)
             return status;
     }
@@ -1320,6 +1353,7 @@ serf_connection_t *serf_connection_create(
     conn->latency = -1; /* unknown */
     conn->stop_writing = 0;
     conn->write_now = 0;
+    conn->wait_for_connect = 0;
     conn->pipelining = 1;
     conn->framing_type = SERF_CONNECTION_FRAMING_TYPE_HTTP1;
     conn->perform_read = read_from_connection;
