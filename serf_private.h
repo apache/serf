@@ -408,6 +408,9 @@ struct serf_connection_t {
     /* Write out information now */
     int write_now;
 
+    /* Wait for connect: connect() returned APR_EAGAIN. Socket not usable yet */
+    int wait_for_connect;
+
     /* Event callbacks, called from serf__process_connection() to do the actual
        processing. */
     apr_status_t (*perform_read)(serf_connection_t *conn);
