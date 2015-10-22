@@ -375,6 +375,11 @@ static apr_status_t connect_connection(serf_connection_t *conn)
     serf_context_t *ctx = conn->ctx;
     apr_status_t status;
 
+    store_ipaddresses_in_config(conn->config, conn->skt);
+
+    serf__log(LOGLVL_DEBUG, LOGCOMP_CONN, __FILE__, conn->config,
+              "socket for conn 0x%x connected\n", conn);
+
     /* If the authentication was already started on another connection,
        prepare this connection (it might be possible to skip some
        part of the handshaking). */
@@ -461,10 +466,6 @@ apr_status_t serf__open_connections(serf_context_t *ctx)
          * return immediately.
          */
         status = apr_socket_connect(skt, conn->address);
-        store_ipaddresses_in_config(conn->config, skt);
-
-        serf__log(LOGLVL_DEBUG, LOGCOMP_CONN, __FILE__, conn->config,
-                  "connected socket for conn 0x%x, status %d\n", conn, status);
         if (status != APR_SUCCESS) {
             if (!APR_STATUS_IS_EINPROGRESS(status))
                 return status;
