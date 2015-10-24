@@ -357,16 +357,16 @@ static void store_ipaddresses_in_config(serf_config_t *config,
      apr_sockaddr_t *sa;
 
     if (apr_socket_addr_get(&sa, APR_LOCAL, skt) == APR_SUCCESS) {
-        char buf[32];
-        apr_sockaddr_ip_getbuf(buf, 32, sa);
-        serf_config_set_stringf(config, SERF_CONFIG_CONN_LOCALIP,
-                                "%s:%d", buf, sa->port);
+        char buf[48];
+        if (!apr_sockaddr_ip_getbuf(buf, sizeof(buf), sa))
+            serf_config_set_stringf(config, SERF_CONFIG_CONN_LOCALIP,
+                                    "%s:%d", buf, sa->port);
     }
     if (apr_socket_addr_get(&sa, APR_REMOTE, skt) == APR_SUCCESS) {
-        char buf[32];
-        apr_sockaddr_ip_getbuf(buf, 32, sa);
-        serf_config_set_stringf(config, SERF_CONFIG_CONN_REMOTEIP,
-                               "%s:%d", buf, sa->port);
+        char buf[48];
+        if (!apr_sockaddr_ip_getbuf(buf, sizeof(buf), sa))
+            serf_config_set_stringf(config, SERF_CONFIG_CONN_REMOTEIP,
+                                    "%s:%d", buf, sa->port);
     }
 }
 
