@@ -122,6 +122,9 @@ serf_bucket_http2_unframe_read_info(serf_bucket_t *bucket,
           if (ctx->max_payload_size < payload_length)
               return SERF_ERROR_HTTP2_FRAME_SIZE_ERROR;
         }
+      else if (!status)
+        status = APR_EAGAIN;
+
     }
   return status;
 }
@@ -315,9 +318,10 @@ serf_http2_unpad_read_padsize(serf_bucket_t *bucket)
     return APR_SUCCESS;
 
   status = serf_bucket_read(ctx->stream, 1, &data, &len);
-  if (! SERF_BUCKET_READ_ERROR(status))
+  if (! SERF_BUCKET_READ_ERROR(status) && len > 0)
     {
       apr_int64_t remaining;
+
       ctx->pad_length = *(unsigned char *)data;
       ctx->pad_remaining = ctx->pad_length;
       ctx->padsize_read = TRUE;
@@ -342,6 +346,9 @@ serf_http2_unpad_read_padsize(serf_bucket_t *bucket)
 
       ctx->payload_remaining = (apr_size_t)remaining - ctx->pad_length;
     }
+  else if (!status)
+    status = APR_EAGAIN;
+
   return status;
 }
 
