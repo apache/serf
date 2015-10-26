@@ -25,6 +25,7 @@
 #include "serf.h"
 #include "serf_bucket_util.h"
 #include "serf_private.h"
+#include "protocols/http2_buckets.h"
 
 #include "hpack_huffman.inc"
 #define EOS_CHAR (256)
@@ -372,9 +373,9 @@ static const apr_uint64_t hpack_static_table_count =
 
 
 serf_hpack_table_t *
-serf_hpack_table_create(int for_http2,
-                        apr_size_t default_max_table_size,
-                        apr_pool_t *result_pool)
+serf__hpack_table_create(int for_http2,
+                         apr_size_t default_max_table_size,
+                         apr_pool_t *result_pool)
 {
   serf_hpack_table_t *tbl = apr_pcalloc(result_pool, sizeof(*tbl));
 
@@ -470,7 +471,7 @@ hpack_copy_from_headers(void *baton,
       return APR_SUCCESS;
     }
 
-  serf_bucket_hpack_setc(hpack, key, value);
+  serf__bucket_hpack_setc(hpack, key, value);
 
   return APR_SUCCESS;
 }
@@ -485,7 +486,7 @@ serf__bucket_hpack_create_from_request(serf_bucket_t **new_hpack_bucket,
 {
   const char *uri, *method, *host;
 
-  serf_bucket_t *hpack = serf_bucket_hpack_create(hpack_table, allocator);
+  serf_bucket_t *hpack = serf__bucket_hpack_create(hpack_table, allocator);
 
   serf_bucket_t *headers = serf_bucket_request_get_headers(request);
 
@@ -493,10 +494,10 @@ serf__bucket_hpack_create_from_request(serf_bucket_t **new_hpack_bucket,
 
   serf__bucket_request_read(request, NULL, &uri, &method);
 
-  serf_bucket_hpack_setc(hpack, ":method", method);
-  serf_bucket_hpack_setc(hpack, ":scheme", scheme);
-  serf_bucket_hpack_setc(hpack, ":authority", host);
-  serf_bucket_hpack_setc(hpack, ":path", uri);
+  serf__bucket_hpack_setc(hpack, ":method", method);
+  serf__bucket_hpack_setc(hpack, ":scheme", scheme);
+  serf__bucket_hpack_setc(hpack, ":authority", host);
+  serf__bucket_hpack_setc(hpack, ":path", uri);
 
   serf_bucket_headers_do(headers, hpack_copy_from_headers, hpack);
 
@@ -507,8 +508,8 @@ serf__bucket_hpack_create_from_request(serf_bucket_t **new_hpack_bucket,
 
 
 serf_bucket_t *
-serf_bucket_hpack_create(serf_hpack_table_t *hpack_table,
-                         serf_bucket_alloc_t *allocator)
+serf__bucket_hpack_create(serf_hpack_table_t *hpack_table,
+                          serf_bucket_alloc_t *allocator)
 {
   serf_hpack_context_t *ctx = serf_bucket_mem_alloc(allocator, sizeof(*ctx));
 
@@ -516,25 +517,27 @@ serf_bucket_hpack_create(serf_hpack_table_t *hpack_table,
   ctx->tbl = hpack_table;
   ctx->first = ctx->last = NULL;
 
-  return serf_bucket_create(&serf_bucket_type_hpack, allocator, ctx);
+  return serf_bucket_create(&serf_bucket_type__hpack, allocator, ctx);
 }
 
-void serf_bucket_hpack_setc(serf_bucket_t *hpack_bucket,
-                            const char *key,
-                            const char *value)
+void 
+serf__bucket_hpack_setc(serf_bucket_t *hpack_bucket,
+                        const char *key,
+                        const char *value)
 {
-  serf_bucket_hpack_setx(hpack_bucket,
-                         key, strlen(key), TRUE,
-                         value, strlen(value), TRUE);
+  serf__bucket_hpack_setx(hpack_bucket,
+                          key, strlen(key), TRUE,
+                          value, strlen(value), TRUE);
 }
 
-void serf_bucket_hpack_setx(serf_bucket_t *hpack_bucket,
-                            const char *key,
-                            apr_size_t key_size,
-                            int key_copy,
-                            const char *value,
-                            apr_size_t value_size,
-                            int value_copy)
+void
+serf__bucket_hpack_setx(serf_bucket_t *hpack_bucket,
+                        const char *key,
+                        apr_size_t key_size,
+                        int key_copy,
+                        const char *value,
+                        apr_size_t value_size,
+                        int value_copy)
 {
   serf_hpack_context_t *ctx = hpack_bucket->data;
   serf_hpack_entry_t *entry;
@@ -820,7 +823,7 @@ serf_hpack_destroy_and_data(serf_bucket_t *bucket)
 /* ### need to implement */
 #define serf_hpack_readline NULL
 
-const serf_bucket_type_t serf_bucket_type_hpack = {
+const serf_bucket_type_t serf_bucket_type__hpack = {
   "HPACK",
   serf_hpack_read,
   serf_hpack_readline,
@@ -889,17 +892,17 @@ hpack_decode_databuf_reader(void *baton,
                             apr_size_t *len);
 
 serf_bucket_t *
-serf_bucket_hpack_decode_create(serf_bucket_t *stream,
-                                apr_status_t (*item_callback)(
+serf__bucket_hpack_decode_create(serf_bucket_t *stream,
+                                 apr_status_t (*item_callback)(
                                         void *baton,
                                         const char *key,
                                         apr_size_t key_size,
                                         const char *value,
                                         apr_size_t value_size),
-                                void *item_baton,
-                                apr_size_t max_entry_size,
-                                serf_hpack_table_t *hpack_table,
-                                serf_bucket_alloc_t *alloc)
+                                 void *item_baton,
+                                 apr_size_t max_entry_size,
+                                 serf_hpack_table_t *hpack_table,
+                                 serf_bucket_alloc_t *alloc)
 {
   serf_hpack_decode_ctx_t *ctx = serf_bucket_mem_calloc(alloc, sizeof(*ctx));
 
@@ -933,7 +936,7 @@ serf_bucket_hpack_decode_create(serf_bucket_t *stream,
   ctx->tbl->rl_start = ctx->tbl->rl_first;
   ctx->tbl->rl_indexable = ctx->tbl->rl_count;
 
-  return serf_bucket_create(&serf_bucket_type_hpack_decode, alloc, ctx);
+  return serf_bucket_create(&serf_bucket_type__hpack_decode, alloc, ctx);
 }
 
 static apr_status_t
@@ -1558,7 +1561,7 @@ serf_hpack_decode_destroy(serf_bucket_t *bucket)
   serf_default_destroy_and_data(bucket);
 }
 
-const serf_bucket_type_t serf_bucket_type_hpack_decode = {
+const serf_bucket_type_t serf_bucket_type__hpack_decode = {
   "HPACK-DECODE",
   serf_hpack_decode_read,
   serf_hpack_decode_readline,

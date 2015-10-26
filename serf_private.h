@@ -543,6 +543,8 @@ serf_bucket_t *serf__bucket_log_wrapper_create(serf_bucket_t *wrapped,
 /* From http2_protocol.c: Initializes http2 state on connection */
 void serf__http2_protocol_init(serf_connection_t *conn);
 
+typedef struct serf_hpack_table_t serf_hpack_table_t;
+
 /* From http2_hpack_buckets.c */
 apr_status_t serf__hpack_huffman_decode(const unsigned char *encoded,
                                         apr_size_t encoded_len,

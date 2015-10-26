@@ -26,6 +26,8 @@
 #include "serf_bucket_util.h"
 #include "serf_private.h"
 
+#include "protocols/http2_buckets.h"
+
 /* https://tools.ietf.org/html/rfc7540#section-4.1 */
 #define FRAME_PREFIX_SIZE 9 
 
@@ -47,10 +49,10 @@ typedef struct http2_unframe_context_t
 } http2_unframe_context_t;
 
 serf_bucket_t *
-serf_bucket_http2_unframe_create(serf_bucket_t *stream,
-                                 int destroy_stream,
-                                 apr_size_t max_payload_size,
-                                 serf_bucket_alloc_t *allocator)
+serf__bucket_http2_unframe_create(serf_bucket_t *stream,
+                                  int destroy_stream,
+                                  apr_size_t max_payload_size,
+                                  serf_bucket_alloc_t *allocator)
 {
   http2_unframe_context_t *ctx;
 
@@ -60,14 +62,14 @@ serf_bucket_http2_unframe_create(serf_bucket_t *stream,
   ctx->prefix_remaining = sizeof(ctx->prefix_buffer);
   ctx->destroy_stream = (destroy_stream != 0);
 
-  return serf_bucket_create(&serf_bucket_type_http2_unframe, allocator, ctx);
+  return serf_bucket_create(&serf_bucket_type__http2_unframe, allocator, ctx);
 }
 
 apr_status_t
-serf_bucket_http2_unframe_read_info(serf_bucket_t *bucket,
-                                    apr_int32_t *stream_id,
-                                    unsigned char *frame_type,
-                                    unsigned char *flags)
+serf__bucket_http2_unframe_read_info(serf_bucket_t *bucket,
+                                     apr_int32_t *stream_id,
+                                     unsigned char *frame_type,
+                                     unsigned char *flags)
 {
   http2_unframe_context_t *ctx = bucket->data;
   const char *data;
@@ -110,8 +112,8 @@ serf_bucket_http2_unframe_read_info(serf_bucket_t *bucket,
           ctx->payload_remaining = payload_length;
 
           /* Use recursion to fill output arguments if necessary */
-          serf_bucket_http2_unframe_read_info(bucket, stream_id, frame_type,
-                                              flags);
+          serf__bucket_http2_unframe_read_info(bucket, stream_id, frame_type,
+                                               flags);
 
           /* https://tools.ietf.org/html/rfc7540#section-4.2
             An endpoint MUST send an error code of FRAME_SIZE_ERROR if a frame
@@ -138,7 +140,7 @@ serf_http2_unframe_read(serf_bucket_t *bucket,
   http2_unframe_context_t *ctx = bucket->data;
   apr_status_t status;
 
-  status = serf_bucket_http2_unframe_read_info(bucket, NULL, NULL, NULL);
+  status = serf__bucket_http2_unframe_read_info(bucket, NULL, NULL, NULL);
 
   if (status)
     {
@@ -177,7 +179,7 @@ serf_http2_unframe_read_iovec(serf_bucket_t *bucket,
   http2_unframe_context_t *ctx = bucket->data;
   apr_status_t status;
 
-  status = serf_bucket_http2_unframe_read_info(bucket, NULL, NULL, NULL);
+  status = serf__bucket_http2_unframe_read_info(bucket, NULL, NULL, NULL);
 
   if (status)
     {
@@ -221,7 +223,7 @@ serf_http2_unframe_peek(serf_bucket_t *bucket,
   http2_unframe_context_t *ctx = bucket->data;
   apr_status_t status;
 
-  status = serf_bucket_http2_unframe_read_info(bucket, NULL, NULL, NULL);
+  status = serf__bucket_http2_unframe_read_info(bucket, NULL, NULL, NULL);
 
   if (status)
     {
@@ -256,7 +258,7 @@ serf_http2_unframe_get_remaining(serf_bucket_t *bucket)
   http2_unframe_context_t *ctx = bucket->data;
   apr_status_t status;
 
-  status = serf_bucket_http2_unframe_read_info(bucket, NULL, NULL, NULL);
+  status = serf__bucket_http2_unframe_read_info(bucket, NULL, NULL, NULL);
 
   if (status)
     return SERF_LENGTH_UNKNOWN;
@@ -267,7 +269,7 @@ serf_http2_unframe_get_remaining(serf_bucket_t *bucket)
 /* ### need to implement */
 #define serf_http2_unframe_readline NULL
 
-const serf_bucket_type_t serf_bucket_type_http2_unframe = {
+const serf_bucket_type_t serf_bucket_type__http2_unframe = {
   "H2-UNFRAME",
   serf_http2_unframe_read,
   serf_http2_unframe_readline /* ### TODO */,
@@ -292,9 +294,9 @@ typedef struct http2_unpad_context_t
 } http2_unpad_context_t;
 
 serf_bucket_t *
-serf_bucket_http2_unpad_create(serf_bucket_t *stream,
-                               int destroy_stream,
-                               serf_bucket_alloc_t *allocator)
+serf__bucket_http2_unpad_create(serf_bucket_t *stream,
+                                int destroy_stream,
+                                serf_bucket_alloc_t *allocator)
 {
   http2_unpad_context_t *ctx;
 
@@ -303,7 +305,7 @@ serf_bucket_http2_unpad_create(serf_bucket_t *stream,
   ctx->padsize_read = FALSE;
   ctx->destroy_stream = destroy_stream;
 
-  return serf_bucket_create(&serf_bucket_type_http2_unpad, allocator, ctx);
+  return serf_bucket_create(&serf_bucket_type__http2_unpad, allocator, ctx);
 }
 
 static apr_status_t
@@ -509,7 +511,7 @@ serf_http2_unpad_get_remaining(serf_bucket_t *bucket)
 /* ### need to implement */
 #define serf_h2_dechunk_readline NULL
 
-const serf_bucket_type_t serf_bucket_type_http2_unpad = {
+const serf_bucket_type_t serf_bucket_type__http2_unpad = {
   "H2-UNPAD",
   serf_http2_unpad_read,
   serf_h2_dechunk_readline /* ### TODO */,
@@ -554,23 +556,23 @@ typedef struct serf_http2_frame_context_t {
 } serf_http2_frame_context_t;
 
 serf_bucket_t *
-serf_bucket_http2_frame_create(serf_bucket_t *stream,
-                               unsigned char frame_type,
-                               unsigned char flags,
-                               apr_int32_t *stream_id,
-                               void (*stream_id_alloc)(
-                                                  void *baton,
-                                                  apr_int32_t *stream_id),
-                               void *stream_id_baton,
-                               apr_size_t max_payload_size,
-                               apr_int32_t (*alloc_window)(
-                                                  void *baton,
-                                                  unsigned char frametype,
-                                                  apr_int32_t stream_id,
-                                                  apr_size_t requested,
-                                                  int peek),
-                               void *alloc_window_baton,
-                               serf_bucket_alloc_t *alloc)
+serf__bucket_http2_frame_create(serf_bucket_t *stream,
+                                unsigned char frame_type,
+                                unsigned char flags,
+                                apr_int32_t *stream_id,
+                                void (*stream_id_alloc)(
+                                                   void *baton,
+                                                   apr_int32_t *stream_id),
+                                void *stream_id_baton,
+                                apr_size_t max_payload_size,
+                                apr_int32_t (*alloc_window)(
+                                                   void *baton,
+                                                   unsigned char frametype,
+                                                   apr_int32_t stream_id,
+                                                   apr_size_t requested,
+                                                   int peek),
+                                void *alloc_window_baton,
+                                serf_bucket_alloc_t *alloc)
 {
   serf_http2_frame_context_t *ctx = serf_bucket_mem_alloc(alloc, sizeof(*ctx));
 
@@ -612,7 +614,7 @@ serf_bucket_http2_frame_create(serf_bucket_t *stream,
 
   ctx->end_of_stream = ctx->end_of_headers = ctx->created_frame = FALSE;
 
-  return serf_bucket_create(&serf_bucket_type_http2_frame, alloc, ctx);
+  return serf_bucket_create(&serf_bucket_type__http2_frame, alloc, ctx);
 }
 
 
@@ -770,7 +772,7 @@ serf_http2_frame_destroy(serf_bucket_t *bucket)
 /* ### need to implement */
 #define serf_http2_frame_readline NULL
 
-const serf_bucket_type_t serf_bucket_type_http2_frame = {
+const serf_bucket_type_t serf_bucket_type__http2_frame = {
   "H2-FRAME",
   serf_http2_frame_read,
   serf_http2_frame_readline,
