@@ -262,12 +262,12 @@ serf_http2_unframe_get_remaining(serf_bucket_t *bucket)
 }
 
 /* ### need to implement */
-#define serf_h2_dechunk_readline NULL
+#define serf_http2_unframe_readline NULL
 
 const serf_bucket_type_t serf_bucket_type_http2_unframe = {
   "H2-UNFRAME",
   serf_http2_unframe_read,
-  serf_h2_dechunk_readline /* ### TODO */,
+  serf_http2_unframe_readline /* ### TODO */,
   serf_http2_unframe_read_iovec,
   serf_default_read_for_sendfile,
   serf_buckets_are_v2,
@@ -578,10 +578,27 @@ serf_bucket_http2_frame_create(serf_bucket_t *stream,
   if (max_payload_size > 0xFFFFFF)
     max_payload_size = 0xFFFFFF;
 
-  ctx->stream_id = (stream_id && *stream_id >= 0) ? *stream_id : -1;
-  ctx->p_stream_id = stream_id ? stream_id : &ctx->stream_id;
-  ctx->stream_id_alloc = stream_id_alloc;
-  ctx->stream_id_baton = stream_id_baton;
+  if (!stream_id_alloc || (stream_id && *stream_id >= 0))
+    {
+      /* Avoid all alloc handling; we know the final id */
+      ctx->stream_id = stream_id ? *stream_id : 0;
+      ctx->p_stream_id = &ctx->stream_id;
+      ctx->stream_id_alloc = NULL;
+      ctx->stream_id_baton = NULL;
+    }
+  else
+    {
+      /* Delay creating the id until we really need it.
+
+         Using a higher stream number before a lower version in communication
+         closes the lower number directly (as 'unused') */
+
+      ctx->stream_id = -1;
+      ctx->p_stream_id = stream_id;
+      ctx->stream_id_alloc = stream_id_alloc;
+      ctx->stream_id_baton = stream_id_baton;
+    }
+
   ctx->current_window = 0;
   ctx->alloc_window = alloc_window;
   ctx->alloc_window_baton = alloc_window_baton;
@@ -617,12 +634,20 @@ http2_prepare_frame(serf_bucket_t *bucket)
 
   ctx->created_frame = TRUE;
 
-  ctx->stream_status = serf_bucket_read_iovec(ctx->stream,
-                                              ctx->max_payload_size,
-                                              512, vecs, &vecs_used);
+  if (ctx->stream)
+    {
+      ctx->stream_status = serf_bucket_read_iovec(ctx->stream,
+                                                  ctx->max_payload_size,
+                                                  512, vecs, &vecs_used);
 
-  if (SERF_BUCKET_READ_ERROR(ctx->stream_status))
-    return ctx->stream_status;
+      if (SERF_BUCKET_READ_ERROR(ctx->stream_status))
+        return ctx->stream_status;
+    }
+  else
+    {
+      vecs_used = 0;
+      ctx->stream_status = APR_EOF;
+    }
 
   /* For this first version assume that everything fits in a single frame */
   if (! APR_STATUS_IS_EOF(ctx->stream_status))
@@ -727,7 +752,9 @@ serf_http2_frame_destroy(serf_bucket_t *bucket)
 {
   serf_http2_frame_context_t *ctx = bucket->data;
 
-  serf_bucket_destroy(ctx->stream);
+  if (ctx->stream)
+    serf_bucket_destroy(ctx->stream);
+
   serf_bucket_destroy(ctx->chunk);
 
   serf_default_destroy_and_data(bucket);
