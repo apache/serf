@@ -33,6 +33,8 @@
 #include "serf_private.h"
 #include "serf_bucket_util.h"
 
+#include "protocols/http2_buckets.h"
+
 static apr_status_t read_all(serf_bucket_t *bkt,
                              char *buf,
                              apr_size_t buf_len,
@@ -1779,10 +1781,10 @@ static void test_http2_unframe_buckets(CuTest *tc)
   raw = serf_bucket_simple_create(raw_frame1, sizeof(raw_frame1),
                                   NULL, NULL, alloc);
 
-  unframe = serf_bucket_http2_unframe_create(raw, TRUE, SERF_READ_ALL_AVAIL,
-                                             alloc);
+  unframe = serf__bucket_http2_unframe_create(raw, TRUE, SERF_READ_ALL_AVAIL,
+                                              alloc);
 
-  CuAssertTrue(tc, SERF_BUCKET_IS_HTTP2_UNFRAME(unframe));
+  CuAssertTrue(tc, SERF__BUCKET_IS_HTTP2_UNFRAME(unframe));
 
   status = read_all(unframe, result1, sizeof(result1), &read_len);
   CuAssertIntEquals(tc, APR_EOF, status);
@@ -1796,10 +1798,10 @@ static void test_http2_unframe_buckets(CuTest *tc)
     unsigned char frame_type, flags;
 
     CuAssertIntEquals(tc, 0,
-                      serf_bucket_http2_unframe_read_info(unframe,
-                                                          &stream_id,
-                                                          &frame_type,
-                                                          &flags));
+                      serf__bucket_http2_unframe_read_info(unframe,
+                                                           &stream_id,
+                                                           &frame_type,
+                                                           &flags));
     CuAssertIntEquals(tc, 0, stream_id);
     CuAssertIntEquals(tc, 4, frame_type);
     CuAssertIntEquals(tc, 0, flags);
@@ -1808,8 +1810,8 @@ static void test_http2_unframe_buckets(CuTest *tc)
   raw = serf_bucket_simple_create(raw_frame2, sizeof(raw_frame2),
                                   NULL, NULL, alloc);
 
-  unframe = serf_bucket_http2_unframe_create(raw, TRUE, SERF_READ_ALL_AVAIL,
-                                             alloc);
+  unframe = serf__bucket_http2_unframe_create(raw, TRUE, SERF_READ_ALL_AVAIL,
+                                              alloc);
 
   status = read_all(unframe, result2, sizeof(result2), &read_len);
   CuAssertIntEquals(tc, APR_EOF, status);
@@ -1823,10 +1825,10 @@ static void test_http2_unframe_buckets(CuTest *tc)
     unsigned char frame_type, flags;
 
     CuAssertIntEquals(tc, 0,
-                      serf_bucket_http2_unframe_read_info(unframe,
-                                                          &stream_id,
-                                                          &frame_type,
-                                                          &flags));
+                      serf__bucket_http2_unframe_read_info(unframe,
+                                                           &stream_id,
+                                                           &frame_type,
+                                                           &flags));
     CuAssertIntEquals(tc, 0x03040506, stream_id);
     CuAssertIntEquals(tc, 0x01, frame_type);
     CuAssertIntEquals(tc, 0x02, flags);
@@ -1836,7 +1838,7 @@ static void test_http2_unframe_buckets(CuTest *tc)
   raw = serf_bucket_simple_create(raw_frame2, sizeof(raw_frame2),
                                   NULL, NULL, alloc);
 
-  unframe = serf_bucket_http2_unframe_create(raw, TRUE, 5, alloc);
+  unframe = serf__bucket_http2_unframe_create(raw, TRUE, 5, alloc);
 
   status = read_all(unframe, result2, sizeof(result2), &read_len);
   CuAssertIntEquals(tc, SERF_ERROR_HTTP2_FRAME_SIZE_ERROR, status);
@@ -1872,15 +1874,15 @@ static void test_http2_unpad_buckets(CuTest *tc)
   raw = serf_bucket_simple_create(raw_frame, sizeof(raw_frame)-1,
                                   NULL, NULL, alloc);
 
-  unframe = serf_bucket_http2_unframe_create(raw, FALSE, SERF_READ_ALL_AVAIL,
-                                             alloc);
+  unframe = serf__bucket_http2_unframe_create(raw, FALSE, SERF_READ_ALL_AVAIL,
+                                              alloc);
 
   {
     apr_int32_t streamid;
     unsigned char frame_type, flags;
 
-    status = serf_bucket_http2_unframe_read_info(unframe, &streamid,
-                                                 &frame_type, &flags);
+    status = serf__bucket_http2_unframe_read_info(unframe, &streamid,
+                                                  &frame_type, &flags);
 
     CuAssertIntEquals(tc, APR_SUCCESS, status);
     CuAssertIntEquals(tc, 7, streamid);
@@ -1888,9 +1890,9 @@ static void test_http2_unpad_buckets(CuTest *tc)
     CuAssertIntEquals(tc, 8, flags);
   }
 
-  unpad = serf_bucket_http2_unpad_create(unframe, TRUE, alloc);
+  unpad = serf__bucket_http2_unpad_create(unframe, TRUE, alloc);
 
-  CuAssertTrue(tc, SERF_BUCKET_IS_HTTP2_UNPAD(unpad));
+  CuAssertTrue(tc, SERF__BUCKET_IS_HTTP2_UNPAD(unpad));
 
   status = read_all(unpad, result1, sizeof(result1), &read_len);
   CuAssertIntEquals(tc, APR_EOF, status);
@@ -1899,11 +1901,11 @@ static void test_http2_unpad_buckets(CuTest *tc)
   read_and_check_bucket(tc, raw, "Extra");
 
   raw = serf_bucket_simple_create("\0a", 2, NULL, NULL, alloc);
-  unpad = serf_bucket_http2_unpad_create(raw, TRUE, alloc);
+  unpad = serf__bucket_http2_unpad_create(raw, TRUE, alloc);
   read_and_check_bucket(tc, unpad, "a");
 
   raw = serf_bucket_simple_create("\5a", 2, NULL, NULL, alloc);
-  unpad = serf_bucket_http2_unpad_create(raw, TRUE, alloc);
+  unpad = serf__bucket_http2_unpad_create(raw, TRUE, alloc);
 
   {
     const char *data;
@@ -2135,14 +2137,14 @@ static void test_hpack_header_encode(CuTest *tc)
 
   alloc = serf_bucket_allocator_create(tb->pool, NULL, NULL);
 
-  hpack = serf_bucket_hpack_create(NULL, alloc);
+  hpack = serf__bucket_hpack_create(NULL, alloc);
 
   CuAssertTrue(tc, SERF_BUCKET_IS_HPACK(hpack));
 
-  serf_bucket_hpack_setc(hpack, ":method", "PUT");
-  serf_bucket_hpack_setc(hpack, ":scheme", "https");
-  serf_bucket_hpack_setc(hpack, ":path", "/");
-  serf_bucket_hpack_setc(hpack, ":authority", "localhost");
+  serf__bucket_hpack_setc(hpack, ":method", "PUT");
+  serf__bucket_hpack_setc(hpack, ":scheme", "https");
+  serf__bucket_hpack_setc(hpack, ":path", "/");
+  serf__bucket_hpack_setc(hpack, ":authority", "localhost");
 
   CuAssertIntEquals(tc, APR_EOF,
                     read_all(hpack, resultbuffer, sizeof(resultbuffer), &sz));
@@ -2166,10 +2168,10 @@ static void test_http2_frame_bucket_basic(CuTest *tc)
   alloc = serf_bucket_allocator_create(tb->pool, NULL, NULL);
 
   body_in = SERF_BUCKET_SIMPLE_STRING("This is no config!", alloc);
-  frame_in = serf_bucket_http2_frame_create(body_in, 99, 7, &exp_streamid,
-                                            NULL, NULL,
-                                            16384, NULL, NULL, alloc);
-  frame_out = serf_bucket_http2_unframe_create(frame_in, FALSE, 16384, alloc);
+  frame_in = serf__bucket_http2_frame_create(body_in, 99, 7, &exp_streamid,
+                                             NULL, NULL,
+                                             16384, NULL, NULL, alloc);
+  frame_out = serf__bucket_http2_unframe_create(frame_in, FALSE, 16384, alloc);
 
   read_and_check_bucket(tc, frame_out, "This is no config!");
 
@@ -2181,8 +2183,8 @@ static void test_http2_frame_bucket_basic(CuTest *tc)
     apr_size_t sz;
 
     CuAssertIntEquals(tc, 0,
-                      serf_bucket_http2_unframe_read_info(frame_out, &streamid,
-                                                          &frametype, &flags));
+                      serf__bucket_http2_unframe_read_info(frame_out, &streamid,
+                                                           &frametype, &flags));
     CuAssertIntEquals(tc, 0x01020304, streamid);
     CuAssertIntEquals(tc, 99, frametype);
     CuAssertIntEquals(tc, 7, flags);
