@@ -28,6 +28,7 @@
 #include "serf_bucket_util.h"
 
 #include "serf_private.h"
+#include "protocols/http2_buckets.h"
 #include "protocols/http2_protocol.h"
 
 static apr_status_t
@@ -41,6 +42,88 @@ http2_protocol_hangup(serf_connection_t *conn);
 
 static void
 http2_protocol_teardown(serf_connection_t *conn);
+
+static serf_bucket_t *
+serf_bucket_create_numberv(serf_bucket_alloc_t *allocator, const char *format, ...)
+{
+  va_list va;
+  const char *c;
+  char *buffer;
+  apr_size_t sz = 0;
+  unsigned char *r;
+
+  va_start(va, format);
+
+  for (c = format; *c; c++)
+    {
+      switch (*c)
+      {
+        case '1': /* char */
+          sz += 1;
+          break;
+        case '2': /* apr_int16_t / apr_uint16_t */
+          sz += 2;
+          break;
+        case '3': /* apr_int32_t / apr_uint32_t */
+          sz += 3;
+          break;
+        case '4': /* apr_int32_t / apr_uint32_t */
+          sz += 4;
+          break;
+        case '8': /* apr_int64_t / apr_uint64_t */
+          sz += 8;
+          break;
+        default:
+          abort(); /* Invalid format */
+      }
+    }
+
+  buffer = serf_bucket_mem_alloc(allocator, sz);
+  r = (void*)buffer;
+  for (c = format; *c; c++)
+    {
+        apr_uint32_t tmp;
+        apr_uint64_t tmp_64;
+
+       switch (*c)
+        {
+          case '1':
+            *r++ = va_arg(va, char);
+            break;
+          case '2':
+            tmp = va_arg(va, apr_uint16_t);
+            *r++ = (tmp >> 8) & 0xFF;
+            *r++ = tmp & 0xFF;
+            break;
+          case '3':
+            tmp = va_arg(va, apr_uint32_t);
+            *r++ = (tmp >> 16) & 0xFF;
+            *r++ = (tmp >> 8) & 0xFF;
+            *r++ = tmp & 0xFF;
+            break;
+          case '4':
+            tmp = va_arg(va, apr_uint32_t);
+            *r++ = (tmp >> 24) & 0xFF;
+            *r++ = (tmp >> 16) & 0xFF;
+            *r++ = (tmp >> 8) & 0xFF;
+            *r++ = tmp & 0xFF;
+            break;
+          case '8':
+            tmp_64 = va_arg(va, apr_uint64_t);
+            *r++ = (tmp_64 >> 56) & 0xFF;
+            *r++ = (tmp_64 >> 48) & 0xFF;
+            *r++ = (tmp_64 >> 40) & 0xFF;
+            *r++ = (tmp_64 >> 32) & 0xFF;
+            *r++ = (tmp_64 >> 24) & 0xFF;
+            *r++ = (tmp_64 >> 16) & 0xFF;
+            *r++ = (tmp_64 >> 8) & 0xFF;
+            *r++ = tmp_64 & 0xFF;
+            break;
+       }
+    }
+  return serf_bucket_simple_own_create(buffer, sz, allocator);
+}
+
 
 typedef struct serf_http2_stream_t
 {
@@ -76,6 +159,8 @@ typedef struct serf_http2_procotol_state_t
 {
   apr_pool_t *pool;
   serf_bucket_t *ostream;
+
+  serf_hpack_table_t *hpack_tbl;
 
   apr_int64_t lr_window; /* local->remote */
   apr_int64_t rl_window; /* remote->local */
@@ -121,6 +206,8 @@ void serf__http2_protocol_init(serf_connection_t *conn)
 
   ctx->first = ctx->last = NULL;
 
+  ctx->hpack_tbl = serf__hpack_table_create(TRUE, 16384, protocol_pool);
+
   apr_pool_cleanup_register(protocol_pool, conn, http2_protocol_cleanup,
                             apr_pool_cleanup_null);
 
@@ -141,27 +228,27 @@ void serf__http2_protocol_init(serf_connection_t *conn)
 
   /* And now a settings frame and a huge window */
   {
-    serf_bucket_t *no_settings;
+    serf_bucket_t *settings;
     serf_bucket_t *window_size;
-    apr_int32_t frame_id = 0;
 
-    no_settings = serf_bucket_simple_create("", 0, NULL, NULL, conn->allocator);
-    tmp = serf_bucket_http2_frame_create(no_settings, HTTP2_FRAME_TYPE_SETTINGS, 0,
-                                         &frame_id, NULL, NULL, /* Static id: 0*/
-                                         HTTP2_DEFAULT_MAX_FRAMESIZE,
-                                         NULL, NULL, conn->allocator);
+    settings = serf_bucket_create_numberv(conn->allocator, "24",
+                              (apr_int16_t)HTTP2_SETTING_HEADER_TABLE_SIZE,
+                              (apr_int32_t)0);
+    tmp = serf__bucket_http2_frame_create(settings, HTTP2_FRAME_TYPE_SETTINGS, 0,
+                                          NULL, NULL, NULL, /* Static id: 0*/
+                                          HTTP2_DEFAULT_MAX_FRAMESIZE,
+                                          NULL, NULL, conn->allocator);
 
     serf_bucket_aggregate_append(ctx->ostream, tmp);
 
     /* Add 2GB - 65535 to the current window.
        (Adding 2GB -1 appears to overflow at at least one server) */
-    window_size = serf_bucket_simple_create("\x7F\xFF\x00\x00", 4, NULL, NULL,
-                                            conn->allocator);
-    tmp = serf_bucket_http2_frame_create(window_size,
-                                         HTTP2_FRAME_TYPE_WINDOW_UPDATE, 0,
-                                         &frame_id, NULL, NULL,
-                                         HTTP2_DEFAULT_MAX_FRAMESIZE,
-                                         NULL, NULL, conn->allocator);
+    window_size = serf_bucket_create_numberv(conn->allocator, "4", 0x7FFF0000);
+    tmp = serf__bucket_http2_frame_create(window_size,
+                                          HTTP2_FRAME_TYPE_WINDOW_UPDATE, 0,
+                                          NULL, NULL, NULL,
+                                          HTTP2_DEFAULT_MAX_FRAMESIZE,
+                                          NULL, NULL, conn->allocator);
     serf_bucket_aggregate_append(ctx->ostream, tmp);
   }
 }
@@ -201,12 +288,12 @@ setup_for_http2(serf_http2_procotol_state_t *ctx,
       request->req_bkt = NULL;
     }
   
-  hpack = serf_bucket_http2_frame_create(hpack, HTTP2_FRAME_TYPE_HEADERS,
-                                         HTTP2_FLAG_END_STREAM
-                                         | HTTP2_FLAG_END_HEADERS,
-                                         &streamid, NULL, NULL,
-                                         HTTP2_DEFAULT_MAX_FRAMESIZE,
-                                         NULL, NULL, request->allocator);
+  hpack = serf__bucket_http2_frame_create(hpack, HTTP2_FRAME_TYPE_HEADERS,
+                                          HTTP2_FLAG_END_STREAM
+                                          | HTTP2_FLAG_END_HEADERS,
+                                          &streamid, NULL, NULL,
+                                          HTTP2_DEFAULT_MAX_FRAMESIZE,
+                                          NULL, NULL, request->allocator);
 
   serf_bucket_aggregate_append(ctx->ostream, hpack);
 
@@ -252,40 +339,49 @@ http2_read(serf_connection_t *conn)
           if (! ctx->in_payload)
             {
               unsigned char flags;
+              unsigned char frametype;
 
-              status = serf_bucket_http2_unframe_read_info(ctx->cur_frame,
-                                                           NULL, NULL, &flags);
-
-              if (!SERF_BUCKET_READ_ERROR(status))
-                {
-                  ctx->in_payload = TRUE;
-
-                  if (flags & HTTP2_FLAG_PADDED)
-                    {
-                      ctx->cur_payload =
-                        serf_bucket_http2_unpad_create(
-                              ctx->cur_frame, TRUE,
-                              ctx->cur_frame->allocator);
-                    }
-                  else
-                    ctx->cur_payload = ctx->cur_frame;
-                }
+              status = serf__bucket_http2_unframe_read_info(ctx->cur_frame,
+                                                            NULL, &frametype,
+                                                            &flags);
 
               if (status)
                 break;
+
+              ctx->in_payload = TRUE;
+
+              if (flags & HTTP2_FLAG_PADDED)
+                {
+                  ctx->cur_payload =
+                        serf__bucket_http2_unpad_create(
+                              ctx->cur_frame, TRUE,
+                              ctx->cur_frame->allocator);
+                }
+              else
+                ctx->cur_payload = ctx->cur_frame;
+
+              if (frametype == HTTP2_FRAME_TYPE_HEADERS)
+                {
+                  ctx->cur_payload = serf__bucket_hpack_decode_create(
+                                            ctx->cur_payload,
+                                            NULL, NULL,
+                                            16384, ctx->hpack_tbl,
+                                            ctx->cur_frame->allocator);
+                }
             }
 
-          status = serf_bucket_read(ctx->cur_frame,
+          status = serf_bucket_read(ctx->cur_payload,
                                     sizeof(ctx->buffer) - ctx->buffer_used,
                                     &data, &len);
 
-          if (!SERF_BUCKET_READ_ERROR(status))
+          if (SERF_BUCKET_READ_ERROR(status))
+            break;
+
+          if (len)
             {
               memcpy(&ctx->buffer[ctx->buffer_used], data, len);
               ctx->buffer_used += len;
             }
-          else
-            break;
 
           if (APR_STATUS_IS_EOF(status))
             {
@@ -293,12 +389,20 @@ http2_read(serf_connection_t *conn)
               unsigned char frametype;
               unsigned char flags;
 
-              serf_bucket_http2_unframe_read_info(ctx->cur_frame,
-                                                  &streamid, &frametype,
-                                                  &flags);
+              serf__bucket_http2_unframe_read_info(ctx->cur_frame,
+                                                   &streamid, &frametype,
+                                                   &flags);
               serf__log(LOGLVL_INFO, LOGCOMP_CONN, __FILE__, conn->config,
-                        "Read 0x%02x http2 frame on stream 0x%x, flags=0x%x\n",
-                        (int)frametype, (int)streamid, (int)flags);
+                        "Read 0x%02x http2 frame on stream 0x%x, flags=0x%x, size=0x%x\n",
+                        (int)frametype, (int)streamid, (int)flags, (int)ctx->buffer_used);
+
+              if (frametype == HTTP2_FRAME_TYPE_DATA
+                  || frametype == HTTP2_FRAME_TYPE_HEADERS)
+                {
+                  /* Ugly hack to dump body. Memory LEAK! */
+                  serf__log(LOGLVL_INFO, LOGCOMP_CONN, __FILE__, conn->config,
+                            "%s\n", apr_pstrmemdup(conn->pool, ctx->buffer, ctx->buffer_used));
+                }
 
               if (frametype == HTTP2_FRAME_TYPE_GOAWAY && conn)
                 serf__log(LOGLVL_WARNING, LOGCOMP_CONN, __FILE__, conn->config,
@@ -307,6 +411,37 @@ http2_read(serf_connection_t *conn)
                                                                &ctx->buffer[8],
                                                                (ctx->buffer_used >= 8)
                                                                ? ctx->buffer_used-8 : 0));
+
+              if (frametype == HTTP2_FRAME_TYPE_SETTINGS)
+                {
+                  /* Always ack settings */
+                  serf_bucket_aggregate_append(
+                    ctx->ostream,
+                    serf__bucket_http2_frame_create(
+                                    NULL,
+                                    HTTP2_FRAME_TYPE_SETTINGS,
+                                    HTTP2_FLAG_ACK,
+                                    NULL, NULL, NULL,
+                                    HTTP2_DEFAULT_MAX_FRAMESIZE,
+                                    NULL, NULL, conn->allocator));
+                }
+              else if (frametype == HTTP2_FRAME_TYPE_DATA)
+                {
+                  /* Provide a bit of window space to the server after 
+                     receiving data */
+                  serf_bucket_aggregate_append(
+                    ctx->ostream,
+                    serf__bucket_http2_frame_create(
+                      serf_bucket_create_numberv(conn->allocator, "4", (apr_int32_t)16384),
+                              HTTP2_FRAME_TYPE_WINDOW_UPDATE, 0,
+                              &streamid, NULL, NULL,
+                              HTTP2_DEFAULT_MAX_FRAMESIZE,
+                              NULL, NULL, conn->allocator));
+                }
+              else if (frametype == HTTP2_FRAME_TYPE_PING)
+                {
+                  /* TODO: PONG (=Ping Ack) */
+                }
 
               serf_bucket_destroy(ctx->cur_payload);
               ctx->cur_frame = ctx->cur_payload = NULL;
@@ -332,9 +467,9 @@ http2_read(serf_connection_t *conn)
         }
 
       ctx->cur_frame = ctx->cur_payload =
-            serf_bucket_http2_unframe_create(conn->stream, FALSE,
-                                             HTTP2_DEFAULT_MAX_FRAMESIZE,
-                                             conn->stream->allocator);
+            serf__bucket_http2_unframe_create(conn->stream, FALSE,
+                                              HTTP2_DEFAULT_MAX_FRAMESIZE,
+                                              conn->stream->allocator);
     }
 
   return status;
