@@ -242,23 +242,217 @@ serf__hpack_huffman_encode(const char *text,
 
 /* ==================================================================== */
 
-typedef struct serf_hpack_item_t
+typedef struct serf_hpack_entry_t
 {
   const char *key;
   apr_size_t key_len;
   const char *value;
   apr_size_t value_len;
 
-  struct serf_hpack_item_t *next;
-  struct serf_hpack_item_t *prev;
-} serf_hpack_item_t;
+  struct serf_hpack_entry_t *next;
+  struct serf_hpack_entry_t *prev;
+
+  char free_key; /* Key must be freed */
+  char free_val; /* Value must be freed */
+} serf_hpack_entry_t;
+
+static void hpack_free_entry(serf_hpack_entry_t *entry,
+                             serf_bucket_alloc_t *alloc)
+{
+  if (entry->free_key)
+    serf_bucket_mem_free(alloc, (char*)entry->key);
+  if (entry->free_val)
+    serf_bucket_mem_free(alloc, (char*)entry->value);
+  serf_bucket_mem_free(alloc, entry);
+}
+
+/* https://tools.ietf.org/html/rfc7541#section-4.1 
+
+  The size of an entry is the sum of its name's length in octets (as
+  defined in Section 5.2), its value's length in octets, and 32.
+
+  The size of an entry is calculated using the length of its name and
+  value without any Huffman encoding applied.
+*/
+#define HPACK_ENTRY_SIZE(hi) (hi->key_len + hi->value_len + 32)
+
+struct serf_hpack_table_t
+{
+  apr_pool_t *pool;
+  serf_bucket_alloc_t *alloc;
+
+  char lowercase_keys;
+  char send_tablesize_update;
+
+  /* The local -> remote 'encoder' list */
+  serf_hpack_entry_t *lr_first, *lr_last, *lr_start;
+  unsigned int lr_count; /* Number of items (first..last) */
+  unsigned int lr_indexable; /* Number of items (start..last) */
+  unsigned int lr_size; /* 'Bytes' in list, calculated by HPACK_ENTRY_SIZE() */
+  unsigned int lr_max_table_size;
+
+  serf_hpack_entry_t *rl_first, *rl_last, *rl_start;
+  unsigned int rl_count; /* Number of items (first..last) */
+  unsigned int rl_indexable; /* Number of items (start..last) */
+  unsigned int rl_size; /* 'Bytes' in list, calculated by HPACK_ENTRY_SIZE() */
+  unsigned int rl_max_table_size;
+};
+
+/* The staticly defined list of pre-encoded entries. All numbers above
+   this list are dynamically defined, so some new standard is needed to
+   extend this list */
+static const serf_hpack_entry_t hpack_static_table[] =
+{
+#define HPACK_STR(x)   x, (sizeof(x)-1)
+  {/* 1*/ HPACK_STR(":authority"),                 HPACK_STR("")},
+  {/* 2*/ HPACK_STR(":method"),                    HPACK_STR("GET")},
+  {/* 3*/ HPACK_STR(":method"),                    HPACK_STR("POST")},
+  {/* 4*/ HPACK_STR(":path"),                      HPACK_STR("/")},
+  {/* 5*/ HPACK_STR(":path"),                      HPACK_STR("/index.html") },
+  {/* 6*/ HPACK_STR(":scheme"),                    HPACK_STR("http")},
+  {/* 7*/ HPACK_STR(":scheme"),                    HPACK_STR("https")},
+  {/* 8*/ HPACK_STR(":status"),                    HPACK_STR("200")},
+  {/* 9*/ HPACK_STR(":status"),                    HPACK_STR("204")},
+  {/*10*/ HPACK_STR(":status"),                    HPACK_STR("206")},
+  {/*11*/ HPACK_STR(":status"),                    HPACK_STR("304")},
+  {/*12*/ HPACK_STR(":status"),                    HPACK_STR("400")},
+  {/*13*/ HPACK_STR(":status"),                    HPACK_STR("404")},
+  {/*14*/ HPACK_STR(":status"),                    HPACK_STR("500")},
+  {/*15*/ HPACK_STR("accept-charset"),             HPACK_STR("")},
+  {/*16*/ HPACK_STR("accept-encoding"),            HPACK_STR("gzip, deflate")},
+  {/*17*/ HPACK_STR("accept-language"),            HPACK_STR("")},
+  {/*18*/ HPACK_STR("accept-ranges"),              HPACK_STR("")},
+  {/*19*/ HPACK_STR("accept"),                     HPACK_STR("")},
+  {/*20*/ HPACK_STR("access-control-allow-origin"),HPACK_STR("")},
+  {/*21*/ HPACK_STR("age"),                        HPACK_STR("")},
+  {/*22*/ HPACK_STR("allow"),                      HPACK_STR("")},
+  {/*23*/ HPACK_STR("authorization"),              HPACK_STR("")},
+  {/*24*/ HPACK_STR("cache-control"),              HPACK_STR("")},
+  {/*25*/ HPACK_STR("content-disposition"),        HPACK_STR("")},
+  {/*26*/ HPACK_STR("content-encoding"),           HPACK_STR("")},
+  {/*27*/ HPACK_STR("content-language"),           HPACK_STR("")},
+  {/*28*/ HPACK_STR("content-length"),             HPACK_STR("")},
+  {/*29*/ HPACK_STR("content-location"),           HPACK_STR("")},
+  {/*30*/ HPACK_STR("content-range"),              HPACK_STR("")},
+  {/*31*/ HPACK_STR("content-type"),               HPACK_STR("")},
+  {/*32*/ HPACK_STR("cookie"),                     HPACK_STR("")},
+  {/*33*/ HPACK_STR("date"),                       HPACK_STR("")},
+  {/*34*/ HPACK_STR("etag"),                       HPACK_STR("")},
+  {/*35*/ HPACK_STR("expect"),                     HPACK_STR("")},
+  {/*36*/ HPACK_STR("expires"),                    HPACK_STR("")},
+  {/*37*/ HPACK_STR("from"),                       HPACK_STR("")},
+  {/*38*/ HPACK_STR("host"),                       HPACK_STR("")},
+  {/*39*/ HPACK_STR("if-match"),                   HPACK_STR("")},
+  {/*40*/ HPACK_STR("if-modified-since"),          HPACK_STR("")},
+  {/*41*/ HPACK_STR("if-none-match"),              HPACK_STR("")},
+  {/*42*/ HPACK_STR("if-range"),                   HPACK_STR("")},
+  {/*43*/ HPACK_STR("if-unmodified-since"),        HPACK_STR("")},
+  {/*44*/ HPACK_STR("last-modified"),              HPACK_STR("")},
+  {/*45*/ HPACK_STR("link"),                       HPACK_STR("")},
+  {/*46*/ HPACK_STR("location"),                   HPACK_STR("")},
+  {/*47*/ HPACK_STR("max-forwards"),               HPACK_STR("")},
+  {/*48*/ HPACK_STR("proxy-authenticate"),         HPACK_STR("")},
+  {/*49*/ HPACK_STR("proxy-authorization"),        HPACK_STR("")},
+  {/*50*/ HPACK_STR("range"),                      HPACK_STR("")},
+  {/*51*/ HPACK_STR("referer"),                    HPACK_STR("")},
+  {/*52*/ HPACK_STR("refresh"),                    HPACK_STR("")},
+  {/*53*/ HPACK_STR("retry-after"),                HPACK_STR("")},
+  {/*54*/ HPACK_STR("server"),                     HPACK_STR("")},
+  {/*55*/ HPACK_STR("set-cookie"),                 HPACK_STR("")},
+  {/*56*/ HPACK_STR("strict-transport-security"),  HPACK_STR("")},
+  {/*57*/ HPACK_STR("transfer-encoding"),          HPACK_STR("")},
+  {/*58*/ HPACK_STR("user-agent"),                 HPACK_STR("")},
+  {/*59*/ HPACK_STR("vary"),                       HPACK_STR("")},
+  {/*60*/ HPACK_STR("via"),                        HPACK_STR("")},
+  {/*61*/ HPACK_STR("www-authenticate"),           HPACK_STR("")}
+#undef HPACK_STR
+};
+static const apr_uint64_t hpack_static_table_count =
+      (sizeof(hpack_static_table) / sizeof(hpack_static_table[0]));
+
+
+serf_hpack_table_t *
+serf_hpack_table_create(int for_http2,
+                        apr_size_t default_max_table_size,
+                        apr_pool_t *result_pool)
+{
+  serf_hpack_table_t *tbl = apr_pcalloc(result_pool, sizeof(*tbl));
+
+  tbl->pool = result_pool;
+  tbl->alloc = serf_bucket_allocator_create(result_pool, NULL, NULL);
+
+  tbl->lr_max_table_size = default_max_table_size;
+  tbl->rl_max_table_size = default_max_table_size;
+
+  tbl->lowercase_keys = FALSE;
+  tbl->send_tablesize_update = FALSE;
+
+  if (for_http2)
+    {
+      /* HTTP2 (aka RFC7540) has some additional rules on how it uses HPACK
+         (aka RFC7541), most notably that all header keys *MUST* be lowercase.
+
+         Let's keep this thing generic and keep this as a configuration knob.
+       */
+      tbl->lowercase_keys = TRUE;
+    }
+
+  return tbl;
+}
+
+static apr_status_t
+hpack_table_get(apr_uint64_t v,
+                serf_hpack_table_t *tbl,
+                const char **key,
+                apr_size_t *key_size,
+                const char **value,
+                apr_size_t *value_size)
+{
+  const serf_hpack_entry_t *entry = NULL;
+  if (v == 0)
+    return SERF_ERROR_HTTP2_COMPRESSION_ERROR;
+
+  v--;
+  if (v < hpack_static_table_count)
+    entry = &hpack_static_table[v];
+  else
+    {
+      serf_hpack_entry_t *i;
+      v -= sizeof(hpack_static_table) / sizeof(hpack_static_table[0]);
+
+      for (i = tbl->rl_start; i; i = i->next)
+        {
+          if (!v)
+            {
+              entry = i;
+              break;
+            }
+          v--;
+        }
+    }
+
+  if (!entry)
+    return SERF_ERROR_HTTP2_COMPRESSION_ERROR;
+
+  if (key)
+    *key = entry->key;
+  if (key_size)
+    *key_size = entry->key_len;
+  if (value)
+    *value = entry->value;
+  if (value_size)
+    *value_size = entry->value_len;
+
+  return APR_SUCCESS;
+}
 
 typedef struct serf_hpack_context_t
 {
   serf_bucket_alloc_t *alloc;
+  serf_hpack_table_t *tbl;
 
-  serf_hpack_item_t *first;
-  serf_hpack_item_t *last;
+  serf_hpack_entry_t *first;
+  serf_hpack_entry_t *last;
 } serf_hpack_context_t;
 
 static apr_status_t
@@ -268,6 +462,7 @@ hpack_copy_from_headers(void *baton,
 {
   serf_bucket_t *hpack = baton;
 
+  /* TODO: Others? */
   if (!strcasecmp(key, "Host")
       || !strcasecmp(key, "Connection")
       || !strncasecmp(key, "Connection-", 11))
@@ -314,11 +509,11 @@ serf__bucket_hpack_create_from_request(serf_bucket_t **new_hpack_bucket,
 serf_bucket_t *
 serf_bucket_hpack_create(serf_hpack_table_t *hpack_table,
                          serf_bucket_alloc_t *allocator)
-
 {
   serf_hpack_context_t *ctx = serf_bucket_mem_alloc(allocator, sizeof(*ctx));
 
   ctx->alloc = allocator;
+  ctx->tbl = hpack_table;
   ctx->first = ctx->last = NULL;
 
   return serf_bucket_create(&serf_bucket_type_hpack, allocator, ctx);
@@ -336,18 +531,19 @@ void serf_bucket_hpack_setc(serf_bucket_t *hpack_bucket,
 void serf_bucket_hpack_setx(serf_bucket_t *hpack_bucket,
                             const char *key,
                             apr_size_t key_size,
-                            int header_copy,
+                            int key_copy,
                             const char *value,
                             apr_size_t value_size,
                             int value_copy)
 {
   serf_hpack_context_t *ctx = hpack_bucket->data;
-  serf_hpack_item_t *hi;
+  serf_hpack_entry_t *entry;
+  apr_size_t i;
 
-  for (hi = ctx->first; hi; hi = hi->next)
+  for (entry = ctx->first; entry; entry = entry->next)
     {
-      if (key_size == hi->key_len
-          && !strncasecmp(key, hi->key, key_size))
+      if (key_size == entry->key_len
+          && !strncasecmp(key, entry->key, key_size))
         {
           break;
         }
@@ -355,53 +551,90 @@ void serf_bucket_hpack_setx(serf_bucket_t *hpack_bucket,
 
   /* TODO: Handle *_copy by keeping some flags */
 
-  if (hi && value[0] == ':')
+  if (entry && value[0] == ':')
     {
-      serf_bucket_mem_free(ctx->alloc, (void*)hi->value);
-      hi->value = serf_bstrmemdup(ctx->alloc, value, value_size);
-      hi->value_len = value_size;
+      if (entry->free_val)
+        serf_bucket_mem_free(ctx->alloc, (void*)entry->value);
+
+      entry->value = serf_bstrmemdup(ctx->alloc, value, value_size);
+      entry->value_len = value_size;
+      entry->free_val = TRUE;
 
       return;
     }
-  else if (hi)
+  else if (entry)
     {
       /* We probably want to allow duplicate *and* join behavior? */
     }
 
-  hi = serf_bucket_mem_alloc(ctx->alloc, sizeof(*hi));
+  entry = serf_bucket_mem_calloc(ctx->alloc, sizeof(*entry));
 
-  /* Convert keys to lower case as in RFC? Or keep case for
-     1.1 like compatibility */
-
-  hi->key = serf_bstrmemdup(ctx->alloc, key, key_size);
-  hi->key_len = key_size;
-  hi->value = serf_bstrmemdup(ctx->alloc, value, value_size);
-  hi->value_len = value_size;
-
-  hi->prev = ctx->last;
-  hi->next = NULL;
-  if (ctx->last)
+  if (ctx->tbl && ctx->tbl->lowercase_keys)
     {
-      ctx->last->next = hi;
-      ctx->last = hi;
+      /* https://tools.ietf.org/html/rfc7540#section-8.1.2
+         Just as in HTTP/1.x, header field names are strings of ASCII
+         characters that are compared in a case-insensitive fashion.  However,
+         header field names MUST be converted to lowercase prior to their
+         encoding in HTTP/2.  A request or response containing uppercase
+         header field names MUST be treated as malformed (Section 8.1.2.6). */
+
+      char *ckey = serf_bstrmemdup(ctx->alloc, key, key_size);
+      for (i = 0; i < key_size; i++)
+        {
+          if (ckey[i] >= 'A' && key[i] <= 'Z')
+            ckey[i] += ('a' - 'A');
+        }
+      entry->key = ckey;
+      entry->free_key = TRUE;
+    }
+  else if (!key_copy)
+    {
+      entry->key = key;
+      entry->free_key = FALSE;
     }
   else
-    ctx->first = ctx->last = hi;
+    {
+      entry->key = serf_bstrmemdup(ctx->alloc, key, key_size);
+      entry->free_key = TRUE;
+    }
+
+  entry->key_len = key_size;
+  if (value_copy)
+    {
+      entry->value = serf_bstrmemdup(ctx->alloc, value, value_size);
+      entry->free_val = TRUE;
+    }
+  else
+    {
+      entry->value = value;
+      entry->free_val = FALSE;
+    }
+  entry->value_len = value_size;
+
+  entry->prev = ctx->last;
+  entry->next = NULL;
+  if (ctx->last)
+    {
+      ctx->last->next = entry;
+      ctx->last = entry;
+    }
+  else
+    ctx->first = ctx->last = entry;
 }
 
 const char *serf_bucket_hpack_getc(serf_bucket_t *hpack_bucket,
                                    const char *key)
 {
   serf_hpack_context_t *ctx = hpack_bucket->data;
-  serf_hpack_item_t *hi;
+  serf_hpack_entry_t *entry;
   apr_size_t key_len = strlen(key);
 
-  for (hi = ctx->first; hi; hi = hi->next)
+  for (entry = ctx->first; entry; entry = entry->next)
     {
-      if (key_len == hi->key_len
-          && !strncasecmp(key, hi->key, key_len))
+      if (key_len == entry->key_len
+          && !strncasecmp(key, entry->key, key_len))
       {
-        return hi->value;
+        return entry->value;
       }
     }
 
@@ -413,11 +646,11 @@ void serf_bucket_hpack_do(serf_bucket_t *hpack_bucket,
                           void *baton)
 {
   serf_hpack_context_t *ctx = hpack_bucket->data;
-  serf_hpack_item_t *hi;
+  serf_hpack_entry_t *entry;
 
-  for (hi = ctx->first; hi; hi = hi->next)
+  for (entry = ctx->first; entry; entry = entry->next)
     {
-      if (func(baton, hi->key, hi->key_len, hi->value, hi->value_len))
+      if (func(baton, entry->key, entry->key_len, entry->value, entry->value_len))
         break;
     }
 }
@@ -465,18 +698,19 @@ serialize(serf_bucket_t *bucket)
   serf_hpack_context_t *ctx = bucket->data;
   serf_bucket_alloc_t *alloc = ctx->alloc;
 
-  serf_hpack_item_t *hi;
-  serf_hpack_item_t *next;
+  serf_hpack_entry_t *entry;
+  serf_hpack_entry_t *next;
 
   /* Put on our aggregate bucket cloak */
   serf_bucket_aggregate_become(bucket);
 
-  for (hi = ctx->first; hi; hi = next)
+  for (entry = ctx->first; entry; entry = next)
     {
       char intbuf[10];
       apr_size_t intbuf_len;
+      serf_bucket_t *v;
 
-      next = hi->next;
+      next = entry->next;
 
       /* Literal header, no indexing (=has a name) */
       hpack_int(0x40, 6, 0, intbuf, &intbuf_len);
@@ -485,23 +719,35 @@ serialize(serf_bucket_t *bucket)
               serf_bucket_simple_copy_create(intbuf, intbuf_len, alloc));
 
       /* Name is literal, no huffman encoding */
-      hpack_int(0, 7, hi->key_len, intbuf, &intbuf_len);
+      hpack_int(0, 7, entry->key_len, intbuf, &intbuf_len);
       serf_bucket_aggregate_append(bucket,
               serf_bucket_simple_copy_create(intbuf, intbuf_len, alloc));
 
-      serf_bucket_aggregate_append(bucket,
-              serf_bucket_simple_own_create(hi->key, hi->key_len, alloc));
+      if (entry->free_key)
+        v = serf_bucket_simple_own_create(entry->key, entry->key_len,
+                                          alloc);
+      else
+        v = serf_bucket_simple_create(entry->key, entry->key_len, NULL, NULL,
+                                      alloc);
+
+      serf_bucket_aggregate_append(bucket, v);
 
       /* Value is literal, no huffman encoding */
-      hpack_int(0, 7, hi->value_len, intbuf, &intbuf_len);
+      hpack_int(0, 7, entry->value_len, intbuf, &intbuf_len);
       serf_bucket_aggregate_append(bucket,
               serf_bucket_simple_copy_create(intbuf, intbuf_len, alloc));
 
-      serf_bucket_aggregate_append(bucket,
-              serf_bucket_simple_own_create(hi->value, hi->value_len, alloc));
+      if (entry->free_key)
+        v = serf_bucket_simple_own_create(entry->value, entry->value_len,
+                                          alloc);
+      else
+        v = serf_bucket_simple_create(entry->value, entry->value_len, NULL,
+                                      NULL, alloc);
+
+      serf_bucket_aggregate_append(bucket, v);
 
       /* We handed ownership of key and value, so we only have to free item */
-      serf_bucket_mem_free(alloc, hi);
+      serf_bucket_mem_free(alloc, entry);
     }
   ctx->first = ctx->last = NULL;
 
@@ -521,7 +767,7 @@ serf_hpack_read(serf_bucket_t *bucket,
   if (status)
     return status;
 
-  return serf_bucket_read(bucket, requested, data, len);
+  return bucket->type->read(bucket, requested, data, len);
 }
 
 static apr_status_t
@@ -536,7 +782,8 @@ serf_hpack_read_iovec(serf_bucket_t *bucket,
   if (status)
     return status;
 
-  return serf_bucket_read_iovec(bucket, requested, vecs_size, vecs, vecs_used);
+  return bucket->type->read_iovec(bucket, requested, vecs_size, vecs,
+                                  vecs_used);
 }
 
 static apr_status_t
@@ -549,25 +796,21 @@ serf_hpack_peek(serf_bucket_t *bucket,
   if (status)
     return status;
 
-  return serf_bucket_peek(bucket, data, len);
+  return bucket->type->peek(bucket, data, len);
 }
 
 static void
 serf_hpack_destroy_and_data(serf_bucket_t *bucket)
 {
   serf_hpack_context_t *ctx = bucket->data;
-  serf_hpack_item_t *hi;
-  serf_hpack_item_t *next;
+  serf_hpack_entry_t *hi;
+  serf_hpack_entry_t *next;
 
   for (hi = ctx->first; hi; hi = next)
     {
       next = hi->next;
 
-      /* TODO: Implement conditional free */
-
-      serf_bucket_mem_free(ctx->alloc, (char*)hi->key);
-      serf_bucket_mem_free(ctx->alloc, (char*)hi->value);
-      serf_bucket_mem_free(ctx->alloc, hi);
+      hpack_free_entry(hi, ctx->alloc);
     }
 
   serf_default_destroy_and_data(bucket);
@@ -586,4 +829,742 @@ const serf_bucket_type_t serf_bucket_type_hpack = {
   serf_default_read_bucket,
   serf_hpack_peek,
   serf_hpack_destroy_and_data,
+};
+
+/* ==================================================================== */
+
+typedef struct serf_hpack_decode_ctx_t
+{
+  serf_bucket_alloc_t *alloc;
+  serf_hpack_table_t *tbl;
+
+  serf_bucket_t *stream;
+  apr_size_t max_entry_size;
+
+  apr_status_t(*item_callback)(void *baton,
+                               const char *key,
+                               apr_size_t key_size,
+                               const char *value,
+                               apr_size_t value_size);
+  void *item_baton;
+
+  char *buffer;
+  apr_size_t buffer_size;
+  apr_size_t buffer_used;
+
+  const char *key; /* Allocated in tbl->alloc */
+  apr_size_t key_size;
+  const char *val; /* Allocated in tbl->alloc */
+  apr_size_t val_size;
+  char index_item;
+  char key_hm;
+  char val_hm;
+  apr_uint64_t reuse_item;
+
+  enum
+  {
+    HPACK_DECODE_STATE_KIND = 0,
+    HPACK_DECODE_STATE_INDEX,
+    HPACK_DECODE_STATE_KEYINDEX,
+    HPACK_DECODE_STATE_KEY_LEN,
+    HPACK_DECODE_STATE_KEY,
+    HPACK_DECODE_STATE_VALUE_LEN,
+    HPACK_DECODE_STATE_VALUE,
+    HPACK_DECODE_TABLESIZE_UPDATE
+  } state;
+  
+  /* When producing HTTP/1.1 style output */
+  serf_bucket_t *agg;
+  serf_databuf_t databuf;
+
+  char wrote_header;
+  char hit_eof;
+} serf_hpack_decode_ctx_t;
+
+/* Forward definition */
+static apr_status_t
+hpack_decode_databuf_reader(void *baton,
+                            apr_size_t bufsize,
+                            char *buf,
+                            apr_size_t *len);
+
+serf_bucket_t *
+serf_bucket_hpack_decode_create(serf_bucket_t *stream,
+                                apr_status_t (*item_callback)(
+                                        void *baton,
+                                        const char *key,
+                                        apr_size_t key_size,
+                                        const char *value,
+                                        apr_size_t value_size),
+                                void *item_baton,
+                                apr_size_t max_entry_size,
+                                serf_hpack_table_t *hpack_table,
+                                serf_bucket_alloc_t *alloc)
+{
+  serf_hpack_decode_ctx_t *ctx = serf_bucket_mem_calloc(alloc, sizeof(*ctx));
+
+  ctx->alloc = alloc;
+  ctx->tbl = hpack_table;
+  ctx->stream = stream;
+  ctx->max_entry_size = max_entry_size;
+
+  ctx->buffer_size = max_entry_size + 16;
+  ctx->buffer_used = 0;
+  ctx->buffer = serf_bucket_mem_alloc(alloc, ctx->buffer_size);
+
+  if (item_callback)
+    {
+      ctx->item_callback = item_callback;
+      ctx->item_baton = item_baton;
+      ctx->agg = NULL;
+    }
+  else
+    {
+      ctx->item_callback = NULL;
+      ctx->item_baton = NULL;
+      ctx->agg = serf_bucket_aggregate_create(alloc);
+
+      serf_databuf_init(&ctx->databuf);
+      ctx->databuf.read = hpack_decode_databuf_reader;
+      ctx->databuf.read_baton = ctx;
+    }
+
+  /* Prepare TBL for decoding */
+  ctx->tbl->rl_start = ctx->tbl->rl_first;
+  ctx->tbl->rl_indexable = ctx->tbl->rl_count;
+
+  return serf_bucket_create(&serf_bucket_type_hpack_decode, alloc, ctx);
+}
+
+static apr_status_t
+read_hpack_int(apr_uint64_t *v,
+               unsigned char *flags,
+               serf_bucket_t *bucket,
+               int bits)
+{
+  serf_hpack_decode_ctx_t *ctx = bucket->data;
+  apr_status_t status;
+  apr_uint16_t value_mask;
+  apr_uint64_t vv;
+
+  if (!ctx->buffer_used)
+    {
+      const char *data;
+      apr_size_t len;
+
+      status = serf_bucket_read(ctx->stream, 1, &data, &len);
+      if (status || len == 0)
+        return status ? status : APR_EAGAIN;
+
+      ctx->buffer[0] = *data;
+      ctx->buffer_used++;
+    }
+
+  value_mask = (1 << bits) - 1;
+
+  if (((unsigned char)ctx->buffer[0] & value_mask) != value_mask)
+    {
+      /* Everything fits in the initial byte :-) */
+      vv = ((unsigned char)ctx->buffer[0] & value_mask);
+    }
+  else
+    {
+      apr_size_t i;
+      do
+        {
+          const char *data;
+          apr_size_t len;
+
+          /* We already have all the bits we can store */
+          if ((7 * (ctx->buffer_used - 1) + bits) >= 64)
+            return SERF_ERROR_HTTP2_COMPRESSION_ERROR;
+
+          status = serf_bucket_read(ctx->stream, 1, &data, &len);
+          if (status || len == 0)
+            return status ? status : APR_EAGAIN;
+
+          ctx->buffer[ctx->buffer_used] = *data;
+          ctx->buffer_used++;
+        }
+      while (ctx->buffer[ctx->buffer_used - 1] & 0x80);
+
+      /* Check if the value could have been stored more efficiently */
+      if (ctx->buffer[ctx->buffer_used - 1] == 0)
+        return SERF_ERROR_HTTP2_COMPRESSION_ERROR;
+
+      vv = value_mask;
+
+      for (i = 1; i < ctx->buffer_used; i++)
+        vv += (apr_uint64_t)((unsigned char)ctx->buffer[i] & 0x7F) << (7 * (i - 1));
+    }
+
+  *v = vv;
+
+  if (flags)
+    *flags = (((unsigned char)ctx->buffer[0]) & ~value_mask);
+
+  ctx->buffer_used = 0;
+
+  return APR_SUCCESS;
+}
+
+static apr_status_t
+handle_read_entry_and_clear(serf_hpack_decode_ctx_t *ctx)
+{
+  serf_hpack_table_t *tbl = ctx->tbl;
+  const char *keep_key = NULL;
+  const char *keep_val = NULL;
+  apr_status_t status;
+  char own_key;
+  char own_val;
+
+  if (ctx->item_callback)
+    {
+      status = ctx->item_callback(ctx->item_baton,
+                                  ctx->key, ctx->key_size,
+                                  ctx->val, ctx->val_size);
+
+      if (status)
+        return status;
+    }
+  else if (!ctx->wrote_header)
+    {
+      serf_bucket_t *b;
+
+      if (ctx->key_size == 7 && !strcmp(ctx->key, ":status"))
+        {
+          ctx->wrote_header = TRUE;
+
+          b = SERF_BUCKET_SIMPLE_STRING("HTTP/2.0 ", ctx->alloc);
+          serf_bucket_aggregate_append(ctx->agg, b);
+
+          b = serf_bucket_simple_copy_create(ctx->val, ctx->val_size, ctx->alloc);
+          serf_bucket_aggregate_append(ctx->agg, b);
+
+          b = SERF_BUCKET_SIMPLE_STRING(" <http2>\r\n", ctx->alloc);
+          serf_bucket_aggregate_append(ctx->agg, b);
+        }
+      else if (ctx->key_size && ctx->key[0] == ':')
+        {
+          /* Ignore all magic headers */
+        }
+      else
+        {
+          /* Write some header with some status code first */
+          ctx->wrote_header = TRUE;
+
+          b = SERF_BUCKET_SIMPLE_STRING("HTTP/2.0 505 Missing ':status' header\r\n",
+                                        ctx->alloc);
+          serf_bucket_aggregate_append(ctx->agg, b);
+
+          /* And now the actual header */
+          b = serf_bucket_simple_copy_create(ctx->key, ctx->key_size, ctx->alloc);
+          serf_bucket_aggregate_append(ctx->agg, b);
+
+          b = SERF_BUCKET_SIMPLE_STRING(": ", ctx->alloc);
+          serf_bucket_aggregate_append(ctx->agg, b);
+
+          b = serf_bucket_simple_copy_create(ctx->val, ctx->val_size, ctx->alloc);
+          serf_bucket_aggregate_append(ctx->agg, b);
+
+          b = SERF_BUCKET_SIMPLE_STRING("\r\n", ctx->alloc);
+          serf_bucket_aggregate_append(ctx->agg, b);
+        }
+    }
+  else if (ctx->key_size && ctx->key[0] != ':')
+    {
+      serf_bucket_t *b;
+
+      /* Write header */
+      b = serf_bucket_simple_copy_create(ctx->key, ctx->key_size, ctx->alloc);
+      serf_bucket_aggregate_append(ctx->agg, b);
+
+      b = SERF_BUCKET_SIMPLE_STRING(": ", ctx->alloc);
+      serf_bucket_aggregate_append(ctx->agg, b);
+
+      b = serf_bucket_simple_copy_create(ctx->val, ctx->val_size, ctx->alloc);
+      serf_bucket_aggregate_append(ctx->agg, b);
+
+      b = SERF_BUCKET_SIMPLE_STRING("\r\n", ctx->alloc);
+      serf_bucket_aggregate_append(ctx->agg, b);
+    }
+
+  if (ctx->reuse_item)
+    {
+      status = hpack_table_get(ctx->reuse_item, tbl,
+                               &keep_key, NULL,
+                               &keep_val, NULL);
+    }
+
+  own_key = (ctx->key && ctx->key != keep_key);
+  own_val = (ctx->val && ctx->val != keep_val);
+
+  if (ctx->index_item)
+    {
+      serf_hpack_entry_t *entry = serf_bucket_mem_calloc(tbl->alloc,
+                                                         sizeof(*entry));
+
+      entry->key = own_key ? ctx->key : serf_bstrmemdup(tbl->alloc, ctx->key,
+                                                        ctx->key_size);
+      entry->value = own_val ? ctx->val : serf_bstrmemdup(tbl->alloc,
+                                                          ctx->val,
+                                                          ctx->val_size);
+      entry->free_key = entry->free_val = TRUE;
+      entry->next = tbl->rl_first;
+      tbl->lr_first = entry;
+      tbl->lr_count++;
+      tbl->lr_size += HPACK_ENTRY_SIZE(entry);
+      if (entry->next)
+        entry->next->prev = entry;
+
+      /* We don't update lr_start... that is the idea */
+    }
+  else
+    {
+      if (own_key)
+        serf_bucket_mem_free(tbl->alloc, (void*)ctx->key);
+      if (own_val)
+        serf_bucket_mem_free(tbl->alloc, (void*)ctx->val);
+    }
+  return APR_SUCCESS;
+}
+
+static apr_status_t
+hpack_process(serf_bucket_t *bucket)
+{
+  serf_hpack_decode_ctx_t *ctx = bucket->data;
+  apr_status_t status = APR_SUCCESS;
+
+  while (status == APR_SUCCESS)
+    {
+      switch (ctx->state)
+        {
+          case HPACK_DECODE_STATE_KIND:
+            {
+              unsigned char uc;
+              const char *data;
+              apr_size_t len;
+
+              status = serf_bucket_read(ctx->stream, 1, &data, &len);
+              if (status || !len)
+                continue;
+
+              ctx->key_hm = ctx->val_hm = FALSE;
+              ctx->reuse_item = 0;
+
+              uc = *data;
+              if (uc & 0x80)
+                {
+                  /* 6.1.  Indexed Header Field Representation
+                     https://tools.ietf.org/html/rfc7541#section-6.1 */
+
+                  ctx->state = HPACK_DECODE_STATE_INDEX;
+                  ctx->buffer[0] = *data;
+                  ctx->buffer_used = 1;
+                  ctx->index_item = FALSE;
+                }
+              else if (uc == 0x40 || uc == 0x00)
+                {
+                  /* 0x40: Literal Header Field with Incremental Indexing
+                           -- New Name
+                     https://tools.ietf.org/html/rfc7541#section-6.2.1
+                     0x00: Literal Header Field without Indexing
+                     https://tools.ietf.org/html/rfc7541#section-6.2.2 */
+
+                  ctx->state = HPACK_DECODE_STATE_KEY_LEN;
+                  ctx->buffer_used = 0;
+                  ctx->index_item = (uc == 0x40);
+                }
+              else if ((uc & 0x60) == 0x20)
+                {
+                  /* 6.3.  Dynamic Table Size Update
+                     https://tools.ietf.org/html/rfc7541#section-6.3 */
+                  ctx->state = HPACK_DECODE_TABLESIZE_UPDATE;
+                  ctx->buffer[0] = *data;
+                  ctx->buffer_used = 1;
+                }
+              else
+                {
+                  /* 6.2.1 Literal Header Field with Incremental Indexing
+                            -- Indexed Name
+                     https://tools.ietf.org/html/rfc7541#section-6.2.1
+                     6.2.3.  Literal Header Field Never Indexed
+                     https://tools.ietf.org/html/rfc7541#section-6.2.3 */
+
+                  ctx->state = HPACK_DECODE_STATE_KEYINDEX;
+                  ctx->buffer[0] = *data;
+                  ctx->buffer_used = 1;
+                  ctx->index_item = (uc & 0x40) != 0;
+                }
+              continue;
+            }
+          case HPACK_DECODE_STATE_INDEX:
+            {
+              apr_uint64_t v;
+              status = read_hpack_int(&v, NULL, bucket, 7);
+              if (status)
+                continue;
+              if (v == 0)
+                return SERF_ERROR_HTTP2_COMPRESSION_ERROR;
+
+              ctx->reuse_item = v;
+              status = hpack_table_get(v, ctx->tbl,
+                                       &ctx->key, &ctx->key_size,
+                                       &ctx->val, &ctx->val_size);
+              if (status)
+                continue;
+
+              status = handle_read_entry_and_clear(ctx);
+              if (status)
+                return status;
+
+              /* Get key and value from table and handle result */
+              ctx->state = HPACK_DECODE_STATE_KIND;
+              continue;
+            }
+          case HPACK_DECODE_STATE_KEYINDEX:
+            {
+              apr_uint64_t v;
+              status = read_hpack_int(&v, NULL, bucket,
+                                      ctx->index_item ? 6 : 4);
+              if (status)
+                continue;
+
+              ctx->reuse_item = v;
+              status = hpack_table_get(v, ctx->tbl,
+                                       &ctx->key, &ctx->key_size,
+                                       NULL, NULL);
+              if (status)
+                continue;
+
+              /* Get key from table */
+              ctx->state = HPACK_DECODE_STATE_VALUE_LEN;
+              continue;
+            }
+          case HPACK_DECODE_STATE_KEY_LEN:
+            {
+              apr_uint64_t v;
+              unsigned char flags;
+              status = read_hpack_int(&v, &flags, bucket, 7);
+              if (status)
+                continue;
+
+              ctx->key_hm = (flags & 0x80) != 0;
+
+              if (v > ctx->max_entry_size)
+                return SERF_ERROR_HTTP2_COMPRESSION_ERROR;
+
+              ctx->key_size = (apr_size_t)v;
+              ctx->state = HPACK_DECODE_STATE_KEY;
+              /* Fall through */
+            }
+          case HPACK_DECODE_STATE_KEY:
+            {
+              const char *data;
+              apr_size_t len;
+
+              if (ctx->key_size > 0)
+                {
+                  status = serf_bucket_read(ctx->stream,
+                                            ctx->key_size - ctx->buffer_used,
+                                            &data, &len);
+
+                  if (!SERF_BUCKET_READ_ERROR(status))
+                    {
+                      memcpy(&ctx->buffer[ctx->buffer_used],
+                             data, len);
+                      ctx->buffer_used += len;
+                    }
+                  else
+                    continue;
+                }
+              else
+                status = APR_SUCCESS;
+
+              if (ctx->buffer_used < ctx->key_size)
+                return status ? status : APR_EAGAIN;
+
+              if (ctx->key_hm)
+                {
+                  apr_size_t ks;
+                  apr_status_t status2;
+                  char *key;
+
+                  status2 = serf__hpack_huffman_decode((void*)ctx->buffer,
+                                                        ctx->key_size,
+                                                        0, NULL, &ks);
+
+                  if (status2)
+                    return status2;
+
+                  if (ks > ctx->max_entry_size)
+                    return SERF_ERROR_HTTP2_COMPRESSION_ERROR;
+
+                  key = serf_bucket_mem_alloc(ctx->tbl->alloc, ks + 1);
+
+                  status2 = serf__hpack_huffman_decode((void*)ctx->buffer,
+                                                        ctx->key_size,
+                                                        ks + 1, key,
+                                                        &ctx->key_size);
+                  if (status2)
+                    return status2;
+
+                  ctx->key = key;
+                }
+              else
+                ctx->key = serf_bstrmemdup(ctx->tbl->alloc, ctx->buffer,
+                                            ctx->key_size);
+
+              ctx->buffer_used = 0;
+              ctx->state = HPACK_DECODE_STATE_VALUE_LEN;
+              /* Fall through */
+            }
+          case HPACK_DECODE_STATE_VALUE_LEN:
+            {
+              apr_uint64_t v;
+              unsigned char flags;
+              status = read_hpack_int(&v, &flags, bucket, 7);
+              if (status)
+                continue;
+
+              ctx->val_hm = (flags & 0x80) != 0;
+
+              if (v > ctx->max_entry_size
+                  || (v + ctx->key_size) > ctx->max_entry_size)
+                return SERF_ERROR_HTTP2_COMPRESSION_ERROR;
+
+              ctx->val_size = (apr_size_t)v;
+              ctx->state = HPACK_DECODE_STATE_VALUE;
+              /* Fall through */
+            }
+          case HPACK_DECODE_STATE_VALUE:
+            {
+              const char *data;
+              apr_size_t len;
+
+              if (ctx->val_size > 0)
+                {
+                  status = serf_bucket_read(ctx->stream,
+                                            ctx->val_size - ctx->buffer_used,
+                                            &data, &len);
+
+                  if (!SERF_BUCKET_READ_ERROR(status))
+                    {
+                      memcpy(&ctx->buffer[ctx->buffer_used],
+                             data, len);
+                      ctx->buffer_used += len;
+                    }
+                  else
+                    continue;
+                }
+              else
+                status = APR_SUCCESS;
+
+              if (ctx->buffer_used < ctx->val_size)
+                return status ? status : APR_EAGAIN;
+
+              if (ctx->val_hm)
+                {
+                  apr_size_t ks;
+                  apr_status_t status2;
+                  char *val;
+
+                  status2 = serf__hpack_huffman_decode((void*)ctx->buffer,
+                                                        ctx->val_size,
+                                                        0, NULL, &ks);
+
+                  if (status2)
+                    return status2;
+
+                  if (ks > ctx->max_entry_size)
+                    return SERF_ERROR_HTTP2_COMPRESSION_ERROR;
+
+                  val = serf_bucket_mem_alloc(ctx->tbl->alloc, ks + 1);
+
+                  status2 = serf__hpack_huffman_decode((void*)ctx->buffer,
+                                                        ctx->val_size,
+                                                        ks + 1, val,
+                                                        &ctx->val_size);
+                  if (status2)
+                    return status2;
+
+                  ctx->val = val;
+                }
+              else
+                ctx->val = serf_bstrmemdup(ctx->tbl->alloc, ctx->buffer,
+                                            ctx->val_size);
+
+
+              status = handle_read_entry_and_clear(ctx);
+              if (status)
+                continue;
+
+              ctx->buffer_used = 0;
+              ctx->state = HPACK_DECODE_STATE_KIND;
+              continue;
+            }
+          case HPACK_DECODE_TABLESIZE_UPDATE:
+            {
+              apr_uint64_t v;
+
+              status = read_hpack_int(&v, NULL, bucket, 5);
+              if (status)
+                continue;
+
+              /* TODO: Store max size
+                 Verify if it is in allowed range, etc.
+                 The current code works, until we announce that we support
+                 a bigger table size. We might store too much data though
+               */
+              ctx->state = HPACK_DECODE_STATE_KIND;
+              continue;
+            }
+        default:
+          abort();
+      }
+    }
+
+  if (APR_STATUS_IS_EOF(status))
+    {
+      serf_bucket_t *b;
+      if (ctx->state != HPACK_DECODE_STATE_KIND)
+        return SERF_ERROR_HTTP2_COMPRESSION_ERROR;
+
+      if (!ctx->hit_eof)
+        {
+          ctx->hit_eof = TRUE;
+
+          if (!ctx->item_callback)
+            {
+              /* Write the final "\r\n" for http/1.1 compatibility */
+              b = SERF_BUCKET_SIMPLE_STRING("\r\n", ctx->alloc);
+              serf_bucket_aggregate_append(ctx->agg, b);
+            }
+        }
+    }
+
+  return status;
+}
+
+static apr_status_t
+hpack_decode_databuf_reader(void *baton,
+                            apr_size_t bufsize,
+                            char *buf,
+                            apr_size_t *len)
+{
+  serf_hpack_decode_ctx_t *ctx = baton;
+  apr_status_t status;
+  const char *data;
+
+  status = serf_bucket_read(ctx->agg, bufsize, &data, len);
+
+  if (SERF_BUCKET_READ_ERROR(status))
+    return status;
+
+  if (*len)
+    memcpy(buf, data, *len);
+
+  if (APR_STATUS_IS_EOF(status) && ctx->hit_eof)
+    return APR_EOF;
+  else
+    return APR_EAGAIN;
+}
+
+static apr_status_t
+serf_hpack_decode_read(serf_bucket_t *bucket,
+                       apr_size_t requested,
+                       const char **data,
+                       apr_size_t *len)
+{
+  serf_hpack_decode_ctx_t *ctx = bucket->data;
+  apr_status_t status;
+
+  status = hpack_process(bucket);
+  if (SERF_BUCKET_READ_ERROR(status))
+    {
+      *len = 0;
+      return status;
+    }
+
+  if (ctx->agg)
+    status = serf_databuf_read(&ctx->databuf,
+                               requested, data, len);
+  else
+    *len = 0;
+
+  return status;
+}
+
+static apr_status_t
+serf_hpack_decode_readline(serf_bucket_t *bucket,
+                           int acceptable,
+                           int *found,
+                           const char **data,
+                           apr_size_t *len)
+{
+  serf_hpack_decode_ctx_t *ctx = bucket->data;
+  apr_status_t status;
+
+  status = hpack_process(bucket);
+  if (SERF_BUCKET_READ_ERROR(status))
+    {
+      *len = 0;
+      return status;
+    }
+
+  if (ctx->agg)
+    status = serf_databuf_readline(&ctx->databuf, acceptable,
+                                   found, data, len);
+  else
+    *len = 0;
+
+  return status;
+}
+
+static apr_status_t
+serf_hpack_decode_peek(serf_bucket_t *bucket,
+                       const char **data,
+                       apr_size_t *len)
+{
+  serf_hpack_decode_ctx_t *ctx = bucket->data;
+  apr_status_t status;
+
+  status = hpack_process(bucket);
+  if (SERF_BUCKET_READ_ERROR(status))
+    {
+      *len = 0;
+      return status;
+    }
+
+  if (ctx->agg)
+    status = serf_databuf_peek(&ctx->databuf, data, len);
+
+  return status;
+}
+
+static void
+serf_hpack_decode_destroy(serf_bucket_t *bucket)
+{
+  serf_hpack_decode_ctx_t *ctx = bucket->data;
+  serf_bucket_destroy(ctx->stream);
+
+  if (ctx->agg)
+    serf_bucket_destroy(ctx->agg);
+
+  /* Key and value are handled by table. If we fail reading
+     table can't be used anyway, so the allocator cleanup will
+     handle the leak */
+
+  serf_default_destroy_and_data(bucket);
+}
+
+const serf_bucket_type_t serf_bucket_type_hpack_decode = {
+  "HPACK-DECODE",
+  serf_hpack_decode_read,
+  serf_hpack_decode_readline,
+  serf_default_read_iovec,
+  serf_default_read_for_sendfile,
+  serf_default_read_bucket,
+  serf_hpack_decode_peek,
+  serf_hpack_decode_destroy
 };
