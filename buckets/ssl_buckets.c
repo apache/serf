@@ -955,7 +955,6 @@ static apr_status_t ssl_decrypt(void *baton, apr_size_t bufsize,
     /* Is there some data waiting to be read? */
     ssl_len = SSL_read(ctx->ssl, buf, bufsize);
     if (ssl_len < 0) {
-        int ssl_err;
 
         *len = 0;
         status = status_from_ssl_error(ctx, ssl_len, FALSE);
@@ -1651,8 +1650,8 @@ apr_status_t serf_ssl_negotiate_protocol(serf_ssl_context_t *context,
                                          void *callback_data)
 {
     apr_pool_t *subpool;
-    char *raw_header;
-    char *at;
+    unsigned char *raw_header;
+    unsigned char *at;
     const char *next;
     apr_size_t raw_len = strlen(protocols)+1;
     apr_size_t len;
@@ -1675,7 +1674,7 @@ apr_status_t serf_ssl_negotiate_protocol(serf_ssl_context_t *context,
             return APR_EINVAL;
         }
 
-        *at = len;
+        *at = (unsigned char)len;
         at++;
         memcpy(at, protocols, len);
         at += len;
@@ -1689,7 +1688,7 @@ apr_status_t serf_ssl_negotiate_protocol(serf_ssl_context_t *context,
       return APR_EINVAL;
     }
 
-    *at = len;
+    *at = (unsigned char)len;
     at++;
     memcpy(at, protocols, len);
     at += len;
@@ -1727,7 +1726,7 @@ static const char *ssl_get_selected_protocol(serf_ssl_context_t *context)
 
         if (data && len)
             context->selected_protocol = apr_pstrmemdup(context->pool,
-                                                        data, len);
+                                                        (void*)data, len);
         else if (context->handshake_finished)
             context->selected_protocol = "";
 #endif
@@ -2300,8 +2299,6 @@ static apr_status_t serf_ssl_set_config(serf_bucket_t *bucket,
 
     /* Distribute the shared config as much as possible. */
     if (ssl_ctx) {
-        apr_status_t status;
-
         if (ssl_ctx->encrypt.stream) {
             status = serf_bucket_set_config(ssl_ctx->encrypt.stream, config);
             if (status)
