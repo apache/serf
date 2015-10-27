@@ -285,8 +285,6 @@ serf__provide_credentials(serf_context_t *ctx,
             return APR_EGENERAL;
 
         if (!authn_req->req_bkt) {
-            apr_status_t status;
-
             status = serf__setup_request(authn_req);
             /* If we can't setup a request, don't bother setting up the
                ssl tunnel. */
