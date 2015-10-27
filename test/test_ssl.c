@@ -1609,7 +1609,7 @@ static const char *simple_md5(char *input,
   int i;
   char *result = apr_palloc(pool, 2 * APR_MD5_DIGESTSIZE + 1);
 
-  if (apr_md5(&digest, input, strlen(input)))
+  if (apr_md5(digest, input, strlen(input)))
       REPORT_TEST_SUITE_ERROR();
 
   for (i = 0; i < sizeof(digest); i++) {
