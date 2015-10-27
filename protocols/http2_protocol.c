@@ -46,13 +46,13 @@ http2_protocol_teardown(serf_connection_t *conn);
 static serf_bucket_t *
 serf_bucket_create_numberv(serf_bucket_alloc_t *allocator, const char *format, ...)
 {
-  va_list va;
+  va_list argp;
   const char *c;
   char *buffer;
   apr_size_t sz = 0;
   unsigned char *r;
 
-  va_start(va, format);
+  va_start(argp, format);
 
   for (c = format; *c; c++)
     {
@@ -88,28 +88,28 @@ serf_bucket_create_numberv(serf_bucket_alloc_t *allocator, const char *format, .
        switch (*c)
         {
           case '1':
-            *r++ = va_arg(va, char);
+            *r++ = va_arg(argp, char);
             break;
           case '2':
-            tmp = va_arg(va, apr_uint16_t);
+            tmp = va_arg(argp, apr_uint16_t);
             *r++ = (tmp >> 8) & 0xFF;
             *r++ = tmp & 0xFF;
             break;
           case '3':
-            tmp = va_arg(va, apr_uint32_t);
+            tmp = va_arg(argp, apr_uint32_t);
             *r++ = (tmp >> 16) & 0xFF;
             *r++ = (tmp >> 8) & 0xFF;
             *r++ = tmp & 0xFF;
             break;
           case '4':
-            tmp = va_arg(va, apr_uint32_t);
+            tmp = va_arg(argp, apr_uint32_t);
             *r++ = (tmp >> 24) & 0xFF;
             *r++ = (tmp >> 16) & 0xFF;
             *r++ = (tmp >> 8) & 0xFF;
             *r++ = tmp & 0xFF;
             break;
           case '8':
-            tmp_64 = va_arg(va, apr_uint64_t);
+            tmp_64 = va_arg(argp, apr_uint64_t);
             *r++ = (tmp_64 >> 56) & 0xFF;
             *r++ = (tmp_64 >> 48) & 0xFF;
             *r++ = (tmp_64 >> 40) & 0xFF;
@@ -121,6 +121,9 @@ serf_bucket_create_numberv(serf_bucket_alloc_t *allocator, const char *format, .
             break;
        }
     }
+
+  va_end(argp);
+
   return serf_bucket_simple_own_create(buffer, sz, allocator);
 }
 
