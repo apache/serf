@@ -674,6 +674,24 @@ static void test_aggregate_buckets(CuTest *tc)
              len > 0 && len <= strlen(BODY) );
     CuAssert(tc, "Data should match first part of body.",
              strncmp(BODY, data, len) == 0);
+
+    aggbkt = serf_bucket_aggregate_create(alloc);
+
+    /* Put bkt in the aggregate */
+    bkt = SERF_BUCKET_SIMPLE_STRING(BODY, alloc);
+    serf_bucket_aggregate_append(aggbkt, bkt);
+
+    /* And now remove it */
+    CuAssertPtrEquals(tc, bkt,
+                      serf_bucket_read_bucket(aggbkt,
+                                              &serf_bucket_type_simple));
+    /* Ok, then aggregate should be empty */
+    read_and_check_bucket(tc, aggbkt, "");
+    /* And can be destroyed */
+    serf_bucket_destroy(aggbkt);
+    /* While it doesn't affect the inner bucket */
+    read_and_check_bucket(tc, bkt, BODY);
+    serf_bucket_destroy(bkt);
 }
 
 static void test_aggregate_bucket_readline(CuTest *tc)
