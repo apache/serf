@@ -38,11 +38,31 @@ extern "C" {
 extern const serf_bucket_type_t serf_bucket_type__http2_unframe;
 #define SERF__BUCKET_IS_HTTP2_UNFRAME(b) SERF_BUCKET_CHECK((b), _http2_unframe)
 
+/* Creates a bucket that reads a single http2 frame from stream. If
+   DESTROY_STREAM is true STREAM will be destroyed with the bucket, otherwise
+   it won't.
+
+   The frame header information can be obtained by calling
+   serf__bucket_http2_unframe_read_info().
+
+   After the header has been read the remaining payload size can be retrieved
+   using serf_bucket_get_remaining()
+ */
 serf_bucket_t *
 serf__bucket_http2_unframe_create(serf_bucket_t *stream,
                                   int destroy_stream,
                                   apr_size_t max_payload_size,
                                   serf_bucket_alloc_t *allocator);
+
+/* Sets the end of frame handler on the frame, which will be called as soon as
+   the whole frame has been read from the contained stream */
+void
+serf__bucket_http2_unframe_set_eof(serf_bucket_t *bucket,
+                                   apr_status_t (*eof_callback)(
+                                                    void *baton,
+                                                    serf_bucket_t *bucket),
+                                   void *eof_callback_baton);
+
 
 /* Obtains the frame header state, reading from the bucket if necessary.
    If the header was read successfully (or was already read before calling)
