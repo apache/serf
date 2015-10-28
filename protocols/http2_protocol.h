@@ -87,12 +87,78 @@ extern "C" {
 
 /* ------------------------------------- */
 typedef struct serf_http2_protocol_t serf_http2_protocol_t;
-typedef struct serf_http2_stream_t serf_http2_stream_t;
+typedef struct serf_http2_stream_t
+{
+  struct serf_http2_protocol_t *h2;
+  serf_bucket_alloc_t *alloc;
 
+  /* Linked list of currently existing streams */
+  struct serf_http2_stream_t *next;
+  struct serf_http2_stream_t *prev;
+
+  serf_request_t *request; /* May be NULL as streams may outlive requests */
+
+  apr_int64_t lr_window; /* local->remote */
+  apr_int64_t rl_window; /* remote->local */
+
+  /* -1 until allocated. Odd is client side initiated, even server side */
+  apr_int32_t streamid;
+
+  enum
+  {
+    H2S_INIT = 0,
+    H2S_IDLE,
+    H2S_RESERVED_REMOTE,
+    H2S_RESERVED_LOCAL,
+    H2S_OPEN,
+    H2S_HALFCLOSED_REMOTE,
+    H2S_HALFCLOSED_LOCAL,
+    H2S_CLOSED
+  } status;
+
+  /* TODO: Priority, etc. */
+} serf_http2_stream_t;
+
+/* Enques an http2 frame for output */
 apr_status_t
 serf_http2__enqueue_frame(serf_http2_protocol_t *h2,
                           serf_bucket_t *frame,
                           int pump);
+
+/* Creates a new stream */
+serf_http2_stream_t *
+serf_http2__stream_create(serf_http2_protocol_t *h2,
+                          apr_int32_t streamid,
+                          apr_uint32_t lr_window,
+                          apr_uint32_t rl_window,
+                          serf_bucket_alloc_t *alloc);
+
+/* Allocates a new stream id for a stream.
+   BATON is a serf_http2_stream_t * instance.
+
+   Passed to serf__bucket_http2_frame_create when writing for
+   a stream.
+*/
+apr_int32_t
+serf_http2__allocate_stream_id(void *baton,
+                               apr_int32_t *streamid);
+
+void
+serf_http2__stream_cleanup(serf_http2_stream_t *stream);
+
+serf_http2_stream_t *
+serf_http2__stream_get_by_id(serf_http2_protocol_t *h2,
+                             apr_int32_t streamid,
+                             int create_for_remote,
+                             int move_first);
+
+/* Sets up STREAM to handle REQUEST */
+apr_status_t
+serf_http2__stream_setup_request(serf_http2_stream_t *stream,
+                                 serf_hpack_table_t *hpack_tbl,
+                                 serf_request_t *request);
+
+
 
 #ifdef __cplusplus
 }

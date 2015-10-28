@@ -127,37 +127,6 @@ serf_bucket_create_numberv(serf_bucket_alloc_t *allocator, const char *format, .
   return serf_bucket_simple_own_create(buffer, sz, allocator);
 }
 
-
-struct serf_http2_stream_t
-{
-  struct serf_http2_protocol_t *ctx;
-
-  /* Linked list of currently existing streams */
-  struct serf_http2_stream_t *next;
-  struct serf_http2_stream_t *prev;
-
-  serf_request_t *request; /* May be NULL as streams may outlive requests */
-
-  apr_int64_t lr_window; /* local->remote */
-  apr_int64_t rl_window; /* remote->local */
-
-  /* -1 until allocated. Odd is client side initiated, even server side */
-  apr_int32_t streamid;
-
-  enum
-  {
-    H2S_IDLE = 0,
-    H2S_RESERVED_REMOTE,
-    H2S_RESERVED_LOCAL,
-    H2S_OPEN,
-    H2S_HALFCLOSED_REMOTE,
-    H2S_HALFCLOSED_LOCAL,
-    H2S_CLOSED
-  } status;
-
-  /* TODO: Priority, etc. */
-};
-
 struct serf_http2_protocol_t
 {
   apr_pool_t *pool;
@@ -165,6 +134,9 @@ struct serf_http2_protocol_t
   serf_bucket_t *ostream;
 
   serf_hpack_table_t *hpack_tbl;
+
+  apr_uint32_t default_lr_window;
+  apr_uint32_t default_rl_window;
 
   apr_int64_t lr_window; /* local->remote */
   apr_int64_t rl_window; /* remote->local */
@@ -186,7 +158,17 @@ static apr_status_t
 http2_protocol_cleanup(void *state)
 {
   serf_connection_t *conn = state;
-  /* serf_http2_protocol_t *ctx = conn->protocol_baton; */
+  serf_http2_protocol_t *h2 = conn->protocol_baton;
+  serf_http2_stream_t *stream, *next;
+
+  /* First clean out all streams */
+  for (stream = h2->first; stream; stream = next)
+    {
+      next = stream->next;
+      serf_http2__stream_cleanup(stream);
+    }
+
+  h2->first = h2->last = NULL;
 
   conn->protocol_baton = NULL;
   return APR_SUCCESS;
@@ -204,8 +186,13 @@ void serf__http2_protocol_init(serf_connection_t *conn)
   ctx->pool = protocol_pool;
   ctx->conn = conn;
   ctx->ostream = conn->ostream_tail;
-  ctx->lr_window = HTTP2_DEFAULT_WINDOW_SIZE;
-  ctx->rl_window = HTTP2_DEFAULT_WINDOW_SIZE;
+
+  /* Defaults until negotiated */
+  ctx->default_lr_window = HTTP2_DEFAULT_WINDOW_SIZE;
+  ctx->default_rl_window = HTTP2_DEFAULT_WINDOW_SIZE;
+
+  ctx->lr_window = ctx->default_lr_window;
+  ctx->rl_window = ctx->default_rl_window;
   ctx->next_local_streamid = 1; /* 2 if we would be the server */
   ctx->next_remote_streamid = 2; /* 1 if we would be the client */
 
@@ -254,55 +241,33 @@ void serf__http2_protocol_init(serf_connection_t *conn)
                                           NULL, NULL, NULL,
                                           HTTP2_DEFAULT_MAX_FRAMESIZE,
                                           NULL, NULL, conn->allocator);
-    serf_http2__enqueue_frame(ctx, tmp, TRUE);
+    serf_http2__enqueue_frame(ctx, tmp, FALSE);
   }
 }
 
 /* Creates a HTTP/2 request from a serf request */
 static apr_status_t
-setup_for_http2(serf_http2_protocol_t *ctx,
+setup_for_http2(serf_http2_protocol_t *h2,
                 serf_request_t *request)
 {
-  apr_status_t status;
-  serf_bucket_t *hpack;
-  serf_bucket_t *body;
-  static apr_int32_t NEXT_frame = 1;
+  serf_http2_stream_t *stream;
 
-  apr_int32_t streamid = NEXT_frame;
-  NEXT_frame += 2;
+  stream = serf_http2__stream_create(h2, -1,
+                                     h2->default_lr_window,
+                                     h2->default_rl_window,
+                                     h2->conn->allocator);
 
-  if (!request->req_bkt)
+  if (h2->first)
     {
-      status = serf__setup_request(request);
-      if (status)
-        return status;
+      stream->next = h2->first;
+      h2->first->prev = stream;
+      h2->first = stream;
     }
+  else
+    h2->last = h2->first = stream;
 
-  serf__bucket_request_read(request->req_bkt, &body, NULL, NULL);
-  status = serf__bucket_hpack_create_from_request(&hpack, NULL, request->req_bkt,
-                                                  request->conn->host_info.scheme,
-                                                  request->allocator);
-  if (status)
-    return status;
-
-  if (!body)
-    {
-      /* This destroys the body... Perhaps we should make an extract
-         and clear api */
-      serf_bucket_destroy(request->req_bkt);
-      request->req_bkt = NULL;
-    }
-  
-  hpack = serf__bucket_http2_frame_create(hpack, HTTP2_FRAME_TYPE_HEADERS,
-                                          HTTP2_FLAG_END_STREAM
-                                          | HTTP2_FLAG_END_HEADERS,
-                                          &streamid, NULL, NULL,
-                                          HTTP2_DEFAULT_MAX_FRAMESIZE,
-                                          NULL, NULL, request->allocator);
-
-  serf_http2__enqueue_frame(ctx, hpack, TRUE);
-
-  return APR_SUCCESS;
+  return serf_http2__stream_setup_request(stream, h2->hpack_tbl,
+                                          request);
 }
 
 apr_status_t
@@ -378,6 +343,7 @@ http2_read(serf_connection_t *conn)
               unsigned char flags;
               unsigned char frametype;
               apr_int32_t streamid;
+              apr_uint64_t size;
 
               status = serf__bucket_http2_unframe_read_info(ctx->cur_frame,
                                                             &streamid, &frametype,
@@ -386,9 +352,11 @@ http2_read(serf_connection_t *conn)
               if (status && !APR_STATUS_IS_EOF(status))
                 break;
 
+              size = serf_bucket_get_remaining(ctx->cur_frame);
+
               serf__log(LOGLVL_INFO, SERF_LOGHTTP2, conn->config,
                         "Start 0x%02x http2 frame on stream 0x%x, flags=0x%x, size=0x%x\n",
-                        (int)frametype, (int)streamid, (int)flags, (int)ctx->buffer_used);
+                        (int)frametype, (int)streamid, (int)flags, (int)size);
 
               ctx->in_payload = TRUE;
 
@@ -454,7 +422,16 @@ http2_read(serf_connection_t *conn)
                                                                (ctx->buffer_used >= 8)
                                                                ? ctx->buffer_used-8 : 0));
 
-              if (frametype == HTTP2_FRAME_TYPE_SETTINGS)
+              if (frametype == HTTP2_FRAME_TYPE_RST_STREAM && conn)
+                serf__log(LOGLVL_WARNING, SERF_LOGHTTP2, conn->config,
+                          "Reset reason %d: %s\n", ctx->buffer[7],
+                          apr_pstrmemdup(conn->pool,
+                                         &ctx->buffer[8],
+                                         (ctx->buffer_used >= 8)
+                                         ? ctx->buffer_used - 8 : 0));
+
+              if (frametype == HTTP2_FRAME_TYPE_SETTINGS
+                  && !(flags & HTTP2_FLAG_ACK))
                 {
                   /* Always ack settings */
                   serf_http2__enqueue_frame(
@@ -608,4 +585,99 @@ http2_protocol_teardown(serf_connection_t *conn)
 
   apr_pool_destroy(ctx->pool);
   conn->protocol_baton = NULL;
+}
+
+apr_int32_t
+serf_http2__allocate_stream_id(void *baton,
+                               apr_int32_t *streamid)
+{
+  serf_http2_stream_t *stream = baton;
+
+  /* Do we need to assign a new id?
+
+     We do this when converting the frame to on-wire data, to avoid
+     creating frames out of order... which would make the other side
+     deny our frame.
+  */
+  if (stream->streamid < 0)
+    {
+      stream->streamid = stream->h2->next_local_streamid;
+      stream->h2->next_local_streamid += 2;
+
+      if (stream->status == H2S_INIT)
+        stream->status = H2S_IDLE;
+    }
+
+  return stream->streamid;
+}
+
+static void
+move_to_head(serf_http2_stream_t *stream)
+{
+  /* Not implemented yet */
+}
+
+serf_http2_stream_t *
+serf_http2__stream_get(serf_http2_protocol_t *h2,
+                       apr_int32_t streamid,
+                       int create_for_remote,
+                       int move_first)
+{
+  serf_http2_stream_t *stream;
+
+  if (streamid < 0)
+    return NULL;
+
+  for (stream = h2->first; stream; stream->next)
+    {
+      if (stream->streamid == streamid)
+        {
+          if (move_first && stream != h2->first)
+            move_to_head(stream);
+
+          return stream;
+        }
+    }
+
+  if (create_for_remote
+      && (streamid & 0x01) == (h2->next_remote_streamid & 0x01))
+    {
+      serf_http2_stream_t *rs;
+      stream = serf_http2__stream_create(h2, streamid,
+                                         h2->default_lr_window,
+                                         h2->default_rl_window,
+                                         h2->conn->allocator);
+
+      if (h2->first)
+        {
+          stream->next = h2->first;
+          h2->first->prev = stream;
+          h2->first = stream;
+        }
+      else
+        h2->last = h2->first = stream;
+
+      if (streamid < h2->next_remote_streamid)
+        stream->status = H2S_CLOSED;
+      else
+        h2->next_remote_streamid = (streamid + 2);
+
+      for (rs = h2->first; rs; rs = rs->next)
+        {
+          if (rs->status <= H2S_IDLE
+              && rs->streamid < streamid
+              && (streamid & 0x01) == (rs->streamid & 0x01))
+            {
+              /* https://tools.ietf.org/html/rfc7540#section-5.1.1
+                 The first use of a new stream identifier implicitly closes
+                 all streams in the "idle" state that might have been
+                 initiated by that peer with a lower-valued stream identifier.
+              */
+              rs->status = H2S_CLOSED;
+            }
+        }
+
+      return stream;
+    }
+  return NULL;
 }
