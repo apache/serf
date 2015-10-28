@@ -38,6 +38,7 @@ typedef struct app_baton_t {
     int using_ssl;
     int head_request;
     int negotiate_http2;
+    int use_h2direct;
     const char *pem_path;
     const char *pem_pwd;
     serf_bucket_alloc_t *bkt_alloc;
@@ -255,6 +256,12 @@ static apr_status_t conn_setup(apr_socket_t *skt,
             }
         }
     }
+    else if (ctx->use_h2direct) {
+      serf_connection_set_framing_type(
+                              conn_ctx->conn,
+                              SERF_CONNECTION_FRAMING_TYPE_HTTP2);
+    }
+
 
     *input_bkt = c;
 
@@ -485,6 +492,7 @@ credentials_callback(char **username,
 #define CERTFILE 256
 #define CERTPWD  257
 #define HTTP2FLAG 258
+#define H2DIRECT 259
 
 static const apr_getopt_option_t options[] =
 {
@@ -504,9 +512,10 @@ static const apr_getopt_option_t options[] =
     {"certpwd", CERTPWD, 1, "<password> Password for the SSL client certificate"},
     {NULL,      'r', 1, "<header:value> Use <header:value> as request header"},
     {"debug",   'd', 0, "Enable debugging"},
-#if 0
-    {"http2",   HTTP2FLAG, 0, "Enable http2 (https only)"}
-#endif
+    {"http2",   HTTP2FLAG, 0, "Enable http2 (https only) (Experimental)"},
+    {"h2direct",H2DIRECT, 0, "Enable h2direct (Experimental)"},
+
+    { NULL, 0 }
 };
 
 static void print_usage(apr_pool_t *pool)
@@ -549,7 +558,7 @@ int main(int argc, const char **argv)
     const char *raw_url, *method, *req_body_path = NULL;
     int count, inflight, conn_count;
     int i;
-    int print_headers, debug, negotiate_http2;
+    int print_headers, debug, negotiate_http2, use_h2direct;
     const char *username = NULL;
     const char *password = "";
     const char *pem_path = NULL, *pem_pwd = NULL;
@@ -575,6 +584,7 @@ int main(int argc, const char **argv)
     /* Do not debug by default. */
     debug = 0;
     negotiate_http2 = 0;
+    use_h2direct = 0;
 
     apr_getopt_init(&opt, pool, argc, argv);
     while ((status = apr_getopt_long(opt, options, &opt_c, &opt_arg)) ==
@@ -670,6 +680,9 @@ int main(int argc, const char **argv)
         case HTTP2FLAG:
             negotiate_http2 = 1;
             break;
+        case H2DIRECT:
+            use_h2direct = 1;
+            break;
         case 'v':
             puts("Serf version: " SERF_VERSION_STRING);
             exit(0);
@@ -697,10 +710,12 @@ int main(int argc, const char **argv)
         app_ctx.using_ssl = 1;
 
         app_ctx.negotiate_http2 = negotiate_http2;
+        app_ctx.use_h2direct = FALSE;
     }
     else {
         app_ctx.using_ssl = 0;
         app_ctx.negotiate_http2 = FALSE;
+        app_ctx.use_h2direct = use_h2direct;
     }
 
     if (strcasecmp(method, "HEAD") == 0) {
