@@ -227,7 +227,7 @@ void serf_bucket_aggregate_append_iovec(
     struct iovec *vecs,
     int vecs_count)
 {
-    aggregate_context_t *ctx = aggregate_bucket->data;
+    /* aggregate_context_t *ctx = aggregate_bucket->data; */
     serf_bucket_t *new_bucket;
 
     new_bucket = serf_bucket_iovec_create(vecs, vecs_count,
@@ -475,15 +475,21 @@ static serf_bucket_t * serf_aggregate_read_bucket(
 {
     aggregate_context_t *ctx = bucket->data;
     serf_bucket_t *found_bucket;
+    bucket_list_t *list;
 
     if (!ctx->list) {
         return NULL;
     }
 
-    if (ctx->list->bucket->type == type) {
+    list = ctx->list;
+    if (list->bucket->type == type) {
         /* Got the bucket. Consume it from our list. */
-        found_bucket = ctx->list->bucket;
-        ctx->list = ctx->list->next;
+        found_bucket = list->bucket;
+        ctx->list = list->next;
+
+        /* And destroy the now unused item */
+        serf_bucket_mem_free(bucket->allocator, list);
+
         return found_bucket;
     }
 
