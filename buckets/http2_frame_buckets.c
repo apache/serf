@@ -38,6 +38,10 @@ typedef struct http2_unframe_context_t
 
   apr_size_t prefix_remaining;
 
+  apr_status_t (*eof_callback)(void *baton,
+                               serf_bucket_t *bucket);
+  void *eof_callback_baton;
+
   /* These fields are only set after prefix_remaining is 0 */
   apr_size_t payload_remaining;  /* 0 <= payload_length < 2^24 */
   apr_int32_t stream_id;         /* 0 <= stream_id < 2^31 */
@@ -60,9 +64,24 @@ serf__bucket_http2_unframe_create(serf_bucket_t *stream,
   ctx->stream = stream;
   ctx->max_payload_size = max_payload_size;
   ctx->prefix_remaining = sizeof(ctx->prefix_buffer);
+  ctx->eof_callback = NULL;
+
   ctx->destroy_stream = (destroy_stream != 0);
 
   return serf_bucket_create(&serf_bucket_type__http2_unframe, allocator, ctx);
+}
+
+void
+serf__bucket_http2_unframe_set_eof(serf_bucket_t *bucket,
+                                   apr_status_t (*eof_callback)(
+                                                    void *baton,
+                                                    serf_bucket_t *bucket),
+                                   void *eof_callback_baton)
+{
+  http2_unframe_context_t *ctx = bucket->data;
+
+  ctx->eof_callback = eof_callback;
+  ctx->eof_callback_baton = eof_callback_baton;
 }
 
 apr_status_t
@@ -123,6 +142,28 @@ serf__bucket_http2_unframe_read_info(serf_bucket_t *bucket,
           */
           if (ctx->max_payload_size < payload_length)
               return SERF_ERROR_HTTP2_FRAME_SIZE_ERROR;
+
+          status = (ctx->payload_remaining == 0) ? APR_EOF
+                                                 : APR_SUCCESS;
+
+          /* If we hava a zero-length frame we have to call the eof callback
+             now, as the read operations will just shortcut to APR_EOF */
+          if (ctx->payload_remaining == 0 && ctx->eof_callback)
+            {
+              apr_status_t cb_status;
+
+              cb_status = ctx->eof_callback(ctx->eof_callback_baton,
+                                            bucket);
+
+              if (SERF_BUCKET_READ_ERROR(cb_status))
+                status = cb_status;
+            }
+        }
+      else if (APR_STATUS_IS_EOF(status))
+        {
+          /* Reading frame failed because we couldn't read the header. Report
+             a read failure instead of semi-success */
+          status = SERF_ERROR_HTTP2_FRAME_SIZE_ERROR;
         }
       else if (!status)
         status = APR_EAGAIN;
@@ -163,7 +204,14 @@ serf_http2_unframe_read(serf_bucket_t *bucket,
       ctx->payload_remaining -= *len;
 
       if (ctx->payload_remaining == 0)
-        status = APR_EOF;
+        {
+          if (ctx->eof_callback)
+            status = ctx->eof_callback(ctx->eof_callback_baton,
+                                       bucket);
+
+          if (!SERF_BUCKET_READ_ERROR(status))
+            status = APR_EOF;
+        }
     }
 
   return status;
@@ -209,7 +257,14 @@ serf_http2_unframe_read_iovec(serf_bucket_t *bucket,
       ctx->payload_remaining -= len;
 
       if (ctx->payload_remaining == 0)
-        status = APR_EOF;
+        {
+          if (ctx->eof_callback)
+            status = ctx->eof_callback(ctx->eof_callback_baton,
+                                       bucket);
+
+          if (!SERF_BUCKET_READ_ERROR(status))
+            status = APR_EOF;
+        }
     }
 
   return status;
