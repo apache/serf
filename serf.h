@@ -1274,18 +1274,19 @@ apr_status_t serf_config_remove_value(serf_config_t *config,
 #define SERF_LOG_NONE    0x0000
 
 /* List of components, used as a mask. */
-#define SERF_LOGCOMP_ALL_MSG 0xFFFF /* All components, including message
-                                       content */
-#define SERF_LOGCOMP_RAWMSG  0x0100 /* logs requests and responses directly on
-                                       the socket layer. */
-#define SERF_LOGCOMP_SSLMSG  0x0200 /* logs decrypted requests and responses. */
+#define SERF_LOGCOMP_ALL_MSG  0xFFFF /* All components, including message
+                                        content */
+#define SERF_LOGCOMP_RAWMSG   0x0100 /* logs requests and responses directly on
+                                        the socket layer. */
+#define SERF_LOGCOMP_SSLMSG   0x0200 /* logs decrypted requests and responses. */
 
-#define SERF_LOGCOMP_ALL     0x00FF /* All components, no message content */
-#define SERF_LOGCOMP_SSL     0x0001 /* The SSL component */
-#define SERF_LOGCOMP_AUTHN   0x0002 /* Authentication components */
-#define SERF_LOGCOMP_CONN    0x0004 /* Connection-related events */
-#define SERF_LOGCOMP_COMPR   0x0008 /* The compression (deflate) component */
-#define SERF_LOGCOMP_NONE    0x0000
+#define SERF_LOGCOMP_ALL      0x00FF /* All components, no message content */
+#define SERF_LOGCOMP_SSL      0x0001 /* The SSL component */
+#define SERF_LOGCOMP_AUTHN    0x0002 /* Authentication components */
+#define SERF_LOGCOMP_CONN     0x0004 /* Connection-related events */
+#define SERF_LOGCOMP_COMPR    0x0008 /* The compression (deflate) component */
+#define SERF_LOGCOMP_PROTOCOL 0x0010 /* The protocol components */
+#define SERF_LOGCOMP_NONE     0x0000
 
 typedef struct serf_log_output_t serf_log_output_t;
 typedef struct serf_log_layout_t serf_log_layout_t;
