@@ -21,6 +21,11 @@
 #ifndef SERF_PROTOCOL_HTTP2_PRIVATE_H
 #define SERF_PROTOCOL_HTTP2_PRIVATE_H
 
+#include "serf.h"
+#include "serf_private.h"
+
+#define SERF_LOGHTTP2 \
+    SERF_LOGCOMP_PROTOCOL, (__FILE__ ":" APR_STRINGIFY(__LINE__))
 
 #ifdef __cplusplus
 extern "C" {
@@ -78,6 +83,16 @@ extern "C" {
 /* https://tools.ietf.org/html/rfc7540#section-3.5 */
 #define HTTP2_CONNECTION_PREFIX "PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n"
 
+
+
+/* ------------------------------------- */
+typedef struct serf_http2_protocol_t serf_http2_protocol_t;
+typedef struct serf_http2_stream_t serf_http2_stream_t;
+
+apr_status_t
+serf_http2__enqueue_frame(serf_http2_protocol_t *h2,
+                          serf_bucket_t *frame,
+                          int pump);
 
 #ifdef __cplusplus
 }
