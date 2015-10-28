@@ -952,6 +952,12 @@ static apr_status_t ssl_decrypt(void *baton, apr_size_t bufsize,
     ctx->want_read = FALSE; /* Reading now */
     ctx->crypt_status = APR_SUCCESS; /* Clear before calling SSL */
 
+    /* When an SSL_read() operation has to be repeated because of
+       SSL_ERROR_WANT_READ or SSL_ERROR_WANT_WRITE, it must be repeated
+       with the same arguments.
+
+       Luckily we can assume that we are called from the databuffer
+       implementation */
     /* Is there some data waiting to be read? */
     ssl_len = SSL_read(ctx->ssl, buf, bufsize);
     if (ssl_len < 0) {
@@ -1116,6 +1122,13 @@ static apr_status_t ssl_encrypt(void *baton, apr_size_t bufsize,
                           "ssl_encrypt: bucket read %d bytes; "\
                           "status %d\n", interim_len, status);
 
+                /* When an SSL_write() operation has to be repeated because of
+                   SSL_ERROR_WANT_READ or SSL_ERROR_WANT_WRITE, it MUST be
+                   repeated with the same arguments.
+
+                   Unless SSL_MODE_ACCEPT_MOVING_WRITE_BUFFER is set...
+                   ... which we now do.
+                */
                 ctx->crypt_status = APR_SUCCESS; /* Clear before calling SSL */
                 ssl_len = SSL_write(ctx->ssl, vecs_data, interim_len);
 
@@ -1538,6 +1551,9 @@ static serf_ssl_context_t *ssl_init_context(serf_bucket_alloc_t *allocator)
     /* Use the best possible protocol version, but disable the broken SSLv2/3 */
     ssl_ctx->ctx = SSL_CTX_new(SSLv23_client_method());
     SSL_CTX_set_options(ssl_ctx->ctx, SSL_OP_NO_SSLv2 | SSL_OP_NO_SSLv3);
+
+    /* Allow calling SSL_write() with different buffer pointers */
+    SSL_CTX_set_mode(ssl_ctx->ctx, SSL_MODE_ACCEPT_MOVING_WRITE_BUFFER);
 
     SSL_CTX_set_client_cert_cb(ssl_ctx->ctx, ssl_need_client_cert);
     ssl_ctx->cached_cert = 0;
