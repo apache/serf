@@ -286,6 +286,9 @@ static apr_status_t connectToServer(mhServCtx_t *ctx, _mhClientCtx_t *cctx)
         pfd.client_data = cctx;
         STATUSERR(apr_pollset_add(ctx->pollset, &pfd));
         cctx->proxyreqevents = pfd.reqevents;
+
+        /* ### If EINPROGRESS some operations may fail until the
+               socket is really connected. Shouldn't we wait? */
     }
 
     return status;
@@ -2877,6 +2880,7 @@ static apr_status_t sslHandshake(_mhClientCtx_t *cctx)
         return APR_SUCCESS;
     } else {
         int ssl_err;
+        unsigned long l = ERR_peek_error();
 
         ssl_err = SSL_get_error(ssl_ctx->ssl, result);
         switch (ssl_err) {
@@ -2886,10 +2890,25 @@ static apr_status_t sslHandshake(_mhClientCtx_t *cctx)
             case SSL_ERROR_SYSCALL:
                 return ssl_ctx->bio_status; /* Usually APR_EAGAIN */
             default:
-                _mhLog(MH_VERBOSE, cctx->skt, "SSL Error %d: ", ssl_err);
+                {
+                    int func = ERR_GET_FUNC(l);
+                    int reason = ERR_GET_REASON(l);
+
+                    if (reason == SSL_R_PEER_DID_NOT_RETURN_A_CERTIFICATE) {
+                        /* The server shouldn't fail for this...
+
+                           We test the client. Go on, and report the problem
+                           there */
+                        return APR_EAGAIN;
+                    }
+
+                    _mhLog(MH_VERBOSE, cctx->skt,
+                           "SSL Error %d: Function=%d, Reason=%d",
+                           ssl_err, func, reason);
 #if MH_VERBOSE
-                ERR_print_errors_fp(stderr);
+                    ERR_print_errors_fp(stderr);
 #endif
+                }
                 return APR_EGENERAL;
         }
     }
