@@ -113,6 +113,7 @@ struct mhServCtx_t {
     const char *hostname;
     const char *serverID;      /* unique id for this server */
     apr_port_t port;
+    apr_port_t default_port;
     const char *alpn;
     apr_pollset_t *pollset;
     apr_socket_t *skt;         /* Server listening socket */
