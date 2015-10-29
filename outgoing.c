@@ -331,8 +331,7 @@ static apr_status_t prepare_conn_streams(serf_connection_t *conn,
         }
         *ostreamt = conn->ostream_tail;
         *ostreamh = conn->ostream_head;
-    } else {
-        /* state == SERF_CONN_SETUP_SSLTUNNEL  */
+    } else if (conn->state == SERF_CONN_SETUP_SSLTUNNEL) {
 
         /* SSL tunnel needed and not set up yet, get a direct unencrypted
          stream for this socket */
@@ -346,6 +345,11 @@ static apr_status_t prepare_conn_streams(serf_connection_t *conn,
          bucket yet. This ensure the CONNECT request is sent unencrypted
          to the proxy. */
         *ostreamt = *ostreamh = conn->ssltunnel_ostream;
+    } else {
+        /* SERF_CONN_CLOSING or SERF_CONN_INIT */
+
+        *ostreamt = conn->ostream_tail;
+        *ostreamh = conn->ostream_head;
     }
 
     return APR_SUCCESS;
