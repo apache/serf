@@ -520,12 +520,12 @@ static const apr_getopt_option_t options[] =
 
 static void print_usage(apr_pool_t *pool)
 {
-    int i;
+    int i = 0;
 
     puts("serf_get [options] URL\n");
     puts("Options:");
 
-    for (i = 0; i < sizeof(options) / sizeof(apr_getopt_option_t); i++) {
+    while (options[i].optch > 0) {
         const apr_getopt_option_t* o = &options[i];
 
         if (o->optch <= 255) {
@@ -540,6 +540,8 @@ static void print_usage(apr_pool_t *pool)
                o->name ? "--" : "\t",
                o->name ? o->name : "",
                o->description);
+
+        i++;
     }
 }
 
