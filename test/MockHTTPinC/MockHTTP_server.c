@@ -275,7 +275,6 @@ static apr_status_t connectToServer(mhServCtx_t *ctx, _mhClientCtx_t *cctx)
                                 SOCK_STREAM, 0, cctx->pool));
     STATUSERR(apr_socket_opt_set(cctx->proxyskt, APR_SO_NONBLOCK, 1));
     STATUSERR(apr_socket_timeout_set(cctx->proxyskt, 0));
-    STATUSERR(apr_socket_opt_set(cctx->proxyskt, APR_SO_REUSEADDR, 1));
 
     status = apr_socket_connect(cctx->proxyskt, address);
     if (status == APR_SUCCESS || APR_STATUS_IS_EINPROGRESS(status)) {
