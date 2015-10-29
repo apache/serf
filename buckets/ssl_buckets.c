@@ -883,6 +883,16 @@ static apr_status_t status_from_ssl_error(serf_ssl_context_t *ctx,
                 status = ctx->pending_err;
                 ctx->pending_err = APR_SUCCESS;
             } else {
+                /*unsigned long l = ERR_peek_error();
+                int lib = ERR_GET_LIB(l);
+                int func = ERR_GET_FUNC(l);
+                int reason = ERR_GET_REASON(l);*/
+
+                /* ### Detect more specific errors?
+                  When lib is ERR_LIB_SSL, then reason is one of the
+                  many SSL_R_XXXX reasons in ssl.h
+                */
+
                 if (SSL_in_init(ctx->ssl))
                     ctx->fatal_err = SERF_ERROR_SSL_SETUP_FAILED;
                 else

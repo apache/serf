@@ -2891,10 +2891,12 @@ static apr_status_t sslHandshake(_mhClientCtx_t *cctx)
                 return ssl_ctx->bio_status; /* Usually APR_EAGAIN */
             default:
                 {
+                    int lib = ERR_GET_LIB(l);
                     int func = ERR_GET_FUNC(l);
                     int reason = ERR_GET_REASON(l);
 
-                    if (reason == SSL_R_PEER_DID_NOT_RETURN_A_CERTIFICATE) {
+                    if (lib == ERR_LIB_SSL
+                        && reason == SSL_R_PEER_DID_NOT_RETURN_A_CERTIFICATE) {
                         /* The server shouldn't fail for this...
 
                            We test the client. Go on, and report the problem
@@ -2903,8 +2905,8 @@ static apr_status_t sslHandshake(_mhClientCtx_t *cctx)
                     }
 
                     _mhLog(MH_VERBOSE, cctx->skt,
-                           "SSL Error %d: Function=%d, Reason=%d",
-                           ssl_err, func, reason);
+                           "SSL Error %d: Library=%d, Function=%d, Reason=%d",
+                           ssl_err, lib, func, reason);
 #if MH_VERBOSE
                     ERR_print_errors_fp(stderr);
 #endif
