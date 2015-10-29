@@ -71,9 +71,9 @@ typedef apr_status_t (*receive_func_t)(apr_socket_t *skt, void *baton,
 
 typedef struct sslCtx_t sslCtx_t;
 typedef struct bucket_t bucket_t;
-static const int DefaultSrvPort =   30080;
-static const int DefaultProxyPort = 38080;
-static const int DefaultOCSPResponderPort = 39080;
+static const apr_port_t DefaultSrvPort =   30080;
+static const apr_port_t DefaultProxyPort = 38080;
+static const apr_port_t DefaultOCSPResponderPort = 39080;
 
 /* Buffer size for incoming and outgoing data */
 #define BUFSIZE 32768
@@ -209,7 +209,8 @@ static apr_status_t setupTCPServer(mhServCtx_t *ctx)
 
         /* Try the next port until bind succeeds */
         status = apr_socket_bind(ctx->skt, serv_addr);
-        if (status == EADDRINUSE) {
+        if (status != APR_SUCCESS) {
+            apr_socket_close(ctx->skt);
             ctx->port++;
             continue;
         }
