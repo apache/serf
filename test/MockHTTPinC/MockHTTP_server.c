@@ -193,6 +193,8 @@ static apr_status_t setupTCPServer(mhServCtx_t *ctx)
     apr_pool_t *pool = ctx->pool;
     apr_status_t status;
 
+    ctx->port = ctx->default_port;
+
     while (1) {
         STATUSERR(apr_sockaddr_info_get(&serv_addr, ctx->hostname,
                                         APR_UNSPEC, ctx->port, 0,
@@ -205,7 +207,17 @@ static apr_status_t setupTCPServer(mhServCtx_t *ctx)
 
         STATUSERR(apr_socket_opt_set(ctx->skt, APR_SO_NONBLOCK, 1));
         STATUSERR(apr_socket_timeout_set(ctx->skt, 0));
-        STATUSERR(apr_socket_opt_set(ctx->skt, APR_SO_REUSEADDR, 1));
+        /* We used to call apr_socket_opt_set(ctx->skt, APR_SO_REUSEADDR, 1),
+           but that is severly broken when we run multiple tests in parallel,
+           as that may just listen on a port where another process is
+           listening too.
+
+           See http://stackoverflow.com/a/14388707/2094
+
+           Instead of trying to work around the limitations per platform
+           by using specific flags, the best fix is to just *not* use
+           this option and use a different port if necessary.
+         */
 
         /* Try the next port until bind succeeds */
         status = apr_socket_bind(ctx->skt, serv_addr);
@@ -292,7 +304,8 @@ initServCtx(const MockHTTP *mh, const char *hostname, apr_port_t port)
     ctx->pool = pool;
     ctx->mh = mh;
     ctx->hostname = apr_pstrdup(pool, hostname);
-    ctx->port = port;
+    ctx->default_port = port;
+    ctx->port = 0;
     ctx->clients = apr_array_make(pool, 5, sizeof(_mhClientCtx_t *));
     ctx->reqsReceived = apr_array_make(pool, 5, sizeof(mhRequest_t *));
     /* Default settings */
@@ -1547,6 +1560,12 @@ apr_status_t _mhRunServerLoop(mhServCtx_t *ctx)
     const apr_pollfd_t *desc;
     apr_status_t status;
 
+    if (!ctx->pollset) {
+        /* Somebody ignored the result of mhStartServer().
+           ... Not that hard given that it returns void */
+        return APR_EINCOMPLETE;
+    }
+
     if (ctx->reqState == FullReqReceived)
         ctx->reqState = NoReqsReceived;
 #if 0
@@ -1832,8 +1851,12 @@ mhSetServerMaxRequestsPerConn(mhServCtx_t *ctx, unsigned int maxRequests)
 unsigned int mhServerByIDPortNr(const MockHTTP *mh, const char *serverID)
 {
     mhServCtx_t *ctx = mhFindServerByID(mh, serverID);
-    if (ctx)
+
+    if (ctx) {
+        if (!ctx->port)
+            abort();
         return ctx->port;
+    }
     return 0;
 }
 
@@ -1852,7 +1875,7 @@ unsigned int mhProxyPortNr(const MockHTTP *mh)
  */
 static bool set_server_port(const mhServerSetupBldr_t *ssb, mhServCtx_t *ctx)
 {
-    ctx->port = ssb->ibaton;
+    ctx->default_port = ssb->ibaton;
     return YES;
 }
 
