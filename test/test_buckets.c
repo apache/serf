@@ -1662,7 +1662,7 @@ static void test_deflate_4GBplus_buckets(CuTest *tc)
     serf_bucket_t *defbkt = create_gzip_deflate_bucket(aggbkt, &zdestr, alloc);
     serf_bucket_t *strbkt;
     apr_pool_t *iter_pool;
-    apr_size_t actual_size;
+    apr_uint64_t actual_size;
     unsigned long unc_crc = 0;
     unsigned long unc_length = 0;
 
@@ -1752,7 +1752,11 @@ static void test_deflate_4GBplus_buckets(CuTest *tc)
             break;
     }
 
-    CuAssertTrue(tc, actual_size == (apr_size_t)NR_OF_LOOPS * BUFSIZE);
+    {
+        apr_uint64_t expected_size = (apr_uint64_t)NR_OF_LOOPS *
+                                     (apr_uint64_t)BUFSIZE;
+        CuAssertTrue(tc, actual_size == expected_size);
+    }
 #undef NR_OF_LOOPS
 #undef BUFSIZE
 }
