@@ -110,8 +110,8 @@ void serf_bucket_response_set_head(
     ctx->head_req = 1;
 }
 
-void serf_bucket_response_set_decode_content(serf_bucket_t *bucket,
-                                             int decode)
+void serf_bucket_response_decode_content(serf_bucket_t *bucket,
+                                         int decode)
 {
     response_context_t *ctx = bucket->data;
 
