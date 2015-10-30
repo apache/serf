@@ -161,6 +161,28 @@ void readlines_and_check_bucket(CuTest *tc, serf_bucket_t *bkt,
     CuAssert(tc, "Read less data than expected.", strlen(expected) == 0);
 }
 
+static apr_status_t discard_data(serf_bucket_t *bkt,
+                                 apr_size_t *read_len)
+{
+    const char *data;
+    apr_size_t data_len;
+    apr_status_t status;
+    apr_size_t read;
+
+    read = 0;
+
+    do
+    {
+        status = serf_bucket_read(bkt, SERF_READ_ALL_AVAIL, &data, &data_len);
+
+        if (!SERF_BUCKET_READ_ERROR(status)) {
+            read += data_len;
+        }
+    } while(status == APR_SUCCESS);
+
+    *read_len = read;
+    return status;
+}
 
 /******************************** TEST CASES **********************************/
 
@@ -981,20 +1003,18 @@ static void test_response_bucket_peek_at_headers(CuTest *tc)
 }
 #undef EXP_RESPONSE
 
-/* ### this test is useful, but needs to switch to the new COPY bucket
-   ### to test the behavior.  */
-#if 0
-
 /* Test that the internal function serf_default_read_iovec, used by many
    bucket types, groups multiple buffers in one iovec. */
-static void test_serf_default_read_iovec(CuTest *tc)
+static void test_copy_bucket(CuTest *tc)
 {
     test_baton_t *tb = tc->testBaton;
     apr_status_t status;
-    serf_bucket_t *bkt, *aggbkt;
-    struct iovec tgt_vecs[32];
+    serf_bucket_t *bkt, *aggbkt, *copybkt;
+    struct iovec tgt_vecs[2];
     int vecs_used, i;
     apr_size_t actual_len = 0;
+    const char *data;
+    apr_size_t len;
 
     serf_bucket_alloc_t *alloc = serf_bucket_allocator_create(tb->pool, NULL,
                                                               NULL);
@@ -1005,6 +1025,7 @@ static void test_serf_default_read_iovec(CuTest *tc)
 
     /* Test 1: multiple children, should be read in one iovec. */
     aggbkt = serf_bucket_aggregate_create(alloc);
+    copybkt = serf_bucket_copy_create(aggbkt, 1024, alloc);
 
     bkt = SERF_BUCKET_SIMPLE_STRING_LEN(BODY, 20, alloc);
     serf_bucket_aggregate_append(aggbkt, bkt);
@@ -1013,15 +1034,61 @@ static void test_serf_default_read_iovec(CuTest *tc)
     bkt = SERF_BUCKET_SIMPLE_STRING_LEN(BODY+40, strlen(BODY)-40, alloc);
     serf_bucket_aggregate_append(aggbkt, bkt);
 
-    status = serf_default_read_iovec(aggbkt, SERF_READ_ALL_AVAIL, 32, tgt_vecs,
-                                     &vecs_used);
+    CuAssertIntEquals(tc, strlen(BODY),
+                      (int)serf_bucket_get_remaining(aggbkt));
+    CuAssertIntEquals(tc, strlen(BODY), 
+                      (int)serf_bucket_get_remaining(copybkt));
+
+    /* When < min_size, everything should be read in one go */
+    status = serf_bucket_read(copybkt, SERF_READ_ALL_AVAIL, &data, &len);
+    CuAssertIntEquals(tc, APR_EOF, status);
+    CuAssertIntEquals(tc, strlen(BODY), len);
+
+
+    /* Just reuse the existing aggbkt. Fill again */
+    copybkt = serf_bucket_copy_create(aggbkt, 35, alloc);
+    bkt = SERF_BUCKET_SIMPLE_STRING_LEN(BODY, 20, alloc);
+    serf_bucket_aggregate_append(aggbkt, bkt);
+    bkt = SERF_BUCKET_SIMPLE_STRING_LEN(BODY + 20, 20, alloc);
+    serf_bucket_aggregate_append(aggbkt, bkt);
+    bkt = SERF_BUCKET_SIMPLE_STRING_LEN(BODY + 40, strlen(BODY) - 40, alloc);
+    serf_bucket_aggregate_append(aggbkt, bkt);
+
+    CuAssertIntEquals(tc, strlen(BODY),
+                      (int)serf_bucket_get_remaining(copybkt));
+
+    /* When, requesting more than min_size, but more than in the first chunk
+       we will get min_size */
+    status = serf_bucket_read(copybkt, SERF_READ_ALL_AVAIL, &data, &len);
+    CuAssertIntEquals(tc, APR_SUCCESS, status);
+    CuAssertIntEquals(tc, 35, len);
+
+    /* We can read the rest */
+    CuAssertIntEquals(tc, APR_EOF, discard_data(copybkt, &len));
+    CuAssertIntEquals(tc, strlen(BODY) - 35, len);
+
+    /* Just reuse the existing aggbkt. Fill again */
+    copybkt = serf_bucket_copy_create(aggbkt, 45, alloc);
+    bkt = SERF_BUCKET_SIMPLE_STRING_LEN(BODY, 20, alloc);
+    serf_bucket_aggregate_append(aggbkt, bkt);
+    bkt = SERF_BUCKET_SIMPLE_STRING_LEN(BODY + 20, 20, alloc);
+    serf_bucket_aggregate_append(aggbkt, bkt);
+    bkt = SERF_BUCKET_SIMPLE_STRING_LEN(BODY + 40, strlen(BODY) - 40, alloc);
+    serf_bucket_aggregate_append(aggbkt, bkt);
+
+    CuAssertIntEquals(tc, strlen(BODY),
+                      (int)serf_bucket_get_remaining(copybkt));
+
+    /* Now test if we can read everything as two vecs */
+    status = serf_bucket_read_iovec(copybkt, SERF_READ_ALL_AVAIL,
+                                    2, tgt_vecs, &vecs_used);
+
     CuAssertIntEquals(tc, APR_EOF, status);
     for (i = 0; i < vecs_used; i++)
         actual_len += tgt_vecs[i].iov_len;
     CuAssertIntEquals(tc, strlen(BODY), actual_len);
 }
 
-#endif
 
 /* Test that serf doesn't hang in an endless loop when a linebuf is in
    split-CRLF state. */
@@ -1535,29 +1602,6 @@ static void test_deflate_buckets(CuTest *tc)
         deflate_buckets(tc, i, iterpool);
     }
     apr_pool_destroy(iterpool);
-}
-
-static apr_status_t discard_data(serf_bucket_t *bkt,
-                                 apr_size_t *read_len)
-{
-    const char *data;
-    apr_size_t data_len;
-    apr_status_t status;
-    apr_size_t read;
-
-    read = 0;
-
-    do
-    {
-        status = serf_bucket_read(bkt, SERF_READ_ALL_AVAIL, &data, &data_len);
-
-        if (!SERF_BUCKET_READ_ERROR(status)) {
-            read += data_len;
-        }
-    } while(status == APR_SUCCESS);
-
-    *read_len = read;
-    return status;
 }
 
 static apr_status_t hold_open(void *baton, serf_bucket_t *aggbkt)
@@ -2176,8 +2220,6 @@ static void test_http2_frame_bucket_basic(CuTest *tc)
 {
   test_baton_t *tb = tc->testBaton;
   serf_bucket_alloc_t *alloc;
-  serf_bucket_t *hpack;
-  apr_size_t sz;
   serf_bucket_t *body_in;
   serf_bucket_t *frame_in;
   serf_bucket_t *frame_out;
@@ -2238,9 +2280,11 @@ CuSuite *test_buckets(void)
     SUITE_ADD_TEST(suite, test_aggregate_buckets);
     SUITE_ADD_TEST(suite, test_aggregate_bucket_readline);
     SUITE_ADD_TEST(suite, test_header_buckets);
+    SUITE_ADD_TEST(suite, test_copy_bucket);
     SUITE_ADD_TEST(suite, test_linebuf_crlf_split);
     SUITE_ADD_TEST(suite, test_response_no_body_expected);
     SUITE_ADD_TEST(suite, test_random_eagain_in_response);
+    SUITE_ADD_TEST(suite, test_linebuf_fetch_crlf);
     SUITE_ADD_TEST(suite, test_dechunk_buckets);
     SUITE_ADD_TEST(suite, test_deflate_buckets);
     SUITE_ADD_TEST(suite, test_http2_unframe_buckets);
@@ -2255,11 +2299,7 @@ CuSuite *test_buckets(void)
     SUITE_ADD_TEST(suite, test_deflate_4GBplus_buckets);
 #endif
 
-#if 0
-    SUITE_ADD_TEST(suite, test_serf_default_read_iovec);
-#endif
-
-    SUITE_ADD_TEST(suite, test_linebuf_fetch_crlf);
+    
 
     return suite;
 }
