@@ -138,6 +138,16 @@ serf_bucket_t *serf_bucket_response_get_headers(
 void serf_bucket_response_set_head(
     serf_bucket_t *bucket);
 
+/**
+ * Ask the response @a bucket, to decode content based on the value of the
+ * 'Content- Encoding' header, or not. The default setting of a response
+ * bucket is to decode when the header is found.
+ */
+void serf_bucket_response_decode_content(
+    serf_bucket_t *bucket,
+    int decode);
+
+
 /* ==================================================================== */
 
 extern const serf_bucket_type_t serf_bucket_type_response_body;
