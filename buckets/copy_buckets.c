@@ -147,9 +147,10 @@ static apr_status_t serf_copy_read_iovec(serf_bucket_t *bucket,
     /* If somebody really wants to call us for 1 iovec, call the function
        that already implements the copying for this */
     if (vecs_size == 1) {
-        *vecs_used = 1;
         const char *data;
         apr_size_t len;
+
+        *vecs_used = 1;
 
         status = serf_copy_read(bucket, requested, &data, &len);
 
