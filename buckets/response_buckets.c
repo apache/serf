@@ -43,6 +43,7 @@ typedef struct response_context_t {
 
     int chunked;                /* Do we need to read trailers? */
     int head_req;               /* Was this a HEAD request? */
+    int decode_content;         /* Do we want to decode 'Content-Encoding' */
 
     serf_config_t *config;
 
@@ -92,6 +93,7 @@ serf_bucket_t *serf_bucket_response_create(
     ctx->state = STATE_STATUS_LINE;
     ctx->chunked = 0;
     ctx->head_req = 0;
+    ctx->decode_content = TRUE;
     ctx->error_on_eof = 0;
     ctx->config = NULL;
 
@@ -106,6 +108,14 @@ void serf_bucket_response_set_head(
     response_context_t *ctx = bucket->data;
 
     ctx->head_req = 1;
+}
+
+void serf_bucket_response_set_decode_content(serf_bucket_t *bucket,
+                                             int decode)
+{
+    response_context_t *ctx = bucket->data;
+
+    ctx->decode_content = decode;
 }
 
 serf_bucket_t *serf_bucket_response_get_headers(
@@ -282,7 +292,9 @@ static apr_status_t run_machine(serf_bucket_t *bkt, response_context_t *ctx)
          * Move on to the body.
          */
         if (ctx->linebuf.state == SERF_LINEBUF_READY && !ctx->linebuf.used) {
-            const void *v;
+            const char *v;
+            int chunked = 0;
+            int gzip = 0;
 
             /* Advance the state. */
             ctx->state = STATE_BODY;
@@ -299,29 +311,62 @@ static apr_status_t run_machine(serf_bucket_t *bkt, response_context_t *ctx)
             ctx->body =
                 serf_bucket_barrier_create(ctx->stream, bkt->allocator);
 
-            /* Are we C-L, chunked, or conn close? */
-            v = serf_bucket_headers_get(ctx->headers, "Content-Length");
+            /* Are we chunked, C-L, or conn close? */
+            v = serf_bucket_headers_get(ctx->headers, "Transfer-Encoding");
+
+            /* Need a copy cuz we're going to write NUL characters into the
+               string.  */
             if (v) {
-                apr_uint64_t length;
-                length = apr_strtoi64(v, NULL, 10);
-                if (errno == ERANGE) {
-                    return APR_FROM_OS_ERROR(ERANGE);
+                char *attrs = serf_bstrdup(bkt->allocator, v);
+                char *at = attrs;
+                char *next = NULL;
+
+                while ((v = apr_strtok(at, ", ", &next))) {
+                  at = NULL;
+
+                  if (!strcasecmp(v, "chunked"))
+                      chunked = 1;
+                  else if (!strcasecmp(v, "gzip"))
+                      gzip = 1;
+                  /* ### Others? */
                 }
-                ctx->body = serf_bucket_response_body_create(
-                              ctx->body, length, bkt->allocator);
+                serf_bucket_mem_free(bkt->allocator, attrs);
+            }
+
+            if (chunked) {
+                ctx->chunked = 1;
+                ctx->body = serf_bucket_dechunk_create(ctx->body,
+                                                       bkt->allocator);
+                serf_bucket_set_config(ctx->body, ctx->config);
             }
             else {
-                v = serf_bucket_headers_get(ctx->headers, "Transfer-Encoding");
+                /* RFC 7231 specifies that we should determine the message
+                   length via Transfer-Encoding chunked, when both chunked
+                   and Content-Length are passed */
 
-                /* Need to handle multiple transfer-encoding. */
-                if (v && strcasecmp("chunked", v) == 0) {
-                    ctx->chunked = 1;
-                    ctx->body = serf_bucket_dechunk_create(ctx->body,
-                                                           bkt->allocator);
+                v = serf_bucket_headers_get(ctx->headers, "Content-Length");
+                if (v) {
+                    apr_uint64_t length;
+                    length = apr_strtoi64(v, NULL, 10);
+                    if (errno == ERANGE) {
+                        return APR_FROM_OS_ERROR(ERANGE);
+                    }
+                    ctx->body = serf_bucket_response_body_create(
+                                  ctx->body, length, bkt->allocator);
                 }
             }
+
+            /* Transfer encodings are handled by the transport, while content
+               encoding is part of the data itself. */
+            if (gzip) {
+                ctx->body =
+                    serf_bucket_deflate_create(ctx->body, bkt->allocator,
+                                               SERF_DEFLATE_GZIP);
+                serf_bucket_set_config(ctx->body, ctx->config);
+            }
+
             v = serf_bucket_headers_get(ctx->headers, "Content-Encoding");
-            if (v) {
+            if (v && ctx->decode_content) {
                 /* Need to handle multiple content-encoding. */
                 if (v && strcasecmp("gzip", v) == 0) {
                     ctx->body =
