@@ -48,7 +48,7 @@ typedef struct http2_unframe_context_t
   unsigned char frame_type;
   unsigned char flags;
 
-  unsigned char prefix_buffer[FRAME_PREFIX_SIZE];
+  unsigned char buffer[FRAME_PREFIX_SIZE];
   char destroy_stream;
 } http2_unframe_context_t;
 
@@ -63,7 +63,7 @@ serf__bucket_http2_unframe_create(serf_bucket_t *stream,
   ctx = serf_bucket_mem_alloc(allocator, sizeof(*ctx));
   ctx->stream = stream;
   ctx->max_payload_size = max_payload_size;
-  ctx->prefix_remaining = sizeof(ctx->prefix_buffer);
+  ctx->prefix_remaining = sizeof(ctx->buffer);
   ctx->eof_callback = NULL;
 
   ctx->destroy_stream = (destroy_stream != 0);
@@ -110,29 +110,44 @@ serf__bucket_http2_unframe_read_info(serf_bucket_t *bucket,
   status = serf_bucket_read(ctx->stream, ctx->prefix_remaining, &data, &len);
   if (! SERF_BUCKET_READ_ERROR(status))
     {
-      memcpy(ctx->prefix_buffer + FRAME_PREFIX_SIZE - ctx->prefix_remaining,
-             data, len);
+      const unsigned char *header;
 
-      ctx->prefix_remaining -= len;
+      if (len < FRAME_PREFIX_SIZE)
+        {
+          memcpy(ctx->buffer + FRAME_PREFIX_SIZE - ctx->prefix_remaining,
+                 data, len);
+
+          ctx->prefix_remaining -= len;
+          header = ctx->buffer;
+        }
+      else
+        {
+          header = (const void *)data;
+          ctx->prefix_remaining = 0;
+        }
 
       if (ctx->prefix_remaining == 0)
         {
-          apr_size_t payload_length = (ctx->prefix_buffer[0] << 16)
-                                    | (ctx->prefix_buffer[1] << 8)
-                                    | (ctx->prefix_buffer[2]);
-          ctx->frame_type = ctx->prefix_buffer[3];
-          ctx->flags = ctx->prefix_buffer[4];
+          apr_size_t payload_length = (header[0] << 16)
+                                    | (header[1] << 8)
+                                    | (header[2]);
+          ctx->frame_type = header[3];
+          ctx->flags = header[4];
           /* Highest bit of stream_id MUST be ignored */
-          ctx->stream_id = ((ctx->prefix_buffer[5] & 0x7F) << 24)
-                           | (ctx->prefix_buffer[6] << 16)
-                           | (ctx->prefix_buffer[7] << 8)
-                           | (ctx->prefix_buffer[8]);
+          ctx->stream_id = ((header[5] & 0x7F) << 24)
+                           | (header[6] << 16)
+                           | (header[7] << 8)
+                           | (header[8]);
 
           ctx->payload_remaining = payload_length;
 
-          /* Use recursion to fill output arguments if necessary */
-          serf__bucket_http2_unframe_read_info(bucket, stream_id, frame_type,
-                                               flags);
+          /* Fill output arguments if necessary */
+          if (stream_id)
+            *stream_id = ctx->stream_id;
+          if (frame_type)
+            *frame_type = ctx->frame_type;
+          if (flags)
+            *flags = ctx->flags;
 
           /* https://tools.ietf.org/html/rfc7540#section-4.2
             An endpoint MUST send an error code of FRAME_SIZE_ERROR if a frame
