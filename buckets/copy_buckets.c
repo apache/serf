@@ -62,12 +62,60 @@ static apr_status_t serf_copy_read(serf_bucket_t *bucket,
                                    apr_size_t requested,
                                    const char **data, apr_size_t *len)
 {
-    /* ### peek to see how much is easily available. if it is MIN_SIZE,
-       ### then a read() would (likely) get that same amount. otherwise,
-       ### we should read an iovec and concatenate the result.  */
+    copy_context_t *ctx = bucket->data;
+    apr_status_t status;
+    const char *wdata;
+    apr_size_t peek_len;
+    struct iovec vecs[16];
+    int vecs_used;
+    apr_size_t fetched;
 
-    /* ### fix this return code  */
-    return APR_SUCCESS;
+    status = serf_bucket_peek(ctx->wrapped, &wdata, &peek_len);
+
+    if (SERF_BUCKET_READ_ERROR(status)) {
+        *len = 0;
+        return status;
+    }
+
+    /* Can we just return the peeked result? */
+    if (status || requested <= peek_len || ctx->min_size <= peek_len) {
+
+        return serf_bucket_read(ctx->wrapped, requested, data, len);
+    }
+
+    if (! ctx->hold_buf)
+        ctx->hold_buf = serf_bucket_mem_alloc(bucket->allocator,
+                                              ctx->min_size);
+
+    /* Reduce requested to fit in our buffer if necessary*/
+    if (requested > ctx->min_size)
+        requested = ctx->min_size;
+
+    fetched = 0;
+    while (fetched < requested) {
+        int i;
+        status = serf_bucket_read_iovec(ctx->wrapped, requested - fetched,
+                                        16, vecs, &vecs_used);
+
+        if (SERF_BUCKET_READ_ERROR(status)) {
+            if (fetched > 0)
+                status = APR_EAGAIN;
+            break;
+        }
+
+        for (i = 0; i < vecs_used; i++) {
+            memcpy(ctx->hold_buf + fetched, vecs[i].iov_base, vecs[i].iov_len);
+            fetched += vecs[i].iov_len;
+        }
+
+        if (status)
+            break;
+    }
+
+    *data = ctx->hold_buf;
+    *len = fetched;
+
+    return status;
 }
 
 
@@ -93,9 +141,26 @@ static apr_status_t serf_copy_read_iovec(serf_bucket_t *bucket,
     copy_context_t *ctx = bucket->data;
     apr_status_t status;
     apr_size_t total;
+    apr_size_t fetched;
     int i;
 
-    status = serf_bucket_read_iovec(bucket, requested,
+    /* If somebody really wants to call us for 1 iovec, call the function
+       that already implements the copying for this */
+    if (vecs_size == 1) {
+        *vecs_used = 1;
+        const char *data;
+        apr_size_t len;
+
+        status = serf_copy_read(bucket, requested, &data, &len);
+
+        vecs[0].iov_base = (void*)data;
+        vecs[0].iov_len = len;
+        *vecs_used = 1;
+
+        return status;
+    }
+
+    status = serf_bucket_read_iovec(ctx->wrapped, requested,
                                     vecs_size, vecs, vecs_used);
 
     /* There are four possible results:
@@ -125,12 +190,49 @@ static apr_status_t serf_copy_read_iovec(serf_bucket_t *bucket,
 
     /* Copy what we have into our buffer. Then continue reading to get at
        least MIN_SIZE or REQUESTED bytes of data.  */
+    if (! ctx->hold_buf)
+        ctx->hold_buf = serf_bucket_mem_alloc(bucket->allocator,
+                                              ctx->min_size);
 
     /* ### copy into HOLD_BUF. then read/append some more.  */
+    fetched = 0;
+    for (i = 0; i < *vecs_used; i++) {
+        memcpy(ctx->hold_buf + fetched, vecs[i].iov_base, vecs[i].iov_len);
+        fetched += vecs[i].iov_len;
+    }
+
 
     /* ### point vecs[0] at HOLD_BUF.  */
+    vecs[0].iov_base = ctx->hold_buf;
+    vecs[0].iov_len = fetched;
 
-    return status;
+    while (TRUE) {
+        int v_used;
+
+        status = serf_bucket_read_iovec(ctx->wrapped, requested - fetched,
+                                      vecs_size - 1, &vecs[1], &v_used);
+
+        if (SERF_BUCKET_READ_ERROR(status)) {
+            *vecs_used = 1;
+            return APR_EAGAIN;
+        }
+
+        for (i = 1; i <= v_used; i++)
+            total += vecs[i].iov_len;
+
+        if (status || total >= ctx->min_size || total == requested) {
+            *vecs_used = v_used + 1;
+            return status;
+        }
+
+        for (i = 1; i <= v_used; i++) {
+            memcpy(ctx->hold_buf + fetched, vecs[i].iov_base,
+                    vecs[i].iov_len);
+            fetched += vecs[i].iov_len;
+        }
+
+        vecs[0].iov_len = fetched;
+    }
 }
 
 
@@ -168,12 +270,20 @@ static apr_status_t serf_copy_peek(serf_bucket_t *bucket,
     return serf_bucket_peek(ctx->wrapped, data, len);
 }
 
+static apr_uint64_t serf_copy_get_remaining(serf_bucket_t *bucket)
+{
+    copy_context_t *ctx = bucket->data;
+
+    return serf_bucket_get_remaining(ctx->wrapped);
+}
+
 
 static void serf_copy_destroy(serf_bucket_t *bucket)
 {
-/*    copy_context_t *ctx = bucket->data;*/
+    copy_context_t *ctx = bucket->data;
 
-    /* ### kill the HOLD_BUF  */
+    if (ctx->hold_buf)
+        serf_bucket_mem_free(bucket->allocator, ctx->hold_buf);
 
     serf_default_destroy_and_data(bucket);
 }
@@ -198,6 +308,6 @@ const serf_bucket_type_t serf_bucket_type_copy = {
     serf_copy_peek,
     serf_copy_destroy,
     serf_copy_read_bucket,
-    serf_default_get_remaining,
+    serf_copy_get_remaining,
     serf_copy_set_config,
 };
