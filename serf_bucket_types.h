@@ -766,6 +766,32 @@ serf_bucket_t *serf_bucket_copy_create(
 
 /* ==================================================================== */
 
+/* Reads a specific number of bytes from an inner bucket and forwards that
+   to a callback, before reading the rest of the bucket normally.
+
+   If the internal bucket is at EOF before the prefix length is read, the
+   callback is called with whatever is read before returning EOF.
+ */
+
+extern const serf_bucket_type_t serf_bucket_type_prefix;
+#define SERF_BUCKET_IS_PREFIX(b) SERF_BUCKET_CHECK((b), prefix)
+
+/* Callback for the prefix handler */
+typedef apr_status_t (*serf_bucket_prefix_handler_t)(
+    void *baton,
+    serf_bucket_t *stream,
+    const char *data,
+    apr_size_t len);
+
+serf_bucket_t *serf_bucket_prefix_create(
+    serf_bucket_t *stream,
+    apr_size_t prefix_len,
+    serf_bucket_prefix_handler_t handler,
+    void *handler_baton,
+    serf_bucket_alloc_t *allocator);
+
+/* ==================================================================== */
+
 /* ### do we need a PIPE bucket type? they are simple apr_file_t objects */
 
 
