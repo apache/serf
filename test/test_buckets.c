@@ -1371,8 +1371,8 @@ static void test_random_eagain_in_response(CuTest *tc)
         CuAssert(tc, "Read less data than expected.", strlen(ptr) == 0);
     }
     apr_pool_destroy(iter_pool);
-
 }
+#undef BODY
 
 static void test_dechunk_buckets(CuTest *tc)
 {
@@ -1811,6 +1811,85 @@ static void test_linebuf_fetch_crlf(CuTest *tc)
     CuAssertStrEquals(tc, "", linebuf.line);
     CuAssertIntEquals(tc, 0, linebuf.used);
 
+}
+
+typedef struct prefix_cb
+{
+    serf_bucket_alloc_t *allocator;
+    apr_size_t len;
+    char *data;
+} prefix_cb;
+
+/* Implements serf_bucket_prefix_handler_t */
+static apr_status_t prefix_callback(void *baton,
+                                    serf_bucket_t *inner_bucket,
+                                    const char *data,
+                                    apr_size_t len)
+{
+    prefix_cb *pb = baton;
+
+    pb->len = len;
+    pb->data = serf_bstrmemdup(pb->allocator, data, len);
+    return APR_SUCCESS;
+}
+
+
+static void test_prefix_buckets(CuTest *tc)
+{
+    test_baton_t *tb = tc->testBaton;
+    serf_bucket_alloc_t *alloc;
+    prefix_cb pb;
+    serf_bucket_t *agg, *bkt, *prefix;
+    const char *BODY = "12345678901234567890";
+    const char *data;
+    apr_size_t len;
+
+    alloc = serf_bucket_allocator_create(tb->pool, NULL, NULL);
+    pb.allocator = alloc;
+
+    agg = serf_bucket_aggregate_create(alloc);
+
+    /* First try reading less than first chunk */
+    bkt = SERF_BUCKET_SIMPLE_STRING(BODY, alloc);
+    serf_bucket_aggregate_append(agg, bkt);
+    bkt = SERF_BUCKET_SIMPLE_STRING(BODY, alloc);
+    serf_bucket_aggregate_append(agg, bkt);
+
+    prefix = serf_bucket_prefix_create(agg, 15,
+                                       prefix_callback, &pb, alloc);
+
+    pb.data = NULL;
+    read_and_check_bucket(tc, prefix, "6789012345678901234567890");
+    CuAssertIntEquals(tc, 15, pb.len);
+    CuAssertStrEquals(tc, "123456789012345", pb.data);
+
+    /* Then more than first chunk*/
+    bkt = SERF_BUCKET_SIMPLE_STRING(BODY, alloc);
+    serf_bucket_aggregate_append(agg, bkt);
+    bkt = SERF_BUCKET_SIMPLE_STRING(BODY, alloc);
+    serf_bucket_aggregate_append(agg, bkt);
+
+    prefix = serf_bucket_prefix_create(agg, 25,
+                                       prefix_callback, &pb, alloc);
+
+    pb.data = NULL;
+    read_and_check_bucket(tc, prefix, "678901234567890");
+    CuAssertIntEquals(tc, 25, pb.len);
+    CuAssertStrEquals(tc, "1234567890123456789012345", pb.data);
+
+    /* And an early EOF */
+    bkt = SERF_BUCKET_SIMPLE_STRING(BODY, alloc);
+    serf_bucket_aggregate_append(agg, bkt);
+
+    prefix = serf_bucket_prefix_create(agg, 25,
+                                       prefix_callback, &pb, alloc);
+
+    CuAssertIntEquals(tc, APR_EOF,
+                      serf_bucket_read(prefix, SERF_READ_ALL_AVAIL,
+                                       &data, &len));
+    CuAssertIntEquals(tc, 0, len);
+    CuAssertIntEquals(tc, 20, pb.len);
+    CuAssertStrEquals(tc, "12345678901234567890", pb.data);
 }
 
 /* Basic test for unframe buckets. */
@@ -2291,6 +2370,7 @@ CuSuite *test_buckets(void)
     SUITE_ADD_TEST(suite, test_linebuf_fetch_crlf);
     SUITE_ADD_TEST(suite, test_dechunk_buckets);
     SUITE_ADD_TEST(suite, test_deflate_buckets);
+    SUITE_ADD_TEST(suite, test_prefix_buckets);
     SUITE_ADD_TEST(suite, test_http2_unframe_buckets);
     SUITE_ADD_TEST(suite, test_http2_unpad_buckets);
     SUITE_ADD_TEST(suite, test_hpack_huffman_decode);
