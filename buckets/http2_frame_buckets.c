@@ -487,7 +487,7 @@ serf_http2_unpad_read(serf_bucket_t *bucket,
   status = serf_bucket_read(ctx->stream, requested, data, len);
   if (! SERF_BUCKET_READ_ERROR(status))
     {
-      if (*len <= ctx->payload_remaining)
+      if (*len < ctx->payload_remaining)
         ctx->payload_remaining -= *len;
       else
         {
