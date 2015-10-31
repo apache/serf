@@ -1179,13 +1179,17 @@ hpack_process(serf_bucket_t *bucket)
                   ctx->buffer_used = 1;
                   ctx->index_item = FALSE;
                 }
-              else if (uc == 0x40 || uc == 0x00)
+              else if (uc == 0x40 || uc == 0x00 || uc == 0x10)
                 {
                   /* 0x40: Literal Header Field with Incremental Indexing
                            -- New Name
                      https://tools.ietf.org/html/rfc7541#section-6.2.1
                      0x00: Literal Header Field without Indexing
-                     https://tools.ietf.org/html/rfc7541#section-6.2.2 */
+                           -- New Name
+                     https://tools.ietf.org/html/rfc7541#section-6.2.2
+                     0x10: Literal Header Field Never Indexed
+                           -- New Name
+                     https://tools.ietf.org/html/rfc7541#section-6.2.3 */
 
                   ctx->state = HPACK_DECODE_STATE_KEY_LEN;
                   ctx->buffer_used = 0;
@@ -1204,7 +1208,11 @@ hpack_process(serf_bucket_t *bucket)
                   /* 6.2.1 Literal Header Field with Incremental Indexing
                             -- Indexed Name
                      https://tools.ietf.org/html/rfc7541#section-6.2.1
-                     6.2.3.  Literal Header Field Never Indexed
+                     6.2.2: Literal Header Field without Indexing
+                            -- Indexed Name
+                     https://tools.ietf.org/html/rfc7541#section-6.2.2
+                     6.2.3. Literal Header Field Never Indexed
+                            -- Indexed Name
                      https://tools.ietf.org/html/rfc7541#section-6.2.3 */
 
                   ctx->state = HPACK_DECODE_STATE_KEYINDEX;
