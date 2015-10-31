@@ -195,45 +195,45 @@ http2_protocol_cleanup(void *state)
 
 void serf__http2_protocol_init(serf_connection_t *conn)
 {
-  serf_http2_protocol_t *ctx;
+  serf_http2_protocol_t *h2;
   apr_pool_t *protocol_pool;
   serf_bucket_t *tmp;
   const int WE_ARE_CLIENT = 1;
 
   apr_pool_create(&protocol_pool, conn->pool);
 
-  ctx = apr_pcalloc(protocol_pool, sizeof(*ctx));
-  ctx->pool = protocol_pool;
-  ctx->conn = conn;
-  ctx->ostream = conn->ostream_tail;
-  ctx->allocator = conn->allocator;
-  ctx->config = conn->config;
+  h2 = apr_pcalloc(protocol_pool, sizeof(*h2));
+  h2->pool = protocol_pool;
+  h2->conn = conn;
+  h2->ostream = conn->ostream_tail;
+  h2->allocator = conn->allocator;
+  h2->config = conn->config;
 
   /* Defaults until negotiated */
-  ctx->rl_default_window = HTTP2_DEFAULT_WINDOW_SIZE;
-  ctx->rl_window = HTTP2_DEFAULT_WINDOW_SIZE;
-  ctx->rl_next_streamid = WE_ARE_CLIENT ? 2 : 1;
-  ctx->rl_max_framesize = HTTP2_DEFAULT_MAX_FRAMESIZE;
-  ctx->rl_max_headersize = APR_UINT32_MAX;
-  ctx->rl_max_concurrent = HTTP2_DEFAULT_MAX_CONCURRENT;
-  ctx->rl_push_enabled = TRUE;
+  h2->rl_default_window = HTTP2_DEFAULT_WINDOW_SIZE;
+  h2->rl_window = HTTP2_DEFAULT_WINDOW_SIZE;
+  h2->rl_next_streamid = WE_ARE_CLIENT ? 2 : 1;
+  h2->rl_max_framesize = HTTP2_DEFAULT_MAX_FRAMESIZE;
+  h2->rl_max_headersize = APR_UINT32_MAX;
+  h2->rl_max_concurrent = HTTP2_DEFAULT_MAX_CONCURRENT;
+  h2->rl_push_enabled = TRUE;
 
-  ctx->lr_default_window = HTTP2_DEFAULT_WINDOW_SIZE;
-  ctx->lr_window = HTTP2_DEFAULT_WINDOW_SIZE;
-  ctx->lr_next_streamid = WE_ARE_CLIENT ? 1 : 2;
-  ctx->lr_max_framesize = HTTP2_DEFAULT_MAX_FRAMESIZE;
-  ctx->lr_max_headersize = APR_UINT32_MAX;
-  ctx->lr_max_concurrent = HTTP2_DEFAULT_MAX_CONCURRENT;
-  ctx->lr_push_enabled = TRUE;
+  h2->lr_default_window = HTTP2_DEFAULT_WINDOW_SIZE;
+  h2->lr_window = HTTP2_DEFAULT_WINDOW_SIZE;
+  h2->lr_next_streamid = WE_ARE_CLIENT ? 1 : 2;
+  h2->lr_max_framesize = HTTP2_DEFAULT_MAX_FRAMESIZE;
+  h2->lr_max_headersize = APR_UINT32_MAX;
+  h2->lr_max_concurrent = HTTP2_DEFAULT_MAX_CONCURRENT;
+  h2->lr_push_enabled = TRUE;
 
-  ctx->setting_acks = 0;
-  ctx->enforce_flow_control = TRUE;
-  ctx->continuation_bucket = NULL;
-  ctx->continuation_streamid = 0;
+  h2->setting_acks = 0;
+  h2->enforce_flow_control = TRUE;
+  h2->continuation_bucket = NULL;
+  h2->continuation_streamid = 0;
 
-  ctx->first = ctx->last = NULL;
+  h2->first = h2->last = NULL;
 
-  ctx->hpack_tbl = serf__hpack_table_create(TRUE, 16384, protocol_pool);
+  h2->hpack_tbl = serf__hpack_table_create(TRUE, 16384, protocol_pool);
 
   apr_pool_cleanup_register(protocol_pool, conn, http2_protocol_cleanup,
                             apr_pool_cleanup_null);
@@ -242,7 +242,7 @@ void serf__http2_protocol_init(serf_connection_t *conn)
   conn->perform_write = http2_protocol_write;
   conn->perform_hangup = http2_protocol_hangup;
   conn->perform_teardown = http2_protocol_teardown;
-  conn->protocol_baton = ctx;
+  conn->protocol_baton = h2;
 
   /* Disable HTTP/1.1 guessing that affects writability */
   conn->probable_keepalive_limit = 0;
@@ -251,7 +251,7 @@ void serf__http2_protocol_init(serf_connection_t *conn)
   /* Send the HTTP/2 Connection Preface */
   tmp = SERF_BUCKET_SIMPLE_STRING("PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n",
                                   conn->allocator);
-  serf_bucket_aggregate_append(ctx->ostream, tmp);
+  serf_bucket_aggregate_append(h2->ostream, tmp);
 
   /* And now a settings frame and a huge window */
   {
@@ -266,17 +266,18 @@ void serf__http2_protocol_init(serf_connection_t *conn)
                                           HTTP2_DEFAULT_MAX_FRAMESIZE,
                                           NULL, NULL, conn->allocator);
 
-    serf_http2__enqueue_frame(ctx, tmp, FALSE);
+    serf_http2__enqueue_frame(h2, tmp, FALSE);
 
-    /* Add 2GB - 65535 to the current window.
-       (Adding 2GB -1 appears to overflow at at least one server) */
-    window_size = serf_bucket_create_numberv(conn->allocator, "4", 0x7FFF0000);
+    /* Add 1GB to the current window. */
+    window_size = serf_bucket_create_numberv(conn->allocator, "4", 0x40000000);
     tmp = serf__bucket_http2_frame_create(window_size,
                                           HTTP2_FRAME_TYPE_WINDOW_UPDATE, 0,
                                           NULL, NULL, NULL,
                                           HTTP2_DEFAULT_MAX_FRAMESIZE,
                                           NULL, NULL, conn->allocator);
-    serf_http2__enqueue_frame(ctx, tmp, FALSE);
+    serf_http2__enqueue_frame(h2, tmp, FALSE);
+
+    h2->rl_window += 0x40000000; /* And update our own administration */
   }
 }
 
@@ -1496,5 +1497,25 @@ serf_http2__enqueue_stream_reset(serf_http2_protocol_t *h2,
                                  apr_int32_t streamid,
                                  apr_status_t reason)
 {
-  return APR_SUCCESS;
+  serf_bucket_t *bkt;
+  apr_int32_t http_reason;
+
+  if (reason >= SERF_ERROR_HTTP2_NO_ERROR
+      && reason <= SERF_ERROR_HTTP2_HTTP_1_1_REQUIRED)
+    {
+      http_reason = (reason - SERF_ERROR_HTTP2_NO_ERROR);
+    }
+  else
+    http_reason = SERF_ERROR_HTTP2_INTERNAL_ERROR;
+
+  bkt = serf_bucket_create_numberv(h2->allocator, "4", http_reason);
+
+  return serf_http2__enqueue_frame(
+            h2,
+            serf__bucket_http2_frame_create(bkt,
+                                            HTTP2_FRAME_TYPE_RST_STREAM,
+                                            0, &streamid, NULL, NULL,
+                                            h2->lr_max_framesize, NULL, NULL,
+                                            h2->allocator),
+            TRUE);
 }
