@@ -1475,7 +1475,7 @@ hpack_decode_databuf_reader(void *baton,
   if (APR_STATUS_IS_EOF(status) && ctx->hit_eof)
     return APR_EOF;
   else
-    return APR_EAGAIN;
+    return status;
 }
 
 static apr_status_t
