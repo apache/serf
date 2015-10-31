@@ -884,6 +884,7 @@ typedef struct serf_hpack_decode_ctx_t
   /* When producing HTTP/1.1 style output */
   serf_bucket_t *agg;
   serf_databuf_t databuf;
+  serf_config_t *config;
 
   char wrote_header;
   char hit_eof;
@@ -915,6 +916,9 @@ serf__bucket_hpack_decode_create(serf_bucket_t *stream,
   ctx->tbl = hpack_table;
   ctx->stream = stream;
   ctx->max_entry_size = max_entry_size;
+
+  if (max_entry_size > 0x0100000)
+    max_entry_size = 0x0100000; /* 1 MB */
 
   ctx->buffer_size = max_entry_size + 16;
   ctx->buffer_used = 0;
@@ -1025,6 +1029,10 @@ handle_read_entry_and_clear(serf_hpack_decode_ctx_t *ctx)
   apr_status_t status;
   char own_key;
   char own_val;
+
+  serf__log(LOGLVL_INFO, SERF_LOGCOMP_PROTOCOL, __FILE__, ctx->config,
+            "Parsed from HPACK: %.*s: %.*s\n",
+            ctx->key_size, ctx->key, ctx->val_size, ctx->val);
 
   if (ctx->item_callback)
     {
@@ -1550,6 +1558,28 @@ serf_hpack_decode_peek(serf_bucket_t *bucket,
   return status;
 }
 
+static apr_status_t
+serf_hpack_decode_set_config(serf_bucket_t *bucket,
+                             serf_config_t *config)
+{
+  serf_hpack_decode_ctx_t *ctx = bucket->data;
+  apr_status_t status;
+
+  ctx->config = config;
+
+  status = serf_bucket_set_config(ctx->stream, config);
+  if (status)
+    return status;
+
+  if (ctx->agg)
+    {
+      status = serf_bucket_set_config(ctx->agg, config);
+      if (status)
+        return status;
+    }
+  return APR_SUCCESS;
+}
+
 static void
 serf_hpack_decode_destroy(serf_bucket_t *bucket)
 {
@@ -1572,7 +1602,10 @@ const serf_bucket_type_t serf_bucket_type__hpack_decode = {
   serf_hpack_decode_readline,
   serf_default_read_iovec,
   serf_default_read_for_sendfile,
-  serf_default_read_bucket,
+  serf_buckets_are_v2,
   serf_hpack_decode_peek,
-  serf_hpack_decode_destroy
+  serf_hpack_decode_destroy,
+  serf_default_read_bucket,
+  serf_default_get_remaining,
+  serf_hpack_decode_set_config
 };
