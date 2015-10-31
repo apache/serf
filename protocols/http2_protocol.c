@@ -431,11 +431,49 @@ http2_handle_stream_window_update(void *baton,
                                   apr_size_t len)
 {
   serf_http2_stream_t *stream = baton;
+  apr_uint32_t value;
+  const struct window_update_t
+  {
+    unsigned char v3, v2, v1, v0;
+  } *window_update;
+
 
   if (len != HTTP2_WINDOW_UPDATE_DATA_SIZE)
     return SERF_ERROR_HTTP2_FRAME_SIZE_ERROR;
 
-  SERF_H2_assert(stream->h2 != NULL);
+  window_update = (const void *)data;
+
+  value = (window_update->v3 << 24) | (window_update->v2 << 16)
+          | (window_update->v2 << 8) | window_update->v0;
+
+  value &= HTTP2_WINDOW_MAX_ALLOWED; /* The highest bit is reserved */
+
+  if (value == 0)
+    {
+      /* A receiver MUST treat the receipt of a WINDOW_UPDATE frame with an
+        flow - control window increment of 0 as a stream error(Section 5.4.2)
+        of type PROTOCOL_ERROR; errors on the connection flow - control window
+        MUST be treated as a connection error(Section 5.4.1). */
+      return SERF_ERROR_HTTP2_PROTOCOL_ERROR;
+    }
+
+  stream->lr_window += value;
+
+  if (stream->lr_window > HTTP2_WINDOW_MAX_ALLOWED)
+    {
+      /* A sender MUST NOT allow a flow-control window to exceed 2^31-1
+         octets.  If a sender receives a WINDOW_UPDATE that causes a flow-
+         control window to exceed this maximum, it MUST terminate either the
+         stream or the connection, as appropriate.  For streams, the sender
+         sends a RST_STREAM with an error code of FLOW_CONTROL_ERROR; for the
+         connection, a GOAWAY frame with an error code of FLOW_CONTROL_ERROR
+         is sent.*/
+      return SERF_ERROR_HTTP2_FLOW_CONTROL_ERROR;
+    }
+
+  serf__log(LOGLVL_INFO, SERF_LOGHTTP2, stream->h2->config,
+            "Increasing window on frame %d with 0x%x to 0x%x\n",
+            stream->streamid, value, stream->lr_window);
 
   return APR_SUCCESS;
 }
@@ -449,11 +487,50 @@ http2_handle_connection_window_update(void *baton,
                                       apr_size_t len)
 {
   serf_http2_protocol_t *h2 = baton;
+  apr_uint32_t value;
+  const struct window_update_t
+  {
+    unsigned char v3, v2, v1, v0;
+  } *window_update;
 
   if (len != HTTP2_WINDOW_UPDATE_DATA_SIZE)
     return SERF_ERROR_HTTP2_FRAME_SIZE_ERROR;
 
   SERF_H2_assert(h2 != NULL);
+
+  window_update = (const void *)data;
+
+  value = (window_update->v3 << 24) | (window_update->v2 << 16)
+          | (window_update->v2 << 8) | window_update->v0;
+
+  value &= HTTP2_WINDOW_MAX_ALLOWED; /* The highest bit is reserved */
+
+  if (value == 0)
+    {
+      /* A receiver MUST treat the receipt of a WINDOW_UPDATE frame with an
+        flow - control window increment of 0 as a stream error(Section 5.4.2)
+        of type PROTOCOL_ERROR; errors on the connection flow - control window
+        MUST be treated as a connection error(Section 5.4.1). */
+      return SERF_ERROR_HTTP2_PROTOCOL_ERROR;
+    }
+
+  h2->lr_window += value;
+
+  if (h2->lr_window > HTTP2_WINDOW_MAX_ALLOWED)
+    {
+      /* A sender MUST NOT allow a flow-control window to exceed 2^31-1
+         octets.  If a sender receives a WINDOW_UPDATE that causes a flow-
+         control window to exceed this maximum, it MUST terminate either the
+         stream or the connection, as appropriate.  For streams, the sender
+         sends a RST_STREAM with an error code of FLOW_CONTROL_ERROR; for the
+         connection, a GOAWAY frame with an error code of FLOW_CONTROL_ERROR
+         is sent.*/
+      return SERF_ERROR_HTTP2_FLOW_CONTROL_ERROR;
+    }
+
+  serf__log(LOGLVL_INFO, SERF_LOGHTTP2, h2->config,
+            "Increasing window on connection with 0x%x to 0x%x\n",
+            value, h2->lr_window);
 
   return APR_SUCCESS;
 }
@@ -931,7 +1008,7 @@ http2_process(serf_http2_protocol_t *h2)
                         body = serf_http2__stream_handle_hpack(
                                           stream, body, frametype,
                                           (frameflags & HTTP2_FLAG_END_STREAM),
-                                          h2->rl_max_headersize,
+                                          HTTP2_MAX_HEADER_ENTRYSIZE,
                                           h2->hpack_tbl, h2->config,
                                           h2->allocator);
                       }
@@ -940,7 +1017,8 @@ http2_process(serf_http2_protocol_t *h2)
                         /* Even when we don't want to process the headers we
                             must read them to update the HPACK state */
                         body = serf__bucket_hpack_decode_create(
-                                          body, NULL, NULL, h2->rl_max_headersize,
+                                          body, NULL, NULL,
+                                          HTTP2_MAX_HEADER_ENTRYSIZE,
                                           h2->hpack_tbl, h2->allocator);
                       }
                   }

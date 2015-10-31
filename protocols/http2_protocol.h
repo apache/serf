@@ -55,6 +55,8 @@ extern "C" {
 
 #define HTTP2_SETTING_SIZE              6
 
+#define HTTP2_WINDOW_MAX_ALLOWED        0x7FFFFFF
+
 /* Frame type is an 8 bit unsigned integer */
 
 /* http://tools.ietf.org/html/rfc7540#section-11.2 */
@@ -100,6 +102,9 @@ extern "C" {
 /* https://tools.ietf.org/html/rfc7540#section-3.5 */
 #define HTTP2_CONNECTION_PREFIX "PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n"
 
+
+/* Maximum size for a headerline in HPACK */
+#define HTTP2_MAX_HEADER_ENTRYSIZE          0x20000 /* 128 KByte */
 
 
 /* ------------------------------------- */
