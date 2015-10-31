@@ -251,22 +251,26 @@ serf_http2__stream_processor(void *baton,
 
       if (!SERF_BUCKET_READ_ERROR(status))
         {
-          char *printable = serf_bstrmemdup(bucket->allocator, data, len);
-          char *c;
+          if (len > 0)
+          {
+            char *printable = serf_bstrmemdup(bucket->allocator, data, len);
+            char *c;
 
-          for (c = printable; *c; c++)
-            {
-              if (((*c < ' ') || (*c > '\x7E')) && !strchr("\r\n", *c)) /* Poor mans isctrl*/
+            for (c = printable; *c; c++)
+              {
+                /* Poor mans isctrl */
+                if (((*c < ' ') || (*c > '\x7E')) && !strchr("\r\n", *c))
                 {
                   *c = ' ';
                 }
-            }
+              }
 
 #ifdef _DEBUG
-          fputs(printable, stdout);
+            fputs(printable, stdout);
 #endif
 
-          serf_bucket_mem_free(bucket->allocator, printable);
+            serf_bucket_mem_free(bucket->allocator, printable);
+          }
         }
     }
 

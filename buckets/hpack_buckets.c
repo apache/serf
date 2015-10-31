@@ -1295,8 +1295,9 @@ hpack_process(serf_bucket_t *bucket)
 
                   if (!SERF_BUCKET_READ_ERROR(status))
                     {
-                      memcpy(&ctx->buffer[ctx->buffer_used],
-                             data, len);
+                      if (len > 0)
+                        memcpy(&ctx->buffer[ctx->buffer_used],
+                               data, len);
                       ctx->buffer_used += len;
                     }
                   else
@@ -1374,8 +1375,10 @@ hpack_process(serf_bucket_t *bucket)
 
                   if (!SERF_BUCKET_READ_ERROR(status))
                     {
-                      memcpy(&ctx->buffer[ctx->buffer_used],
-                             data, len);
+                      if (len > 0)
+                        memcpy(&ctx->buffer[ctx->buffer_used],
+                               data, len);
+
                       ctx->buffer_used += len;
                     }
                   else
