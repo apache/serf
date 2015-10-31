@@ -1000,8 +1000,12 @@ read_hpack_int(apr_uint64_t *v,
         }
       while (ctx->buffer[ctx->buffer_used - 1] & 0x80);
 
-      /* Check if the value could have been stored more efficiently */
-      if (ctx->buffer[ctx->buffer_used - 1] == 0)
+      /* Check if the value could have been stored more efficiently. If it
+         can then this is a compression error.
+
+         The value where all the bits in the first byte are 1 really
+         needs the next byte as 0, to encode that. */
+      if (ctx->buffer_used > 2 && ctx->buffer[ctx->buffer_used - 1] == 0)
         return SERF_ERROR_HTTP2_COMPRESSION_ERROR;
 
       vv = value_mask;
@@ -1122,14 +1126,16 @@ handle_read_entry_and_clear(serf_hpack_decode_ctx_t *ctx)
 
       entry->key = own_key ? ctx->key : serf_bstrmemdup(tbl->alloc, ctx->key,
                                                         ctx->key_size);
+      entry->key_len = ctx->key_size;
       entry->value = own_val ? ctx->val : serf_bstrmemdup(tbl->alloc,
                                                           ctx->val,
                                                           ctx->val_size);
+      entry->value_len = ctx->val_size;
       entry->free_key = entry->free_val = TRUE;
       entry->next = tbl->rl_first;
-      tbl->lr_first = entry;
-      tbl->lr_count++;
-      tbl->lr_size += HPACK_ENTRY_SIZE(entry);
+      tbl->rl_first = entry;
+      tbl->rl_count++;
+      tbl->rl_size += HPACK_ENTRY_SIZE(entry);
       if (entry->next)
         entry->next->prev = entry;
 

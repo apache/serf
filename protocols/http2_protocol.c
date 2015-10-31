@@ -258,10 +258,7 @@ void serf__http2_protocol_init(serf_connection_t *conn)
     serf_bucket_t *settings;
     serf_bucket_t *window_size;
 
-    settings = serf_bucket_create_numberv(conn->allocator, "24",
-                              (apr_int16_t)HTTP2_SETTING_HEADER_TABLE_SIZE,
-                              (apr_int32_t)0);
-    tmp = serf__bucket_http2_frame_create(settings, HTTP2_FRAME_TYPE_SETTINGS, 0,
+    tmp = serf__bucket_http2_frame_create(NULL, HTTP2_FRAME_TYPE_SETTINGS, 0,
                                           NULL, NULL, NULL, /* Static id: 0*/
                                           HTTP2_DEFAULT_MAX_FRAMESIZE,
                                           NULL, NULL, conn->allocator);
