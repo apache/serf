@@ -227,6 +227,8 @@ serf_http2_unframe_read(serf_bucket_t *bucket,
           if (!SERF_BUCKET_READ_ERROR(status))
             status = APR_EOF;
         }
+      else if (APR_STATUS_IS_EOF(status))
+        return SERF_ERROR_HTTP2_FRAME_SIZE_ERROR;
     }
 
   return status;
@@ -280,6 +282,8 @@ serf_http2_unframe_read_iovec(serf_bucket_t *bucket,
           if (!SERF_BUCKET_READ_ERROR(status))
             status = APR_EOF;
         }
+      else if (APR_STATUS_IS_EOF(status))
+        return SERF_ERROR_HTTP2_FRAME_SIZE_ERROR;
     }
 
   return status;
@@ -418,6 +422,8 @@ serf_http2_unpad_read_padsize(serf_bucket_t *bucket)
 
       ctx->payload_remaining = (apr_size_t)remaining - ctx->pad_length;
     }
+  else if (APR_STATUS_IS_EOF(status))
+    status = SERF_ERROR_HTTP2_FRAME_SIZE_ERROR;
   else if (!status)
     status = APR_EAGAIN;
 
@@ -467,19 +473,37 @@ serf_http2_unpad_read(serf_bucket_t *bucket,
       *len = 0;
       return status;
     }
-  else if (ctx->payload_remaining == 0)
+  else if (ctx->payload_remaining == 0
+           && ctx->pad_remaining == 0)
     {
       *len = 0;
-      return serf_http2_unpad_read_padding(bucket);
+      return APR_EOF;
     }
 
-  if (requested > ctx->payload_remaining)
-    requested = ctx->payload_remaining;
+
+  if (requested >= ctx->payload_remaining)
+    requested = ctx->payload_remaining + ctx->pad_remaining;
 
   status = serf_bucket_read(ctx->stream, requested, data, len);
   if (! SERF_BUCKET_READ_ERROR(status))
     {
-      ctx->payload_remaining -= *len;
+      if (*len <= ctx->payload_remaining)
+        ctx->payload_remaining -= *len;
+      else
+        {
+          ctx->pad_remaining -= (*len - ctx->payload_remaining);
+          *len = ctx->payload_remaining;
+          ctx->payload_remaining = 0;
+
+          if (ctx->pad_remaining == 0)
+            status = APR_EOF;
+        }
+
+      if (APR_STATUS_IS_EOF(status)
+          && (ctx->pad_remaining != 0 || ctx->payload_remaining != 0))
+        {
+          status = SERF_ERROR_HTTP2_FRAME_SIZE_ERROR;
+        }
     }
 
   return status;
@@ -508,6 +532,7 @@ serf_http2_unpad_read_iovec(serf_bucket_t *bucket,
       return serf_http2_unpad_read_padding(bucket);
     }
 
+  /* ### Can we read data and padding in one go? */
   if (requested > ctx->payload_remaining)
     requested = ctx->payload_remaining;
 
@@ -522,6 +547,12 @@ serf_http2_unpad_read_iovec(serf_bucket_t *bucket,
         len += vecs[i].iov_len;
 
       ctx->payload_remaining -= len;
+
+      if (APR_STATUS_IS_EOF(status)
+          && (ctx->pad_remaining != 0 || ctx->payload_remaining != 0))
+        {
+          status = SERF_ERROR_HTTP2_FRAME_SIZE_ERROR;
+        }
     }
 
   return status;
