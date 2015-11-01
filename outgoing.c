@@ -436,9 +436,6 @@ apr_status_t serf__open_connections(serf_context_t *ctx)
         }
 
         apr_pool_clear(conn->skt_pool);
-        apr_pool_cleanup_register(conn->skt_pool, conn, clean_skt,
-                                  apr_pool_cleanup_null);
-
         status = apr_socket_create(&skt, conn->address->family,
                                    SOCK_STREAM,
 #if APR_MAJOR_VERSION > 0
@@ -449,6 +446,9 @@ apr_status_t serf__open_connections(serf_context_t *ctx)
                   "created socket for conn 0x%x, status %d\n", conn, status);
         if (status != APR_SUCCESS)
             return status;
+
+        apr_pool_cleanup_register(conn->skt_pool, conn, clean_skt,
+                                  apr_pool_cleanup_null);
 
         /* Set the socket to be non-blocking */
         if ((status = apr_socket_timeout_set(skt, 0)) != APR_SUCCESS)
