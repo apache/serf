@@ -132,8 +132,7 @@ static void serialize_data(serf_bucket_t *bucket)
      * pointer to self still represents the "right" data.
      */
     serf_bucket_aggregate_become(bucket);
-    if (ctx->config)
-      serf_set_config(bucket, ctx->config);
+    serf_bucket_set_config(bucket, ctx->config);
 
     /* Insert the two buckets. */
     serf_bucket_aggregate_append(bucket, new_bucket);
