@@ -92,8 +92,6 @@ serf__bucket_http2_unpad_create(serf_bucket_t *stream,
 extern const serf_bucket_type_t serf_bucket_type__hpack;
 #define SERF_BUCKET_IS_HPACK(b) SERF_BUCKET_CHECK((b), _hpack)
 
-typedef struct serf_hpack_table_t serf_hpack_table_t;
-
 serf_bucket_t *
 serf__bucket_hpack_create(serf_hpack_table_t *hpack_table,
                           serf_bucket_alloc_t *allocator);
