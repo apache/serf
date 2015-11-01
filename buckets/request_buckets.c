@@ -132,6 +132,8 @@ static void serialize_data(serf_bucket_t *bucket)
      * pointer to self still represents the "right" data.
      */
     serf_bucket_aggregate_become(bucket);
+    if (ctx->config)
+      serf_set_config(bucket, ctx->config);
 
     /* Insert the two buckets. */
     serf_bucket_aggregate_append(bucket, new_bucket);
@@ -193,6 +195,15 @@ static apr_status_t serf_request_read_iovec(serf_bucket_t *bucket,
     /* Delegate to the "new" aggregate bucket to do the read. */
     return serf_bucket_read_iovec(bucket, requested,
                                   vecs_size, vecs, vecs_used);
+}
+
+static serf_bucket_t * serf_request_read_bucket(serf_bucket_t *bucket,
+                                                const serf_bucket_type_t *type)
+{
+    /* Luckily we don't have to be affraid for bucket_v2 tests here */
+    serialize_data(bucket);
+
+    return serf_bucket_read_bucket(bucket, type);
 }
 
 static apr_status_t serf_request_peek(serf_bucket_t *bucket,
@@ -260,7 +271,7 @@ const serf_bucket_type_t serf_bucket_type_request = {
     serf_buckets_are_v2,
     serf_request_peek,
     serf_request_destroy,
-    serf_default_read_bucket,
+    serf_request_read_bucket,
     serf_default_get_remaining,
     serf_request_set_config,
 };
