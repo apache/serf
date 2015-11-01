@@ -1238,6 +1238,9 @@ hpack_process(serf_bucket_t *bucket)
   serf_hpack_decode_ctx_t *ctx = bucket->data;
   apr_status_t status = APR_SUCCESS;
 
+  if (ctx->hit_eof)
+    return APR_EOF;
+
   while (status == APR_SUCCESS)
     {
       switch (ctx->state)
