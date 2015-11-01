@@ -961,17 +961,17 @@ http2_process(serf_http2_protocol_t *h2)
                           }
                         break;
                       case HTTP2_FRAME_TYPE_HEADERS:
-                        if (stream->status != H2S_IDLE
-                            && stream->status != H2S_RESERVED_LOCAL
-                            && stream->status != H2S_OPEN
-                            && stream->status != H2S_HALFCLOSED_REMOTE)
+                        if (stream->status != H2S_OPEN
+                            && stream->status != H2S_HALFCLOSED_LOCAL
+                            && stream->status != H2S_IDLE
+                            && stream->status != H2S_RESERVED_REMOTE)
                           {
                             reset_reason = SERF_ERROR_HTTP2_STREAM_CLOSED;
                           }
                         break;
                       case HTTP2_FRAME_TYPE_PUSH_PROMISE:
                         if (stream->status != H2S_OPEN
-                            && stream->status != H2S_HALFCLOSED_REMOTE)
+                            && stream->status != H2S_HALFCLOSED_LOCAL)
                           {
                             reset_reason = SERF_ERROR_HTTP2_STREAM_CLOSED;
                           }
@@ -1352,18 +1352,16 @@ http2_protocol_write(serf_connection_t *conn)
 
   if (request)
     {
-      /* Yuck.. there must be easier ways to do this, but I don't
-          want to change outgoing.c all the time just yet. */
       conn->unwritten_reqs = request->next;
       if (conn->unwritten_reqs_tail == request)
         conn->unwritten_reqs = conn->unwritten_reqs_tail = NULL;
 
       request->next = NULL;
 
-      if (conn->written_reqs_tail)
-        conn->written_reqs_tail->next = request;
-      else
-        conn->written_reqs = conn->written_reqs_tail = request;
+      serf__link_requests(&conn->written_reqs, &conn->written_reqs_tail,
+                          request);
+      conn->nr_of_written_reqs++;
+      conn->nr_of_written_reqs--;
 
       status = setup_for_http2(ctx, request);
       if (status)

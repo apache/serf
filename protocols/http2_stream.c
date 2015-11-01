@@ -126,7 +126,7 @@ serf_http2__stream_setup_request(serf_http2_stream_t *stream,
 
   serf_http2__enqueue_frame(stream->h2, hpack, TRUE);
 
-  stream->status = H2S_OPEN; /* Headers sent */
+  stream->status = H2S_HALFCLOSED_LOCAL; /* Headers sent */
 
   return APR_SUCCESS;
 }
@@ -165,6 +165,34 @@ stream_response_eof(void *baton,
     }
 }
 
+void
+stream_setup_response(serf_http2_stream_t *stream,
+                      serf_config_t *config)
+{
+  serf_request_t *request;
+  serf_bucket_t *agg;
+
+  agg = serf_bucket_aggregate_create(stream->alloc);
+  serf_bucket_aggregate_hold_open(agg, stream_response_eof, stream);
+
+  serf_bucket_set_config(agg, config);
+
+  request = stream->data->request;
+
+  if (!request)
+    return;
+
+  if (! request->resp_bkt)
+    {
+      apr_pool_t *scratch_pool = request->respool; /* ### Pass scratch pool */
+
+      request->resp_bkt = request->acceptor(request, agg, request->acceptor_baton,
+                                            scratch_pool);
+    }
+
+  stream->data->response_agg = agg;
+}
+
 serf_bucket_t *
 serf_http2__stream_handle_hpack(serf_http2_stream_t *stream,
                                 serf_bucket_t *bucket,
@@ -176,12 +204,7 @@ serf_http2__stream_handle_hpack(serf_http2_stream_t *stream,
                                 serf_bucket_alloc_t *allocator)
 {
   if (!stream->data->response_agg)
-    {
-      stream->data->response_agg = serf_bucket_aggregate_create(stream->alloc);
-      serf_bucket_aggregate_hold_open(stream->data->response_agg,
-                                      stream_response_eof, stream);
-      serf_bucket_set_config(stream->data->response_agg, config);
-    }
+    stream_setup_response(stream, config);
 
   bucket = serf__bucket_hpack_decode_create(bucket, NULL, NULL, max_entry_size,
                                             hpack_tbl, allocator);
@@ -208,13 +231,7 @@ serf_http2__stream_handle_data(serf_http2_stream_t *stream,
                                serf_bucket_alloc_t *allocator)
 {
   if (!stream->data->response_agg)
-    {
-      stream->data->response_agg = serf_bucket_aggregate_create(stream->alloc);
-      serf_bucket_aggregate_hold_open(stream->data->response_agg,
-                                      stream_response_eof, stream);
-
-      serf_bucket_set_config(stream->data->response_agg, config);
-    }
+    stream_setup_response(stream, config);
 
   serf_bucket_aggregate_append(stream->data->response_agg, bucket);
 
@@ -236,9 +253,76 @@ serf_http2__stream_processor(void *baton,
 {
   serf_http2_stream_t *stream = baton;
   apr_status_t status = APR_SUCCESS;
+  serf_request_t *request = stream->data->request;
 
-  if (!stream->data->response_agg)
-    return APR_EAGAIN;
+  SERF_H2_assert(stream->data->response_agg != NULL);
+
+  if (request)
+    {
+      SERF_H2_assert(request->resp_bkt != NULL);
+
+      status = stream->data->request->handler(request, request->resp_bkt,
+                                              request->handler_baton,
+                                              request->respool);
+
+      if (! APR_STATUS_IS_EOF(status)
+          && !SERF_BUCKET_READ_ERROR(status))
+        return status;
+
+      /* Ok, the request thinks is done, let's handle the bookkeeping,
+         to remove it from the outstanding requests */
+      {
+        serf_connection_t *conn = serf_request_get_conn(request);
+        serf_request_t **rq = &conn->written_reqs;
+        serf_request_t *last = NULL;
+
+        while (*rq && (*rq != request))
+          {
+            last = *rq;
+            rq = &last->next;
+          }
+
+        if (*rq)
+          {
+            (*rq) = request->next;
+
+            if (conn->written_reqs_tail == request)
+              conn->written_reqs_tail = last;
+
+            conn->nr_of_written_reqs--;
+          }
+
+        serf__destroy_request(request);
+        stream->data->request = NULL;
+      }
+
+      if (SERF_BUCKET_READ_ERROR(status))
+        {
+          if (stream->status != H2S_CLOSED)
+            {
+              /* Tell the other side that we are no longer interested
+                 to receive more data */
+              serf_http2__stream_reset(stream, status, TRUE);
+            }
+
+          return status;
+        }
+
+      SERF_H2_assert(APR_STATUS_IS_EOF(status));
+
+      /* Even though the request reported that it is done, we might not
+         have read all the data that we should (*cough* padding *cough*),
+         or perhaps an invalid 'Content-Length' value; maybe both.
+
+         This may even handle not-interested - return EOF cases, but that
+         would have broken the pipeline for HTTP/1.1.
+         */
+
+      /* ### For now, fall through and eat whatever is left.
+             Usually this is 0 bytes */
+
+      status = APR_SUCCESS;
+    }
 
   /* ### TODO: Delegate to request */
   while (!status)
@@ -251,9 +335,11 @@ serf_http2__stream_processor(void *baton,
 
       if (!SERF_BUCKET_READ_ERROR(status))
         {
+#if 0
           if (len > 0)
           {
-            char *printable = serf_bstrmemdup(bucket->allocator, data, len);
+            serf_bucket_alloc_t *alloc = stream->data->response_agg->allocator;
+            char *printable = serf_bstrmemdup(alloc, data, len);
             char *c;
 
             for (c = printable; *c; c++)
@@ -269,9 +355,20 @@ serf_http2__stream_processor(void *baton,
             fputs(printable, stdout);
 #endif
 
-            serf_bucket_mem_free(bucket->allocator, printable);
+            serf_bucket_mem_free(alloc, printable);
           }
+#endif
         }
+    }
+
+  if (APR_STATUS_IS_EOF(status)
+      && stream->status == H2S_CLOSED || stream->status == H2S_HALFCLOSED_REMOTE)
+    {
+      /* If there was a request, it is already gone, so we can now safely
+         destroy our aggregate which may include everything upto the http2
+         frames */
+      serf_bucket_destroy(stream->data->response_agg);
+      stream->data->response_agg = NULL;
     }
 
   return status;
