@@ -395,7 +395,7 @@ static apr_status_t serf_aggregate_readline(serf_bucket_t *bucket,
         if (SERF_BUCKET_READ_ERROR(status))
             return status;
 
-        if (status == APR_EOF) {
+        if (APR_STATUS_IS_EOF(status)) {
             bucket_list_t *next_list;
 
             /* head bucket is empty, move to to-be-cleaned-up list. */
@@ -453,7 +453,7 @@ static apr_status_t serf_aggregate_peek(serf_bucket_t *bucket,
 
     status = serf_bucket_peek(head, data, len);
 
-    if (status == APR_EOF) {
+    if (APR_STATUS_IS_EOF(status)) {
         if (ctx->list->next) {
             status = APR_SUCCESS;
         } else {
