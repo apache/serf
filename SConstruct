@@ -224,18 +224,18 @@ incdir = '$PREFIX/include/serf-$MAJOR'
 if sys.platform != 'sunos5':
   env['SHLIBVERSION'] = '%d.%d.%d' % (MAJOR, MINOR, 0)
 
-LIBNAME = 'libserf-%d' % (MAJOR,)
-if sys.platform != 'win32':
-  LIBNAMESTATIC = LIBNAME
-else:
-  LIBNAMESTATIC = 'serf-${MAJOR}'
+SHLIBNAME = '%sserf-%d' % (env['SHLIBPREFIX'], MAJOR)
+LIBNAME   = '%sserf-%s' % (env['LIBPREFIX'], MAJOR)
+if sys.platform == 'win32':
+  # On Win32 SHLIBPREFIX and LIBPREFIX are empty and both produce a .lib file.
+  SHLIBNAME = 'libserf-%d' % (MAJOR, )
 
 env.Append(RPATH=libdir,
            PDB='${TARGET.filebase}.pdb')
 
 if sys.platform == 'darwin':
-#  linkflags.append('-Wl,-install_name,@executable_path/%s.dylib' % (LIBNAME,))
-  env.Append(LINKFLAGS=['-Wl,-install_name,%s/%s.dylib' % (thisdir, LIBNAME,)])
+#  linkflags.append('-Wl,-install_name,@executable_path/%s.dylib' % (SHLIBNAME,))
+  env.Append(LINKFLAGS=['-Wl,-install_name,%s/%s.dylib' % (thisdir, SHLIBNAME,)])
 
 if sys.platform != 'win32':
   def CheckGnuCC(context):
@@ -298,8 +298,8 @@ if sys.platform == 'win32':
 SOURCES = Glob('*.c') + Glob('buckets/*.c') + Glob('auth/*.c') + \
           Glob('protocols/*.c')
 
-lib_static = env.StaticLibrary(LIBNAMESTATIC, SOURCES)
-lib_shared = env.SharedLibrary(LIBNAME, SOURCES + SHARED_SOURCES)
+lib_static = env.StaticLibrary(LIBNAME, SOURCES)
+lib_shared = env.SharedLibrary(SHLIBNAME, SOURCES + SHARED_SOURCES)
 
 if aprstatic:
   env.Append(CPPDEFINES=['APR_DECLARE_STATIC', 'APU_DECLARE_STATIC'])
@@ -455,7 +455,7 @@ if sys.platform == 'darwin':
   # make applications depend on the exact major.minor.patch version of serf.
 
   install_shared_path = install_shared[0].abspath
-  target_install_shared_path = os.path.join(libdir, '%s.dylib' % LIBNAME)
+  target_install_shared_path = os.path.join(libdir, '%s.dylib' % SHLIBNAME)
   env.AddPostAction(install_shared, ('install_name_tool -id %s %s'
                                      % (target_install_shared_path,
                                         install_shared_path)))
@@ -488,8 +488,7 @@ else:
 
 # Find the (dynamic) library in this directory
 tenv.Replace(RPATH=thisdir)
-tenv.Prepend(LIBS=[LIBNAMESTATIC, ],
-             LIBPATH=[thisdir, ])
+tenv.Prepend(LIBPATH=[thisdir, ])
 
 check_script = env.File('build/check.py').rstr()
 test_dir = env.File('test/test_all.c').rfile().get_dir()
@@ -518,11 +517,14 @@ testall_files = [
         'test/MockHTTPinC/MockHTTP_server.c',
         ]
 
+# We link the programs explicitly against the static libraries, to allow
+# access to private functions
 for proggie in TEST_EXES:
   if 'test_all' in proggie:
-    tenv.Program(proggie, testall_files )
+    tenv.Program(proggie, testall_files + LIBNAME + env['LIBSUFFIX'])
   else:
-    tenv.Program(target = proggie, source = [proggie.replace('.exe','') + '.c'])
+    tenv.Program(target = proggie, source = [proggie.replace('.exe','') + '.c',
+                                             LIBNAME + env['LIBSUFFIX']])
 
 
 # HANDLE CLEANING
