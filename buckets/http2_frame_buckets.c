@@ -514,7 +514,7 @@ serf_http2_unpad_read_iovec(serf_bucket_t *bucket,
               if (cv->iov_len <= padread)
                 {
                   padread -= cv->iov_len;
-                  *vecs_used--;
+                  (*vecs_used)--;
                 }
               else
                 {
