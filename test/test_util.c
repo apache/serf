@@ -626,6 +626,9 @@ void *test_setup(void *dummy)
     apr_pool_t *test_pool;
     apr_pool_create(&test_pool, NULL);
     apr_pool_abort_set(pool_abort_func, test_pool);
+    /* Keep a maximum of 16 MB unused memory inside APR. */
+    apr_allocator_max_free_set(apr_pool_allocator_get(test_pool),
+                               16384 * 1024);
     return initTestCtx(test_pool);
 }
 
