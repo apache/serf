@@ -175,7 +175,7 @@ serf_http2__enqueue_stream_reset(serf_http2_protocol_t *h2,
    Passed to serf__bucket_http2_frame_create when writing for
    a stream.
 */
-apr_int32_t
+void
 serf_http2__allocate_stream_id(void *baton,
                                apr_int32_t *streamid);
 
