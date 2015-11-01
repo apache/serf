@@ -223,6 +223,7 @@ static apr_status_t setupTCPServer(mhServCtx_t *ctx)
         status = apr_socket_bind(ctx->skt, serv_addr);
         if (status != APR_SUCCESS) {
             apr_socket_close(ctx->skt);
+            ctx->skt = NULL;
             ctx->port++;
             continue;
         }
@@ -1525,6 +1526,7 @@ static void closeAndRemoveClientCtx(mhServCtx_t *ctx, _mhClientCtx_t *cctx)
     pfd.reqevents = cctx->reqevents;
     apr_pollset_remove(ctx->pollset, &pfd);
     apr_socket_close(cctx->skt);
+    cctx->skt = NULL;
 
     if (cctx->proxyskt) {
         pfd.desc_type = APR_POLL_SOCKET;
@@ -1532,6 +1534,7 @@ static void closeAndRemoveClientCtx(mhServCtx_t *ctx, _mhClientCtx_t *cctx)
         pfd.reqevents = cctx->proxyreqevents;
         apr_pollset_remove(ctx->pollset, &pfd);
         apr_socket_close(cctx->proxyskt);
+        cctx->proxyskt = NULL;
     }
 
     /* TODO: a linked list would be more efficient. */
@@ -1632,6 +1635,7 @@ apr_status_t _mhRunServerLoop(mhServCtx_t *ctx)
                     pfd.reqevents = cctx->proxyreqevents;
                     apr_pollset_remove(ctx->pollset, &pfd);
                     apr_socket_close(cctx->proxyskt);
+                    cctx->proxyskt = NULL;
 
                 }
             } else {
@@ -2896,7 +2900,8 @@ static apr_status_t sslHandshake(_mhClientCtx_t *cctx)
                     int reason = ERR_GET_REASON(l);
 
                     if (lib == ERR_LIB_SSL
-                        && reason == SSL_R_PEER_DID_NOT_RETURN_A_CERTIFICATE) {
+                        && (reason == SSL_R_PEER_DID_NOT_RETURN_A_CERTIFICATE
+                            || reason == ERR_R_INTERNAL_ERROR)) {
                         /* The server shouldn't fail for this...
 
                            We test the client. Go on, and report the problem
