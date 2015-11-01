@@ -1387,11 +1387,13 @@ http2_protocol_teardown(serf_connection_t *conn)
   conn->protocol_baton = NULL;
 }
 
-apr_int32_t
+void
 serf_http2__allocate_stream_id(void *baton,
                                apr_int32_t *streamid)
 {
   serf_http2_stream_t *stream = baton;
+
+  SERF_H2_assert(streamid == &stream->streamid);
 
   /* Do we need to assign a new id?
 
@@ -1407,8 +1409,6 @@ serf_http2__allocate_stream_id(void *baton,
       if (stream->status == H2S_INIT)
         stream->status = H2S_IDLE;
     }
-
-  return stream->streamid;
 }
 
 static void

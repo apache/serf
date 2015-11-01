@@ -165,7 +165,7 @@ serf_http2__stream_reset(serf_http2_stream_t *stream,
   return APR_SUCCESS;
 }
 
-apr_status_t
+static apr_status_t
 stream_response_eof(void *baton,
                     serf_bucket_t *aggregate_bucket)
 {
@@ -181,7 +181,7 @@ stream_response_eof(void *baton,
     }
 }
 
-void
+static void
 stream_setup_response(serf_http2_stream_t *stream,
                       serf_config_t *config)
 {
