@@ -38,9 +38,13 @@ extern "C" {
 extern const serf_bucket_type_t serf_bucket_type__http2_unframe;
 #define SERF__BUCKET_IS_HTTP2_UNFRAME(b) SERF_BUCKET_CHECK((b), _http2_unframe)
 
-/* Creates a bucket that reads a single http2 frame from stream. If
-   DESTROY_STREAM is true STREAM will be destroyed with the bucket, otherwise
-   it won't.
+typedef apr_status_t (*serf_bucket_end_of_frame_t)(
+                                    void *baton,
+                                    serf_bucket_t *unframe_bucket);
+
+/* Creates a bucket that reads a single http2 frame from stream.  Note that
+   unlike many other buckets destroying the unframe bucket doesn't destroy the
+   underlying stream.
 
    The frame header information can be obtained by calling
    serf__bucket_http2_unframe_read_info().
@@ -50,7 +54,6 @@ extern const serf_bucket_type_t serf_bucket_type__http2_unframe;
  */
 serf_bucket_t *
 serf__bucket_http2_unframe_create(serf_bucket_t *stream,
-                                  int destroy_stream,
                                   apr_size_t max_payload_size,
                                   serf_bucket_alloc_t *allocator);
 
@@ -58,10 +61,8 @@ serf__bucket_http2_unframe_create(serf_bucket_t *stream,
    the whole frame has been read from the contained stream */
 void
 serf__bucket_http2_unframe_set_eof(serf_bucket_t *bucket,
-                                   apr_status_t (*eof_callback)(
-                                                    void *baton,
-                                                    serf_bucket_t *bucket),
-                                   void *eof_callback_baton);
+                                   serf_bucket_end_of_frame_t end_of_frame,
+                                   void *end_of_frame_baton);
 
 
 /* Obtains the frame header state, reading from the bucket if necessary.
@@ -84,7 +85,6 @@ extern const serf_bucket_type_t serf_bucket_type__http2_unpad;
 
 serf_bucket_t *
 serf__bucket_http2_unpad_create(serf_bucket_t *stream,
-                                int destroy_stream,
                                 serf_bucket_alloc_t *allocator);
 
 /* ==================================================================== */
