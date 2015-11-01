@@ -73,11 +73,55 @@ static apr_status_t serf_response_body_read(serf_bucket_t *bucket,
 
     if (!SERF_BUCKET_READ_ERROR(status)) {
         ctx->remaining -= *len;
+
+        if (!ctx->remaining)
+            status = APR_EOF;
+        else if (APR_STATUS_IS_EOF(status) && ctx->remaining > 0) {
+            /* The server sent less data than expected. */
+            status = SERF_ERROR_TRUNCATED_HTTP_RESPONSE;
+        }
     }
 
-    if (APR_STATUS_IS_EOF(status) && ctx->remaining > 0) {
-        /* The server sent less data than expected. */
-        status = SERF_ERROR_TRUNCATED_HTTP_RESPONSE;
+    return status;
+}
+
+static apr_status_t serf_response_body_read_iovec(serf_bucket_t *bucket,
+                                                  apr_size_t requested,
+                                                  int vecs_size,
+                                                  struct iovec *vecs,
+                                                  int *vecs_used)
+{
+    body_context_t *ctx = bucket->data;
+    apr_status_t status;
+
+    if (!ctx->remaining) {
+        *vecs_used = 0;
+        return APR_EOF;
+    }
+
+    if (requested == SERF_READ_ALL_AVAIL || requested > ctx->remaining) {
+        if (ctx->remaining <= REQUESTED_MAX) {
+            requested = (apr_size_t) ctx->remaining;
+        } else {
+            requested = REQUESTED_MAX;
+        }
+    }
+
+    status = serf_bucket_read_iovec(ctx->stream, requested, vecs_size, vecs,
+                                    vecs_used);
+
+    if (!SERF_BUCKET_READ_ERROR(status)) {
+        int i;
+
+        for (i = 0; i < *vecs_used; i++)
+            ctx->remaining -= vecs[i].iov_len;
+
+        if (!ctx->remaining)
+            status = APR_EOF;
+        else if (APR_STATUS_IS_EOF(status) && ctx->remaining > 0) {
+            /* The server sent less data than expected. */
+            status = SERF_ERROR_TRUNCATED_HTTP_RESPONSE;
+        }
     }
 
     return status;
@@ -101,11 +145,13 @@ static apr_status_t serf_response_body_readline(serf_bucket_t *bucket,
 
     if (!SERF_BUCKET_READ_ERROR(status)) {
         ctx->remaining -= *len;
-    }
 
-    if (APR_STATUS_IS_EOF(status) && ctx->remaining > 0) {
-        /* The server sent less data than expected. */
-        status = SERF_ERROR_TRUNCATED_HTTP_RESPONSE;
+        if (!ctx->remaining)
+            status = APR_EOF;
+        else if (APR_STATUS_IS_EOF(status) && ctx->remaining > 0) {
+            /* The server sent less data than expected. */
+            status = SERF_ERROR_TRUNCATED_HTTP_RESPONSE;
+        }
     }
 
     return status;
@@ -129,6 +175,13 @@ static void serf_response_body_destroy(serf_bucket_t *bucket)
     serf_default_destroy_and_data(bucket);
 }
 
+static apr_uint64_t serf_response_body_get_remaining(serf_bucket_t *bucket)
+{
+    body_context_t *ctx = bucket->data;
+
+    return ctx->remaining;
+}
+
 static apr_status_t serf_response_body_set_config(serf_bucket_t *bucket,
                                                   serf_config_t *config)
 {
@@ -143,12 +196,12 @@ const serf_bucket_type_t serf_bucket_type_response_body = {
     "RESPONSE_BODY",
     serf_response_body_read,
     serf_response_body_readline,
-    serf_default_read_iovec,
+    serf_response_body_read_iovec,
     serf_default_read_for_sendfile,
     serf_buckets_are_v2,
     serf_response_body_peek,
     serf_response_body_destroy,
     serf_default_read_bucket,
-    serf_default_get_remaining,
+    serf_response_body_get_remaining,
     serf_response_body_set_config,
 };
