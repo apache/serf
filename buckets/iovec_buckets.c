@@ -155,6 +155,19 @@ static apr_status_t serf_iovec_peek(serf_bucket_t *bucket,
     return APR_SUCCESS;
 }
 
+static apr_uint64_t serf_iovec_get_remaining(serf_bucket_t *bucket)
+{
+    iovec_context_t *ctx = bucket->data;
+    apr_uint64_t total = 0;
+    int i;
+
+    for (i = ctx->current_vec; i < ctx->vecs_len; i++)
+      {
+        total += ctx->vecs[i].iov_len;
+      }
+
+    return total;
+}
 
 const serf_bucket_type_t serf_bucket_type_iovec = {
     "IOVEC",
@@ -162,7 +175,10 @@ const serf_bucket_type_t serf_bucket_type_iovec = {
     serf_iovec_readline,
     serf_iovec_read_iovec,
     serf_default_read_for_sendfile,
-    serf_default_read_bucket,
+    serf_buckets_are_v2,
     serf_iovec_peek,
     serf_default_destroy_and_data,
+    serf_default_read_bucket,
+    serf_iovec_get_remaining,
+    serf_default_ignore_config
 };
