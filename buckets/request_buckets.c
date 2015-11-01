@@ -24,6 +24,7 @@
 #include "serf.h"
 #include "serf_bucket_util.h"
 
+#include "serf_private.h"
 
 typedef struct request_context_t {
     const char *method;
