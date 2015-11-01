@@ -431,33 +431,6 @@ serf_http2_unpad_read_padsize(serf_bucket_t *bucket)
 }
 
 static apr_status_t
-serf_http2_unpad_read_padding(serf_bucket_t *bucket)
-{
-  http2_unpad_context_t *ctx = bucket->data;
-  apr_status_t status;
-
-  /* ### What is the most efficient way to skip data?
-         Should we use serf_bucket_read_iovec()? */
-
-  while (ctx->pad_remaining > 0)
-    {
-      apr_size_t pad_read;
-      const char *pad_data;
-
-      status = serf_bucket_read(ctx->stream, ctx->pad_remaining,
-                                &pad_data, &pad_read);
-
-      if (! SERF_BUCKET_READ_ERROR(status))
-        ctx->pad_remaining -= pad_read;
-
-      if (status)
-        return status;
-    }
-
-  return APR_EOF;
-}
-
-static apr_status_t
 serf_http2_unpad_read(serf_bucket_t *bucket,
                       apr_size_t requested,
                       const char **data,
@@ -526,27 +499,54 @@ serf_http2_unpad_read_iovec(serf_bucket_t *bucket,
       *vecs_used = 0;
       return status;
     }
-  else if (ctx->payload_remaining == 0)
+  else if (ctx->payload_remaining == 0
+           && ctx->pad_remaining == 0)
     {
       *vecs_used = 0;
-      return serf_http2_unpad_read_padding(bucket);
+      return APR_EOF;
     }
 
-  /* ### Can we read data and padding in one go? */
   if (requested > ctx->payload_remaining)
-    requested = ctx->payload_remaining;
+    requested = ctx->payload_remaining + ctx->pad_remaining;
 
   status = serf_bucket_read_iovec(ctx->stream, requested,
                                   vecs_size, vecs, vecs_used);
   if (! SERF_BUCKET_READ_ERROR(status))
     {
       int i;
-      apr_size_t len = 0;
+      apr_size_t total = 0;
 
       for (i = 0; i < *vecs_used; i++)
-        len += vecs[i].iov_len;
+        total += vecs[i].iov_len;
 
-      ctx->payload_remaining -= len;
+      if (total < ctx->payload_remaining)
+        ctx->payload_remaining -= total;
+      else
+        {
+          apr_size_t padread = (total - ctx->payload_remaining);
+          ctx->pad_remaining -= padread;
+          ctx->payload_remaining = 0;
+
+          /* Remove padding from returned result? */
+          while (padread && *vecs_used)
+            {
+              struct iovec *cv = &vecs[*vecs_used - 1];
+
+              if (cv->iov_len <= padread)
+                {
+                  padread -= cv->iov_len;
+                  *vecs_used--;
+                }
+              else
+                {
+                  cv->iov_len -= padread;
+                  break;
+                }
+            }
+
+          if (ctx->pad_remaining == 0)
+            status = APR_EOF;
+        }
 
       if (APR_STATUS_IS_EOF(status)
           && (ctx->pad_remaining != 0 || ctx->payload_remaining != 0))
