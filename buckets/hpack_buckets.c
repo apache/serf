@@ -709,8 +709,8 @@ serf__bucket_hpack_setx(serf_bucket_t *hpack_bucket,
     ctx->first = ctx->last = entry;
 }
 
-const char *serf_bucket_hpack_getc(serf_bucket_t *hpack_bucket,
-                                   const char *key)
+const char *serf__bucket_hpack_getc(serf_bucket_t *hpack_bucket,
+                                    const char *key)
 {
   serf_hpack_context_t *ctx = hpack_bucket->data;
   serf_hpack_entry_t *entry;
@@ -728,9 +728,9 @@ const char *serf_bucket_hpack_getc(serf_bucket_t *hpack_bucket,
   return NULL;
 }
 
-void serf_bucket_hpack_do(serf_bucket_t *hpack_bucket,
-                          serf_bucket_hpack_do_callback_fn_t func,
-                          void *baton)
+void serf__bucket_hpack_do(serf_bucket_t *hpack_bucket,
+                           serf_bucket_hpack_do_callback_fn_t func,
+                           void *baton)
 {
   serf_hpack_context_t *ctx = hpack_bucket->data;
   serf_hpack_entry_t *entry;
