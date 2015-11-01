@@ -521,7 +521,7 @@ testall_files = [
 # access to private functions
 for proggie in TEST_EXES:
   if 'test_all' in proggie:
-    tenv.Program(proggie, testall_files + LIBNAME + env['LIBSUFFIX'])
+    tenv.Program(proggie, testall_files + [LIBNAME + env['LIBSUFFIX']])
   else:
     tenv.Program(target = proggie, source = [proggie.replace('.exe','') + '.c',
                                              LIBNAME + env['LIBSUFFIX']])
