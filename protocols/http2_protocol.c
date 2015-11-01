@@ -285,8 +285,7 @@ void serf__http2_protocol_init(serf_connection_t *conn)
 
 /* Creates a HTTP/2 request from a serf request */
 static apr_status_t
-setup_for_http2(serf_http2_protocol_t *h2,
-                serf_request_t *request)
+enqueue_http2_request(serf_http2_protocol_t *h2)
 {
   serf_http2_stream_t *stream;
 
@@ -304,8 +303,8 @@ setup_for_http2(serf_http2_protocol_t *h2,
   else
     h2->last = h2->first = stream;
 
-  return serf_http2__stream_setup_request(stream, h2->hpack_tbl,
-                                          request);
+  return serf_http2__stream_setup_next_request(stream, h2->conn,
+                                               h2->hpack_tbl);
 }
 
 apr_status_t
@@ -756,12 +755,12 @@ http2_bucket_processor(void *baton,
                        serf_http2_protocol_t *h2,
                        serf_bucket_t *frame_bucket)
 {
-  struct iovec vecs[16];
+  struct iovec vecs[IOV_MAX];
   int vecs_used;
   serf_bucket_t *payload = baton;
   apr_status_t status;
 
-  status = serf_bucket_read_iovec(payload, SERF_READ_ALL_AVAIL, 16,
+  status = serf_bucket_read_iovec(payload, SERF_READ_ALL_AVAIL, IOV_MAX,
                                   vecs, &vecs_used);
 
   if (APR_STATUS_IS_EOF(status))
@@ -1006,6 +1005,8 @@ http2_process(serf_http2_protocol_t *h2)
                         serf_bucket_aggregate_hold_open(
                                       h2->continuation_bucket,
                                       http2_handle_continuation, h2);
+
+                        body = h2->continuation_bucket;
                       }
 
                     if (stream && !reset_reason)
@@ -1346,24 +1347,13 @@ http2_protocol_read(serf_connection_t *conn)
 static apr_status_t
 http2_protocol_write(serf_connection_t *conn)
 {
-  serf_http2_protocol_t *ctx = conn->protocol_baton;
-  serf_request_t *request = conn->unwritten_reqs;
+  serf_http2_protocol_t *h2 = conn->protocol_baton;
   apr_status_t status;
 
-  if (request)
+  if (conn->unwritten_reqs
+      && conn->nr_of_written_reqs < h2->lr_max_concurrent)
     {
-      conn->unwritten_reqs = request->next;
-      if (conn->unwritten_reqs_tail == request)
-        conn->unwritten_reqs = conn->unwritten_reqs_tail = NULL;
-
-      request->next = NULL;
-
-      serf__link_requests(&conn->written_reqs, &conn->written_reqs_tail,
-                          request);
-      conn->nr_of_written_reqs++;
-      conn->nr_of_written_reqs--;
-
-      status = setup_for_http2(ctx, request);
+      status = enqueue_http2_request(h2);
       if (status)
         return status;
     }

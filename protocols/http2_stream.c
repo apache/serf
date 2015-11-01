@@ -82,13 +82,18 @@ serf_http2__stream_cleanup(serf_http2_stream_t *stream)
 }
 
 apr_status_t
-serf_http2__stream_setup_request(serf_http2_stream_t *stream,
-                                 serf_hpack_table_t *hpack_tbl,
-                                 serf_request_t *request)
+serf_http2__stream_setup_next_request(serf_http2_stream_t *stream,
+                                      serf_connection_t *conn,
+                                      serf_hpack_table_t *hpack_tbl)
 {
+  serf_request_t *request = conn->unwritten_reqs;
   apr_status_t status;
   serf_bucket_t *hpack;
   serf_bucket_t *body;
+
+  SERF_H2_assert(request != NULL);
+  if (!request)
+    return APR_EGENERAL;
 
   stream->data->request = request;
 
@@ -98,6 +103,17 @@ serf_http2__stream_setup_request(serf_http2_stream_t *stream,
       if (status)
         return status;
     }
+
+  conn->unwritten_reqs = request->next;
+  if (conn->unwritten_reqs_tail == request)
+    conn->unwritten_reqs = conn->unwritten_reqs_tail = NULL;
+
+  request->next = NULL;
+
+  serf__link_requests(&conn->written_reqs, &conn->written_reqs_tail,
+    request);
+  conn->nr_of_written_reqs++;
+  conn->nr_of_written_reqs--;
 
   serf__bucket_request_read(request->req_bkt, &body, NULL, NULL);
   status = serf__bucket_hpack_create_from_request(&hpack, hpack_tbl,
@@ -324,45 +340,25 @@ serf_http2__stream_processor(void *baton,
       status = APR_SUCCESS;
     }
 
-  /* ### TODO: Delegate to request */
   while (!status)
     {
-      const char *data;
-      apr_size_t len;
+      struct iovec vecs[IOV_MAX];
+      int vecs_used;
 
-      status = serf_bucket_read(stream->data->response_agg,
-                                SERF_READ_ALL_AVAIL, &data, &len);
+      /* Drain the bucket as efficiently as possible */
+      status = serf_bucket_read_iovec(stream->data->response_agg,
+                                      SERF_READ_ALL_AVAIL,
+                                      IOV_MAX, vecs, &vecs_used);
 
-      if (!SERF_BUCKET_READ_ERROR(status))
+      if (vecs_used)
         {
-#if 0
-          if (len > 0)
-          {
-            serf_bucket_alloc_t *alloc = stream->data->response_agg->allocator;
-            char *printable = serf_bstrmemdup(alloc, data, len);
-            char *c;
-
-            for (c = printable; *c; c++)
-              {
-                /* Poor mans isctrl */
-                if (((*c < ' ') || (*c > '\x7E')) && !strchr("\r\n", *c))
-                {
-                  *c = ' ';
-                }
-              }
-
-#ifdef _DEBUG
-            fputs(printable, stdout);
-#endif
-
-            serf_bucket_mem_free(alloc, printable);
-          }
-#endif
+          /* We have data... What should we do with it? */
         }
     }
 
   if (APR_STATUS_IS_EOF(status)
-      && stream->status == H2S_CLOSED || stream->status == H2S_HALFCLOSED_REMOTE)
+      && (stream->status == H2S_CLOSED
+          || stream->status == H2S_HALFCLOSED_REMOTE))
     {
       /* If there was a request, it is already gone, so we can now safely
          destroy our aggregate which may include everything upto the http2

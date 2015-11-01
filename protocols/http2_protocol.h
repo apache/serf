@@ -188,11 +188,11 @@ serf_http2__stream_get(serf_http2_protocol_t *h2,
                        int create_for_remote,
                        int move_first);
 
-/* Sets up STREAM to handle REQUEST */
+/* Sets up STREAM to handle the next request from CONN */
 apr_status_t
-serf_http2__stream_setup_request(serf_http2_stream_t *stream,
-                                 serf_hpack_table_t *hpack_tbl,
-                                 serf_request_t *request);
+serf_http2__stream_setup_next_request(serf_http2_stream_t *stream,
+                                      serf_connection_t *conn,
+                                      serf_hpack_table_t *hpack_tbl);
 
 apr_status_t
 serf_http2__stream_reset(serf_http2_stream_t *stream,
