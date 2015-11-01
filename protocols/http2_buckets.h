@@ -221,9 +221,6 @@ serf__bucket_http2_frame_create(serf_bucket_t *stream,
                                 void *alloc_window_baton,
                                 serf_bucket_alloc_t *alloc);
 
-int
-serf__bucket_http2_frame_within_frame(serf_bucket_t *bucket);
-
 /* ==================================================================== */
 
 #ifdef __cplusplus

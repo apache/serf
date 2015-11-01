@@ -696,17 +696,6 @@ serf__bucket_http2_frame_create(serf_bucket_t *stream,
   return serf_bucket_create(&serf_bucket_type__http2_frame, alloc, ctx);
 }
 
-
-int
-serf_bucket_http2_frame_within_frame(serf_bucket_t *bucket)
-{
-  const char *data;
-  apr_size_t len;
-  apr_status_t status = serf_bucket_peek(bucket, &data, &len);
-
-  return APR_STATUS_IS_EOF(status);
-}
-
 static apr_status_t
 http2_prepare_frame(serf_bucket_t *bucket)
 {
