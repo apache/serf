@@ -255,6 +255,7 @@ typedef struct serf_hpack_entry_t
 
   char free_key; /* Key must be freed */
   char free_val; /* Value must be freed */
+  char dont_index; /* 0=index, 1=no-index, 2=never-index */
 } serf_hpack_entry_t;
 
 static void hpack_free_entry(serf_hpack_entry_t *entry,
@@ -289,14 +290,16 @@ struct serf_hpack_table_t
   serf_hpack_entry_t *lr_first, *lr_last, *lr_start;
   unsigned int lr_count; /* Number of items (first..last) */
   unsigned int lr_indexable; /* Number of items (start..last) */
-  unsigned int lr_size; /* 'Bytes' in list, calculated by HPACK_ENTRY_SIZE() */
-  unsigned int lr_max_table_size;
+  apr_size_t lr_size; /* 'Bytes' in list, calculated by HPACK_ENTRY_SIZE() */
+  apr_size_t lr_max_table_size;
+  apr_size_t lr_sys_table_size;
 
   serf_hpack_entry_t *rl_first, *rl_last, *rl_start;
   unsigned int rl_count; /* Number of items (first..last) */
   unsigned int rl_indexable; /* Number of items (start..last) */
-  unsigned int rl_size; /* 'Bytes' in list, calculated by HPACK_ENTRY_SIZE() */
-  unsigned int rl_max_table_size;
+  apr_size_t rl_size; /* 'Bytes' in list, calculated by HPACK_ENTRY_SIZE() */
+  apr_size_t rl_max_table_size;
+  apr_size_t rl_sys_table_size;
 };
 
 /* The staticly defined list of pre-encoded entries. All numbers above
@@ -382,8 +385,8 @@ serf__hpack_table_create(int for_http2,
   tbl->pool = result_pool;
   tbl->alloc = serf_bucket_allocator_create(result_pool, NULL, NULL);
 
-  tbl->lr_max_table_size = default_max_table_size;
-  tbl->rl_max_table_size = default_max_table_size;
+  tbl->lr_sys_table_size = tbl->lr_max_table_size = default_max_table_size;
+  tbl->rl_sys_table_size = tbl->rl_max_table_size = default_max_table_size;
 
   tbl->lowercase_keys = FALSE;
   tbl->send_tablesize_update = FALSE;
@@ -399,6 +402,77 @@ serf__hpack_table_create(int for_http2,
     }
 
   return tbl;
+}
+
+static void
+hpack_shrink_table(serf_hpack_entry_t **first,
+                   serf_hpack_entry_t **start,
+                   serf_hpack_entry_t **last,
+                   apr_size_t *size,
+                   apr_size_t max_size,
+                   serf_bucket_alloc_t *allocator)
+{
+  while (*last && (*size > max_size))
+    {
+      serf_hpack_entry_t *entry = *last;
+
+      *last = entry->prev;
+
+      if (start && (*start == entry))
+        *start = NULL;
+      if (first && (*first == entry))
+        *first = NULL;
+
+      if (entry->prev)
+        entry->prev->next = NULL;
+
+      *size -= HPACK_ENTRY_SIZE(entry);
+      hpack_free_entry(entry, allocator);
+    }
+}
+
+void
+serf__hpack_table_set_max_table_size(serf_hpack_table_t *hpack_tbl,
+                                     apr_size_t max_decoder_size,
+                                     apr_size_t max_encoder_size)
+{
+  if (max_decoder_size != hpack_tbl->rl_sys_table_size)
+    {
+      hpack_tbl->rl_sys_table_size = max_decoder_size;
+    }
+
+  if (max_encoder_size != hpack_tbl->lr_max_table_size)
+    {
+      hpack_tbl->lr_sys_table_size = max_encoder_size;
+
+      if (max_encoder_size > (128 * 1024))
+        max_encoder_size = (128 * 1024);
+
+      if (max_encoder_size < hpack_tbl->lr_max_table_size)
+        hpack_tbl->send_tablesize_update = TRUE;
+
+      hpack_shrink_table(&hpack_tbl->lr_first, &hpack_tbl->lr_start,
+                         &hpack_tbl->lr_last, &hpack_tbl->lr_size,
+                         hpack_tbl->lr_max_table_size, hpack_tbl->alloc);
+    }
+}
+
+static apr_status_t
+hpack_table_size_update(serf_hpack_table_t *hpack_tbl,
+                        apr_size_t size)
+{
+  if (size <= hpack_tbl->rl_sys_table_size)
+    {
+      hpack_tbl->rl_max_table_size = size;
+
+      hpack_shrink_table(&hpack_tbl->rl_first, &hpack_tbl->rl_start,
+                         &hpack_tbl->rl_last, &hpack_tbl->rl_size,
+                         hpack_tbl->rl_max_table_size, hpack_tbl->alloc);
+    }
+  else
+    return SERF_ERROR_HTTP2_COMPRESSION_ERROR;
+
+  return APR_SUCCESS;
 }
 
 static apr_status_t
@@ -532,7 +606,8 @@ serf__bucket_hpack_setc(serf_bucket_t *hpack_bucket,
 {
   serf__bucket_hpack_setx(hpack_bucket,
                           key, strlen(key), TRUE,
-                          value, strlen(value), TRUE);
+                          value, strlen(value), TRUE,
+                          FALSE, FALSE);
 }
 
 void
@@ -542,7 +617,9 @@ serf__bucket_hpack_setx(serf_bucket_t *hpack_bucket,
                         int key_copy,
                         const char *value,
                         apr_size_t value_size,
-                        int value_copy)
+                        int value_copy,
+                        int dont_index,
+                        int never_index)
 {
   serf_hpack_context_t *ctx = hpack_bucket->data;
   serf_hpack_entry_t *entry;
@@ -567,6 +644,7 @@ serf__bucket_hpack_setx(serf_bucket_t *hpack_bucket,
       entry->value = serf_bstrmemdup(ctx->alloc, value, value_size);
       entry->value_len = value_size;
       entry->free_val = TRUE;
+      entry->dont_index = never_index ? 2 : (dont_index ? 1 : 0);
 
       return;
     }
@@ -618,6 +696,7 @@ serf__bucket_hpack_setx(serf_bucket_t *hpack_bucket,
       entry->free_val = FALSE;
     }
   entry->value_len = value_size;
+  entry->dont_index = never_index ? 2 : (dont_index ? 1 : 0);
 
   entry->prev = ctx->last;
   entry->next = NULL;
@@ -1138,6 +1217,8 @@ handle_read_entry_and_clear(serf_hpack_decode_ctx_t *ctx)
       tbl->rl_size += HPACK_ENTRY_SIZE(entry);
       if (entry->next)
         entry->next->prev = entry;
+      else
+        tbl->rl_last = entry;
 
       /* We don't update lr_start... that is the idea */
     }
@@ -1444,11 +1525,11 @@ hpack_process(serf_bucket_t *bucket)
               if (status)
                 continue;
 
-              /* TODO: Store max size
-                 Verify if it is in allowed range, etc.
-                 The current code works, until we announce that we support
-                 a bigger table size. We might store too much data though
-               */
+              /* Send remote tablesize update to our table */
+              if (v >= APR_SIZE_MAX)
+                return SERF_ERROR_HTTP2_COMPRESSION_ERROR;
+              status = hpack_table_size_update(ctx->tbl, (apr_size_t)v);
+
               ctx->state = HPACK_DECODE_STATE_KIND;
               continue;
             }
@@ -1465,7 +1546,12 @@ hpack_process(serf_bucket_t *bucket)
 
       if (!ctx->hit_eof)
         {
+          serf_hpack_table_t *tbl = ctx->tbl;
           ctx->hit_eof = TRUE;
+
+          hpack_shrink_table(&tbl->rl_first, &tbl->rl_start,
+                             &tbl->rl_last, &tbl->rl_size,
+                             tbl->rl_max_table_size, tbl->alloc);
 
           if (!ctx->item_callback)
             {

@@ -130,7 +130,9 @@ serf__bucket_hpack_setx(serf_bucket_t *hpack_bucket,
                         int header_copy,
                         const char *value,
                         apr_size_t value_size,
-                        int value_copy);
+                        int value_copy,
+                        int dont_index,
+                        int never_index);
 
 const char *
 serf__bucket_hpack_getc(serf_bucket_t *hpack_bucket,
@@ -166,6 +168,12 @@ serf_hpack_table_t *
 serf__hpack_table_create(int for_http2,
                          apr_size_t default_max_table_size,
                          apr_pool_t *result_pool);
+
+void
+serf__hpack_table_set_max_table_size(serf_hpack_table_t *hpack_tbl,
+                                     apr_size_t max_decoder_size,
+                                     apr_size_t max_encoder_size);
+
 
 /* ==================================================================== */
 extern const serf_bucket_type_t serf_bucket_type__hpack_decode;

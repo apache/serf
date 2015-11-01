@@ -45,6 +45,7 @@ extern "C" {
 /* The default stream and connection window size before updates */
 #define HTTP2_DEFAULT_WINDOW_SIZE       65535
 #define HTTP2_DEFAULT_MAX_CONCURRENT    0xFFFFFFFF
+#define HTTP2_DEFAULT_HPACK_TABLE_SIZE  4096
 
 #define HTTP2_PRIORITY_DATA_SIZE        5
 #define HTTP2_RST_DATA_SIZE             4

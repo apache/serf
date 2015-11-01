@@ -151,6 +151,7 @@ struct serf_http2_protocol_t
   apr_uint32_t lr_max_framesize;
   apr_uint32_t lr_max_headersize;
   apr_uint32_t lr_max_concurrent;
+  apr_uint32_t lr_hpack_table_size;
   apr_int32_t lr_next_streamid;
   char lr_push_enabled;
 
@@ -160,6 +161,7 @@ struct serf_http2_protocol_t
   apr_uint32_t rl_max_framesize;
   apr_uint32_t rl_max_headersize;
   apr_uint32_t rl_max_concurrent;
+  apr_uint32_t rl_hpack_table_size;
   apr_int32_t rl_next_streamid;
   char rl_push_enabled;
 
@@ -216,6 +218,7 @@ void serf__http2_protocol_init(serf_connection_t *conn)
   h2->rl_max_framesize = HTTP2_DEFAULT_MAX_FRAMESIZE;
   h2->rl_max_headersize = APR_UINT32_MAX;
   h2->rl_max_concurrent = HTTP2_DEFAULT_MAX_CONCURRENT;
+  h2->rl_hpack_table_size = HTTP2_DEFAULT_HPACK_TABLE_SIZE;
   h2->rl_push_enabled = TRUE;
 
   h2->lr_default_window = HTTP2_DEFAULT_WINDOW_SIZE;
@@ -224,6 +227,7 @@ void serf__http2_protocol_init(serf_connection_t *conn)
   h2->lr_max_framesize = HTTP2_DEFAULT_MAX_FRAMESIZE;
   h2->lr_max_headersize = APR_UINT32_MAX;
   h2->lr_max_concurrent = HTTP2_DEFAULT_MAX_CONCURRENT;
+  h2->lr_hpack_table_size = HTTP2_DEFAULT_HPACK_TABLE_SIZE;
   h2->lr_push_enabled = TRUE;
 
   h2->setting_acks = 0;
@@ -233,7 +237,9 @@ void serf__http2_protocol_init(serf_connection_t *conn)
 
   h2->first = h2->last = NULL;
 
-  h2->hpack_tbl = serf__hpack_table_create(TRUE, 16384, protocol_pool);
+  h2->hpack_tbl = serf__hpack_table_create(TRUE,
+                                           HTTP2_DEFAULT_HPACK_TABLE_SIZE,
+                                           protocol_pool);
 
   apr_pool_cleanup_register(protocol_pool, conn, http2_protocol_cleanup,
                             apr_pool_cleanup_null);
@@ -255,7 +261,6 @@ void serf__http2_protocol_init(serf_connection_t *conn)
 
   /* And now a settings frame and a huge window */
   {
-    serf_bucket_t *settings;
     serf_bucket_t *window_size;
 
     tmp = serf__bucket_http2_frame_create(NULL, HTTP2_FRAME_TYPE_SETTINGS, 0,
@@ -623,9 +628,11 @@ http2_handle_settings(void *baton,
       switch (id)
         {
           case HTTP2_SETTING_HEADER_TABLE_SIZE:
-            /* TODO: Send to hpack table */
             serf__log(LOGLVL_INFO, SERF_LOGHTTP2, h2->config,
                       "Setting HPACK Table size to %u\n", value);
+            serf__hpack_table_set_max_table_size(h2->hpack_tbl,
+                                                 h2->rl_hpack_table_size,
+                                                 value);
             break;
           case HTTP2_SETTING_ENABLE_PUSH:
             serf__log(LOGLVL_INFO, SERF_LOGHTTP2, h2->config,
