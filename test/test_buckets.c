@@ -1926,8 +1926,7 @@ static void test_http2_unframe_buckets(CuTest *tc)
   raw = serf_bucket_simple_create(raw_frame1, sizeof(raw_frame1),
                                   NULL, NULL, alloc);
 
-  unframe = serf__bucket_http2_unframe_create(raw, TRUE, SERF_READ_ALL_AVAIL,
-                                              alloc);
+  unframe = serf__bucket_http2_unframe_create(raw, SERF_READ_ALL_AVAIL, alloc);
 
   CuAssertTrue(tc, SERF__BUCKET_IS_HTTP2_UNFRAME(unframe));
 
@@ -1955,8 +1954,7 @@ static void test_http2_unframe_buckets(CuTest *tc)
   raw = serf_bucket_simple_create(raw_frame2, sizeof(raw_frame2),
                                   NULL, NULL, alloc);
 
-  unframe = serf__bucket_http2_unframe_create(raw, TRUE, SERF_READ_ALL_AVAIL,
-                                              alloc);
+  unframe = serf__bucket_http2_unframe_create(raw, SERF_READ_ALL_AVAIL, alloc);
 
   status = read_all(unframe, result2, sizeof(result2), &read_len);
   CuAssertIntEquals(tc, APR_EOF, status);
@@ -1983,7 +1981,7 @@ static void test_http2_unframe_buckets(CuTest *tc)
   raw = serf_bucket_simple_create(raw_frame2, sizeof(raw_frame2),
                                   NULL, NULL, alloc);
 
-  unframe = serf__bucket_http2_unframe_create(raw, TRUE, 5, alloc);
+  unframe = serf__bucket_http2_unframe_create(raw, 5, alloc);
 
   status = read_all(unframe, result2, sizeof(result2), &read_len);
   CuAssertIntEquals(tc, SERF_ERROR_HTTP2_FRAME_SIZE_ERROR, status);
@@ -2019,8 +2017,7 @@ static void test_http2_unpad_buckets(CuTest *tc)
   raw = serf_bucket_simple_create(raw_frame, sizeof(raw_frame)-1,
                                   NULL, NULL, alloc);
 
-  unframe = serf__bucket_http2_unframe_create(raw, FALSE, SERF_READ_ALL_AVAIL,
-                                              alloc);
+  unframe = serf__bucket_http2_unframe_create(raw, SERF_READ_ALL_AVAIL, alloc);
 
   {
     apr_int32_t streamid;
@@ -2035,7 +2032,7 @@ static void test_http2_unpad_buckets(CuTest *tc)
     CuAssertIntEquals(tc, 8, flags);
   }
 
-  unpad = serf__bucket_http2_unpad_create(unframe, TRUE, alloc);
+  unpad = serf__bucket_http2_unpad_create(unframe, alloc);
 
   CuAssertTrue(tc, SERF__BUCKET_IS_HTTP2_UNPAD(unpad));
 
@@ -2046,11 +2043,11 @@ static void test_http2_unpad_buckets(CuTest *tc)
   read_and_check_bucket(tc, raw, "Extra");
 
   raw = serf_bucket_simple_create("\0a", 2, NULL, NULL, alloc);
-  unpad = serf__bucket_http2_unpad_create(raw, TRUE, alloc);
+  unpad = serf__bucket_http2_unpad_create(raw, alloc);
   read_and_check_bucket(tc, unpad, "a");
 
   raw = serf_bucket_simple_create("\5a", 2, NULL, NULL, alloc);
-  unpad = serf__bucket_http2_unpad_create(raw, TRUE, alloc);
+  unpad = serf__bucket_http2_unpad_create(raw, alloc);
 
   {
     const char *data;
@@ -2314,7 +2311,7 @@ static void test_http2_frame_bucket_basic(CuTest *tc)
   frame_in = serf__bucket_http2_frame_create(body_in, 99, 7, &exp_streamid,
                                              NULL, NULL,
                                              16384, NULL, NULL, alloc);
-  frame_out = serf__bucket_http2_unframe_create(frame_in, FALSE, 16384, alloc);
+  frame_out = serf__bucket_http2_unframe_create(frame_in, 16384, alloc);
 
   read_and_check_bucket(tc, frame_out, "This is no config!");
 

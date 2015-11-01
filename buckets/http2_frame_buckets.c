@@ -38,9 +38,8 @@ typedef struct http2_unframe_context_t
 
   apr_size_t prefix_remaining;
 
-  apr_status_t (*eof_callback)(void *baton,
-                               serf_bucket_t *bucket);
-  void *eof_callback_baton;
+  serf_bucket_end_of_frame_t end_of_frame;
+  void *end_of_frame_baton;
 
   /* These fields are only set after prefix_remaining is 0 */
   apr_size_t payload_remaining;  /* 0 <= payload_length < 2^24 */
@@ -49,12 +48,10 @@ typedef struct http2_unframe_context_t
   unsigned char flags;
 
   unsigned char buffer[FRAME_PREFIX_SIZE];
-  char destroy_stream;
 } http2_unframe_context_t;
 
 serf_bucket_t *
 serf__bucket_http2_unframe_create(serf_bucket_t *stream,
-                                  int destroy_stream,
                                   apr_size_t max_payload_size,
                                   serf_bucket_alloc_t *allocator)
 {
@@ -64,24 +61,20 @@ serf__bucket_http2_unframe_create(serf_bucket_t *stream,
   ctx->stream = stream;
   ctx->max_payload_size = max_payload_size;
   ctx->prefix_remaining = sizeof(ctx->buffer);
-  ctx->eof_callback = NULL;
-
-  ctx->destroy_stream = (destroy_stream != 0);
+  ctx->end_of_frame = NULL;
 
   return serf_bucket_create(&serf_bucket_type__http2_unframe, allocator, ctx);
 }
 
 void
 serf__bucket_http2_unframe_set_eof(serf_bucket_t *bucket,
-                                   apr_status_t (*eof_callback)(
-                                                    void *baton,
-                                                    serf_bucket_t *bucket),
-                                   void *eof_callback_baton)
+                                   serf_bucket_end_of_frame_t end_of_frame,
+                                   void *end_of_frame_baton)
 {
   http2_unframe_context_t *ctx = bucket->data;
 
-  ctx->eof_callback = eof_callback;
-  ctx->eof_callback_baton = eof_callback_baton;
+  ctx->end_of_frame = end_of_frame;
+  ctx->end_of_frame_baton = end_of_frame_baton;
 }
 
 apr_status_t
@@ -163,12 +156,12 @@ serf__bucket_http2_unframe_read_info(serf_bucket_t *bucket,
 
           /* If we hava a zero-length frame we have to call the eof callback
              now, as the read operations will just shortcut to APR_EOF */
-          if (ctx->payload_remaining == 0 && ctx->eof_callback)
+          if (ctx->payload_remaining == 0 && ctx->end_of_frame)
             {
               apr_status_t cb_status;
 
-              cb_status = ctx->eof_callback(ctx->eof_callback_baton,
-                                            bucket);
+              cb_status = (*ctx->end_of_frame)(ctx->end_of_frame_baton,
+                                               bucket);
 
               if (SERF_BUCKET_READ_ERROR(cb_status))
                 status = cb_status;
@@ -220,9 +213,9 @@ serf_http2_unframe_read(serf_bucket_t *bucket,
 
       if (ctx->payload_remaining == 0)
         {
-          if (ctx->eof_callback)
-            status = ctx->eof_callback(ctx->eof_callback_baton,
-                                       bucket);
+          if (ctx->end_of_frame)
+            status = (*ctx->end_of_frame)(ctx->end_of_frame_baton,
+                                          bucket);
 
           if (!SERF_BUCKET_READ_ERROR(status))
             status = APR_EOF;
@@ -275,9 +268,9 @@ serf_http2_unframe_read_iovec(serf_bucket_t *bucket,
 
       if (ctx->payload_remaining == 0)
         {
-          if (ctx->eof_callback)
-            status = ctx->eof_callback(ctx->eof_callback_baton,
-                                       bucket);
+          if (ctx->end_of_frame)
+            status = (*ctx->end_of_frame)(ctx->end_of_frame_baton,
+                                          bucket);
 
           if (!SERF_BUCKET_READ_ERROR(status))
             status = APR_EOF;
@@ -315,17 +308,6 @@ serf_http2_unframe_peek(serf_bucket_t *bucket,
   return status;
 }
 
-static void
-serf_http2_unframe_destroy(serf_bucket_t *bucket)
-{
-  http2_unframe_context_t *ctx = bucket->data;
-
-  if (ctx->destroy_stream)
-    serf_bucket_destroy(ctx->stream);
-
-  serf_default_destroy_and_data(bucket);
-}
-
 static apr_uint64_t
 serf_http2_unframe_get_remaining(serf_bucket_t *bucket)
 {
@@ -351,7 +333,7 @@ const serf_bucket_type_t serf_bucket_type__http2_unframe = {
   serf_default_read_for_sendfile,
   serf_buckets_are_v2,
   serf_http2_unframe_peek,
-  serf_http2_unframe_destroy,
+  serf_default_destroy_and_data,
   serf_default_read_bucket,
   serf_http2_unframe_get_remaining,
   serf_default_ignore_config
@@ -363,13 +345,11 @@ typedef struct http2_unpad_context_t
   apr_size_t payload_remaining;
   apr_size_t pad_remaining;
   apr_size_t pad_length;
-  int padsize_read;
-  int destroy_stream;
+  char padsize_read;
 } http2_unpad_context_t;
 
 serf_bucket_t *
 serf__bucket_http2_unpad_create(serf_bucket_t *stream,
-                                int destroy_stream,
                                 serf_bucket_alloc_t *allocator)
 {
   http2_unpad_context_t *ctx;
@@ -377,7 +357,6 @@ serf__bucket_http2_unpad_create(serf_bucket_t *stream,
   ctx = serf_bucket_mem_alloc(allocator, sizeof(*ctx));
   ctx->stream = stream;
   ctx->padsize_read = FALSE;
-  ctx->destroy_stream = destroy_stream;
 
   return serf_bucket_create(&serf_bucket_type__http2_unpad, allocator, ctx);
 }
@@ -589,8 +568,7 @@ serf_http2_unpad_destroy(serf_bucket_t *bucket)
 {
   http2_unpad_context_t *ctx = bucket->data;
 
-  if (ctx->destroy_stream)
-    serf_bucket_destroy(ctx->stream);
+  serf_bucket_destroy(ctx->stream);
 
   serf_default_destroy_and_data(bucket);
 }

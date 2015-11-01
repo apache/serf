@@ -814,7 +814,7 @@ http2_process(serf_http2_protocol_t *h2)
           SERF_H2_assert(!h2->in_frame);
 
           body = serf__bucket_http2_unframe_create(
-                                             h2->conn->stream, FALSE,
+                                             h2->conn->stream,
                                              h2->rl_max_framesize,
                                              h2->allocator);
 
@@ -893,6 +893,7 @@ http2_process(serf_http2_protocol_t *h2)
 
                 if (frametype == HTTP2_FRAME_TYPE_DATA)
                   {
+                    /* Windowing is applied above padding! */
                     remaining = (apr_size_t)serf_bucket_get_remaining(body);
 
                     if (h2->rl_window < remaining)
@@ -921,10 +922,7 @@ http2_process(serf_http2_protocol_t *h2)
 
                 /* DATA, HEADERS and PUSH_PROMISE can have padding */
                 if (frameflags & HTTP2_FLAG_PADDED)
-                  {
-                    body = serf__bucket_http2_unpad_create(body, TRUE,
-                                                           h2->allocator);
-                  }
+                  body = serf__bucket_http2_unpad_create(body, h2->allocator);
 
                 /* An HEADERS frame can have an included priority 'frame' */
                 if (frametype == HTTP2_FRAME_TYPE_HEADERS
