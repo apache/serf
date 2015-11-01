@@ -1589,33 +1589,6 @@ void serf_connection_set_framing_type(
     }
 }
 
-static serf_request_t *
-create_request(serf_connection_t *conn,
-               serf_request_setup_t setup,
-               void *setup_baton,
-               int priority,
-               int ssltunnel)
-{
-    serf_request_t *request;
-
-    request = serf_bucket_mem_alloc(conn->allocator, sizeof(*request));
-    request->conn = conn;
-    request->setup = setup;
-    request->setup_baton = setup_baton;
-    request->handler = NULL;
-    request->respool = NULL;
-    request->req_bkt = NULL;
-    request->resp_bkt = NULL;
-    request->priority = priority;
-    request->writing_started = 0;
-    request->ssltunnel = ssltunnel;
-    request->next = NULL;
-    request->auth_baton = NULL;
-
-    return request;
-}
-
-
 apr_interval_time_t serf_connection_get_latency(serf_connection_t *conn)
 {
     if (conn->ctx->proxy_address) {
