@@ -799,4 +799,4 @@ serf_bucket_t *serf_bucket_prefix_create(
 }
 #endif
 
-#endif	/* !SERF_BUCKET_TYPES_H */
+#endif /* !SERF_BUCKET_TYPES_H */
