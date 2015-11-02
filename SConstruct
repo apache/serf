@@ -280,7 +280,11 @@ if sys.platform != 'win32':
     env.Append(PLATFORM='posix')
 else:
   # Warning level 4, no unused argument warnings
-  env.Append(CCFLAGS=['/W4', '/wd4100'])
+  env.Append(CCFLAGS=['/W4',
+                      '/wd4100', # Unused argument
+                      '/wd4127', # Conditional expression is constant
+                      '/wd4706', # Assignment within conditional expression
+                     ])
 
   # Choose runtime and optimization
   if debug:
@@ -491,10 +495,6 @@ if sys.platform == 'win32':
   TEST_EXES = [ os.path.join('test', '%s.exe' % (prog)) for prog in TEST_PROGRAMS ]
 else:
   TEST_EXES = [ os.path.join('test', '%s' % (prog)) for prog in TEST_PROGRAMS ]
-
-# Find the (dynamic) library in this directory
-tenv.Replace(RPATH=thisdir)
-tenv.Prepend(LIBPATH=[thisdir, ])
 
 check_script = env.File('build/check.py').rstr()
 test_dir = env.File('test/test_all.c').rfile().get_dir()
