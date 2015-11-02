@@ -58,6 +58,24 @@ serf_bucket_t *serf_bucket_copy_create(
     return serf_bucket_create(&serf_bucket_type_copy, allocator, ctx);
 }
 
+static void serf__copy_iovec(char *data,
+                             apr_size_t *copied,
+                             struct iovec *vecs,
+                             int vecs_used)
+{
+    int i;
+    apr_size_t sz = 0;
+
+    for (i = 0; i < vecs_used; i++) {
+        memcpy(data, vecs[i].iov_base, vecs[i].iov_len);
+        data += vecs[i].iov_len;
+        sz += vecs[i].iov_len;
+    }
+
+    if (copied)
+      *copied = sz;
+}
+
 static apr_status_t serf_copy_read(serf_bucket_t *bucket,
                                    apr_size_t requested,
                                    const char **data, apr_size_t *len)
@@ -66,8 +84,6 @@ static apr_status_t serf_copy_read(serf_bucket_t *bucket,
     apr_status_t status;
     const char *wdata;
     apr_size_t peek_len;
-    struct iovec vecs[16];
-    int vecs_used;
     apr_size_t fetched;
 
     status = serf_bucket_peek(ctx->wrapped, &wdata, &peek_len);
@@ -83,17 +99,16 @@ static apr_status_t serf_copy_read(serf_bucket_t *bucket,
         return serf_bucket_read(ctx->wrapped, requested, data, len);
     }
 
-    if (! ctx->hold_buf)
-        ctx->hold_buf = serf_bucket_mem_alloc(bucket->allocator,
-                                              ctx->min_size);
-
-    /* Reduce requested to fit in our buffer if necessary*/
+    /* Reduce requested to fit in our buffer */
     if (requested > ctx->min_size)
         requested = ctx->min_size;
 
     fetched = 0;
     while (fetched < requested) {
-        int i;
+        struct iovec vecs[16];
+        int vecs_used;
+        apr_size_t read;
+
         status = serf_bucket_read_iovec(ctx->wrapped, requested - fetched,
                                         16, vecs, &vecs_used);
 
@@ -102,11 +117,30 @@ static apr_status_t serf_copy_read(serf_bucket_t *bucket,
                 status = APR_EAGAIN;
             break;
         }
+        else if (!fetched && vecs_used == 1
+                 && (status || (vecs[0].iov_len == requested))) {
 
-        for (i = 0; i < vecs_used; i++) {
-            memcpy(ctx->hold_buf + fetched, vecs[i].iov_base, vecs[i].iov_len);
-            fetched += vecs[i].iov_len;
+            /* Easy out
+                * We don't have anything stashed
+                * We only have one buffer to return
+                * And either
+                    - We can't read any further at this time
+                    - Or the buffer is already filled
+             */
+
+            *data = vecs[0].iov_base;
+            *len = vecs[0].iov_len;
+            return status;
         }
+        else if (!ctx->hold_buf && vecs_used > 0) {
+            /* We have something that we want to store */
+
+            ctx->hold_buf = serf_bucket_mem_alloc(bucket->allocator,
+                                                  ctx->min_size);
+        }
+
+        serf__copy_iovec(ctx->hold_buf + fetched, &read, vecs, vecs_used);
+        fetched += read;
 
         if (status)
             break;
@@ -196,12 +230,8 @@ static apr_status_t serf_copy_read_iovec(serf_bucket_t *bucket,
                                               ctx->min_size);
 
     /* ### copy into HOLD_BUF. then read/append some more.  */
-    fetched = 0;
-    for (i = 0; i < *vecs_used; i++) {
-        memcpy(ctx->hold_buf + fetched, vecs[i].iov_base, vecs[i].iov_len);
-        fetched += vecs[i].iov_len;
-    }
-
+    fetched = total;
+    serf__copy_iovec(ctx->hold_buf, NULL, vecs, *vecs_used);
 
     /* ### point vecs[0] at HOLD_BUF.  */
     vecs[0].iov_base = ctx->hold_buf;
@@ -226,12 +256,9 @@ static apr_status_t serf_copy_read_iovec(serf_bucket_t *bucket,
             return status;
         }
 
-        for (i = 1; i <= v_used; i++) {
-            memcpy(ctx->hold_buf + fetched, vecs[i].iov_base,
-                    vecs[i].iov_len);
-            fetched += vecs[i].iov_len;
-        }
+        serf__copy_iovec(ctx->hold_buf + fetched, NULL, &vecs[1], v_used);
 
+        fetched += total;
         vecs[0].iov_len = fetched;
     }
 }
