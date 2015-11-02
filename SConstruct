@@ -384,9 +384,10 @@ else:
     ### dependency upon gcc. probably ParseConfig doesn't know what to do with
     ### the apr-1-config output
     env.ParseConfig('$APR --cflags --cppflags --ldflags --includes'
-                    ' --link-ld --libs')
+                    ' --link-ld --libs', unique=0)
     if apr_major < 2:
-      env.ParseConfig('$APU --ldflags --includes --link-ld --libs')
+      env.ParseConfig('$APU --ldflags --includes --link-ld --libs',
+                      unique=0)
 
     ### there is probably a better way to run/capture output.
     ### env.ParseConfig() may be handy for getting this stuff into the build
