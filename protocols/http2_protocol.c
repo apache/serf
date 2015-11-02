@@ -59,41 +59,41 @@ serf_bucket_create_numberv(serf_bucket_alloc_t *allocator, const char *format, .
 
   for (c = format; *c; c++)
     {
+      SERF_H2_assert(*c >= '1' && *c <= '4');
+
       if (*c >= '1' && *c <= '4')
         sz += (*c - '0');
-      else
-        abort(); /* Invalid format */
     }
 
   buffer = serf_bucket_mem_alloc(allocator, sz);
   r = (void*)buffer;
   for (c = format; *c; c++)
     {
-        apr_uint32_t tmp;
+      apr_uint32_t tmp;
 
-       switch (*c)
-        {
-          case '1':
-            *r++ = va_arg(argp, int) & 0xFF;
-            break;
-          case '2':
-            tmp = va_arg(argp, int);
-            *r++ = (tmp >> 8) & 0xFF;
-            *r++ = tmp & 0xFF;
-            break;
-          case '3':
-            tmp = va_arg(argp, apr_uint32_t);
-            *r++ = (tmp >> 16) & 0xFF;
-            *r++ = (tmp >> 8) & 0xFF;
-            *r++ = tmp & 0xFF;
-            break;
-          case '4':
-            tmp = va_arg(argp, apr_uint32_t);
-            *r++ = (tmp >> 24) & 0xFF;
-            *r++ = (tmp >> 16) & 0xFF;
-            *r++ = (tmp >> 8) & 0xFF;
-            *r++ = tmp & 0xFF;
-            break;
+      switch (*c)
+       {
+         case '1':
+           *r++ = va_arg(argp, int) & 0xFF;
+           break;
+         case '2':
+           tmp = va_arg(argp, int);
+           *r++ = (tmp >> 8) & 0xFF;
+           *r++ = tmp & 0xFF;
+           break;
+         case '3':
+           tmp = va_arg(argp, apr_uint32_t);
+           *r++ = (tmp >> 16) & 0xFF;
+           *r++ = (tmp >> 8) & 0xFF;
+           *r++ = tmp & 0xFF;
+           break;
+         case '4':
+           tmp = va_arg(argp, apr_uint32_t);
+           *r++ = (tmp >> 24) & 0xFF;
+           *r++ = (tmp >> 16) & 0xFF;
+           *r++ = (tmp >> 8) & 0xFF;
+           *r++ = tmp & 0xFF;
+           break;
        }
     }
 
@@ -714,8 +714,99 @@ http2_handle_goaway(void *baton,
                     apr_size_t len)
 {
   serf_http2_protocol_t *h2 = baton;
+  apr_int32_t last_streamid;
+  apr_uint32_t error_code;
+  apr_uint32_t loglevel;
+  const struct goaway_t
+  {
+    unsigned char s3, s2, s1, s0;
+    unsigned char e3, e2, e1, e0;
+  } *goaway;
+
+  if (len < HTTP2_GOWAWAY_DATA_SIZE)
+    return SERF_ERROR_HTTP2_FRAME_SIZE_ERROR;
 
   SERF_H2_assert(h2 != NULL);
+
+  goaway = (const void *)data;
+
+  last_streamid = ((goaway->s3 & 0x7F) << 24) | (goaway->s2 << 16)
+                  | (goaway->s1 << 8) | goaway->s0;
+  error_code = (goaway->e3 << 24) | (goaway->e2 << 16)
+               | (goaway->e1 << 8) | goaway->e0;
+
+  switch (error_code + SERF_ERROR_HTTP2_NO_ERROR)
+    {
+      case SERF_ERROR_HTTP2_PROTOCOL_ERROR:
+      case SERF_ERROR_HTTP2_FLOW_CONTROL_ERROR:
+      case SERF_ERROR_HTTP2_SETTINGS_TIMEOUT:
+      case SERF_ERROR_HTTP2_FRAME_SIZE_ERROR:
+      case SERF_ERROR_HTTP2_COMPRESSION_ERROR:
+      case SERF_ERROR_HTTP2_INADEQUATE_SECURITY:
+        loglevel = LOGLVL_ERROR;
+        break;
+
+      case SERF_ERROR_HTTP2_HTTP_1_1_REQUIRED:
+      case SERF_ERROR_HTTP2_ENHANCE_YOUR_CALM:
+        loglevel = LOGLVL_WARNING;
+        break;
+
+      case SERF_ERROR_HTTP2_REFUSED_STREAM:
+      case SERF_ERROR_HTTP2_CANCEL:
+      case SERF_ERROR_HTTP2_CONNECT_ERROR:
+      case SERF_ERROR_HTTP2_STREAM_CLOSED:
+        /* These errors should have been sent as a stream
+           error. This usually tells us that we have an http/2
+           implementation on the other side that doesn't implement
+           full stream state handling. (See HTTP/2 RFC)*/
+        loglevel = LOGLVL_ERROR;
+        break;
+
+      case SERF_ERROR_HTTP2_NO_ERROR:
+        loglevel = LOGLVL_INFO;
+        break;
+
+      case SERF_ERROR_HTTP2_INTERNAL_ERROR:
+      default:
+        loglevel = LOGLVL_WARNING;
+        break;
+    }
+
+  if (len > HTTP2_GOWAWAY_DATA_SIZE)
+    {
+      char *goaway_text;
+
+      /* The server produced additional information in the error frame
+         Usually this is some literal text explaining what went wrong.
+
+         Copy the text to make it 0 terminated and then log it. */
+
+      /* If this value appears truncated, that may be caused by the
+         limit set in http2_process */
+
+      goaway_text = serf_bstrmemdup(h2->allocator,
+                                    data + HTTP2_GOWAWAY_DATA_SIZE,
+                                    len - HTTP2_GOWAWAY_DATA_SIZE);
+
+      serf__log(loglevel, SERF_LOGHTTP2, h2->config,
+                "Received GOAWAY, last-stream=%d, error=%u: %s\n",
+                last_streamid, error_code, goaway_text);
+
+      serf_bucket_mem_free(h2->allocator, goaway_text);
+    }
+  else
+    {
+      serf__log(loglevel, SERF_LOGHTTP2, h2->config,
+                "Received GOAWAY, last-stream=%d, error=%u.\n",
+                last_streamid, error_code);
+    }
+
+  /* ### TODO: If the error is not critical stop creating new frames
+               on this connection, while still going forward with the
+               existing frames.
+
+               We may receive a new error later, signalling a more
+               important problem */
 
   return APR_SUCCESS;
 }
@@ -1236,7 +1327,10 @@ http2_process(serf_http2_protocol_t *h2)
                  */
                 remaining = (apr_size_t)serf_bucket_get_remaining(body);
 
-                body = serf_bucket_prefix_create(body, remaining,
+                body = serf_bucket_prefix_create(body,
+                                                 MIN(remaining,
+                                                     HTTP2_GOWAWAY_DATA_SIZE
+                                                                        + 256),
                                                  http2_handle_goaway, h2,
                                                  h2->allocator);
 
