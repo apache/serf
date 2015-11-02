@@ -1458,24 +1458,16 @@ serf_http2__stream_get(serf_http2_protocol_t *h2,
         h2->last = h2->first = stream;
 
       if (streamid < h2->rl_next_streamid)
-        stream->status = H2S_CLOSED;
+        {
+          /* https://tools.ietf.org/html/rfc7540#section-5.1.1
+             The first use of a new stream identifier implicitly closes
+             all streams in the "idle" state that might have been
+             initiated by that peer with a lower-valued stream identifier.
+          */
+          stream->status = H2S_CLOSED;
+        }
       else
         h2->rl_next_streamid = (streamid + 2);
-
-      for (rs = h2->first; rs; rs = rs->next)
-        {
-          if (rs->status <= H2S_IDLE
-              && rs->streamid < streamid
-              && (streamid & 0x01) == (rs->streamid & 0x01))
-            {
-              /* https://tools.ietf.org/html/rfc7540#section-5.1.1
-                 The first use of a new stream identifier implicitly closes
-                 all streams in the "idle" state that might have been
-                 initiated by that peer with a lower-valued stream identifier.
-              */
-              rs->status = H2S_CLOSED;
-            }
-        }
 
       return stream;
     }
