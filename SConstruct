@@ -230,7 +230,7 @@ if sys.platform == 'win32':
   # On Win32 SHLIBPREFIX and LIBPREFIX are empty and both produce a .lib file.
   SHLIBNAME = 'libserf-%d' % (MAJOR, )
 
-env.Append(RPATH=libdir,
+env.Append(RPATH=[libdir],
            PDB='${TARGET.filebase}.pdb')
 
 if sys.platform == 'darwin':
@@ -409,13 +409,13 @@ if sys.platform == 'win32':
 
 # Set preprocessor define to disable the logging framework
 if disablelogging:
-    env.Append(CPPDEFINES='SERF_DISABLE_LOGGING')
+    env.Append(CPPDEFINES=['SERF_DISABLE_LOGGING'])
 
 # On some systems, the -R values that APR describes never make it into actual
 # RPATH flags. We'll manually map all directories in LIBPATH into new
 # flags to set RPATH values.
 for d in env['LIBPATH']:
-  env.Append(RPATH=':'+d)
+  env.Append(RPATH=[':'+d])
 
 # Set up the construction of serf-*.pc
 pkgconfig = env.Textfile('serf-%d.pc' % (MAJOR,),
