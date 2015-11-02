@@ -146,8 +146,8 @@ static apr_status_t serf_iovec_peek(serf_bucket_t *bucket,
 
     /* Return the first unread buffer, don't bother combining all
        remaining data. */
-    *data = ctx->vecs[ctx->current_vec].iov_base;
-    *len = ctx->vecs[ctx->current_vec].iov_len;
+    *data = (const char *)ctx->vecs[ctx->current_vec].iov_base + ctx->offset;
+    *len = ctx->vecs[ctx->current_vec].iov_len - ctx->offset;
 
     if (ctx->current_vec + 1 == ctx->vecs_len)
         return APR_EOF;

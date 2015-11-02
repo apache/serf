@@ -478,6 +478,10 @@ static void test_iovec_buckets(CuTest *tc)
     CuAssert(tc, tgt_vecs[0].iov_base,
              strncmp("lin", tgt_vecs[0].iov_base, tgt_vecs[0].iov_len) == 0);
 
+    status = serf_bucket_peek(iobkt, &data, &len);
+    CuAssertTrue(tc, (status == APR_SUCCESS) || APR_STATUS_IS_EOF(status));
+    CuAssertIntEquals(tc, 0, memcmp(data, "e1" CRLF "line2", len));
+
     /* Check serf_bucket_get_remaining() result. */
     CuAssertIntEquals(tc, 9, (int)serf_bucket_get_remaining(iobkt));
 
