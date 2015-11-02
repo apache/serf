@@ -681,7 +681,7 @@ static apr_status_t readBody(bucket_t *bkt, mhRequest_t *req, bool *done)
 {
     const char *clstr, *data;
     char *body;
-    long cl;
+    apr_size_t cl;
     apr_size_t len;
     apr_status_t status;
 
@@ -738,15 +738,16 @@ static apr_status_t readChunk(bucket_t *bkt, mhRequest_t *req, bool *done)
             struct iovec vec;
             const char *data;
             apr_size_t len, chlen;
-            
+
             STATUSREADERR(bkt->type->readLine(bkt, &data, &len));
             if (!len)
                 return APR_EAGAIN;
             storeRawDataBlock(req, data, len);
 
-            chlen = apr_strtoi64(data, NULL, 16); /* read hex chunked length */
+            /* read hex chunked length */
+            chlen = (apr_size_t)apr_strtoi64(data, NULL, 16);
             vec.iov_len = chlen;
-            *((struct iovec *)apr_array_push(req->chunks)) = vec;
+            APR_ARRAY_PUSH(req->chunks, struct iovec) = vec;
             if (chlen == 0) {
                 req->readState = ReadStateChunkedTrailer;
                 return APR_SUCCESS;
@@ -1008,7 +1009,6 @@ static char *respToString(apr_pool_t *pool, mhResponse_t *resp)
 
     /* body */
     if (resp->chunked == NO) {
-        int i;
         for (i = 0 ; i < resp->body->nelts; i++) {
             struct iovec vec;
 
@@ -1017,7 +1017,6 @@ static char *respToString(apr_pool_t *pool, mhResponse_t *resp)
                                (const char *)vec.iov_base);
         }
     } else {
-        int i;
         bool emptyChunk = NO; /* empty response should atleast have 0-chunk */
         for (i = 0 ; i < resp->chunks->nelts; i++) {
             struct iovec vec;
@@ -1294,7 +1293,7 @@ static apr_status_t processServer(mhServCtx_t *ctx, _mhClientCtx_t *cctx,
         mhResponse_t *resp;
 
         if (cctx->ocbuflen) {
-            apr_size_t len = cctx->ocbuflen;
+            len = cctx->ocbuflen;
             STATUSREADERR(apr_socket_send(cctx->skt, cctx->ocbuf, &len));
             _mhLog(MH_VERBOSE, cctx->skt,
                    "Proxy/Server sent to client, status %d:\n%.*s\n---- %d ----\n",
@@ -1347,7 +1346,6 @@ static apr_status_t processServer(mhServCtx_t *ctx, _mhClientCtx_t *cctx,
 
             if (status == APR_EOF) {
                 mhResponse_t *resp;
-                mhAction_t action;
 
                 /* complete request received */
                 ctx->mh->verifyStats->requestsReceived++;
@@ -1885,7 +1883,7 @@ unsigned int mhProxyPortNr(const MockHTTP *mh)
  */
 static bool set_server_port(const mhServerSetupBldr_t *ssb, mhServCtx_t *ctx)
 {
-    ctx->default_port = ssb->ibaton;
+    ctx->default_port = (apr_port_t)ssb->ibaton;
     return YES;
 }
 
@@ -2555,18 +2553,19 @@ static int alpn_select_callback(SSL *ssl,
                                 unsigned int inlen,
                                 void *arg)
 {
-  const char *select = arg;
+  mhServCtx_t *serv_ctx = arg;
+  const char *select = serv_ctx->alpn;
   apr_size_t select_sz = strlen(select);
 
-  unsigned char *p = in;
+  const unsigned char *p = in;
 
   while ((p + *p) < (in + inlen)) {
 
       if ((*p == select_sz)
-          && !strncmp(p+1, select, select_sz)) {
+          && !memcmp(p+1, select, select_sz)) {
 
-          *out = select;
-          *outlen = strlen(select);
+          *out = (const unsigned char *)select;
+          *outlen = (unsigned char)select_sz;
           return SSL_TLSEXT_ERR_OK;
       }
 
@@ -2624,7 +2623,7 @@ static apr_status_t initSSLCtx(_mhClientCtx_t *cctx)
         if (cctx->serv_ctx->alpn) {
             SSL_CTX_set_alpn_select_cb(ssl_ctx->ctx,
                                        alpn_select_callback,
-                                       cctx->serv_ctx->alpn);
+                                       cctx->serv_ctx);
         }
 #endif
 
@@ -2633,7 +2632,7 @@ static apr_status_t initSSLCtx(_mhClientCtx_t *cctx)
                all SSLv2 ciphers from the cipher string. 
                If SSLv2 is the only protocol this test wants to be enabled,
                re-add the SSLv2 ciphers. */
-            int result = SSL_CTX_set_cipher_list(ssl_ctx->ctx, "SSLv2");
+            SSL_CTX_set_cipher_list(ssl_ctx->ctx, "SSLv2");
             /* ignore result */
         }
 
