@@ -21,6 +21,17 @@
 #ifndef _SERF_PRIVATE_H_
 #define _SERF_PRIVATE_H_
 
+ /* Define a MAX macro if we don't already have one */
+#ifndef MAX
+#define MAX(a, b) ((a) < (b) ? (b) : (a))
+#endif
+
+ /* Define a MIN macro if we don't already have one */
+#ifndef MIN
+#define MIN(a, b) ((a) < (b) ? (a) : (b))
+#endif
+
+
 /* ### what the hell? why does the APR interface have a "size" ??
    ### the implication is that, if we bust this limit, we'd need to
    ### stop, rebuild a pollset, and repopulate it. what suckage.  */
