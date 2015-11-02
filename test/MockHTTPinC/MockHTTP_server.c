@@ -2692,11 +2692,10 @@ static apr_status_t initSSLCtx(_mhClientCtx_t *cctx)
         }
 
 #ifndef OPENSSL_NO_TLSEXT
-        if (cctx->ocspEnabled)
-		{
+        if (cctx->ocspEnabled) {
             SSL_CTX_set_tlsext_status_cb(ssl_ctx->ctx, ocspStatusCallback);
             SSL_CTX_set_tlsext_status_arg(ssl_ctx->ctx, cctx);
-		}
+        }
 #endif
 
         SSL_CTX_set_mode(ssl_ctx->ctx, SSL_MODE_ENABLE_PARTIAL_WRITE);

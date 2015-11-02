@@ -324,4 +324,4 @@ apr_status_t serf_databuf_peek(
 }
 #endif
 
-#endif	/* !SERF_BUCKET_UTIL_H */
+#endif /* !SERF_BUCKET_UTIL_H */
