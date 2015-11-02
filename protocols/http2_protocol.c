@@ -392,13 +392,62 @@ http2_handle_promise(void *baton,
                      const char *data,
                      apr_size_t len)
 {
-  serf_http2_stream_t *stream = baton;
+  serf_http2_stream_t *parent_stream = baton;
+  serf_http2_protocol_t *h2= parent_stream->h2;
+  serf_http2_stream_t *promised_stream;
+  apr_int32_t streamid;
+  const struct promise_t
+  {
+    unsigned char s3, s2, s1, s0;
+  } *promise;
 
   if (len != HTTP2_PROMISE_DATA_SIZE)
     return SERF_ERROR_HTTP2_FRAME_SIZE_ERROR;
 
-  /* ### TODO: Prepare reading promise on stream */
-  SERF_H2_assert(stream->h2 != NULL);
+  SERF_H2_assert(h2 != NULL);
+
+  promise = (const void *)data;
+
+  /* Highest bit is reserved */
+  streamid = ((promise->s3 & 0x7F) << 24) | (promise->s2 << 16)
+             |(promise->s1 << 8) | promise->s0;
+
+  if (streamid == 0
+      || (streamid < h2->rl_next_streamid)
+      || (streamid & 0x01) != (h2->rl_next_streamid & 0x01))
+    {
+      /* The promised stream identifier MUST bet a valid choice for the
+         next stream sent by the sender */
+
+      /* A receiver MUST treat the receipt of a PUSH_PROMISE that promises an
+         illegal stream identifier (Section 5.1.1) as a connection error
+         (Section 5.4.1) of type PROTOCOL_ERROR.  Note that an illegal stream
+         identifier is an identifier for a stream that is not currently in the
+         "idle" state.*/
+
+      return SERF_ERROR_HTTP2_PROTOCOL_ERROR;
+    }
+  else if (parent_stream->status != H2S_OPEN
+           && parent_stream->status != H2S_HALFCLOSED_LOCAL)
+    {
+      /* PUSH_PROMISE frames MUST only be sent on a peer-initiated stream that
+         is in either the "open" or "half-closed (remote)" state.  The stream
+         identifier of a PUSH_PROMISE frame indicates the stream it is
+         associated with.  If the stream identifier field specifies the value
+         0x0, a recipient MUST respond with a connection error (Section 5.4.1)
+         of type PROTOCOL_ERROR.*/
+
+      return SERF_ERROR_HTTP2_PROTOCOL_ERROR;
+    }
+
+  promised_stream = serf_http2__stream_get(h2, streamid, TRUE, FALSE);
+  if (!promised_stream || promised_stream->status != H2S_IDLE)
+    return SERF_ERROR_HTTP2_PROTOCOL_ERROR;
+
+  promised_stream->status = H2S_RESERVED_REMOTE;
+
+  /* Store data to allow stream to handle the promise */
+  parent_stream->new_reserved_stream = promised_stream;
 
   return APR_SUCCESS;
 }
@@ -933,8 +982,7 @@ http2_process(serf_http2_protocol_t *h2)
                                                      http2_handle_priority,
                                                      stream, h2->allocator);
                   }
-
-                if (frametype == HTTP2_FRAME_TYPE_PUSH_PROMISE)
+                else if (frametype == HTTP2_FRAME_TYPE_PUSH_PROMISE)
                   {
                     body = serf_bucket_prefix_create(body,
                                                      HTTP2_PROMISE_DATA_SIZE,
@@ -1026,8 +1074,9 @@ http2_process(serf_http2_protocol_t *h2)
                                           h2->hpack_tbl, h2->allocator);
                       }
                   }
-                else /* We have a data bucket */
+                else if (! reset_reason)
                   {
+                    /* We have a data bucket */
                     body = serf_http2__stream_handle_data(
                                         stream, body, frametype,
                                         (frameflags & HTTP2_FLAG_END_STREAM),
@@ -1442,7 +1491,6 @@ serf_http2__stream_get(serf_http2_protocol_t *h2,
   if (create_for_remote
       && (streamid & 0x01) == (h2->rl_next_streamid & 0x01))
     {
-      serf_http2_stream_t *rs;
       stream = serf_http2__stream_create(h2, streamid,
                                          h2->lr_default_window,
                                          h2->rl_default_window,

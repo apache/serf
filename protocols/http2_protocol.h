@@ -142,6 +142,9 @@ typedef struct serf_http2_stream_t
     H2S_CLOSED
   } status;
 
+  /* Used while receiving a promise stream */
+  struct serf_http2_stream_t *new_reserved_stream;
+
   /* TODO: Priority, etc. */
 } serf_http2_stream_t;
 
