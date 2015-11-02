@@ -397,7 +397,6 @@ static void test_header_buckets_remove(CuTest *tc)
 
 static void test_runtime_versions(CuTest *tc)
 {
-  test_baton_t *tb = tc->testBaton;
   apr_version_t version_of_apr;
 #if APR_MAJOR_VERSION < 2
   apr_version_t version_of_aprutil;
@@ -420,7 +419,7 @@ static void test_runtime_versions(CuTest *tc)
   if (version_of_aprutil.minor == APU_MINOR_VERSION)
     CuAssertTrue(tc, version_of_aprutil.patch >= APU_PATCH_VERSION);
 
-  CuAssertIntEquals(tc, APR_MINOR_VERSION, APU_MINOR_VERSION);
+  CuAssertIntEquals(tc, APR_MAJOR_VERSION, APU_MAJOR_VERSION);
 #endif
 }
 
