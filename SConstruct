@@ -360,9 +360,6 @@ if sys.platform == 'win32':
   if not env.get('SOURCE_LAYOUT', None):
     env.Append(CPPPATH=['$OPENSSL/include/openssl'],
                LIBPATH=['$OPENSSL/lib'])
-  elif 0: # opensslstatic:
-    env.Append(CPPPATH=['$OPENSSL/inc32'],
-               LIBPATH=['$OPENSSL/out32'])
   else:
     env.Append(CPPPATH=['$OPENSSL/inc32'],
                LIBPATH=['$OPENSSL/out32dll'])
