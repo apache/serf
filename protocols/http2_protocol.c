@@ -70,12 +70,11 @@ serf_bucket_create_numberv(serf_bucket_alloc_t *allocator, const char *format, .
   for (c = format; *c; c++)
     {
         apr_uint32_t tmp;
-        apr_uint64_t tmp_64;
 
        switch (*c)
         {
           case '1':
-            *r++ = va_arg(argp, int);
+            *r++ = va_arg(argp, int) & 0xFF;
             break;
           case '2':
             tmp = va_arg(argp, int);
