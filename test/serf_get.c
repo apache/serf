@@ -247,8 +247,6 @@ static apr_status_t conn_setup(apr_socket_t *skt,
                                              "h2,http/1.1",
                                              conn_set_protocol, conn_ctx))
             {
-                serf_bucket_t *bkt;
-
                 /* Disable sending initial data until negotiate is done */
                 serf_connection_set_framing_type(
                               conn_ctx->conn,
@@ -617,7 +615,7 @@ int main(int argc, const char **argv)
             break;
         case 'n':
             errno = 0;
-            count = apr_strtoi64(opt_arg, NULL, 10);
+            count = (int)apr_atoi64(opt_arg);
             if (errno) {
                 printf("Problem converting number of times to fetch URL (%d)\n",
                        errno);
@@ -626,7 +624,7 @@ int main(int argc, const char **argv)
             break;
         case 'c':
             errno = 0;
-            conn_count = apr_strtoi64(opt_arg, NULL, 10);
+            conn_count = (int)apr_atoi64(opt_arg);
             if (errno) {
                 printf("Problem converting number of concurrent connections to use (%d)\n",
                        errno);
@@ -641,7 +639,7 @@ int main(int argc, const char **argv)
             break;
         case 'x':
             errno = 0;
-            inflight = apr_strtoi64(opt_arg, NULL, 10);
+            inflight = (int)apr_atoi64(opt_arg);
             if (errno) {
                 printf("Problem converting number of requests to have outstanding (%d)\n",
                        errno);
@@ -795,8 +793,8 @@ int main(int argc, const char **argv)
 
         status = serf_logging_create_stream_output(&output,
                                                    context,
-                                                   SERF_LOG_DEBUG,
-                                                   SERF_LOGCOMP_ALL_MSG,
+                                                   SERF_LOG_INFO,
+                                                   SERF_LOGCOMP_ALL_MSG & ~(SERF_LOGCOMP_RAWMSG | SERF_LOGCOMP_SSLMSG),
                                                    SERF_LOG_DEFAULT_LAYOUT,
                                                    stderr,
                                                    pool);
