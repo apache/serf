@@ -55,13 +55,13 @@ if __name__ == '__main__':
     print "== Testing %s ==" % (case)
     try:
       subprocess.check_call([SERF_RESPONSE_EXE, case])
-    except subprocess.CalledProcessError:
-      print "ERROR: test case %s failed" % (case)
+    except subprocess.CalledProcessError, x:
+      print "ERROR: test failed in '%s', exit code=%d" % (x.cmd, x.returncode)
       sys.exit(1)
 
   print "== Running the unit tests =="
   try:
     subprocess.check_call(TEST_ALL_EXE)
-  except subprocess.CalledProcessError:
-    print "ERROR: test(s) failed in test_all"
+  except subprocess.CalledProcessError, x:
+    print "ERROR: test(s) failed in '%s', exit code=%d" % (x.cmd, x.returncode)
     sys.exit(1)
