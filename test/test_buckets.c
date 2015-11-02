@@ -1623,8 +1623,7 @@ static void deflate_buckets(CuTest *tc, int nr_of_loops, apr_pool_t *pool)
     read_bucket_and_check_pattern(tc, defbkt, msg, nr_of_loops * strlen(msg));
 
     /* Release a few MB of memory kept by zlib */
-    CuAssert(tc, "zlib end failed.",
-             deflateEnd(&zdestr));
+    CuAssertIntEquals(tc, Z_OK, deflateEnd(&zdestr));
 }
 
 static void test_deflate_buckets(CuTest *tc)
