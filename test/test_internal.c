@@ -18,6 +18,16 @@
  * ====================================================================
  */
 
+#include <apr_version.h>
+#include <apr_strings.h>
+#include <openssl/ssl.h>
+#include <openssl/opensslv.h>
+
+#if APR_VERSION_MAJOR < 2
+#include <apu_version.h>
+#endif
+
+
 #include "serf.h"
 #include "test_serf.h"
 
@@ -385,6 +395,35 @@ static void test_header_buckets_remove(CuTest *tc)
     read_and_check_bucket(tc, hdrs, cur);
 }
 
+static void test_runtime_versions(CuTest *tc)
+{
+  test_baton_t *tb = tc->testBaton;
+  apr_version_t version_of_apr;
+#if APR_MAJOR_VERSION < 2
+  apr_version_t version_of_aprutil;
+#endif
+
+  apr_version(&version_of_apr);
+
+  CuAssertIntEquals(tc, APR_MAJOR_VERSION, version_of_apr.major);
+  CuAssertTrue(tc, version_of_apr.minor >= APR_MINOR_VERSION);
+
+  if (version_of_apr.minor -= APR_MINOR_VERSION)
+    CuAssertTrue(tc, version_of_apr.patch >= APR_PATCH_VERSION);
+
+#if APR_MAJOR_VERSION < 2
+  apu_version(&version_of_aprutil);
+
+  CuAssertIntEquals(tc, APU_MAJOR_VERSION, version_of_aprutil.major);
+  CuAssertTrue(tc, version_of_aprutil.minor >= APU_MINOR_VERSION);
+
+  if (version_of_aprutil.minor == APU_MINOR_VERSION)
+    CuAssertTrue(tc, version_of_aprutil.patch >= APU_PATCH_VERSION);
+
+  CuAssertIntEquals(tc, APR_MINOR_VERSION, APU_MINOR_VERSION);
+#endif
+}
+
 CuSuite *test_internal(void)
 {
     CuSuite *suite = CuSuiteNew();
@@ -397,6 +436,7 @@ CuSuite *test_internal(void)
     SUITE_ADD_TEST(suite, test_config_store_error_handling);
     SUITE_ADD_TEST(suite, test_config_store_remove_objects);
     SUITE_ADD_TEST(suite, test_header_buckets_remove);
+    SUITE_ADD_TEST(suite, test_runtime_versions);
 
     return suite;
 }
