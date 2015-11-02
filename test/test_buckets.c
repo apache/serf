@@ -462,6 +462,9 @@ static void test_iovec_buckets(CuTest *tc)
 
     iobkt = serf_bucket_iovec_create(vecs, vecs_used, alloc);
 
+    /* Check serf_bucket_get_remaining() result. */
+    CuAssertIntEquals(tc, 12, (int)serf_bucket_get_remaining(iobkt));
+
     /* Check available data */
     status = serf_bucket_peek(iobkt, &data, &len);
     CuAssertIntEquals(tc, APR_EOF, status);
@@ -475,6 +478,9 @@ static void test_iovec_buckets(CuTest *tc)
     CuAssert(tc, tgt_vecs[0].iov_base,
              strncmp("lin", tgt_vecs[0].iov_base, tgt_vecs[0].iov_len) == 0);
 
+    /* Check serf_bucket_get_remaining() result. */
+    CuAssertIntEquals(tc, 9, (int)serf_bucket_get_remaining(iobkt));
+
     /* Read the rest of the data. */
     status = serf_bucket_read_iovec(iobkt, SERF_READ_ALL_AVAIL, 32, tgt_vecs,
                                     &vecs_used);
@@ -483,6 +489,9 @@ static void test_iovec_buckets(CuTest *tc)
     CuAssertIntEquals(tc, strlen("e1" CRLF "line2"), tgt_vecs[0].iov_len);
     CuAssert(tc, tgt_vecs[0].iov_base,
              strncmp("e1" CRLF "line2", tgt_vecs[0].iov_base, tgt_vecs[0].iov_len - 3) == 0);
+
+    /* Check serf_bucket_get_remaining() result. */
+    CuAssertIntEquals(tc, 0, (int)serf_bucket_get_remaining(iobkt));
 
     /* Bucket should now be empty */
     status = serf_bucket_peek(iobkt, &data, &len);
@@ -497,6 +506,9 @@ static void test_iovec_buckets(CuTest *tc)
     }
 
     iobkt = serf_bucket_iovec_create(vecs, 32, alloc);
+
+    /* Check serf_bucket_get_remaining() result. */
+    CuAssertIntEquals(tc, 640, (int)serf_bucket_get_remaining(iobkt));
 
     /* Check that some data is in the buffer. Don't verify the actual data, the
        amount of data returned is not guaranteed to be the full buffer. */
@@ -513,12 +525,14 @@ static void test_iovec_buckets(CuTest *tc)
     CuAssertIntEquals(tc, 1, vecs_used);
     CuAssert(tc, tgt_vecs[0].iov_base,
              strncmp("data 00 901234567890", tgt_vecs[0].iov_base, tgt_vecs[0].iov_len) == 0);
+    CuAssertIntEquals(tc, 620, (int)serf_bucket_get_remaining(iobkt));
 
     /* Read 2 bufs. */
     status = serf_bucket_read_iovec(iobkt, 2 * 20, 32,
                                     tgt_vecs, &vecs_used);
     CuAssertIntEquals(tc, APR_SUCCESS, status);
     CuAssertIntEquals(tc, 2, vecs_used);
+    CuAssertIntEquals(tc, 580, (int)serf_bucket_get_remaining(iobkt));
 
     /* Read the remaining 29 bufs. */
     vecs_used = 400;  /* test if iovec code correctly resets vecs_used */
@@ -526,6 +540,7 @@ static void test_iovec_buckets(CuTest *tc)
                                     tgt_vecs, &vecs_used);
     CuAssertIntEquals(tc, APR_EOF, status);
     CuAssertIntEquals(tc, 29, vecs_used);
+    CuAssertIntEquals(tc, 0, (int)serf_bucket_get_remaining(iobkt));
 
     /* Test 3: use serf_bucket_read */
     for (i = 0; i < 32 ; i++) {
@@ -535,17 +550,22 @@ static void test_iovec_buckets(CuTest *tc)
 
     iobkt = serf_bucket_iovec_create(vecs, 32, alloc);
 
+    /* Check serf_bucket_get_remaining() result. */
+    CuAssertIntEquals(tc, 640, (int)serf_bucket_get_remaining(iobkt));
+
     status = serf_bucket_read(iobkt, 10, &data, &len);
     CuAssertIntEquals(tc, APR_SUCCESS, status);
     CuAssertIntEquals(tc, 10, len);
     CuAssert(tc, data,
              strncmp("DATA 00 90", data, len) == 0);
+    CuAssertIntEquals(tc, 630, (int)serf_bucket_get_remaining(iobkt));
 
     status = serf_bucket_read(iobkt, 10, &data, &len);
     CuAssertIntEquals(tc, APR_SUCCESS, status);
     CuAssertIntEquals(tc, 10, len);
     CuAssert(tc, tgt_vecs[0].iov_base,
              strncmp("1234567890", data, len) == 0);
+    CuAssertIntEquals(tc, 620, (int)serf_bucket_get_remaining(iobkt));
 
     for (i = 1; i < 31 ; i++) {
         const char *exp = apr_psprintf(tb->pool, "DATA %02d 901234567890", i);
@@ -557,11 +577,14 @@ static void test_iovec_buckets(CuTest *tc)
 
     }
 
+    CuAssertIntEquals(tc, 20, (int)serf_bucket_get_remaining(iobkt));
+
     status = serf_bucket_read(iobkt, 20, &data, &len);
     CuAssertIntEquals(tc, APR_EOF, status);
     CuAssertIntEquals(tc, 20, len);
     CuAssert(tc, data,
              strncmp("DATA 31 901234567890", data, len) == 0);
+    CuAssertIntEquals(tc, 0, (int)serf_bucket_get_remaining(iobkt));
 
     /* Test 3: read an empty iovec */
     iobkt = serf_bucket_iovec_create(vecs, 0, alloc);
@@ -569,20 +592,26 @@ static void test_iovec_buckets(CuTest *tc)
                                     tgt_vecs, &vecs_used);
     CuAssertIntEquals(tc, APR_EOF, status);
     CuAssertIntEquals(tc, 0, vecs_used);
+    CuAssertIntEquals(tc, 0, (int)serf_bucket_get_remaining(iobkt));
 
     status = serf_bucket_read(iobkt, SERF_READ_ALL_AVAIL, &data, &len);
     CuAssertIntEquals(tc, APR_EOF, status);
     CuAssertIntEquals(tc, 0, len);
+    CuAssertIntEquals(tc, 0, (int)serf_bucket_get_remaining(iobkt));
 
     /* Test 4: read 0 bytes from an iovec */
     bkt = SERF_BUCKET_SIMPLE_STRING("line1" CRLF, alloc);
     status = serf_bucket_read_iovec(bkt, SERF_READ_ALL_AVAIL, 32, vecs,
                                     &vecs_used);
     iobkt = serf_bucket_iovec_create(vecs, vecs_used, alloc);
+    /* Check serf_bucket_get_remaining() result. */
+    CuAssertIntEquals(tc, 7, (int)serf_bucket_get_remaining(iobkt));
+
     status = serf_bucket_read_iovec(iobkt, 0, 32,
                                     tgt_vecs, &vecs_used);
     CuAssertIntEquals(tc, APR_SUCCESS, status);
     CuAssertIntEquals(tc, 0, vecs_used);
+    CuAssertIntEquals(tc, 7, (int)serf_bucket_get_remaining(iobkt));
 }
 
 /* Construct a header bucket with some headers, and then read from it. */
