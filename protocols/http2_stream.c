@@ -47,10 +47,10 @@ serf_http2__stream_create(serf_http2_protocol_t *h2,
   stream->h2 = h2;
   stream->alloc = alloc;
 
-  stream->data = serf_bucket_mem_alloc(alloc, sizeof(*stream->data));
-
   stream->next = stream->prev = NULL;
 
+  /* Delay creating this? */
+  stream->data = serf_bucket_mem_alloc(alloc, sizeof(*stream->data));
   stream->data->request = NULL;
   stream->data->response_agg = NULL;
 
@@ -63,6 +63,7 @@ serf_http2__stream_create(serf_http2_protocol_t *h2,
     stream->streamid = -1; /* Undetermined yet */
 
   stream->status = (streamid >= 0) ? H2S_IDLE : H2S_INIT;
+  stream->new_reserved_stream = NULL;
 
   return stream;
 }
@@ -209,6 +210,65 @@ stream_setup_response(serf_http2_stream_t *stream,
   stream->data->response_agg = agg;
 }
 
+static apr_status_t
+stream_promise_item(void *baton,
+                    const char *key,
+                    apr_size_t key_sz,
+                    const char *value,
+                    apr_size_t value_sz)
+{
+  serf_http2_stream_t *parent_stream = baton;
+  serf_http2_stream_t *stream = parent_stream->new_reserved_stream;
+
+  SERF_H2_assert(stream != NULL);
+
+  /* TODO: Store key+value somewhere to allow asking the application
+           if it is interested in the promised stream.
+
+           Most likely it is not interested *yet* as the HTTP/2 spec
+           recommends pushing promised items *before* the stream that
+           references them.
+
+           So we probably want to store the request anyway, to allow
+           matching this against a later added outgoing request.
+   */
+  return APR_SUCCESS;
+}
+
+static apr_status_t
+stream_promise_done(void *baton,
+                    serf_bucket_t *done_agg)
+{
+  serf_http2_stream_t *parent_stream = baton;
+  serf_http2_stream_t *stream = parent_stream->new_reserved_stream;
+
+  SERF_H2_assert(stream != NULL);
+  SERF_H2_assert(stream->status == H2S_RESERVED_REMOTE);
+  parent_stream->new_reserved_stream = NULL; /* End of PUSH_PROMISE */
+
+  /* Anything else? */
+
+
+  /* ### Absolute minimal implementation.
+         Just sending that we are not interested in the initial SETTINGS
+         would be the easier approach. */
+  serf_http2__stream_reset(stream, SERF_ERROR_HTTP2_REFUSED_STREAM, TRUE);
+
+
+
+
+  /* Exit condition:
+     * Either we should accept the stream and are ready to receive
+       HEADERS and DATA on it.
+     * Or we aren't and reject the stream
+   */
+  SERF_H2_assert(stream->status == H2S_CLOSED
+                 || stream->data->request != NULL);
+
+  /* We must return a proper error or EOF here! */
+  return APR_EOF;
+}
+
 serf_bucket_t *
 serf_http2__stream_handle_hpack(serf_http2_stream_t *stream,
                                 serf_bucket_t *bucket,
@@ -219,23 +279,45 @@ serf_http2__stream_handle_hpack(serf_http2_stream_t *stream,
                                 serf_config_t *config,
                                 serf_bucket_alloc_t *allocator)
 {
-  if (!stream->data->response_agg)
-    stream_setup_response(stream, config);
-
-  bucket = serf__bucket_hpack_decode_create(bucket, NULL, NULL, max_entry_size,
-                                            hpack_tbl, allocator);
-
-  serf_bucket_aggregate_append(stream->data->response_agg, bucket);
-
-  if (end_stream)
+  if (frametype == HTTP2_FRAME_TYPE_HEADERS)
     {
-      if (stream->status == H2S_HALFCLOSED_LOCAL)
-        stream->status = H2S_CLOSED;
-      else
-        stream->status = H2S_HALFCLOSED_REMOTE;
-    }
+      if (!stream->data->response_agg)
+        stream_setup_response(stream, config);
 
-  return NULL;
+      bucket = serf__bucket_hpack_decode_create(bucket, NULL, NULL, max_entry_size,
+                                                hpack_tbl, allocator);
+
+      serf_bucket_aggregate_append(stream->data->response_agg, bucket);
+
+      if (end_stream)
+        {
+          if (stream->status == H2S_HALFCLOSED_LOCAL)
+            stream->status = H2S_CLOSED;
+          else
+            stream->status = H2S_HALFCLOSED_REMOTE;
+        }
+      return NULL; /* We want to drain the bucket ourselves */
+    }
+  else
+    {
+      serf_bucket_t *agg;
+      SERF_H2_assert(frametype == HTTP2_FRAME_TYPE_PUSH_PROMISE);
+
+      /* First create the HPACK decoder as requested */
+      bucket = serf__bucket_hpack_decode_create(bucket,
+                                                stream_promise_item, stream,
+                                                max_entry_size,
+                                                hpack_tbl, allocator);
+
+      /* And now wrap around it the easiest way to get an EOF callback */
+      agg = serf_bucket_aggregate_create(allocator);
+      serf_bucket_aggregate_append(agg, bucket);
+
+      serf_bucket_aggregate_hold_open(agg, stream_promise_done, stream);
+
+      /* And return the aggregate, so the bucket will be drained for us */
+      return agg;
+    }
 }
 
 serf_bucket_t *
