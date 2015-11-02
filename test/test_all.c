@@ -20,6 +20,8 @@
 
 #include "apr.h"
 #include "apr_pools.h"
+#include <apr_signal.h>
+
 #include "test_serf.h"
 #include <stdlib.h>
 
@@ -49,6 +51,11 @@ int main(int argc, char *argv[])
 
     apr_initialize();
     atexit(apr_terminate);
+
+#ifdef SIGPIPE
+    /* Disable SIGPIPE generation for the platforms that have it. */
+    apr_signal(SIGPIPE, SIG_IGN);
+#endif
 
     for (i = 1; i < argc; i++) {
         if (!strcmp(argv[i], "-v")) {
