@@ -130,7 +130,7 @@ if sys.platform == 'win32':
     # Note that Scons 1.3 only supports this on Windows and only when
     # constructing Environment(). Later changes to TARGET_ARCH are ignored
     EnumVariable('TARGET_ARCH',
-                 "Platform to build for (x86|x64|win32|x86_64)",
+                 "Platform to build for",
                  'x86',
                  allowed_values=('x86', 'x86_64', 'ia64'),
                  map={'X86'  : 'x86',
@@ -141,11 +141,17 @@ if sys.platform == 'win32':
                      }),
 
     EnumVariable('MSVC_VERSION',
-                 "Visual C++ to use for building (E.g. 11.0, 9.0)",
+                 "Visual C++ to use for building",
                  None,
-                 allowed_values=('14.0', '12.0',
-                                 '11.0', '10.0', '9.0', '8.0', '6.0')
-                ),
+                 allowed_values=('15.0', '14.0', '12.0',
+                                 '11.0', '10.0', '9.0', '8.0', '6.0'),
+                 map={'2005' :  '8.0',
+                      '2008' :  '9.0',
+                      '2010' : '10.0',
+                      '2012' : '11.0',
+                      '2013' : '12.0',
+                      '2015' : '14.0'
+                     }),
 
     # We always documented that we handle an install layout, but in fact we
     # hardcoded source layouts. Allow disabling this behavior.
