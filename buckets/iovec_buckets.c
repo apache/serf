@@ -166,7 +166,7 @@ static apr_uint64_t serf_iovec_get_remaining(serf_bucket_t *bucket)
         total += ctx->vecs[i].iov_len;
       }
 
-    return total;
+    return total - ctx->offset;
 }
 
 const serf_bucket_type_t serf_bucket_type_iovec = {
