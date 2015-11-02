@@ -233,7 +233,8 @@ static void serialize_data(serf_bucket_t *bucket)
     req_len = apr_snprintf(ctx->req_line, sizeof(ctx->req_line),
                            "%s %d " "%" APR_UINT64_T_HEX_FMT " %s%s\r\n",
                            (ctx->type ? "BWM" : "BWH"),
-                           ctx->channel, calc_header_size(ctx->headers),
+                           ctx->channel,
+                           (apr_uint64_t)calc_header_size(ctx->headers),
                            (ctx->open ? "OPEN " : ""),
                            ctx->phrase);
     new_bucket = serf_bucket_simple_copy_create(ctx->req_line, req_len,
