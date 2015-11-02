@@ -157,10 +157,14 @@ static apr_status_t cleanupServer(void *baton)
         apr_pollset_destroy(ctx->pollset);
         ctx->pollset = NULL;
     }
-    if (ctx->skt) {
-        status = apr_socket_close(ctx->skt);
-        ctx->skt = NULL;
-    }
+    /* We used to explicitly close the socket here, but APR already sets
+       up a cleanup handler for that. As our cleanup is registered before
+       that of the apr socket, ours will last, which the triggers a close(-1)
+       from here on the unix implementations, as the initial close sets
+       the socket to -1.
+
+       On Windows APR checks before closing again */
+    ctx->skt = NULL;
 
     return status;
 }
