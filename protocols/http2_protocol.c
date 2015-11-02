@@ -59,26 +59,10 @@ serf_bucket_create_numberv(serf_bucket_alloc_t *allocator, const char *format, .
 
   for (c = format; *c; c++)
     {
-      switch (*c)
-      {
-        case '1': /* char */
-          sz += 1;
-          break;
-        case '2': /* apr_int16_t / apr_uint16_t */
-          sz += 2;
-          break;
-        case '3': /* apr_int32_t / apr_uint32_t */
-          sz += 3;
-          break;
-        case '4': /* apr_int32_t / apr_uint32_t */
-          sz += 4;
-          break;
-        case '8': /* apr_int64_t / apr_uint64_t */
-          sz += 8;
-          break;
-        default:
-          abort(); /* Invalid format */
-      }
+      if (*c >= '1' && *c <= '4')
+        sz += (*c - '0');
+      else
+        abort(); /* Invalid format */
     }
 
   buffer = serf_bucket_mem_alloc(allocator, sz);
@@ -91,10 +75,10 @@ serf_bucket_create_numberv(serf_bucket_alloc_t *allocator, const char *format, .
        switch (*c)
         {
           case '1':
-            *r++ = va_arg(argp, char);
+            *r++ = va_arg(argp, int);
             break;
           case '2':
-            tmp = va_arg(argp, apr_uint16_t);
+            tmp = va_arg(argp, int);
             *r++ = (tmp >> 8) & 0xFF;
             *r++ = tmp & 0xFF;
             break;
@@ -110,17 +94,6 @@ serf_bucket_create_numberv(serf_bucket_alloc_t *allocator, const char *format, .
             *r++ = (tmp >> 16) & 0xFF;
             *r++ = (tmp >> 8) & 0xFF;
             *r++ = tmp & 0xFF;
-            break;
-          case '8':
-            tmp_64 = va_arg(argp, apr_uint64_t);
-            *r++ = (tmp_64 >> 56) & 0xFF;
-            *r++ = (tmp_64 >> 48) & 0xFF;
-            *r++ = (tmp_64 >> 40) & 0xFF;
-            *r++ = (tmp_64 >> 32) & 0xFF;
-            *r++ = (tmp_64 >> 24) & 0xFF;
-            *r++ = (tmp_64 >> 16) & 0xFF;
-            *r++ = (tmp_64 >> 8) & 0xFF;
-            *r++ = tmp_64 & 0xFF;
             break;
        }
     }
