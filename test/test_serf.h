@@ -300,6 +300,11 @@ void test__log_skt(int verbose_flag, const char *filename, apr_socket_t *skt,
  log lines in parts. */
 void test__log_nopref(int verbose_flag, const char *fmt, ...);
 
+/* Create serf_bucket_allocator() with configured unfreed callback
+ * to report unfreed memory during test execution. */
+serf_bucket_alloc_t *
+test__create_bucket_allocator(CuTest *tc, apr_pool_t *pool);
+
 /* Helper to get a file relative to our source directory by looking at
  * 'srcdir' env variable. */
 const char * get_srcdir_file(apr_pool_t *pool, const char * file);
