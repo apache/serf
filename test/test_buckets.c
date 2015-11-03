@@ -196,8 +196,7 @@ static void test_simple_bucket_readline(CuTest *tc)
     apr_size_t len;
     const char *body;
     
-    serf_bucket_alloc_t *alloc = serf_bucket_allocator_create(tb->pool, NULL,
-                                                              NULL);
+    serf_bucket_alloc_t *alloc = test__create_bucket_allocator(tc, tb->pool);
 
     bkt = SERF_BUCKET_SIMPLE_STRING(
                                     "line1" CRLF
@@ -282,8 +281,7 @@ static void test_response_bucket_read(CuTest *tc)
     test_baton_t *tb = tc->testBaton;
     serf_bucket_t *bkt, *tmp;
 
-    serf_bucket_alloc_t *alloc = serf_bucket_allocator_create(tb->pool, NULL,
-                                                              NULL);
+    serf_bucket_alloc_t *alloc = test__create_bucket_allocator(tc, tb->pool);
 
     tmp = SERF_BUCKET_SIMPLE_STRING(
         "HTTP/1.1 200 OK" CRLF
@@ -304,8 +302,7 @@ static void test_response_bucket_headers(CuTest *tc)
     test_baton_t *tb = tc->testBaton;
     serf_bucket_t *bkt, *tmp, *hdr;
 
-    serf_bucket_alloc_t *alloc = serf_bucket_allocator_create(tb->pool, NULL,
-                                                              NULL);
+    serf_bucket_alloc_t *alloc = test__create_bucket_allocator(tc, tb->pool);
 
     tmp = SERF_BUCKET_SIMPLE_STRING(
         "HTTP/1.1 405 Method Not Allowed" CRLF
@@ -342,8 +339,7 @@ static void test_response_bucket_chunked_read(CuTest *tc)
     test_baton_t *tb = tc->testBaton;
     serf_bucket_t *bkt, *tmp, *hdrs;
 
-    serf_bucket_alloc_t *alloc = serf_bucket_allocator_create(tb->pool, NULL,
-                                                              NULL);
+    serf_bucket_alloc_t *alloc = test__create_bucket_allocator(tc, tb->pool);
 
     tmp = SERF_BUCKET_SIMPLE_STRING(
         "HTTP/1.1 200 OK" CRLF
@@ -374,8 +370,7 @@ static void test_response_bucket_chunked_read(CuTest *tc)
 static void test_bucket_header_set(CuTest *tc)
 {
     test_baton_t *tb = tc->testBaton;
-    serf_bucket_alloc_t *alloc = serf_bucket_allocator_create(tb->pool, NULL,
-                                                              NULL);
+    serf_bucket_alloc_t *alloc = test__create_bucket_allocator(tc, tb->pool);
     serf_bucket_t *hdrs = serf_bucket_headers_create(alloc);
 
     CuAssertTrue(tc, hdrs != NULL);
@@ -417,8 +412,7 @@ store_header_in_table(void *baton, const char *key, const char *value)
 static void test_bucket_header_do(CuTest *tc)
 {
     test_baton_t *tb = tc->testBaton;
-    serf_bucket_alloc_t *alloc = serf_bucket_allocator_create(tb->pool, NULL,
-                                                              NULL);
+    serf_bucket_alloc_t *alloc = test__create_bucket_allocator(tc, tb->pool);
     serf_bucket_t *hdrs = serf_bucket_headers_create(alloc);
     struct kv {
         const char *key;
@@ -472,8 +466,7 @@ static void test_iovec_buckets(CuTest *tc)
     int i;
     int vecs_used;
 
-    serf_bucket_alloc_t *alloc = serf_bucket_allocator_create(tb->pool, NULL,
-                                                              NULL);
+    serf_bucket_alloc_t *alloc = test__create_bucket_allocator(tc, tb->pool);
 
     /* Test 1: Read a single string in an iovec, store it in a iovec_bucket
        and then read it back. */
@@ -658,8 +651,7 @@ static void test_iovec_buckets(CuTest *tc)
 static void test_header_buckets(CuTest *tc)
 {
     test_baton_t *tb = tc->testBaton;
-    serf_bucket_alloc_t *alloc = serf_bucket_allocator_create(tb->pool, NULL,
-                                                              NULL);
+    serf_bucket_alloc_t *alloc = test__create_bucket_allocator(tc, tb->pool);
     const char *cur;
 
     serf_bucket_t *hdrs = serf_bucket_headers_create(alloc);
@@ -688,8 +680,7 @@ static void test_aggregate_buckets(CuTest *tc)
     apr_size_t len;
     const char *data;
 
-    serf_bucket_alloc_t *alloc = serf_bucket_allocator_create(tb->pool, NULL,
-                                                              NULL);
+    serf_bucket_alloc_t *alloc = test__create_bucket_allocator(tc, tb->pool);
     const char *BODY = "12345678901234567890"\
                        "12345678901234567890"\
                        "12345678901234567890"\
@@ -800,8 +791,7 @@ static void test_aggregate_bucket_readline(CuTest *tc)
     test_baton_t *tb = tc->testBaton;
     serf_bucket_t *bkt, *aggbkt;
 
-    serf_bucket_alloc_t *alloc = serf_bucket_allocator_create(tb->pool, NULL,
-                                                              NULL);
+    serf_bucket_alloc_t *alloc = test__create_bucket_allocator(tc, tb->pool);
     const char *BODY = "12345678901234567890" CRLF
                        "12345678901234567890" CRLF
                        "12345678901234567890" CRLF;
@@ -841,8 +831,7 @@ static void test_response_body_too_small_cl(CuTest *tc)
 {
     test_baton_t *tb = tc->testBaton;
     serf_bucket_t *bkt, *tmp;
-    serf_bucket_alloc_t *alloc = serf_bucket_allocator_create(tb->pool, NULL,
-                                                              NULL);
+    serf_bucket_alloc_t *alloc = test__create_bucket_allocator(tc, tb->pool);
 
     /* Make a response of 60 bytes, but set the Content-Length to 100. */
 #define BODY "12345678901234567890"\
@@ -889,8 +878,7 @@ static void test_response_body_too_small_chunked(CuTest *tc)
 {
     test_baton_t *tb = tc->testBaton;
     serf_bucket_t *bkt, *tmp;
-    serf_bucket_alloc_t *alloc = serf_bucket_allocator_create(tb->pool, NULL,
-                                                              NULL);
+    serf_bucket_alloc_t *alloc = test__create_bucket_allocator(tc, tb->pool);
 
     /* Make a response of 60 bytes, but set the chunk size to 60 and don't end
        with chunk of length 0. */
@@ -938,8 +926,7 @@ static void test_response_body_chunked_no_crlf(CuTest *tc)
 {
     test_baton_t *tb = tc->testBaton;
     serf_bucket_t *bkt, *tmp;
-    serf_bucket_alloc_t *alloc = serf_bucket_allocator_create(tb->pool, NULL,
-                                                              NULL);
+    serf_bucket_alloc_t *alloc = test__create_bucket_allocator(tc, tb->pool);
 
     tmp = SERF_BUCKET_SIMPLE_STRING("HTTP/1.1 200 OK" CRLF
                                     "Content-Type: text/plain" CRLF
@@ -972,8 +959,7 @@ static void test_response_body_chunked_incomplete_crlf(CuTest *tc)
 {
     test_baton_t *tb = tc->testBaton;
     serf_bucket_t *bkt, *tmp;
-    serf_bucket_alloc_t *alloc = serf_bucket_allocator_create(tb->pool, NULL,
-                                                              NULL);
+    serf_bucket_alloc_t *alloc = test__create_bucket_allocator(tc, tb->pool);
 
     tmp = SERF_BUCKET_SIMPLE_STRING("HTTP/1.1 200 OK" CRLF
                                     "Content-Type: text/plain" CRLF
@@ -1004,8 +990,7 @@ static void test_response_body_chunked_gzip_small(CuTest *tc)
 {
     test_baton_t *tb = tc->testBaton;
     serf_bucket_t *bkt, *tmp;
-    serf_bucket_alloc_t *alloc = serf_bucket_allocator_create(tb->pool, NULL,
-                                                              NULL);
+    serf_bucket_alloc_t *alloc = test__create_bucket_allocator(tc, tb->pool);
 
     tmp = SERF_BUCKET_SIMPLE_STRING("HTTP/1.1 200 OK" CRLF
                                     "Content-Type: text/plain" CRLF
@@ -1037,8 +1022,7 @@ static void test_response_bucket_peek_at_headers(CuTest *tc)
     test_baton_t *tb = tc->testBaton;
     serf_bucket_t *resp_bkt1, *tmp, *hdrs;
     serf_status_line sl;
-    serf_bucket_alloc_t *alloc = serf_bucket_allocator_create(tb->pool, NULL,
-                                                              NULL);
+    serf_bucket_alloc_t *alloc = test__create_bucket_allocator(tc, tb->pool);
     const char *hdr_val, *cur;
     apr_status_t status;
 
@@ -1114,8 +1098,7 @@ static void test_copy_bucket(CuTest *tc)
     const char *data;
     apr_size_t len;
 
-    serf_bucket_alloc_t *alloc = serf_bucket_allocator_create(tb->pool, NULL,
-                                                              NULL);
+    serf_bucket_alloc_t *alloc = test__create_bucket_allocator(tc, tb->pool);
     const char *BODY = "12345678901234567890"\
                        "12345678901234567890"\
                        "12345678901234567890"\
@@ -1196,8 +1179,7 @@ static void test_linebuf_crlf_split(CuTest *tc)
 {
     test_baton_t *tb = tc->testBaton;
     serf_bucket_t *mock_bkt, *bkt;
-    serf_bucket_alloc_t *alloc = serf_bucket_allocator_create(tb->pool, NULL,
-                                                              NULL);
+    serf_bucket_alloc_t *alloc = test__create_bucket_allocator(tc, tb->pool);
 
     mockbkt_action actions[]= {
         { 1, "HTTP/1.1 200 OK" CRLF, APR_SUCCESS },
@@ -1269,7 +1251,7 @@ static void test_response_no_body_expected(CuTest *tc)
           "blablablablabla" CRLF,
     };
 
-    alloc = serf_bucket_allocator_create(tb->pool, NULL, NULL);
+    alloc = test__create_bucket_allocator(tc, tb->pool);
 
     /* Test 1: a response to a HEAD request. */
     tmp = SERF_BUCKET_SIMPLE_STRING("HTTP/1.1 200 OK" CRLF
@@ -1307,8 +1289,7 @@ static void test_response_bucket_iis_status_code(CuTest *tc)
     test_baton_t *tb = tc->testBaton;
     serf_bucket_t *bkt, *tmp;
     serf_status_line sline;
-    serf_bucket_alloc_t *alloc = serf_bucket_allocator_create(tb->pool, NULL,
-                                                              NULL);
+    serf_bucket_alloc_t *alloc = test__create_bucket_allocator(tc, tb->pool);
 
     tmp = SERF_BUCKET_SIMPLE_STRING("HTTP/1.1 401.1 Logon failed." CRLF
                                     "Content-Type: text/plain" CRLF
@@ -1339,8 +1320,7 @@ static void test_response_bucket_no_reason(CuTest *tc)
     test_baton_t *tb = tc->testBaton;
     serf_bucket_t *bkt, *tmp;
     serf_status_line sline;
-    serf_bucket_alloc_t *alloc = serf_bucket_allocator_create(tb->pool, NULL,
-                                                              NULL);
+    serf_bucket_alloc_t *alloc = test__create_bucket_allocator(tc, tb->pool);
 
     tmp = SERF_BUCKET_SIMPLE_STRING("HTTP/1.1 401" CRLF
                                     "Content-Type: text/plain" CRLF
@@ -1435,7 +1415,7 @@ static void test_random_eagain_in_response(CuTest *tc)
 
         apr_pool_clear(iter_pool);
 
-        alloc = serf_bucket_allocator_create(iter_pool, NULL, NULL);
+        alloc = test__create_bucket_allocator(tc, iter_pool);
 
         cut = i % strlen(fullmsg);
         part1 = apr_pstrndup(iter_pool, fullmsg, cut);
@@ -1484,8 +1464,7 @@ static void test_dechunk_buckets(CuTest *tc)
 {
     test_baton_t *tb = tc->testBaton;
     serf_bucket_t *mock_bkt, *bkt;
-    serf_bucket_alloc_t *alloc = serf_bucket_allocator_create(tb->pool, NULL,
-                                                              NULL);
+    serf_bucket_alloc_t *alloc = test__create_bucket_allocator(tc, tb->pool);
     mockbkt_action actions[]= {
         /* one chunk */
         { 1, "6" CRLF "blabla" CRLF, APR_SUCCESS },
@@ -1637,8 +1616,7 @@ static void deflate_buckets(CuTest *tc, int nr_of_loops, apr_pool_t *pool)
     const char *msg = "12345678901234567890123456789012345678901234567890";
 
     test_baton_t *tb = tc->testBaton;
-    serf_bucket_alloc_t *alloc = serf_bucket_allocator_create(pool, NULL,
-                                                              NULL);
+    serf_bucket_alloc_t *alloc = test__create_bucket_allocator(tc, tb->pool);
     z_stream zdestr;
     int i;
     const char gzip_header[10] =
@@ -1766,8 +1744,7 @@ create_gzip_deflate_bucket(serf_bucket_t *stream, z_stream *outzstr,
 static void test_deflate_4GBplus_buckets(CuTest *tc)
 {
     test_baton_t *tb = tc->testBaton;
-    serf_bucket_alloc_t *alloc = serf_bucket_allocator_create(tb->pool, NULL,
-                                                              NULL);
+    serf_bucket_alloc_t *alloc = test__create_bucket_allocator(tc, tb->pool);
     int i;
     unsigned char gzip_trailer[8];
     z_stream zdestr;
@@ -1809,7 +1786,7 @@ static void test_deflate_4GBplus_buckets(CuTest *tc)
         apr_status_t status;
 
         apr_pool_clear(iter_pool);
-        iter_alloc = serf_bucket_allocator_create(iter_pool, NULL, NULL);
+        iter_alloc = test__create_bucket_allocator(tc, iter_pool);
 
 
         if (i % 1000 == 0)
@@ -1887,8 +1864,7 @@ static void test_linebuf_fetch_crlf(CuTest *tc)
     serf_bucket_t *bkt;
     serf_linebuf_t linebuf;
     
-    serf_bucket_alloc_t *alloc = serf_bucket_allocator_create(tb->pool, NULL,
-                                                              NULL);
+    serf_bucket_alloc_t *alloc = test__create_bucket_allocator(tc, tb->pool);
 
     bkt = serf_bucket_mock_create(actions, sizeof(actions)/sizeof(actions[0]),
                                   alloc);
@@ -1958,7 +1934,7 @@ static void test_prefix_buckets(CuTest *tc)
     const char *data;
     apr_size_t len;
 
-    alloc = serf_bucket_allocator_create(tb->pool, NULL, NULL);
+    alloc = test__create_bucket_allocator(tc, tb->pool);
     pb.allocator = alloc;
 
     agg = serf_bucket_aggregate_create(alloc);
@@ -2035,7 +2011,7 @@ static void test_http2_unframe_buckets(CuTest *tc)
   apr_status_t status;
   apr_size_t read_len;
 
-  alloc = serf_bucket_allocator_create(tb->pool, NULL, NULL);
+  alloc = test__create_bucket_allocator(tc, tb->pool);
 
   raw = serf_bucket_simple_create(raw_frame1, sizeof(raw_frame1),
                                   NULL, NULL, alloc);
@@ -2126,7 +2102,7 @@ static void test_http2_unpad_buckets(CuTest *tc)
   apr_status_t status;
   apr_size_t read_len;
 
-  alloc = serf_bucket_allocator_create(tb->pool, NULL, NULL);
+  alloc = test__create_bucket_allocator(tc, tb->pool);
 
   raw = serf_bucket_simple_create(raw_frame, sizeof(raw_frame)-1,
                                   NULL, NULL, alloc);
@@ -2391,7 +2367,7 @@ static void test_hpack_header_encode(CuTest *tc)
   char resultbuffer[1024];
   apr_size_t sz;
 
-  alloc = serf_bucket_allocator_create(tb->pool, NULL, NULL);
+  alloc = test__create_bucket_allocator(tc, tb->pool);
 
   hpack = serf__bucket_hpack_create(NULL, alloc);
 
@@ -2421,7 +2397,7 @@ static void test_http2_frame_bucket_basic(CuTest *tc)
   serf_bucket_t *frame_out;
   apr_int32_t exp_streamid = 0x01020304;
 
-  alloc = serf_bucket_allocator_create(tb->pool, NULL, NULL);
+  alloc = test__create_bucket_allocator(tc, tb->pool);
 
   body_in = SERF_BUCKET_SIMPLE_STRING("This is no config!", alloc);
   frame_in = serf__bucket_http2_frame_create(body_in, 99, 7, &exp_streamid,

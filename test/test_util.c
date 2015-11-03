@@ -728,3 +728,17 @@ void test__log_skt(int verbose_flag, const char *filename, apr_socket_t *skt,
         va_end(argp);
     }
 }
+
+/* Implements serf_unfreed_func_t: prints unfreed memory blocks to stderr
+ * prefixed with test name. */
+static void bucket_unfreed_memory_cb(void *baton, void *block)
+{
+    CuTest *tc = baton;
+    fprintf(stderr, "%s: Unfreed block %p\n", tc->name, block);
+}
+
+serf_bucket_alloc_t *
+test__create_bucket_allocator(CuTest *tc, apr_pool_t *pool)
+{
+    return serf_bucket_allocator_create(pool, bucket_unfreed_memory_cb, tc);
+}
