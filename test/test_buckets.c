@@ -1970,6 +1970,7 @@ static void test_prefix_buckets(CuTest *tc)
     serf_bucket_destroy(prefix);
 
     /* Then more than first chunk*/
+    agg = serf_bucket_aggregate_create(alloc);
     bkt = SERF_BUCKET_SIMPLE_STRING(BODY, alloc);
     serf_bucket_aggregate_append(agg, bkt);
     bkt = SERF_BUCKET_SIMPLE_STRING(BODY, alloc);
@@ -1987,6 +1988,7 @@ static void test_prefix_buckets(CuTest *tc)
     serf_bucket_destroy(prefix);
 
     /* And an early EOF */
+    agg = serf_bucket_aggregate_create(alloc);
     bkt = SERF_BUCKET_SIMPLE_STRING(BODY, alloc);
     serf_bucket_aggregate_append(agg, bkt);
 
