@@ -2715,8 +2715,8 @@ static apr_status_t initSSLCtx(_mhClientCtx_t *cctx)
 static apr_status_t
 sslSocketWrite(_mhClientCtx_t *cctx, const char *data, apr_size_t *len)
 {
-    int result;
     sslCtx_t *ssl_ctx = cctx->ssl_ctx;
+    int result, ssl_err;
 
     ssl_ctx->bio_status = APR_SUCCESS;
     result = SSL_write(ssl_ctx->ssl, data, *len);
@@ -2725,10 +2725,40 @@ sslSocketWrite(_mhClientCtx_t *cctx, const char *data, apr_size_t *len)
         return APR_SUCCESS;
     }
 
+    ssl_err = SSL_get_error(ssl_ctx->ssl, result);
+    switch (ssl_err) {
+      case SSL_ERROR_ZERO_RETURN:
+        *len = 0;
+        return APR_EOF; /* Clean SSL shutdown */
+      case SSL_ERROR_SYSCALL:
+        /* error in bio_bucket_read, probably APR_EAGAIN or APR_EOF */
+        *len = 0;
+        return ssl_ctx->bio_status;
+      case SSL_ERROR_WANT_READ:
+      case SSL_ERROR_WANT_WRITE:
+        *len = 0;
+        return APR_EAGAIN;
+      case SSL_ERROR_SSL:
+        /* When the client kills the connection, we can expect protocol
+        errors... Let's just return that we didn't see an error,
+        but that the connection was closed. */
+        *len = 0;
+        return APR_EOF;
+      default:
+        *len = 0;
+        _mhLog(MH_VERBOSE, cctx->skt,
+               "sslSocketWrite SSL Error %d: ", ssl_err);
+#if MH_VERBOSE
+        ERR_print_errors_fp(stderr);
+#endif
+        return APR_EGENERAL;
+    }
+
+
     if (result == 0)
         return APR_EAGAIN;
 
-    _mhLog(MH_VERBOSE, cctx->skt, "ssl_socket_write: ssl error?\n");
+    
 
     return ssl_ctx->bio_status ? ssl_ctx->bio_status : APR_EGENERAL;
 }
@@ -2753,11 +2783,15 @@ sslSocketRead(apr_socket_t *skt, void *baton, char *data, apr_size_t *len)
 
         ssl_err = SSL_get_error(ssl_ctx->ssl, result);
         switch (ssl_err) {
+            case SSL_ERROR_ZERO_RETURN:
+                *len = 0;
+                return APR_EOF; /* Clean SSL shutdown */
             case SSL_ERROR_SYSCALL:
                 /* error in bio_bucket_read, probably APR_EAGAIN or APR_EOF */
                 *len = 0;
                 return ssl_ctx->bio_status;
             case SSL_ERROR_WANT_READ:
+            case SSL_ERROR_WANT_WRITE:
                 *len = 0;
                 return APR_EAGAIN;
             case SSL_ERROR_SSL:
@@ -2769,7 +2803,7 @@ sslSocketRead(apr_socket_t *skt, void *baton, char *data, apr_size_t *len)
             default:
                 *len = 0;
                 _mhLog(MH_VERBOSE, skt,
-                          "ssl_socket_read SSL Error %d: ", ssl_err);
+                          "sslSocketRead SSL Error %d: ", ssl_err);
 #if MH_VERBOSE
                 ERR_print_errors_fp(stderr);
 #endif
