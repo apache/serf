@@ -313,6 +313,7 @@ static void serf_copy_destroy(serf_bucket_t *bucket)
     if (ctx->hold_buf)
         serf_bucket_mem_free(bucket->allocator, ctx->hold_buf);
 
+    serf_bucket_destroy(ctx->wrapped);
     serf_default_destroy_and_data(bucket);
 }
 

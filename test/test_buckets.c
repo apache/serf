@@ -1125,8 +1125,10 @@ static void test_copy_bucket(CuTest *tc)
     CuAssertIntEquals(tc, APR_EOF, status);
     CuAssertIntEquals(tc, strlen(BODY), len);
 
+    serf_bucket_destroy(copybkt);
 
-    /* Just reuse the existing aggbkt. Fill again */
+    /* Fill again aggregate bucket again. */
+    aggbkt = serf_bucket_aggregate_create(alloc);
     copybkt = serf_bucket_copy_create(aggbkt, 35, alloc);
     bkt = SERF_BUCKET_SIMPLE_STRING_LEN(BODY, 20, alloc);
     serf_bucket_aggregate_append(aggbkt, bkt);
@@ -1148,7 +1150,10 @@ static void test_copy_bucket(CuTest *tc)
     CuAssertIntEquals(tc, APR_EOF, discard_data(copybkt, &len));
     CuAssertIntEquals(tc, strlen(BODY) - 35, len);
 
-    /* Just reuse the existing aggbkt. Fill again */
+    serf_bucket_destroy(copybkt);
+
+    /* Fill again aggregate bucket again. */
+    aggbkt = serf_bucket_aggregate_create(alloc);
     copybkt = serf_bucket_copy_create(aggbkt, 45, alloc);
     bkt = SERF_BUCKET_SIMPLE_STRING_LEN(BODY, 20, alloc);
     serf_bucket_aggregate_append(aggbkt, bkt);
