@@ -555,6 +555,9 @@ apr_status_t serf_response_full_become_aggregate(serf_bucket_t *bucket)
     serf_bucket_aggregate_append(bucket, ctx->headers);
     serf_bucket_aggregate_append(bucket, ctx->stream);
 
+    if (ctx->body != NULL)
+        serf_bucket_destroy(ctx->body);
+    serf_bucket_mem_free(bucket->allocator, (void*)ctx->sl.reason);
     serf_bucket_mem_free(bucket->allocator, ctx);
 
     return APR_SUCCESS;
