@@ -182,7 +182,7 @@ apr_status_t serf_default_ignore_config(serf_bucket_t *bucket,
 {
     return APR_SUCCESS;
 }
-it
+
 /* Fallback type definition to return for buckets that don't implement
    a specific version of the bucket spec */
 static const serf_bucket_type_t fallback_bucket_type =
