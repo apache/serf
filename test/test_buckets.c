@@ -223,33 +223,50 @@ static void test_simple_bucket_readline(CuTest *tc)
     CuAssertIntEquals(tc, SERF_NEWLINE_NONE, found);
     CuAssertIntEquals(tc, 5, len);
     CuAssert(tc, data, strncmp("line2", data, len) == 0);
+    serf_bucket_destroy(bkt);
 
     /* acceptable line types should be reported */
     bkt = SERF_BUCKET_SIMPLE_STRING("line1" CRLF, alloc);
     readlines_and_check_bucket(tc, bkt, SERF_NEWLINE_CRLF, "line1" CRLF, 1);
+    serf_bucket_destroy(bkt);
+
     bkt = SERF_BUCKET_SIMPLE_STRING("line1" LF, alloc);
     readlines_and_check_bucket(tc, bkt, SERF_NEWLINE_LF, "line1" LF, 1);
+    serf_bucket_destroy(bkt);
+
     bkt = SERF_BUCKET_SIMPLE_STRING("line1" LF, alloc);
     readlines_and_check_bucket(tc, bkt, SERF_NEWLINE_LF, "line1" LF, 1);
+    serf_bucket_destroy(bkt);
+
     /* special cases, but acceptable */
     bkt = SERF_BUCKET_SIMPLE_STRING("line1" CRLF, alloc);
     readlines_and_check_bucket(tc, bkt, SERF_NEWLINE_CR, "line1" CRLF, 2);
+    serf_bucket_destroy(bkt);
+
     bkt = SERF_BUCKET_SIMPLE_STRING("line1" CRLF, alloc);
     readlines_and_check_bucket(tc, bkt, SERF_NEWLINE_LF, "line1" CRLF, 1);
+    serf_bucket_destroy(bkt);
 
     /* Unacceptable line types should not be reported */
     bkt = SERF_BUCKET_SIMPLE_STRING("line1" LF, alloc);
     readlines_and_check_bucket(tc, bkt, SERF_NEWLINE_CR, "line1" LF, 1);
+    serf_bucket_destroy(bkt);
+
     bkt = SERF_BUCKET_SIMPLE_STRING("line1" LF, alloc);
     readlines_and_check_bucket(tc, bkt, SERF_NEWLINE_CRLF, "line1" LF, 1);
+    serf_bucket_destroy(bkt);
+
     bkt = SERF_BUCKET_SIMPLE_STRING("line1" CR, alloc);
     readlines_and_check_bucket(tc, bkt, SERF_NEWLINE_LF, "line1" CR, 1);
+    serf_bucket_destroy(bkt);
+
 #if 0
     /* TODO: looks like a bug, CRLF acceptable on buffer with CR returns
        SERF_NEWLINE_CRLF_SPLIT, but here that CR comes at the end of the 
        buffer (APR_EOF), so should have been SERF_NEWLINE_NONE! */
     bkt = SERF_BUCKET_SIMPLE_STRING("line1" CR, alloc);
     readlines_and_check_bucket(tc, bkt, SERF_NEWLINE_CRLF, "line1" CR, 1);
+    serf_bucket_destroy(bkt);
 #endif
 
     body = "12345678901234567890" CRLF
@@ -257,6 +274,7 @@ static void test_simple_bucket_readline(CuTest *tc)
            "12345678901234567890" CRLF;
     bkt = SERF_BUCKET_SIMPLE_STRING(body, alloc);
     readlines_and_check_bucket(tc, bkt, SERF_NEWLINE_LF, body, 3);
+    serf_bucket_destroy(bkt);
 }
 
 static void test_response_bucket_read(CuTest *tc)
@@ -278,6 +296,7 @@ static void test_response_bucket_read(CuTest *tc)
 
     /* Read all bucket and check it content. */
     read_and_check_bucket(tc, bkt, "abc1234");
+    serf_bucket_destroy(bkt);
 }
 
 static void test_response_bucket_headers(CuTest *tc)
@@ -315,6 +334,7 @@ static void test_response_bucket_headers(CuTest *tc)
     CuAssertStrEquals(tc,
         "",
         serf_bucket_headers_get(hdr, "NoSpace"));
+    serf_bucket_destroy(bkt);
 }
 
 static void test_response_bucket_chunked_read(CuTest *tc)
@@ -348,6 +368,7 @@ static void test_response_bucket_chunked_read(CuTest *tc)
 
     /* Check that trailing headers parsed correctly. */
     CuAssertStrEquals(tc, "value", serf_bucket_headers_get(hdrs, "Footer"));
+    serf_bucket_destroy(bkt);
 }
 
 static void test_bucket_header_set(CuTest *tc)
@@ -379,6 +400,8 @@ static void test_bucket_header_set(CuTest *tc)
 
     /* header not found */
     CuAssertPtrEquals(tc, NULL, (void *)serf_bucket_headers_get(hdrs, "blabla"));
+
+    serf_bucket_destroy(hdrs);
 }
 
 static int
@@ -433,6 +456,8 @@ static void test_bucket_header_do(CuTest *tc)
         CuAssertStrEquals(tc, elts[i].key, exp_hdrs[i].key);
         CuAssertStrEquals(tc, elts[i].val, exp_hdrs[i].value);
     }
+
+    serf_bucket_destroy(hdrs);
 }
 
 static void test_iovec_buckets(CuTest *tc)
@@ -509,6 +534,9 @@ static void test_iovec_buckets(CuTest *tc)
         vecs[i].iov_len = strlen(vecs[i].iov_base);
     }
 
+    serf_bucket_destroy(bkt);
+    serf_bucket_destroy(iobkt);
+
     iobkt = serf_bucket_iovec_create(vecs, 32, alloc);
 
     /* Check serf_bucket_get_remaining() result. */
@@ -552,6 +580,8 @@ static void test_iovec_buckets(CuTest *tc)
         vecs[i].iov_len = strlen(vecs[i].iov_base);
     }
 
+    serf_bucket_destroy(iobkt);
+
     iobkt = serf_bucket_iovec_create(vecs, 32, alloc);
 
     /* Check serf_bucket_get_remaining() result. */
@@ -590,6 +620,8 @@ static void test_iovec_buckets(CuTest *tc)
              strncmp("DATA 31 901234567890", data, len) == 0);
     CuAssertIntEquals(tc, 0, (int)serf_bucket_get_remaining(iobkt));
 
+    serf_bucket_destroy(iobkt);
+
     /* Test 3: read an empty iovec */
     iobkt = serf_bucket_iovec_create(vecs, 0, alloc);
     status = serf_bucket_read_iovec(iobkt, SERF_READ_ALL_AVAIL, 32,
@@ -602,6 +634,8 @@ static void test_iovec_buckets(CuTest *tc)
     CuAssertIntEquals(tc, APR_EOF, status);
     CuAssertIntEquals(tc, 0, len);
     CuAssertIntEquals(tc, 0, (int)serf_bucket_get_remaining(iobkt));
+
+    serf_bucket_destroy(iobkt);
 
     /* Test 4: read 0 bytes from an iovec */
     bkt = SERF_BUCKET_SIMPLE_STRING("line1" CRLF, alloc);
@@ -616,6 +650,8 @@ static void test_iovec_buckets(CuTest *tc)
     CuAssertIntEquals(tc, APR_SUCCESS, status);
     CuAssertIntEquals(tc, 0, vecs_used);
     CuAssertIntEquals(tc, 7, (int)serf_bucket_get_remaining(iobkt));
+    serf_bucket_destroy(bkt);
+    serf_bucket_destroy(iobkt);
 }
 
 /* Construct a header bucket with some headers, and then read from it. */
@@ -638,6 +674,8 @@ static void test_header_buckets(CuTest *tc)
           CRLF;
 
     read_and_check_bucket(tc, hdrs, cur);
+
+    serf_bucket_destroy(hdrs);
 }
 
 static void test_aggregate_buckets(CuTest *tc)
@@ -690,6 +728,8 @@ static void test_aggregate_buckets(CuTest *tc)
     /* Test 3: read the data from the bucket. */
     read_and_check_bucket(tc, aggbkt, BODY);
 
+    serf_bucket_destroy(aggbkt);
+
     /* Test 4: multiple child buckets appended. */
     aggbkt = serf_bucket_aggregate_create(alloc);
 
@@ -702,6 +742,8 @@ static void test_aggregate_buckets(CuTest *tc)
 
     read_and_check_bucket(tc, aggbkt, BODY);
 
+    serf_bucket_destroy(aggbkt);
+
     /* Test 5: multiple child buckets prepended. */
     aggbkt = serf_bucket_aggregate_create(alloc);
 
@@ -713,6 +755,8 @@ static void test_aggregate_buckets(CuTest *tc)
     CuAssertTrue(tc, serf_bucket_get_remaining(aggbkt) == 62);
 
     read_and_check_bucket(tc, aggbkt, BODY);
+
+    serf_bucket_destroy(aggbkt);
 
     /* Test 6: ensure peek doesn't return APR_EAGAIN, or APR_EOF incorrectly. */
     aggbkt = serf_bucket_aggregate_create(alloc);
@@ -729,6 +773,8 @@ static void test_aggregate_buckets(CuTest *tc)
              len > 0 && len <= strlen(BODY) );
     CuAssert(tc, "Data should match first part of body.",
              strncmp(BODY, data, len) == 0);
+
+    serf_bucket_destroy(aggbkt);
 
     aggbkt = serf_bucket_aggregate_create(alloc);
 
@@ -770,6 +816,8 @@ static void test_aggregate_bucket_readline(CuTest *tc)
 
     readlines_and_check_bucket(tc, aggbkt, SERF_NEWLINE_CRLF, BODY, 3);
 
+    serf_bucket_destroy(aggbkt);
+
     /* Test 2: start with empty bucket */
     aggbkt = serf_bucket_aggregate_create(alloc);
 
@@ -781,6 +829,8 @@ static void test_aggregate_bucket_readline(CuTest *tc)
     serf_bucket_aggregate_append(aggbkt, bkt); /* 2nd and 3rd line */
 
     readlines_and_check_bucket(tc, aggbkt, SERF_NEWLINE_CRLF, BODY, 3);
+
+    serf_bucket_destroy(aggbkt);
 }
 
 /* Test for issue: the server aborts the connection in the middle of
@@ -826,6 +876,9 @@ static void test_response_body_too_small_cl(CuTest *tc)
         }
         CuAssertIntEquals(tc, SERF_ERROR_TRUNCATED_HTTP_RESPONSE, status);
     }
+
+    /* This will also destroy response stream bucket. */
+    serf_bucket_destroy(bkt);
 }
 #undef BODY
 
@@ -872,6 +925,9 @@ static void test_response_body_too_small_chunked(CuTest *tc)
         }
         CuAssertIntEquals(tc, SERF_ERROR_TRUNCATED_HTTP_RESPONSE, status);
     }
+
+    /* This will also destroy response stream bucket. */
+    serf_bucket_destroy(bkt);
 }
 #undef BODY
 
@@ -904,6 +960,9 @@ static void test_response_body_chunked_no_crlf(CuTest *tc)
 
         CuAssertIntEquals(tc, SERF_ERROR_TRUNCATED_HTTP_RESPONSE, status);
     }
+
+    /* This will also destroy response stream bucket. */
+    serf_bucket_destroy(bkt);
 }
 
 /* Test for issue: the server aborts the connection in the middle of
@@ -936,6 +995,9 @@ static void test_response_body_chunked_incomplete_crlf(CuTest *tc)
 
         CuAssertIntEquals(tc, SERF_ERROR_TRUNCATED_HTTP_RESPONSE, status);
     }
+
+    /* This will also destroy response stream bucket. */
+    serf_bucket_destroy(bkt);
 }
 
 static void test_response_body_chunked_gzip_small(CuTest *tc)
@@ -965,6 +1027,9 @@ static void test_response_body_chunked_gzip_small(CuTest *tc)
 
         CuAssertIntEquals(tc, SERF_ERROR_TRUNCATED_HTTP_RESPONSE, status);
     }
+
+    /* This will also destroy response stream bucket. */
+    serf_bucket_destroy(bkt);
 }
 
 static void test_response_bucket_peek_at_headers(CuTest *tc)
@@ -1031,6 +1096,8 @@ static void test_response_bucket_peek_at_headers(CuTest *tc)
         cur += len;
     }
 
+    /* This will also destroy response stream bucket. */
+    serf_bucket_destroy(resp_bkt1);
 }
 #undef EXP_RESPONSE
 
@@ -1118,6 +1185,8 @@ static void test_copy_bucket(CuTest *tc)
     for (i = 0; i < vecs_used; i++)
         actual_len += tgt_vecs[i].iov_len;
     CuAssertIntEquals(tc, strlen(BODY), actual_len);
+
+    serf_bucket_destroy(copybkt);
 }
 
 
@@ -1259,6 +1328,9 @@ static void test_response_bucket_iis_status_code(CuTest *tc)
     /* Probably better to have just "Logon failed" as reason. But current
        behavior is also acceptable.*/
     CuAssertStrEquals(tc, ".1 Logon failed.", sline.reason);
+
+    /* This will also destroy response stream bucket. */
+    serf_bucket_destroy(bkt);
 }
 
 /* Test handling responses without a reason by response buckets. */
@@ -1288,6 +1360,9 @@ static void test_response_bucket_no_reason(CuTest *tc)
     /* Probably better to have just "Logon failed" as reason. But current
        behavior is also acceptable.*/
     CuAssertStrEquals(tc, "", sline.reason);
+
+    /* This will also destroy response stream bucket. */
+    serf_bucket_destroy(bkt);
 }
 
 /* Test that serf can handle lines that don't arrive completely in one go.
@@ -1462,6 +1537,8 @@ static void test_dechunk_buckets(CuTest *tc)
     } while(!APR_STATUS_IS_EOF(status));
 
     CuAssert(tc, "Read less data than expected.", strlen(expected) == 0);
+
+    serf_bucket_destroy(bkt);
 }
 
 static apr_status_t deflate_compress(const char **data, apr_size_t *len,
@@ -1622,6 +1699,8 @@ static void deflate_buckets(CuTest *tc, int nr_of_loops, apr_pool_t *pool)
 
     /* Release a few MB of memory kept by zlib */
     CuAssertIntEquals(tc, Z_OK, deflateEnd(&zdestr));
+
+    serf_bucket_destroy(defbkt);
 }
 
 static void test_deflate_buckets(CuTest *tc)
@@ -1845,6 +1924,7 @@ static void test_linebuf_fetch_crlf(CuTest *tc)
     CuAssertStrEquals(tc, "", linebuf.line);
     CuAssertIntEquals(tc, 0, linebuf.used);
 
+    serf_bucket_destroy(bkt);
 }
 
 typedef struct prefix_cb
@@ -2328,6 +2408,8 @@ static void test_hpack_header_encode(CuTest *tc)
   /* CuAssertTrue(tc, ! SERF_BUCKET_IS_HPACK(hpack)); */
   CuAssertTrue(tc, sz > 4);
   CuAssertTrue(tc, sz <= 59); /* The all literal approach takes 59 bytes */
+
+  serf_bucket_destroy(hpack);
 }
 
 static void test_http2_frame_bucket_basic(CuTest *tc)
@@ -2368,6 +2450,8 @@ static void test_http2_frame_bucket_basic(CuTest *tc)
                                        &buffer, &sz));
     CuAssertIntEquals(tc, 0, sz);
   }
+
+  serf_bucket_destroy(frame_out);
 }
 
 CuSuite *test_buckets(void)
