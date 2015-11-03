@@ -23,12 +23,17 @@
 #define APR_WANT_MEMFUNC
 #include <apr_want.h>
 #include <apr_pools.h>
+#include <apr_hash.h>
+#include <apr_strings.h>
 
 #include "serf.h"
 #include "serf_bucket_util.h"
 
 #include "serf_private.h"
 
+/* Define SERF__DEBUG_UNFREED_MEMORY if you're interested in tracking
+ * unfreed blocks on pool cleanup. */
+/* #define SERF__DEBUG_UNFREED_MEMORY */
 
 typedef struct node_header_t {
     apr_size_t size;
@@ -106,6 +111,10 @@ struct serf_bucket_alloc_t {
     apr_memnode_t *blocks;      /* blocks we allocated for subdividing */
 
     track_state_t *track;
+
+#ifdef SERF__DEBUG_UNFREED_MEMORY
+    apr_hash_t *unfreed_blocks;
+#endif
 };
 
 /* ==================================================================== */
@@ -114,6 +123,23 @@ struct serf_bucket_alloc_t {
 static apr_status_t allocator_cleanup(void *data)
 {
     serf_bucket_alloc_t *allocator = data;
+
+#ifdef SERF__DEBUG_UNFREED_MEMORY
+    apr_hash_index_t *hi;
+    for (hi = apr_hash_first(NULL, allocator->unfreed_blocks);
+         hi; hi = apr_hash_next(hi))
+    {
+        void **block_p = (void**) apr_hash_this_key(hi);
+        apr_size_t size = (apr_size_t) apr_hash_this_val(hi);
+
+        if (allocator->unfreed) {
+            allocator->unfreed(allocator->unfreed_baton, *block_p);
+        }
+        else {
+            fprintf(stderr, "Unfreed memory: %p (%d bytes)\n", *block_p, size);
+        }
+    }
+#endif
 
     /* If we allocated anything, give it back. */
     if (allocator->blocks) {
@@ -147,6 +173,10 @@ serf_bucket_alloc_t *serf_bucket_allocator_create(
     }
     allocator->unfreed = unfreed;
     allocator->unfreed_baton = unfreed_baton;
+
+#ifdef SERF__DEBUG_UNFREED_MEMORY
+    allocator->unfreed_blocks = apr_hash_make(pool);
+#endif
 
 #ifdef SERF_DEBUG_BUCKET_USE
     {
@@ -182,6 +212,7 @@ void *serf_bucket_mem_alloc(
     apr_size_t size)
 {
     node_header_t *node;
+    void *block;
 
     ++allocator->num_alloc;
 
@@ -235,7 +266,15 @@ void *serf_bucket_mem_alloc(
         node->size = size;
     }
 
-    return ((char *)node) + SIZEOF_NODE_HEADER_T;
+    block = ((char *)node) + SIZEOF_NODE_HEADER_T;
+
+#ifdef SERF__DEBUG_UNFREED_MEMORY
+    apr_hash_set(allocator->unfreed_blocks,
+                 apr_pmemdup(allocator->pool, &block, sizeof(block)),
+                 sizeof(block), (const void*) size);
+#endif
+
+    return block;
 }
 
 
@@ -285,6 +324,11 @@ void serf_bucket_mem_free(
         /* now free it */
         apr_allocator_free(allocator->allocator, node->u.memnode);
     }
+
+#ifdef SERF__DEBUG_UNFREED_MEMORY
+    /* Remove block from unfreed blocks hashtable. */
+    apr_hash_set(allocator->unfreed_blocks, &block, sizeof(block), NULL);
+#endif
 }
 
 
