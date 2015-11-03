@@ -221,6 +221,8 @@ static void serf_prefix_destroy(serf_bucket_t *bucket)
     if (ctx->buffer)
         serf_bucket_mem_free(bucket->allocator, ctx->buffer);
 
+    serf_bucket_destroy(ctx->stream);
+
     serf_default_destroy_and_data(bucket);
 }
 

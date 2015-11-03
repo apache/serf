@@ -523,7 +523,6 @@ hpack_table_get(apr_uint64_t v,
 
 typedef struct serf_hpack_context_t
 {
-  serf_bucket_alloc_t *alloc;
   serf_hpack_table_t *tbl;
 
   serf_hpack_entry_t *first;
@@ -592,7 +591,6 @@ serf__bucket_hpack_create(serf_hpack_table_t *hpack_table,
 {
   serf_hpack_context_t *ctx = serf_bucket_mem_alloc(allocator, sizeof(*ctx));
 
-  ctx->alloc = allocator;
   ctx->tbl = hpack_table;
   ctx->first = ctx->last = NULL;
 
@@ -611,7 +609,7 @@ serf__bucket_hpack_setc(serf_bucket_t *hpack_bucket,
 }
 
 void
-serf__bucket_hpack_setx(serf_bucket_t *hpack_bucket,
+serf__bucket_hpack_setx(serf_bucket_t *bucket,
                         const char *key,
                         apr_size_t key_size,
                         int key_copy,
@@ -621,7 +619,7 @@ serf__bucket_hpack_setx(serf_bucket_t *hpack_bucket,
                         int dont_index,
                         int never_index)
 {
-  serf_hpack_context_t *ctx = hpack_bucket->data;
+  serf_hpack_context_t *ctx = bucket->data;
   serf_hpack_entry_t *entry;
   apr_size_t i;
 
@@ -639,9 +637,9 @@ serf__bucket_hpack_setx(serf_bucket_t *hpack_bucket,
   if (entry && value[0] == ':')
     {
       if (entry->free_val)
-        serf_bucket_mem_free(ctx->alloc, (void*)entry->value);
+        serf_bucket_mem_free(bucket->allocator, (void*)entry->value);
 
-      entry->value = serf_bstrmemdup(ctx->alloc, value, value_size);
+      entry->value = serf_bstrmemdup(bucket->allocator, value, value_size);
       entry->value_len = value_size;
       entry->free_val = TRUE;
       entry->dont_index = never_index ? 2 : (dont_index ? 1 : 0);
@@ -653,7 +651,7 @@ serf__bucket_hpack_setx(serf_bucket_t *hpack_bucket,
       /* We probably want to allow duplicate *and* join behavior? */
     }
 
-  entry = serf_bucket_mem_calloc(ctx->alloc, sizeof(*entry));
+  entry = serf_bucket_mem_calloc(bucket->allocator, sizeof(*entry));
 
   if (ctx->tbl && ctx->tbl->lowercase_keys)
     {
@@ -664,7 +662,7 @@ serf__bucket_hpack_setx(serf_bucket_t *hpack_bucket,
          encoding in HTTP/2.  A request or response containing uppercase
          header field names MUST be treated as malformed (Section 8.1.2.6). */
 
-      char *ckey = serf_bstrmemdup(ctx->alloc, key, key_size);
+      char *ckey = serf_bstrmemdup(bucket->allocator, key, key_size);
       for (i = 0; i < key_size; i++)
         {
           if (ckey[i] >= 'A' && key[i] <= 'Z')
@@ -680,14 +678,14 @@ serf__bucket_hpack_setx(serf_bucket_t *hpack_bucket,
     }
   else
     {
-      entry->key = serf_bstrmemdup(ctx->alloc, key, key_size);
+      entry->key = serf_bstrmemdup(bucket->allocator, key, key_size);
       entry->free_key = TRUE;
     }
 
   entry->key_len = key_size;
   if (value_copy)
     {
-      entry->value = serf_bstrmemdup(ctx->alloc, value, value_size);
+      entry->value = serf_bstrmemdup(bucket->allocator, value, value_size);
       entry->free_val = TRUE;
     }
   else
@@ -783,7 +781,7 @@ serialize(serf_bucket_t *bucket)
      efficient HTTP2 / HPACK header format 
    */
   serf_hpack_context_t *ctx = bucket->data;
-  serf_bucket_alloc_t *alloc = ctx->alloc;
+  serf_bucket_alloc_t *alloc = bucket->allocator;
 
   serf_hpack_entry_t *entry;
   serf_hpack_entry_t *next;
@@ -897,7 +895,7 @@ serf_hpack_destroy_and_data(serf_bucket_t *bucket)
     {
       next = hi->next;
 
-      hpack_free_entry(hi, ctx->alloc);
+      hpack_free_entry(hi, bucket->allocator);
     }
 
   serf_default_destroy_and_data(bucket);
@@ -922,7 +920,6 @@ const serf_bucket_type_t serf_bucket_type__hpack = {
 
 typedef struct serf_hpack_decode_ctx_t
 {
-  serf_bucket_alloc_t *alloc;
   serf_hpack_table_t *tbl;
 
   serf_bucket_t *stream;
@@ -991,7 +988,6 @@ serf__bucket_hpack_decode_create(serf_bucket_t *stream,
 {
   serf_hpack_decode_ctx_t *ctx = serf_bucket_mem_calloc(alloc, sizeof(*ctx));
 
-  ctx->alloc = alloc;
   ctx->tbl = hpack_table;
   ctx->stream = stream;
   ctx->max_entry_size = max_entry_size;
@@ -999,7 +995,15 @@ serf__bucket_hpack_decode_create(serf_bucket_t *stream,
   if (max_entry_size > 0x0100000)
     max_entry_size = 0x0100000; /* 1 MB */
 
-  ctx->buffer_size = max_entry_size + 16;
+  /* The buffer should be large enough to keep a *compressed* key
+     or value and will be resized if necessary.
+
+     Longer keys are more likely to use compression, so the default
+     should be enough for simple requests.
+
+     (It is also used for compressed integer values, but there 10 bytes
+      should be enough to store a uint64 with 7 bits/byte) */
+  ctx->buffer_size = 128;
   ctx->buffer_used = 0;
   ctx->buffer = serf_bucket_mem_alloc(alloc, ctx->buffer_size);
 
@@ -1025,6 +1029,30 @@ serf__bucket_hpack_decode_create(serf_bucket_t *stream,
   ctx->tbl->rl_indexable = ctx->tbl->rl_count;
 
   return serf_bucket_create(&serf_bucket_type__hpack_decode, alloc, ctx);
+}
+
+static void
+hpack_decode_buffer_ensure(serf_bucket_t *bucket,
+                           apr_size_t minsize)
+{
+  serf_hpack_decode_ctx_t *ctx = bucket->data;
+  char *new_buffer;
+
+  if (minsize < ctx->buffer_size)
+    return;
+
+  while (minsize < ctx->buffer_size)
+    {
+      ctx->buffer_size *= 2;
+    }
+
+  new_buffer = serf_bucket_mem_alloc(bucket->allocator,
+                                     ctx->buffer_size);
+
+  /* In general only a small part of the old buffer is used at this point */
+  memcpy(new_buffer, ctx->buffer, ctx->buffer_used);
+  serf_bucket_mem_free(bucket->allocator, ctx->buffer);
+  ctx->buffer = new_buffer;
 }
 
 static apr_status_t
@@ -1104,7 +1132,8 @@ read_hpack_int(apr_uint64_t *v,
 }
 
 static apr_status_t
-handle_read_entry_and_clear(serf_hpack_decode_ctx_t *ctx)
+handle_read_entry_and_clear(serf_hpack_decode_ctx_t *ctx,
+                            serf_bucket_alloc_t *alloc)
 {
   serf_hpack_table_t *tbl = ctx->tbl;
   const char *keep_key = NULL;
@@ -1134,13 +1163,13 @@ handle_read_entry_and_clear(serf_hpack_decode_ctx_t *ctx)
         {
           ctx->wrote_header = TRUE;
 
-          b = SERF_BUCKET_SIMPLE_STRING("HTTP/2.0 ", ctx->alloc);
+          b = SERF_BUCKET_SIMPLE_STRING("HTTP/2.0 ", alloc);
           serf_bucket_aggregate_append(ctx->agg, b);
 
-          b = serf_bucket_simple_copy_create(ctx->val, ctx->val_size, ctx->alloc);
+          b = serf_bucket_simple_copy_create(ctx->val, ctx->val_size, alloc);
           serf_bucket_aggregate_append(ctx->agg, b);
 
-          b = SERF_BUCKET_SIMPLE_STRING(" <http2>\r\n", ctx->alloc);
+          b = SERF_BUCKET_SIMPLE_STRING(" <http2>\r\n", alloc);
           serf_bucket_aggregate_append(ctx->agg, b);
         }
       else if (ctx->key_size && ctx->key[0] == ':')
@@ -1152,21 +1181,22 @@ handle_read_entry_and_clear(serf_hpack_decode_ctx_t *ctx)
           /* Write some header with some status code first */
           ctx->wrote_header = TRUE;
 
-          b = SERF_BUCKET_SIMPLE_STRING("HTTP/2.0 505 Missing ':status' header\r\n",
-                                        ctx->alloc);
+          b = SERF_BUCKET_SIMPLE_STRING(
+                      "HTTP/2.0 505 Missing ':status' header\r\n",
+                      alloc);
           serf_bucket_aggregate_append(ctx->agg, b);
 
           /* And now the actual header */
-          b = serf_bucket_simple_copy_create(ctx->key, ctx->key_size, ctx->alloc);
+          b = serf_bucket_simple_copy_create(ctx->key, ctx->key_size, alloc);
           serf_bucket_aggregate_append(ctx->agg, b);
 
-          b = SERF_BUCKET_SIMPLE_STRING(": ", ctx->alloc);
+          b = SERF_BUCKET_SIMPLE_STRING(": ", alloc);
           serf_bucket_aggregate_append(ctx->agg, b);
 
-          b = serf_bucket_simple_copy_create(ctx->val, ctx->val_size, ctx->alloc);
+          b = serf_bucket_simple_copy_create(ctx->val, ctx->val_size, alloc);
           serf_bucket_aggregate_append(ctx->agg, b);
 
-          b = SERF_BUCKET_SIMPLE_STRING("\r\n", ctx->alloc);
+          b = SERF_BUCKET_SIMPLE_STRING("\r\n", alloc);
           serf_bucket_aggregate_append(ctx->agg, b);
         }
     }
@@ -1175,16 +1205,16 @@ handle_read_entry_and_clear(serf_hpack_decode_ctx_t *ctx)
       serf_bucket_t *b;
 
       /* Write header */
-      b = serf_bucket_simple_copy_create(ctx->key, ctx->key_size, ctx->alloc);
+      b = serf_bucket_simple_copy_create(ctx->key, ctx->key_size, alloc);
       serf_bucket_aggregate_append(ctx->agg, b);
 
-      b = SERF_BUCKET_SIMPLE_STRING(": ", ctx->alloc);
+      b = SERF_BUCKET_SIMPLE_STRING(": ", alloc);
       serf_bucket_aggregate_append(ctx->agg, b);
 
-      b = serf_bucket_simple_copy_create(ctx->val, ctx->val_size, ctx->alloc);
+      b = serf_bucket_simple_copy_create(ctx->val, ctx->val_size, alloc);
       serf_bucket_aggregate_append(ctx->agg, b);
 
-      b = SERF_BUCKET_SIMPLE_STRING("\r\n", ctx->alloc);
+      b = SERF_BUCKET_SIMPLE_STRING("\r\n", alloc);
       serf_bucket_aggregate_append(ctx->agg, b);
     }
 
@@ -1328,7 +1358,7 @@ hpack_process(serf_bucket_t *bucket)
               if (status)
                 continue;
 
-              status = handle_read_entry_and_clear(ctx);
+              status = handle_read_entry_and_clear(ctx, bucket->allocator);
               if (status)
                 return status;
 
@@ -1367,6 +1397,8 @@ hpack_process(serf_bucket_t *bucket)
 
               if (v > ctx->max_entry_size)
                 return SERF_ERROR_HTTP2_COMPRESSION_ERROR;
+
+              hpack_decode_buffer_ensure(bucket, (apr_size_t)v);
 
               ctx->key_size = (apr_size_t)v;
               ctx->state = HPACK_DECODE_STATE_KEY;
@@ -1448,6 +1480,7 @@ hpack_process(serf_bucket_t *bucket)
                   || (v + ctx->key_size) > ctx->max_entry_size)
                 return SERF_ERROR_HTTP2_COMPRESSION_ERROR;
 
+              hpack_decode_buffer_ensure(bucket, (apr_size_t)v);
               ctx->val_size = (apr_size_t)v;
               ctx->state = HPACK_DECODE_STATE_VALUE;
               /* Fall through */
@@ -1512,7 +1545,7 @@ hpack_process(serf_bucket_t *bucket)
                                             ctx->val_size);
 
 
-              status = handle_read_entry_and_clear(ctx);
+              status = handle_read_entry_and_clear(ctx, bucket->allocator);
               if (status)
                 continue;
 
@@ -1559,7 +1592,7 @@ hpack_process(serf_bucket_t *bucket)
           if (!ctx->item_callback)
             {
               /* Write the final "\r\n" for http/1.1 compatibility */
-              b = SERF_BUCKET_SIMPLE_STRING("\r\n", ctx->alloc);
+              b = SERF_BUCKET_SIMPLE_STRING("\r\n", bucket->allocator);
               serf_bucket_aggregate_append(ctx->agg, b);
             }
         }
@@ -1694,6 +1727,8 @@ serf_hpack_decode_destroy(serf_bucket_t *bucket)
 
   if (ctx->agg)
     serf_bucket_destroy(ctx->agg);
+
+  serf_bucket_mem_free(bucket->allocator, ctx->buffer);
 
   /* Key and value are handled by table. If we fail reading
      table can't be used anyway, so the allocator cleanup will
