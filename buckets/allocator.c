@@ -27,6 +27,8 @@
 #include "serf.h"
 #include "serf_bucket_util.h"
 
+#include "serf_private.h"
+
 
 typedef struct node_header_t {
     apr_size_t size;
@@ -71,6 +73,9 @@ typedef struct node_header_t {
  */
 #define DEBUG_DOUBLE_FREE
 
+/* If we have to create our own allocator, keep this amount of free ram
+   in the allocator before returning memory back to the OS */
+#define PRIVATE_ALLOCATOR_MAX_FREE (4 * 1024 * 1024)
 
 typedef struct read_status_t {
     const serf_bucket_t *bucket;
@@ -136,6 +141,8 @@ serf_bucket_alloc_t *serf_bucket_allocator_create(
         /* This most likely means pools are running in debug mode, create our
          * own allocator to deal with memory ourselves */
         apr_allocator_create(&allocator->allocator);
+        apr_allocator_max_free_set(allocator->allocator,
+                                   PRIVATE_ALLOCATOR_MAX_FREE);
         allocator->own_allocator = 1;
     }
     allocator->unfreed = unfreed;

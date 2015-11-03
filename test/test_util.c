@@ -624,11 +624,16 @@ static int pool_abort_func(int retcode)
 void *test_setup(void *dummy)
 {
     apr_pool_t *test_pool;
+    apr_allocator_t *allocator;
     apr_pool_create(&test_pool, NULL);
     apr_pool_abort_set(pool_abort_func, test_pool);
+
     /* Keep a maximum of 16 MB unused memory inside APR. */
-    apr_allocator_max_free_set(apr_pool_allocator_get(test_pool),
-                               16384 * 1024);
+    allocator = apr_pool_allocator_get(test_pool);
+    if (allocator != NULL)
+      apr_allocator_max_free_set(allocator, 16384 * 1024);
+    /* else: APR pool debugging... leave this to apr */
+
     return initTestCtx(test_pool);
 }
 
