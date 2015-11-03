@@ -768,7 +768,6 @@ static void test_aggregate_bucket_readline(CuTest *tc)
     bkt = SERF_BUCKET_SIMPLE_STRING_LEN(BODY+22, strlen(BODY)-22, alloc);
     serf_bucket_aggregate_append(aggbkt, bkt); /* 2nd and 3rd line */
 
-    bkt = SERF_BUCKET_SIMPLE_STRING(BODY, alloc);
     readlines_and_check_bucket(tc, aggbkt, SERF_NEWLINE_CRLF, BODY, 3);
 
     /* Test 2: start with empty bucket */
@@ -781,7 +780,6 @@ static void test_aggregate_bucket_readline(CuTest *tc)
     bkt = SERF_BUCKET_SIMPLE_STRING_LEN(BODY+22, strlen(BODY)-22, alloc);
     serf_bucket_aggregate_append(aggbkt, bkt); /* 2nd and 3rd line */
 
-    bkt = SERF_BUCKET_SIMPLE_STRING(BODY, alloc);
     readlines_and_check_bucket(tc, aggbkt, SERF_NEWLINE_CRLF, BODY, 3);
 }
 
