@@ -1216,6 +1216,8 @@ static void test_linebuf_crlf_split(CuTest *tc)
     } while(!APR_STATUS_IS_EOF(status));
 
     CuAssert(tc, "Read less data than expected.", strlen(expected) == 0);
+
+    serf_bucket_destroy(bkt);
 }
 
 /* Test that the Content-Length header will be ignored when the response
@@ -1269,6 +1271,8 @@ static void test_response_no_body_expected(CuTest *tc)
     CuAssertIntEquals(tc, APR_EOF, status);
     CuAssertIntEquals(tc, 0, len);
 
+    serf_bucket_destroy(bkt);
+
     /* Test 2: a response with status for which server must not send a body. */
     for (i = 0; i < sizeof(message_list) / sizeof(const char*); i++) {
 
@@ -1279,6 +1283,8 @@ static void test_response_no_body_expected(CuTest *tc)
 
         CuAssertIntEquals(tc, APR_EOF, status);
         CuAssertIntEquals(tc, 0, len);
+
+        serf_bucket_destroy(bkt);
     }
 }
 
@@ -1455,6 +1461,8 @@ static void test_random_eagain_in_response(CuTest *tc)
         } while(!APR_STATUS_IS_EOF(status));
 
         CuAssert(tc, "Read less data than expected.", strlen(ptr) == 0);
+
+        serf_bucket_destroy(bkt);
     }
     apr_pool_destroy(iter_pool);
 }
@@ -1953,6 +1961,9 @@ static void test_prefix_buckets(CuTest *tc)
     CuAssertIntEquals(tc, 15, pb.len);
     CuAssertStrEquals(tc, "123456789012345", pb.data);
 
+    serf_bucket_mem_free(alloc, pb.data);
+    serf_bucket_destroy(prefix);
+
     /* Then more than first chunk*/
     bkt = SERF_BUCKET_SIMPLE_STRING(BODY, alloc);
     serf_bucket_aggregate_append(agg, bkt);
@@ -1967,6 +1978,9 @@ static void test_prefix_buckets(CuTest *tc)
     CuAssertIntEquals(tc, 25, pb.len);
     CuAssertStrEquals(tc, "1234567890123456789012345", pb.data);
 
+    serf_bucket_mem_free(alloc, pb.data);
+    serf_bucket_destroy(prefix);
+
     /* And an early EOF */
     bkt = SERF_BUCKET_SIMPLE_STRING(BODY, alloc);
     serf_bucket_aggregate_append(agg, bkt);
@@ -1980,6 +1994,9 @@ static void test_prefix_buckets(CuTest *tc)
     CuAssertIntEquals(tc, 0, len);
     CuAssertIntEquals(tc, 20, pb.len);
     CuAssertStrEquals(tc, "12345678901234567890", pb.data);
+
+    serf_bucket_mem_free(alloc, pb.data);
+    serf_bucket_destroy(prefix);
 }
 
 /* Basic test for unframe buckets. */
@@ -2041,6 +2058,10 @@ static void test_http2_unframe_buckets(CuTest *tc)
     CuAssertIntEquals(tc, 0, flags);
   }
 
+  serf_bucket_destroy(unframe);
+  /* http2_unframe() bucket doesn't destroy inner stream bucket. */
+  serf_bucket_destroy(raw);
+
   raw = serf_bucket_simple_create(raw_frame2, sizeof(raw_frame2),
                                   NULL, NULL, alloc);
 
@@ -2067,6 +2088,10 @@ static void test_http2_unframe_buckets(CuTest *tc)
     CuAssertIntEquals(tc, 0x02, flags);
   }
 
+  serf_bucket_destroy(unframe);
+  /* http2_unframe() bucket doesn't destroy inner stream bucket. */
+  serf_bucket_destroy(raw);
+
   /* And now check the frame oversized error */
   raw = serf_bucket_simple_create(raw_frame2, sizeof(raw_frame2),
                                   NULL, NULL, alloc);
@@ -2075,6 +2100,10 @@ static void test_http2_unframe_buckets(CuTest *tc)
 
   status = read_all(unframe, result2, sizeof(result2), &read_len);
   CuAssertIntEquals(tc, SERF_ERROR_HTTP2_FRAME_SIZE_ERROR, status);
+
+  serf_bucket_destroy(unframe);
+  /* http2_unframe() bucket doesn't destroy inner stream bucket. */
+  serf_bucket_destroy(raw);
 }
 
 /* Basic test for unframe buckets. */
@@ -2132,9 +2161,17 @@ static void test_http2_unpad_buckets(CuTest *tc)
 
   read_and_check_bucket(tc, raw, "Extra");
 
+  /* This is also destroy UNFRAME bucket. */
+  serf_bucket_destroy(unpad);
+
+  /* http2_unframe() bucket doesn't destroy inner stream bucket. */
+  serf_bucket_destroy(raw);
+
   raw = serf_bucket_simple_create("\0a", 2, NULL, NULL, alloc);
   unpad = serf__bucket_http2_unpad_create(raw, alloc);
   read_and_check_bucket(tc, unpad, "a");
+
+  serf_bucket_destroy(unpad);
 
   raw = serf_bucket_simple_create("\5a", 2, NULL, NULL, alloc);
   unpad = serf__bucket_http2_unpad_create(raw, alloc);
@@ -2147,6 +2184,7 @@ static void test_http2_unpad_buckets(CuTest *tc)
                       serf_bucket_read(unpad, SERF_READ_ALL_AVAIL,
                                        &data, &sz));
   }
+  serf_bucket_destroy(unpad);
 }
 
 static void test_hpack_huffman_decode(CuTest *tc)
@@ -2427,6 +2465,9 @@ static void test_http2_frame_bucket_basic(CuTest *tc)
     CuAssertIntEquals(tc, 0, sz);
   }
 
+  /* http2 unframe bucket uses non-standard semantic and doesn't
+   * destroy source stream bucket on desotry. */
+  serf_bucket_destroy(frame_in);
   serf_bucket_destroy(frame_out);
 }
 
