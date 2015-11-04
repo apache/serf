@@ -1403,7 +1403,7 @@ static apr_status_t processServer(mhServCtx_t *ctx, _mhClientCtx_t *cctx,
                 cctx->req = NULL;
 
                 return APR_SUCCESS;
-            } else if (status == APR_SUCCESS || status == APR_EAGAIN) {
+            } else if (status == APR_SUCCESS || APR_STATUS_IS_EAGAIN(status)) {
                 ctx->reqState = PartialReqReceived;
             }
 
@@ -2314,11 +2314,11 @@ static int bio_apr_socket_read(BIO *bio, char *in, int inlen)
     status = apr_socket_recv(cctx->skt, in, &len);
     ssl_ctx->bio_status = status;
 
-    if (len || status != APR_EAGAIN)
+    if (len || APR_STATUS_IS_EAGAIN(status))
         _mhLog(MH_VERBOSE, cctx->skt, "Read %d bytes from ssl socket with "
                "status %d.\n", len, status);
 
-    if (status == APR_EAGAIN) {
+    if (APR_STATUS_IS_EAGAIN(status)) {
         BIO_set_retry_read(bio);
         if (len == 0)
             return -1;

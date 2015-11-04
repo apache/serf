@@ -440,7 +440,7 @@ static apr_status_t serf_aggregate_peek(serf_bucket_t *bucket,
         *len = 0;
         if (ctx->hold_open) {
             status = ctx->hold_open(ctx->hold_open_baton, bucket);
-            if (status == APR_EAGAIN)
+            if (APR_STATUS_IS_EAGAIN(status))
                 status = APR_SUCCESS;
             return status;
         }
@@ -459,7 +459,7 @@ static apr_status_t serf_aggregate_peek(serf_bucket_t *bucket,
         } else {
             if (ctx->hold_open) {
                 status = ctx->hold_open(ctx->hold_open_baton, bucket);
-                if (status == APR_EAGAIN)
+                if (APR_STATUS_IS_EAGAIN(status))
                     status = APR_SUCCESS;
                 return status;
             }
