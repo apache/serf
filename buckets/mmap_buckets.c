@@ -54,6 +54,7 @@ static apr_status_t serf_mmap_read(serf_bucket_t *bucket,
                                    const char **data, apr_size_t *len)
 {
     mmap_context_t *ctx = bucket->data;
+    apr_status_t status;
     char *rd;
 
     if (requested == SERF_READ_ALL_AVAIL || requested > ctx->remaining) {
@@ -64,7 +65,10 @@ static apr_status_t serf_mmap_read(serf_bucket_t *bucket,
     }
 
     /* ### Would it be faster to call this once and do the offset ourselves? */
-    apr_mmap_offset(&rd, ctx->mmap, ctx->offset);
+    status = apr_mmap_offset(&rd, ctx->mmap, ctx->offset);
+    if (SERF_BUCKET_READ_ERROR(status))
+        return status;
+
     *data = rd;
 
     /* For the next read... */
@@ -82,13 +86,19 @@ static apr_status_t serf_mmap_readline(serf_bucket_t *bucket,
                                        const char **data, apr_size_t *len)
 {
     mmap_context_t *ctx = bucket->data;
+    apr_status_t status;
     char *end;
 
     /* ### Would it be faster to call this once and do the offset ourselves? */
-    apr_mmap_offset(&end, ctx->mmap, ctx->offset);
+    status = apr_mmap_offset(&end, ctx->mmap, ctx->offset);
+    if (SERF_BUCKET_READ_ERROR(status))
+        return status;
+
     *data = end;
 
-    serf_util_readline(&end, &ctx->remaining, acceptable, found);
+    *len = ctx->remaining;
+    serf_util_readline(&end, len, acceptable, found);
+    *len = end - *data;
 
     ctx->offset += *len;
     ctx->remaining -= *len;
@@ -104,10 +114,14 @@ static apr_status_t serf_mmap_peek(serf_bucket_t *bucket,
                                      apr_size_t *len)
 {
     mmap_context_t *ctx = bucket->data;
+    apr_status_t status;
     char *rd;
 
     /* return whatever we have left */
-    apr_mmap_offset(&rd, ctx->mmap, ctx->offset);
+    status = apr_mmap_offset(&rd, ctx->mmap, ctx->offset);
+    if (SERF_BUCKET_READ_ERROR(status))
+        return status;
+
     *data = rd;
     *len = ctx->remaining;
 
