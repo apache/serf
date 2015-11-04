@@ -127,6 +127,7 @@ static void serf_log_wrapped_destroy(serf_bucket_t *bucket)
     serf_log_wrapped_bucket_t *lwbkt = (serf_log_wrapped_bucket_t *)bucket;
     const serf_bucket_type_t *bkt_type = lwbkt->more_data->old_type;
 
+    serf_bucket_mem_free(bucket->allocator, (void*)bucket->type);
     serf_bucket_mem_free(bucket->allocator, lwbkt->more_data);
     bkt_type->destroy(bucket);
 }
