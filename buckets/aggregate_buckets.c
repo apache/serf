@@ -294,7 +294,10 @@ static apr_status_t read_aggregate(serf_bucket_t *bucket,
             /* If we have no more in our list, return EOF. */
             if (!ctx->list) {
                 if (ctx->hold_open) {
-                    return ctx->hold_open(ctx->hold_open_baton, bucket);
+                    status = ctx->hold_open(ctx->hold_open_baton, bucket);
+                    if (status || !ctx->list)
+                        return status;
+                    /* Wow, we 'magically' refilled! */
                 }
                 else {
                     return APR_EOF;
