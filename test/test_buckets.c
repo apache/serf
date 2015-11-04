@@ -670,6 +670,24 @@ static void test_header_buckets(CuTest *tc)
     serf_bucket_destroy(hdrs);
 }
 
+static apr_status_t append_magic(void *baton,
+                                 serf_bucket_t *bucket)
+{
+  serf_bucket_t *bkt;
+  int *append = baton;
+
+  if (*append)
+    {
+      (*append)--;
+      bkt = SERF_BUCKET_SIMPLE_STRING("magic", bucket->allocator);
+      serf_bucket_aggregate_append(bucket, bkt);
+      return APR_SUCCESS;
+    }
+
+  return APR_EOF;
+}
+
+
 static void test_aggregate_buckets(CuTest *tc)
 {
     test_baton_t *tb = tc->testBaton;
@@ -679,6 +697,7 @@ static void test_aggregate_buckets(CuTest *tc)
     int vecs_used;
     apr_size_t len;
     const char *data;
+    int append = 3;
 
     serf_bucket_alloc_t *alloc = test__create_bucket_allocator(tc, tb->pool);
     const char *BODY = "12345678901234567890"\
@@ -784,6 +803,23 @@ static void test_aggregate_buckets(CuTest *tc)
     /* While it doesn't affect the inner bucket */
     read_and_check_bucket(tc, bkt, BODY);
     serf_bucket_destroy(bkt);
+
+    aggbkt = serf_bucket_aggregate_create(alloc);
+    bkt = SERF_BUCKET_SIMPLE_STRING_LEN(BODY, 15, alloc);
+    serf_bucket_aggregate_append(aggbkt, bkt);
+
+    serf_bucket_aggregate_hold_open(aggbkt, append_magic, &append);
+
+    CuAssertIntEquals(tc, APR_EOF,
+                      serf_bucket_read_iovec(aggbkt, SERF_READ_ALL_AVAIL,
+                                             32, tgt_vecs, &vecs_used));
+    CuAssertIntEquals(tc, 4, vecs_used);
+    CuAssertIntEquals(tc, 15, tgt_vecs[0].iov_len);
+    CuAssertIntEquals(tc, 5, tgt_vecs[1].iov_len);
+    CuAssertIntEquals(tc, 5, tgt_vecs[2].iov_len);
+    CuAssertIntEquals(tc, 5, tgt_vecs[3].iov_len);
+
+    serf_bucket_destroy(aggbkt);
 }
 
 static void test_aggregate_bucket_readline(CuTest *tc)
