@@ -2230,8 +2230,8 @@ struct sslCtx_t {
     SSL* ssl;
     BIO *bio;
 
+    apr_size_t retry_len;
     char read_buffer[8192];
-    char write_buffer[8192];
 };
 
 static int init_done = 0;
@@ -2699,7 +2699,9 @@ static apr_status_t initSSLCtx(_mhClientCtx_t *cctx)
         }
 #endif
 
-        SSL_CTX_set_mode(ssl_ctx->ctx, SSL_MODE_ENABLE_PARTIAL_WRITE);
+        SSL_CTX_set_mode(ssl_ctx->ctx, SSL_MODE_ACCEPT_MOVING_WRITE_BUFFER
+                                       | SSL_MODE_ENABLE_PARTIAL_WRITE
+                                       | SSL_MODE_AUTO_RETRY);
 
         ssl_ctx->bio = BIO_new(&bio_apr_socket_method);
         ssl_ctx->bio->ptr = cctx;
@@ -2720,15 +2722,11 @@ sslSocketWrite(_mhClientCtx_t *cctx, const char *data, apr_size_t *len)
     sslCtx_t *ssl_ctx = cctx->ssl_ctx;
     int result, ssl_err;
 
-    if (*len > sizeof(ssl_ctx->write_buffer))
-      *len = sizeof(ssl_ctx->write_buffer);
-    memcpy(ssl_ctx->write_buffer, data, *len);
-
     if (*len == 0)
         return APR_SUCCESS;
 
     ssl_ctx->bio_status = APR_SUCCESS;
-    result = SSL_write(ssl_ctx->ssl, ssl_ctx->write_buffer, *len);
+    result = SSL_write(ssl_ctx->ssl, data, *len);
     if (result > 0) {
         *len = result;
         return APR_SUCCESS;
@@ -2784,12 +2782,15 @@ sslSocketRead(apr_socket_t *skt, void *baton, char *data, apr_size_t *len)
 
     if (*len > sizeof(ssl_ctx->read_buffer))
       *len = sizeof(ssl_ctx->read_buffer);
+    if (ssl_ctx->retry_len)
+      *len = ssl_ctx->retry_len;
 
     ssl_ctx->bio_status = APR_SUCCESS;
     result = SSL_read(ssl_ctx->ssl, ssl_ctx->read_buffer, *len);
     if (result > 0) {
         *len = result;
         memcpy(data, ssl_ctx->read_buffer, *len);
+        ssl_ctx->retry_len = 0;
         return APR_SUCCESS;
     } else {
         int ssl_err;
@@ -2805,6 +2806,9 @@ sslSocketRead(apr_socket_t *skt, void *baton, char *data, apr_size_t *len)
                 return ssl_ctx->bio_status;
             case SSL_ERROR_WANT_READ:
             case SSL_ERROR_WANT_WRITE:
+                ssl_ctx->retry_len = *len;
+                fprintf(stderr, "WANT %s\n", (ssl_err== SSL_ERROR_WANT_READ)
+                                               ? "read" : "write");
                 *len = 0;
                 return APR_EAGAIN;
             case SSL_ERROR_SSL:
