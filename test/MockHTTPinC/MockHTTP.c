@@ -180,7 +180,7 @@ mhError_t mhRunServerLoopCompleteRequests(MockHTTP *mh)
             break;
     };
 
-    if (status == APR_EAGAIN)
+    if (APR_STATUS_IS_EAGAIN(status))
         return MOCKHTTP_TIMEOUT;
 
     return status;

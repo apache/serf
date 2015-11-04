@@ -181,7 +181,7 @@ apr_status_t serf_bucket_mock_more_data_arrived(serf_bucket_t *bucket)
         return status;
 
     action = &ctx->actions[ctx->current_action];
-    if (ctx->remaining_data == 0 && action->status == APR_EAGAIN) {
+    if (ctx->remaining_data == 0 && APR_STATUS_IS_EAGAIN(action->status)) {
         ctx->remaining_times--;
         action->times--;
     }
