@@ -224,21 +224,6 @@ void serf_bucket_aggregate_cleanup(
 serf_bucket_t *serf_bucket_aggregate_create(
     serf_bucket_alloc_t *allocator);
 
-/* Creates a stream bucket.
-   A stream bucket is like an aggregate bucket, but:
-   - it doesn't destroy its child buckets on cleanup
-   - one can always keep adding child buckets, the handler FN should return
-     APR_EOF when no more buckets will be added.
-
-  Note: keep this factory function internal for now. If it turns out this
-  bucket type is useful outside serf, we should make it an actual separate
-  type.
-  */
-serf_bucket_t *serf__bucket_stream_create(
-    serf_bucket_alloc_t *allocator,
-    serf_bucket_aggregate_eof_t fn,
-    void *baton);
-
 /** Transform @a bucket in-place into an aggregate bucket.
  *
  * It is callers responsibility to free resources held by the original

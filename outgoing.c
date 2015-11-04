@@ -249,9 +249,9 @@ static apr_status_t do_conn_setup(serf_connection_t *conn)
     }
 
     if (conn->ostream_tail == NULL) {
-        conn->ostream_tail = serf__bucket_stream_create(conn->allocator,
-                                                        detect_eof,
-                                                        conn);
+        conn->ostream_tail = serf_bucket_aggregate_create(conn->allocator);
+
+        serf_bucket_aggregate_hold_open(conn->ostream_tail, detect_eof, conn);
     }
 
     ostream = conn->ostream_tail;
@@ -874,7 +874,10 @@ static apr_status_t write_to_connection(serf_connection_t *conn)
 
             if (!request->writing_started) {
                 request->writing_started = 1;
-                serf_bucket_aggregate_append(ostreamt, request->req_bkt);
+                serf_bucket_aggregate_append(
+                          ostreamt,
+                          serf_bucket_barrier_create(request->req_bkt,
+                                                     request->allocator));
             }
         }
 
