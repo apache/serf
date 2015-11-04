@@ -193,7 +193,7 @@ serf__bucket_hpack_decode_create(serf_bucket_t *stream,
                                                   const char *value,
                                                   apr_size_t value_size),
                                  void *item_baton,
-                                 apr_size_t max_entry_size,
+                                 apr_size_t max_header_size,
                                  serf_hpack_table_t *hpack_table,
                                  serf_bucket_alloc_t *alloc);
 

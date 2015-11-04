@@ -276,7 +276,9 @@ static void hpack_free_entry(serf_hpack_entry_t *entry,
   The size of an entry is calculated using the length of its name and
   value without any Huffman encoding applied.
 */
-#define HPACK_ENTRY_SIZE(hi) (hi->key_len + hi->value_len + 32)
+#define HPACK_ENTRY_SIZE(hi) ((hi)->key_len + (hi)->value_len + 32)
+/* The per key, value variant of HPACK_ENTRY_SIZE */
+#define HPACK_KEY_SIZE(key_sz) ((key_sz) + 16)
 
 struct serf_hpack_table_t
 {
@@ -476,7 +478,7 @@ hpack_table_size_update(serf_hpack_table_t *hpack_tbl,
 }
 
 static apr_status_t
-hpack_table_get(apr_uint64_t v,
+hpack_table_get(apr_uint32_t v,
                 serf_hpack_table_t *tbl,
                 const char **key,
                 apr_size_t *key_size,
@@ -740,7 +742,7 @@ void serf__bucket_hpack_do(serf_bucket_t *hpack_bucket,
     }
 }
 
-static void hpack_int(unsigned char flags, int bits, apr_uint64_t value, char to[10], apr_size_t *used)
+static void hpack_int(unsigned char flags, int bits, apr_uint32_t value, char to[10], apr_size_t *used)
 {
   unsigned char max_direct;
   apr_size_t u;
@@ -923,7 +925,7 @@ typedef struct serf_hpack_decode_ctx_t
   serf_hpack_table_t *tbl;
 
   serf_bucket_t *stream;
-  apr_size_t max_entry_size;
+  apr_size_t header_allowed;
 
   apr_status_t(*item_callback)(void *baton,
                                const char *key,
@@ -943,11 +945,11 @@ typedef struct serf_hpack_decode_ctx_t
   char index_item;
   char key_hm;
   char val_hm;
-  apr_uint64_t reuse_item;
+  apr_uint32_t reuse_item;
 
   enum
   {
-    HPACK_DECODE_STATE_KIND = 0,
+    HPACK_DECODE_STATE_INITIAL = 0,
     HPACK_DECODE_STATE_INDEX,
     HPACK_DECODE_STATE_KEYINDEX,
     HPACK_DECODE_STATE_KEY_LEN,
@@ -982,7 +984,7 @@ serf__bucket_hpack_decode_create(serf_bucket_t *stream,
                                         const char *value,
                                         apr_size_t value_size),
                                  void *item_baton,
-                                 apr_size_t max_entry_size,
+                                 apr_size_t max_header_size,
                                  serf_hpack_table_t *hpack_table,
                                  serf_bucket_alloc_t *alloc)
 {
@@ -990,10 +992,7 @@ serf__bucket_hpack_decode_create(serf_bucket_t *stream,
 
   ctx->tbl = hpack_table;
   ctx->stream = stream;
-  ctx->max_entry_size = max_entry_size;
-
-  if (max_entry_size > 0x0100000)
-    max_entry_size = 0x0100000; /* 1 MB */
+  ctx->header_allowed = max_header_size;
 
   /* The buffer should be large enough to keep a *compressed* key
      or value and will be resized if necessary.
@@ -1056,7 +1055,7 @@ hpack_decode_buffer_ensure(serf_bucket_t *bucket,
 }
 
 static apr_status_t
-read_hpack_int(apr_uint64_t *v,
+read_hpack_int(apr_uint32_t *v,
                unsigned char *flags,
                serf_bucket_t *bucket,
                int bits)
@@ -1089,13 +1088,23 @@ read_hpack_int(apr_uint64_t *v,
   else
     {
       apr_size_t i;
+
+      /* Here we read the necessary bytes for the integer upto the
+         first byte that doesn't have the 0x80 bit set.
+
+         We could try to be smart by peeking, getting the size if
+         possible, etc.... but that would optimize for large ints
+         while the value typically fits in 1 or 2 bytes max.
+
+         My guess is that trying to be smart will be more expensive
+         here. */
       do
         {
           const char *data;
           apr_size_t len;
 
           /* We already have all the bits we can store */
-          if ((7 * (ctx->buffer_used - 1) + bits) >= 64)
+          if ((7 * (ctx->buffer_used - 1) + bits) >= 32)
             return SERF_ERROR_HTTP2_COMPRESSION_ERROR;
 
           status = serf_bucket_read(ctx->stream, 1, &data, &len);
@@ -1119,14 +1128,17 @@ read_hpack_int(apr_uint64_t *v,
 
       for (i = 1; i < ctx->buffer_used; i++)
         vv += (apr_uint64_t)((unsigned char)ctx->buffer[i] & 0x7F) << (7 * (i - 1));
+
+      if ((vv & APR_UINT32_MAX) != vv)
+        return SERF_ERROR_HTTP2_COMPRESSION_ERROR;
     }
 
-  *v = vv;
+  *v = (apr_uint32_t)vv;
 
   if (flags)
     *flags = (((unsigned char)ctx->buffer[0]) & ~value_mask);
 
-  ctx->buffer_used = 0;
+  ctx->buffer_used = 0; /* Done with buffer */
 
   return APR_SUCCESS;
 }
@@ -1262,6 +1274,81 @@ handle_read_entry_and_clear(serf_hpack_decode_ctx_t *ctx,
   return APR_SUCCESS;
 }
 
+/* Reads the exact amount of bytes, buffered if necessary.
+
+   Note: APR_EOF is not returned in case we have everything
+         we need. The callers depend on this behavior
+ */
+static apr_status_t hpack_read_bytes(serf_bucket_t *bucket,
+                                     apr_size_t required,
+                                     const void **data)
+{
+  serf_hpack_decode_ctx_t *ctx = bucket->data;
+  apr_status_t status = APR_SUCCESS;
+  apr_size_t len;
+  const char *some_data;
+
+  /* assert(required < ctx->buffer_used); */
+
+  if (required == 0)
+    {
+      *data = ctx->buffer;
+      return APR_SUCCESS;
+    }
+
+  if (!ctx->buffer_used)
+    {
+      status = serf_bucket_read(ctx->stream, required, &some_data, &len);
+
+      if (SERF_BUCKET_READ_ERROR(status) || (len == required))
+        {
+          if (APR_STATUS_IS_EOF(status) && len == required)
+            status = APR_SUCCESS;
+          *data = some_data;
+          return status;
+        }
+
+      hpack_decode_buffer_ensure(bucket, required);
+
+      memcpy(ctx->buffer, data, len);
+      ctx->buffer_used = len;
+
+      if (status)
+        return status;
+
+      /* Fall through: Try to continue reading*/
+    }
+  else
+    {
+      /* Ensure that the buffer is large enough to hold everything */
+      hpack_decode_buffer_ensure(bucket, required);
+    }
+
+  while (ctx->buffer_used < required)
+    {
+      status = serf_bucket_read(ctx->stream, required - ctx->buffer_used,
+                                &some_data, &len);
+
+      if (SERF_BUCKET_READ_ERROR(status))
+        return status;
+
+      memcpy(ctx->buffer + ctx->buffer_used, some_data, len);
+      ctx->buffer_used += len;
+
+      if (status)
+        break;
+    }
+
+  if (ctx->buffer_used == required)
+    {
+      *data = ctx->buffer;
+      ctx->buffer_used = 0; /* Done with buffer */
+      status = APR_SUCCESS;
+    }
+
+  return status;
+}
+
 static apr_status_t
 hpack_process(serf_bucket_t *bucket)
 {
@@ -1275,7 +1362,7 @@ hpack_process(serf_bucket_t *bucket)
     {
       switch (ctx->state)
         {
-          case HPACK_DECODE_STATE_KIND:
+          case HPACK_DECODE_STATE_INITIAL:
             {
               unsigned char uc;
               const char *data;
@@ -1296,7 +1383,7 @@ hpack_process(serf_bucket_t *bucket)
 
                   ctx->state = HPACK_DECODE_STATE_INDEX;
                   ctx->buffer[0] = *data;
-                  ctx->buffer_used = 1;
+                  ctx->buffer_used = 1; /* Initial state for read_hpack_int */
                   ctx->index_item = FALSE;
                 }
               else if (uc == 0x40 || uc == 0x00 || uc == 0x10)
@@ -1312,7 +1399,6 @@ hpack_process(serf_bucket_t *bucket)
                      https://tools.ietf.org/html/rfc7541#section-6.2.3 */
 
                   ctx->state = HPACK_DECODE_STATE_KEY_LEN;
-                  ctx->buffer_used = 0;
                   ctx->index_item = (uc == 0x40);
                 }
               else if ((uc & 0x60) == 0x20)
@@ -1321,7 +1407,7 @@ hpack_process(serf_bucket_t *bucket)
                      https://tools.ietf.org/html/rfc7541#section-6.3 */
                   ctx->state = HPACK_DECODE_TABLESIZE_UPDATE;
                   ctx->buffer[0] = *data;
-                  ctx->buffer_used = 1;
+                  ctx->buffer_used = 1; /* Initial state for read_hpack_int */
                 }
               else
                 {
@@ -1337,14 +1423,14 @@ hpack_process(serf_bucket_t *bucket)
 
                   ctx->state = HPACK_DECODE_STATE_KEYINDEX;
                   ctx->buffer[0] = *data;
-                  ctx->buffer_used = 1;
+                  ctx->buffer_used = 1; /* Initial state for read_hpack_int */
                   ctx->index_item = (uc & 0x40) != 0;
                 }
               continue;
             }
           case HPACK_DECODE_STATE_INDEX:
             {
-              apr_uint64_t v;
+              apr_uint32_t v;
               status = read_hpack_int(&v, NULL, bucket, 7);
               if (status)
                 continue;
@@ -1356,19 +1442,27 @@ hpack_process(serf_bucket_t *bucket)
                                        &ctx->key, &ctx->key_size,
                                        &ctx->val, &ctx->val_size);
               if (status)
-                continue;
+                return status;
+
+              if (ctx->header_allowed <= HPACK_KEY_SIZE(ctx->key_size)
+                                         + HPACK_KEY_SIZE(ctx->val_size))
+                {
+                  return SERF_ERROR_HTTP2_COMPRESSION_ERROR;
+                }
+              ctx->header_allowed -= HPACK_KEY_SIZE(ctx->key_size)
+                                     + HPACK_KEY_SIZE(ctx->val_size);
 
               status = handle_read_entry_and_clear(ctx, bucket->allocator);
               if (status)
                 return status;
 
               /* Get key and value from table and handle result */
-              ctx->state = HPACK_DECODE_STATE_KIND;
+              ctx->state = HPACK_DECODE_STATE_INITIAL;
               continue;
             }
           case HPACK_DECODE_STATE_KEYINDEX:
             {
-              apr_uint64_t v;
+              apr_uint32_t v;
               status = read_hpack_int(&v, NULL, bucket,
                                       ctx->index_item ? 6 : 4);
               if (status)
@@ -1379,15 +1473,19 @@ hpack_process(serf_bucket_t *bucket)
                                        &ctx->key, &ctx->key_size,
                                        NULL, NULL);
               if (status)
-                continue;
+                return status;
 
               /* Get key from table */
               ctx->state = HPACK_DECODE_STATE_VALUE_LEN;
+              if (HPACK_KEY_SIZE(ctx->key_size) >= ctx->header_allowed)
+                return SERF_ERROR_HTTP2_COMPRESSION_ERROR;
+
+              ctx->header_allowed -= HPACK_KEY_SIZE(ctx->key_size);
               continue;
             }
           case HPACK_DECODE_STATE_KEY_LEN:
             {
-              apr_uint64_t v;
+              apr_uint32_t v;
               unsigned char flags;
               status = read_hpack_int(&v, &flags, bucket, 7);
               if (status)
@@ -1395,10 +1493,10 @@ hpack_process(serf_bucket_t *bucket)
 
               ctx->key_hm = (flags & 0x80) != 0;
 
-              if (v > ctx->max_entry_size)
+              /* Just check compressed size first. If the result is
+                 smaller the encoder shouldn't have used compression */
+              if (HPACK_KEY_SIZE(v) >= ctx->header_allowed)
                 return SERF_ERROR_HTTP2_COMPRESSION_ERROR;
-
-              hpack_decode_buffer_ensure(bucket, (apr_size_t)v);
 
               ctx->key_size = (apr_size_t)v;
               ctx->state = HPACK_DECODE_STATE_KEY;
@@ -1406,69 +1504,47 @@ hpack_process(serf_bucket_t *bucket)
             }
           case HPACK_DECODE_STATE_KEY:
             {
-              const char *data;
-              apr_size_t len;
+              const void *data;
 
-              if (ctx->key_size > 0)
-                {
-                  status = serf_bucket_read(ctx->stream,
-                                            ctx->key_size - ctx->buffer_used,
-                                            &data, &len);
-
-                  if (!SERF_BUCKET_READ_ERROR(status))
-                    {
-                      if (len > 0)
-                        memcpy(&ctx->buffer[ctx->buffer_used],
-                               data, len);
-                      ctx->buffer_used += len;
-                    }
-                  else
-                    continue;
-                }
-              else
-                status = APR_SUCCESS;
-
-              if (ctx->buffer_used < ctx->key_size)
-                return status ? status : APR_EAGAIN;
+              status = hpack_read_bytes(bucket, ctx->key_size, &data);
+              if (status)
+                continue;
 
               if (ctx->key_hm)
                 {
                   apr_size_t ks;
-                  apr_status_t status2;
                   char *key;
 
-                  status2 = serf__hpack_huffman_decode((void*)ctx->buffer,
-                                                        ctx->key_size,
-                                                        0, NULL, &ks);
+                  status = serf__hpack_huffman_decode(data, ctx->key_size,
+                                                      0, NULL, &ks);
 
-                  if (status2)
-                    return status2;
+                  if (status)
+                    return status;
 
-                  if (ks > ctx->max_entry_size)
+                  if (HPACK_KEY_SIZE(ks) >= ctx->header_allowed)
                     return SERF_ERROR_HTTP2_COMPRESSION_ERROR;
 
                   key = serf_bucket_mem_alloc(ctx->tbl->alloc, ks + 1);
 
-                  status2 = serf__hpack_huffman_decode((void*)ctx->buffer,
-                                                        ctx->key_size,
-                                                        ks + 1, key,
-                                                        &ctx->key_size);
-                  if (status2)
-                    return status2;
+                  status = serf__hpack_huffman_decode(data, ctx->key_size,
+                                                       ks + 1, key,
+                                                       &ctx->key_size);
+                  if (status)
+                    return status;
 
                   ctx->key = key;
                 }
               else
-                ctx->key = serf_bstrmemdup(ctx->tbl->alloc, ctx->buffer,
-                                            ctx->key_size);
+                ctx->key = serf_bstrmemdup(ctx->tbl->alloc, data,
+                                           ctx->key_size);
 
-              ctx->buffer_used = 0;
               ctx->state = HPACK_DECODE_STATE_VALUE_LEN;
+              ctx->header_allowed -= HPACK_KEY_SIZE(ctx->key_size);
               /* Fall through */
             }
           case HPACK_DECODE_STATE_VALUE_LEN:
             {
-              apr_uint64_t v;
+              apr_uint32_t v;
               unsigned char flags;
               status = read_hpack_int(&v, &flags, bucket, 7);
               if (status)
@@ -1476,86 +1552,62 @@ hpack_process(serf_bucket_t *bucket)
 
               ctx->val_hm = (flags & 0x80) != 0;
 
-              if (v > ctx->max_entry_size
-                  || (v + ctx->key_size) > ctx->max_entry_size)
+              /* Just check compressed size first. If the result is
+                 smaller the encoder shouldn't have used compression */
+              if (HPACK_KEY_SIZE(v) >= ctx->header_allowed)
                 return SERF_ERROR_HTTP2_COMPRESSION_ERROR;
 
-              hpack_decode_buffer_ensure(bucket, (apr_size_t)v);
-              ctx->val_size = (apr_size_t)v;
+              ctx->val_size = v;
               ctx->state = HPACK_DECODE_STATE_VALUE;
               /* Fall through */
             }
           case HPACK_DECODE_STATE_VALUE:
             {
-              const char *data;
-              apr_size_t len;
+              const void *data;
 
-              if (ctx->val_size > 0)
-                {
-                  status = serf_bucket_read(ctx->stream,
-                                            ctx->val_size - ctx->buffer_used,
-                                            &data, &len);
-
-                  if (!SERF_BUCKET_READ_ERROR(status))
-                    {
-                      if (len > 0)
-                        memcpy(&ctx->buffer[ctx->buffer_used],
-                               data, len);
-
-                      ctx->buffer_used += len;
-                    }
-                  else
-                    continue;
-                }
-              else
-                status = APR_SUCCESS;
-
-              if (ctx->buffer_used < ctx->val_size)
-                return status ? status : APR_EAGAIN;
+              status = hpack_read_bytes(bucket, ctx->val_size, &data);
+              if (status)
+                continue;
 
               if (ctx->val_hm)
                 {
                   apr_size_t ks;
-                  apr_status_t status2;
                   char *val;
 
-                  status2 = serf__hpack_huffman_decode((void*)ctx->buffer,
-                                                        ctx->val_size,
-                                                        0, NULL, &ks);
+                  status = serf__hpack_huffman_decode(data, ctx->val_size,
+                                                       0, NULL, &ks);
+                  if (status)
+                    return status;
 
-                  if (status2)
-                    return status2;
-
-                  if (ks > ctx->max_entry_size)
+                  if (HPACK_KEY_SIZE(ks) >= ctx->header_allowed)
                     return SERF_ERROR_HTTP2_COMPRESSION_ERROR;
 
                   val = serf_bucket_mem_alloc(ctx->tbl->alloc, ks + 1);
 
-                  status2 = serf__hpack_huffman_decode((void*)ctx->buffer,
-                                                        ctx->val_size,
-                                                        ks + 1, val,
-                                                        &ctx->val_size);
-                  if (status2)
-                    return status2;
+                  status = serf__hpack_huffman_decode(data, ctx->val_size,
+                                                      ks + 1, val,
+                                                      &ctx->val_size);
+                  if (status)
+                    return status;
 
                   ctx->val = val;
                 }
               else
-                ctx->val = serf_bstrmemdup(ctx->tbl->alloc, ctx->buffer,
-                                            ctx->val_size);
+                ctx->val = serf_bstrmemdup(ctx->tbl->alloc, data,
+                                           ctx->val_size);
 
+              ctx->header_allowed -= HPACK_KEY_SIZE(ctx->val_size);
 
               status = handle_read_entry_and_clear(ctx, bucket->allocator);
               if (status)
                 continue;
 
-              ctx->buffer_used = 0;
-              ctx->state = HPACK_DECODE_STATE_KIND;
+              ctx->state = HPACK_DECODE_STATE_INITIAL;
               continue;
             }
           case HPACK_DECODE_TABLESIZE_UPDATE:
             {
-              apr_uint64_t v;
+              apr_uint32_t v;
 
               status = read_hpack_int(&v, NULL, bucket, 5);
               if (status)
@@ -1566,7 +1618,7 @@ hpack_process(serf_bucket_t *bucket)
                 return SERF_ERROR_HTTP2_COMPRESSION_ERROR;
               status = hpack_table_size_update(ctx->tbl, (apr_size_t)v);
 
-              ctx->state = HPACK_DECODE_STATE_KIND;
+              ctx->state = HPACK_DECODE_STATE_INITIAL;
               continue;
             }
         default:
@@ -1577,7 +1629,7 @@ hpack_process(serf_bucket_t *bucket)
   if (APR_STATUS_IS_EOF(status))
     {
       serf_bucket_t *b;
-      if (ctx->state != HPACK_DECODE_STATE_KIND)
+      if (ctx->state != HPACK_DECODE_STATE_INITIAL)
         return SERF_ERROR_HTTP2_COMPRESSION_ERROR;
 
       if (!ctx->hit_eof)
