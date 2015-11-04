@@ -742,7 +742,7 @@ void serf__bucket_hpack_do(serf_bucket_t *hpack_bucket,
     }
 }
 
-static void hpack_int(unsigned char flags, int bits, apr_uint32_t value, char to[10], apr_size_t *used)
+static void hpack_int(unsigned char flags, int bits, apr_uint32_t value, char to[6], apr_size_t *used)
 {
   unsigned char max_direct;
   apr_size_t u;
@@ -784,59 +784,86 @@ serialize(serf_bucket_t *bucket)
    */
   serf_hpack_context_t *ctx = bucket->data;
   serf_bucket_alloc_t *alloc = bucket->allocator;
+  serf_hpack_table_t *tbl = ctx->tbl;
 
   serf_hpack_entry_t *entry;
   serf_hpack_entry_t *next;
 
+  char *buffer = NULL;
+  apr_size_t offset = 0;
+  const apr_size_t chunksize = 2048; /* Wild guess */
+
   /* Put on our aggregate bucket cloak */
   serf_bucket_aggregate_become(bucket);
 
+  /* Is there a tablesize update queued? */
+  if (tbl && tbl->send_tablesize_update)
+    {
+      apr_size_t len;
+
+      buffer = serf_bucket_mem_alloc(alloc, chunksize);
+
+      hpack_int(0x20, 5, tbl->lr_max_table_size, buffer+offset, &len);
+      offset += len;
+      tbl->send_tablesize_update = FALSE;
+    }
+
   for (entry = ctx->first; entry; entry = next)
     {
-      char intbuf[10];
-      apr_size_t intbuf_len;
-      serf_bucket_t *v;
+      apr_size_t len;
 
       next = entry->next;
 
-      /* Literal header, no indexing (=has a name) */
-      hpack_int(0x40, 6, 0, intbuf, &intbuf_len);
+      /* Make 100% sure the next entry will fit.
+         ### Temporarily wastes ram
+       */
+      if (!buffer || (HPACK_ENTRY_SIZE(entry) > chunksize - offset))
+        {
+          if (offset)
+            {
+              serf_bucket_aggregate_append(
+                    bucket,
+                    serf_bucket_simple_own_create(buffer, offset, alloc));
+            }
 
-      serf_bucket_aggregate_append(bucket,
-              serf_bucket_simple_copy_create(intbuf, intbuf_len, alloc));
+          buffer = serf_bucket_mem_alloc(alloc, MAX(chunksize,
+                                                    HPACK_ENTRY_SIZE(entry)));
+          offset = 0;
+        }
+
+      /* Literal header, no indexing (=has a name) */
+      hpack_int(0x40, 6, 0, buffer+offset, &len);
+      offset += len;
 
       /* Name is literal, no huffman encoding */
-      hpack_int(0, 7, entry->key_len, intbuf, &intbuf_len);
-      serf_bucket_aggregate_append(bucket,
-              serf_bucket_simple_copy_create(intbuf, intbuf_len, alloc));
+      hpack_int(0, 7, entry->key_len, buffer+offset, &len);
+      offset += len;
 
-      if (entry->free_key)
-        v = serf_bucket_simple_own_create(entry->key, entry->key_len,
-                                          alloc);
-      else
-        v = serf_bucket_simple_create(entry->key, entry->key_len, NULL, NULL,
-                                      alloc);
-
-      serf_bucket_aggregate_append(bucket, v);
+      memcpy(buffer + offset, entry->key, entry->key_len);
+      offset += entry->key_len;
 
       /* Value is literal, no huffman encoding */
-      hpack_int(0, 7, entry->value_len, intbuf, &intbuf_len);
-      serf_bucket_aggregate_append(bucket,
-              serf_bucket_simple_copy_create(intbuf, intbuf_len, alloc));
+      hpack_int(0, 7, entry->value_len, buffer+offset, &len);
+      offset += len;
 
-      if (entry->free_key)
-        v = serf_bucket_simple_own_create(entry->value, entry->value_len,
-                                          alloc);
-      else
-        v = serf_bucket_simple_create(entry->value, entry->value_len, NULL,
-                                      NULL, alloc);
+      memcpy(buffer + offset, entry->value, entry->value_len);
+      offset += entry->value_len;
 
-      serf_bucket_aggregate_append(bucket, v);
-
-      /* We handed ownership of key and value, so we only have to free item */
-      serf_bucket_mem_free(alloc, entry);
+      hpack_free_entry(entry, bucket->allocator);
     }
   ctx->first = ctx->last = NULL;
+
+  if (buffer)
+    {
+      if (offset)
+        {
+          serf_bucket_aggregate_append(
+            bucket,
+            serf_bucket_simple_own_create(buffer, offset, alloc));
+        }
+      else
+        serf_bucket_mem_free(alloc, buffer);
+    }
 
   serf_bucket_mem_free(alloc, ctx);
 
@@ -886,6 +913,20 @@ serf_hpack_peek(serf_bucket_t *bucket,
   return bucket->type->peek(bucket, data, len);
 }
 
+
+static apr_uint64_t
+serf_hpack_get_remaining(serf_bucket_t *bucket)
+{
+  apr_status_t status = serialize(bucket);
+
+  if (status)
+    return SERF_LENGTH_UNKNOWN;
+
+  /* This assumes that the aggregate is a v2 bucket */
+  return bucket->type->get_remaining(bucket);
+}
+
+
 static void
 serf_hpack_destroy_and_data(serf_bucket_t *bucket)
 {
@@ -913,9 +954,12 @@ const serf_bucket_type_t serf_bucket_type__hpack = {
   serf_hpack_readline,
   serf_hpack_read_iovec,
   serf_default_read_for_sendfile,
-  serf_default_read_bucket,
+  serf_buckets_are_v2,
   serf_hpack_peek,
   serf_hpack_destroy_and_data,
+  serf_default_read_bucket,
+  serf_hpack_get_remaining,
+  serf_default_ignore_config,
 };
 
 /* ==================================================================== */

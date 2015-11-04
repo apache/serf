@@ -710,11 +710,11 @@ http2_prepare_frame(serf_bucket_t *bucket)
     {
       /* Our payload doesn't know how long it is. Our only option
          now is to create the actual data */
-      struct iovec vecs[512];
+      struct iovec vecs[IOV_MAX];
       apr_status_t status;
 
       status = serf_bucket_read_iovec(ctx->stream, ctx->max_payload_size,
-                                      512, vecs, &vecs_used);
+                                      IOV_MAX, vecs, &vecs_used);
 
       if (SERF_BUCKET_READ_ERROR(status))
         return status;
@@ -756,7 +756,7 @@ http2_prepare_frame(serf_bucket_t *bucket)
               apr_size_t read;
               status = serf_bucket_read_iovec(ctx->stream,
                                               ctx->max_payload_size - total + 1,
-                                              512, vecs, &vecs_used);
+                                              IOV_MAX, vecs, &vecs_used);
 
               if (SERF_BUCKET_READ_ERROR(status))
                 {
