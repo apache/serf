@@ -44,7 +44,8 @@ static apr_status_t clean_resp(void *data)
         request->resp_bkt = NULL;
     }
     if (request->req_bkt) {
-        serf_bucket_destroy(request->req_bkt);
+        if (!request->writing_started)
+            serf_bucket_destroy(request->req_bkt);
         request->req_bkt = NULL;
     }
 
@@ -85,7 +86,9 @@ apr_status_t serf__destroy_request(serf_request_t *request)
     }
     if (request->req_bkt) {
         serf_debug__closed_conn(request->req_bkt->allocator);
-        serf_bucket_destroy(request->req_bkt);
+
+        if (!request->writing_started)
+            serf_bucket_destroy(request->req_bkt);
         request->req_bkt = NULL;
     }
 

@@ -863,7 +863,7 @@ static apr_status_t write_to_connection(serf_connection_t *conn)
             return status;
         }
 
-        if (request) {
+        if (request && !request->writing_started) {
             if (request->req_bkt == NULL) {
                 read_status = serf__setup_request(request);
                 if (read_status) {
@@ -872,13 +872,8 @@ static apr_status_t write_to_connection(serf_connection_t *conn)
                 }
             }
 
-            if (!request->writing_started) {
-                request->writing_started = 1;
-                serf_bucket_aggregate_append(
-                          ostreamt,
-                          serf_bucket_barrier_create(request->req_bkt,
-                                                     request->allocator));
-            }
+            request->writing_started = 1;
+            serf_bucket_aggregate_append(ostreamt, request->req_bkt);
         }
 
         /* If we got some data, then deliver it. */
@@ -898,7 +893,6 @@ static apr_status_t write_to_connection(serf_connection_t *conn)
              * - we'll see if there are other requests that need to be sent 
              * ("pipelining").
              */
-            serf_bucket_destroy(request->req_bkt);
             request->req_bkt = NULL;
 
             /* Move the request to the written queue */
