@@ -2230,6 +2230,8 @@ struct sslCtx_t {
     SSL* ssl;
     BIO *bio;
 
+    char read_buffer[8192];
+    char write_buffer[8192];
 };
 
 static int init_done = 0;
@@ -2718,8 +2720,15 @@ sslSocketWrite(_mhClientCtx_t *cctx, const char *data, apr_size_t *len)
     sslCtx_t *ssl_ctx = cctx->ssl_ctx;
     int result, ssl_err;
 
+    if (*len > sizeof(ssl_ctx->write_buffer))
+      *len = sizeof(ssl_ctx->write_buffer);
+    memcpy(ssl_ctx->write_buffer, data, *len);
+
+    if (*len == 0)
+        return APR_SUCCESS;
+
     ssl_ctx->bio_status = APR_SUCCESS;
-    result = SSL_write(ssl_ctx->ssl, data, *len);
+    result = SSL_write(ssl_ctx->ssl, ssl_ctx->write_buffer, *len);
     if (result > 0) {
         *len = result;
         return APR_SUCCESS;
@@ -2773,10 +2782,14 @@ sslSocketRead(apr_socket_t *skt, void *baton, char *data, apr_size_t *len)
     sslCtx_t *ssl_ctx = baton;
     int result;
 
+    if (*len > sizeof(ssl_ctx->read_buffer))
+      *len = sizeof(ssl_ctx->read_buffer);
+
     ssl_ctx->bio_status = APR_SUCCESS;
-    result = SSL_read(ssl_ctx->ssl, data, *len);
+    result = SSL_read(ssl_ctx->ssl, ssl_ctx->read_buffer, *len);
     if (result > 0) {
         *len = result;
+        memcpy(data, ssl_ctx->read_buffer, *len);
         return APR_SUCCESS;
     } else {
         int ssl_err;
