@@ -236,9 +236,9 @@ void serf__http2_protocol_init(serf_connection_t *conn)
     serf_bucket_t *window_size;
 
     tmp = serf__bucket_http2_frame_create(NULL, HTTP2_FRAME_TYPE_SETTINGS, 0,
-                                          NULL, NULL, NULL, /* Static id: 0*/
-                                          HTTP2_DEFAULT_MAX_FRAMESIZE,
-                                          NULL, NULL, conn->allocator);
+                                          NULL, NULL, NULL, /* stream: 0 */
+                                          h2->lr_max_framesize,
+                                          conn->allocator);
 
     serf_http2__enqueue_frame(h2, tmp, FALSE);
 
@@ -246,9 +246,9 @@ void serf__http2_protocol_init(serf_connection_t *conn)
     window_size = serf_bucket_create_numberv(conn->allocator, "4", 0x40000000);
     tmp = serf__bucket_http2_frame_create(window_size,
                                           HTTP2_FRAME_TYPE_WINDOW_UPDATE, 0,
-                                          NULL, NULL, NULL,
-                                          HTTP2_DEFAULT_MAX_FRAMESIZE,
-                                          NULL, NULL, conn->allocator);
+                                          NULL, NULL, NULL, /* stream: 0 */
+                                          h2->lr_max_framesize,
+                                          conn->allocator);
     serf_http2__enqueue_frame(h2, tmp, FALSE);
 
     h2->rl_window += 0x40000000; /* And update our own administration */
@@ -587,7 +587,6 @@ http2_handle_ping(void *baton,
                                                   HTTP2_FLAG_ACK,
                                                   NULL, NULL, NULL,
                                                   h2->lr_max_framesize,
-                                                  NULL, NULL,
                                                   h2->allocator),
                   TRUE /* pump */);
 
@@ -698,8 +697,8 @@ http2_handle_settings(void *baton,
                                     HTTP2_FRAME_TYPE_SETTINGS,
                                     HTTP2_FLAG_ACK,
                                     NULL, NULL, NULL,
-                                    HTTP2_DEFAULT_MAX_FRAMESIZE,
-                                    NULL, NULL, h2->allocator),
+                                    h2->lr_max_framesize,
+                                    h2->allocator),
                     TRUE);
 
   return APR_SUCCESS;
@@ -789,7 +788,7 @@ http2_handle_goaway(void *baton,
                                     len - HTTP2_GOWAWAY_DATA_SIZE);
 
       serf__log(loglevel, SERF_LOGHTTP2, h2->config,
-                "Received GOAWAY, last-stream=%d, error=%u: %s\n",
+                "Received GOAWAY, last-stream=0x%x, error=%u: %s\n",
                 last_streamid, error_code, goaway_text);
 
       serf_bucket_mem_free(h2->allocator, goaway_text);
@@ -797,7 +796,7 @@ http2_handle_goaway(void *baton,
   else
     {
       serf__log(loglevel, SERF_LOGHTTP2, h2->config,
-                "Received GOAWAY, last-stream=%d, error=%u.\n",
+                "Received GOAWAY, last-stream=0x%x, error=%u.\n",
                 last_streamid, error_code);
     }
 
@@ -971,7 +970,7 @@ http2_process(serf_http2_protocol_t *h2)
             }
 
           serf__log(LOGLVL_INFO, SERF_LOGHTTP2, h2->config,
-                    "Reading 0x%x frame, stream=%x, flags=0x%x\n",
+                    "Reading 0x%x frame, stream=0x%x, flags=0x%x\n",
                     frametype, sid, frameflags);
 
           /* If status is EOF then the frame doesn't have/declare a body */
@@ -1611,7 +1610,7 @@ serf_http2__enqueue_stream_reset(serf_http2_protocol_t *h2,
             serf__bucket_http2_frame_create(bkt,
                                             HTTP2_FRAME_TYPE_RST_STREAM,
                                             0, &streamid, NULL, NULL,
-                                            h2->lr_max_framesize, NULL, NULL,
+                                            h2->lr_max_framesize,
                                             h2->allocator),
             TRUE);
 }

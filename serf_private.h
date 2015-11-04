@@ -439,6 +439,13 @@ struct serf_connection_t {
 
 /*** Internal bucket functions ***/
 
+/* Copies all data contained in vecs to *data, optionally telling how much was
+   copied */
+void serf__copy_iovec(char *data,
+                      apr_size_t *copied,
+                      struct iovec *vecs,
+                      int vecs_used);
+
 /** Transform a response_bucket in-place into an aggregate bucket. Restore the
     status line and all headers, not just the body.
  

@@ -58,10 +58,10 @@ serf_bucket_t *serf_bucket_copy_create(
     return serf_bucket_create(&serf_bucket_type_copy, allocator, ctx);
 }
 
-static void serf__copy_iovec(char *data,
-                             apr_size_t *copied,
-                             struct iovec *vecs,
-                             int vecs_used)
+void serf__copy_iovec(char *data,
+                      apr_size_t *copied,
+                      struct iovec *vecs,
+                      int vecs_used)
 {
     int i;
     apr_size_t sz = 0;

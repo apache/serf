@@ -610,14 +610,13 @@ typedef struct serf_http2_frame_context_t {
   serf_bucket_t *stream;
   serf_bucket_alloc_t *alloc;
   serf_bucket_t *chunk;
-  apr_status_t stream_status;
+  apr_size_t bytes_remaining;
   apr_size_t max_payload_size;
+
   apr_int32_t stream_id;
 
   unsigned char frametype;
   unsigned char flags;
-  char end_of_stream;
-  char end_of_headers;
   char created_frame;
 
   apr_int32_t *p_stream_id;
@@ -625,12 +624,6 @@ typedef struct serf_http2_frame_context_t {
   void (*stream_id_alloc)(void *baton, apr_int32_t *stream_id);
 
   apr_size_t current_window;
-  void *alloc_window_baton;
-  apr_int32_t (*alloc_window)(void *baton,
-                              unsigned char frametype,
-                              apr_int32_t stream_id,
-                              apr_size_t requested,
-                              int peek);
 
 } serf_http2_frame_context_t;
 
@@ -643,14 +636,7 @@ serf__bucket_http2_frame_create(serf_bucket_t *stream,
                                                    void *baton,
                                                    apr_int32_t *stream_id),
                                 void *stream_id_baton,
-                                apr_size_t max_payload_size,
-                                apr_int32_t (*alloc_window)(
-                                                   void *baton,
-                                                   unsigned char frametype,
-                                                   apr_int32_t stream_id,
-                                                   apr_size_t requested,
-                                                   int peek),
-                                void *alloc_window_baton,
+                                apr_uint32_t max_payload_size,
                                 serf_bucket_alloc_t *alloc)
 {
   serf_http2_frame_context_t *ctx = serf_bucket_mem_alloc(alloc, sizeof(*ctx));
@@ -658,7 +644,6 @@ serf__bucket_http2_frame_create(serf_bucket_t *stream,
   ctx->alloc = alloc;
   ctx->stream = stream;
   ctx->chunk = serf_bucket_aggregate_create(alloc);
-  ctx->stream_status = APR_SUCCESS;
   ctx->max_payload_size = max_payload_size;
   ctx->frametype = frame_type;
   ctx->flags = flags;
@@ -688,10 +673,7 @@ serf__bucket_http2_frame_create(serf_bucket_t *stream,
     }
 
   ctx->current_window = 0;
-  ctx->alloc_window = alloc_window;
-  ctx->alloc_window_baton = alloc_window_baton;
-
-  ctx->end_of_stream = ctx->end_of_headers = ctx->created_frame = FALSE;
+  ctx->created_frame = FALSE;
 
   return serf_bucket_create(&serf_bucket_type__http2_frame, alloc, ctx);
 }
@@ -700,63 +682,169 @@ static apr_status_t
 http2_prepare_frame(serf_bucket_t *bucket)
 {
   serf_http2_frame_context_t *ctx = bucket->data;
-  struct iovec vecs[512];
   int vecs_used;
-  apr_size_t len;
-  unsigned char frame[FRAME_PREFIX_SIZE];
-  int i;
+  apr_uint64_t payload_remaining;
 
   if (ctx->created_frame)
     return APR_SUCCESS;
 
-  ctx->created_frame = TRUE;
+  /* How long will this frame be? */
+  if (!ctx->stream)
+    payload_remaining = 0;
+  else
+    payload_remaining = serf_bucket_get_remaining(ctx->stream);
 
-  if (ctx->stream)
+  if (payload_remaining != SERF_LENGTH_UNKNOWN
+      && payload_remaining > ctx->max_payload_size)
     {
-      ctx->stream_status = serf_bucket_read_iovec(ctx->stream,
-                                                  ctx->max_payload_size,
-                                                  512, vecs, &vecs_used);
+      return SERF_ERROR_HTTP2_FRAME_SIZE_ERROR;
+    }
+  else if (payload_remaining != SERF_LENGTH_UNKNOWN)
+    {
+      if (ctx->stream)
+        serf_bucket_aggregate_append(ctx->chunk, ctx->stream);
 
-      if (SERF_BUCKET_READ_ERROR(ctx->stream_status))
-        return ctx->stream_status;
+      ctx->stream = NULL; /* Now managed by aggregate */
     }
   else
     {
-      vecs_used = 0;
-      ctx->stream_status = APR_EOF;
+      /* Our payload doesn't know how long it is. Our only option
+         now is to create the actual data */
+      struct iovec vecs[512];
+      apr_status_t status;
+
+      status = serf_bucket_read_iovec(ctx->stream, ctx->max_payload_size,
+                                      512, vecs, &vecs_used);
+
+      if (SERF_BUCKET_READ_ERROR(status))
+        return status;
+      else if (APR_STATUS_IS_EOF(status))
+        {
+          /* OK, we got everything, let's put the data at the start of the
+             aggregate. */
+          serf_bucket_aggregate_append_iovec(ctx->chunk, vecs, vecs_used);
+
+          /* Obtain the size now , to avoid problems when the bucket
+             doesn't know that it has nothing remaining*/
+          payload_remaining = serf_bucket_get_remaining(ctx->chunk);
+
+          /* Just add the stream behind the iovecs. This keeps the chunks
+              available exactly until they are no longer necessary */
+          serf_bucket_aggregate_append(ctx->chunk, ctx->stream);
+          ctx->stream = NULL; /* Managed by aggregate */
+
+          if (payload_remaining == SERF_LENGTH_UNKNOWN)
+           {
+             /* Should never happen:
+                Aggregate with only iovecs should know size */
+             return SERF_ERROR_HTTP2_FRAME_SIZE_ERROR;
+           }
+        }
+      else
+        {
+          /* Auch... worst case scenario, we have to copy the data. Luckily
+             we have an absolute limit after which we may error out */
+          apr_size_t total = 0;
+          char *data = serf_bucket_mem_alloc(bucket->allocator,
+                                             ctx->max_payload_size);
+
+          serf__copy_iovec(data, &total, vecs, vecs_used);
+
+          while (!APR_STATUS_IS_EOF(status)
+                 && total < ctx->max_payload_size)
+            {
+              apr_size_t read;
+              status = serf_bucket_read_iovec(ctx->stream,
+                                              ctx->max_payload_size - total + 1,
+                                              512, vecs, &vecs_used);
+
+              if (SERF_BUCKET_READ_ERROR(status))
+                {
+                  serf_bucket_mem_free(bucket->allocator, data);
+                  return status;
+                }
+
+              serf__copy_iovec(data, &read, vecs, vecs_used);
+              total += read;
+
+              if (status && !APR_STATUS_IS_EOF(status))
+                {
+                  /* Checkpoint what we got now...
+
+                     Next time this function is called the buffer is read first and
+                     then continued from the original stream */
+                  serf_bucket_t *new_stream;
+                  new_stream = serf_bucket_aggregate_create(bucket->allocator);
+
+                  serf_bucket_aggregate_append(
+                      new_stream,
+                      serf_bucket_simple_own_create(data, total, bucket->allocator));
+
+                  serf_bucket_aggregate_append(new_stream, ctx->stream);
+                  ctx->stream = new_stream;
+
+                  return status;
+                }
+            }
+
+          if (total > ctx->max_payload_size)
+            {
+              /* The chunk is at least 1 byte bigger then allowed */
+              serf_bucket_mem_free(bucket->allocator, data);
+
+              return SERF_ERROR_HTTP2_FRAME_SIZE_ERROR;
+            }
+          else
+            {
+              /* Ok, we have what we need in our buffer */
+              serf_bucket_aggregate_append(
+                    ctx->chunk,
+                    serf_bucket_simple_own_create(data, total, bucket->allocator));
+              payload_remaining = total;
+
+              /* And we no longer need stream */
+              serf_bucket_destroy(ctx->stream);
+              ctx->stream = NULL;
+            }
+        }
     }
 
-  /* For this first version assume that everything fits in a single frame */
-  if (! APR_STATUS_IS_EOF(ctx->stream_status))
-    abort(); /* Not implemented yet */
 
-  if (ctx->stream_id < 0 && ctx->stream_id_alloc)
-    {
-      ctx->stream_id_alloc(ctx->stream_id_baton, ctx->p_stream_id);
-      ctx->stream_id = *ctx->p_stream_id;
-    }
 
-  len = 0;
-  for (i = 0; i < vecs_used; i++)
-    len += vecs[i].iov_len;
+  /* Ok, now we can construct the frame */
+  ctx->created_frame = TRUE;
+  {
+    unsigned char frame[FRAME_PREFIX_SIZE];
 
-  frame[0] = (len >> 16) & 0xFF;
-  frame[1] = (len >> 8) & 0xFF;
-  frame[2] = len & 0xFF;
-  frame[3] = ctx->frametype;
-  frame[4] = ctx->flags;
-  frame[5] = ((apr_uint32_t)ctx->stream_id >> 24) & 0x7F;
-  frame[6] = ((apr_uint32_t)ctx->stream_id >> 16) & 0xFF;
-  frame[7] = ((apr_uint32_t)ctx->stream_id >> 8) & 0xFF;
-  frame[8] = ctx->stream_id & 0xFF;
+    /* Allocate the streamid if there isn't one.
+       Once the streamid hits the wire it automatically closes all
+       unused identifiers < this value.
+     */
+    if (ctx->stream_id < 0 && ctx->stream_id_alloc)
+      {
+        ctx->stream_id_alloc(ctx->stream_id_baton, ctx->p_stream_id);
+        ctx->stream_id = *ctx->p_stream_id;
+      }
 
-  serf_bucket_aggregate_append(ctx->chunk,
+    frame[0] = (payload_remaining >> 16) & 0xFF;
+    frame[1] = (payload_remaining >> 8) & 0xFF;
+    frame[2] = payload_remaining & 0xFF;
+    frame[3] = ctx->frametype;
+    frame[4] = ctx->flags;
+    frame[5] = ((apr_uint32_t)ctx->stream_id >> 24) & 0x7F;
+    frame[6] = ((apr_uint32_t)ctx->stream_id >> 16) & 0xFF;
+    frame[7] = ((apr_uint32_t)ctx->stream_id >> 8) & 0xFF;
+    frame[8] = ctx->stream_id & 0xFF;
+
+    /* Put the frame before the data */
+    serf_bucket_aggregate_prepend(ctx->chunk,
               serf_bucket_simple_copy_create((const char *)&frame,
                                              FRAME_PREFIX_SIZE,
                                              ctx->alloc));
-  if (vecs_used > 0)
-    serf_bucket_aggregate_append_iovec(ctx->chunk, vecs, vecs_used);
 
+    /* And set the amount of data that we verify will be read */
+    ctx->bytes_remaining = (apr_size_t)payload_remaining + FRAME_PREFIX_SIZE;
+  }
   return APR_SUCCESS;
 }
 
@@ -775,8 +863,24 @@ serf_http2_frame_read(serf_bucket_t *bucket,
 
   status = serf_bucket_read(ctx->chunk, requested, data, len);
 
+  if (!SERF_BUCKET_READ_ERROR(status))
+    {
+      if (*len > ctx->bytes_remaining)
+        {
+          /* Frame payload resized after the header was written */
+          return SERF_ERROR_HTTP2_FRAME_SIZE_ERROR;
+        }
+      ctx->bytes_remaining -= *len;
+    }
+
   if (APR_STATUS_IS_EOF(status))
-    return ctx->stream_status;
+    {
+      if (ctx->bytes_remaining > 0)
+        {
+          /* Frame payload resized after the header was written */
+          return SERF_ERROR_HTTP2_FRAME_SIZE_ERROR;
+        }
+    }
 
   return status;
 }
@@ -798,8 +902,30 @@ serf_http2_frame_read_iovec(serf_bucket_t *bucket,
   status = serf_bucket_read_iovec(ctx->chunk, requested, vecs_size, vecs,
                                   vecs_used);
 
+  if (!SERF_BUCKET_READ_ERROR(status))
+    {
+      apr_size_t len = 0;
+      int i;
+
+      for (i = 0; i < *vecs_used; i++)
+        len += vecs[i].iov_len;
+
+      if (len > ctx->bytes_remaining)
+        {
+          /* Frame resized after the header was written */
+          return SERF_ERROR_HTTP2_FRAME_SIZE_ERROR;
+        }
+      ctx->bytes_remaining -= len;
+    }
+
   if (APR_STATUS_IS_EOF(status))
-    return ctx->stream_status;
+    {
+      if (ctx->bytes_remaining > 0)
+        {
+          /* Frame payload resized after the header was written */
+          return SERF_ERROR_HTTP2_FRAME_SIZE_ERROR;
+        }
+    }
 
   return status;
 }
@@ -814,14 +940,12 @@ serf_http2_frame_peek(serf_bucket_t *bucket,
 
   status = http2_prepare_frame(bucket);
   if (status)
-    return status;
+    {
+      *len = 0;
+      return APR_SUCCESS;
+    }
 
-  status = serf_bucket_peek(ctx->chunk, data, len);
-
-  if (APR_STATUS_IS_EOF(status))
-    return ctx->stream_status;
-
-  return status;
+  return serf_bucket_peek(ctx->chunk, data, len);
 }
 
 static void

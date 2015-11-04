@@ -2483,7 +2483,7 @@ static void test_http2_frame_bucket_basic(CuTest *tc)
   body_in = SERF_BUCKET_SIMPLE_STRING("This is no config!", alloc);
   frame_in = serf__bucket_http2_frame_create(body_in, 99, 7, &exp_streamid,
                                              NULL, NULL,
-                                             16384, NULL, NULL, alloc);
+                                             16384, alloc);
   frame_out = serf__bucket_http2_unframe_create(frame_in, 16384, alloc);
 
   read_and_check_bucket(tc, frame_out, "This is no config!");
@@ -2532,6 +2532,7 @@ CuSuite *test_buckets(void)
     SUITE_ADD_TEST(suite, test_response_bucket_peek_at_headers);
     SUITE_ADD_TEST(suite, test_response_bucket_iis_status_code);
     SUITE_ADD_TEST(suite, test_response_bucket_no_reason);
+    SUITE_ADD_TEST(suite, test_response_continue);
     SUITE_ADD_TEST(suite, test_bucket_header_set);
     SUITE_ADD_TEST(suite, test_bucket_header_do);
     SUITE_ADD_TEST(suite, test_iovec_buckets);

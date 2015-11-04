@@ -139,7 +139,7 @@ serf_http2__stream_setup_next_request(serf_http2_stream_t *stream,
                                            serf_http2__allocate_stream_id,
                                            stream,
                                            HTTP2_DEFAULT_MAX_FRAMESIZE,
-                                           NULL, NULL, request->allocator);
+                                           request->allocator);
 
   serf_http2__enqueue_frame(stream->h2, hpack, TRUE);
 
