@@ -30,7 +30,7 @@ typedef struct mmap_context_t {
     apr_mmap_t *mmap;
     void *current;
     apr_off_t offset;
-    apr_off_t remaining;
+    apr_size_t remaining;
 } mmap_context_t;
 
 
@@ -50,10 +50,11 @@ serf_bucket_t *serf_bucket_mmap_create(
 }
 
 static apr_status_t serf_mmap_read(serf_bucket_t *bucket,
-                                     apr_size_t requested,
-                                     const char **data, apr_size_t *len)
+                                   apr_size_t requested,
+                                   const char **data, apr_size_t *len)
 {
     mmap_context_t *ctx = bucket->data;
+    char *rd;
 
     if (requested == SERF_READ_ALL_AVAIL || requested > ctx->remaining) {
         *len = ctx->remaining;
@@ -63,7 +64,8 @@ static apr_status_t serf_mmap_read(serf_bucket_t *bucket,
     }
 
     /* ### Would it be faster to call this once and do the offset ourselves? */
-    apr_mmap_offset((void**)data, ctx->mmap, ctx->offset);
+    apr_mmap_offset(&rd, ctx->mmap, ctx->offset);
+    *data = rd;
 
     /* For the next read... */
     ctx->offset += *len;
@@ -76,24 +78,17 @@ static apr_status_t serf_mmap_read(serf_bucket_t *bucket,
 }
 
 static apr_status_t serf_mmap_readline(serf_bucket_t *bucket,
-                                         int acceptable, int *found,
-                                         const char **data, apr_size_t *len)
+                                       int acceptable, int *found,
+                                       const char **data, apr_size_t *len)
 {
     mmap_context_t *ctx = bucket->data;
-    const char *end;
+    char *end;
 
     /* ### Would it be faster to call this once and do the offset ourselves? */
-    apr_mmap_offset((void**)data, ctx->mmap, ctx->offset);
-    end = *data;
+    apr_mmap_offset(&end, ctx->mmap, ctx->offset);
+    *data = end;
 
-    /* XXX An overflow is generated if we pass &ctx->remaining to readline.
-     * Not real clear why.
-     */
-    *len = ctx->remaining;
-
-    serf_util_readline(&end, len, acceptable, found);
-
-    *len = end - *data;
+    serf_util_readline(&end, &ctx->remaining, acceptable, found);
 
     ctx->offset += *len;
     ctx->remaining -= *len;
@@ -109,9 +104,11 @@ static apr_status_t serf_mmap_peek(serf_bucket_t *bucket,
                                      apr_size_t *len)
 {
     mmap_context_t *ctx = bucket->data;
+    char *rd;
 
     /* return whatever we have left */
-    apr_mmap_offset((void**)data, ctx->mmap, ctx->offset);
+    apr_mmap_offset(&rd, ctx->mmap, ctx->offset);
+    *data = rd;
     *len = ctx->remaining;
 
     /* we returned everything this bucket will ever hold */
