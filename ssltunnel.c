@@ -189,9 +189,8 @@ apr_status_t serf__ssltunnel_connect(serf_connection_t *conn)
     ctx->uri = apr_psprintf(ctx->pool, "%s:%d", conn->host_info.hostname,
                             conn->host_info.port);
 
-    conn->ssltunnel_ostream = serf__bucket_stream_create(conn->allocator,
-                                                         detect_eof,
-                                                         conn);
+    conn->ssltunnel_ostream = serf_bucket_aggregate_create(conn->allocator);
+    serf_bucket_aggregate_hold_open(conn->ssltunnel_ostream, detect_eof, conn);
 
     serf__ssltunnel_request_create(conn,
                                    setup_request,
