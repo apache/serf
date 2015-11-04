@@ -376,6 +376,37 @@ static const serf_hpack_entry_t hpack_static_table[] =
 static const apr_uint64_t hpack_static_table_count =
       (sizeof(hpack_static_table) / sizeof(hpack_static_table[0]));
 
+static apr_status_t
+cleanup_hpack_table(void *data)
+{
+#ifdef _DEBUG
+  serf_hpack_table_t *tbl = data;
+  serf_hpack_entry_t *hi, *next;
+
+  /* This is not really necessary, as we create our own allocator,
+     which lives in the same pool. But it helps tracking down
+     memory leaks in different locations */
+  for (hi = tbl->lr_first; hi; hi = next)
+    {
+      next = hi->next;
+
+      hpack_free_entry(hi, tbl->alloc);
+    }
+  tbl->lr_first = tbl->lr_start = tbl->lr_last = NULL;
+  tbl->lr_size = 0;
+
+  for (hi = tbl->rl_first; hi; hi = next)
+    {
+      next = hi->next;
+
+      hpack_free_entry(hi, tbl->alloc);
+    }
+  tbl->rl_first = tbl->rl_start = tbl->rl_last = NULL;
+  tbl->rl_size = 0;
+#endif
+  return APR_SUCCESS;
+}
+
 
 serf_hpack_table_t *
 serf__hpack_table_create(int for_http2,
@@ -386,6 +417,11 @@ serf__hpack_table_create(int for_http2,
 
   tbl->pool = result_pool;
   tbl->alloc = serf_bucket_allocator_create(result_pool, NULL, NULL);
+
+  /* We register this this after creating the allocator, or we would touch
+     memory that is already freed.*/
+  apr_pool_cleanup_register(result_pool, tbl, cleanup_hpack_table,
+                            apr_pool_cleanup_null);
 
   tbl->lr_sys_table_size = tbl->lr_max_table_size = default_max_table_size;
   tbl->rl_sys_table_size = tbl->rl_max_table_size = default_max_table_size;
