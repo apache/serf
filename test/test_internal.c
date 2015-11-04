@@ -410,10 +410,6 @@ static void test_runtime_versions(CuTest *tc)
   if (version_of_apr.minor == APR_MINOR_VERSION)
     CuAssertTrue(tc, version_of_apr.patch >= APR_PATCH_VERSION);
 
-  printf("APR: %d.%d.%d vs %d.%d.%d\n",
-         version_of_apr.major, version_of_apr.minor, version_of_apr.patch,
-         APR_MAJOR_VERSION, APR_MINOR_VERSION, APR_PATCH_VERSION);
-
 #if APR_MAJOR_VERSION < 2
   apu_version(&version_of_aprutil);
 
@@ -424,11 +420,6 @@ static void test_runtime_versions(CuTest *tc)
     CuAssertTrue(tc, version_of_aprutil.patch >= APU_PATCH_VERSION);
 
   CuAssertIntEquals(tc, APR_MAJOR_VERSION, APU_MAJOR_VERSION);
-
-  printf("APU: %d.%d.%d vs %d.%d.%d\n",
-         version_of_aprutil.major, version_of_aprutil.minor, version_of_aprutil.patch,
-         APU_MAJOR_VERSION, APU_MINOR_VERSION, APU_PATCH_VERSION);
-
 #endif
 }
 
