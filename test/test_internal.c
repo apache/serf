@@ -323,8 +323,7 @@ static void test_config_store_remove_objects(CuTest *tc)
 static void test_header_buckets_remove(CuTest *tc)
 {
     test_baton_t *tb = tc->testBaton;
-    serf_bucket_alloc_t *alloc = serf_bucket_allocator_create(tb->pool, NULL,
-                                                              NULL);
+    serf_bucket_alloc_t *alloc = test__create_bucket_allocator(tc, tb->pool);
     const char *cur;
 
     serf_bucket_t *hdrs = serf_bucket_headers_create(alloc);
@@ -393,6 +392,7 @@ static void test_header_buckets_remove(CuTest *tc)
     cur = "Content-Type: text/plain" CRLF
     "Content-Length: 100" CRLF CRLF;
     read_and_check_bucket(tc, hdrs, cur);
+    serf_bucket_destroy(hdrs);
 }
 
 static void test_runtime_versions(CuTest *tc)
