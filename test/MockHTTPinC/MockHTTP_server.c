@@ -1226,7 +1226,7 @@ static mhResponse_t *cloneResponse(apr_pool_t *pool, mhResponse_t *resp)
 {
     mhResponse_t *clone;
     clone = apr_pmemdup(pool, resp, sizeof(mhResponse_t));
-    clone->hdrs = apr_table_copy(pool, resp->hdrs);
+    clone->hdrs = apr_table_clone(pool, resp->hdrs);
     if (resp->chunks)
         clone->chunks = apr_array_copy(pool, resp->chunks);
     if (resp->body)
