@@ -134,6 +134,8 @@ void serf_bucket_aggregate_prepend(
     new_list->bucket = prepend_bucket;
     new_list->next = ctx->list;
 
+    if (ctx->list == NULL)
+        ctx->last = new_list;
     ctx->list = new_list;
 
     /* Share our config with this new bucket */
@@ -270,6 +272,8 @@ static apr_status_t read_aggregate(serf_bucket_t *bucket,
 
             /* If we have no more in our list, return EOF. */
             if (!ctx->list) {
+                ctx->last = NULL;
+
                 if (ctx->hold_open) {
                     status = ctx->hold_open(ctx->hold_open_baton, bucket);
                     if (status || !ctx->list)
@@ -386,6 +390,8 @@ static apr_status_t serf_aggregate_readline(serf_bucket_t *bucket,
 
             /* If we have no more in our list, return EOF. */
             if (!ctx->list) {
+                ctx->last = NULL;
+
                 if (ctx->hold_open) {
                     return ctx->hold_open(ctx->hold_open_baton, bucket);
                 }
