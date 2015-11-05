@@ -1856,7 +1856,7 @@ mhSetServerMaxRequestsPerConn(mhServCtx_t *ctx, unsigned int maxRequests)
     return ssb;
 }
 
-unsigned int mhServerByIDPortNr(const MockHTTP *mh, const char *serverID)
+apr_port_t mhServerByIDPortNr(const MockHTTP *mh, const char *serverID)
 {
     mhServCtx_t *ctx = mhFindServerByID(mh, serverID);
 
@@ -1868,12 +1868,12 @@ unsigned int mhServerByIDPortNr(const MockHTTP *mh, const char *serverID)
     return 0;
 }
 
-unsigned int mhServerPortNr(const MockHTTP *mh)
+apr_port_t mhServerPortNr(const MockHTTP *mh)
 {
     return mhServerByIDPortNr(mh, DEFAULT_SERVER_ID);
 }
 
-unsigned int mhProxyPortNr(const MockHTTP *mh)
+apr_port_t mhProxyPortNr(const MockHTTP *mh)
 {
     return mhServerByIDPortNr(mh, DEFAULT_PROXY_ID);
 }

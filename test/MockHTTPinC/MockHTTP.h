@@ -572,17 +572,17 @@ mhError_t mhRunServerLoop(MockHTTP *mh);
 /**
  * Get the actual port number on which the server is listening.
  */
-unsigned int mhServerPortNr(const MockHTTP *mh);
+apr_port_t mhServerPortNr(const MockHTTP *mh);
 
 /**
  * Get the actual port number on which the proxy is listening.
  */
-unsigned int mhProxyPortNr(const MockHTTP *mh);
+apr_port_t mhProxyPortNr(const MockHTTP *mh);
 
 /**
  * Get the actual port number on which server with id serverID is listening.
  */
-unsigned int mhServerByIDPortNr(const MockHTTP *mh, const char *serverID);
+apr_port_t mhServerByIDPortNr(const MockHTTP *mh, const char *serverID);
 
 
 /******************************************************************************
