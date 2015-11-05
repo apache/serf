@@ -265,10 +265,20 @@ static apr_status_t read_aggregate(serf_bucket_t *bucket,
              * we are asked to perform a read operation - thus ensuring the
              * proper read lifetime.
              */
-            next_list = ctx->list->next;
-            ctx->list->next = ctx->done;
-            ctx->done = ctx->list;
-            ctx->list = next_list;
+            if (cur_vecs_used > 0) {
+                next_list = ctx->list->next;
+                ctx->list->next = ctx->done;
+                ctx->done = ctx->list;
+                ctx->list = next_list;
+            }
+            else {
+                /* This bucket didn't add a single byte.
+                   We can destroy it directly */
+                next_list = ctx->list;
+                ctx->list = next_list->next;
+                serf_bucket_destroy(next_list->bucket);
+                serf_bucket_mem_free(bucket->allocator, next_list);
+            }
 
             /* If we have no more in our list, return EOF. */
             if (!ctx->list) {
@@ -439,8 +449,29 @@ static apr_status_t serf_aggregate_peek(serf_bucket_t *bucket,
 
     status = serf_bucket_peek(head, data, len);
 
+    /* Is the current head *at* eof? */
+    while (APR_STATUS_IS_EOF(status) && !*len) {
+        bucket_list_t *item = ctx->list;
+
+        if (item->next)
+            ctx->list = item->next;
+        else
+            ctx->list = ctx->last = NULL;
+
+        /* We don't have outstanding data. We are free to release now */
+        serf_bucket_destroy(item->bucket);
+        serf_bucket_mem_free(bucket->allocator, item);
+
+        if (ctx->list) {
+            head = ctx->list->bucket;
+            status = serf_bucket_peek(head, data, len);
+        }
+        else
+            break; /* Check hold open below */
+    }
+
     if (APR_STATUS_IS_EOF(status)) {
-        if (ctx->list->next) {
+        if (ctx->list && ctx->list->next) {
             status = APR_SUCCESS;
         } else {
             if (ctx->hold_open) {
