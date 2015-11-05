@@ -75,6 +75,15 @@ static apr_status_t serf_mock_sock_peek(serf_bucket_t *bucket,
     return status;
 }
 
+static void serf_mock_sock_destroy_and_data(serf_bucket_t *bucket)
+{
+    mock_sock_context_t *ctx = bucket->data;
+
+    serf_bucket_destroy(ctx->stream);
+
+    serf_default_destroy_and_data(bucket);
+}
+
 static apr_status_t serf_mock_sock_set_config(serf_bucket_t *bucket,
                                               serf_config_t *config)
 {
@@ -93,7 +102,7 @@ const serf_bucket_type_t serf_bucket_type_mock_socket = {
     serf_default_read_for_sendfile,
     serf_buckets_are_v2,
     serf_mock_sock_peek,
-    serf_default_destroy_and_data,
+    serf_mock_sock_destroy_and_data,
     serf_default_read_bucket,
     serf_default_get_remaining,
     serf_mock_sock_set_config,
