@@ -40,10 +40,14 @@ static apr_status_t clean_resp(void *data)
        make sure to set their fields to NULL so connection closure does
        not attempt to free them again.  */
     if (request->resp_bkt) {
+        if (request->respool)
+            serf_debug__closed_conn(request->resp_bkt->allocator);
         serf_bucket_destroy(request->resp_bkt);
         request->resp_bkt = NULL;
     }
     if (request->req_bkt) {
+        if (request->respool)
+            serf_debug__closed_conn(request->req_bkt->allocator);
         if (!request->writing_started)
             serf_bucket_destroy(request->req_bkt);
         request->req_bkt = NULL;
@@ -77,26 +81,13 @@ apr_status_t serf__destroy_request(serf_request_t *request)
 {
     serf_connection_t *conn = request->conn;
 
-    /* The request and response buckets are no longer needed,
-       nor is the request's pool.  */
-    if (request->resp_bkt) {
-        serf_debug__closed_conn(request->resp_bkt->allocator);
-        serf_bucket_destroy(request->resp_bkt);
-        request->resp_bkt = NULL;
-    }
-    if (request->req_bkt) {
-        serf_debug__closed_conn(request->req_bkt->allocator);
-
-        if (!request->writing_started)
-            serf_bucket_destroy(request->req_bkt);
-        request->req_bkt = NULL;
-    }
-
     if (request->respool) {
-        serf_debug__bucket_alloc_check(request->allocator);
+        apr_pool_t *pool = request->respool;
 
-        /* ### unregister the pool cleanup for self?  */
-        apr_pool_destroy(request->respool);
+        apr_pool_cleanup_run(pool, request, clean_resp);
+        apr_pool_destroy(pool);
+
+        serf_debug__bucket_alloc_check(request->allocator);
     }
 
     serf_bucket_mem_free(conn->allocator, request);
