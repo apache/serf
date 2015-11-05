@@ -687,6 +687,22 @@ static apr_status_t append_magic(void *baton,
   return APR_EOF;
 }
 
+static apr_status_t prepend_magic(void *baton,
+                                  serf_bucket_t *bucket)
+{
+  serf_bucket_t *bkt;
+  int *append = baton;
+
+  if (*append)
+    {
+      (*append)--;
+      bkt = SERF_BUCKET_SIMPLE_STRING("magic", bucket->allocator);
+      serf_bucket_aggregate_prepend(bucket, bkt);
+      return APR_SUCCESS;
+    }
+
+  return APR_EOF;
+}
 
 static void test_aggregate_buckets(CuTest *tc)
 {
@@ -818,6 +834,19 @@ static void test_aggregate_buckets(CuTest *tc)
     CuAssertIntEquals(tc, 5, tgt_vecs[1].iov_len);
     CuAssertIntEquals(tc, 5, tgt_vecs[2].iov_len);
     CuAssertIntEquals(tc, 5, tgt_vecs[3].iov_len);
+
+    serf_bucket_destroy(aggbkt);
+
+    /* Test 7: test prepend to empty aggregate bucket. */
+    aggbkt = serf_bucket_aggregate_create(alloc);
+
+    bkt = SERF_BUCKET_SIMPLE_STRING("prepend", alloc);
+    serf_bucket_aggregate_prepend(aggbkt, bkt);
+
+    bkt = SERF_BUCKET_SIMPLE_STRING("append", alloc);
+    serf_bucket_aggregate_append(aggbkt, bkt);
+
+    read_and_check_bucket(tc, aggbkt, "prepend" "append");
 
     serf_bucket_destroy(aggbkt);
 }
