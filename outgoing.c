@@ -896,6 +896,19 @@ apr_status_t serf__connection_flush(serf_connection_t *conn,
     return status ? status : read_status;
 }
 
+/* Implements serf_bucket_aggregate_eof_t to mark that the request that is
+   already DONE writing has actually FINISHED writing. */
+static apr_status_t request_writing_finished(void *baton,
+                                             serf_bucket_t *aggregate_bucket)
+{
+    serf_request_t *request = baton;
+
+    if (request->writing == SERF_WRITING_DONE)
+    request->writing = SERF_WRITING_FINISHED;
+
+    return APR_EOF;
+}
+
 /* write data out to the connection */
 static apr_status_t write_to_connection(serf_connection_t *conn)
 {
@@ -992,6 +1005,7 @@ static apr_status_t write_to_connection(serf_connection_t *conn)
             return status;
 
         if (request && conn->hit_eof && conn->vec_len == 0) {
+            serf_bucket_t *trk_bkt;
             /* If we hit the end of the request bucket and all of its data has
              * been written, then clear it out to signify that we're done
              * sending the request. On the next iteration through this loop:
@@ -1001,6 +1015,15 @@ static apr_status_t write_to_connection(serf_connection_t *conn)
              * ("pipelining").
              */
             request->writing = SERF_WRITING_DONE;
+
+            /* We don't know when the request writing is finished, but we know
+               how to track that... Let's introduce a callback that is called
+               when we write again */
+            /* ### More efficient to use other bucket type? */
+            trk_bkt = serf_bucket_aggregate_create(conn->allocator);
+            serf_bucket_aggregate_hold_open(trk_bkt, request_writing_finished,
+                                            request);
+            serf_bucket_aggregate_prepend(ostreamt, trk_bkt);
 
             /* Move the request to the written queue */
             serf__link_requests(&conn->written_reqs, &conn->written_reqs_tail,
