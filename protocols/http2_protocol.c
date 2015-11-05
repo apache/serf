@@ -147,6 +147,13 @@ struct serf_http2_protocol_t
   apr_int32_t continuation_streamid;
 };
 
+/* Forward definition */
+static apr_status_t
+http2_bucket_processor(void *baton,
+                       serf_http2_protocol_t *h2,
+                       serf_bucket_t *frame_bucket);
+
+
 static apr_status_t
 http2_protocol_cleanup(void *state)
 {
@@ -162,6 +169,31 @@ http2_protocol_cleanup(void *state)
     }
 
   h2->first = h2->last = NULL;
+
+  if (h2->processor != NULL)
+    {
+      h2->read_frame = NULL;
+
+      if (h2->processor == http2_bucket_processor)
+        {
+          serf_bucket_t *payload = h2->processor_baton;
+
+          if (payload)
+            serf_bucket_destroy(payload);
+
+          h2->processor = NULL;
+          h2->processor_baton = NULL;
+          
+        }
+      /* Else: The processor (probably a frame)
+               needs to handle this */
+    }
+  else if (h2->read_frame)
+    {
+      serf_bucket_destroy(h2->read_frame);
+      h2->read_frame = NULL;
+    }
+  h2->in_frame = FALSE;
 
   conn->protocol_baton = NULL;
   return APR_SUCCESS;
