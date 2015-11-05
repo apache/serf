@@ -833,6 +833,20 @@ static void test_aggregate_buckets(CuTest *tc)
     read_and_check_bucket(tc, aggbkt, "prepend" "append");
 
     serf_bucket_destroy(aggbkt);
+
+    /* Test 8: test empty bucket handling since we have optimized
+               codepath for this case. */
+    aggbkt = serf_bucket_aggregate_create(alloc);
+
+    bkt = SERF_BUCKET_SIMPLE_STRING("", alloc);
+    serf_bucket_aggregate_append(aggbkt, bkt);
+
+    bkt = SERF_BUCKET_SIMPLE_STRING("body", alloc);
+    serf_bucket_aggregate_append(aggbkt, bkt);
+
+    read_and_check_bucket(tc, aggbkt, "" "body");
+
+    serf_bucket_destroy(aggbkt);
 }
 
 static void test_aggregate_bucket_readline(CuTest *tc)
