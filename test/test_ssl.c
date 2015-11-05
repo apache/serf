@@ -244,6 +244,8 @@ static const char *extract_cert_from_pem(const char *pemdata,
         }
     }
 
+    serf_bucket_destroy(pembkt);
+
     if (state == CERT_FOUND)
         return certdata;
     else
