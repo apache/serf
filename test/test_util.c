@@ -142,12 +142,12 @@ apr_status_t use_new_connection(test_baton_t *tb,
     return status;
 }
 
-static test_baton_t *initTestCtx(apr_pool_t *pool)
+static test_baton_t *initTestCtx(CuTest *tc, apr_pool_t *pool)
 {
     test_baton_t *tb;
     tb = apr_pcalloc(pool, sizeof(*tb));
     tb->pool = pool;
-    tb->bkt_alloc = serf_bucket_allocator_create(pool, NULL, NULL);
+    tb->bkt_alloc = test__create_bucket_allocator(tc, pool);
     tb->accepted_requests = apr_array_make(pool, 10, sizeof(int));
     tb->sent_requests = apr_array_make(pool, 10, sizeof(int));
     tb->handled_requests = apr_array_make(pool, 10, sizeof(int));
@@ -621,8 +621,9 @@ static int pool_abort_func(int retcode)
     return 0;
 }
 
-void *test_setup(void *dummy)
+void *test_setup(void *test)
 {
+    CuTest* tc = test;
     apr_pool_t *test_pool;
     apr_allocator_t *allocator;
     apr_pool_create(&test_pool, NULL);
@@ -634,7 +635,7 @@ void *test_setup(void *dummy)
       apr_allocator_max_free_set(allocator, 16384 * 1024);
     /* else: APR pool debugging... leave this to apr */
 
-    return initTestCtx(test_pool);
+    return initTestCtx(tc, test_pool);
 }
 
 void *test_teardown(void *baton)
