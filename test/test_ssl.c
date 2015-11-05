@@ -271,11 +271,13 @@ static void test_ssl_cert_export(CuTest *tc)
                            APR_FPROT_OS_DEFAULT, tb->pool);
     CuAssertIntEquals(tc, APR_SUCCESS, status);
 
-    apr_file_info_get(&file_info, APR_FINFO_SIZE, fp);
-    pembuf = apr_palloc(tb->pool, file_info.size);
+    status = apr_file_info_get(&file_info, APR_FINFO_SIZE, fp);
+    CuAssertIntEquals(tc, APR_SUCCESS, status);
+    pembuf = apr_palloc(tb->pool, file_info.size + 1);
 
     status = apr_file_read_full(fp, pembuf, file_info.size, &pemlen);
     CuAssertIntEquals(tc, APR_SUCCESS, status);
+    pembuf[file_info.size] = '\0';
 
     base64derbuf = serf_ssl_cert_export(cert, tb->pool);
 
