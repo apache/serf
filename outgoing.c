@@ -198,6 +198,7 @@ apr_status_t serf__conn_update_pollset(serf_connection_t *conn)
     /* If we are not connected yet, we just want to know when we are */
     if (conn->wait_for_connect) {
         data_waiting = TRUE;
+        desc.reqevents |= APR_POLLOUT;
     }
     else {
         /* Directly look at the connection data. While this may look
@@ -209,16 +210,14 @@ apr_status_t serf__conn_update_pollset(serf_connection_t *conn)
          */
         if (conn->vec_len) {
             /* We still have vecs in the connection, which lifetime is
-               managed by buckets inside conn->ostream_head. 
+               managed by buckets inside conn->ostream_head.
 
-               Don't touch ostream as that might destroy the
-               vecs */
+               Don't touch ostream as that might destroy the vecs */
 
             data_waiting = (conn->state != SERF_CONN_CLOSING);
         }
         else {
             serf_bucket_t *ostream;
-            data_waiting = FALSE;
 
             ostream = conn->ostream_head;
 
@@ -231,19 +230,24 @@ apr_status_t serf__conn_update_pollset(serf_connection_t *conn)
 
                 status = serf_bucket_peek(ostream, &dummy_data, &len);
 
-                if (SERF_BUCKET_READ_ERROR(status))
+                if (SERF_BUCKET_READ_ERROR(status) || len > 0) {
+                    /* DATA or error waiting */
                     data_waiting = TRUE; /* Error waiting */
-                else if (len > 0)
-                    data_waiting = TRUE;
+                }
+                else if (! status || APR_STATUS_IS_EOF(status)) {
+                    data_waiting = FALSE;
+                    writing_queue_empty(conn);
+                }
+                else
+                    data_waiting = FALSE; /* EAGAIN / EOF / WAIT_CONN */
             }
-
-            if (!data_waiting)
-                writing_queue_empty(conn);
+            else
+                data_waiting = FALSE;
         }
-    }
 
-    if (data_waiting && ! conn->stop_writing) {
-        desc.reqevents |= APR_POLLOUT;
+        if (data_waiting) {
+            desc.reqevents |= APR_POLLOUT;
+        }
     }
 
     if ((conn->written_reqs || conn->unwritten_reqs) &&
@@ -255,26 +259,15 @@ apr_status_t serf__conn_update_pollset(serf_connection_t *conn)
         /* Don't write if OpenSSL told us that it needs to read data first. */
         if (! conn->stop_writing && !data_waiting) {
 
-            /* If the connection is not closing down and
-             *   has unwritten data or
-             *   there are any requests that still have buckets to write out,
-             *     then we want to write.
-             */
-            if (conn->vec_len &&
-                conn->state != SERF_CONN_CLOSING)
+            if ((conn->probable_keepalive_limit &&
+                 conn->completed_requests > conn->probable_keepalive_limit) ||
+                (conn->max_outstanding_requests &&
+                 conn->completed_requests - conn->completed_responses >=
+                 conn->max_outstanding_requests)) {
+                    /* we wouldn't try to write any way right now. */
+            }
+            else if (request_pending(NULL, conn)) {
                 desc.reqevents |= APR_POLLOUT;
-            else {
-
-                if ((conn->probable_keepalive_limit &&
-                     conn->completed_requests > conn->probable_keepalive_limit) ||
-                    (conn->max_outstanding_requests &&
-                     conn->completed_requests - conn->completed_responses >=
-                     conn->max_outstanding_requests)) {
-                        /* we wouldn't try to write any way right now. */
-                }
-                else if (request_pending(NULL, conn)) {
-                    desc.reqevents |= APR_POLLOUT;
-                }
             }
         }
     }
