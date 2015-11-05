@@ -205,8 +205,8 @@ const serf_bucket_type_t serf_bucket_type_mock = {
 static void test_basic_mock_bucket(CuTest *tc)
 {
     serf_bucket_t *mock_bkt;
-    apr_pool_t *test_pool = tc->testBaton;
-    serf_bucket_alloc_t *alloc = serf_bucket_allocator_create(test_pool, NULL,
+    test_baton_t *tb = tc->testBaton;
+    serf_bucket_alloc_t *alloc = serf_bucket_allocator_create(tb->pool, NULL,
                                                               NULL);
     /* read one line */
     {
