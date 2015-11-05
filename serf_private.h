@@ -117,6 +117,13 @@ typedef struct serf_io_baton_t {
     } u;
 } serf_io_baton_t;
 
+typedef enum serf_request_writing_t {
+    SERF_WRITING_NONE,          /* Nothing written */
+    SERF_WRITING_STARTED,       /* Data in write bucket(s) */
+    SERF_WRITING_DONE,          /* Everything written */
+    SERF_WRITING_FINISHED,      /* Safe to destroy */
+} serf_request_writing_t;
+
 /* Holds all the information corresponding to a request/response pair. */
 struct serf_request_t {
     serf_connection_t *conn;
@@ -140,7 +147,7 @@ struct serf_request_t {
 
     serf_bucket_t *resp_bkt;
 
-    int writing_started;
+    serf_request_writing_t writing;
     int priority;
     /* 1 if this is a request to setup a SSL tunnel, 0 for normal requests. */
     int ssltunnel;
@@ -377,6 +384,12 @@ struct serf_connection_t {
     serf_request_t *unwritten_reqs_tail;
     unsigned int nr_of_unwritten_reqs;
 
+    /* Requests that are done, but not destroyed yet because they may still
+       have data pending in their pools. Will be destroyed at several
+       safe points. */
+    serf_request_t *done_reqs;
+    serf_request_t *done_reqs_tail;
+
     struct iovec vec[IOV_MAX];
     int vec_len;
 
@@ -436,6 +449,10 @@ struct serf_connection_t {
     /* Configuration shared with buckets and authn plugins */
     serf_config_t *config;
 };
+
+/* Called by requests that still have outstanding requests to allow cleaning
+   up buckets that may still reference buckets of this request */
+void serf__connection_pre_cleanup(serf_connection_t *);
 
 /*** Internal bucket functions ***/
 

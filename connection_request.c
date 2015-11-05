@@ -32,34 +32,44 @@
 static apr_status_t clean_resp(void *data)
 {
     serf_request_t *request = data;
+    apr_pool_t *respool = request->respool;
+
+    request->respool = NULL;
 
     /* The request's RESPOOL is being cleared.  */
+    if (respool && request->writing >= SERF_WRITING_STARTED
+                && request->writing < SERF_WRITING_FINISHED) {
+
+        /* HOUSTON, WE HAVE A PROBLEM.
+
+           We created buckets inside the pool that is now cleaned and
+           stored them in an aggregate that still lives on.
+
+           This happens when the application decides that it doesn't
+           need the connection any more and clears the pool of the
+           connection, of which the request pool is a subpool.
+
+           Let's ask the connection to take care of things */
+        serf__connection_pre_cleanup(request->conn);
+    }
 
     /* If the response has allocated some buckets, then destroy them (since
        the bucket may hold resources other than memory in RESPOOL). Also
        make sure to set their fields to NULL so connection closure does
        not attempt to free them again.  */
     if (request->resp_bkt) {
-        if (request->respool)
+        if (respool)
             serf_debug__closed_conn(request->resp_bkt->allocator);
         serf_bucket_destroy(request->resp_bkt);
         request->resp_bkt = NULL;
     }
     if (request->req_bkt) {
-        if (request->respool)
+        if (respool)
             serf_debug__closed_conn(request->req_bkt->allocator);
-        if (!request->writing_started)
+        if (request->writing == SERF_WRITING_NONE)
             serf_bucket_destroy(request->req_bkt);
         request->req_bkt = NULL;
     }
-
-    /* ### should we worry about debug stuff, like that performed in
-       ### destroy_request()? should we worry about calling req->handler
-       ### to notify this "cancellation" due to pool clearing?  */
-
-    /* This pool just got cleared/destroyed. Don't try to destroy the pool
-       (again) when the request is canceled.  */
-    request->respool = NULL;
 
     return APR_SUCCESS;
 }
@@ -81,16 +91,30 @@ apr_status_t serf__destroy_request(serf_request_t *request)
 {
     serf_connection_t *conn = request->conn;
 
-    if (request->respool) {
-        apr_pool_t *pool = request->respool;
+    if (request->writing >= SERF_WRITING_STARTED
+        && request->writing < SERF_WRITING_FINISHED) {
 
-        apr_pool_cleanup_run(pool, request, clean_resp);
-        apr_pool_destroy(pool);
+        /* Schedule for destroy when it is safe again.
 
-        serf_debug__bucket_alloc_check(request->allocator);
+           Destroying now will destroy memory of buckets that we
+           may still need.
+        */
+        serf__link_requests(&conn->done_reqs, &conn->done_reqs_tail,
+                            request);
     }
+    else {
 
-    serf_bucket_mem_free(conn->allocator, request);
+        if (request->respool) {
+          apr_pool_t *pool = request->respool;
+
+          apr_pool_cleanup_run(pool, request, clean_resp);
+          apr_pool_destroy(pool);
+
+          serf_debug__bucket_alloc_check(request->allocator);
+        }
+
+        serf_bucket_mem_free(conn->allocator, request);
+    }
 
     return APR_SUCCESS;
 }
@@ -311,11 +335,12 @@ create_request(serf_connection_t *conn,
     request->setup = setup;
     request->setup_baton = setup_baton;
     request->handler = NULL;
+    request->acceptor = NULL;
     request->respool = NULL;
     request->req_bkt = NULL;
     request->resp_bkt = NULL;
     request->priority = priority;
-    request->writing_started = 0;
+    request->writing = SERF_WRITING_NONE;
     request->ssltunnel = ssltunnel;
     request->next = NULL;
     request->auth_baton = NULL;
@@ -364,7 +389,8 @@ priority_request_create(serf_connection_t *conn,
 
     /* TODO: what if a request is partially written? */
     /* Find a request that has data which needs to be delivered. */
-    while (iter != NULL && iter->req_bkt == NULL && iter->writing_started) {
+    while (iter != NULL && iter->req_bkt == NULL
+           && (iter->writing >= SERF_WRITING_STARTED)) {
         prev = iter;
         iter = iter->next;
     }
@@ -446,7 +472,7 @@ apr_status_t serf_request_cancel(serf_request_t *request)
 
 apr_status_t serf_request_is_written(serf_request_t *request)
 {
-    if (request->writing_started && !request->req_bkt)
+    if (request->writing >= SERF_WRITING_FINISHED)
         return APR_SUCCESS;
 
     return APR_EBUSY;
