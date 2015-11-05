@@ -1207,43 +1207,6 @@ static apr_status_t read_from_connection(serf_connection_t *conn)
             continue;
         }
 
-        /* Some systems will not generate a HUP poll event so we have to
-         * handle the ECONNRESET issue and ECONNABORT here.
-         */
-        if (APR_STATUS_IS_ECONNRESET(status) ||
-            APR_STATUS_IS_ECONNABORTED(status) ||
-            status == SERF_ERROR_REQUEST_LOST) {
-            /* If the connection had ever been good, be optimistic & try again.
-             * If it has never tried again (incl. a retry), fail.
-             */
-            if (conn->completed_responses) {
-                reset_connection(conn, 1);
-                status = APR_SUCCESS;
-            }
-            else if (status == SERF_ERROR_REQUEST_LOST) {
-                status = SERF_ERROR_ABORTED_CONNECTION;
-            }
-            goto error;
-        }
-
-        /* This connection uses HTTP pipelining and the server asked for a 
-           renegotiation (e.g. to access the requested resource a specific
-           client certificate is required).
-           Because of a known problem in OpenSSL this won't work most of the 
-           time, so as a workaround, when the server asks for a renegotiation
-           on a connection using HTTP pipelining, we reset the connection,
-           disable pipelining and reconnect to the server. */
-        if (status == SERF_ERROR_SSL_NEGOTIATE_IN_PROGRESS) {
-            serf__log(LOGLVL_WARNING, LOGCOMP_CONN, __FILE__, conn->config,
-                      "The server requested renegotiation. Disable HTTP "
-                      "pipelining and reset the connection.\n", conn);
-
-            serf__connection_set_pipelining(conn, 0);
-            reset_connection(conn, 1);
-            status = APR_SUCCESS;
-            goto error;
-        }
-
         /* If our response handler says it can't do anything more, we now
          * treat that as a success.
          */
@@ -1337,6 +1300,45 @@ static apr_status_t read_from_connection(serf_connection_t *conn)
     }
 
 error:
+    /* ### This code handles some specific errors as a retry.
+           Eventually we should move to a handling where the application
+           can tell us if this is really a good idea for specific requests */
+
+    if (status == SERF_ERROR_SSL_NEGOTIATE_IN_PROGRESS) {
+        /* This connection uses HTTP pipelining and the server asked for a
+           renegotiation (e.g. to access the requested resource a specific
+           client certificate is required).
+
+           Because of a known problem in OpenSSL this won't work most of the
+           time, so as a workaround, when the server asks for a renegotiation
+           on a connection using HTTP pipelining, we reset the connection,
+           disable pipelining and reconnect to the server. */
+        serf__log(LOGLVL_WARNING, LOGCOMP_CONN, __FILE__, conn->config,
+                  "The server requested renegotiation. Disable HTTP "
+                  "pipelining and reset the connection.\n", conn);
+
+        serf__connection_set_pipelining(conn, 0);
+        reset_connection(conn, 1);
+        status = APR_SUCCESS;
+    }
+    else if (status == SERF_ERROR_REQUEST_LOST
+             || APR_STATUS_IS_ECONNRESET(status)
+             || APR_STATUS_IS_ECONNABORTED(status)) {
+
+        /* Some systems will not generate a HUP poll event for these errors
+           so we handle the ECONNRESET issue and ECONNABORT here. */
+
+        /* If the connection was ever good, be optimistic & try again.
+           If it has never tried again (incl. a retry), fail. */
+        if (conn->completed_responses) {
+            reset_connection(conn, 1);
+            status = APR_SUCCESS;
+        }
+        else if (status == SERF_ERROR_REQUEST_LOST) {
+            status = SERF_ERROR_ABORTED_CONNECTION;
+        }
+    }
+
     apr_pool_destroy(tmppool);
     return status;
 }
