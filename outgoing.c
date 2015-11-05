@@ -64,17 +64,64 @@ static apr_status_t clean_conn(void *data)
     return APR_SUCCESS;
 }
 
-/* Check if there is data waiting to be sent over the socket. This can happen
-   in two situations:
-   - The connection queue has atleast one request with unwritten data.
-   - All requests are written and the ssl layer wrote some data while reading
-     the response. This can happen when the server triggers a renegotiation,
-     e.g. after the first and only request on that connection was received.
-   Returns 1 if data is pending on CONN, NULL if not.
-   If NEXT_REQ is not NULL, it will be filled in with the next available request
-   with unwritten data. */
+/* Called in different places when the writing queue is empty. At this
+   point it may be safe to destroy some old request instances */
+void writing_queue_empty(serf_connection_t *conn)
+{
+    serf_request_t *rq;
+
+    /* Tell all written request that they are free to destroy themselves */
+    rq = conn->written_reqs;
+    while (rq != NULL) {
+        if (rq->writing == SERF_WRITING_DONE)
+            rq->writing = SERF_WRITING_FINISHED;
+        rq = rq->next;
+    }
+
+    /* Destroy the requests that were queued up to destroy later */
+    while ((rq = conn->done_reqs)) {
+        conn->done_reqs = rq->next;
+
+        rq->writing = SERF_WRITING_FINISHED;
+        serf__destroy_request(rq);
+    }
+    conn->done_reqs = conn->done_reqs_tail = NULL;
+}
+
+/* Safely check if there is still data pending on the connection, carefull
+   to not accidentally make it invalid. */
 static int
-request_or_data_pending(serf_request_t **next_req, serf_connection_t *conn)
+data_pending(serf_connection_t *conn)
+{
+    if (conn->vec_len > 0)
+        return TRUE; /* We can't poll right now! */
+
+    if (conn->ostream_head) {
+        const char *dummy;
+        apr_size_t len;
+        apr_status_t status;
+
+        status = serf_bucket_peek(conn->ostream_head, &dummy,
+                                  &len);
+        if (!SERF_BUCKET_READ_ERROR(status)) {
+            if (len > 0) {
+                serf__log(LOGLVL_DEBUG, LOGCOMP_CONN, __FILE__, conn->config,
+                          "Extra data to be written after sending complete "
+                          "requests.\n");
+                return TRUE;
+            }
+
+            writing_queue_empty(conn);
+        }
+        else
+            return TRUE; /* Sure, we have data (an error) */
+    }
+
+    return FALSE;
+}
+
+static int
+request_pending(serf_request_t **next_req, serf_connection_t *conn)
 {
     int reqs_in_progress;
 
@@ -92,28 +139,31 @@ request_or_data_pending(serf_request_t **next_req, serf_connection_t *conn)
             *next_req = request;
 
         if (request != NULL) {
-            return 1;
+            return TRUE;
         }
     }
-
-    if (next_req)
+    else if (next_req)
         *next_req = NULL;
 
-    if (conn->ostream_head) {
-        const char *dummy;
-        apr_size_t len;
-        apr_status_t status;
+    return FALSE;
+}
 
-        status = serf_bucket_peek(conn->ostream_head, &dummy,
-                                  &len);
-        if (!SERF_BUCKET_READ_ERROR(status) && len) {
-            serf__log(LOGLVL_DEBUG, LOGCOMP_CONN, __FILE__, conn->config,
-                      "Extra data to be written after sending complete requests.\n");
-            return 1;
-        }
-    }
+/* Check if there is data waiting to be sent over the socket. This can happen
+   in two situations:
+   - The connection queue has atleast one request with unwritten data.
+   - All requests are written and the ssl layer wrote some data while reading
+     the response. This can happen when the server triggers a renegotiation,
+     e.g. after the first and only request on that connection was received.
+   Returns 1 if data is pending on CONN, NULL if not.
+   If NEXT_REQ is not NULL, it will be filled in with the next available request
+   with unwritten data. */
+static int
+request_or_data_pending(serf_request_t **next_req, serf_connection_t *conn)
+{
+    if (request_pending(next_req, conn))
+        return TRUE;
 
-    return 0;
+    return data_pending(conn);
 }
 
 /* Update the pollset for this connection. We tweak the pollset based on
@@ -126,6 +176,7 @@ apr_status_t serf__conn_update_pollset(serf_connection_t *conn)
     serf_context_t *ctx = conn->ctx;
     apr_status_t status;
     apr_pollfd_t desc = { 0 };
+    int data_waiting;
 
     if (!conn->skt) {
         return APR_SUCCESS;
@@ -146,16 +197,63 @@ apr_status_t serf__conn_update_pollset(serf_connection_t *conn)
 
     /* If we are not connected yet, we just want to know when we are */
     if (conn->wait_for_connect) {
+        data_waiting = TRUE;
+    }
+    else {
+        /* Directly look at the connection data. While this may look
+           more expensive than the cheap checks later this peek is
+           just checking a bit of ram.
+
+           But it also has the nice side effect of removing references
+           from the aggregate to requests that are done.
+         */
+        if (conn->vec_len) {
+            /* We still have vecs in the connection, which lifetime is
+               managed by buckets inside conn->ostream_head. 
+
+               Don't touch ostream as that might destroy the
+               vecs */
+
+            data_waiting = (conn->state != SERF_CONN_CLOSING);
+        }
+        else {
+            serf_bucket_t *ostream;
+            data_waiting = FALSE;
+
+            ostream = conn->ostream_head;
+
+            if (!ostream)
+              ostream = conn->ssltunnel_ostream;
+
+            if (ostream) {
+                const char *dummy_data;
+                apr_size_t len;
+
+                status = serf_bucket_peek(ostream, &dummy_data, &len);
+
+                if (SERF_BUCKET_READ_ERROR(status))
+                    data_waiting = TRUE; /* Error waiting */
+                else if (len > 0)
+                    data_waiting = TRUE;
+            }
+
+            if (!data_waiting)
+                writing_queue_empty(conn);
+        }
+    }
+
+    if (data_waiting && ! conn->stop_writing) {
         desc.reqevents |= APR_POLLOUT;
     }
-    else if ((conn->written_reqs || conn->unwritten_reqs) &&
+
+    if ((conn->written_reqs || conn->unwritten_reqs) &&
         conn->state != SERF_CONN_INIT) {
         /* If there are any outstanding events, then we want to read. */
         /* ### not true. we only want to read IF we have sent some data */
         desc.reqevents |= APR_POLLIN;
 
         /* Don't write if OpenSSL told us that it needs to read data first. */
-        if (! conn->stop_writing) {
+        if (! conn->stop_writing && !data_waiting) {
 
             /* If the connection is not closing down and
              *   has unwritten data or
@@ -174,7 +272,7 @@ apr_status_t serf__conn_update_pollset(serf_connection_t *conn)
                      conn->max_outstanding_requests)) {
                         /* we wouldn't try to write any way right now. */
                 }
-                else if (request_or_data_pending(NULL, conn)) {
+                else if (request_pending(NULL, conn)) {
                     desc.reqevents |= APR_POLLOUT;
                 }
             }
@@ -219,13 +317,22 @@ static void check_buckets_drained(serf_connection_t *conn)
 
 #endif
 
-static void destroy_ostream(serf_connection_t *conn)
+/* Destroys all outstanding write information, to allow cleanup of subpools
+   that may still have data in these buckets to continue */
+void serf__connection_pre_cleanup(serf_connection_t *conn)
 {
+    conn->vec_len = 0;
     if (conn->ostream_head != NULL) {
         serf_bucket_destroy(conn->ostream_head);
         conn->ostream_head = NULL;
         conn->ostream_tail = NULL;
     }
+    if (conn->ssltunnel_ostream != NULL) {
+        serf_bucket_destroy(conn->ssltunnel_ostream);
+        conn->ssltunnel_ostream = NULL;
+    }
+
+    writing_queue_empty(conn);
 }
 
 static apr_status_t detect_eof(void *baton, serf_bucket_t *aggregate_bucket)
@@ -264,7 +371,7 @@ static apr_status_t do_conn_setup(serf_connection_t *conn)
     if (status) {
         /* extra destroy here since it wasn't added to the head bucket yet. */
         serf_bucket_destroy(conn->ostream_tail);
-        destroy_ostream(conn);
+        serf__connection_pre_cleanup(conn);
         return status;
     }
 
@@ -578,6 +685,8 @@ static apr_status_t reset_connection(serf_connection_t *conn,
     conn->unwritten_reqs = NULL;
     conn->unwritten_reqs_tail = NULL;
 
+    serf__connection_pre_cleanup(conn);
+
     /* First, cancel all written requests for which we haven't received a 
        response yet. Inform the application that the request is cancelled, 
        so it can requeue them if needed. */
@@ -595,7 +704,7 @@ static apr_status_t reset_connection(serf_connection_t *conn,
          * Do not copy a CONNECT request to the new connection, the ssl tunnel
          * setup code will create a new CONNECT request already.
          */
-        if (requeue_requests && !old_reqs->writing_started &&
+        if (requeue_requests && (old_reqs->writing == SERF_WRITING_NONE) &&
             !old_reqs->ssltunnel) {
 
             serf_request_t *req = old_reqs;
@@ -625,8 +734,6 @@ static apr_status_t reset_connection(serf_connection_t *conn,
         serf_bucket_destroy(conn->stream);
         conn->stream = NULL;
     }
-
-    destroy_ostream(conn);
 
     /* Don't try to resume any writes */
     conn->vec_len = 0;
@@ -863,7 +970,7 @@ static apr_status_t write_to_connection(serf_connection_t *conn)
             return status;
         }
 
-        if (request && !request->writing_started) {
+        if (request && request->writing == SERF_WRITING_NONE) {
             if (request->req_bkt == NULL) {
                 read_status = serf__setup_request(request);
                 if (read_status) {
@@ -872,7 +979,7 @@ static apr_status_t write_to_connection(serf_connection_t *conn)
                 }
             }
 
-            request->writing_started = 1;
+            request->writing = SERF_WRITING_STARTED;
             serf_bucket_aggregate_append(ostreamt, request->req_bkt);
         }
 
@@ -893,7 +1000,7 @@ static apr_status_t write_to_connection(serf_connection_t *conn)
              * - we'll see if there are other requests that need to be sent 
              * ("pipelining").
              */
-            request->req_bkt = NULL;
+            request->writing = SERF_WRITING_DONE;
 
             /* Move the request to the written queue */
             serf__link_requests(&conn->written_reqs, &conn->written_reqs_tail,
@@ -1026,7 +1133,7 @@ static apr_status_t read_from_connection(serf_connection_t *conn)
          * sending the SSL 'close notify' shutdown alert), we'll reset the
          * connection and open a new one.
          */
-        if (request->req_bkt || !request->writing_started) {
+        if (request->req_bkt || request->writing == SERF_WRITING_NONE) {
             const char *data;
             apr_size_t len;
 
@@ -1205,7 +1312,7 @@ static apr_status_t read_from_connection(serf_connection_t *conn)
          * update the pollset. We don't want to read from this socket any
          * more. We are definitely done with this loop, too.
          */
-        if (request == NULL || !request->writing_started) {
+        if (request == NULL || request->writing == SERF_WRITING_NONE) {
             conn->dirty_conn = 1;
             conn->ctx->dirty_pollset = 1;
             status = APR_SUCCESS;
@@ -1365,6 +1472,14 @@ serf_connection_t *serf_connection_create(
     conn->perform_teardown = NULL;
     conn->protocol_baton = NULL;
 
+    conn->written_reqs = conn->written_reqs_tail = NULL;
+    conn->nr_of_written_reqs = 0;
+
+    conn->unwritten_reqs = conn->unwritten_reqs_tail = NULL;
+    conn->nr_of_unwritten_reqs;
+
+    conn->done_reqs = conn->done_reqs_tail = 0;
+
     /* Create a subpool for our connection. */
     apr_pool_create(&conn->skt_pool, conn->pool);
 
@@ -1459,6 +1574,11 @@ apr_status_t serf_connection_close(
         serf_connection_t *conn_seq = GET_CONN(ctx, i);
 
         if (conn_seq == conn) {
+
+            /* Clean up the write bucket first, as this marks all partially written
+               requests as fully written, allowing more efficient cleanup */
+            serf__connection_pre_cleanup(conn);
+
             /* The application asked to close the connection, no need to notify
                it for each cancelled request. */
             while (conn->written_reqs) {
@@ -1478,8 +1598,6 @@ apr_status_t serf_connection_close(
                 serf_bucket_destroy(conn->stream);
                 conn->stream = NULL;
             }
-
-            destroy_ostream(conn);
 
             if (conn->protocol_baton) {
                 conn->perform_teardown(conn);
