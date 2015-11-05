@@ -210,19 +210,26 @@ void serf__bucket_headers_remove(serf_bucket_t *bucket, const char *header)
 
     /* Find and delete all items with the same header (case insensitive) */
     while (scan) {
+        header_list_t *next_hdr = scan->next;
         if (strcasecmp(scan->header, header) == 0) {
             if (prev) {
-                prev->next = scan->next;
+                prev->next = next_hdr;
             } else {
-                ctx->list = scan->next;
+                ctx->list = next_hdr;
             }
             if (ctx->last == scan) {
                 ctx->last = NULL;
             }
+
+            if (scan->alloc_flags & ALLOC_HEADER)
+               serf_bucket_mem_free(bucket->allocator, (void *)scan->header);
+            if (scan->alloc_flags & ALLOC_VALUE)
+               serf_bucket_mem_free(bucket->allocator, (void *)scan->value);
+           serf_bucket_mem_free(bucket->allocator, scan);
         } else {
             prev = scan;
         }
-        scan = scan->next;
+        scan = next_hdr;
     }
 }
 
