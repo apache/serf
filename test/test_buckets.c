@@ -687,22 +687,6 @@ static apr_status_t append_magic(void *baton,
   return APR_EOF;
 }
 
-static apr_status_t prepend_magic(void *baton,
-                                  serf_bucket_t *bucket)
-{
-  serf_bucket_t *bkt;
-  int *append = baton;
-
-  if (*append)
-    {
-      (*append)--;
-      bkt = SERF_BUCKET_SIMPLE_STRING("magic", bucket->allocator);
-      serf_bucket_aggregate_prepend(bucket, bkt);
-      return APR_SUCCESS;
-    }
-
-  return APR_EOF;
-}
 
 static void test_aggregate_buckets(CuTest *tc)
 {
