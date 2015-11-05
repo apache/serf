@@ -46,24 +46,31 @@
 static void test_ssl_init(CuTest *tc)
 {
     test_baton_t *tb = tc->testBaton;
-    serf_bucket_t *bkt, *stream;
+    serf_bucket_t *decrypt_bkt;
+    serf_bucket_t *encrypt_bkt;
+    serf_bucket_t *in_stream;
+    serf_bucket_t *out_stream;
     serf_ssl_context_t *ssl_context;
     apr_status_t status;
 
     serf_bucket_alloc_t *alloc = test__create_bucket_allocator(tc, tb->pool);
 
-    stream = SERF_BUCKET_SIMPLE_STRING("", alloc);
+    in_stream = SERF_BUCKET_SIMPLE_STRING("", alloc);
+    out_stream = SERF_BUCKET_SIMPLE_STRING("", alloc);
 
-    bkt = serf_bucket_ssl_decrypt_create(stream, NULL,
-                                         alloc);
-    ssl_context = serf_bucket_ssl_decrypt_context_get(bkt);
+    decrypt_bkt = serf_bucket_ssl_decrypt_create(in_stream, NULL,
+                                                 alloc);
+    ssl_context = serf_bucket_ssl_decrypt_context_get(decrypt_bkt);
 
-    bkt = serf_bucket_ssl_encrypt_create(stream, ssl_context,
-                                         alloc);
+    encrypt_bkt = serf_bucket_ssl_encrypt_create(out_stream, ssl_context,
+                                                 alloc);
 
     status = serf_ssl_use_default_certificates(ssl_context);
 
     CuAssertIntEquals(tc, APR_SUCCESS, status);
+
+    serf_bucket_destroy(decrypt_bkt);
+    serf_bucket_destroy(encrypt_bkt);
 }
 
 
