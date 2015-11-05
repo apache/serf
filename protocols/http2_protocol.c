@@ -185,8 +185,10 @@ http2_protocol_cleanup(void *state)
           h2->processor_baton = NULL;
           
         }
-      /* Else: The processor (probably a frame)
-               needs to handle this */
+      /* Else: The processor (probably a stream)
+               needs to handle this. It usually does that
+               by adding frames to an aggregate to allow
+               reading multiple frames as a stream. */
     }
   else if (h2->read_frame)
     {
