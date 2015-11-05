@@ -50,8 +50,7 @@ static void test_ssl_init(CuTest *tc)
     serf_ssl_context_t *ssl_context;
     apr_status_t status;
 
-    serf_bucket_alloc_t *alloc = serf_bucket_allocator_create(tb->pool, NULL,
-                                                              NULL);
+    serf_bucket_alloc_t *alloc = test__create_bucket_allocator(tc, tb->pool);
 
     stream = SERF_BUCKET_SIMPLE_STRING("", alloc);
 
