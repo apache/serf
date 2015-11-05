@@ -206,8 +206,7 @@ static void test_basic_mock_bucket(CuTest *tc)
 {
     serf_bucket_t *mock_bkt;
     test_baton_t *tb = tc->testBaton;
-    serf_bucket_alloc_t *alloc = serf_bucket_allocator_create(tb->pool, NULL,
-                                                              NULL);
+    serf_bucket_alloc_t *alloc = test__create_bucket_allocator(tc, tb->pool);
     /* read one line */
     {
         mockbkt_action actions[]= {
@@ -216,10 +215,12 @@ static void test_basic_mock_bucket(CuTest *tc)
         mock_bkt = serf_bucket_mock_create(actions, 1, alloc);
         read_and_check_bucket(tc, mock_bkt,
                               "HTTP/1.1 200 OK" CRLF);
+        serf_bucket_destroy(mock_bkt);
 
         mock_bkt = serf_bucket_mock_create(actions, 1, alloc);
         readlines_and_check_bucket(tc, mock_bkt, SERF_NEWLINE_CRLF,
                                    "HTTP/1.1 200 OK" CRLF, 1);
+        serf_bucket_destroy(mock_bkt);
     }
     /* read one line, character per character */
     {
@@ -248,6 +249,7 @@ static void test_basic_mock_bucket(CuTest *tc)
         } while(!APR_STATUS_IS_EOF(status));
         
         CuAssert(tc, "Read less data than expected.", strlen(expected) == 0);
+        serf_bucket_destroy(mock_bkt);
     }
     /* read multiple lines */
     {
@@ -259,6 +261,7 @@ static void test_basic_mock_bucket(CuTest *tc)
         readlines_and_check_bucket(tc, mock_bkt, SERF_NEWLINE_CRLF,
                                    "HTTP/1.1 200 OK" CRLF
                                    "Content-Type: text/plain" CRLF, 2);
+        serf_bucket_destroy(mock_bkt);
     }
     /* read empty line */
     {
@@ -271,10 +274,12 @@ static void test_basic_mock_bucket(CuTest *tc)
         read_and_check_bucket(tc, mock_bkt,
                               "HTTP/1.1 200 OK" CRLF
                               "Content-Type: text/plain" CRLF);
+        serf_bucket_destroy(mock_bkt);
         mock_bkt = serf_bucket_mock_create(actions, 3, alloc);
         readlines_and_check_bucket(tc, mock_bkt, SERF_NEWLINE_CRLF,
                                    "HTTP/1.1 200 OK" CRLF
                                    "Content-Type: text/plain" CRLF, 2);
+        serf_bucket_destroy(mock_bkt);
     }
     /* read empty line */
     {
@@ -289,11 +294,13 @@ static void test_basic_mock_bucket(CuTest *tc)
         read_and_check_bucket(tc, mock_bkt,
                               "HTTP/1.1 200 OK" CRLF);
 
+        serf_bucket_destroy(mock_bkt);
         mock_bkt = serf_bucket_mock_create(actions,
                                            sizeof(actions)/sizeof(actions[0]),
                                            alloc);
         readlines_and_check_bucket(tc, mock_bkt, SERF_NEWLINE_CRLF,
                                    "HTTP/1.1 200 OK" CRLF, 1);
+        serf_bucket_destroy(mock_bkt);
     }
     /* test more_data_arrived */
     {
@@ -324,6 +331,7 @@ static void test_basic_mock_bucket(CuTest *tc)
         CuAssertIntEquals(tc, 6, len);
         CuAssert(tc, "Read data is not equal to expected.",
                  strncmp("blabla", data, len) == 0);
+        serf_bucket_destroy(mock_bkt);
     }
 }
 
