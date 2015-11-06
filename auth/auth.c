@@ -232,7 +232,8 @@ static apr_status_t dispatch_auth(int code,
         hdrs = serf_bucket_response_get_headers(response);
 
 #ifdef SERF_LOGGING_ENABLED
-        {
+        if (serf__log_enabled(LOGLVL_WARNING, LOGCOMP_AUTHN,
+                              request->conn->config)) {
             const char *auth_hdr;
 
             /* ### headers_get() doesn't tell us whether to free this result

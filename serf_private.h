@@ -630,4 +630,10 @@ void serf__log_nopref(apr_uint32_t level, apr_uint32_t comp,
 void serf__log(apr_uint32_t level, apr_uint32_t comp, const char *filename,
                serf_config_t *config, const char *fmt, ...);
 
+/* Returns non-zero if logging is enabled for provided LEVEL/COMP.
+ * This function can be useful in cases if logging information if somewhat
+ * expensive to obtain. */
+int serf__log_enabled(apr_uint32_t level, apr_uint32_t comp,
+                      serf_config_t *config);
+
 #endif
