@@ -167,6 +167,36 @@ void serf__log(apr_uint32_t level, apr_uint32_t comp, const char *prefix,
     }
 }
 
+int serf__log_enabled(apr_uint32_t level, apr_uint32_t comp, serf_config_t *config)
+{
+    log_baton_t *log_baton;
+    apr_status_t status;
+
+    if (!config) {
+        /* If we can't get the log baton then logging is disabled for provided
+           level/component combination. */
+        return FALSE;
+    }
+
+    status = serf_config_get_object(config, SERF_CONFIG_CTX_LOGBATON,
+                                    (void **)&log_baton);
+    if (!status && log_baton) {
+        int i;
+
+        for (i = 0; i < log_baton->output_list->nelts; i++) {
+            serf_log_output_t *output = APR_ARRAY_IDX(log_baton->output_list,
+                                                      i, serf_log_output_t *);
+            if ((output->level >= level) && (comp & output->comps)) {
+                /* At least one log output wants to handle this level/component
+                   combination.*/
+                return TRUE;
+            }
+        }
+    }
+
+    return FALSE;
+}
+
 /*** Output to system stream (stderr or stdout) or a file ***/
 
 static apr_status_t log_to_stream_output(serf_log_output_t *output,
@@ -285,6 +315,11 @@ apr_status_t serf_logging_add_output(serf_context_t *ctx,
                                      const serf_log_output_t *output)
 {
     return APR_SUCCESS;
+}
+
+int serf__log_enabled(apr_uint32_t level, apr_uint32_t comp, serf_config_t *config)
+{
+    return FALSE;
 }
 
 #endif
