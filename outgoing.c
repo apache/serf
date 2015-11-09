@@ -1025,10 +1025,10 @@ static apr_status_t write_to_connection(serf_connection_t *conn)
 
             /* And now add an event bucket to keep track of when the request
                has been completely written */
-            event_bucket = serf_bucket_event_create(request,
-                                                    request_writing_done,
-                                                    request_writing_finished,
-                                                    conn->allocator);
+            event_bucket = serf__bucket_event_create(request,
+                                                     request_writing_done,
+                                                     request_writing_finished,
+                                                     conn->allocator);
             serf_bucket_aggregate_append(ostreamt, event_bucket);
         }
 
