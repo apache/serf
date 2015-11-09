@@ -2108,6 +2108,33 @@ static void test_limit_buckets(CuTest *tc)
   status = read_all(limit, buffer, sizeof(buffer), &len);
   CuAssertIntEquals(tc, SERF_ERROR_TRUNCATED_HTTP_RESPONSE, status);
   serf_bucket_destroy(limit);
+
+  /* And now a really bad case of the 'different way' */
+  raw = SERF_BUCKET_SIMPLE_STRING("ABCDE", alloc);
+  limit = serf_bucket_limit_create(
+                serf_bucket_barrier_create(raw, alloc),
+                5, alloc);
+  agg = serf_bucket_aggregate_create(alloc);
+  serf_bucket_aggregate_prepend(agg, limit);
+  serf_bucket_aggregate_append(agg, raw);
+
+  {
+    struct iovec vecs[12];
+    int vecs_read;
+
+    /* This used to trigger a problem via the aggregate bucket,
+       as reading the last part destroyed the data pointed to by
+       iovecs of the first */
+
+    CuAssertIntEquals(tc, APR_EOF,
+                      serf_bucket_read_iovec(agg, SERF_READ_ALL_AVAIL,
+                                             12, vecs, &vecs_read));
+
+    serf__copy_iovec(buffer, &len, vecs, vecs_read);
+
+    CuAssertIntEquals(tc, 5, len);
+  }
+  serf_bucket_destroy(agg);
 }
 
 /* Basic test for unframe buckets. */
