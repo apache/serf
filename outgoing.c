@@ -823,13 +823,39 @@ apr_status_t serf__connection_flush(serf_connection_t *conn,
 {
     apr_status_t status = APR_SUCCESS;
     apr_status_t read_status = APR_SUCCESS;
+    serf_bucket_t *ostreamh = NULL;
 
-    if (pump) {
-        serf_bucket_t *ostreamt, *ostreamh;
+    conn->hit_eof = FALSE;
 
-        status = prepare_conn_streams(conn, &ostreamt, &ostreamh);
-        if (status) {
+    while (status == APR_SUCCESS) {
+
+        /* First try to write out what is already stored in the
+           connection vecs. */
+        while (conn->vec_len && !status) {
+            status = socket_writev(conn);
+
+            /* If the write would have blocked, then we're done.
+             * Don't try to write anything else to the socket.
+             */
+            if (APR_STATUS_IS_EPIPE(status)
+                || APR_STATUS_IS_ECONNRESET(status)
+                || APR_STATUS_IS_ECONNABORTED(status))
+              return no_more_writes(conn);
+        }
+
+        if (status || !pump)
             return status;
+        else if (read_status || conn->vec_len || conn->hit_eof)
+            return read_status;
+
+        /* Ok, with the vecs written, we can now refill the per connection
+           output vecs */
+        if (!ostreamh) {
+            serf_bucket_t *ostreamt;
+
+            status = prepare_conn_streams(conn, &ostreamt, &ostreamh);
+            if (status)
+                return status;
         }
 
         /* ### optimize at some point by using read_for_sendfile */
@@ -873,21 +899,9 @@ apr_status_t serf__connection_flush(serf_connection_t *conn,
         }
     }
 
-    while (conn->vec_len && !status) {
-        status = socket_writev(conn);
-
-        /* If the write would have blocked, then we're done. Don't try
-         * to write anything else to the socket.
-         */
-        if (APR_STATUS_IS_EPIPE(status)
-            || APR_STATUS_IS_ECONNRESET(status)
-            || APR_STATUS_IS_ECONNABORTED(status))
-            return no_more_writes(conn);
-
-    }
-
-    return status ? status : read_status;
+    return status;
 }
+
 
 /* Implements serf_bucket_aggregate_eof_t to mark that the request that is
    already DONE writing has actually FINISHED writing. */
