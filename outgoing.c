@@ -34,6 +34,9 @@ static apr_status_t read_from_connection(serf_connection_t *conn);
 static apr_status_t write_to_connection(serf_connection_t *conn);
 static apr_status_t hangup_connection(serf_connection_t *conn);
 
+#define REQS_IN_PROGRESS(conn) \
+                ((conn)->completed_requests - (conn)->completed_responses)
+
 /* cleanup for sockets */
 static apr_status_t clean_skt(void *data)
 {
@@ -123,13 +126,9 @@ data_pending(serf_connection_t *conn)
 static int
 request_pending(serf_request_t **next_req, serf_connection_t *conn)
 {
-    int reqs_in_progress;
-
-    reqs_in_progress = conn->completed_requests - conn->completed_responses;
-
     /* Prepare the next request */
     if (conn->framing_type != SERF_CONNECTION_FRAMING_TYPE_NONE
-        && (conn->pipelining || (!conn->pipelining && reqs_in_progress == 0)))
+        && (conn->pipelining || (!conn->pipelining && REQS_IN_PROGRESS(conn) == 0)))
     {
         /* Skip all requests that have been written completely but we're still
          waiting for a response. */
@@ -259,12 +258,13 @@ apr_status_t serf__conn_update_pollset(serf_connection_t *conn)
         /* Don't write if OpenSSL told us that it needs to read data first. */
         if (! conn->stop_writing && !data_waiting) {
 
+            /* This check is duplicated in write_to_connection() */
             if ((conn->probable_keepalive_limit &&
                  conn->completed_requests > conn->probable_keepalive_limit) ||
                 (conn->max_outstanding_requests &&
-                 conn->completed_requests - conn->completed_responses >=
-                 conn->max_outstanding_requests)) {
-                    /* we wouldn't try to write any way right now. */
+                 REQS_IN_PROGRESS(conn) >= conn->max_outstanding_requests)) {
+
+                /* we wouldn't try to write any way right now. */
             }
             else if (request_pending(NULL, conn)) {
                 desc.reqevents |= APR_POLLOUT;
@@ -919,16 +919,6 @@ static apr_status_t request_writing_finished(void *baton,
 /* write data out to the connection */
 static apr_status_t write_to_connection(serf_connection_t *conn)
 {
-    if (conn->probable_keepalive_limit &&
-        conn->completed_requests > conn->probable_keepalive_limit) {
-
-        conn->dirty_conn = 1;
-        conn->ctx->dirty_pollset = 1;
-
-        /* backoff for now. */
-        return APR_SUCCESS;
-    }
-
     /* Keep reading and sending until we run out of stuff to read, or
      * writing would block.
      */
@@ -938,38 +928,46 @@ static apr_status_t write_to_connection(serf_connection_t *conn)
         apr_status_t read_status;
         serf_bucket_t *ostreamt;
         serf_bucket_t *ostreamh;
-        int reqs_in_progress;
 
-        reqs_in_progress = conn->completed_requests - conn->completed_responses;
+        /* If we have unwritten data in iovecs, then write what we can
+           directly. */
+        status = serf__connection_flush(conn, FALSE);
+        if (APR_STATUS_IS_EAGAIN(status))
+          return APR_SUCCESS;
+        else if (status)
+          return status;
 
         /* If we're setting up an ssl tunnel, we can't send real requests
-           at yet, as they need to be encrypted and our encrypt buckets
+           as yet, as they need to be encrypted and our encrypt buckets
            aren't created yet as we still need to read the unencrypted
            response of the CONNECT request. */
-        if (conn->state == SERF_CONN_SETUP_SSLTUNNEL && reqs_in_progress > 0)
+        if (conn->state == SERF_CONN_SETUP_SSLTUNNEL
+            && REQS_IN_PROGRESS(conn) > 0)
         {
-            return APR_SUCCESS;
+            /* But flush out SSL data when necessary! */
+            status = serf__connection_flush(conn, TRUE);
+            if (APR_STATUS_IS_EAGAIN(status))
+                return APR_SUCCESS;
+
+            return status;
         }
 
         /* We try to limit the number of in-flight requests so that we
-           don't have to repeat too many if the connection drops.  */
-        if (conn->max_outstanding_requests
-            && (reqs_in_progress >= conn->max_outstanding_requests))
-        {
+           don't have to repeat too many if the connection drops.
+           
+           This check matches that in serf__conn_update_pollset()
+           */
+        if ((conn->probable_keepalive_limit &&
+             conn->completed_requests > conn->probable_keepalive_limit) ||
+            (conn->max_outstanding_requests &&
+             REQS_IN_PROGRESS(conn) >= conn->max_outstanding_requests)) {
+
+            conn->dirty_conn = 1;
+            conn->ctx->dirty_pollset = 1;
+
             /* backoff for now. */
             return APR_SUCCESS;
         }
-
-        /* If we have unwritten data, then write what we can. */
-        status = serf__connection_flush(conn, FALSE);
-        if (APR_STATUS_IS_EAGAIN(status))
-            return APR_SUCCESS;
-        else if (status)
-            return status;
-
-        /* ### can we have a short write, yet no EAGAIN? a short write
-           ### would imply unwritten_len > 0 ... */
-        /* assert: unwritten_len == 0. */
 
         /* We may need to move forward to a request which has something
          * to write.
@@ -1050,12 +1048,6 @@ static apr_status_t write_to_connection(serf_connection_t *conn)
             }
 
             conn->completed_requests++;
-
-            if (conn->probable_keepalive_limit &&
-                conn->completed_requests > conn->probable_keepalive_limit) {
-                /* backoff for now. */
-                return APR_SUCCESS;
-            }
         }
     }
     /* NOTREACHED */
