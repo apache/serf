@@ -902,18 +902,39 @@ apr_status_t serf__connection_flush(serf_connection_t *conn,
     return status;
 }
 
+/* Implements serf_bucket_event_callback_t and is called (potentially
+   more than once) after the request buckets are completely read.
 
-/* Implements serf_bucket_aggregate_eof_t to mark that the request that is
-   already DONE writing has actually FINISHED writing. */
-static apr_status_t request_writing_finished(void *baton,
-                                             serf_bucket_t *aggregate_bucket)
+   At this time we know the request is written, but we can't destroy
+   the buckets yet as they might still be referenced by the connection
+   vecs. */
+static apr_status_t request_writing_done(void *baton)
+{
+  serf_request_t *request = baton;
+
+  if (request->writing == SERF_WRITING_STARTED) {
+      request->writing = SERF_WRITING_DONE;
+
+      /* TODO: Handle request done */
+  }
+  return APR_EOF; /* Done with the event bucket */
+}
+
+
+/* Implements serf_bucket_event_callback_t and is called after the
+   request buckets are no longer needed. More precisely the outgoing
+   buckets are already destroyed. */
+static apr_status_t request_writing_finished(void *baton)
 {
     serf_request_t *request = baton;
 
-    if (request->writing == SERF_WRITING_DONE)
-    request->writing = SERF_WRITING_FINISHED;
+    if (request->writing == SERF_WRITING_DONE) {
+        request->writing = SERF_WRITING_FINISHED;
 
-    return APR_EOF;
+        /* TODO: Destroy request if we no longer need it */
+    }
+
+    return APR_EOF; /* Done with event bucket. Status is ignored */
 }
 
 /* write data out to the connection */
@@ -989,6 +1010,8 @@ static apr_status_t write_to_connection(serf_connection_t *conn)
         }
 
         if (request && request->writing == SERF_WRITING_NONE) {
+            serf_bucket_t *event_bucket;
+
             if (request->req_bkt == NULL) {
                 read_status = serf__setup_request(request);
                 if (read_status) {
@@ -999,6 +1022,14 @@ static apr_status_t write_to_connection(serf_connection_t *conn)
 
             request->writing = SERF_WRITING_STARTED;
             serf_bucket_aggregate_append(ostreamt, request->req_bkt);
+
+            /* And now add an event bucket to keep track of when the request
+               has been completely written */
+            event_bucket = serf_bucket_event_create(request,
+                                                    request_writing_done,
+                                                    request_writing_finished,
+                                                    conn->allocator);
+            serf_bucket_aggregate_append(ostreamt, event_bucket);
         }
 
         /* If we got some data, then deliver it. */
@@ -1010,7 +1041,6 @@ static apr_status_t write_to_connection(serf_connection_t *conn)
             return status;
 
         if (request && conn->hit_eof && conn->vec_len == 0) {
-            serf_bucket_t *trk_bkt;
             /* If we hit the end of the request bucket and all of its data has
              * been written, then clear it out to signify that we're done
              * sending the request. On the next iteration through this loop:
@@ -1019,16 +1049,6 @@ static apr_status_t write_to_connection(serf_connection_t *conn)
              * - we'll see if there are other requests that need to be sent 
              * ("pipelining").
              */
-            request->writing = SERF_WRITING_DONE;
-
-            /* We don't know when the request writing is finished, but we know
-               how to track that... Let's introduce a callback that is called
-               when we write again */
-            /* ### More efficient to use other bucket type? */
-            trk_bkt = serf_bucket_aggregate_create(conn->allocator);
-            serf_bucket_aggregate_hold_open(trk_bkt, request_writing_finished,
-                                            request);
-            serf_bucket_aggregate_prepend(ostreamt, trk_bkt);
 
             /* Move the request to the written queue */
             serf__link_requests(&conn->written_reqs, &conn->written_reqs_tail,
