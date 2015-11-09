@@ -1298,7 +1298,7 @@ static apr_status_t read_from_connection(serf_connection_t *conn)
          * Let our requests go.
          */
         if (conn->probable_keepalive_limit &&
-            conn->completed_responses > conn->probable_keepalive_limit) {
+            conn->completed_responses >= conn->probable_keepalive_limit) {
             conn->probable_keepalive_limit = 0;
         }
 

@@ -132,10 +132,6 @@ static apr_status_t handle_response(serf_request_t *request,
             serf__bucket_headers_remove(hdrs, "Connection");
         }
 
-        /* Avoid problems caused by max-keepalive guessing */
-        conn->completed_requests = 0;
-        /* ### Reset max-keepalive? */
-
         return APR_EOF;
     }
 
