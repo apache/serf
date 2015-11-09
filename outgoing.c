@@ -927,11 +927,29 @@ static apr_status_t request_writing_done(void *baton)
 static apr_status_t request_writing_finished(void *baton)
 {
     serf_request_t *request = baton;
+    serf_connection_t *conn = request->conn;
 
     if (request->writing == SERF_WRITING_DONE) {
         request->writing = SERF_WRITING_FINISHED;
 
-        /* TODO: Destroy request if we no longer need it */
+        /* Move the request to the written queue */
+        serf__link_requests(&conn->written_reqs, &conn->written_reqs_tail,
+                            request);
+        conn->nr_of_written_reqs++;
+        conn->unwritten_reqs = conn->unwritten_reqs->next;
+        conn->nr_of_unwritten_reqs--;
+        request->next = NULL;
+
+        /* If our connection has async responses enabled, we're not
+        * going to get a reply back, so kill the request.
+        */
+        if (conn->async_responses) {
+          conn->unwritten_reqs = request->next;
+          conn->nr_of_unwritten_reqs--;
+          serf__destroy_request(request);
+        }
+
+        conn->completed_requests++;
     }
 
     return APR_EOF; /* Done with event bucket. Status is ignored */
@@ -1040,35 +1058,6 @@ static apr_status_t write_to_connection(serf_connection_t *conn)
         else if (status)
             return status;
 
-        if (request && conn->hit_eof && conn->vec_len == 0) {
-            /* If we hit the end of the request bucket and all of its data has
-             * been written, then clear it out to signify that we're done
-             * sending the request. On the next iteration through this loop:
-             * - if there are remaining bytes they will be written, and as the 
-             * request bucket will be completely read it will be destroyed then.
-             * - we'll see if there are other requests that need to be sent 
-             * ("pipelining").
-             */
-
-            /* Move the request to the written queue */
-            serf__link_requests(&conn->written_reqs, &conn->written_reqs_tail,
-                                request);
-            conn->nr_of_written_reqs++;
-            conn->unwritten_reqs = conn->unwritten_reqs->next;
-            conn->nr_of_unwritten_reqs--;
-            request->next = NULL;
-
-            /* If our connection has async responses enabled, we're not
-             * going to get a reply back, so kill the request.
-             */
-            if (conn->async_responses) {
-                conn->unwritten_reqs = request->next;
-                conn->nr_of_unwritten_reqs--;
-                serf__destroy_request(request);
-            }
-
-            conn->completed_requests++;
-        }
     }
     /* NOTREACHED */
 }
