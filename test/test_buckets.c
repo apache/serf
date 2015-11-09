@@ -2069,6 +2069,47 @@ static void test_prefix_buckets(CuTest *tc)
     serf_bucket_destroy(prefix);
 }
 
+static void test_limit_buckets(CuTest *tc)
+{
+  test_baton_t *tb = tc->testBaton;
+  serf_bucket_alloc_t *alloc = tb->bkt_alloc;
+  char buffer[26];
+  apr_size_t len;
+  serf_bucket_t *raw;
+  serf_bucket_t *limit;
+  serf_bucket_t *agg;
+  apr_status_t status;
+
+  /* The normal usecase */
+  raw = SERF_BUCKET_SIMPLE_STRING("ABCDEFGHIJKLMNOPQRSTUVWXYZ", alloc);
+  limit = serf_bucket_limit_create(raw, 13, alloc);
+  read_and_check_bucket(tc, limit, "ABCDEFGHIJKLM");
+  read_and_check_bucket(tc, raw, "NOPQRSTUVWXYZ");
+  serf_bucket_destroy(limit);
+
+  /* The normal usecase but different way */
+  raw = SERF_BUCKET_SIMPLE_STRING("ABCDEFGHIJKLMNOPQRSTUVWXYZ", alloc);
+  limit = serf_bucket_limit_create(
+                serf_bucket_barrier_create(raw, alloc),
+                13, alloc);
+  agg = serf_bucket_aggregate_create(alloc);
+  serf_bucket_aggregate_prepend(agg, limit);
+  serf_bucket_aggregate_append(agg,
+                               serf_bucket_simple_create("!", 1, NULL, NULL,
+                                                         alloc));
+  serf_bucket_aggregate_append(agg, raw);
+  read_and_check_bucket(tc, agg, "ABCDEFGHIJKLM!NOPQRSTUVWXYZ");
+  serf_bucket_destroy(agg);
+
+  /* What if there is not enough data? */
+  raw = SERF_BUCKET_SIMPLE_STRING("ABCDE", alloc);
+  limit = serf_bucket_limit_create(raw, 13, alloc);
+
+  status = read_all(limit, buffer, sizeof(buffer), &len);
+  CuAssertIntEquals(tc, SERF_ERROR_TRUNCATED_HTTP_RESPONSE, status);
+  serf_bucket_destroy(limit);
+}
+
 /* Basic test for unframe buckets. */
 static void test_http2_unframe_buckets(CuTest *tc)
 {
@@ -2573,6 +2614,7 @@ CuSuite *test_buckets(void)
     SUITE_ADD_TEST(suite, test_dechunk_buckets);
     SUITE_ADD_TEST(suite, test_deflate_buckets);
     SUITE_ADD_TEST(suite, test_prefix_buckets);
+    SUITE_ADD_TEST(suite, test_limit_buckets);
     SUITE_ADD_TEST(suite, test_http2_unframe_buckets);
     SUITE_ADD_TEST(suite, test_http2_unpad_buckets);
     SUITE_ADD_TEST(suite, test_hpack_huffman_decode);

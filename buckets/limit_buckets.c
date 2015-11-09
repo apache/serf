@@ -66,11 +66,14 @@ static apr_status_t serf_limit_read(serf_bucket_t *bucket,
 
     if (!SERF_BUCKET_READ_ERROR(status)) {
         ctx->remaining -= *len;
-    }
 
-    /* If we have met our limit and don't have a status, return EOF. */
-    if (!ctx->remaining && !status) {
-        status = APR_EOF;
+        /* If we have met our limit and don't have a status, return EOF. */
+        if (!ctx->remaining && !status) {
+            status = APR_EOF;
+        }
+        else if (APR_STATUS_IS_EOF(status) && ctx->remaining) {
+            status = SERF_ERROR_TRUNCATED_HTTP_RESPONSE;
+        }
     }
 
     return status;
@@ -136,11 +139,14 @@ static apr_status_t serf_limit_read_iovec(serf_bucket_t *bucket,
         len += vecs[i].iov_len;
 
       ctx->remaining -= len;
-  }
 
-  /* If we have met our limit and don't have a status, return EOF. */
-  if (!ctx->remaining && !status) {
-      status = APR_EOF;
+      /* If we have met our limit and don't have a status, return EOF. */
+      if (!ctx->remaining && !status) {
+          status = APR_EOF;
+      }
+      else if (APR_STATUS_IS_EOF(status) && ctx->remaining) {
+          status = SERF_ERROR_TRUNCATED_HTTP_RESPONSE;
+      }
   }
 
   return status;
