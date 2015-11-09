@@ -67,30 +67,6 @@ static apr_status_t clean_conn(void *data)
     return APR_SUCCESS;
 }
 
-/* Called in different places when the writing queue is empty. At this
-   point it may be safe to destroy some old request instances */
-void writing_queue_empty(serf_connection_t *conn)
-{
-    serf_request_t *rq;
-
-    /* Tell all written request that they are free to destroy themselves */
-    rq = conn->written_reqs;
-    while (rq != NULL) {
-        if (rq->writing == SERF_WRITING_DONE)
-            rq->writing = SERF_WRITING_FINISHED;
-        rq = rq->next;
-    }
-
-    /* Destroy the requests that were queued up to destroy later */
-    while ((rq = conn->done_reqs)) {
-        conn->done_reqs = rq->next;
-
-        rq->writing = SERF_WRITING_FINISHED;
-        serf__destroy_request(rq);
-    }
-    conn->done_reqs = conn->done_reqs_tail = NULL;
-}
-
 /* Safely check if there is still data pending on the connection, carefull
    to not accidentally make it invalid. */
 static int
@@ -113,8 +89,6 @@ data_pending(serf_connection_t *conn)
                           "requests.\n");
                 return TRUE;
             }
-
-            writing_queue_empty(conn);
         }
         else
             return TRUE; /* Sure, we have data (an error) */
@@ -235,7 +209,6 @@ apr_status_t serf__conn_update_pollset(serf_connection_t *conn)
                 }
                 else if (! status || APR_STATUS_IS_EOF(status)) {
                     data_waiting = FALSE;
-                    writing_queue_empty(conn);
                 }
                 else
                     data_waiting = FALSE; /* EAGAIN / EOF / WAIT_CONN */
@@ -314,7 +287,9 @@ static void check_buckets_drained(serf_connection_t *conn)
    that may still have data in these buckets to continue */
 void serf__connection_pre_cleanup(serf_connection_t *conn)
 {
+    serf_request_t *rq;
     conn->vec_len = 0;
+
     if (conn->ostream_head != NULL) {
         serf_bucket_destroy(conn->ostream_head);
         conn->ostream_head = NULL;
@@ -325,7 +300,25 @@ void serf__connection_pre_cleanup(serf_connection_t *conn)
         conn->ssltunnel_ostream = NULL;
     }
 
-    writing_queue_empty(conn);
+    /* Tell all written request that they are free to destroy themselves */
+    rq = conn->written_reqs;
+    while (rq != NULL) {
+        if (rq->writing == SERF_WRITING_STARTED
+            || rq->writing == SERF_WRITING_DONE) {
+
+            rq->writing = SERF_WRITING_FINISHED;
+        }
+        rq = rq->next;
+    }
+
+    /* Destroy the requests that were queued up to destroy later */
+    while ((rq = conn->done_reqs)) {
+        conn->done_reqs = rq->next;
+
+        rq->writing = SERF_WRITING_FINISHED;
+        serf__destroy_request(rq);
+    }
+    conn->done_reqs = conn->done_reqs_tail = NULL;
 }
 
 static apr_status_t detect_eof(void *baton, serf_bucket_t *aggregate_bucket)
@@ -950,6 +943,26 @@ static apr_status_t request_writing_finished(void *baton)
         }
 
         conn->completed_requests++;
+    }
+    /* Destroy (all) requests that are now safe to destroy,
+       Typically non or just the finished one */
+    {
+        serf_request_t *last = NULL;
+        serf_request_t **rq = &conn->done_reqs;
+        while (*rq) {
+            request = *rq;
+            if ((*rq)->writing == SERF_WRITING_FINISHED) {
+                request = *rq;
+                *rq = request->next;
+                serf__destroy_request(request);
+            }
+            else {
+                last = *rq;
+                rq = &last->next;
+            }
+        }
+
+        conn->done_reqs_tail = last;
     }
 
     return APR_EOF; /* Done with event bucket. Status is ignored */
