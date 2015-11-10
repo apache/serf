@@ -1600,7 +1600,7 @@ static apr_status_t deflate_compress(const char **data, apr_size_t *len,
                                      z_stream *zdestr,
                                      const char *orig, apr_size_t orig_len,
                                      int last,
-                                     apr_pool_t *pool)
+                                     serf_bucket_alloc_t *alloc)
 {
     int zerr;
     apr_size_t buf_size;
@@ -1613,7 +1613,7 @@ static apr_status_t deflate_compress(const char **data, apr_size_t *len,
        data. Use a buffer bigger than what we need. */
     buf_size = 100000;
 
-    write_buf = apr_palloc(pool, buf_size);
+    write_buf = serf_bucket_mem_alloc(alloc, buf_size);
 
     zdestr->next_in = (Bytef *)orig;  /* Casting away const! */
     zdestr->avail_in = (uInt)orig_len;
@@ -1632,6 +1632,11 @@ static apr_status_t deflate_compress(const char **data, apr_size_t *len,
 
     *data = write_buf;
     *len = buf_size - zdestr->avail_out;
+
+    if (!*len) {
+        serf_bucket_mem_free(alloc, write_buf);
+        *data = "";
+    }
     
     return APR_SUCCESS;
 }
@@ -1687,12 +1692,12 @@ static void read_bucket_and_check_pattern(CuTest *tc, serf_bucket_t *bkt,
                           expected_len);
 }
 
-static void deflate_buckets(CuTest *tc, int nr_of_loops, apr_pool_t *pool)
+static void deflate_buckets(CuTest *tc, int nr_of_loops)
 {
     const char *msg = "12345678901234567890123456789012345678901234567890";
 
     test_baton_t *tb = tc->testBaton;
-    serf_bucket_alloc_t *alloc = test__create_bucket_allocator(tc, tb->pool);
+    serf_bucket_alloc_t *alloc = tb->bkt_alloc;
     z_stream zdestr;
     int i;
     const char gzip_header[10] =
@@ -1733,17 +1738,17 @@ static void deflate_buckets(CuTest *tc, int nr_of_loops, apr_pool_t *pool)
         if (i == nr_of_loops - 1) {
             CuAssertIntEquals(tc, APR_SUCCESS,
                               deflate_compress(&data, &len, &zdestr, msg,
-                                               strlen(msg), 1, pool));
+                                               strlen(msg), 1, alloc));
         } else {
             CuAssertIntEquals(tc, APR_SUCCESS,
                               deflate_compress(&data, &len, &zdestr, msg,
-                                               strlen(msg), 0, pool));
+                                               strlen(msg), 0, alloc));
         }
 
         if (len == 0)
             continue;
 
-        strbkt = SERF_BUCKET_SIMPLE_STRING_LEN(data, len, alloc);
+        strbkt = serf_bucket_simple_own_create(data, len, alloc);
 
         serf_bucket_aggregate_append(aggbkt, strbkt);
     }
@@ -1760,15 +1765,9 @@ static void deflate_buckets(CuTest *tc, int nr_of_loops, apr_pool_t *pool)
 static void test_deflate_buckets(CuTest *tc)
 {
     int i;
-    apr_pool_t *iterpool;
-    test_baton_t *tb = tc->testBaton;
-
-    apr_pool_create(&iterpool, tb->pool);
     for (i = 1; i < 1000; i++) {
-        apr_pool_clear(iterpool);
-        deflate_buckets(tc, i, iterpool);
+        deflate_buckets(tc, i);
     }
-    apr_pool_destroy(iterpool);
 }
 
 static apr_status_t hold_open(void *baton, serf_bucket_t *aggbkt)
@@ -1794,7 +1793,7 @@ create_gzip_deflate_bucket(serf_bucket_t *stream, z_stream *outzstr,
     serf_bucket_t *defbkt = serf_bucket_deflate_create(stream, alloc,
                                                        SERF_DEFLATE_GZIP);
     int zerr;
-    const char gzip_header[10] =
+    static const char gzip_header[10] =
     { '\037', '\213', Z_DEFLATED, 0,
         0, 0, 0, 0, /* mtime */
         0, 0x03 /* Unix OS_CODE */
@@ -1827,7 +1826,6 @@ static void test_deflate_4GBplus_buckets(CuTest *tc)
     serf_bucket_t *aggbkt = serf_bucket_aggregate_create(alloc);
     serf_bucket_t *defbkt = create_gzip_deflate_bucket(aggbkt, &zdestr, alloc);
     serf_bucket_t *strbkt;
-    apr_pool_t *iter_pool;
     apr_uint64_t actual_size;
     unsigned long unc_crc = 0;
     unsigned long unc_length = 0;
@@ -1851,19 +1849,12 @@ static void test_deflate_4GBplus_buckets(CuTest *tc)
     }
 #endif
 
-    apr_pool_create(&iter_pool, tb->pool);
-
     actual_size = 0;
     for (i = 0; i < NR_OF_LOOPS; i++) {
         const char *data;
         apr_size_t len;
         apr_size_t read_len;
-        serf_bucket_alloc_t *iter_alloc;
         apr_status_t status;
-
-        apr_pool_clear(iter_pool);
-        iter_alloc = test__create_bucket_allocator(tc, iter_pool);
-
 
         if (i % 1000 == 0)
             printf("%d\n", i);
@@ -1878,18 +1869,18 @@ static void test_deflate_4GBplus_buckets(CuTest *tc)
             CuAssertIntEquals(tc, APR_SUCCESS,
                               deflate_compress(&data, &len, &zdestr,
                                                (const char *)uncompressed,
-                                               BUFSIZE, 1, iter_pool));
+                                               BUFSIZE, 1, alloc));
         } else {
             CuAssertIntEquals(tc, APR_SUCCESS,
                               deflate_compress(&data, &len, &zdestr,
                                                (const char *)uncompressed,
-                                               BUFSIZE, 0, iter_pool));
+                                               BUFSIZE, 0, alloc));
         }
 
         if (len == 0)
             continue;
 
-        strbkt = serf_bucket_simple_copy_create(data, len, iter_alloc);
+        strbkt = serf_bucket_simple_own_create(data, len, alloc);
         serf_bucket_aggregate_append(aggbkt, strbkt);
 
         /* Start reading inflated data */
