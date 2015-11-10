@@ -736,9 +736,9 @@ static apr_status_t queue_part2(void *baton, serf_bucket_t *aggregate_bucket)
     handler_baton_t *ctx = baton;
 
     if (ctx->done) {
-        body_bkt = serf_bucket_simple_create(REQUEST_PART1, strlen(REQUEST_PART2),
+        body_bkt = serf_bucket_simple_create(REQUEST_PART2, strlen(REQUEST_PART2),
                                              NULL, NULL,
-                                             ctx->tb->bkt_alloc);
+                                             aggregate_bucket->allocator);
         serf_bucket_aggregate_append(aggregate_bucket, body_bkt);
     }
 
