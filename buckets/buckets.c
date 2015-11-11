@@ -703,6 +703,10 @@ apr_status_t serf_linebuf_fetch(
              * split CRLF.
              */
 
+            /* ### We can't assume peek will ever return any data!
+                   Just check serf_default_peek()
+
+               ### We would be stuck here forever */
             status = serf_bucket_peek(bucket, &data, &len);
             if (SERF_BUCKET_READ_ERROR(status))
                 return status;
@@ -726,6 +730,11 @@ apr_status_t serf_linebuf_fetch(
                 /* Whatever was read, the line is now ready for use. */
                 linebuf->state = SERF_LINEBUF_READY;
             } else {
+              /* ### We can't assume peek will ever return any data!
+                     Just check serf_default_peek()
+
+                 ### We would be stuck here forever */
+
                 /* no data available, try again later. */
                 return APR_EAGAIN;
             }
