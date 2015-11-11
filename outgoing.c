@@ -267,7 +267,7 @@ apr_status_t serf__conn_update_pollset(serf_connection_t *conn)
 /* Make sure all response buckets were drained. */
 static void check_buckets_drained(serf_connection_t *conn)
 {
-    serf_request_t *request = conn->requests;
+    serf_request_t *request = conn->written_reqs;
 
     for ( ; request ; request = request->next ) {
         if (request->resp_bkt != NULL) {
@@ -291,6 +291,9 @@ void serf__connection_pre_cleanup(serf_connection_t *conn)
     conn->vec_len = 0;
 
     if (conn->ostream_head != NULL) {
+#ifdef SERF_DEBUG_BUCKET_USE
+        serf__bucket_drain(conn->ostream_head);
+#endif
         serf_bucket_destroy(conn->ostream_head);
         conn->ostream_head = NULL;
         conn->ostream_tail = NULL;
@@ -921,6 +924,8 @@ static apr_status_t request_writing_finished(void *baton)
 {
     serf_request_t *request = baton;
     serf_connection_t *conn = request->conn;
+
+    request->req_bkt = NULL; /* Bucket is destroyed by now */
 
     if (request->writing == SERF_WRITING_DONE) {
         request->writing = SERF_WRITING_FINISHED;

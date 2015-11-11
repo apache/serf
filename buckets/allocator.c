@@ -416,9 +416,11 @@ apr_status_t serf_debug__record_read(
     read_status_t *rs = find_read_status(track, bucket, 1);
 
     /* Validate that the previous status value allowed for another read. */
-    if (APR_STATUS_IS_EAGAIN(rs->last) /* ### or APR_EOF? */) {
+    if (SERF_BUCKET_READ_ERROR(rs->last)) {
         /* Somebody read when they weren't supposed to. Bail. */
-        abort();
+        /*abort(); */
+        fprintf(stderr, "Should not read from %p again, last_status=%d, status=%d\n",
+                bucket, rs->last, status);
     }
 
     /* Save the current status for later. */
@@ -471,9 +473,12 @@ void serf_debug__bucket_destroy(const serf_bucket_t *bucket)
     track_state_t *track = bucket->allocator->track;
     read_status_t *rs = find_read_status(track, bucket, 0);
 
-    if (rs != NULL && rs->last != APR_EOF) {
+    if (rs != NULL
+        && !APR_STATUS_IS_EOF(rs->last)
+        && !SERF_BUCKET_READ_ERROR(rs->last)) {
         /* The bucket was destroyed before it was read to completion. */
 
+        serf_bucket_t *bkt;
         /* Special exception for socket buckets. If a connection remains
          * open, they are not read to completion.
          */
@@ -492,6 +497,27 @@ void serf_debug__bucket_destroy(const serf_bucket_t *bucket)
         if (SERF_BUCKET_IS_BARRIER(bucket))
             return;
 
+        if (SERF_BUCKET_IS_AGGREGATE(bucket)) {
+            apr_status_t status;
+            const char *data;
+            apr_size_t len;
+
+            serf_bucket_aggregate_hold_open(bucket, NULL, NULL);
+
+            status = serf_bucket_read(bucket, SERF_READ_ALL_AVAIL,
+                                      &data, &len);
+
+            if (APR_STATUS_IS_EOF(status) && !len)
+                return;
+        }
+
+        bkt = serf_bucket_read_bucket((serf_bucket_t*)bucket,
+                                      &serf_bucket_type_ssl_encrypt);
+
+        if (bkt != NULL) {
+            serf_bucket_destroy(bkt);
+            return;
+        }
 
         abort();
     }
