@@ -261,7 +261,7 @@ static const serf_bucket_type_t v2_check =
   NULL /* peek */,
   NULL /* destroy */,
   NULL /* read_bucket_v2 */,
-  NULL /* readline2 */,
+  NULL /* get_remaining */,
   NULL /* set_config */
 };
 
