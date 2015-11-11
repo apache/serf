@@ -22,7 +22,6 @@
 #include "serf_bucket_util.h"
 #include "serf_private.h"
 
-typedef apr_status_t(*serf_bucket_event_callback_t)(void *baton);
 
 typedef struct event_context_t
 {
