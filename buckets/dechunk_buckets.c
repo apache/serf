@@ -202,15 +202,15 @@ static apr_status_t serf_dechunk_read(serf_bucket_t *bucket,
     return status;
 }
 
-static apr_status_t serf_dechunk_readline2(serf_bucket_t *bucket,
-                                           int accepted,
-                                           apr_size_t requested,
-                                           int *found,
-                                           const char **data,
-                                           apr_size_t *len)
+static apr_status_t serf_dechunk_readline(serf_bucket_t *bucket,
+                                          int accepted,
+                                          int *found,
+                                          const char **data,
+                                          apr_size_t *len)
 {
     dechunk_context_t *ctx = bucket->data;
     apr_status_t status;
+    apr_size_t requested;
 
     status = wait_for_chunk(bucket);
     if (status || ctx->state != STATE_CHUNK) {
@@ -219,13 +219,14 @@ static apr_status_t serf_dechunk_readline2(serf_bucket_t *bucket,
     }
 
     /* Don't overshoot */
-    if (requested > ctx->body_left) {
+    if (ctx->body_left >= APR_SIZE_MAX)
+        requested = APR_SIZE_MAX;
+    else
         requested = (apr_size_t)ctx->body_left;
-    }
 
     /* Delegate to the stream bucket to do the read. */
-    status = serf_bucket_readline2(ctx->stream, accepted, requested,
-                                   found, data, len);
+    status = serf_bucket_limited_readline(ctx->stream, accepted, requested,
+                                          found, data, len);
     if (SERF_BUCKET_READ_ERROR(status))
         return status;
 
@@ -244,16 +245,6 @@ static apr_status_t serf_dechunk_readline2(serf_bucket_t *bucket,
 
     /* Return the data we just read. */
     return status;
-}
-
-static apr_status_t serf_dechunk_readline(serf_bucket_t *bucket,
-                                          int accepted,
-                                          int *found,
-                                          const char **data,
-                                          apr_size_t *len)
-{
-    return serf_dechunk_readline2(bucket, accepted, SERF_READ_ALL_AVAIL,
-                                  found, data, len);
 }
 
 static apr_status_t serf_dechunk_peek(serf_bucket_t *bucket,
@@ -297,7 +288,6 @@ const serf_bucket_type_t serf_bucket_type_dechunk = {
     serf_dechunk_peek,
     serf_dechunk_destroy_and_data,
     serf_default_read_bucket,
-    serf_dechunk_readline2,
     serf_default_get_remaining,
     serf_dechunk_set_config,
 };

@@ -60,13 +60,6 @@ serf_bucket_t *serf_bucket_iovec_create(
     return serf_bucket_create(&serf_bucket_type_iovec, allocator, ctx);
 }
 
-static apr_status_t serf_iovec_readline(serf_bucket_t *bucket,
-                                         int acceptable, int *found,
-                                         const char **data, apr_size_t *len)
-{
-    return APR_ENOTIMPL;
-}
-
 static apr_status_t serf_iovec_read_iovec(serf_bucket_t *bucket,
                                           apr_size_t requested,
                                           int vecs_size,
@@ -172,14 +165,13 @@ static apr_uint64_t serf_iovec_get_remaining(serf_bucket_t *bucket)
 const serf_bucket_type_t serf_bucket_type_iovec = {
     "IOVEC",
     serf_iovec_read,
-    serf_iovec_readline,
+    serf_default_readline,
     serf_iovec_read_iovec,
     serf_default_read_for_sendfile,
     serf_buckets_are_v2,
     serf_iovec_peek,
     serf_default_destroy_and_data,
     serf_default_read_bucket,
-    serf_default_readline2,
     serf_iovec_get_remaining,
     serf_default_ignore_config
 };

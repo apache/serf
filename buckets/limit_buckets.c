@@ -75,27 +75,28 @@ static apr_status_t serf_limit_read(serf_bucket_t *bucket,
     return status;
 }
 
-static apr_status_t serf_limit_readline2(serf_bucket_t *bucket,
-                                         int accepted,
-                                         apr_size_t requested,
-                                         int *found,
-                                         const char **data,
-                                         apr_size_t *len)
+static apr_status_t serf_limit_readline(serf_bucket_t *bucket,
+                                        int accepted,
+                                        int *found,
+                                        const char **data,
+                                        apr_size_t *len)
 {
     limit_context_t *ctx = bucket->data;
     apr_status_t status;
+    apr_size_t requested;
 
     if (!ctx->remaining) {
         *len = 0;
         return APR_EOF;
     }
 
-    if (requested > ctx->remaining) {
+    if (ctx->remaining >= APR_SIZE_MAX)
+        requested = APR_SIZE_MAX;
+    else
         requested = (apr_size_t) ctx->remaining;
-    }
 
-    status = serf_bucket_readline2(ctx->stream, accepted,
-                                   requested, found, data, len);
+    status = serf_bucket_limited_readline(ctx->stream, accepted,
+                                          requested, found, data, len);
 
     if (!SERF_BUCKET_READ_ERROR(status)) {
         ctx->remaining -= *len;
@@ -110,16 +111,6 @@ static apr_status_t serf_limit_readline2(serf_bucket_t *bucket,
     }
 
     return status;
-}
-
-static apr_status_t serf_limit_readline(serf_bucket_t *bucket,
-                                        int accepted,
-                                        int *found,
-                                        const char **data,
-                                        apr_size_t *len)
-{
-  return serf_limit_readline2(bucket, accepted, SERF_READ_ALL_AVAIL,
-                              found, data, len);
 }
 
 static apr_status_t serf_limit_read_iovec(serf_bucket_t *bucket,
@@ -215,7 +206,6 @@ const serf_bucket_type_t serf_bucket_type_limit = {
     serf_limit_peek,
     serf_limit_destroy,
     serf_default_read_bucket,
-    serf_limit_readline2,
     serf_limit_get_remaining,
     serf_limit_set_config,
 };

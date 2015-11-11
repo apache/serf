@@ -125,9 +125,9 @@ apr_status_t serf_default_peek(
     return APR_SUCCESS;
 }
 
-apr_status_t serf_default_readline2(serf_bucket_t *bucket, int acceptable,
-                                    apr_size_t requested, int *found,
-                                    const char **data, apr_size_t *len)
+apr_status_t serf_bucket_limited_readline(serf_bucket_t *bucket, int acceptable,
+                                          apr_size_t requested, int *found,
+                                          const char **data, apr_size_t *len)
 {
     apr_status_t status;
     const char *peek_data;
@@ -219,8 +219,8 @@ apr_status_t serf_default_readline(serf_bucket_t *bucket, int acceptable,
                                    const char **data, apr_size_t *len)
 {
     /* We explicitly call this function directly and *not* via the callback */
-    return serf_default_readline2(bucket, acceptable, SERF_READ_ALL_AVAIL,
-                                  found, data, len);
+    return serf_bucket_limited_readline(bucket, acceptable, SERF_READ_ALL_AVAIL,
+                                        found, data, len);
 }
 
 void serf_default_destroy(serf_bucket_t *bucket)
@@ -262,7 +262,6 @@ static const serf_bucket_type_t v2_check =
   NULL /* destroy */,
   NULL /* read_bucket_v2 */,
   NULL /* readline2 */,
-  NULL /* get_remaining */,
   NULL /* set_config */
 };
 
@@ -281,21 +280,6 @@ apr_status_t serf_default_ignore_config(serf_bucket_t *bucket,
     return APR_SUCCESS;
 }
 
-static apr_status_t fallback_readline2(serf_bucket_t *bucket, int acceptable,
-                                       apr_size_t requested, int *found,
-                                       const char **data, apr_size_t *len)
-{
-  if (requested == SERF_READ_ALL_AVAIL) {
-      /* A v1 bucket might have an efficient readline() for this case */
-      return bucket->type->readline(bucket, acceptable, found, data, len);
-  }
-  else {
-      /* Fall back to the default limiting implementation using peek+read */
-      return serf_default_readline2(bucket, acceptable, requested, found,
-                                    data, len);
-  }
-}
-
 /* Fallback type definition to return for buckets that don't implement
    a specific version of the bucket spec */
 static const serf_bucket_type_t fallback_bucket_type =
@@ -309,7 +293,6 @@ static const serf_bucket_type_t fallback_bucket_type =
   NULL /* peek */,
   NULL /* destroy */,
   serf_buckets_are_v2,
-  fallback_readline2,
   serf_default_get_remaining,
   serf_default_ignore_config,
 };

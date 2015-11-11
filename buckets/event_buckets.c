@@ -136,7 +136,6 @@ const serf_bucket_type_t serf_bucket_type__event = {
     serf_event_peek,
     serf_event_destroy,
     serf_default_read_bucket,
-    serf_default_readline2,
     serf_event_get_remaining,
     serf_default_ignore_config,
 };
