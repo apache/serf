@@ -50,6 +50,18 @@ static apr_status_t serf_barrier_read_iovec(serf_bucket_t *bucket,
     return serf_bucket_read_iovec(stream, requested, vecs_size, vecs, vecs_used);
 }
 
+static apr_status_t serf_barrier_read_for_sendfile(serf_bucket_t *bucket,
+                                                   apr_size_t requested,
+                                                   apr_hdtr_t *hdtr,
+                                                   apr_file_t **file,
+                                                   apr_off_t *offset,
+                                                   apr_size_t *len)
+{
+    serf_bucket_t *stream = bucket->data;
+    return serf_bucket_read_for_sendfile(bucket, requested, hdtr, file,
+                                         offset, len);
+}
+
 static apr_status_t serf_barrier_readline(serf_bucket_t *bucket,
                                          int acceptable, int *found,
                                          const char **data, apr_size_t *len)
@@ -58,6 +70,18 @@ static apr_status_t serf_barrier_readline(serf_bucket_t *bucket,
 
     return serf_bucket_readline(stream, acceptable, found, data, len);
 }
+
+static apr_status_t serf_barrier_readline2(serf_bucket_t *bucket,
+                                           int acceptable, apr_size_t requested,
+                                           int *found,
+                                           const char **data, apr_size_t *len)
+{
+    serf_bucket_t *stream = bucket->data;
+
+    return serf_bucket_readline2(stream, acceptable, requested,
+                                 found, data, len);
+}
+
 
 static apr_status_t serf_barrier_peek(serf_bucket_t *bucket,
                                      const char **data,
@@ -101,12 +125,12 @@ const serf_bucket_type_t serf_bucket_type_barrier = {
     serf_barrier_read,
     serf_barrier_readline,
     serf_barrier_read_iovec,
-    serf_default_read_for_sendfile,
+    serf_barrier_read_for_sendfile,
     serf_buckets_are_v2,
     serf_barrier_peek,
     serf_barrier_destroy,
-    serf_default_read_bucket,
-    serf_default_readline2,
+    serf_default_read_bucket, /* ### TODO? */
+    serf_barrier_readline2,
     serf_barrier_get_remaining,
     serf_barrier_set_config,
 };
