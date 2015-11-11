@@ -1575,9 +1575,10 @@ static void test_dechunk_buckets(CuTest *tc)
     const int nr_of_actions = sizeof(actions) / sizeof(mockbkt_action);
     apr_status_t status;
     const char *body = "blabla";
-    const char *expected = apr_psprintf(tb->pool, "%s%s%s%s%s%s%s%s%s", body,
-                                        body, body, body, body, body, body,
-                                        body, body);
+    const char *expected_data = apr_psprintf(tb->pool, "%s%s%s%s%s%s%s%s%s",
+                                             body, body, body, body, body,
+                                             body, body, body, body);
+    const char *expected = expected_data;
 
     mock_bkt = serf_bucket_mock_create(actions, nr_of_actions, alloc);
     bkt = serf_bucket_dechunk_create(mock_bkt, alloc);
@@ -1604,6 +1605,34 @@ static void test_dechunk_buckets(CuTest *tc)
     CuAssert(tc, "Read less data than expected.", strlen(expected) == 0);
 
     serf_bucket_destroy(bkt);
+
+    mock_bkt = serf_bucket_mock_create(actions, nr_of_actions, alloc);
+    bkt = serf_bucket_dechunk_create(mock_bkt, alloc);
+    expected = expected_data;
+    do
+    {
+        const char *data;
+        apr_size_t len;
+        int found;
+
+        status = serf_bucket_readline(bkt, SERF_NEWLINE_ANY, &found, &data,
+                                      &len);
+
+        CuAssert(tc, "Got error during bucket reading.",
+                 !SERF_BUCKET_READ_ERROR(status));
+        CuAssert(tc, "Read more data than expected.",
+                 strlen(expected) >= len);
+        CuAssert(tc, "Read data is not equal to expected.",
+                 strncmp(expected, data, len) == 0);
+
+        expected += len;
+
+        CuAssertIntEquals(tc, SERF_NEWLINE_NONE, found);
+
+        if (len == 0 && status == APR_EAGAIN)
+            serf_bucket_mock_more_data_arrived(mock_bkt);
+    }
+    while (!APR_STATUS_IS_EOF(status));
 }
 
 static apr_status_t deflate_compress(const char **data, apr_size_t *len,

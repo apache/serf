@@ -65,9 +65,7 @@ static void serf_dechunk_destroy_and_data(serf_bucket_t *bucket)
     serf_default_destroy_and_data(bucket);
 }
 
-static apr_status_t serf_dechunk_read(serf_bucket_t *bucket,
-                                      apr_size_t requested,
-                                      const char **data, apr_size_t *len)
+static apr_status_t wait_for_chunk(serf_bucket_t *bucket)
 {
     dechunk_context_t *ctx = bucket->data;
     apr_status_t status;
@@ -112,51 +110,27 @@ static apr_status_t serf_dechunk_read(serf_bucket_t *bucket,
             }
             /* assert: status != 0 */
 
-            /* Note that we didn't actually read anything, so our callers
-             * don't get confused.
-             */
-            *len = 0;
-
             return status;
 
         case STATE_CHUNK:
-
-            if (requested > ctx->body_left) {
-                requested = ctx->body_left;
-            }
-
-            /* Delegate to the stream bucket to do the read. */
-            status = serf_bucket_read(ctx->stream, requested, data, len);
-            if (SERF_BUCKET_READ_ERROR(status))
-                return status;
-
-            /* Some data was read, so decrement the amount left and see
-             * if we're done reading this chunk.
-             */
-            ctx->body_left -= *len;
-            if (!ctx->body_left) {
-                ctx->state = STATE_TERM;
-                ctx->body_left = 2;     /* CRLF */
-            }
-
-            /* We need more data but there is no more available. */
-            if (ctx->body_left && APR_STATUS_IS_EOF(status)) {
-                return SERF_ERROR_TRUNCATED_HTTP_RESPONSE;
-            }
-
-            /* Return the data we just read. */
-            return status;
+            return APR_SUCCESS;
 
         case STATE_TERM:
+          {
             /* Delegate to the stream bucket to do the read. */
-            status = serf_bucket_read(ctx->stream, ctx->body_left, data, len);
+            const char *data;
+            apr_size_t len;
+
+            status = serf_bucket_read(ctx->stream,
+                                      (apr_size_t)ctx->body_left /* 2 or 1 */,
+                                      &data, &len);
             if (SERF_BUCKET_READ_ERROR(status))
                 return status;
 
             /* Some data was read, so decrement the amount left and see
              * if we're done reading the chunk terminator.
              */
-            ctx->body_left -= *len;
+            ctx->body_left -= len;
 
             /* We need more data but there is no more available. */
             if (ctx->body_left && APR_STATUS_IS_EOF(status))
@@ -167,16 +141,13 @@ static apr_status_t serf_dechunk_read(serf_bucket_t *bucket,
             }
 
             /* Don't return the CR of CRLF to the caller! */
-            *len = 0;
-
             if (status)
                 return status;
 
             break;
-
+          }
         case STATE_DONE:
             /* Just keep returning EOF */
-            *len = 0;
             return APR_EOF;
 
         default:
@@ -185,6 +156,125 @@ static apr_status_t serf_dechunk_read(serf_bucket_t *bucket,
         }
     }
     /* NOTREACHED */
+}
+
+static apr_status_t serf_dechunk_read(serf_bucket_t *bucket,
+                                      apr_size_t requested,
+                                      const char **data, apr_size_t *len)
+{
+    dechunk_context_t *ctx = bucket->data;
+    apr_status_t status;
+
+    status = wait_for_chunk(bucket);
+    if (status || ctx->state != STATE_CHUNK) {
+        *len = 0;
+        return status;
+    }
+
+    /* Don't overshoot */
+    if (requested > ctx->body_left) {
+        requested = (apr_size_t)ctx->body_left;
+    }
+
+    /* ### If requested is now ctx->body_left we might want to try
+           reading 2 extra bytes in an attempt to skip STATE_TERM
+           directly */
+
+    /* Delegate to the stream bucket to do the read. */
+    status = serf_bucket_read(ctx->stream, requested, data, len);
+    if (SERF_BUCKET_READ_ERROR(status))
+        return status;
+
+    /* Some data was read, so decrement the amount left and see
+     * if we're done reading this chunk. */
+    ctx->body_left -= *len;
+    if (!ctx->body_left) {
+        ctx->state = STATE_TERM;
+        ctx->body_left = 2;     /* CRLF */
+    }
+
+    /* We need more data but there is no more available. */
+    if (ctx->body_left && APR_STATUS_IS_EOF(status)) {
+        return SERF_ERROR_TRUNCATED_HTTP_RESPONSE;
+    }
+
+    /* Return the data we just read. */
+    return status;
+}
+
+static apr_status_t serf_dechunk_readline2(serf_bucket_t *bucket,
+                                           int accepted,
+                                           apr_size_t requested,
+                                           int *found,
+                                           const char **data,
+                                           apr_size_t *len)
+{
+    dechunk_context_t *ctx = bucket->data;
+    apr_status_t status;
+
+    status = wait_for_chunk(bucket);
+    if (status || ctx->state != STATE_CHUNK) {
+        *len = 0;
+        return status;
+    }
+
+    /* Don't overshoot */
+    if (requested > ctx->body_left) {
+        requested = (apr_size_t)ctx->body_left;
+    }
+
+    /* Delegate to the stream bucket to do the read. */
+    status = serf_bucket_readline2(ctx->stream, accepted, requested,
+                                   found, data, len);
+    if (SERF_BUCKET_READ_ERROR(status))
+        return status;
+
+    /* Some data was read, so decrement the amount left and see
+     * if we're done reading this chunk. */
+    ctx->body_left -= *len;
+    if (!ctx->body_left) {
+        ctx->state = STATE_TERM;
+        ctx->body_left = 2;     /* CRLF */
+    }
+
+    /* We need more data but there is no more available. */
+    if (ctx->body_left && APR_STATUS_IS_EOF(status)) {
+        return SERF_ERROR_TRUNCATED_HTTP_RESPONSE;
+    }
+
+    /* Return the data we just read. */
+    return status;
+}
+
+static apr_status_t serf_dechunk_readline(serf_bucket_t *bucket,
+                                          int accepted,
+                                          int *found,
+                                          const char **data,
+                                          apr_size_t *len)
+{
+    return serf_dechunk_readline2(bucket, accepted, SERF_READ_ALL_AVAIL,
+                                  found, data, len);
+}
+
+static apr_status_t serf_dechunk_peek(serf_bucket_t *bucket,
+                                      const char **data,
+                                      apr_size_t *len)
+{
+    dechunk_context_t *ctx = bucket->data;
+    apr_status_t status;
+
+    status = wait_for_chunk(bucket);
+    if (status) {
+        *len = 0;
+        return SERF_BUCKET_READ_ERROR(status) ? status : APR_SUCCESS;
+    }
+
+    status = serf_bucket_peek(ctx->stream, data, len);
+    if (!SERF_BUCKET_READ_ERROR(status) && *len > ctx->body_left)
+    {
+        *len = (apr_size_t)ctx->body_left;
+    }
+    return status;
 }
 
 static apr_status_t serf_dechunk_set_config(serf_bucket_t *bucket,
@@ -200,14 +290,14 @@ static apr_status_t serf_dechunk_set_config(serf_bucket_t *bucket,
 const serf_bucket_type_t serf_bucket_type_dechunk = {
     "DECHUNK",
     serf_dechunk_read,
-    serf_default_readline,
+    serf_dechunk_readline,
     serf_default_read_iovec,
     serf_default_read_for_sendfile,
     serf_buckets_are_v2,
-    serf_default_peek /* ### TODO */,
+    serf_dechunk_peek,
     serf_dechunk_destroy_and_data,
     serf_default_read_bucket,
-    serf_default_readline2,
+    serf_dechunk_readline2,
     serf_default_get_remaining,
     serf_dechunk_set_config,
 };

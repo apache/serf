@@ -1061,7 +1061,7 @@ const serf_bucket_type_t *serf_get_type(serf_bucket_t *bucket,
 #define serf_bucket_peek(b,d,l) ((b)->type->peek(b,d,l))
 #define serf_bucket_destroy(b) ((b)->type->destroy(b))
 #define serf_bucket_readline2(b,a,r,f,d,l) \
-    SERF__RECREAD(b, (b)->type->readline2(b,a,r,f,d,l))
+    SERF__RECREAD(b, serf_get_type(b, 2)->readline2(b,a,r,f,d,l))
 #define serf_bucket_get_remaining(b) (serf_get_type(b, 2)->get_remaining(b))
 #define serf_bucket_set_config(b,c) (serf_get_type(b, 2)->set_config(b, c))
 
