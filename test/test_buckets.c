@@ -287,6 +287,10 @@ static void test_response_bucket_read(CuTest *tc)
 {
     test_baton_t *tb = tc->testBaton;
     serf_bucket_t *bkt, *tmp;
+    apr_status_t status;
+    int found;
+    const char *data;
+    apr_size_t len;
 
     serf_bucket_alloc_t *alloc = test__create_bucket_allocator(tc, tb->pool);
 
@@ -301,6 +305,24 @@ static void test_response_bucket_read(CuTest *tc)
 
     /* Read all bucket and check it content. */
     read_and_check_bucket(tc, bkt, "abc1234");
+    serf_bucket_destroy(bkt);
+
+    tmp = SERF_BUCKET_SIMPLE_STRING(
+            "HTTP/1.1 200 OK" CRLF
+            "cONTENT-lENGTH: 7" CRLF
+            CRLF
+            "abc1234" /* NO CRLF... just 7 bytes!*/
+            "HTTP/1.1 304 Unmodified" CRLF
+            CRLF,
+            alloc)
+
+    bkt = serf_bucket_response_create(tmp, alloc);
+
+    status = serf_bucket_readline(bkt, SERF_NEWLINE_ANY,
+                                  &found, &data, &len);
+    CuAssertIntEquals(tc, APR_EOF, status);
+    CuAssertIntEquals(tc, 7, len);
+    CuAssertStrnEquals(tc, "abc1234", len, data);
     serf_bucket_destroy(bkt);
 }
 
