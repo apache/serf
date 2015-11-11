@@ -461,6 +461,68 @@ static apr_status_t serf_deflate_read(serf_bucket_t *bucket,
     return status;
 }
 
+static apr_status_t serf_deflate_peek(serf_bucket_t *bucket,
+                                      const char **data,
+                                      apr_size_t *len)
+{
+    deflate_context_t *ctx = bucket->data;
+    apr_status_t status;
+
+    status = serf_deflate_wait_for_data(bucket);
+    if (status || (ctx->state != STATE_INFLATE && ctx->state != STATE_DONE)) {
+        *data = "";
+        *len = 0;
+        return status;
+    }
+
+    status = serf_bucket_peek(ctx->inflate_stream, data, len);
+    if (APR_STATUS_IS_EOF(status))
+        status = APR_SUCCESS;
+
+    if (status || *len || ctx->state != STATE_INFLATE) {
+        return status;
+    }
+
+    status = serf_deflate_refill(bucket);
+
+    if (status) {
+        *data = "";
+        *len = 0;
+        return status;
+    }
+
+    /* Okay, we've inflated.  Try to peek again. */
+    status = serf_bucket_peek(ctx->inflate_stream, data, len);
+    /* Hide EOF. */
+    if (APR_STATUS_IS_EOF(status)) {
+
+        /* If the inflation wasn't finished, return APR_SUCCESS. */
+        if (ctx->state == STATE_INFLATE)
+            return APR_SUCCESS; /* Not at EOF yet */
+
+        /* If our stream is finished too and all data was inflated,
+         * return SUCCESS so we'll iterate one more time.
+         */
+        if (APR_STATUS_IS_EOF(ctx->stream_status)) {
+            /* No more data to read from the stream, and everything
+                inflated. If all data was received correctly, state
+                should have been advanced to STATE_READING_VERIFY or
+                STATE_FINISH. If not, then the data was incomplete
+                and we have an error. */
+            if (ctx->state != STATE_INFLATE)
+                return APR_SUCCESS;
+            else {
+                serf__log(LOGLVL_ERROR, LOGCOMP_COMPR, __FILE__,
+                          ctx->config,
+                          "Unexpected EOF on input stream\n");
+                return SERF_ERROR_DECOMPRESSION_FAILED;
+            }
+        }
+    }
+
+    return status;
+}
+
 static apr_status_t serf_deflate_set_config(serf_bucket_t *bucket,
                                             serf_config_t *config)
 {
@@ -478,7 +540,7 @@ const serf_bucket_type_t serf_bucket_type_deflate = {
     serf_default_read_iovec,
     serf_default_read_for_sendfile,
     serf_buckets_are_v2,
-    serf_default_peek /* ### TODO */,
+    serf_deflate_peek,
     serf_deflate_destroy_and_data,
     serf_default_read_bucket,
     serf_default_readline2,
