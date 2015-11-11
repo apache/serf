@@ -35,11 +35,6 @@
  * unfreed blocks on pool cleanup. */
 /* #define SERF__DEBUG_UNFREED_MEMORY */
 
-/* Define SERF__DEBUG_USE_AFTER_FREE if you're interested to prevent
- * access bucket allocator after free.
- * TODO: Should we do this by default? */
-/* #define SERF__DEBUG_USE_AFTER_FREE */
-
 typedef struct node_header_t {
     apr_size_t size;
     union {
@@ -79,7 +74,8 @@ typedef struct node_header_t {
 #define ALLOC_AMT (8192 - APR_MEMNODE_T_SIZE)
 
 /* Define DEBUG_DOUBLE_FREE if you're interested in debugging double-free
- * calls to serf_bucket_mem_free().
+ * calls to serf_bucket_mem_free() and access bucket allocator after it
+ * destroyed.
  */
 #define DEBUG_DOUBLE_FREE
 
@@ -156,7 +152,7 @@ static apr_status_t allocator_cleanup(void *data)
         apr_allocator_destroy(allocator->allocator);
     }
 
-#ifdef SERF__DEBUG_USE_AFTER_FREE
+#ifdef DEBUG_DOUBLE_FREE
     /* Set POOL to NULL to detect allocator usage after destroy. */
     allocator->pool = NULL;
 #endif
@@ -223,7 +219,7 @@ void *serf_bucket_mem_alloc(
     node_header_t *node;
     void *block;
 
-#ifdef SERF__DEBUG_USE_AFTER_FREE
+#ifdef DEBUG_DOUBLE_FREE
     if (allocator->pool == NULL) {
         /* Attempt to use bucket allocator after it destroyed by
          * pool cleanup. */
@@ -314,7 +310,7 @@ void serf_bucket_mem_free(
 {
     node_header_t *node;
 
-#ifdef SERF__DEBUG_USE_AFTER_FREE
+#ifdef DEBUG_DOUBLE_FREE
     if (allocator->pool == NULL) {
         /* Attempt to use bucket allocator after it destroyed by
          * pool cleanup. */
