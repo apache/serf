@@ -334,9 +334,7 @@ static apr_status_t deflate_read3(serf_bucket_t *bucket,
     return status;
 }
 
-static apr_status_t deflate_read2(serf_bucket_t *bucket,
-                                      apr_size_t requested,
-                                      const char **data, apr_size_t *len)
+static apr_status_t serf_deflate_wait_for_data(serf_bucket_t *bucket)
 {
     deflate_context_t *ctx = bucket->data;
     apr_status_t status;
@@ -369,12 +367,10 @@ static apr_status_t deflate_read2(serf_bucket_t *bucket,
             if (ctx->stream_left == 0) {
                 ctx->state++;
                 if (APR_STATUS_IS_EAGAIN(status)) {
-                    *len = 0;
                     return status;
                 }
             }
             else if (status) {
-                *len = 0;
                 return status;
             }
             break;
@@ -440,10 +436,10 @@ static apr_status_t deflate_read2(serf_bucket_t *bucket,
             ctx->state++;
             break;
         case STATE_INFLATE:
-            return deflate_read3(bucket, requested, data, len);
+            return APR_SUCCESS;
         case STATE_DONE:
             /* We're done inflating.  Use our finished buffer. */
-            return serf_bucket_read(ctx->stream, requested, data, len);
+            return ctx->inflate_stream ? APR_SUCCESS : APR_EOF;
         default:
             /* Not reachable */
             return APR_EGENERAL;
@@ -457,7 +453,20 @@ static apr_status_t serf_deflate_read(serf_bucket_t *bucket,
                                       apr_size_t requested,
                                       const char **data, apr_size_t *len)
 {
-  return deflate_read2(bucket, requested, data, len);
+    deflate_context_t *ctx = bucket->data;
+    apr_status_t status;
+
+    status = serf_deflate_wait_for_data(bucket);
+    if (status || (ctx->state != STATE_INFLATE && ctx->state != STATE_DONE)) {
+        *data = "";
+        *len = 0;
+        return status;
+    }
+
+    if (ctx->state == STATE_INFLATE)
+        return deflate_read3(bucket, requested, data, len);
+    else
+        return serf_bucket_read(ctx->inflate_stream, requested, data, len);
 }
 
 static apr_status_t serf_deflate_set_config(serf_bucket_t *bucket,
