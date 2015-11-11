@@ -81,7 +81,12 @@ static void serf_mock_sock_destroy_and_data(serf_bucket_t *bucket)
 
     serf_bucket_destroy(ctx->stream);
 
+#ifndef SERF_DEBUG_BUCKET_USE
     serf_default_destroy_and_data(bucket);
+#else
+    serf_bucket_mem_free(bucket->allocator, bucket->data);
+    serf_bucket_mem_free(bucket->allocator, bucket);
+#endif
 }
 
 static apr_status_t serf_mock_sock_set_config(serf_bucket_t *bucket,
@@ -104,6 +109,7 @@ const serf_bucket_type_t serf_bucket_type_mock_socket = {
     serf_mock_sock_peek,
     serf_mock_sock_destroy_and_data,
     serf_default_read_bucket,
+    serf_default_readline2,
     serf_default_get_remaining,
     serf_mock_sock_set_config,
 };
