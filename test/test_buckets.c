@@ -291,6 +291,7 @@ static void test_response_bucket_read(CuTest *tc)
     int found;
     const char *data;
     apr_size_t len;
+    serf_status_line sline;
 
     serf_bucket_alloc_t *alloc = test__create_bucket_allocator(tc, tb->pool);
 
@@ -316,13 +317,24 @@ static void test_response_bucket_read(CuTest *tc)
             CRLF,
             alloc)
 
-    bkt = serf_bucket_response_create(tmp, alloc);
+    bkt = serf_bucket_response_create(
+              serf_bucket_barrier_create(tmp, alloc),
+              alloc);
 
     status = serf_bucket_readline(bkt, SERF_NEWLINE_ANY,
                                   &found, &data, &len);
     CuAssertIntEquals(tc, APR_EOF, status);
     CuAssertIntEquals(tc, 7, len);
     CuAssertStrnEquals(tc, "abc1234", len, data);
+    serf_bucket_destroy(bkt);
+
+    /* 304 has no body, but we should be able to read it */
+    bkt = serf_bucket_response_create(tmp, alloc);
+    read_and_check_bucket(tc, bkt, "");
+
+    CuAssertIntEquals(tc, APR_SUCCESS,
+                      serf_bucket_response_status(bkt, &sline));
+    CuAssertIntEquals(tc, 304, sline.code);
     serf_bucket_destroy(bkt);
 }
 
