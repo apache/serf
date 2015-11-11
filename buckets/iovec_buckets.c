@@ -53,6 +53,7 @@ serf_bucket_t *serf_bucket_iovec_create(
 
     /* copy all buffers to our iovec. */
     for (i = 0; i < len; i++) {
+        /* ### skip if iov_len == 0. (and adjust ->vecs_len)  */
         ctx->vecs[i].iov_base = vecs[i].iov_base;
         ctx->vecs[i].iov_len = vecs[i].iov_len;
     }
@@ -80,6 +81,7 @@ static apr_status_t serf_iovec_read_iovec(serf_bucket_t *bucket,
         if (*vecs_used >= vecs_size)
             break;
 
+        /* ### skip returning a vec, if its iov_len will be 0.  */
         vecs[*vecs_used].iov_base = (char*)vec.iov_base + ctx->offset;
         remaining = vec.iov_len - ctx->offset;
 
@@ -139,6 +141,7 @@ static apr_status_t serf_iovec_peek(serf_bucket_t *bucket,
 
     /* Return the first unread buffer, don't bother combining all
        remaining data. */
+    /* ### skip current_vec if iov_len will be 0.  */
     *data = (const char *)ctx->vecs[ctx->current_vec].iov_base + ctx->offset;
     *len = ctx->vecs[ctx->current_vec].iov_len - ctx->offset;
 
