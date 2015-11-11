@@ -1029,13 +1029,10 @@ serf_hpack_destroy_and_data(serf_bucket_t *bucket)
 }
 
 
-/* ### need to implement */
-#define serf_hpack_readline NULL
-
 const serf_bucket_type_t serf_bucket_type__hpack = {
   "HPACK",
   serf_hpack_read,
-  serf_hpack_readline,
+  serf_default_readline,
   serf_hpack_read_iovec,
   serf_default_read_for_sendfile,
   serf_buckets_are_v2,

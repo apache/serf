@@ -125,6 +125,93 @@ apr_status_t serf_default_peek(
     return APR_SUCCESS;
 }
 
+apr_status_t serf_default_readline(serf_bucket_t *bucket, int acceptable,
+                                   int *found,
+                                   const char **data, apr_size_t *len)
+{
+    apr_status_t status;
+    const char *peek_data;
+    apr_size_t peek_len;
+    apr_size_t requested;
+
+    status = bucket->type->peek(bucket, &peek_data, &peek_len);
+
+    if (SERF_BUCKET_READ_ERROR(status))
+        return status;
+
+    if (peek_len > 0) {
+        const char *cr = NULL;
+        const char *lf = NULL;
+
+        if ((acceptable & SERF_NEWLINE_CR) || (acceptable & SERF_NEWLINE_CRLF))
+            cr = memchr(peek_data, '\r', peek_len);
+        if ((acceptable & SERF_NEWLINE_LF))
+            lf = memchr(peek_data, '\n', peek_len);
+
+        if (cr && lf)
+            cr = MIN(cr, lf);
+        else if (lf)
+            cr = lf;
+
+        /* ### When we are only looking for CRLF we may return too small
+               chunks here when the data contains CR or LF without the other.
+               That isn't incorrect, but it could be optimized.
+
+           ### But as that case is not common, the caller has to assume
+               partial reads anyway and this is just a not very inefficient
+               fallback implementation...
+
+               Let's make the buffering in the caller handle that case
+               for now. */
+
+        if (*cr == '\r' && (acceptable & SERF_NEWLINE_CRLF)
+            && ((cr + 1) < (peek_data + peek_len)) && *(cr + 1) == '\n')
+        {
+            requested = (cr + 2) - peek_data;
+        }
+        else if (cr)
+            requested = (cr + 1) - peek_data;
+        else
+            requested = peek_len;
+    }
+    else {
+        /* We can't peek...
+           The only valid thing to do is try to read upto one EOL */
+        if ((acceptable & SERF_NEWLINE_ANY) == SERF_NEWLINE_CRLF)
+            requested = 2;
+        else
+            requested = 1;
+    }
+
+    status = bucket->type->read(bucket, requested, data, len);
+
+    if (SERF_BUCKET_READ_ERROR(status))
+        return status;
+
+    if (*len == 0) {
+        *found = SERF_NEWLINE_NONE;
+    }
+    else if ((acceptable & SERF_NEWLINE_CRLF) && *len >= 2
+        && data[*len - 1] == '\n' && data[*len - 2] == '\r')
+    {
+        *found = SERF_NEWLINE_CRLF;
+    }
+    else if ((acceptable & SERF_NEWLINE_LF) && data[*len - 1] == '\n')
+    {
+        *found = SERF_NEWLINE_LF;
+    }
+    else if ((acceptable & (SERF_NEWLINE_CRLF | SERF_NEWLINE_CR))
+             && data[*len - 1] == '\r')
+    {
+        *found = (acceptable & (SERF_NEWLINE_CRLF)) ? SERF_NEWLINE_CRLF_SPLIT
+                                                    : SERF_NEWLINE_CR;
+    }
+    else
+        *found = SERF_NEWLINE_NONE;
+
+    return status;
+}
+
 
 void serf_default_destroy(serf_bucket_t *bucket)
 {

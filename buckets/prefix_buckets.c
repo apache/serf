@@ -226,13 +226,10 @@ static void serf_prefix_destroy(serf_bucket_t *bucket)
     serf_default_destroy_and_data(bucket);
 }
 
-/* ### need to implement */
-#define serf_prefix_readline NULL
-
 const serf_bucket_type_t serf_bucket_type_prefix = {
   "prefix",
   serf_prefix_read,
-  serf_prefix_readline, /* #### */
+  serf_default_readline,
   serf_prefix_read_iovec,
   serf_default_read_for_sendfile,
   serf_buckets_are_v2,
