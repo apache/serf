@@ -481,6 +481,12 @@ serf_bucket_t *serf_bucket_deflate_create(
     serf_bucket_alloc_t *allocator,
     int format);
 
+serf_bucket_t *serf_bucket_deflate_compress_create(
+    serf_bucket_t *stream,
+    int memlevel,
+    int format,
+    serf_bucket_alloc_t *allocator);
+
 
 /* ==================================================================== */
 
