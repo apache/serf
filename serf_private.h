@@ -463,6 +463,9 @@ void serf__copy_iovec(char *data,
                       struct iovec *vecs,
                       int vecs_used);
 
+/* Drains the bucket as far as possible without waiting for more data */
+void serf__bucket_drain(serf_bucket_t *bucket);
+
 /** Transform a response_bucket in-place into an aggregate bucket. Restore the
     status line and all headers, not just the body.
  
