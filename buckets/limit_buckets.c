@@ -79,34 +79,6 @@ static apr_status_t serf_limit_read(serf_bucket_t *bucket,
     return status;
 }
 
-static apr_status_t serf_limit_readline(serf_bucket_t *bucket,
-                                         int acceptable, int *found,
-                                         const char **data, apr_size_t *len)
-{
-    limit_context_t *ctx = bucket->data;
-    apr_status_t status;
-
-    if (!ctx->remaining) {
-        *len = 0;
-        *found = SERF_NEWLINE_NONE;
-        return APR_EOF;
-    }
-    /* ### Where does this obey/verify the limit? -> It doesn't */
-    status = serf_bucket_readline(ctx->stream, acceptable, found, data, len);
-
-    /* So this may potentially underflow! */
-    if (!SERF_BUCKET_READ_ERROR(status)) {
-        ctx->remaining -= *len;
-    }
-
-    /* If we have met our limit and don't have a status, return EOF. */
-    if (!ctx->remaining && !status) {
-        status = APR_EOF;
-    }
-
-    return status;
-}
-
 static apr_status_t serf_limit_read_iovec(serf_bucket_t *bucket,
                                           apr_size_t requested,
                                           int vecs_size,
@@ -197,7 +169,7 @@ static apr_status_t serf_limit_set_config(serf_bucket_t *bucket,
 const serf_bucket_type_t serf_bucket_type_limit = {
     "LIMIT",
     serf_limit_read,
-    serf_limit_readline,
+    serf_default_readline,
     serf_limit_read_iovec,
     serf_default_read_for_sendfile,
     serf_buckets_are_v2,

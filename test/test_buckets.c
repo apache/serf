@@ -2136,6 +2136,21 @@ static void test_limit_buckets(CuTest *tc)
     CuAssertIntEquals(tc, 5, len);
   }
   serf_bucket_destroy(agg);
+
+  {
+    const char *data;
+    int found;
+
+    raw = SERF_BUCKET_SIMPLE_STRING("ABCDEF\nGHIJKLMNOP", alloc);
+    limit = serf_bucket_limit_create(raw, 5, alloc);
+
+    CuAssertIntEquals(tc, APR_EOF,
+                      serf_bucket_readline(limit, SERF_NEWLINE_ANY, &found,
+                                           &data, &len));
+    CuAssertIntEquals(tc, SERF_NEWLINE_NONE, found);
+    CuAssertIntEquals(tc, len, 5); /* > 5 is over limit -> bug */
+    DRAIN_BUCKET(raw);
+  }
 }
 
 /* Basic test for unframe buckets. */

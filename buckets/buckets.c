@@ -164,7 +164,7 @@ apr_status_t serf_default_readline(serf_bucket_t *bucket, int acceptable,
                Let's make the buffering in the caller handle that case
                for now. */
 
-        if (*cr == '\r' && (acceptable & SERF_NEWLINE_CRLF)
+        if (cr && *cr == '\r' && (acceptable & SERF_NEWLINE_CRLF)
             && ((cr + 1) < (peek_data + peek_len)) && *(cr + 1) == '\n')
         {
             requested = (cr + 2) - peek_data;
@@ -192,16 +192,16 @@ apr_status_t serf_default_readline(serf_bucket_t *bucket, int acceptable,
         *found = SERF_NEWLINE_NONE;
     }
     else if ((acceptable & SERF_NEWLINE_CRLF) && *len >= 2
-        && data[*len - 1] == '\n' && data[*len - 2] == '\r')
+             && (*data)[*len - 1] == '\n' && (*data)[*len - 2] == '\r')
     {
         *found = SERF_NEWLINE_CRLF;
     }
-    else if ((acceptable & SERF_NEWLINE_LF) && data[*len - 1] == '\n')
+    else if ((acceptable & SERF_NEWLINE_LF) && (*data)[*len - 1] == '\n')
     {
         *found = SERF_NEWLINE_LF;
     }
     else if ((acceptable & (SERF_NEWLINE_CRLF | SERF_NEWLINE_CR))
-             && data[*len - 1] == '\r')
+             && (*data)[*len - 1] == '\r')
     {
         *found = (acceptable & (SERF_NEWLINE_CRLF)) ? SERF_NEWLINE_CRLF_SPLIT
                                                     : SERF_NEWLINE_CR;
