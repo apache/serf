@@ -147,7 +147,11 @@ serf_bucket_t *serf__bucket_log_wrapper_create(serf_bucket_t *wrapped,
                                                const char *prefix,
                                                serf_bucket_alloc_t *alloc)
 {
-#ifdef SERF_LOGGING_ENABLED
+    /* ### This code currently breaks SERF_BUCKET_IS_XXXX() on the bucket.
+           So to avoid many false warnings we disable it when using
+           SERF_DEBUG_BUCKET_USE 
+     */
+#if defined(SERF_LOGGING_ENABLED) && !defined(SERF_DEBUG_BUCKET_USE)
     serf_log_wrapped_bucket_t *bkt = serf_bucket_mem_alloc(alloc, sizeof(*bkt));
     log_wrapped_context_t *ctx = serf_bucket_mem_alloc(alloc, sizeof(*ctx));
     serf_bucket_type_t *bkt_type = serf_bucket_mem_alloc(alloc, sizeof(*bkt_type));

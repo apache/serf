@@ -189,6 +189,17 @@ apr_status_t serf_bucket_mock_more_data_arrived(serf_bucket_t *bucket)
     return APR_SUCCESS;
 }
 
+void serf_mock_destroy(serf_bucket_t *bucket)
+{
+#ifndef SERF_DEBUG_BUCKET_USE
+  serf_default_destroy_and_data(bucket);
+#else
+  /* This bucket is impossible to drain. Avoid abort() */
+  serf_bucket_mem_free(bucket->allocator, bucket->data);
+  serf_bucket_mem_free(bucket->allocator, bucket);
+#endif
+}
+
 const serf_bucket_type_t serf_bucket_type_mock = {
     "MOCK",
     serf_mock_read,
@@ -197,7 +208,7 @@ const serf_bucket_type_t serf_bucket_type_mock = {
     serf_default_read_for_sendfile,
     serf_default_read_bucket,
     serf_mock_peek,
-    serf_default_destroy_and_data,
+    serf_mock_destroy
 };
 
 
