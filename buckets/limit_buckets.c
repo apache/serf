@@ -54,12 +54,8 @@ static apr_status_t serf_limit_read(serf_bucket_t *bucket,
         return APR_EOF;
     }
 
-    if (requested == SERF_READ_ALL_AVAIL || requested > ctx->remaining) {
-        if (ctx->remaining <= REQUESTED_MAX) {
-            requested = (apr_size_t) ctx->remaining;
-        } else {
-            requested = REQUESTED_MAX;
-        }
+    if (requested > ctx->remaining) {
+        requested = (apr_size_t) ctx->remaining;
     }
 
     status = serf_bucket_read(ctx->stream, requested, data, len);
@@ -79,6 +75,53 @@ static apr_status_t serf_limit_read(serf_bucket_t *bucket,
     return status;
 }
 
+static apr_status_t serf_limit_readline2(serf_bucket_t *bucket,
+                                         int accepted,
+                                         apr_size_t requested,
+                                         int *found,
+                                         const char **data,
+                                         apr_size_t *len)
+{
+    limit_context_t *ctx = bucket->data;
+    apr_status_t status;
+
+    if (!ctx->remaining) {
+        *len = 0;
+        return APR_EOF;
+    }
+
+    if (requested > ctx->remaining) {
+        requested = (apr_size_t) ctx->remaining;
+    }
+
+    status = serf_bucket_readline2(ctx->stream, accepted,
+                                   requested, found, data, len);
+
+    if (!SERF_BUCKET_READ_ERROR(status)) {
+        ctx->remaining -= *len;
+
+        /* If we have met our limit and don't have a status, return EOF. */
+        if (!ctx->remaining && !status) {
+            status = APR_EOF;
+        }
+        else if (APR_STATUS_IS_EOF(status) && ctx->remaining) {
+            status = SERF_ERROR_TRUNCATED_HTTP_RESPONSE;
+        }
+    }
+
+    return status;
+}
+
+static apr_status_t serf_limit_readline(serf_bucket_t *bucket,
+                                        int accepted,
+                                        int *found,
+                                        const char **data,
+                                        apr_size_t *len)
+{
+  return serf_limit_readline2(bucket, accepted, SERF_READ_ALL_AVAIL,
+                              found, data, len);
+}
+
 static apr_status_t serf_limit_read_iovec(serf_bucket_t *bucket,
                                           apr_size_t requested,
                                           int vecs_size,
@@ -93,12 +136,8 @@ static apr_status_t serf_limit_read_iovec(serf_bucket_t *bucket,
         return APR_EOF;
     }
 
-    if (requested == SERF_READ_ALL_AVAIL || requested > ctx->remaining) {
-        if (ctx->remaining <= REQUESTED_MAX) {
-            requested = (apr_size_t) ctx->remaining;
-        } else {
-            requested = REQUESTED_MAX;
-        }
+    if (requested > ctx->remaining) {
+        requested = (apr_size_t) ctx->remaining;
     }
 
   status = serf_bucket_read_iovec(ctx->stream, requested,
@@ -169,14 +208,14 @@ static apr_status_t serf_limit_set_config(serf_bucket_t *bucket,
 const serf_bucket_type_t serf_bucket_type_limit = {
     "LIMIT",
     serf_limit_read,
-    serf_default_readline,
+    serf_limit_readline,
     serf_limit_read_iovec,
     serf_default_read_for_sendfile,
     serf_buckets_are_v2,
     serf_limit_peek,
     serf_limit_destroy,
     serf_default_read_bucket,
-    serf_default_readline2,
+    serf_limit_readline2,
     serf_limit_get_remaining,
     serf_limit_set_config,
 };
