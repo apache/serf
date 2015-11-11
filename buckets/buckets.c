@@ -303,6 +303,16 @@ const serf_bucket_type_t *serf_get_type(serf_bucket_t *bucket,
 #endif
 
         case 2:
+#if 0
+            /* We can't trust this check to always do the right thing as there
+               can be multiple pointers to the same function...
+               but an optimizing compiler/linker can still use the hint if it
+               is inlining this function. ### Enable?
+             */
+            if (bucket->type->read_bucket == serf_buckets_are_v2)
+                return bucket->type;
+#endif
+
             r = bucket->type->read_bucket(bucket, &v2_check);
             break;
 
