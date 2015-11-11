@@ -2004,7 +2004,6 @@ static void test_linebuf_fetch_crlf(CuTest *tc)
     serf_bucket_t *bkt;
     serf_linebuf_t linebuf;
     serf_bucket_type_t *unfriendly;
-    apr_status_t status;
     
     serf_bucket_alloc_t *alloc = test__create_bucket_allocator(tc, tb->pool);
 
@@ -2262,6 +2261,26 @@ static void test_limit_buckets(CuTest *tc)
     CuAssertIntEquals(tc, len, 5); /* > 5 is over limit -> bug */
     DRAIN_BUCKET(raw);
   }
+}
+
+static void test_deflate_compress_buckets(CuTest *tc)
+{
+    test_baton_t *tb = tc->testBaton;
+    serf_bucket_alloc_t *alloc = tb->bkt_alloc;
+    serf_bucket_t *bkt;
+    int i;
+    const char *body = "12345678901234567890" CRLF
+                       "12345678901234567890" CRLF
+                       "12345678901234567890" CRLF;
+
+    for (i = SERF_DEFLATE_GZIP; i <= SERF_DEFLATE_DEFLATE; i++) {
+        bkt = SERF_BUCKET_SIMPLE_STRING(body, alloc);
+        bkt = serf_bucket_deflate_compress_create(bkt, 0, i, alloc);
+        bkt = serf_bucket_deflate_create(bkt, alloc, i);
+
+        read_and_check_bucket(tc, bkt, body);
+        serf_bucket_destroy(bkt);
+    }
 }
 
 /* Basic test for unframe buckets. */
@@ -2771,6 +2790,7 @@ CuSuite *test_buckets(void)
     SUITE_ADD_TEST(suite, test_deflate_buckets);
     SUITE_ADD_TEST(suite, test_prefix_buckets);
     SUITE_ADD_TEST(suite, test_limit_buckets);
+    SUITE_ADD_TEST(suite, test_deflate_compress_buckets);
     SUITE_ADD_TEST(suite, test_http2_unframe_buckets);
     SUITE_ADD_TEST(suite, test_http2_unpad_buckets);
     SUITE_ADD_TEST(suite, test_hpack_huffman_decode);
