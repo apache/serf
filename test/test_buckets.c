@@ -2003,6 +2003,8 @@ static void test_linebuf_fetch_crlf(CuTest *tc)
     };
     serf_bucket_t *bkt;
     serf_linebuf_t linebuf;
+    serf_bucket_type_t *unfriendly;
+    apr_status_t status;
     
     serf_bucket_alloc_t *alloc = test__create_bucket_allocator(tc, tb->pool);
 
@@ -2041,6 +2043,52 @@ static void test_linebuf_fetch_crlf(CuTest *tc)
     CuAssertIntEquals(tc, 0, linebuf.used);
 
     serf_bucket_destroy(bkt);
+
+    /* And now try again with a less frienly peek implementation */
+    bkt = serf_bucket_mock_create(actions, sizeof(actions) / sizeof(actions[0]),
+                                  alloc);
+
+    unfriendly = serf_bmemdup(alloc, bkt->type, sizeof(*bkt->type));
+    unfriendly->peek = serf_default_peek; /* Unable to peek */
+    bkt->type = unfriendly;
+
+    serf_linebuf_init(&linebuf);
+    CuAssertStrEquals(tc, "", linebuf.line);
+    CuAssertIntEquals(tc, 0, linebuf.used);
+    CuAssertIntEquals(tc, SERF_LINEBUF_EMPTY, linebuf.state);
+
+    CuAssertIntEquals(tc, APR_SUCCESS,
+                      serf_linebuf_fetch(&linebuf, bkt, SERF_NEWLINE_CRLF));
+    /* We got first line in one call. */
+    CuAssertIntEquals(tc, SERF_LINEBUF_READY, linebuf.state);
+    CuAssertStrEquals(tc, "line1", linebuf.line);
+    CuAssertIntEquals(tc, 5, linebuf.used);
+
+    /* The second line CR and LF splitted across packets. */
+    CuAssertIntEquals(tc, APR_EAGAIN,
+                      serf_linebuf_fetch(&linebuf, bkt, SERF_NEWLINE_CRLF));
+    CuAssertIntEquals(tc, SERF_LINEBUF_CRLF_SPLIT, linebuf.state);
+
+    /* This test gets now stuck here, because EAGAIN will be returned forever */
+    CuAssertIntEquals(tc, APR_EAGAIN,
+                      serf_linebuf_fetch(&linebuf, bkt, SERF_NEWLINE_CRLF));
+    CuAssertIntEquals(tc, SERF_LINEBUF_CRLF_SPLIT, linebuf.state);
+
+#if 0
+    CuAssertIntEquals(tc, SERF_LINEBUF_READY, linebuf.state);
+    CuAssertIntEquals(tc, 5, linebuf.used);
+    CuAssertStrnEquals(tc, "line2", 0, linebuf.line);
+
+    /* Last line is empty. */
+    CuAssertIntEquals(tc, APR_EOF,
+                      serf_linebuf_fetch(&linebuf, bkt, SERF_NEWLINE_CRLF));
+    CuAssertIntEquals(tc, SERF_LINEBUF_READY, linebuf.state);
+    CuAssertStrEquals(tc, "", linebuf.line);
+    CuAssertIntEquals(tc, 0, linebuf.used);
+
+    serf_bucket_destroy(bkt);
+    serf_bucket_mem_free(alloc, unfriendly);
+#endif
 }
 
 typedef struct prefix_cb
