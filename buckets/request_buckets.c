@@ -169,7 +169,7 @@ static apr_status_t serf_request_read(serf_bucket_t *bucket,
     serialize_data(bucket);
 
     /* Delegate to the "new" aggregate bucket to do the read. */
-    return serf_bucket_read(bucket, requested, data, len);
+    return bucket->type->read(bucket, requested, data, len);
 }
 
 static apr_status_t serf_request_readline(serf_bucket_t *bucket,
@@ -180,7 +180,7 @@ static apr_status_t serf_request_readline(serf_bucket_t *bucket,
     serialize_data(bucket);
 
     /* Delegate to the "new" aggregate bucket to do the readline. */
-    return serf_bucket_readline(bucket, acceptable, found, data, len);
+    return bucket->type->readline(bucket, acceptable, found, data, len);
 }
 
 static apr_status_t serf_request_read_iovec(serf_bucket_t *bucket,
@@ -193,8 +193,8 @@ static apr_status_t serf_request_read_iovec(serf_bucket_t *bucket,
     serialize_data(bucket);
 
     /* Delegate to the "new" aggregate bucket to do the read. */
-    return serf_bucket_read_iovec(bucket, requested,
-                                  vecs_size, vecs, vecs_used);
+    return bucket->type->read_iovec(bucket, requested,
+                                    vecs_size, vecs, vecs_used);
 }
 
 static serf_bucket_t * serf_request_read_bucket(serf_bucket_t *bucket,
