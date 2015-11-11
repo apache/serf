@@ -527,6 +527,56 @@ fake_eof:
     return status;
 }
 
+static apr_status_t serf_response_read_iovec(serf_bucket_t *bucket,
+                                             apr_size_t requested,
+                                             int vecs_size,
+                                             struct iovec *vecs,
+                                             int *vecs_used)
+{
+    response_context_t *ctx = bucket->data;
+    apr_status_t status;
+
+    status = wait_for_body(bucket, ctx);
+    if (status) {
+        *vecs_used = 0;
+        goto fake_eof;
+    }
+
+    status = serf_bucket_read_iovec(ctx->body, requested, vecs_size,
+                                    vecs, vecs_used);
+
+fake_eof:
+    if (APR_STATUS_IS_EOF(status) && ctx->error_on_eof)
+        return ctx->error_on_eof;
+
+    return status;
+}
+
+static apr_status_t serf_response_peek(serf_bucket_t *bucket,
+                                       const char **data,
+                                       apr_size_t *len)
+{
+    response_context_t *ctx = bucket->data;
+    apr_status_t status;
+
+    status = wait_for_body(bucket, ctx);
+    if (status) {
+        *data = NULL;
+        *len = 0;
+
+        if (SERF_BUCKET_READ_ERROR(status))
+            return status;
+        else
+            return APR_SUCCESS;
+    }
+
+    status = serf_bucket_peek(ctx->body, data, len);
+    if (APR_STATUS_IS_EOF(status) && ctx->error_on_eof)
+        return ctx->error_on_eof;
+
+    return status;
+}
+
 apr_status_t serf_response_full_become_aggregate(serf_bucket_t *bucket)
 {
     response_context_t *ctx = bucket->data;
@@ -584,10 +634,10 @@ const serf_bucket_type_t serf_bucket_type_response = {
     "RESPONSE",
     serf_response_read,
     serf_response_readline,
-    serf_default_read_iovec,
+    serf_response_read_iovec,
     serf_default_read_for_sendfile,
     serf_buckets_are_v2,
-    serf_default_peek /* ### TODO */,
+    serf_response_peek,
     serf_response_destroy_and_data,
     serf_default_read_bucket,
     serf_default_get_remaining,
