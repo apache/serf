@@ -176,6 +176,7 @@ const serf_bucket_type_t serf_bucket_type_limit = {
     serf_limit_peek,
     serf_limit_destroy,
     serf_default_read_bucket,
+    serf_default_readline2,
     serf_limit_get_remaining,
     serf_limit_set_config,
 };

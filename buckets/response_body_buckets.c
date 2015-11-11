@@ -202,6 +202,7 @@ const serf_bucket_type_t serf_bucket_type_response_body = {
     serf_response_body_peek,
     serf_response_body_destroy,
     serf_default_read_bucket,
+    serf_default_readline2,
     serf_response_body_get_remaining,
     serf_response_body_set_config,
 };

@@ -158,6 +158,7 @@ const serf_bucket_type_t serf_bucket_type_file = {
     serf_file_peek,
     serf_default_destroy_and_data,
     serf_default_read_bucket,
+    serf_default_readline2,
     serf_file_get_remaining,
     serf_default_ignore_config,
 };
