@@ -178,17 +178,22 @@ static void serf_deflate_destroy_and_data(serf_bucket_t *bucket)
 {
     deflate_context_t *ctx = bucket->data;
 
-    if (ctx->state > STATE_INIT &&
-        ctx->state <= STATE_FINISH)
-        inflateEnd(&ctx->zstream);
+    if ((ctx->state > STATE_INIT && ctx->state <= STATE_FINISH)
+        || (ctx->state > STATE_COMPRESS_INIT
+            && ctx->state < STATE_COMPRESS_FINISH))
+    {
+        if (ctx->memLevel >= 0)
+            deflateEnd(&ctx->zstream);
+        else
+            inflateEnd(&ctx->zstream);
+    }
 
-    /* We may have appended inflate_stream into the stream bucket.
+    /* We may have appended stream into the inflate bucket.
      * If so, avoid free'ing it twice.
      */
-    if (ctx->inflate_stream) {
-        serf_bucket_destroy(ctx->inflate_stream);
-    }
-    serf_bucket_destroy(ctx->stream);
+    serf_bucket_destroy(ctx->inflate_stream);
+    if (ctx->stream)
+        serf_bucket_destroy(ctx->stream);
 
     serf_default_destroy_and_data(bucket);
 }
@@ -237,6 +242,9 @@ static apr_status_t serf_deflate_refill(serf_bucket_t *bucket)
         if (private_len) {
             ctx->zstream.next_in = (unsigned char*)private_data;
             ctx->zstream.avail_in = private_len;
+            if (ctx->memLevel >= 0)
+                ctx->crc = crc32(ctx->crc, (const Bytef *)private_data,
+                                 private_len);
         } else {
             ctx->zstream.next_in = Z_NULL;
             ctx->zstream.avail_in = 0;
@@ -259,8 +267,9 @@ static apr_status_t serf_deflate_refill(serf_bucket_t *bucket)
             ctx->zstream.next_out = ctx->buffer;
             private_len = ctx->bufferSize - ctx->zstream.avail_out;
 
-            ctx->crc = crc32(ctx->crc, (const Bytef *)ctx->buffer,
-                              private_len);
+            if (ctx->memLevel < 0)
+              ctx->crc = crc32(ctx->crc, (const Bytef *)ctx->buffer,
+                               private_len);
 
             /* FIXME: There probably needs to be a free func. */
             tmp = SERF_BUCKET_SIMPLE_STRING_LEN((char *)ctx->buffer,
@@ -278,8 +287,9 @@ static apr_status_t serf_deflate_refill(serf_bucket_t *bucket)
             serf_bucket_t *tmp;
 
             private_len = ctx->bufferSize - ctx->zstream.avail_out;
-            ctx->crc = crc32(ctx->crc, (const Bytef *)ctx->buffer,
-                              private_len);
+            if (ctx->memLevel < 0)
+              ctx->crc = crc32(ctx->crc, (const Bytef *)ctx->buffer,
+                               private_len);
             /* FIXME: There probably needs to be a free func. */
             tmp = SERF_BUCKET_SIMPLE_STRING_LEN((char *)ctx->buffer,
                                                 private_len,
@@ -313,15 +323,15 @@ static apr_status_t serf_deflate_refill(serf_bucket_t *bucket)
                                                 bucket->allocator,
                                                 DEFLATE_VERIFY_SIZE);
 
-                     verify_header[0] = (ctx->crc >> 24) & 0xFF;
-                     verify_header[1] = (ctx->crc >> 16) & 0xFF;
-                     verify_header[2] = (ctx->crc >>  8) & 0xFF;
-                     verify_header[3] =  ctx->crc        & 0xFF;
+                     verify_header[0] =  ctx->crc        & 0xFF;                       
+                     verify_header[1] = (ctx->crc >>  8) & 0xFF;
+                     verify_header[2] = (ctx->crc >> 16) & 0xFF;
+                     verify_header[3] = (ctx->crc >> 24) & 0xFF;
 
-                     verify_header[4] = (ctx->zstream.total_out >> 24) & 0xFF;
-                     verify_header[5] = (ctx->zstream.total_out >> 16) & 0xFF;
-                     verify_header[6] = (ctx->zstream.total_out >>  8) & 0xFF;
-                     verify_header[7] =  ctx->zstream.total_out        & 0xFF;
+                     verify_header[4] =  ctx->zstream.total_in & 0xFF;
+                     verify_header[5] = (ctx->zstream.total_in >>  8) & 0xFF;
+                     verify_header[6] = (ctx->zstream.total_in >> 16) & 0xFF;
+                     verify_header[7] = (ctx->zstream.total_in >> 24) & 0xFF;
 
                      serf_bucket_aggregate_append(
                               ctx->inflate_stream,
@@ -465,9 +475,10 @@ static apr_status_t serf_deflate_wait_for_data(serf_bucket_t *bucket)
             break;
         case STATE_FINISH:
             inflateEnd(&ctx->zstream);
-            serf_bucket_aggregate_prepend(ctx->stream, ctx->inflate_stream);
-            ctx->inflate_stream = 0;
-            ctx->state++;
+            serf_bucket_aggregate_append(ctx->inflate_stream,
+                                         ctx->stream);
+            ctx->stream = NULL;
+            ctx->state = STATE_DONE;
             break;
         case STATE_INFLATE:
             return APR_SUCCESS;
@@ -506,9 +517,10 @@ static apr_status_t serf_deflate_wait_for_data(serf_bucket_t *bucket)
             break;
         case STATE_COMPRESS_FINISH:
             deflateEnd(&ctx->zstream);
-            serf_bucket_aggregate_prepend(ctx->stream, ctx->inflate_stream);
-            ctx->inflate_stream = NULL;
-            ctx->state++;
+            serf_bucket_aggregate_append(ctx->inflate_stream,
+                                         ctx->stream);
+            ctx->stream = NULL;
+            ctx->state = STATE_DONE;
             break;
         default:
             /* Not reachable */
@@ -534,7 +546,7 @@ static apr_status_t serf_deflate_read(serf_bucket_t *bucket,
     }
 
     status = serf_bucket_read(ctx->inflate_stream, requested, data, len);
-    if (APR_STATUS_IS_EOF(status))
+    if (APR_STATUS_IS_EOF(status) && ctx->state != STATE_DONE)
         status = APR_SUCCESS;
 
     if (status || *len || ctx->state != STATE_INFLATE) {
@@ -555,7 +567,7 @@ static apr_status_t serf_deflate_read(serf_bucket_t *bucket,
     if (APR_STATUS_IS_EOF(status)) {
 
         /* If the inflation wasn't finished, return APR_SUCCESS. */
-        if (ctx->state == STATE_INFLATE)
+        if (ctx->state != STATE_DONE)
             return APR_SUCCESS; /* Not at EOF yet */
 
         /* If our stream is finished too and all data was inflated,
@@ -567,7 +579,7 @@ static apr_status_t serf_deflate_read(serf_bucket_t *bucket,
                 should have been advanced to STATE_READING_VERIFY or
                 STATE_FINISH. If not, then the data was incomplete
                 and we have an error. */
-            if (ctx->state != STATE_INFLATE)
+            if (ctx->state != STATE_DONE)
                 return APR_SUCCESS;
             else {
                 serf__log(LOGLVL_ERROR, LOGCOMP_COMPR, __FILE__,
@@ -650,7 +662,10 @@ static apr_status_t serf_deflate_set_config(serf_bucket_t *bucket,
 
     ctx->config = config;
 
-    return serf_bucket_set_config(ctx->stream, config);
+    if (ctx->stream)
+        return serf_bucket_set_config(ctx->stream, config);
+
+    return APR_SUCCESS;
 }
 
 const serf_bucket_type_t serf_bucket_type_deflate = {
