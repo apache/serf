@@ -146,37 +146,13 @@ static void serf_deflate_destroy_and_data(serf_bucket_t *bucket)
     serf_default_destroy_and_data(bucket);
 }
 
-static apr_status_t deflate_read3(serf_bucket_t *bucket,
-                                  apr_size_t requested,
-                                  const char **data,
-                                  apr_size_t *len)
+static apr_status_t serf_deflate_refill(serf_bucket_t *bucket)
 {
     deflate_context_t *ctx = bucket->data;
     apr_status_t status;
     int zRC;
 
-    /* Do we have anything already uncompressed to read? */
-    status = serf_bucket_read(ctx->inflate_stream, requested, data,
-                              len);
-    if (SERF_BUCKET_READ_ERROR(status)) {
-        return status;
-    }
-    /* Hide EOF. */
-    if (APR_STATUS_IS_EOF(status)) {
-        status = ctx->stream_status;
-        if (APR_STATUS_IS_EOF(status)) {
-            /* We've read all of the data from our stream, but we
-              * need to continue to iterate until we flush
-              * out the zlib buffer.
-              */
-            status = APR_SUCCESS;
-        }
-    }
-    if (*len != 0) {
-        return status;
-    }
-
-    /* We tried; but we have nothing buffered. Fetch more. */
+    /* We have nothing buffered. Fetch more. */
 
     /* It is possible that we maxed out avail_out before
       * exhausting avail_in; therefore, continue using the
@@ -200,7 +176,6 @@ static apr_status_t deflate_read3(serf_bucket_t *bucket,
         }
 
         if (!private_len && APR_STATUS_IS_EAGAIN(ctx->stream_status)) {
-            *len = 0;
             status = ctx->stream_status;
             ctx->stream_status = APR_SUCCESS;
             return status;
@@ -239,6 +214,8 @@ static apr_status_t deflate_read3(serf_bucket_t *bucket,
                                                 bucket->allocator);
             serf_bucket_aggregate_append(ctx->inflate_stream, tmp);
             ctx->zstream.avail_out = ctx->bufferSize;
+
+            zRC = Z_OK;
             break;
         }
 
@@ -300,38 +277,11 @@ static apr_status_t deflate_read3(serf_bucket_t *bucket,
 
         /* As long as zRC == Z_OK, just keep looping. */
     }
-    /* Okay, we've inflated.  Try to read. */
-    status = serf_bucket_read(ctx->inflate_stream, requested, data,
-                              len);
-    /* Hide EOF. */
-    if (APR_STATUS_IS_EOF(status)) {
-        status = ctx->stream_status;
 
-        /* If the inflation wasn't finished, return APR_SUCCESS. */
-        if (zRC != Z_STREAM_END)
-            return APR_SUCCESS;
-
-        /* If our stream is finished too and all data was inflated,
-          * return SUCCESS so we'll iterate one more time.
-          */
-        if (APR_STATUS_IS_EOF(status)) {
-            /* No more data to read from the stream, and everything
-                inflated. If all data was received correctly, state
-                should have been advanced to STATE_READING_VERIFY or
-                STATE_FINISH. If not, then the data was incomplete
-                and we have an error. */
-            if (ctx->state != STATE_INFLATE)
-                return APR_SUCCESS;
-            else {
-                serf__log(LOGLVL_ERROR, LOGCOMP_COMPR, __FILE__,
-                          ctx->config,
-                          "Unexpected EOF on input stream\n");
-                return SERF_ERROR_DECOMPRESSION_FAILED;
-            }
-        }
-    }
-
-    return status;
+    if (zRC != Z_OK && zRC != Z_STREAM_END)
+        return SERF_ERROR_DECOMPRESSION_FAILED;
+    else
+        return APR_SUCCESS;
 }
 
 static apr_status_t serf_deflate_wait_for_data(serf_bucket_t *bucket)
@@ -463,10 +413,52 @@ static apr_status_t serf_deflate_read(serf_bucket_t *bucket,
         return status;
     }
 
-    if (ctx->state == STATE_INFLATE)
-        return deflate_read3(bucket, requested, data, len);
-    else
-        return serf_bucket_read(ctx->inflate_stream, requested, data, len);
+    status = serf_bucket_read(ctx->inflate_stream, requested, data, len);
+    if (APR_STATUS_IS_EOF(status))
+        status = APR_SUCCESS;
+
+    if (status || *len || ctx->state != STATE_INFLATE) {
+        return status;
+    }
+
+    status = serf_deflate_refill(bucket);
+
+    if (status) {
+        *data = "";
+        *len = 0;
+        return status;
+    }
+
+    /* Okay, we've inflated.  Try to read again. */
+    status = serf_bucket_read(ctx->inflate_stream, requested, data, len);
+    /* Hide EOF. */
+    if (APR_STATUS_IS_EOF(status)) {
+
+        /* If the inflation wasn't finished, return APR_SUCCESS. */
+        if (ctx->state == STATE_INFLATE)
+            return APR_SUCCESS; /* Not at EOF yet */
+
+        /* If our stream is finished too and all data was inflated,
+         * return SUCCESS so we'll iterate one more time.
+         */
+        if (APR_STATUS_IS_EOF(ctx->stream_status)) {
+            /* No more data to read from the stream, and everything
+                inflated. If all data was received correctly, state
+                should have been advanced to STATE_READING_VERIFY or
+                STATE_FINISH. If not, then the data was incomplete
+                and we have an error. */
+            if (ctx->state != STATE_INFLATE)
+                return APR_SUCCESS;
+            else {
+                serf__log(LOGLVL_ERROR, LOGCOMP_COMPR, __FILE__,
+                          ctx->config,
+                          "Unexpected EOF on input stream\n");
+                return SERF_ERROR_DECOMPRESSION_FAILED;
+            }
+        }
+    }
+
+    return status;
 }
 
 static apr_status_t serf_deflate_set_config(serf_bucket_t *bucket,
