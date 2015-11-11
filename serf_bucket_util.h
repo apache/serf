@@ -61,6 +61,17 @@ apr_status_t serf_default_read_iovec(
     int *vecs_used);
 
 /**
+ * Default implementation of the @see readline functionality.
+ *
+ * This function will use the @see read function, when possible optimized by
+ * the @a peek function to return the requested result.
+ */
+apr_status_t serf_default_readline(serf_bucket_t *bucket, int acceptable,
+                                   int *found,
+                                   const char **data, apr_size_t *len);
+
+
+/**
  * Default implementation of the @see read_for_sendfile functionality.
  *
  * This function will use the @see read function to get a block of memory,

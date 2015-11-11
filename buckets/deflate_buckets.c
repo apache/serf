@@ -444,13 +444,10 @@ static apr_status_t serf_deflate_set_config(serf_bucket_t *bucket,
     return serf_bucket_set_config(ctx->stream, config);
 }
 
-/* ### need to implement */
-#define serf_deflate_readline NULL
-
 const serf_bucket_type_t serf_bucket_type_deflate = {
     "DEFLATE",
     serf_deflate_read,
-    serf_deflate_readline /* ### TODO */,
+    serf_default_readline,
     serf_default_read_iovec,
     serf_default_read_for_sendfile,
     serf_buckets_are_v2,

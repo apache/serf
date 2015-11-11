@@ -322,13 +322,10 @@ serf_http2_unframe_get_remaining(serf_bucket_t *bucket)
   return ctx->payload_remaining;
 }
 
-/* ### need to implement */
-#define serf_http2_unframe_readline NULL
-
 const serf_bucket_type_t serf_bucket_type__http2_unframe = {
   "H2-UNFRAME",
   serf_http2_unframe_read,
-  serf_http2_unframe_readline /* ### TODO */,
+  serf_default_readline,
   serf_http2_unframe_read_iovec,
   serf_default_read_for_sendfile,
   serf_buckets_are_v2,
@@ -587,13 +584,10 @@ serf_http2_unpad_get_remaining(serf_bucket_t *bucket)
   return ctx->payload_remaining;
 }
 
-/* ### need to implement */
-#define serf_h2_dechunk_readline NULL
-
 const serf_bucket_type_t serf_bucket_type__http2_unpad = {
   "H2-UNPAD",
   serf_http2_unpad_read,
-  serf_h2_dechunk_readline /* ### TODO */,
+  serf_default_readline,
   serf_http2_unpad_read_iovec,
   serf_default_read_for_sendfile,
   serf_buckets_are_v2,
@@ -961,13 +955,10 @@ serf_http2_frame_destroy(serf_bucket_t *bucket)
   serf_default_destroy_and_data(bucket);
 }
 
-/* ### need to implement */
-#define serf_http2_frame_readline NULL
-
 const serf_bucket_type_t serf_bucket_type__http2_frame = {
   "H2-FRAME",
   serf_http2_frame_read,
-  serf_http2_frame_readline,
+  serf_default_readline,
   serf_http2_frame_read_iovec,
   serf_default_read_for_sendfile,
   serf_buckets_are_v2,
