@@ -127,15 +127,15 @@ static apr_status_t serf_response_body_read_iovec(serf_bucket_t *bucket,
     return status;
 }
 
-static apr_status_t serf_response_body_readline2(serf_bucket_t *bucket,
+static apr_status_t serf_response_body_readline(serf_bucket_t *bucket,
                                                 int acceptable,
-                                                apr_size_t requested,
                                                 int *found,
                                                 const char **data,
                                                 apr_size_t *len)
 {
     body_context_t *ctx = bucket->data;
     apr_status_t status;
+    apr_size_t requested;
 
     if (!ctx->remaining) {
         *len = 0;
@@ -143,11 +143,13 @@ static apr_status_t serf_response_body_readline2(serf_bucket_t *bucket,
         return APR_EOF;
     }
 
-    if (requested > ctx->remaining)
+    if (ctx->remaining >= APR_SIZE_MAX)
+        requested = APR_SIZE_MAX;
+    else
         requested = (apr_size_t)ctx->remaining;
 
-    status = serf_bucket_readline2(ctx->stream, acceptable, requested,
-                                   found, data, len);
+    status = serf_bucket_limited_readline(ctx->stream, acceptable, requested,
+                                          found, data, len);
 
     if (!SERF_BUCKET_READ_ERROR(status)) {
         ctx->remaining -= *len;
@@ -162,18 +164,6 @@ static apr_status_t serf_response_body_readline2(serf_bucket_t *bucket,
 
     return status;
 }
-
-static apr_status_t serf_response_body_readline(serf_bucket_t *bucket,
-                                                int acceptable,
-                                                int *found,
-                                                const char **data,
-                                                apr_size_t *len)
-{
-  return serf_response_body_readline2(bucket, acceptable,
-                                      SERF_READ_ALL_AVAIL,
-                                      found, data, len);
-}
-
 
 static apr_status_t serf_response_body_peek(serf_bucket_t *bucket,
                                             const char **data,
@@ -227,7 +217,6 @@ const serf_bucket_type_t serf_bucket_type_response_body = {
     serf_response_body_peek,
     serf_response_body_destroy,
     serf_default_read_bucket,
-    serf_response_body_readline2,
     serf_response_body_get_remaining,
     serf_response_body_set_config,
 };

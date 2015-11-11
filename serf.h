@@ -851,7 +851,7 @@ struct serf_bucket_type_t {
      * specified by @a len. The data will include the newline, if present.
      *
      * Note that there is no way to limit the amount of data returned
-     * by this function.
+     * by this function. @see serf_bucket_limited_readline().
      *
      * The lifetime of the data is the same as that of the @see read
      * function above.
@@ -965,28 +965,6 @@ struct serf_bucket_type_t {
     serf_bucket_t * (*read_bucket_v2)(serf_bucket_t *bucket,
                                       const serf_bucket_type_t *type);
 
-    /**
-     * Read (and consume) a line of data upto @a requested bytes from @bucket.
-     *
-     * Most api users would typically just use readline() unless limiting of
-     * the result is required.
-     *
-     * The acceptable forms of a newline are given by @a acceptable, and
-     * the type found is returned in @a found. If a newline is not present
-     * in the returned data, then SERF_NEWLINE_NONE is stored into @a found.
-     *
-     * A pointer to the data is returned in @a data, and its length is
-     * specified by @a len. The data will include the newline, if present.
-     *
-     * The lifetime of the data is the same as that of the @see read
-     * function above.
-     *
-     * @since New in 1.4 / Buckets v2.
-     */
-    apr_status_t(*readline2)(serf_bucket_t *bucket, int acceptable,
-                             apr_size_t requested, int *found,
-                             const char **data, apr_size_t *len);
-
     /* Returns length of remaining data to be read in @a bucket. Returns
      * SERF_LENGTH_UNKNOWN if length is unknown.
      *
@@ -1060,8 +1038,6 @@ const serf_bucket_type_t *serf_get_type(serf_bucket_t *bucket,
 #define serf_bucket_read_bucket(b,t) ((b)->type->read_bucket(b,t))
 #define serf_bucket_peek(b,d,l) ((b)->type->peek(b,d,l))
 #define serf_bucket_destroy(b) ((b)->type->destroy(b))
-#define serf_bucket_readline2(b,a,r,f,d,l) \
-    SERF__RECREAD(b, serf_get_type(b, 2)->readline2(b,a,r,f,d,l))
 #define serf_bucket_get_remaining(b) (serf_get_type(b, 2)->get_remaining(b))
 #define serf_bucket_set_config(b,c) (serf_get_type(b, 2)->set_config(b, c))
 

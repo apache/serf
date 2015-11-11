@@ -272,7 +272,6 @@ const serf_bucket_type_t serf_bucket_type_request = {
     serf_request_peek,
     serf_request_destroy,
     serf_request_read_bucket,
-    serf_default_readline2,
     serf_default_get_remaining,
     serf_request_set_config,
 };

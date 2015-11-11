@@ -572,7 +572,6 @@ const serf_bucket_type_t serf_bucket_type_aggregate = {
     serf_aggregate_peek,
     serf_aggregate_destroy_and_data,
     serf_aggregate_read_bucket,
-    serf_default_readline2,
     serf_aggregate_get_remaining,
     serf_aggregate_set_config,
 };

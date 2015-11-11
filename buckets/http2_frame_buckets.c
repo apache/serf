@@ -332,7 +332,6 @@ const serf_bucket_type_t serf_bucket_type__http2_unframe = {
   serf_http2_unframe_peek,
   serf_default_destroy_and_data,
   serf_default_read_bucket,
-  serf_default_readline2,
   serf_http2_unframe_get_remaining,
   serf_default_ignore_config
 };
@@ -595,7 +594,6 @@ const serf_bucket_type_t serf_bucket_type__http2_unpad = {
   serf_http2_unpad_peek,
   serf_http2_unpad_destroy,
   serf_default_read_bucket,
-  serf_default_readline2,
   serf_http2_unpad_get_remaining,
   serf_default_ignore_config
 };
@@ -967,7 +965,6 @@ const serf_bucket_type_t serf_bucket_type__http2_frame = {
   serf_http2_frame_peek,
   serf_http2_frame_destroy,
   serf_default_read_bucket,
-  serf_default_readline2,
   serf_default_get_remaining,
   serf_default_ignore_config
 };

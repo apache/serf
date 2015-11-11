@@ -126,14 +126,14 @@ void serf_default_destroy_and_data(
     serf_bucket_t *bucket);
 
 /**
- * Default implementation of the @see readline2 functionality.
+ * Implementation of a limited @see readline functionality.
  *
  * This function will use the @see read function, when possible optimized by
  * the @a peek function to return the requested result.
  */
-apr_status_t serf_default_readline2(serf_bucket_t *bucket, int acceptable,
-                                    apr_size_t requested, int *found,
-                                    const char **data, apr_size_t *len);
+apr_status_t serf_bucket_limited_readline(serf_bucket_t *bucket, int acceptable,
+                                          apr_size_t requested, int *found,
+                                          const char **data, apr_size_t *len);
 
 /**
  * Default implementation of the @see get_remaining functionality.

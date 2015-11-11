@@ -72,18 +72,6 @@ static apr_status_t serf_barrier_readline(serf_bucket_t *bucket,
     return serf_bucket_readline(stream, acceptable, found, data, len);
 }
 
-static apr_status_t serf_barrier_readline2(serf_bucket_t *bucket,
-                                           int acceptable, apr_size_t requested,
-                                           int *found,
-                                           const char **data, apr_size_t *len)
-{
-    serf_bucket_t *stream = bucket->data;
-
-    return serf_bucket_readline2(stream, acceptable, requested,
-                                 found, data, len);
-}
-
-
 static apr_status_t serf_barrier_peek(serf_bucket_t *bucket,
                                      const char **data,
                                      apr_size_t *len)
@@ -131,7 +119,6 @@ const serf_bucket_type_t serf_bucket_type_barrier = {
     serf_barrier_peek,
     serf_barrier_destroy,
     serf_default_read_bucket, /* ### TODO? */
-    serf_barrier_readline2,
     serf_barrier_get_remaining,
     serf_barrier_set_config,
 };

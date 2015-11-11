@@ -236,7 +236,6 @@ const serf_bucket_type_t serf_bucket_type_prefix = {
     serf_prefix_peek,
     serf_prefix_destroy,
     serf_default_read_bucket,
-    serf_default_readline2,
     serf_prefix_get_remaining,
     serf_prefix_set_config
 };
