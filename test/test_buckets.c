@@ -35,6 +35,13 @@
 
 #include "protocols/http2_buckets.h"
 
+#ifdef SERF_DEBUG_BUCKET_USE
+#define DRAIN_BUCKET(b) serf__bucket_drain(b)
+#else
+#define DRAIN_BUCKET(b) while (0 && (b))
+#endif
+
+
 static apr_status_t read_all(serf_bucket_t *bkt,
                              char *buf,
                              apr_size_t buf_len,
@@ -644,6 +651,7 @@ static void test_iovec_buckets(CuTest *tc)
     CuAssertIntEquals(tc, 0, vecs_used);
     CuAssertIntEquals(tc, 7, (int)serf_bucket_get_remaining(iobkt));
     serf_bucket_destroy(bkt);
+    DRAIN_BUCKET(iobkt);
     serf_bucket_destroy(iobkt);
 }
 
@@ -1339,6 +1347,7 @@ static void test_response_no_body_expected(CuTest *tc)
     CuAssertIntEquals(tc, APR_EOF, status);
     CuAssertIntEquals(tc, 0, len);
 
+    DRAIN_BUCKET(tmp);
     serf_bucket_destroy(bkt);
 
     /* Test 2: a response with status for which server must not send a body. */
@@ -1352,6 +1361,7 @@ static void test_response_no_body_expected(CuTest *tc)
         CuAssertIntEquals(tc, APR_EOF, status);
         CuAssertIntEquals(tc, 0, len);
 
+        DRAIN_BUCKET(tmp);
         serf_bucket_destroy(bkt);
     }
 }
@@ -2159,7 +2169,7 @@ static void test_http2_unframe_buckets(CuTest *tc)
 
   alloc = test__create_bucket_allocator(tc, tb->pool);
 
-  raw = serf_bucket_simple_create(raw_frame1, sizeof(raw_frame1),
+  raw = serf_bucket_simple_create(raw_frame1, sizeof(raw_frame1) - 1,
                                   NULL, NULL, alloc);
 
   unframe = serf__bucket_http2_unframe_create(raw, SERF_READ_ALL_AVAIL, alloc);
@@ -2191,7 +2201,7 @@ static void test_http2_unframe_buckets(CuTest *tc)
   /* http2_unframe() bucket doesn't destroy inner stream bucket. */
   serf_bucket_destroy(raw);
 
-  raw = serf_bucket_simple_create(raw_frame2, sizeof(raw_frame2),
+  raw = serf_bucket_simple_create(raw_frame2, sizeof(raw_frame2) - 1,
                                   NULL, NULL, alloc);
 
   unframe = serf__bucket_http2_unframe_create(raw, SERF_READ_ALL_AVAIL, alloc);
@@ -2222,7 +2232,7 @@ static void test_http2_unframe_buckets(CuTest *tc)
   serf_bucket_destroy(raw);
 
   /* And now check the frame oversized error */
-  raw = serf_bucket_simple_create(raw_frame2, sizeof(raw_frame2),
+  raw = serf_bucket_simple_create(raw_frame2, sizeof(raw_frame2) - 1,
                                   NULL, NULL, alloc);
 
   unframe = serf__bucket_http2_unframe_create(raw, 5, alloc);
@@ -2232,6 +2242,7 @@ static void test_http2_unframe_buckets(CuTest *tc)
 
   serf_bucket_destroy(unframe);
   /* http2_unframe() bucket doesn't destroy inner stream bucket. */
+  DRAIN_BUCKET(raw);
   serf_bucket_destroy(raw);
 }
 
@@ -2313,6 +2324,7 @@ static void test_http2_unpad_buckets(CuTest *tc)
                       serf_bucket_read(unpad, SERF_READ_ALL_AVAIL,
                                        &data, &sz));
   }
+  DRAIN_BUCKET(raw);
   serf_bucket_destroy(unpad);
 }
 
