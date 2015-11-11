@@ -1039,6 +1039,7 @@ const serf_bucket_type_t serf_bucket_type__hpack = {
   serf_hpack_peek,
   serf_hpack_destroy_and_data,
   serf_default_read_bucket,
+  serf_default_readline2,
   serf_hpack_get_remaining,
   serf_default_ignore_config,
 };
@@ -1924,6 +1925,7 @@ const serf_bucket_type_t serf_bucket_type__hpack_decode = {
   serf_hpack_decode_peek,
   serf_hpack_decode_destroy,
   serf_default_read_bucket,
+  serf_default_readline2,
   serf_default_get_remaining,
   serf_hpack_decode_set_config
 };

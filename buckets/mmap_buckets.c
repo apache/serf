@@ -145,6 +145,7 @@ const serf_bucket_type_t serf_bucket_type_mmap = {
     serf_mmap_peek,
     serf_default_destroy_and_data,
     serf_default_read_bucket,
+    serf_default_readline2,
     serf_mmap_get_remaining,
     serf_default_ignore_config,
 };

@@ -207,6 +207,7 @@ const serf_bucket_type_t serf_bucket_type_dechunk = {
     serf_default_peek /* ### TODO */,
     serf_dechunk_destroy_and_data,
     serf_default_read_bucket,
+    serf_default_readline2,
     serf_default_get_remaining,
     serf_dechunk_set_config,
 };

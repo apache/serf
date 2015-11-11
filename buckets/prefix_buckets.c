@@ -227,17 +227,18 @@ static void serf_prefix_destroy(serf_bucket_t *bucket)
 }
 
 const serf_bucket_type_t serf_bucket_type_prefix = {
-  "prefix",
-  serf_prefix_read,
-  serf_default_readline,
-  serf_prefix_read_iovec,
-  serf_default_read_for_sendfile,
-  serf_buckets_are_v2,
-  serf_prefix_peek,
-  serf_prefix_destroy,
-  serf_default_read_bucket,
-  serf_prefix_get_remaining,
-  serf_prefix_set_config
+    "prefix",
+    serf_prefix_read,
+    serf_default_readline,
+    serf_prefix_read_iovec,
+    serf_default_read_for_sendfile,
+    serf_buckets_are_v2,
+    serf_prefix_peek,
+    serf_prefix_destroy,
+    serf_default_read_bucket,
+    serf_default_readline2,
+    serf_prefix_get_remaining,
+    serf_prefix_set_config
 };
 
 

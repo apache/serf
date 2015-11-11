@@ -106,6 +106,7 @@ const serf_bucket_type_t serf_bucket_type_barrier = {
     serf_barrier_peek,
     serf_barrier_destroy,
     serf_default_read_bucket,
+    serf_default_readline2,
     serf_barrier_get_remaining,
     serf_barrier_set_config,
 };
