@@ -58,7 +58,8 @@ static apr_status_t serf_barrier_read_for_sendfile(serf_bucket_t *bucket,
                                                    apr_size_t *len)
 {
     serf_bucket_t *stream = bucket->data;
-    return serf_bucket_read_for_sendfile(bucket, requested, hdtr, file,
+
+    return serf_bucket_read_for_sendfile(stream, requested, hdtr, file,
                                          offset, len);
 }
 
