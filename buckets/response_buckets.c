@@ -509,6 +509,7 @@ static apr_status_t serf_response_readline(serf_bucket_t *bucket,
 
     status = wait_for_body(bucket, ctx);
     if (status) {
+        *len = 0;
         goto fake_eof;
     }
 
