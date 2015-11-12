@@ -574,11 +574,13 @@ static apr_status_t bwtp_incoming_readline(serf_bucket_t *bucket,
                                            const char **data, apr_size_t *len)
 {
     incoming_context_t *ctx = bucket->data;
-    apr_status_t rv;
+    apr_status_t status;
 
-    rv = wait_for_body(bucket, ctx);
-    if (rv) {
-        return rv;
+    status = wait_for_body(bucket, ctx);
+    if (status) {
+        *found = SERF_NEWLINE_NONE;
+        *len = 0;
+        return status;
     }
 
     /* Delegate to the stream bucket to do the readline. */

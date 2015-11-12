@@ -403,6 +403,7 @@ static apr_status_t serf_headers_readline(serf_bucket_t *bucket,
     select_value(ctx, data, len);
     if (ctx->state == READ_DONE) {
         *found = SERF_NEWLINE_NONE;
+        *len = 0;
         return APR_EOF;
     }
 

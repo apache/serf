@@ -214,6 +214,7 @@ static apr_status_t serf_dechunk_readline(serf_bucket_t *bucket,
 
     status = wait_for_chunk(bucket);
     if (status || ctx->state != STATE_CHUNK) {
+        *found = SERF_NEWLINE_NONE;
         *len = 0;
         return status;
     }
