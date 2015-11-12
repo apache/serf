@@ -53,23 +53,33 @@ static apr_status_t clean_resp(void *data)
         serf__connection_pre_cleanup(request->conn);
     }
 
+#ifdef SERF_DEBUG_BUCKET_USE
+    if (respool && request->allocator) {
+        serf_debug__closed_conn(request->allocator);
+    }
+#endif
+
     /* If the response has allocated some buckets, then destroy them (since
        the bucket may hold resources other than memory in RESPOOL). Also
        make sure to set their fields to NULL so connection closure does
        not attempt to free them again.  */
     if (request->resp_bkt) {
-        if (respool)
-            serf_debug__closed_conn(request->resp_bkt->allocator);
         serf_bucket_destroy(request->resp_bkt);
         request->resp_bkt = NULL;
     }
     if (request->req_bkt) {
-        if (respool)
-            serf_debug__closed_conn(request->req_bkt->allocator);
         if (request->writing == SERF_WRITING_NONE)
             serf_bucket_destroy(request->req_bkt);
         request->req_bkt = NULL;
     }
+
+#ifdef SERF_DEBUG_BUCKET_USE
+    if (respool && request->allocator) {
+        serf_debug__bucket_alloc_check(request->allocator);
+    }
+#endif
+
+    request->allocator = NULL;
 
     return APR_SUCCESS;
 }
@@ -109,8 +119,6 @@ apr_status_t serf__destroy_request(serf_request_t *request)
 
           apr_pool_cleanup_run(pool, request, clean_resp);
           apr_pool_destroy(pool);
-
-          serf_debug__bucket_alloc_check(request->allocator);
         }
 
         serf_bucket_mem_free(conn->allocator, request);
