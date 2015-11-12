@@ -626,6 +626,7 @@ apr_status_t serf_databuf_readline(
     apr_status_t status = common_databuf_prep(databuf, len);
     if (status) {
         *found = SERF_NEWLINE_NONE;
+        *len = 0;
         return status;
     }
 
