@@ -1086,19 +1086,11 @@ typedef struct serf_hpack_decode_ctx_t
   
   /* When producing HTTP/1.1 style output */
   serf_bucket_t *agg;
-  serf_databuf_t databuf;
   serf_config_t *config;
 
   char wrote_header;
   char hit_eof;
 } serf_hpack_decode_ctx_t;
-
-/* Forward definition */
-static apr_status_t
-hpack_decode_databuf_reader(void *baton,
-                            apr_size_t bufsize,
-                            char *buf,
-                            apr_size_t *len);
 
 serf_bucket_t *
 serf__bucket_hpack_decode_create(serf_bucket_t *stream,
@@ -1142,10 +1134,6 @@ serf__bucket_hpack_decode_create(serf_bucket_t *stream,
       ctx->item_callback = NULL;
       ctx->item_baton = NULL;
       ctx->agg = serf_bucket_aggregate_create(alloc);
-
-      serf_databuf_init(&ctx->databuf);
-      ctx->databuf.read = hpack_decode_databuf_reader;
-      ctx->databuf.read_baton = ctx;
     }
 
   /* Prepare TBL for decoding */
@@ -1779,30 +1767,6 @@ hpack_process(serf_bucket_t *bucket)
 }
 
 static apr_status_t
-hpack_decode_databuf_reader(void *baton,
-                            apr_size_t bufsize,
-                            char *buf,
-                            apr_size_t *len)
-{
-  serf_hpack_decode_ctx_t *ctx = baton;
-  apr_status_t status;
-  const char *data;
-
-  status = serf_bucket_read(ctx->agg, bufsize, &data, len);
-
-  if (SERF_BUCKET_READ_ERROR(status))
-    return status;
-
-  if (*len)
-    memcpy(buf, data, *len);
-
-  if (APR_STATUS_IS_EOF(status) && ctx->hit_eof)
-    return APR_EOF;
-  else
-    return status;
-}
-
-static apr_status_t
 serf_hpack_decode_read(serf_bucket_t *bucket,
                        apr_size_t requested,
                        const char **data,
@@ -1812,45 +1776,13 @@ serf_hpack_decode_read(serf_bucket_t *bucket,
   apr_status_t status;
 
   status = hpack_process(bucket);
-  if (SERF_BUCKET_READ_ERROR(status))
+  if (SERF_BUCKET_READ_ERROR(status) || !ctx->agg)
     {
       *len = 0;
       return status;
     }
 
-  if (ctx->agg)
-    status = serf_databuf_read(&ctx->databuf,
-                               requested, data, len);
-  else
-    *len = 0;
-
-  return status;
-}
-
-static apr_status_t
-serf_hpack_decode_readline(serf_bucket_t *bucket,
-                           int acceptable,
-                           int *found,
-                           const char **data,
-                           apr_size_t *len)
-{
-  serf_hpack_decode_ctx_t *ctx = bucket->data;
-  apr_status_t status;
-
-  status = hpack_process(bucket);
-  if (SERF_BUCKET_READ_ERROR(status))
-    {
-      *len = 0;
-      return status;
-    }
-
-  if (ctx->agg)
-    status = serf_databuf_readline(&ctx->databuf, acceptable,
-                                   found, data, len);
-  else
-    *len = 0;
-
-  return status;
+  return serf_bucket_read(ctx->agg, requested, data, len);
 }
 
 static apr_status_t
@@ -1862,16 +1794,13 @@ serf_hpack_decode_peek(serf_bucket_t *bucket,
   apr_status_t status;
 
   status = hpack_process(bucket);
-  if (SERF_BUCKET_READ_ERROR(status))
+  if (SERF_BUCKET_READ_ERROR(status) || !ctx->agg)
     {
       *len = 0;
       return status;
     }
 
-  if (ctx->agg)
-    status = serf_databuf_peek(&ctx->databuf, data, len);
-
-  return status;
+  return serf_bucket_peek(ctx->agg, data, len);
 }
 
 static apr_status_t
@@ -1917,7 +1846,7 @@ serf_hpack_decode_destroy(serf_bucket_t *bucket)
 const serf_bucket_type_t serf_bucket_type__hpack_decode = {
   "HPACK-DECODE",
   serf_hpack_decode_read,
-  serf_hpack_decode_readline,
+  serf_default_readline,
   serf_default_read_iovec,
   serf_default_read_for_sendfile,
   serf_buckets_are_v2,
