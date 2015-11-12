@@ -475,9 +475,7 @@ static apr_status_t serf_response_read(serf_bucket_t *bucket,
     status = wait_for_body(bucket, ctx);
     if (status) {
         /* It's not possible to have read anything yet! */
-        if (APR_STATUS_IS_EOF(status) || APR_STATUS_IS_EAGAIN(status)) {
-            *len = 0;
-        }
+        *len = 0;
         goto fake_eof;
     }
 
