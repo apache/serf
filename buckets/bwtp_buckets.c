@@ -558,9 +558,7 @@ static apr_status_t bwtp_incoming_read(serf_bucket_t *bucket,
     rv = wait_for_body(bucket, ctx);
     if (rv) {
         /* It's not possible to have read anything yet! */
-        if (APR_STATUS_IS_EOF(rv) || APR_STATUS_IS_EAGAIN(rv)) {
-            *len = 0;
-        }
+        *len = 0;
         return rv;
     }
 
