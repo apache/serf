@@ -134,11 +134,29 @@ apr_status_t serf_bucket_limited_readline(serf_bucket_t *bucket, int acceptable,
     apr_size_t peek_len;
 
     status = bucket->type->peek(bucket, &peek_data, &peek_len);
-
     if (SERF_BUCKET_READ_ERROR(status))
         return status;
 
-    if (peek_len > 0) {
+    if (peek_len == 0) {
+        /* peek() returned no data.  */
+
+        /* ... if that's because the bucket has no data, then we're done.  */
+        if (APR_STATUS_IS_EOF(status)) {
+            *found = SERF_NEWLINE_NONE;
+            *len = 0;
+            return APR_EOF;
+        }
+
+        /* We can only read and return a single character.
+
+           For example, if we tried reading 2 characters seeking CRLF, and
+           got CR followed by 'a', then we have over-read the line, and
+           consumed a character from the next line. Bad.  */
+        requested = 1;
+    }
+    else {
+        /* peek_len > 0  */
+
         const char *cr = NULL;
         const char *lf = NULL;
 
@@ -176,17 +194,8 @@ apr_status_t serf_bucket_limited_readline(serf_bucket_t *bucket, int acceptable,
         else
             requested = peek_len;
     }
-    else if (requested > 1) {
-        /* We can't peek...
-           The only valid thing to do is try to read upto one EOL */
-        if ((acceptable & SERF_NEWLINE_ANY) == SERF_NEWLINE_CRLF)
-            requested = 2;
-        else
-            requested = 1;
-    }
 
     status = bucket->type->read(bucket, requested, data, len);
-
     if (SERF_BUCKET_READ_ERROR(status))
         return status;
 
@@ -218,7 +227,6 @@ apr_status_t serf_default_readline(serf_bucket_t *bucket, int acceptable,
                                    int *found,
                                    const char **data, apr_size_t *len)
 {
-    /* We explicitly call this function directly and *not* via the callback */
     return serf_bucket_limited_readline(bucket, acceptable, SERF_READ_ALL_AVAIL,
                                         found, data, len);
 }
