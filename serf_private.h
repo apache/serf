@@ -26,7 +26,7 @@
 #define HAVE_STDBOOL_H 1
 #endif
 
-#ifdef HAVE_STDBOOL_H
+#if __STDC_VERSION__ >= 199901L || defined(HAVE_STDBOOL_H)
 #include <stdbool.h>
 #elif defined(__bool_true_false_are_defined) || defined(__cplusplus)
 /* Bool defined properly via C99 or C++ */
