@@ -2188,7 +2188,6 @@ static void test_limit_buckets(CuTest *tc)
   apr_size_t len;
   serf_bucket_t *raw;
   serf_bucket_t *limit;
-  serf_bucket_t *agg;
   apr_status_t status;
 
   /* The normal usecase */
@@ -2198,54 +2197,13 @@ static void test_limit_buckets(CuTest *tc)
   read_and_check_bucket(tc, raw, "NOPQRSTUVWXYZ");
   serf_bucket_destroy(limit);
 
-  /* The normal usecase but different way */
-  raw = SERF_BUCKET_SIMPLE_STRING("ABCDEFGHIJKLMNOPQRSTUVWXYZ", alloc);
-  limit = serf_bucket_limit_create(
-                serf_bucket_barrier_create(raw, alloc),
-                13, alloc);
-  agg = serf_bucket_aggregate_create(alloc);
-  serf_bucket_aggregate_prepend(agg, limit);
-  serf_bucket_aggregate_append(agg,
-                               serf_bucket_simple_create("!", 1, NULL, NULL,
-                                                         alloc));
-  serf_bucket_aggregate_append(agg, raw);
-  read_and_check_bucket(tc, agg, "ABCDEFGHIJKLM!NOPQRSTUVWXYZ");
-  serf_bucket_destroy(agg);
-
   /* What if there is not enough data? */
   raw = SERF_BUCKET_SIMPLE_STRING("ABCDE", alloc);
   limit = serf_bucket_limit_create(raw, 13, alloc);
 
   status = read_all(limit, buffer, sizeof(buffer), &len);
-  CuAssertIntEquals(tc, SERF_ERROR_TRUNCATED_HTTP_RESPONSE, status);
+  CuAssertIntEquals(tc, SERF_ERROR_TRUNCATED_STREAM, status);
   serf_bucket_destroy(limit);
-
-  /* And now a really bad case of the 'different way' */
-  raw = SERF_BUCKET_SIMPLE_STRING("ABCDE", alloc);
-  limit = serf_bucket_limit_create(
-                serf_bucket_barrier_create(raw, alloc),
-                5, alloc);
-  agg = serf_bucket_aggregate_create(alloc);
-  serf_bucket_aggregate_prepend(agg, limit);
-  serf_bucket_aggregate_append(agg, raw);
-
-  {
-    struct iovec vecs[12];
-    int vecs_read;
-
-    /* This used to trigger a problem via the aggregate bucket,
-       as reading the last part destroyed the data pointed to by
-       iovecs of the first */
-
-    CuAssertIntEquals(tc, APR_EOF,
-                      serf_bucket_read_iovec(agg, SERF_READ_ALL_AVAIL,
-                                             12, vecs, &vecs_read));
-
-    serf__copy_iovec(buffer, &len, vecs, vecs_read);
-
-    CuAssertIntEquals(tc, 5, len);
-  }
-  serf_bucket_destroy(agg);
 
   {
     const char *data;
@@ -2260,6 +2218,88 @@ static void test_limit_buckets(CuTest *tc)
     CuAssertIntEquals(tc, SERF_NEWLINE_NONE, found);
     CuAssertIntEquals(tc, len, 5); /* > 5 is over limit -> bug */
     DRAIN_BUCKET(raw);
+    serf_bucket_destroy(limit);
+  }
+}
+
+static void test_split_buckets(CuTest *tc)
+{
+  test_baton_t *tb = tc->testBaton;
+  serf_bucket_alloc_t *alloc = tb->bkt_alloc;
+  char buffer[26];
+  apr_size_t len;
+  serf_bucket_t *raw;
+  serf_bucket_t *head, *tail;
+  serf_bucket_t *agg;
+  apr_status_t status;
+
+  /* The normal usecase but different way */
+  raw = SERF_BUCKET_SIMPLE_STRING("ABCDEFGHIJKLMNOPQRSTUVWXYZ", alloc);
+  serf_bucket_split_create(&head, &tail, raw, 13, 13);
+  agg = serf_bucket_aggregate_create(alloc);
+  serf_bucket_aggregate_prepend(agg, head);
+  serf_bucket_aggregate_append(agg,
+                               serf_bucket_simple_create("!", 1, NULL, NULL,
+                                                         alloc));
+  serf_bucket_aggregate_append(agg, tail);
+  read_and_check_bucket(tc, agg, "ABCDEFGHIJKLM!NOPQRSTUVWXYZ");
+  serf_bucket_destroy(agg);
+
+  /* What if there is not enough data? */
+  raw = SERF_BUCKET_SIMPLE_STRING("ABCDE", alloc);
+  serf_bucket_split_create(&head, &tail, raw, 13, 13);
+
+  status = read_all(head, buffer, sizeof(buffer), &len);
+  CuAssertIntEquals(tc, APR_EOF, status);
+  serf_bucket_destroy(head);
+  serf_bucket_destroy(tail);
+
+  /* And now a really bad case of the 'different way' */
+  raw = SERF_BUCKET_SIMPLE_STRING("ABCDE", alloc);
+  serf_bucket_split_create(&head, &tail, raw, 5, 5);
+  agg = serf_bucket_aggregate_create(alloc);
+  serf_bucket_aggregate_prepend(agg, head);
+  serf_bucket_aggregate_append(agg, tail);
+
+  {
+    struct iovec vecs[12];
+    int vecs_read;
+
+    /* This used to trigger a problem via the aggregate bucket,
+       as reading the last part destroyed the data pointed to by
+       iovecs of the first */
+
+    CuAssertIntEquals(tc, APR_SUCCESS,
+                      serf_bucket_read_iovec(agg, SERF_READ_ALL_AVAIL,
+                                             12, vecs, &vecs_read));
+
+    serf__copy_iovec(buffer, &len, vecs, vecs_read);
+
+    CuAssertIntEquals(tc, 5, len);
+
+    CuAssertIntEquals(tc, APR_EOF,
+                      serf_bucket_read_iovec(agg, SERF_READ_ALL_AVAIL,
+                                             12, vecs, &vecs_read));
+    CuAssertIntEquals(tc, 0, vecs_read);
+  }
+  serf_bucket_destroy(agg);
+
+  {
+    const char *data;
+    int found;
+
+    raw = SERF_BUCKET_SIMPLE_STRING("ABCDEF\nGHIJKLMNOP", alloc);
+    serf_bucket_split_create(&head, &tail, raw, 5, 5);
+
+    CuAssertIntEquals(tc, APR_EOF,
+                      serf_bucket_readline(head, SERF_NEWLINE_ANY, &found,
+                                           &data, &len));
+    CuAssertIntEquals(tc, SERF_NEWLINE_NONE, found);
+    CuAssertIntEquals(tc, len, 5); /* > 5 is over limit -> bug */
+    DRAIN_BUCKET(head);
+    DRAIN_BUCKET(tail);
+    serf_bucket_destroy(head);
+    serf_bucket_destroy(tail);
   }
 }
 
@@ -2790,6 +2830,7 @@ CuSuite *test_buckets(void)
     SUITE_ADD_TEST(suite, test_deflate_buckets);
     SUITE_ADD_TEST(suite, test_prefix_buckets);
     SUITE_ADD_TEST(suite, test_limit_buckets);
+    SUITE_ADD_TEST(suite, test_split_buckets);
     SUITE_ADD_TEST(suite, test_deflate_compress_buckets);
     SUITE_ADD_TEST(suite, test_http2_unframe_buckets);
     SUITE_ADD_TEST(suite, test_http2_unpad_buckets);
