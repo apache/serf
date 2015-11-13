@@ -34,13 +34,13 @@
 /* bool defined some other way (C99 compatible) */
 #else
 /* Do something C99 like ourself */
-#ifndef _Bool
-typedef int _Bool;
-#endif
+typedef int serf__bool_t; /* Not _Bool */
 #define __bool_true_false_are_defined 1
-#define bool _Bool
+#define bool serf__bool_t
+#ifndef true
 #define false 0
 #define true 1
+#endif
 #endif
 
  /* Define a MAX macro if we don't already have one */
