@@ -68,7 +68,7 @@ static apr_status_t serf_limit_read(serf_bucket_t *bucket,
             status = APR_EOF;
         }
         else if (APR_STATUS_IS_EOF(status) && ctx->remaining) {
-            status = SERF_ERROR_TRUNCATED_HTTP_RESPONSE;
+            status = SERF_ERROR_TRUNCATED_STREAM;
         }
     }
 
@@ -106,7 +106,7 @@ static apr_status_t serf_limit_readline(serf_bucket_t *bucket,
             status = APR_EOF;
         }
         else if (APR_STATUS_IS_EOF(status) && ctx->remaining) {
-            status = SERF_ERROR_TRUNCATED_HTTP_RESPONSE;
+            status = SERF_ERROR_TRUNCATED_STREAM;
         }
     }
 
@@ -147,7 +147,7 @@ static apr_status_t serf_limit_read_iovec(serf_bucket_t *bucket,
           status = APR_EOF;
       }
       else if (APR_STATUS_IS_EOF(status) && ctx->remaining) {
-          status = SERF_ERROR_TRUNCATED_HTTP_RESPONSE;
+          status = SERF_ERROR_TRUNCATED_STREAM;
       }
   }
 

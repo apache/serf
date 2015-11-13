@@ -783,6 +783,28 @@ serf_bucket_t *serf_bucket_prefix_create(
 
 /* ==================================================================== */
 
+/* Creates two buckets, *HEAD and *TAIL, which together contain the output
+   of STREAM. If there is enough data in STREAM, HEAD will be a bucket of at
+   least MIN_CHUNK_SIZE and will never be larget than MAX_CHUNK_SIZE.
+
+   If STREAM is at EOF before MIN_CHUNK_SIZE, HEAD will contain the data,
+   while TAIL is immediately at EOF.
+
+   HEAD and TAIL will make sure that data read from TAIL will not break the
+   data availability promises on HEAD. Passing an existing tail of this
+   function as new stream may be handled specificaly, but the read promises
+   on all nodes ahead of stream will still hold.
+
+   HEAD and TAIL are allocated in STREAM->allocator. STREAM will be
+   destroyed when no longer referenced or after EOF.
+ */
+void serf_bucket_split_create(serf_bucket_t **head,
+                              serf_bucket_t **tail,
+                              serf_bucket_t *stream,
+                              apr_size_t min_chunk_size,
+                              apr_size_t max_chunk_size);
+
+
 /* ### do we need a PIPE bucket type? they are simple apr_file_t objects */
 
 

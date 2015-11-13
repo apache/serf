@@ -319,6 +319,16 @@ static apr_status_t read_aggregate(serf_bucket_t *bucket,
                 return APR_SUCCESS;
             }
         }
+        else if (!status) {
+            /* Success and no data. Let's return what we have.
+               Better luck next time.
+
+               This scenario is triggered by test_split_buckets(),
+               in a case where EAGAIN is really not what we want.
+             */
+
+            return APR_SUCCESS;
+        }
     }
 
     return status;
