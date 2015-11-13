@@ -253,8 +253,8 @@ typedef struct serf_hpack_entry_t
   struct serf_hpack_entry_t *next;
   struct serf_hpack_entry_t *prev;
 
-  char free_key; /* Key must be freed */
-  char free_val; /* Value must be freed */
+  bool free_key; /* Key must be freed */
+  bool free_val; /* Value must be freed */
   char dont_index; /* 0=index, 1=no-index, 2=never-index */
 } serf_hpack_entry_t;
 
@@ -679,7 +679,7 @@ serf__bucket_hpack_setx(serf_bucket_t *bucket,
 
       entry->value = serf_bstrmemdup(bucket->allocator, value, value_size);
       entry->value_len = value_size;
-      entry->free_val = TRUE;
+      entry->free_val = true;
       entry->dont_index = never_index ? 2 : (dont_index ? 1 : 0);
 
       return;
@@ -707,29 +707,29 @@ serf__bucket_hpack_setx(serf_bucket_t *bucket,
             ckey[i] += ('a' - 'A');
         }
       entry->key = ckey;
-      entry->free_key = TRUE;
+      entry->free_key = true;
     }
   else if (!key_copy)
     {
       entry->key = key;
-      entry->free_key = FALSE;
+      entry->free_key = false;
     }
   else
     {
       entry->key = serf_bstrmemdup(bucket->allocator, key, key_size);
-      entry->free_key = TRUE;
+      entry->free_key = true;
     }
 
   entry->key_len = key_size;
   if (value_copy)
     {
       entry->value = serf_bstrmemdup(bucket->allocator, value, value_size);
-      entry->free_val = TRUE;
+      entry->free_val = true;
     }
   else
     {
       entry->value = value;
-      entry->free_val = FALSE;
+      entry->free_val = false;
     }
   entry->value_len = value_size;
   entry->dont_index = never_index ? 2 : (dont_index ? 1 : 0);
@@ -1365,7 +1365,7 @@ handle_read_entry_and_clear(serf_hpack_decode_ctx_t *ctx,
                                                           ctx->val,
                                                           ctx->val_size);
       entry->value_len = ctx->val_size;
-      entry->free_key = entry->free_val = TRUE;
+      entry->free_key = entry->free_val = true;
       entry->next = tbl->rl_first;
       tbl->rl_first = entry;
       tbl->rl_count++;
