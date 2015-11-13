@@ -21,6 +21,28 @@
 #ifndef _SERF_PRIVATE_H_
 #define _SERF_PRIVATE_H_
 
+#if !defined(HAVE_STDBOOL_H) && defined(_MSC_VER) && (_MSC_VER >= 1800)
+ /* VS 2015 errors out when redefining bool */
+#define HAVE_STDBOOL_H 1
+#endif
+
+#ifdef HAVE_STDBOOL_H
+#include <stdbool.h>
+#elif defined(__bool_true_false_are_defined) || defined(__cplusplus)
+/* Bool defined properly via C99 or C++ */
+#elif defined(bool)
+/* bool defined some other way (C99 compatible) */
+#else
+/* Do something C99 like ourself */
+#ifndef _Bool
+typedef int _Bool;
+#endif
+#define __bool_true_false_are_defined 1
+#define bool _Bool
+#define false 0
+#define true 1
+#endif
+
  /* Define a MAX macro if we don't already have one */
 #ifndef MAX
 #define MAX(a, b) ((a) < (b) ? (b) : (a))
