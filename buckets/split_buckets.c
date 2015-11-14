@@ -231,18 +231,27 @@ static apr_status_t serf_split_peek(serf_bucket_t *bucket,
 
     status = serf_bucket_peek(ctx->stream, data, len);
 
-    if (!SERF_BUCKET_READ_ERROR(status)
-        && (*len > (sctx->max_size - sctx->read_size)))
-    {
-        /* We can read to the max size. If we provide this
-           much data now, we must promise to return as much
-           later
-        */
-        sctx->min_size = sctx->fixed_size = sctx->max_size;
-        *len = (sctx->max_size - sctx->read_size);
+    if (!SERF_BUCKET_READ_ERROR(status)) {
+
+        if (*len >= (sctx->min_size - sctx->read_size)) {
+            /* We peeked more data than we need to continue
+               to the next bucket. We have to be careful that
+               we don't promise data and not deliver later.
+             */
+
+            if (! sctx->fixed_size) {
+                /* Determine the maximum size to what we can deliver now */
+                sctx->fixed_size = MIN(sctx->max_size, sctx->read_size + *len);
+                sctx->min_size = sctx->max_size = sctx->fixed_size;
+            }
+
+            *len = sctx->fixed_size - sctx->read_size;
+            status = APR_EOF;
+        }
+
         sctx->cant_read = (*len > 0);
     }
-    else
+    else if (SERF_BUCKET_READ_ERROR(status))
         sctx->cant_read = false;
 
     return status;
@@ -426,8 +435,8 @@ void serf_bucket_split_create(serf_bucket_t **head,
     tail_ctx->ctx = ctx;
     head_ctx->fixed_size = 0; /* Not fixed yet. This might change an existing
                                  tail bucket that we received as stream! */
-    head_ctx->min_size = min_chunk_size;
-    head_ctx->max_size = max_chunk_size;
+    head_ctx->min_size = MAX(1, min_chunk_size);
+    head_ctx->max_size = MAX(head_ctx->min_size, max_chunk_size);
 
     /* tail_ctx->fixed_size = 0; // Unknown */
     tail_ctx->min_size = SERF_READ_ALL_AVAIL;

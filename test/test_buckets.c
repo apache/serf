@@ -2222,11 +2222,21 @@ static void test_limit_buckets(CuTest *tc)
   }
 }
 
+/* Implements serf_bucket_event_callback_t */
+static apr_status_t update_total(void *baton,
+                         apr_uint64_t bytes_read)
+{
+  apr_uint64_t *sum = baton;
+
+  (*sum) += bytes_read;
+  return APR_SUCCESS;
+}
+
 static void test_split_buckets(CuTest *tc)
 {
   test_baton_t *tb = tc->testBaton;
   serf_bucket_alloc_t *alloc = tb->bkt_alloc;
-  char buffer[26];
+  char buffer[128];
   apr_size_t len;
   serf_bucket_t *raw;
   serf_bucket_t *head, *tail;
@@ -2251,6 +2261,7 @@ static void test_split_buckets(CuTest *tc)
 
   status = read_all(head, buffer, sizeof(buffer), &len);
   CuAssertIntEquals(tc, APR_EOF, status);
+  CuAssertIntEquals(tc, len, 5);
   serf_bucket_destroy(head);
   serf_bucket_destroy(tail);
 
@@ -2300,6 +2311,56 @@ static void test_split_buckets(CuTest *tc)
     DRAIN_BUCKET(tail);
     serf_bucket_destroy(head);
     serf_bucket_destroy(tail);
+  }
+
+  {
+    const char *data;
+    int i;
+    apr_int64_t total1, total2;
+    agg = serf_bucket_aggregate_create(alloc);
+    apr_size_t min_r, max_r;
+
+    /* Create a huge body of 173 times 59 chars (both primes) */
+    for (i = 0; i < 173; i++)
+      {
+        serf_bucket_aggregate_append(agg,
+          serf_bucket_simple_create(
+            "12345678901234567890123456789012345678901234567890123", 53,
+            NULL, NULL, alloc));
+      }
+
+    CuAssertIntEquals(tc, (173 * 53), (int)serf_bucket_get_remaining(agg));
+
+    total1 = total2 = 0;
+    min_r = APR_SIZE_MAX;
+    max_r = 0;
+    tail = agg;
+    while ((APR_EOF != serf_bucket_peek(tail, &data, &len)) || len)
+      {
+        serf_bucket_split_create(&head, &tail, tail, 5, 17);
+
+        head = serf__bucket_event_create(head, &total1, NULL, update_total,
+                                         NULL, alloc);
+
+        status = read_all(head, buffer, sizeof(buffer), &len);
+        CuAssertIntEquals(tc, APR_EOF, status);
+        total2 += len;
+
+        serf_bucket_destroy(head);
+
+        if (total1 < (173 * 53)) {
+          CuAssertTrue(tc, (len >= 5) && (len <= 17));
+
+          min_r = MIN(min_r, len);
+          max_r = MAX(max_r, len);
+        }
+      }
+    serf_bucket_destroy(tail);
+
+    CuAssertTrue(tc, min_r < 10); /* There should be much smaller buckets */
+    CuAssertIntEquals(tc, 17, max_r); /* First call should hit 17 */
+    CuAssertIntEquals(tc, (173 * 53), (int)total1);
+    CuAssertIntEquals(tc, (173 * 53), (int)total2);
   }
 }
 
