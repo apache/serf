@@ -151,8 +151,18 @@ apr_status_t serf_bucket_limited_readline(serf_bucket_t *bucket, int acceptable,
 
            For example, if we tried reading 2 characters seeking CRLF, and
            got CR followed by 'a', then we have over-read the line, and
-           consumed a character from the next line. Bad.  */
-        requested = 1;
+           consumed a character from the next line. Bad.
+
+           The only exception is when we *only* allow CRLF as newline. In that
+           case CR followed by 'a' would just be raw line data, not a line
+           break followed by data. If we allow any other type of newline we
+           can't use this trick.
+         */
+
+        if ((acceptable & SERF_NEWLINE_ANY) == SERF_NEWLINE_CRLF)
+            requested = MIN(requested, 2); /* Only CRLF is allowed */
+        else
+            requested = MIN(requested, 1);
     }
     else {
         /* peek_len > 0  */
