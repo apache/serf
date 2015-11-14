@@ -310,6 +310,7 @@ enqueue_http2_request(serf_http2_protocol_t *h2)
     h2->last = h2->first = stream;
 
   return serf_http2__stream_setup_next_request(stream, h2->conn,
+                                               h2->lr_max_framesize,
                                                h2->hpack_tbl);
 }
 
