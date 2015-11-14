@@ -667,14 +667,16 @@ int serf__log_enabled(apr_uint32_t level, apr_uint32_t comp,
 extern const serf_bucket_type_t serf_bucket_type__event;
 #define SERF__BUCKET_IS_EVENT(b) SERF_BUCKET_CHECK((b), _event)
 
-typedef apr_status_t(*serf_bucket_event_callback_t)(void *baton);
+typedef apr_status_t(*serf_bucket_event_callback_t)(void *baton,
+                                                    apr_uint64_t bytes_read);
 
 serf_bucket_t *serf__bucket_event_create(
+                        serf_bucket_t *stream,
                         void *baton,
+                        serf_bucket_event_callback_t start_cb,
                         serf_bucket_event_callback_t eof_cb,
                         serf_bucket_event_callback_t destroy_cb,
                         serf_bucket_alloc_t *allocator);
-
 
 
 #endif

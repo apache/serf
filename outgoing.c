@@ -904,7 +904,8 @@ apr_status_t serf__connection_flush(serf_connection_t *conn,
    At this time we know the request is written, but we can't destroy
    the buckets yet as they might still be referenced by the connection
    vecs. */
-static apr_status_t request_writing_done(void *baton)
+static apr_status_t request_writing_done(void *baton,
+                                         apr_uint64_t bytes_read)
 {
   serf_request_t *request = baton;
 
@@ -920,7 +921,8 @@ static apr_status_t request_writing_done(void *baton)
 /* Implements serf_bucket_event_callback_t and is called after the
    request buckets are no longer needed. More precisely the outgoing
    buckets are already destroyed. */
-static apr_status_t request_writing_finished(void *baton)
+static apr_status_t request_writing_finished(void *baton,
+                                             apr_uint64_t bytes_read)
 {
     serf_request_t *request = baton;
     serf_connection_t *conn = request->conn;
@@ -1057,11 +1059,12 @@ static apr_status_t write_to_connection(serf_connection_t *conn)
             }
 
             request->writing = SERF_WRITING_STARTED;
-            serf_bucket_aggregate_append(ostreamt, request->req_bkt);
 
             /* And now add an event bucket to keep track of when the request
                has been completely written */
-            event_bucket = serf__bucket_event_create(request,
+            event_bucket = serf__bucket_event_create(request->req_bkt,
+                                                     request,
+                                                     NULL,
                                                      request_writing_done,
                                                      request_writing_finished,
                                                      conn->allocator);
@@ -1395,6 +1398,23 @@ apr_status_t serf__process_connection(serf_connection_t *conn,
                                       apr_int16_t events)
 {
     apr_status_t status;
+#ifdef SERF_DEBUG_BUCKET_USE
+      serf_request_t *rq;
+#endif
+
+#ifdef SERF_DEBUG_BUCKET_USE
+    serf_debug__entered_loop(conn->allocator);
+
+    for (rq = conn->written_reqs; rq; rq = rq->next) {
+          if (rq->allocator)
+              serf_debug__entered_loop(rq->allocator);
+    }
+
+    for (rq = conn->done_reqs; rq; rq = rq->next) {
+          if (rq->allocator)
+              serf_debug__entered_loop(rq->allocator);
+    }
+#endif
 
     /* POLLHUP/ERR should come after POLLIN so if there's an error message or
      * the like sitting on the connection, we give the app a chance to read
