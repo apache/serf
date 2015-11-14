@@ -265,18 +265,15 @@ static apr_status_t read_aggregate(serf_bucket_t *bucket,
              * we are asked to perform a read operation - thus ensuring the
              * proper read lifetime.
              */
-            if (*vecs_used > 0) {
+            if (cur_vecs_used > 0) {
                 next_list = ctx->list->next;
                 ctx->list->next = ctx->done;
                 ctx->done = ctx->list;
                 ctx->list = next_list;
             }
             else {
-                /* The first bucket didn't add a single byte: we can destroy
-                   it now. We only do that if we are not already keeping other
-                   buckets alive. In test_limit_buckets() shows a case where
-                   an early destroy would not be safe if the bucket is not the
-                   first one. */
+                /* This bucket didn't add a single byte.
+                   We can destroy it directly */
                 next_list = ctx->list;
                 ctx->list = next_list->next;
                 serf_bucket_destroy(next_list->bucket);
