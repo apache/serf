@@ -2317,8 +2317,9 @@ static void test_split_buckets(CuTest *tc)
     const char *data;
     int i;
     apr_int64_t total1, total2;
-    agg = serf_bucket_aggregate_create(alloc);
     apr_size_t min_r, max_r;
+
+    agg = serf_bucket_aggregate_create(alloc);
 
     /* Create a huge body of 173 times 59 chars (both primes) */
     for (i = 0; i < 173; i++)
