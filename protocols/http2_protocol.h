@@ -195,6 +195,7 @@ serf_http2__stream_get(serf_http2_protocol_t *h2,
 apr_status_t
 serf_http2__stream_setup_next_request(serf_http2_stream_t *stream,
                                       serf_connection_t *conn,
+                                      apr_size_t max_payload_size,
                                       serf_hpack_table_t *hpack_tbl);
 
 apr_status_t

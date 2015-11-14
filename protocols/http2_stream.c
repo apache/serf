@@ -85,12 +85,15 @@ serf_http2__stream_cleanup(serf_http2_stream_t *stream)
 apr_status_t
 serf_http2__stream_setup_next_request(serf_http2_stream_t *stream,
                                       serf_connection_t *conn,
+                                      apr_size_t max_payload_size,
                                       serf_hpack_table_t *hpack_tbl)
 {
   serf_request_t *request = conn->unwritten_reqs;
   apr_status_t status;
   serf_bucket_t *hpack;
   serf_bucket_t *body;
+  bool first_frame;
+  bool end_stream;
 
   SERF_H2_assert(request != NULL);
   if (!request)
@@ -126,24 +129,76 @@ serf_http2__stream_setup_next_request(serf_http2_stream_t *stream,
 
   if (!body)
     {
-      /* This destroys the body... Perhaps we should make an extract
-      and clear api */
       serf_bucket_destroy(request->req_bkt);
       request->req_bkt = NULL;
+      end_stream = true;
+    }
+  else
+    end_stream = false;
+
+  first_frame = true;
+
+  /* And now schedule the packet for writing. Note that it is required
+     by the HTTP/2 spec to send HEADERS and CONTINUATION directly after
+     each other, without other frames inbetween. */
+  while (hpack != NULL)
+    {
+      serf_bucket_t *next;
+      apr_uint64_t remaining;
+
+      /* hpack buckets implement get_remaining. And if they didn't adding the
+         framing around them would apply some reads that fix the buckets.
+
+         So we can ignore the theoretical endless loop here for two different
+         reasons
+       */
+      remaining = serf_bucket_get_remaining(hpack);
+
+      if (remaining > max_payload_size)
+        {
+          serf_bucket_split_create(&next, &hpack, hpack,
+                                   max_payload_size - (max_payload_size / 4),
+                                   max_payload_size);
+        }
+      else
+        {
+          next = hpack;
+          hpack = NULL;
+        }
+
+      next = serf__bucket_http2_frame_create(next,
+                                             first_frame
+                                              ? HTTP2_FRAME_TYPE_HEADERS
+                                              : HTTP2_FRAME_TYPE_CONTINUATION,
+                                             (end_stream
+                                                  ? HTTP2_FLAG_END_STREAM
+                                                  : 0)
+                                             | ((hpack != NULL)
+                                                  ? 0
+                                                  : HTTP2_FLAG_END_HEADERS),
+                                             &stream->streamid,
+                                             serf_http2__allocate_stream_id,
+                                             stream,
+                                             max_payload_size,
+                                             request->allocator);
+      status = serf_http2__enqueue_frame(stream->h2, next, TRUE);
+
+      if (SERF_BUCKET_READ_ERROR(status))
+        return status; /* Connection dead */
+
+      first_frame = false; /* Continue with 'continuation' frames */
     }
 
-  hpack = serf__bucket_http2_frame_create(hpack, HTTP2_FRAME_TYPE_HEADERS,
-                                           HTTP2_FLAG_END_STREAM
-                                           | HTTP2_FLAG_END_HEADERS,
-                                           &stream->streamid,
-                                           serf_http2__allocate_stream_id,
-                                           stream,
-                                           HTTP2_DEFAULT_MAX_FRAMESIZE,
-                                           request->allocator);
 
-  serf_http2__enqueue_frame(stream->h2, hpack, TRUE);
-
-  stream->status = H2S_HALFCLOSED_LOCAL; /* Headers sent */
+  if (end_stream)
+    {
+      stream->status = H2S_HALFCLOSED_LOCAL; /* Headers sent; no body */
+    }
+  else
+    {
+      stream->status = H2S_OPEN; /* Headers sent. Body to go */
+      /* ### TODO: Schedule body to be sent */
+    }
 
   return APR_SUCCESS;
 }

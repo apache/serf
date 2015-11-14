@@ -390,43 +390,46 @@ void serf_bucket_split_create(serf_bucket_t **head,
                               apr_size_t min_chunk_size,
                               apr_size_t max_chunk_size)
 {
-  split_stream_ctx_t *tail_ctx, *head_ctx;
-  split_context_t *ctx;
-  serf_bucket_alloc_t *allocator = stream->allocator;
+    split_stream_ctx_t *tail_ctx, *head_ctx;
+    split_context_t *ctx;
+    serf_bucket_alloc_t *allocator = stream->allocator;
 
-  tail_ctx = serf_bucket_mem_calloc(allocator, sizeof(*tail_ctx));
-  tail_ctx->tail_size = SERF_LENGTH_UNKNOWN;
+    tail_ctx = serf_bucket_mem_calloc(allocator, sizeof(*tail_ctx));
+    tail_ctx->tail_size = SERF_LENGTH_UNKNOWN;
 
-  if (SERF_BUCKET_IS__SPLIT(stream)) {
-    ctx = stream->data;
-    *head = stream;
+    if (SERF_BUCKET_IS__SPLIT(stream)) {
+        head_ctx = stream->data;
+        ctx = head_ctx->ctx;
+        *head = stream;
 
-    head_ctx = tail_ctx->prev = ctx->tail;
-    ctx->tail->next = tail_ctx;
-    ctx->tail = tail_ctx;
-  }
-  else {
-    ctx = serf_bucket_mem_calloc(allocator, sizeof(*ctx));
-    ctx->stream = stream;
+        head_ctx = tail_ctx->prev = ctx->tail;
+        ctx->tail->next = tail_ctx;
+        ctx->tail = tail_ctx;
+    }
+    else {
+        ctx = serf_bucket_mem_calloc(allocator, sizeof(*ctx));
+        ctx->stream = stream;
 
-    head_ctx = serf_bucket_mem_calloc(allocator, sizeof(*head_ctx));
-    head_ctx->ctx = ctx;
+        head_ctx = serf_bucket_mem_calloc(allocator, sizeof(*head_ctx));
+        head_ctx->ctx = ctx;
+        head_ctx->tail_size = SERF_LENGTH_UNKNOWN;
 
-    ctx->tail = head_ctx->next = tail_ctx;
-    ctx->head = tail_ctx->prev = head_ctx;
+        ctx->tail = head_ctx->next = tail_ctx;
+        ctx->head = tail_ctx->prev = head_ctx;
 
-    *head = serf_bucket_create(&serf_bucket_type__split, allocator,
-                               head_ctx);
-  }
+        *head = serf_bucket_create(&serf_bucket_type__split, allocator,
+                                   head_ctx);
+    }
 
-  *tail = serf_bucket_create(&serf_bucket_type__split, allocator, tail_ctx);
+    *tail = serf_bucket_create(&serf_bucket_type__split, allocator, tail_ctx);
 
-  tail_ctx->ctx = ctx;
-  /* head_ctx->fixed_size = 0; // Unknown */
-  head_ctx->min_size = min_chunk_size;
-  head_ctx->max_size = max_chunk_size;
+    tail_ctx->ctx = ctx;
+    head_ctx->fixed_size = 0; /* Not fixed yet. This might change an existing
+                                 tail bucket that we received as stream! */
+    head_ctx->min_size = min_chunk_size;
+    head_ctx->max_size = max_chunk_size;
 
-  /* tail_ctx->fixed_size = 0; // Unknown */
-  tail_ctx->min_size = SERF_READ_ALL_AVAIL;
-  tail_ctx->max_size = SERF_READ_ALL_AVAIL;
+    /* tail_ctx->fixed_size = 0; // Unknown */
+    tail_ctx->min_size = SERF_READ_ALL_AVAIL;
+    tail_ctx->max_size = SERF_READ_ALL_AVAIL;
 }
