@@ -149,7 +149,23 @@ serf__bucket_http2_unframe_read_info(serf_bucket_t *bucket,
             mandatory frame data.
           */
           if (ctx->max_payload_size < payload_length)
+            {
+              if (payload_length == 0x485454 && ctx->frame_type == 0x50
+                  && ctx->flags == 0x2F)
+                {
+                  /* We found "HTTP/" instead of an actual frame. This
+                     is clearly above the initial max payload size of 16384,
+                     which applies before we negotiate a bigger size.
+
+                     We found a HTTP/1.1 server that didn't understand our
+                     HTTP2 prefix "PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n"
+                   */
+
+                  return SERF_ERROR_HTTP2_PROTOCOL_ERROR;
+                }
+
               return SERF_ERROR_HTTP2_FRAME_SIZE_ERROR;
+            }
 
           status = (ctx->payload_remaining == 0) ? APR_EOF
                                                  : APR_SUCCESS;
