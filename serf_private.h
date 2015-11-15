@@ -279,11 +279,14 @@ struct serf_context_t {
     serf_socket_remove_t pollset_rm;
 
     /* one of our connections has a dirty pollset state. */
-    int dirty_pollset;
+    bool dirty_pollset;
 
     /* the list of active connections */
     apr_array_header_t *conns;
 #define GET_CONN(ctx, i) (((serf_connection_t **)(ctx)->conns->elts)[i])
+
+    apr_array_header_t *incomings;
+#define GET_INCOMING(ctx, i) (((serf_incoming_t **)(ctx)->incomings->elts)[i])
 
     /* Proxy server address */
     apr_sockaddr_t *proxy_address;
@@ -328,8 +331,40 @@ struct serf_incoming_t {
     serf_io_baton_t baton;
     void *request_baton;
     serf_incoming_request_cb_t request;
-    apr_socket_t *skt;
+
+    apr_socket_t *skt; /* Lives in parent of POOL */
+    apr_pool_t *pool; 
+    serf_bucket_alloc_t *allocator;
+
     apr_pollfd_t desc;
+
+    /* the last reqevents we gave to pollset_add */
+    apr_int16_t reqevents;
+
+    struct iovec vec[IOV_MAX];
+    int vec_len;
+
+    serf_connection_setup_t setup;
+    void *setup_baton;
+    serf_incoming_closed_t closed;
+    void *closed_baton;
+
+    bool dirty_conn;
+    bool wait_for_connect;
+    bool hit_eof;
+
+    /* A bucket wrapped around our socket (for reading responses). */
+    serf_bucket_t *stream;
+    /* A reference to the aggregate bucket that provides the boundary between
+    * request level buckets and connection level buckets.
+    */
+    serf_bucket_t *ostream_head;
+    serf_bucket_t *ostream_tail;
+
+    /* Aggregate bucket used to send the CONNECT request. */
+    serf_bucket_t *ssltunnel_ostream;
+
+    serf_config_t *config;
 };
 
 /* States for the different stages in the lifecyle of a connection. */
@@ -362,7 +397,7 @@ struct serf_connection_t {
     apr_int16_t seen_in_pollset;
 
     /* are we a dirty connection that needs its poll status updated? */
-    int dirty_conn;
+    bool dirty_conn;
 
     /* number of completed requests we've sent */
     unsigned int completed_requests;
@@ -565,6 +600,7 @@ void serf__context_progress_delta(void *progress_baton, apr_off_t read,
 /* from incoming.c */
 apr_status_t serf__process_client(serf_incoming_t *l, apr_int16_t events);
 apr_status_t serf__process_listener(serf_listener_t *l);
+apr_status_t serf__incoming_update_pollset(serf_incoming_t *incoming);
 
 /* from outgoing.c */
 apr_status_t serf__open_connections(serf_context_t *ctx);

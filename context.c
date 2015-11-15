@@ -75,6 +75,20 @@ static apr_status_t check_dirty_pollsets(serf_context_t *ctx)
             return status;
     }
 
+    for (i = ctx->incomings->nelts; i--; ) {
+        serf_incoming_t *incoming = GET_INCOMING(ctx, i);
+        apr_status_t status;
+
+        if (!incoming->dirty_conn) {
+            continue;
+        }
+
+        incoming->dirty_conn = false;
+
+        if ((status = serf__incoming_update_pollset(incoming)) != APR_SUCCESS)
+            return status;
+    }
+
     /* reset our context flag now */
     ctx->dirty_pollset = 0;
 
@@ -167,6 +181,9 @@ serf_context_t *serf_context_create_ex(
 
     /* default to a single connection since that is the typical case */
     ctx->conns = apr_array_make(pool, 1, sizeof(serf_connection_t *));
+
+    /* and we typically have no servers */
+    ctx->incomings = apr_array_make(pool, 0, sizeof(serf_incoming_t *));
 
     /* Initialize progress status */
     ctx->progress_read = 0;

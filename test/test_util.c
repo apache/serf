@@ -420,7 +420,9 @@ setup_test_client_context(test_baton_t *tb,
 {
     apr_status_t status;
 
-    tb->context = serf_context_create(pool);
+    if (!tb->context)
+        tb->context = serf_context_create(pool);
+
     tb->conn_setup = conn_setup ? conn_setup :
                                   default_http_conn_setup;
     status = use_new_connection(tb, pool);
