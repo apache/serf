@@ -60,6 +60,7 @@ CuSuite *test_buckets(void);
 CuSuite *test_ssl(void);
 CuSuite *test_auth(void);
 CuSuite *test_internal(void);
+CuSuite *test_server(void);
 CuSuite *test_mock_bucket(void);
 
 /* Test setup declarations */

@@ -377,6 +377,15 @@ typedef void (*serf_connection_closed_t)(
     apr_pool_t *pool);
 
 /**
+ * Like serf_connection_closed_t, but applies to incoming connections.
+ */
+typedef void(*serf_incoming_closed_t)(
+    serf_incoming_t *incoming,
+    void *closed_baton,
+    apr_status_t why,
+    apr_pool_t *pool);
+
+/**
  * Response data has arrived and should be processed.
  *
  * Whenever response data for @a request arrives (initially, or continued data
@@ -512,6 +521,7 @@ typedef apr_status_t (*serf_incoming_request_cb_t)(
     void *request_baton,
     apr_pool_t *pool);
 
+/* ### Arguments in bad order. Doesn't support SSL */
 apr_status_t serf_incoming_create(
     serf_incoming_t **client,
     serf_context_t *ctx,
@@ -520,6 +530,17 @@ apr_status_t serf_incoming_create(
     serf_incoming_request_cb_t request,
     apr_pool_t *pool);
 
+apr_status_t serf_incoming_create2(
+    serf_incoming_t **client,
+    serf_context_t *ctx,
+    apr_socket_t *insock,
+    serf_connection_setup_t setup,
+    void *setup_baton,
+    serf_incoming_closed_t closed,
+    void *closed_baton,
+    serf_incoming_request_cb_t request,
+    void *request_baton,
+    apr_pool_t *pool);
 
 
 
