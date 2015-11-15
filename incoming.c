@@ -186,10 +186,11 @@ apr_status_t serf_incoming_create2(
 {
     apr_status_t rv;
     apr_pool_t *ic_pool;
+    serf_incoming_t *ic;
 
     apr_pool_create(&ic_pool, pool);
 
-    serf_incoming_t *ic = apr_palloc(ic_pool, sizeof(*ic));
+    ic = apr_palloc(ic_pool, sizeof(*ic));
 
     ic->ctx = ctx;
     ic->pool = ic_pool;

@@ -514,6 +514,7 @@ testall_files = [
         'test/test_buckets.c',
         'test/test_auth.c',
         'test/test_internal.c',
+        'test/test_server.c',
         'test/mock_buckets.c',
         'test/mock_sock_buckets.c',
         'test/test_ssl.c',
