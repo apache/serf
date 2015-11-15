@@ -90,7 +90,7 @@ apr_status_t serf__config_store_init(serf_context_t *ctx)
     ctx->config_store.global_per_host = apr_hash_make(pool);
     ctx->config_store.global_per_conn = apr_hash_make(pool);
 
-    return APR_ENOTIMPL;
+    return APR_SUCCESS;
 }
 
 /* Defines the key to use for per host settings */
