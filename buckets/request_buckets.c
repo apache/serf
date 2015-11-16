@@ -20,6 +20,7 @@
 
 #include <apr_pools.h>
 #include <apr_strings.h>
+#include <apr_date.h>
 
 #include "serf.h"
 #include "serf_bucket_util.h"
@@ -324,6 +325,7 @@ static apr_status_t serf_incoming_rq_parse_rqline(serf_bucket_t *bucket)
 {
     incoming_request_context_t *ctx = bucket->data;
     const char *spc, *spc2;
+    int res;
 
     if (ctx->linebuf.used == 0) {
         return SERF_ERROR_TRUNCATED_STREAM;
@@ -348,7 +350,19 @@ static apr_status_t serf_incoming_rq_parse_rqline(serf_bucket_t *bucket)
     else
         return SERF_ERROR_TRUNCATED_STREAM;
 
-    ctx->version = SERF_HTTP_11; /* ### Parse! */
+    spc2++;
+    /* ctx->linebuf.line should be of form: 'HTTP/1.1 200 OK',
+    but we also explicitly allow the forms 'HTTP/1.1 200' (no reason)
+    and 'HTTP/1.1 401.1 Logon failed' (iis extended error codes)
+    NOTE: Since r1699995 linebuf.line is always NUL terminated string. */
+    res = apr_date_checkmask(spc2, "HTTP/#.#");
+    if (!res) {
+        /* Not an HTTP response?  Well, at least we won't understand it. */
+        return SERF_ERROR_BAD_HTTP_RESPONSE;
+    }
+
+    ctx->version = SERF_HTTP_VERSION(spc2[5] - '0',
+                                     spc2[7] - '0');
     ctx->state++;
 
     return APR_SUCCESS;
