@@ -1885,3 +1885,38 @@ serf_http2__setup_incoming_request(serf_incoming_request_t **in_request,
 
     return APR_SUCCESS;
 }
+
+apr_size_t
+serf_http2__max_payload_size(serf_http2_protocol_t *h2)
+{
+    return h2->lr_max_framesize;
+}
+
+apr_size_t serf_http2__alloc_window(serf_http2_protocol_t *h2,
+                                    serf_http2_stream_t *stream,
+                                    apr_size_t requested)
+{
+    if (requested > h2->lr_max_framesize)
+        requested = h2->lr_max_framesize;
+    if (requested > h2->lr_window)
+        requested = h2->lr_window;
+    if (requested > stream->lr_window)
+        requested = stream->lr_window;
+
+    if (requested) {
+        h2->lr_window -= requested;
+        stream->lr_window -= requested;
+    }
+
+    return requested;
+}
+
+void serf_http2__return_window(serf_http2_protocol_t *h2,
+                               serf_http2_stream_t *stream,
+                                apr_size_t returned)
+{
+    SERF_H2_assert(h2->lr_window + returned <= HTTP2_WINDOW_MAX_ALLOWED);
+    SERF_H2_assert(stream->lr_window + returned <= HTTP2_WINDOW_MAX_ALLOWED);
+    h2->lr_window += returned;
+    stream->lr_window += returned;
+}
