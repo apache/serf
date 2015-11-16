@@ -204,6 +204,18 @@ serf_http2__setup_incoming_request(serf_incoming_request_t **in_request,
                                    void **req_setup_baton,
                                    serf_http2_protocol_t *h2);
 
+/* Gets current l->r max payload size */
+apr_size_t
+serf_http2__max_payload_size(serf_http2_protocol_t *h2);
+
+apr_size_t serf_http2__alloc_window(serf_http2_protocol_t *h2,
+                                    serf_http2_stream_t *stream,
+                                    apr_size_t requested);
+
+void serf_http2__return_window(serf_http2_protocol_t *h2,
+                               serf_http2_stream_t *stream,
+                               apr_size_t returned);
+
 apr_status_t
 serf_http2__stream_reset(serf_http2_stream_t *stream,
                          apr_status_t reason,

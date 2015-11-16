@@ -238,7 +238,7 @@ void test_listen_http2(CuTest *tc)
 
     status = run_client_server_loop(tb, num_requests,
                                     handler_ctx, tb->pool);
-    CuAssertIntEquals(tc, APR_ENOTIMPL, status);
+    CuAssertIntEquals(tc, APR_SUCCESS, status);
 }
 
 /*****************************************************************************/
