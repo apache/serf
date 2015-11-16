@@ -352,18 +352,20 @@ struct serf_listener_t {
 
 struct serf_incoming_t {
     serf_context_t *ctx;
+
     serf_io_baton_t baton;
     serf_incoming_request_setup_t req_setup;
     void *req_setup_baton;
 
     apr_socket_t *skt; /* Lives in parent of POOL */
-    apr_pool_t *pool; 
+    apr_pool_t *pool;
     serf_bucket_alloc_t *allocator;
 
     apr_pollfd_t desc;
 
     /* the last reqevents we gave to pollset_add */
     apr_int16_t reqevents;
+    apr_int16_t seen_in_pollset;
 
     struct iovec vec[IOV_MAX];
     int vec_len;
@@ -510,7 +512,7 @@ struct serf_connection_t {
 
     /* Host url, path ommitted, syntax: https://svn.apache.org . */
     const char *host_url;
-    
+
     /* Exploded host url, path ommitted. Only scheme, hostinfo, hostname &
        port values are filled in. */
     apr_uri_t host_info;
@@ -566,10 +568,10 @@ void serf__bucket_drain(serf_bucket_t *bucket);
 
 /** Transform a response_bucket in-place into an aggregate bucket. Restore the
     status line and all headers, not just the body.
- 
+
     This can only be used when we haven't started reading the body of the
     response yet.
- 
+
     Keep internal for now, probably only useful within serf.
  */
 apr_status_t serf_response_full_become_aggregate(serf_bucket_t *bucket);
@@ -629,7 +631,7 @@ apr_status_t serf__handle_auth_response(int *consumed_response,
 /* Get the cached serf__authn_info_t object for the target server, or create one
    when this is the first connection to the server.
    TODO: The serf__authn_info_t objects are allocated in the context pool, so
-   a context that's used to connect to many different servers using Basic or 
+   a context that's used to connect to many different servers using Basic or
    Digest authencation will hold on to many objects indefinitely. We should be
    able to cleanup stale objects from time to time. */
 serf__authn_info_t *serf__get_authn_info_for_server(serf_connection_t *conn);
@@ -722,7 +724,7 @@ apr_status_t serf__handle_response(serf_request_t *request,
 
 /** Logging functions. **/
 
-/* Initialize the logging subsystem. This will store a log baton in the 
+/* Initialize the logging subsystem. This will store a log baton in the
    context's configuration store. */
 apr_status_t serf__log_init(serf_context_t *ctx);
 

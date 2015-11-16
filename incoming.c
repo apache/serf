@@ -279,7 +279,7 @@ serf_incoming_request_t *serf__incoming_request_create(serf_incoming_t *client)
 
 static apr_status_t read_from_client(serf_incoming_t *client)
 {
-    apr_status_t status;
+    apr_status_t status = APR_SUCCESS;
     serf_incoming_request_t *rq;
 
     if (client->proto_peek_bkt)
@@ -293,7 +293,8 @@ static apr_status_t read_from_client(serf_incoming_t *client)
             return client->perform_read(client);
     }
 
-    do {
+    while (status == APR_SUCCESS) {
+
         rq = client->current_request;
         if (!rq) {
             serf_bucket_t *read_bkt;
@@ -341,14 +342,47 @@ static apr_status_t read_from_client(serf_incoming_t *client)
                 status = destroy_request(rq);
             }
 
-            /* ### TODO: Check if connection is also at EOF? */
-            status = APR_SUCCESS;
+            /* Is the connection at eof or just the request? */
+            {
+                const char *data;
+                apr_size_t len;
+
+                status = serf_bucket_peek(client->stream, &data, &len);
+            }
         }
     }
-    while (status == APR_SUCCESS);
 
-    if (APR_STATUS_IS_EAGAIN(status) || status == SERF_ERROR_WAIT_CONN)
+    if (!SERF_BUCKET_READ_ERROR(status) && !APR_STATUS_IS_EOF(status))
         return APR_SUCCESS;
+
+    {
+        apr_pollfd_t tdesc = { 0 };
+        int i;
+
+        /* Remove us from the pollset */
+        tdesc.desc_type = APR_POLL_SOCKET;
+        tdesc.desc.s = client->skt;
+        tdesc.reqevents = client->reqevents;
+        client->ctx->pollset_rm(client->ctx->pollset_baton,
+                                &tdesc, &client->baton);
+
+        /* And from the incommings list */
+        for (i = 0; i < client->ctx->incomings->nelts; i++) {
+            if (GET_INCOMING(client->ctx, i) == client) {
+                GET_INCOMING(client->ctx, i)
+                    = GET_INCOMING(client->ctx,
+                                   client->ctx->incomings->nelts - 1);
+                break;
+            }
+        }
+        client->ctx->incomings->nelts--;
+        client->seen_in_pollset |= APR_POLLHUP; /* No more events */
+    }
+
+    status = client->closed(client, client->closed_baton, status,
+                            client->pool);
+
+    /* ### Somehow do a apr_pool_destroy(client->pool); */
 
     return status;
 }
@@ -570,6 +604,13 @@ apr_status_t serf__process_client(serf_incoming_t *client, apr_int16_t events)
         if (status) {
             return status;
         }
+
+        /* If we decided to close our connection, return now as we don't
+         * want to write.
+         */
+        if ((client->seen_in_pollset & APR_POLLHUP) != 0) {
+            return APR_SUCCESS;
+        }
     }
 
     if ((events & APR_POLLHUP) != 0) {
@@ -716,6 +757,7 @@ apr_status_t serf_incoming_create2(
     ic->desc.desc_type = APR_POLL_SOCKET;
     ic->desc.desc.s = ic->skt;
     ic->desc.reqevents = APR_POLLIN | APR_POLLERR | APR_POLLHUP;
+    ic->seen_in_pollset = 0;
 
     /* Store the connection specific info in the configuration store */
     /* ### Doesn't work... Doesn't support listeners yet*/

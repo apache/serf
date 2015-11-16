@@ -379,7 +379,7 @@ typedef void (*serf_connection_closed_t)(
 /**
  * Like serf_connection_closed_t, but applies to incoming connections.
  */
-typedef void(*serf_incoming_closed_t)(
+typedef apr_status_t (*serf_incoming_closed_t)(
     serf_incoming_t *incoming,
     void *closed_baton,
     apr_status_t why,
