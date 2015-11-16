@@ -146,6 +146,7 @@ typedef struct serf_http2_stream_t
   struct serf_http2_stream_t *new_reserved_stream;
 
   /* TODO: Priority, etc. */
+  struct serf_http2_stream_t *next_writable, *prev_writable;
 } serf_http2_stream_t;
 
 typedef apr_status_t (* serf_http2_processor_t)(void *baton,
@@ -216,6 +217,8 @@ void serf_http2__return_window(serf_http2_protocol_t *h2,
                                serf_http2_stream_t *stream,
                                apr_size_t returned);
 
+void serf_http2__ensure_writable(serf_http2_stream_t *stream);
+
 apr_status_t
 serf_http2__stream_reset(serf_http2_stream_t *stream,
                          apr_status_t reason,
@@ -243,6 +246,9 @@ apr_status_t
 serf_http2__stream_processor(void *baton,
                              serf_http2_protocol_t *h2,
                              serf_bucket_t *bucket);
+
+apr_status_t
+serf_http2__stream_write_data(serf_http2_stream_t *stream);
 
 #ifdef __cplusplus
 }
