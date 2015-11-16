@@ -120,6 +120,9 @@ struct serf_http2_protocol_t
     apr_pool_t *pool;
     serf_connection_t *conn; /* Either CONN or CLIENT is set */
     serf_incoming_t *client;
+    serf_context_t *ctx;
+    bool *dirty_pollset;
+    apr_int16_t *req_events;
     serf_bucket_t *stream, *ostream;
     serf_bucket_alloc_t *allocator;
 
@@ -235,6 +238,9 @@ void serf__http2_protocol_init(serf_connection_t *conn)
     h2 = apr_pcalloc(protocol_pool, sizeof(*h2));
     h2->pool = protocol_pool;
     h2->conn = conn;
+    h2->ctx = conn->ctx;
+    h2->dirty_pollset = &conn->dirty_conn;
+    h2->req_events = &conn->reqevents;
     h2->stream = conn->stream;
     h2->ostream = conn->ostream_tail;
     h2->allocator = conn->allocator;
@@ -326,6 +332,9 @@ void serf__http2_protocol_init_server(serf_incoming_t *client)
     h2 = apr_pcalloc(protocol_pool, sizeof(*h2));
     h2->pool = protocol_pool;
     h2->client = client;
+    h2->ctx = client->ctx;
+    h2->dirty_pollset = &client->dirty_conn;
+    h2->req_events = &client->reqevents;
     h2->stream = client->stream;
     h2->ostream = client->ostream_tail;
     h2->allocator = client->allocator;
@@ -430,10 +439,10 @@ serf_http2__enqueue_frame(serf_http2_protocol_t *h2,
                           int pump)
 {
     apr_status_t status;
+    bool want_write;
 
-    if (!pump
-        && !((h2->conn && h2->conn->dirty_conn)
-             || (h2->client && h2->client->dirty_conn)))
+
+    if (!pump && !*h2->dirty_pollset)
     {
         const char *data;
         apr_size_t len;
@@ -450,8 +459,8 @@ serf_http2__enqueue_frame(serf_http2_protocol_t *h2,
 
         if (len == 0)
         {
-            h2->conn->dirty_conn = TRUE;
-            h2->conn->ctx->dirty_pollset = TRUE;
+            *h2->dirty_pollset = true;
+            h2->ctx->dirty_pollset = true;
         }
     }
 
@@ -466,21 +475,16 @@ serf_http2__enqueue_frame(serf_http2_protocol_t *h2,
     else
         status = serf__incoming_client_flush(h2->client, TRUE);
 
-    if (APR_STATUS_IS_EAGAIN(status))
-        return APR_SUCCESS;
-    else if (status)
-        return status;
+    want_write = APR_STATUS_IS_EAGAIN(status);
 
-    if (h2->conn) {
-        h2->conn->dirty_conn = true;
-        h2->conn->ctx->dirty_pollset = true;
-    }
-    else {
-        h2->client->dirty_conn = true;
-        h2->client->ctx->dirty_pollset = true;
+    if ((want_write && !(*h2->req_events & APR_POLLOUT))
+        || (!want_write && (*h2->req_events & APR_POLLOUT)))
+    {
+        *h2->dirty_pollset = true;
+        h2->ctx->dirty_pollset = true;
     }
 
-    return APR_SUCCESS;
+    return status;
 }
 
 /* Implements serf_bucket_prefix_handler_t.
@@ -1641,6 +1645,7 @@ static apr_status_t http2_write_data(serf_http2_protocol_t *h2)
 static apr_status_t
 http2_outgoing_read(serf_connection_t *conn)
 {
+    serf_http2_protocol_t *h2 = conn->protocol_baton;
     apr_status_t status;
 
     /* If the stop_writing flag was set on the connection, reset it now because
@@ -1652,7 +1657,10 @@ http2_outgoing_read(serf_connection_t *conn)
         conn->ctx->dirty_pollset = 1;
     }
 
-    status = http2_process(conn->protocol_baton);
+    if (h2->stream == NULL)
+        h2->stream = conn->stream;
+
+    status = http2_process(h2);
 
     if (!status)
         return APR_SUCCESS;
@@ -1698,7 +1706,7 @@ http2_outgoing_write(serf_connection_t *conn)
 
       /* Probably nothing to write. Connection will check new requests */
     conn->dirty_conn = 1;
-    conn->ctx->dirty_pollset = 1;
+    h2->ctx->dirty_pollset = 1;
 
     return APR_SUCCESS;
 }
@@ -1817,7 +1825,7 @@ http2_incoming_write(serf_incoming_t *client)
 
     /* Probably nothing to write. Connection will check new requests */
     client->dirty_conn = true;
-    client->ctx->dirty_pollset = true;
+    h2->ctx->dirty_pollset = true;
 
     return APR_SUCCESS;
 }
