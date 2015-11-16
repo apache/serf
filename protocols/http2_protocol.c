@@ -160,6 +160,8 @@ struct serf_http2_protocol_t
 
     serf_bucket_t *continuation_bucket;
     apr_int32_t continuation_streamid;
+
+    serf_http2_stream_t *first_writable, *last_writable, *cur_writable;
 };
 
 /* Forward definition */
@@ -1595,6 +1597,47 @@ http2_process(serf_http2_protocol_t *h2)
     } /* while(TRUE) */
 }
 
+static apr_status_t http2_write_data(serf_http2_protocol_t *h2)
+{
+    serf_http2_stream_t *stream = h2->cur_writable;
+
+    while (TRUE)
+    {
+        apr_status_t status;
+
+        if (!stream)
+            stream = h2->first_writable;
+
+        if (!stream)
+            return APR_SUCCESS;
+
+        if (stream->status != H2S_OPEN
+            && stream->status != H2S_HALFCLOSED_REMOTE)
+        {
+            /* This stream is NOT writable. Remove it */
+            if (stream->prev_writable)
+                stream->prev_writable->next_writable = stream->next_writable;
+            else
+                h2->first_writable = stream->next_writable;
+
+            if (stream->next_writable)
+                stream->next_writable->prev_writable = stream->prev_writable;
+            else
+                h2->last_writable = stream->prev_writable;
+
+            stream = stream->next_writable;
+            continue;
+        }
+
+        status = serf_http2__stream_write_data(stream);
+        if (status || stream->lr_window == 0)
+            h2->cur_writable = stream->next_writable;
+
+        return status ? status : APR_EAGAIN;
+    }
+
+}
+
 static apr_status_t
 http2_outgoing_read(serf_connection_t *conn)
 {
@@ -1647,6 +1690,10 @@ http2_outgoing_write(serf_connection_t *conn)
     if (APR_STATUS_IS_EAGAIN(status))
         return APR_SUCCESS;
     else if (status)
+        return status;
+
+    status = http2_write_data(h2);
+    if (status)
         return status;
 
       /* Probably nothing to write. Connection will check new requests */
@@ -1754,7 +1801,7 @@ http2_incoming_read(serf_incoming_t *client)
 static apr_status_t
 http2_incoming_write(serf_incoming_t *client)
 {
-    /* serf_http2_protocol_t *h2 = client->protocol_baton; */
+    serf_http2_protocol_t *h2 = client->protocol_baton;
     apr_status_t status;
 
     status = serf__incoming_client_flush(client, TRUE);
@@ -1762,6 +1809,10 @@ http2_incoming_write(serf_incoming_t *client)
     if (APR_STATUS_IS_EAGAIN(status))
         return APR_SUCCESS;
     else if (status)
+        return status;
+
+    status = http2_write_data(h2);
+    if (status)
         return status;
 
     /* Probably nothing to write. Connection will check new requests */
@@ -1951,4 +2002,21 @@ void serf_http2__return_window(serf_http2_protocol_t *h2,
     SERF_H2_assert(stream->lr_window + returned <= HTTP2_WINDOW_MAX_ALLOWED);
     h2->lr_window += returned;
     stream->lr_window += returned;
+}
+
+void serf_http2__ensure_writable(serf_http2_stream_t *stream)
+{
+    serf_http2_protocol_t *h2 = stream->h2;
+    SERF_H2_assert(stream->status == H2S_OPEN
+                   || stream->status == H2S_HALFCLOSED_REMOTE);
+
+    if (stream->next_writable || stream->prev_writable)
+        return;
+
+    stream->prev_writable = h2->last_writable;
+    h2->last_writable = stream;
+    if (h2->first_writable)
+        h2->last_writable->next_writable = stream;
+    else
+        h2->first_writable = stream;
 }

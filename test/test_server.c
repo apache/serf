@@ -232,9 +232,8 @@ void test_listen_http2(CuTest *tc)
                                        tb->pool);
     CuAssertIntEquals(tc, APR_SUCCESS, status);
 
-    /* Our http2 implementation doesn't support request bodies yet */
-    create_new_request(tb, &handler_ctx[0], "GET", "/", -1);
-    create_new_request(tb, &handler_ctx[1], "GET", "/", -1);
+    create_new_request(tb, &handler_ctx[0], "GET", "/", 1);
+    create_new_request(tb, &handler_ctx[1], "GET", "/", 2);
 
     status = run_client_server_loop(tb, num_requests,
                                     handler_ctx, tb->pool);

@@ -36,7 +36,7 @@ struct serf_http2_stream_data_t
     serf_incoming_request_t *in_request;
     serf_bucket_t *response_agg;
     serf_hpack_table_t *tbl;
-    serf_bucket_t *body_tail;
+    serf_bucket_t *data_tail;
 };
 
 serf_http2_stream_t *
@@ -60,7 +60,7 @@ serf_http2__stream_create(serf_http2_protocol_t *h2,
     stream->data->in_request = NULL;
     stream->data->response_agg = NULL;
     stream->data->tbl = NULL;
-    stream->data->body_tail = NULL;
+    stream->data->data_tail = NULL;
 
     stream->lr_window = lr_window;
     stream->rl_window = rl_window;
@@ -72,6 +72,8 @@ serf_http2__stream_create(serf_http2_protocol_t *h2,
 
     stream->status = (streamid >= 0) ? H2S_IDLE : H2S_INIT;
     stream->new_reserved_stream = NULL;
+
+    stream->prev_writable = stream->next_writable = NULL;
 
     return stream;
 }
@@ -196,8 +198,8 @@ static apr_status_t data_write_done(void *baton,
 }
 
 
-static apr_status_t stream_send_body(serf_http2_stream_t *stream,
-                                     serf_bucket_t *body)
+static apr_status_t stream_send_data(serf_http2_stream_t *stream,
+                                     serf_bucket_t *data)
 {
     apr_uint64_t remaining;
     serf_bucket_t *next;
@@ -207,16 +209,16 @@ static apr_status_t stream_send_body(serf_http2_stream_t *stream,
 
     SERF_H2_assert(stream->status == H2S_OPEN
                    || stream->status == H2S_HALFCLOSED_REMOTE);
-    SERF_H2_assert(!stream->data->body_tail || (body ==
-                                                stream->data->body_tail));
+    SERF_H2_assert(!stream->data->data_tail || (data ==
+                                                stream->data->data_tail));
 
     /* Sending DATA frames over HTTP/2 is not easy as this usually requires
        handling windowing, priority, etc. This code will improve over time */
 
-    if (!body)
+    if (!data)
         remaining = 0;
     else
-        remaining = serf_bucket_get_remaining(body);
+        remaining = serf_bucket_get_remaining(data);
 
     /* If the stream decided we are already done */
     if (remaining == 0) {
@@ -225,12 +227,14 @@ static apr_status_t stream_send_body(serf_http2_stream_t *stream,
         else
             stream->status = H2S_CLOSED;
 
+        serf_bucket_destroy(data);
+
         next = serf__bucket_http2_frame_create(NULL, HTTP2_FRAME_TYPE_DATA,
                                                HTTP2_FLAG_END_STREAM,
                                                &stream->streamid,
                                                serf_http2__allocate_stream_id,
                                                stream, 0, stream->alloc);
-        stream->data->body_tail = NULL;
+        stream->data->data_tail = NULL;
         return serf_http2__enqueue_frame(stream->h2, next, false);
     }
 
@@ -241,20 +245,20 @@ static apr_status_t stream_send_body(serf_http2_stream_t *stream,
 
     if (prefix_len == 0) {
         /* No window left */
-        stream->data->body_tail = body;
+        stream->data->data_tail = data;
         return APR_SUCCESS;
     }
 
     if (prefix_len < remaining) {
         window_allocate_info_t *wai;
-        serf_bucket_split_create(&body, &stream->data->body_tail, body,
+        serf_bucket_split_create(&data, &stream->data->data_tail, data,
                                  MIN(prefix_len, 1024), prefix_len);
 
         wai = serf_bucket_mem_alloc(stream->alloc, sizeof(*wai));
         wai->stream = stream;
         wai->allocated = prefix_len;
 
-        body = serf__bucket_event_create(body, wai,
+        data = serf__bucket_event_create(data, wai,
                                          data_write_started,
                                          data_write_done, NULL, stream->alloc);
         end_stream = false;
@@ -262,20 +266,43 @@ static apr_status_t stream_send_body(serf_http2_stream_t *stream,
     else
         end_stream = true;
 
-    next = serf__bucket_http2_frame_create(body, HTTP2_FRAME_TYPE_DATA,
+    next = serf__bucket_http2_frame_create(data, HTTP2_FRAME_TYPE_DATA,
                                            end_stream ? HTTP2_FLAG_END_STREAM
                                                       : 0,
                                            &stream->streamid,
                                            serf_http2__allocate_stream_id,
                                            stream, prefix_len,
-                                           body->allocator);
+                                           data->allocator);
 
     status = serf_http2__enqueue_frame(stream->h2, next, TRUE);
 
-    if (!end_stream)
-        return APR_ENOTIMPL; /* The rest of the body won't be sent yet */
+    if (!end_stream) {
+        /* Write more later */
+        serf_http2__ensure_writable(stream);
+    }
 
     return status;
+}
+
+apr_status_t
+serf_http2__stream_write_data(serf_http2_stream_t *stream)
+{
+    SERF_H2_assert(stream->status == H2S_OPEN
+                   || stream->status == H2S_HALFCLOSED_REMOTE);
+    SERF_H2_assert(stream->data->data_tail != NULL);
+
+    return stream_send_data(stream, stream->data->data_tail);
+}
+
+apr_status_t destroy_request_bucket(void *baton,
+                                    apr_uint64_t bytes_read)
+{
+    serf_request_t *request = baton;
+
+    serf_bucket_destroy(request->req_bkt);
+    request->req_bkt = NULL;
+    request->writing = SERF_WRITING_FINISHED;
+    return APR_SUCCESS;
 }
 
 apr_status_t
@@ -337,13 +364,20 @@ serf_http2__stream_setup_next_request(serf_http2_stream_t *stream,
 
     if (end_stream) {
         stream->status = H2S_HALFCLOSED_LOCAL; /* Headers sent; no body */
-    }
-    else {
-        stream->status = H2S_OPEN; /* Headers sent. Body to go */
-        /* ### TODO: Schedule body to be sent */
+        return APR_SUCCESS;
     }
 
-    return APR_SUCCESS;
+    /* Yuck... we are not allowed to destroy body */
+    body = serf_bucket_barrier_create(body, request->allocator);
+
+    /* Setup an event bucket to destroy the actual request bucket when
+       the body is done */
+    body = serf__bucket_event_create(body, request,
+                                     NULL, NULL, destroy_request_bucket,
+                                     request->allocator);
+
+    stream->status = H2S_OPEN; /* Headers sent. Body to go */
+    return stream_send_data(stream, body);
 }
 
 apr_status_t
@@ -442,7 +476,7 @@ http2_stream_enqueue_response(serf_incoming_request_t *request,
     if (status)
         return status;
 
-    return stream_send_body(stream, response_bkt);
+    return stream_send_data(stream, response_bkt);
 }
 
 static apr_status_t
