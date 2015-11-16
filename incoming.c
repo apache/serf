@@ -533,12 +533,11 @@ apr_status_t serf__process_listener(serf_listener_t *l)
     }
 
     /* Set the socket to be non-blocking */
-    if ((status = apr_socket_timeout_set(client->skt, 0)) != APR_SUCCESS)
+    if ((status = apr_socket_timeout_set(in, 0)) != APR_SUCCESS)
         return status;
 
     /* Disable Nagle's algorithm */
-    if ((status = apr_socket_opt_set(client->skt,
-                                     APR_TCP_NODELAY, 1)) != APR_SUCCESS)
+    if ((status = apr_socket_opt_set(in, APR_TCP_NODELAY, 1)) != APR_SUCCESS)
         return status;
 
     status = l->accept_func(l->ctx, l, l->accept_baton, in, p);
