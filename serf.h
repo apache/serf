@@ -515,13 +515,39 @@ apr_status_t serf_listener_create(
     serf_accept_client_t accept_func,
     apr_pool_t *pool);
 
-typedef apr_status_t (*serf_incoming_request_cb_t)(
-    serf_context_t *ctx,
+typedef apr_status_t (*serf_incoming_request_handler_t)(
     serf_incoming_request_t *req,
-    void *request_baton,
+    serf_bucket_t *request,
+    void *handler_baton,
     apr_pool_t *pool);
 
-/* ### Arguments in bad order. Doesn't support SSL */
+typedef apr_status_t (*serf_incoming_response_setup_t)(
+    serf_bucket_t **resp_bkt,
+    serf_incoming_request_t *req,
+    void *setup_baton,
+    serf_bucket_alloc_t *allocator,
+    apr_pool_t *pool);
+
+typedef apr_status_t (*serf_incoming_request_setup_t)(
+    serf_bucket_t **req_bkt,
+    serf_bucket_t *stream,
+    serf_incoming_request_t *req,
+    void *request_baton,
+    serf_incoming_request_handler_t *handler,
+    void **handler_baton,
+    serf_incoming_response_setup_t *response_setup,
+    void *response_setup_baton,
+    apr_pool_t *pool);
+
+/* ### Deprecated: can't do anything with request */
+typedef apr_status_t(*serf_incoming_request_cb_t)(
+  serf_context_t *ctx,
+  serf_incoming_request_t *req,
+  void *request_baton,
+  apr_pool_t *pool);
+
+/* ### Deprecated: Misses ssl support and actual
+       request handling. */
 apr_status_t serf_incoming_create(
     serf_incoming_t **client,
     serf_context_t *ctx,
@@ -538,11 +564,15 @@ apr_status_t serf_incoming_create2(
     void *setup_baton,
     serf_incoming_closed_t closed,
     void *closed_baton,
-    serf_incoming_request_cb_t request,
-    void *request_baton,
+    serf_incoming_request_setup_t req_setup,
+    void *req_setup_baton,
     apr_pool_t *pool);
 
-
+/* Allows creating a response before the request is completely
+   read. Will call the response create function if it hasn't
+   been called yet. */
+apr_status_t serf_incoming_response_create(
+    serf_incoming_request_t *request);
 
 /**
  * Reset the connection, but re-open the socket again.

@@ -49,12 +49,63 @@ static apr_status_t client_closed(serf_incoming_t *client,
   return APR_ENOTIMPL;
 }
 
-static apr_status_t client_request_acceptor(serf_context_t *ctx,
+static apr_status_t client_request_handler(serf_incoming_request_t *req,
+                                           serf_bucket_t *request,
+                                           void *handler_baton,
+                                           apr_pool_t *pool)
+{
+    const char *data;
+    apr_size_t len;
+    apr_status_t status;
+
+    do
+    {
+        status = serf_bucket_read(request, SERF_READ_ALL_AVAIL, &data, &len);
+    }
+    while (status == APR_SUCCESS);
+
+    return status;
+}
+
+static apr_status_t client_generate_response(serf_bucket_t **resp_bkt,
+                                             serf_incoming_request_t *req,
+                                             void *setup_baton,
+                                             serf_bucket_alloc_t *allocator,
+                                             apr_pool_t *pool)
+{
+    serf_bucket_t *tmp;
+#define CRLF "\r\n"
+
+    tmp = SERF_BUCKET_SIMPLE_STRING("HTTP/1.1 200 OK" CRLF
+                                    "Content-Length: 4" CRLF
+                                    CRLF
+                                    "OK" CRLF,
+                                    allocator);
+
+    *resp_bkt = tmp;
+    return APR_SUCCESS;
+}
+
+static apr_status_t client_request_acceptor(serf_bucket_t **req_bkt,
+                                            serf_bucket_t *stream,
                                             serf_incoming_request_t *req,
                                             void *request_baton,
+                                            serf_incoming_request_handler_t *handler,
+                                            void **handler_baton,
+                                            serf_incoming_response_setup_t *response,
+                                            void **response_baton,
                                             apr_pool_t *pool)
 {
-  return APR_ENOTIMPL;
+    test_baton_t *tb = request_baton;
+    *req_bkt = serf_bucket_incoming_request_create(stream, stream->allocator);
+
+    *handler = client_request_handler;
+    *handler_baton = tb;
+
+    *response = client_generate_response;
+    *response_baton = tb;
+
+    return APR_SUCCESS;
 }
 
 static apr_status_t client_acceptor(serf_context_t *ctx,
@@ -114,11 +165,6 @@ run_client_server_loop(test_baton_t *tb,
   {
     apr_pool_clear(iter_pool);
 
-
-    /* Even if the mock server returned an error, it may have written
-    something to the client. So process that data first, handle the error
-    later. */
-
     /* run client event loop */
     status = serf_context_run(tb->context, 0, iter_pool);
     if (!APR_STATUS_IS_TIMEUP(status) &&
@@ -154,7 +200,7 @@ void test_listen_http(CuTest *tc)
 
   status = run_client_server_loop(tb, num_requests,
                                   handler_ctx, tb->pool);
-  CuAssertIntEquals(tc, APR_ENOTIMPL, status);
+  CuAssertIntEquals(tc, APR_SUCCESS, status);
 }
 
 
