@@ -183,6 +183,22 @@ run_client_server_loop(test_baton_t *tb,
     return APR_SUCCESS;
 }
 
+static apr_status_t connection_setup_http2(apr_socket_t *skt,
+                                           serf_bucket_t **read_bkt,
+                                           serf_bucket_t **write_bkt,
+                                           void *setup_baton,
+                                           apr_pool_t *pool)
+{
+    test_baton_t *tb = setup_baton;
+
+    /* Would be nice to be able to call default_http_conn_setup */
+    *read_bkt = serf_bucket_socket_create(skt, tb->bkt_alloc);
+
+    serf_connection_set_framing_type(tb->connection,
+                                     SERF_CONNECTION_FRAMING_TYPE_HTTP2);
+
+    return APR_SUCCESS;
+}
 void test_listen_http(CuTest *tc)
 {
     test_baton_t *tb = tc->testBaton;
@@ -203,6 +219,27 @@ void test_listen_http(CuTest *tc)
     CuAssertIntEquals(tc, APR_SUCCESS, status);
 }
 
+void test_listen_http2(CuTest *tc)
+{
+    test_baton_t *tb = tc->testBaton;
+    apr_status_t status;
+    handler_baton_t handler_ctx[2];
+    const int num_requests = sizeof(handler_ctx) / sizeof(handler_ctx[0]);
+
+    setup_test_server(tb);
+
+    status = setup_test_client_context(tb, connection_setup_http2,
+                                       tb->pool);
+    CuAssertIntEquals(tc, APR_SUCCESS, status);
+
+    create_new_request(tb, &handler_ctx[0], "GET", "/", 1);
+    create_new_request(tb, &handler_ctx[1], "GET", "/", 2);
+
+    status = run_client_server_loop(tb, num_requests,
+                                    handler_ctx, tb->pool);
+    CuAssertIntEquals(tc, SERF_ERROR_HTTP2_PROTOCOL_ERROR, status);
+}
+
 /*****************************************************************************/
 CuSuite *test_server(void)
 {
@@ -211,6 +248,7 @@ CuSuite *test_server(void)
     CuSuiteSetSetupTeardownCallbacks(suite, test_setup, test_teardown);
 
     SUITE_ADD_TEST(suite, test_listen_http);
+    SUITE_ADD_TEST(suite, test_listen_http2);
 
     return suite;
 }

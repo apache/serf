@@ -32,16 +32,28 @@
 #include "protocols/http2_protocol.h"
 
 static apr_status_t
-http2_protocol_read(serf_connection_t *conn);
+http2_outgoing_read(serf_connection_t *conn);
 
 static apr_status_t
-http2_protocol_write(serf_connection_t *conn);
+http2_outgoing_write(serf_connection_t *conn);
 
 static apr_status_t
-http2_protocol_hangup(serf_connection_t *conn);
+http2_outgoing_hangup(serf_connection_t *conn);
 
 static void
-http2_protocol_teardown(serf_connection_t *conn);
+http2_outgoing_teardown(serf_connection_t *conn);
+
+static apr_status_t
+http2_incoming_read(serf_incoming_t *client);
+
+static apr_status_t
+http2_incoming_write(serf_incoming_t *client);
+
+static apr_status_t
+http2_incoming_hangup(serf_incoming_t *client);
+
+static void
+http2_incoming_teardown(serf_incoming_t *conn);
 
 static apr_status_t
 http2_process(serf_http2_protocol_t *h2);
@@ -105,14 +117,16 @@ serf_bucket_create_numberv(serf_bucket_alloc_t *allocator, const char *format, .
 struct serf_http2_protocol_t
 {
   apr_pool_t *pool;
-  serf_connection_t *conn;
-  serf_bucket_t *ostream;
+  serf_connection_t *conn; /* Either CONN or CLIENT is set */
+  serf_incoming_t *client;
+  serf_bucket_t *stream, *ostream;
   serf_bucket_alloc_t *allocator;
 
   serf_http2_processor_t processor;
   void *processor_baton;
   serf_bucket_t *read_frame;   /* Frame currently being read */
-  int in_frame;
+  bool in_frame;
+  apr_size_t prefix_left;
 
   serf_hpack_table_t *hpack_tbl;
   serf_config_t *config;
@@ -125,7 +139,7 @@ struct serf_http2_protocol_t
   apr_uint32_t lr_max_concurrent;
   apr_uint32_t lr_hpack_table_size;
   apr_int32_t lr_next_streamid;
-  char lr_push_enabled;
+  bool lr_push_enabled;
 
   /* Remote -> Local. Settings set by us. Acknowledged by other side */
   apr_uint32_t rl_default_window;
@@ -135,13 +149,13 @@ struct serf_http2_protocol_t
   apr_uint32_t rl_max_concurrent;
   apr_uint32_t rl_hpack_table_size;
   apr_int32_t rl_next_streamid;
-  char rl_push_enabled;
+  bool rl_push_enabled;
 
   serf_http2_stream_t *first;
   serf_http2_stream_t *last;
 
   int setting_acks;
-  int enforce_flow_control;
+  bool enforce_flow_control;
 
   serf_bucket_t *continuation_bucket;
   apr_int32_t continuation_streamid;
@@ -157,8 +171,9 @@ http2_bucket_processor(void *baton,
 static apr_status_t
 http2_protocol_cleanup(void *state)
 {
-  serf_connection_t *conn = state;
-  serf_http2_protocol_t *h2 = conn->protocol_baton;
+  serf_http2_protocol_t *h2 = state;
+  serf_connection_t *conn = h2->conn;
+  serf_incoming_t *client = h2->client;
   serf_http2_stream_t *stream, *next;
 
   /* First clean out all streams */
@@ -183,7 +198,7 @@ http2_protocol_cleanup(void *state)
 
           h2->processor = NULL;
           h2->processor_baton = NULL;
-          
+
         }
       /* Else: The processor (probably a stream)
                needs to handle this. It usually does that
@@ -197,7 +212,11 @@ http2_protocol_cleanup(void *state)
     }
   h2->in_frame = FALSE;
 
-  conn->protocol_baton = NULL;
+  if (conn)
+      conn->protocol_baton = NULL;
+  if (client)
+      client->protocol_baton = NULL;
+
   return APR_SUCCESS;
 }
 
@@ -206,13 +225,14 @@ void serf__http2_protocol_init(serf_connection_t *conn)
   serf_http2_protocol_t *h2;
   apr_pool_t *protocol_pool;
   serf_bucket_t *tmp;
-  const int WE_ARE_CLIENT = 1;
+  const bool WE_ARE_CLIENT = true;
 
   apr_pool_create(&protocol_pool, conn->pool);
 
   h2 = apr_pcalloc(protocol_pool, sizeof(*h2));
   h2->pool = protocol_pool;
   h2->conn = conn;
+  h2->stream = conn->stream;
   h2->ostream = conn->ostream_tail;
   h2->allocator = conn->allocator;
   h2->config = conn->config;
@@ -247,13 +267,13 @@ void serf__http2_protocol_init(serf_connection_t *conn)
                                            HTTP2_DEFAULT_HPACK_TABLE_SIZE,
                                            protocol_pool);
 
-  apr_pool_cleanup_register(protocol_pool, conn, http2_protocol_cleanup,
+  apr_pool_cleanup_register(protocol_pool, h2, http2_protocol_cleanup,
                             apr_pool_cleanup_null);
 
-  conn->perform_read = http2_protocol_read;
-  conn->perform_write = http2_protocol_write;
-  conn->perform_hangup = http2_protocol_hangup;
-  conn->perform_teardown = http2_protocol_teardown;
+  conn->perform_read = http2_outgoing_read;
+  conn->perform_write = http2_outgoing_write;
+  conn->perform_hangup = http2_outgoing_hangup;
+  conn->perform_teardown = http2_outgoing_teardown;
   conn->protocol_baton = h2;
 
   /* Disable HTTP/1.1 guessing that affects writability */
@@ -261,8 +281,7 @@ void serf__http2_protocol_init(serf_connection_t *conn)
   conn->max_outstanding_requests = 0;
 
   /* Send the HTTP/2 Connection Preface */
-  tmp = SERF_BUCKET_SIMPLE_STRING("PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n",
-                                  conn->allocator);
+  tmp = SERF_BUCKET_SIMPLE_STRING(HTTP2_CONNECTION_PREFIX, h2->allocator);
   serf_bucket_aggregate_append(h2->ostream, tmp);
 
   /* And now a settings frame and a huge window */
@@ -272,7 +291,7 @@ void serf__http2_protocol_init(serf_connection_t *conn)
     tmp = serf__bucket_http2_frame_create(NULL, HTTP2_FRAME_TYPE_SETTINGS, 0,
                                           NULL, NULL, NULL, /* stream: 0 */
                                           h2->lr_max_framesize,
-                                          conn->allocator);
+                                          h2->allocator);
 
     serf_http2__enqueue_frame(h2, tmp, FALSE);
 
@@ -282,11 +301,93 @@ void serf__http2_protocol_init(serf_connection_t *conn)
                                           HTTP2_FRAME_TYPE_WINDOW_UPDATE, 0,
                                           NULL, NULL, NULL, /* stream: 0 */
                                           h2->lr_max_framesize,
-                                          conn->allocator);
+                                          h2->allocator);
     serf_http2__enqueue_frame(h2, tmp, FALSE);
 
     h2->rl_window += 0x40000000; /* And update our own administration */
   }
+}
+
+void serf__http2_protocol_init_server(serf_incoming_t *client)
+{
+    serf_http2_protocol_t *h2;
+    apr_pool_t *protocol_pool;
+    serf_bucket_t *tmp;
+    const int WE_ARE_CLIENT = false;
+
+    apr_pool_create(&protocol_pool, client->pool);
+
+    h2 = apr_pcalloc(protocol_pool, sizeof(*h2));
+    h2->pool = protocol_pool;
+    h2->client = client;
+    h2->stream = client->stream;
+    h2->ostream = client->ostream_tail;
+    h2->allocator = client->allocator;
+    h2->config = client->config;
+
+    h2->prefix_left = sizeof(HTTP2_CONNECTION_PREFIX) - 1;
+
+    /* Defaults until negotiated */
+    h2->rl_default_window = HTTP2_DEFAULT_WINDOW_SIZE;
+    h2->rl_window = HTTP2_DEFAULT_WINDOW_SIZE;
+    h2->rl_next_streamid = WE_ARE_CLIENT ? 2 : 1;
+    h2->rl_max_framesize = HTTP2_DEFAULT_MAX_FRAMESIZE;
+    h2->rl_max_headersize = APR_UINT32_MAX;
+    h2->rl_max_concurrent = HTTP2_DEFAULT_MAX_CONCURRENT;
+    h2->rl_hpack_table_size = HTTP2_DEFAULT_HPACK_TABLE_SIZE;
+    h2->rl_push_enabled = TRUE;
+
+    h2->lr_default_window = HTTP2_DEFAULT_WINDOW_SIZE;
+    h2->lr_window = HTTP2_DEFAULT_WINDOW_SIZE;
+    h2->lr_next_streamid = WE_ARE_CLIENT ? 1 : 2;
+    h2->lr_max_framesize = HTTP2_DEFAULT_MAX_FRAMESIZE;
+    h2->lr_max_headersize = APR_UINT32_MAX;
+    h2->lr_max_concurrent = HTTP2_DEFAULT_MAX_CONCURRENT;
+    h2->lr_hpack_table_size = HTTP2_DEFAULT_HPACK_TABLE_SIZE;
+    h2->lr_push_enabled = TRUE;
+
+    h2->setting_acks = 0;
+    h2->enforce_flow_control = TRUE;
+    h2->continuation_bucket = NULL;
+    h2->continuation_streamid = 0;
+
+    h2->first = h2->last = NULL;
+
+    h2->hpack_tbl = serf__hpack_table_create(TRUE,
+                                             HTTP2_DEFAULT_HPACK_TABLE_SIZE,
+                                             protocol_pool);
+
+    apr_pool_cleanup_register(protocol_pool, h2, http2_protocol_cleanup,
+                              apr_pool_cleanup_null);
+
+    client->perform_read = http2_incoming_read;
+    client->perform_write = http2_incoming_write;
+    client->perform_hangup = http2_incoming_hangup;
+    client->perform_teardown = http2_incoming_teardown;
+    client->protocol_baton = h2;
+
+    /* Send a settings frame and a huge window */
+    {
+        serf_bucket_t *window_size;
+
+        tmp = serf__bucket_http2_frame_create(NULL, HTTP2_FRAME_TYPE_SETTINGS, 0,
+                                              NULL, NULL, NULL, /* stream: 0 */
+                                              h2->lr_max_framesize,
+                                              h2->allocator);
+
+        serf_http2__enqueue_frame(h2, tmp, FALSE);
+
+        /* Add 1GB to the current window. */
+        window_size = serf_bucket_create_numberv(h2->allocator, "4", 0x40000000);
+        tmp = serf__bucket_http2_frame_create(window_size,
+                                              HTTP2_FRAME_TYPE_WINDOW_UPDATE, 0,
+                                              NULL, NULL, NULL, /* stream: 0 */
+                                              h2->lr_max_framesize,
+                                              h2->allocator);
+        serf_http2__enqueue_frame(h2, tmp, FALSE);
+
+        h2->rl_window += 0x40000000; /* And update our own administration */
+    }
 }
 
 /* Creates a HTTP/2 request from a serf request */
@@ -321,7 +422,9 @@ serf_http2__enqueue_frame(serf_http2_protocol_t *h2,
 {
   apr_status_t status;
 
-  if (!pump && !h2->conn->dirty_conn)
+  if (!pump
+      && !((h2->conn && h2->conn->dirty_conn)
+           || (h2->client && h2->client->dirty_conn)))
     {
       const char *data;
       apr_size_t len;
@@ -333,7 +436,7 @@ serf_http2__enqueue_frame(serf_http2_protocol_t *h2,
       if (SERF_BUCKET_READ_ERROR(status))
         {
           serf_bucket_destroy(frame);
-          return status; 
+          return status;
         }
 
       if (len == 0)
@@ -349,22 +452,24 @@ serf_http2__enqueue_frame(serf_http2_protocol_t *h2,
     return APR_SUCCESS;
 
   /* Flush final output buffer (after ssl, etc.) */
-  status = serf__connection_flush(h2->conn, FALSE);
-  if (SERF_BUCKET_READ_ERROR(status))
-    return status;
-
-  /* Write new data to output buffer if necessary and
-     flush again */
-  if (!status)
+  if (h2->conn)
     status = serf__connection_flush(h2->conn, TRUE);
+  else
+    status = serf__incoming_client_flush(h2->client, TRUE);
 
   if (APR_STATUS_IS_EAGAIN(status))
-    {
-      h2->conn->dirty_conn = TRUE;
-      h2->conn->ctx->dirty_pollset = TRUE;
-    }
-  else if (SERF_BUCKET_READ_ERROR(status))
-    return status;
+      return APR_SUCCESS;
+  else if (status)
+      return status;
+
+  if (h2->conn) {
+    h2->conn->dirty_conn = true;
+    h2->conn->ctx->dirty_pollset = true;
+  }
+  else {
+    h2->client->dirty_conn = true;
+    h2->client->ctx->dirty_pollset = true;
+  }
 
   return APR_SUCCESS;
 }
@@ -960,7 +1065,7 @@ http2_process(serf_http2_protocol_t *h2)
           SERF_H2_assert(!h2->in_frame);
 
           body = serf__bucket_http2_unframe_create(
-                                             h2->conn->stream,
+                                             h2->stream,
                                              h2->rl_max_framesize,
                                              h2->allocator);
 
@@ -1459,7 +1564,7 @@ http2_process(serf_http2_protocol_t *h2)
 }
 
 static apr_status_t
-http2_protocol_read(serf_connection_t *conn)
+http2_outgoing_read(serf_connection_t *conn)
 {
   apr_status_t status;
 
@@ -1492,7 +1597,7 @@ http2_protocol_read(serf_connection_t *conn)
 }
 
 static apr_status_t
-http2_protocol_write(serf_connection_t *conn)
+http2_outgoing_write(serf_connection_t *conn)
 {
   serf_http2_protocol_t *h2 = conn->protocol_baton;
   apr_status_t status;
@@ -1520,7 +1625,7 @@ http2_protocol_write(serf_connection_t *conn)
 }
 
 static apr_status_t
-http2_protocol_hangup(serf_connection_t *conn)
+http2_outgoing_hangup(serf_connection_t *conn)
 {
   /* serf_http2_protocol_t *ctx = conn->protocol_baton; */
 
@@ -1528,12 +1633,127 @@ http2_protocol_hangup(serf_connection_t *conn)
 }
 
 static void
-http2_protocol_teardown(serf_connection_t *conn)
+http2_outgoing_teardown(serf_connection_t *conn)
 {
   serf_http2_protocol_t *ctx = conn->protocol_baton;
 
   apr_pool_destroy(ctx->pool);
   conn->protocol_baton = NULL;
+}
+
+static apr_status_t
+http2_incoming_read(serf_incoming_t *client)
+{
+    apr_status_t status;
+    serf_http2_protocol_t *h2 = client->protocol_baton;
+
+    /* If the stop_writing flag was set on the connection, reset it now because
+    there is some data to read. */
+    if (client->stop_writing)
+    {
+        client->stop_writing = 0;
+        client->dirty_conn = 1;
+        client->ctx->dirty_pollset = 1;
+    }
+
+    if (h2->prefix_left) {
+        serf_bucket_t *stream;
+
+        if (client->proto_peek_bkt)
+            stream = client->proto_peek_bkt;
+        else
+            stream = client->stream;
+
+        do {
+            const char *data;
+            apr_size_t len;
+
+            status = serf_bucket_read(stream, h2->prefix_left,
+                                      &data, &len);
+
+            if (!SERF_BUCKET_READ_ERROR(status)) {
+                if (len && memcmp(data,
+                                  HTTP2_CONNECTION_PREFIX - h2->prefix_left - 1
+                                  + sizeof(HTTP2_CONNECTION_PREFIX),
+                                  len) != 0)
+                {
+                    return SERF_ERROR_HTTP2_PROTOCOL_ERROR;
+                }
+                h2->prefix_left -= len;
+            }
+        } while (status == APR_SUCCESS && h2->prefix_left);
+
+        if (!h2->prefix_left && client->proto_peek_bkt) {
+            /* Peek buffer is now empty. Use actual stream */
+            serf_bucket_destroy(client->proto_peek_bkt);
+            client->proto_peek_bkt = NULL;
+
+            h2->stream = client->stream;
+        }
+
+        if (APR_STATUS_IS_EAGAIN(status) || status == SERF_ERROR_WAIT_CONN)
+        {
+            return APR_SUCCESS;
+        }
+        else if (status) {
+            return status;
+        }
+    }
+
+    status = http2_process(h2);
+
+    if (!status)
+        return APR_SUCCESS;
+    else if (APR_STATUS_IS_EOF(status))
+    {
+        /* TODO: Teardown connection, reset if necessary, etc. */
+        return status;
+    }
+    else if (APR_STATUS_IS_EAGAIN(status)
+             || status == SERF_ERROR_WAIT_CONN)
+    {
+        /* Update pollset, etc. etc. */
+        return APR_SUCCESS;
+    }
+    else
+        return status;
+}
+
+static apr_status_t
+http2_incoming_write(serf_incoming_t *client)
+{
+    /* serf_http2_protocol_t *h2 = client->protocol_baton; */
+    apr_status_t status;
+
+    status = serf__incoming_client_flush(client, TRUE);
+
+    if (APR_STATUS_IS_EAGAIN(status))
+        return APR_SUCCESS;
+    else if (status)
+        return status;
+
+    /* Probably nothing to write. Connection will check new requests */
+    client->dirty_conn = true;
+    client->ctx->dirty_pollset = true;
+
+    return APR_SUCCESS;
+}
+
+static apr_status_t
+http2_incoming_hangup(serf_incoming_t *client)
+{
+    /* serf_http2_protocol_t *ctx = conn->protocol_baton; */
+
+    return APR_EGENERAL;
+}
+
+static void
+http2_incoming_teardown(serf_incoming_t *client)
+{
+    serf_http2_protocol_t *ctx = client->protocol_baton;
+
+    apr_pool_destroy(ctx->pool);
+    client->protocol_baton = NULL;
 }
 
 void

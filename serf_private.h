@@ -368,13 +368,21 @@ struct serf_incoming_t {
     serf_incoming_closed_t closed;
     void *closed_baton;
 
-    serf_connection_framing_type_t framing;
+    serf_connection_framing_type_t framing_type;
 
     bool dirty_conn;
     bool wait_for_connect;
     bool hit_eof;
     bool stop_writing;
 
+    /* Event callbacks, called from serf__process_client() to do the actual
+    processing. */
+    apr_status_t(*perform_read)(serf_incoming_t *client);
+    apr_status_t(*perform_write)(serf_incoming_t *client);
+    apr_status_t(*perform_hangup)(serf_incoming_t *client);
+
+    /* Cleanup of protocol handling */
+    void(*perform_teardown)(serf_incoming_t *conn);
     void *protocol_baton;
 
     /* A bucket wrapped around our socket (for reading responses). */
@@ -629,6 +637,7 @@ void serf__context_progress_delta(void *progress_baton, apr_off_t read,
 apr_status_t serf__process_client(serf_incoming_t *l, apr_int16_t events);
 apr_status_t serf__process_listener(serf_listener_t *l);
 apr_status_t serf__incoming_update_pollset(serf_incoming_t *incoming);
+apr_status_t serf__incoming_client_flush(serf_incoming_t *client, bool pump);
 
 /* from outgoing.c */
 apr_status_t serf__open_connections(serf_context_t *ctx);
@@ -666,6 +675,7 @@ serf_bucket_t *serf__bucket_log_wrapper_create(serf_bucket_t *wrapped,
 
 /* From http2_protocol.c: Initializes http2 state on connection */
 void serf__http2_protocol_init(serf_connection_t *conn);
+void serf__http2_protocol_init_server(serf_incoming_t *client);
 
 typedef struct serf_hpack_table_t serf_hpack_table_t;
 

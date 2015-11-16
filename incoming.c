@@ -86,12 +86,15 @@ static apr_status_t client_connected(serf_incoming_t *client)
     serf_bucket_aggregate_append(client->ostream_head,
                                  ostream);
 
-    client->proto_peek_bkt = serf_bucket_aggregate_create(client->allocator);
+    if (client->framing_type == SERF_CONNECTION_FRAMING_TYPE_NONE) {
+        client->proto_peek_bkt = serf_bucket_aggregate_create(
+                                        client->allocator);
 
-    serf_bucket_aggregate_append(
-                client->proto_peek_bkt,
-                serf_bucket_barrier_create(client->stream,
-                                           client->allocator));
+        serf_bucket_aggregate_append(
+            client->proto_peek_bkt,
+            serf_bucket_barrier_create(client->stream,
+                                       client->allocator));
+    }
 
     return status;
 }
@@ -161,8 +164,8 @@ apr_status_t serf_incoming_response_create(serf_incoming_request_t *request)
 
 apr_status_t perform_peek_protocol(serf_incoming_t *client)
 {
-    const char h2prefix[] = "PRI * HTTP/2.0\r\n";
-    const apr_size_t h2prefixlen = 16;
+    const char h2prefix[] = "PRI * HTTP/2.0\r\n\r\n";
+    const apr_size_t h2prefixlen = sizeof(h2prefix) - 1;
     const char *data;
     apr_size_t len;
 
@@ -183,6 +186,8 @@ apr_status_t perform_peek_protocol(serf_incoming_t *client)
 
         if (len && memcmp(data, h2prefix, len) != 0) {
             /* This is not HTTP/2 */
+            serf_incoming_set_framing_type(client,
+                                           SERF_CONNECTION_FRAMING_TYPE_HTTP1);
 
             /* Easy out */
             serf_bucket_destroy(client->proto_peek_bkt);
@@ -192,7 +197,8 @@ apr_status_t perform_peek_protocol(serf_incoming_t *client)
         }
         else if (len == h2prefixlen) {
             /* We have HTTP/2 */
-            client->framing = SERF_CONNECTION_FRAMING_TYPE_HTTP2;
+            serf_incoming_set_framing_type(client,
+                                           SERF_CONNECTION_FRAMING_TYPE_HTTP2);
 
             serf_bucket_destroy(client->proto_peek_bkt);
             client->proto_peek_bkt = NULL;
@@ -218,6 +224,8 @@ apr_status_t perform_peek_protocol(serf_incoming_t *client)
 
         if (len && memcmp(data, h2prefix, len)) {
             /* This is not HTTP/2 */
+            serf_incoming_set_framing_type(client,
+                                           SERF_CONNECTION_FRAMING_TYPE_HTTP1);
 
             /* Put data ahead of other data and do the usual thing */
             serf_bucket_aggregate_prepend(client->proto_peek_bkt,
@@ -230,7 +238,8 @@ apr_status_t perform_peek_protocol(serf_incoming_t *client)
         }
         else if (len == h2prefixlen) {
             /* We have HTTP/2 */
-            client->framing = SERF_CONNECTION_FRAMING_TYPE_HTTP2;
+            serf_incoming_set_framing_type(client,
+                                           SERF_CONNECTION_FRAMING_TYPE_HTTP2);
 
             /* Put data ahead of other data and do the usual thing */
             serf_bucket_aggregate_prepend(client->proto_peek_bkt,
@@ -256,6 +265,10 @@ static apr_status_t read_from_client(serf_incoming_t *client)
         status = perform_peek_protocol(client);
         if (status)
             return status;
+
+        /* Did we switch protocol? */
+        if (client->perform_read != read_from_client)
+            return client->perform_read(client);
     }
 
     do {
@@ -386,8 +399,8 @@ static apr_status_t no_more_writes(serf_incoming_t *client)
   return APR_SUCCESS;
 }
 
-static apr_status_t serf__client_flush(serf_incoming_t *client,
-                                       bool pump)
+apr_status_t serf__incoming_client_flush(serf_incoming_t *client,
+                                         bool pump)
 {
     apr_status_t status = APR_SUCCESS;
     apr_status_t read_status = APR_SUCCESS;
@@ -464,7 +477,7 @@ static apr_status_t write_to_client(serf_incoming_t *client)
 {
     apr_status_t status;
 
-    status = serf__client_flush(client, true);
+    status = serf__incoming_client_flush(client, true);
 
     if (APR_STATUS_IS_EAGAIN(status))
         return APR_SUCCESS;
@@ -477,6 +490,46 @@ static apr_status_t write_to_client(serf_incoming_t *client)
 
     return APR_SUCCESS;
 }
+
+static apr_status_t hangup_client(serf_incoming_t *client)
+{
+    return APR_ECONNRESET;
+}
+
+
+void serf_incoming_set_framing_type(
+    serf_incoming_t *client,
+    serf_connection_framing_type_t framing_type)
+{
+    client->framing_type = framing_type;
+
+    if (client->skt) {
+        client->dirty_conn = true;
+        client->ctx->dirty_pollset = true;
+        client->stop_writing = 0;
+
+        /* Close down existing protocol */
+        if (client->protocol_baton && client->perform_teardown) {
+            client->perform_teardown(client);
+            client->protocol_baton = NULL;
+        }
+
+        /* Reset to default */
+        client->perform_read = read_from_client;
+        client->perform_write = write_to_client;
+        client->perform_hangup = hangup_client;
+        client->perform_teardown = NULL;
+
+        switch (framing_type) {
+            case SERF_CONNECTION_FRAMING_TYPE_HTTP2:
+                serf__http2_protocol_init_server(client);
+                break;
+            default:
+                break;
+        }
+    }
+}
+
 
 apr_status_t serf__process_client(serf_incoming_t *client, apr_int16_t events)
 {
@@ -491,14 +544,17 @@ apr_status_t serf__process_client(serf_incoming_t *client, apr_int16_t events)
     }
 
     if ((events & APR_POLLIN) != 0) {
-        rv = read_from_client(client);
+        rv = client->perform_read(client);
         if (rv) {
             return rv;
         }
     }
 
     if ((events & APR_POLLHUP) != 0) {
-        return APR_ECONNRESET;
+        rv = client->perform_hangup(client);
+        if (rv) {
+            return rv;
+        }
     }
 
     if ((events & APR_POLLERR) != 0) {
@@ -506,7 +562,7 @@ apr_status_t serf__process_client(serf_incoming_t *client, apr_int16_t events)
     }
 
     if ((events & APR_POLLOUT) != 0) {
-        rv = write_to_client(client);
+        rv = client->perform_write(client);
         if (rv) {
             return rv;
         }
@@ -591,6 +647,8 @@ apr_status_t serf_incoming_create2(
     ic->dirty_conn = false;
     ic->wait_for_connect = true;
     ic->vec_len = 0;
+    /* Detect HTTP 1 or 2 via peek operation */
+    ic->framing_type = SERF_CONNECTION_FRAMING_TYPE_NONE;
 
     ic->setup = setup;
     ic->setup_baton = setup_baton;
@@ -604,6 +662,10 @@ apr_status_t serf_incoming_create2(
     ic->ssltunnel_ostream = NULL;
 
     ic->protocol_baton = NULL;
+    ic->perform_read = read_from_client;
+    ic->perform_write = write_to_client;
+    ic->perform_hangup = hangup_client;
+    ic->perform_teardown = NULL;
     ic->current_request = NULL;
 
     ic->desc.desc_type = APR_POLL_SOCKET;
