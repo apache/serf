@@ -81,6 +81,30 @@ void serf_bucket_request_set_root(
     serf_bucket_t *bucket,
     const char *root_url);
 
+
+/* ==================================================================== */
+
+extern const serf_bucket_type_t serf_bucket_type_incoming_request;
+#define SERF_BUCKET_IS_INCOMING_REQUEST(b)                              \
+                                SERF_BUCKET_CHECK((b), incoming_request)
+
+serf_bucket_t *serf_bucket_incoming_request_create(
+                                      serf_bucket_t *body,
+                                      serf_bucket_alloc_t *allocator);
+
+/* All output arguments optional. Waits for the request line to have arrived
+   with the normal read responses. */
+/* ### Add RESULT_POOL argument? */
+apr_status_t serf_bucket_incoming_request_read(
+                                      serf_bucket_t **headers,
+                                      const char **method,
+                                      const char **path,
+                                      int *http_version,
+                                      serf_bucket_t *request);
+
+apr_status_t serf_bucket_incoming_request_wait_for_headers(
+                                      serf_bucket_t *response);
+
 /* ==================================================================== */
 
 
