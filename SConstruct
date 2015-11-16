@@ -488,6 +488,7 @@ tenv.Replace(CFLAGS = [f.replace('-std=c89', '-std=c99') for f in cflags])
 tenv.Append(CPPDEFINES=['MOCKHTTP_OPENSSL'])
 
 TEST_PROGRAMS = [ 'serf_get', 'serf_response', 'serf_request', 'serf_spider',
+                  'serf_httpd',
                   'test_all', 'serf_bwtp' ]
 if sys.platform == 'win32':
   TEST_EXES = [ os.path.join('test', '%s.exe' % (prog)) for prog in TEST_PROGRAMS ]
