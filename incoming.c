@@ -21,6 +21,7 @@
 #include <apr_pools.h>
 #include <apr_poll.h>
 #include <apr_version.h>
+#include <apr_portable.h>
 
 #include "serf.h"
 #include "serf_bucket_util.h"
@@ -264,7 +265,6 @@ apr_status_t perform_peek_protocol(serf_incoming_t *client)
 serf_incoming_request_t *serf__incoming_request_create(serf_incoming_t *client)
 {
     serf_incoming_request_t *rq;
-    serf_bucket_t *read_bkt;
 
     rq = serf_bucket_mem_calloc(client->allocator, sizeof(*rq));
 
@@ -555,38 +555,58 @@ void serf_incoming_set_framing_type(
 
 apr_status_t serf__process_client(serf_incoming_t *client, apr_int16_t events)
 {
-    apr_status_t rv;
+    apr_status_t status;
 
     if (client->wait_for_connect && (events & (APR_POLLIN | APR_POLLOUT))) {
-        rv = client_connected(client);
+        status = client_connected(client);
         client->wait_for_connect = FALSE;
-        if (rv) {
-            return rv;
+        if (status) {
+            return status;
         }
     }
 
     if ((events & APR_POLLIN) != 0) {
-        rv = client->perform_read(client);
-        if (rv) {
-            return rv;
+        status = client->perform_read(client);
+        if (status) {
+            return status;
         }
     }
 
     if ((events & APR_POLLHUP) != 0) {
-        rv = client->perform_hangup(client);
-        if (rv) {
-            return rv;
+        status = client->perform_hangup(client);
+        if (status) {
+            return status;
         }
     }
 
     if ((events & APR_POLLERR) != 0) {
+#ifdef SO_ERROR
+        /* If possible, get the error from the platform's socket layer and
+           convert it to an APR status code. */
+        {
+            apr_os_sock_t osskt;
+            if (!apr_os_sock_get(&osskt, client->skt)) {
+                int error;
+                apr_socklen_t l = sizeof(error);
+
+                if (!getsockopt(osskt, SOL_SOCKET, SO_ERROR, (char*)&error,
+                                &l)) {
+                    status = APR_FROM_OS_ERROR(error);
+
+
+                    if (status)
+                        return status;
+                }
+            }
+        }
+#endif
         return APR_EGENERAL;
     }
 
     if ((events & APR_POLLOUT) != 0) {
-        rv = client->perform_write(client);
-        if (rv) {
-            return rv;
+        status = client->perform_write(client);
+        if (status) {
+            return status;
         }
     }
 
