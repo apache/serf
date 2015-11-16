@@ -35,10 +35,10 @@ static apr_status_t client_setup(apr_socket_t *skt,
                                  void *setup_baton,
                                  apr_pool_t *pool)
 {
-  test_baton_t *tb = setup_baton;
+    test_baton_t *tb = setup_baton;
 
-  *read_bkt = serf_bucket_socket_create(skt, tb->bkt_alloc);
-  return APR_SUCCESS;
+    *read_bkt = serf_bucket_socket_create(skt, tb->bkt_alloc);
+    return APR_SUCCESS;
 }
 
 static apr_status_t client_closed(serf_incoming_t *client,
@@ -46,7 +46,7 @@ static apr_status_t client_closed(serf_incoming_t *client,
                                   apr_status_t why,
                                   apr_pool_t *pool)
 {
-  return APR_ENOTIMPL;
+    return APR_ENOTIMPL;
 }
 
 static apr_status_t client_request_handler(serf_incoming_request_t *req,
@@ -61,8 +61,7 @@ static apr_status_t client_request_handler(serf_incoming_request_t *req,
     do
     {
         status = serf_bucket_read(request, SERF_READ_ALL_AVAIL, &data, &len);
-    }
-    while (status == APR_SUCCESS);
+    } while (status == APR_SUCCESS);
 
     return status;
 }
@@ -114,38 +113,39 @@ static apr_status_t client_acceptor(serf_context_t *ctx,
                                     apr_socket_t *insock,
                                     apr_pool_t *pool)
 {
-  serf_incoming_t *incoming;
-  test_baton_t *tb = accept_baton;
+    serf_incoming_t *incoming;
+    test_baton_t *tb = accept_baton;
 
-  return serf_incoming_create2(&incoming, ctx, insock,
-                               client_setup, tb,
-                               client_closed, tb,
-                               client_request_acceptor, tb,
-                               pool);
+    return serf_incoming_create2(&incoming, ctx, insock,
+                                 client_setup, tb,
+                                 client_closed, tb,
+                                 client_request_acceptor, tb,
+                                 pool);
 }
 
 void setup_test_server(test_baton_t *tb)
 {
-  serf_listener_t *listener;
-  apr_status_t status;
-  apr_port_t listen_port = 47080;
+    serf_listener_t *listener;
+    apr_status_t status;
+    apr_port_t listen_port = 47080;
 
-  if (!tb->mh)    /* TODO: move this to test_setup */
-    tb->mh = mhInit();
+    if (!tb->mh)    /* TODO: move this to test_setup */
+        tb->mh = mhInit();
 
-  tb->context = serf_context_create(tb->pool);
+    tb->context = serf_context_create(tb->pool);
 
-  while ((status = serf_listener_create(&listener, tb->context,
-                                        "localhost", listen_port,
-                                        tb, client_acceptor,
-                                        tb->pool)) != APR_SUCCESS)
+    while ((status = serf_listener_create(&listener, tb->context,
+                                          "localhost", listen_port,
+                                          tb, client_acceptor,
+                                          tb->pool)) != APR_SUCCESS)
     {
-      listen_port++;
+        listen_port++;
     }
 
-  tb->serv_port = listen_port;
-  tb->serv_host = apr_psprintf(tb->pool, "%s:%d", "localhost", tb->serv_port);
-  tb->serv_url = apr_psprintf(tb->pool, "http://%s", tb->serv_host);
+    tb->serv_port = listen_port;
+    tb->serv_host = apr_psprintf(tb->pool, "%s:%d", "localhost",
+                                 tb->serv_port);
+    tb->serv_url = apr_psprintf(tb->pool, "http://%s", tb->serv_host);
 }
 
 static apr_status_t
@@ -154,64 +154,63 @@ run_client_server_loop(test_baton_t *tb,
                        handler_baton_t handler_ctx[],
                        apr_pool_t *pool)
 {
-  apr_pool_t *iter_pool;
-  int i, done = 0;
-  apr_status_t status;
-  apr_time_t finish_time = apr_time_now() + apr_time_from_sec(15);
+    apr_pool_t *iter_pool;
+    int i, done = 0;
+    apr_status_t status;
+    apr_time_t finish_time = apr_time_now() + apr_time_from_sec(15);
 
-  apr_pool_create(&iter_pool, pool);
+    apr_pool_create(&iter_pool, pool);
 
-  while (!done)
-  {
-    apr_pool_clear(iter_pool);
+    while (!done)
+    {
+        apr_pool_clear(iter_pool);
 
-    /* run client event loop */
-    status = serf_context_run(tb->context, 0, iter_pool);
-    if (!APR_STATUS_IS_TIMEUP(status) &&
-        SERF_BUCKET_READ_ERROR(status))
-      return status;
+        /* run client event loop */
+        status = serf_context_run(tb->context, 0, iter_pool);
+        if (!APR_STATUS_IS_TIMEUP(status) &&
+            SERF_BUCKET_READ_ERROR(status))
+            return status;
 
-    done = 1;
-    for (i = 0; i < num_requests; i++)
-      done &= handler_ctx[i].done;
+        done = 1;
+        for (i = 0; i < num_requests; i++)
+            done &= handler_ctx[i].done;
 
-    if (!done && (apr_time_now() > finish_time))
-      return APR_ETIMEDOUT;
-  }
-  apr_pool_destroy(iter_pool);
+        if (!done && (apr_time_now() > finish_time))
+            return APR_ETIMEDOUT;
+    }
+    apr_pool_destroy(iter_pool);
 
-  return APR_SUCCESS;
+    return APR_SUCCESS;
 }
 
 void test_listen_http(CuTest *tc)
 {
-  test_baton_t *tb = tc->testBaton;
-  apr_status_t status;
-  handler_baton_t handler_ctx[2];
-  const int num_requests = sizeof(handler_ctx) / sizeof(handler_ctx[0]);
+    test_baton_t *tb = tc->testBaton;
+    apr_status_t status;
+    handler_baton_t handler_ctx[2];
+    const int num_requests = sizeof(handler_ctx) / sizeof(handler_ctx[0]);
 
-  setup_test_server(tb);
+    setup_test_server(tb);
 
-  status = setup_test_client_context(tb, NULL, tb->pool);
-  CuAssertIntEquals(tc, APR_SUCCESS, status);
+    status = setup_test_client_context(tb, NULL, tb->pool);
+    CuAssertIntEquals(tc, APR_SUCCESS, status);
 
-  create_new_request(tb, &handler_ctx[0], "GET", "/", 1);
-  create_new_request(tb, &handler_ctx[1], "GET", "/", 2);
+    create_new_request(tb, &handler_ctx[0], "GET", "/", 1);
+    create_new_request(tb, &handler_ctx[1], "GET", "/", 2);
 
-  status = run_client_server_loop(tb, num_requests,
-                                  handler_ctx, tb->pool);
-  CuAssertIntEquals(tc, APR_SUCCESS, status);
+    status = run_client_server_loop(tb, num_requests,
+                                    handler_ctx, tb->pool);
+    CuAssertIntEquals(tc, APR_SUCCESS, status);
 }
-
 
 /*****************************************************************************/
 CuSuite *test_server(void)
 {
-  CuSuite *suite = CuSuiteNew();
+    CuSuite *suite = CuSuiteNew();
 
-  CuSuiteSetSetupTeardownCallbacks(suite, test_setup, test_teardown);
+    CuSuiteSetSetupTeardownCallbacks(suite, test_setup, test_teardown);
 
-  SUITE_ADD_TEST(suite, test_listen_http);
+    SUITE_ADD_TEST(suite, test_listen_http);
 
-  return suite;
+    return suite;
 }
