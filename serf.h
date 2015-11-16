@@ -627,6 +627,13 @@ void serf_connection_set_framing_type(
   serf_connection_framing_type_t framing_type);
 
 /**
+ * @since New in 1.4.
+ */
+void serf_incoming_set_framing_type(
+    serf_incoming_t *client,
+    serf_connection_framing_type_t framing_type);
+
+/**
  * Setup the @a request for delivery on its connection.
  *
  * Right before this is invoked, @a pool will be built within the
