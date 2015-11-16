@@ -285,12 +285,12 @@ static apr_status_t read_from_client(serf_incoming_t *client)
     if (client->proto_peek_bkt)
     {
         status = perform_peek_protocol(client);
-        if (status)
-            return status;
 
         /* Did we switch protocol? */
-        if (client->perform_read != read_from_client)
+        if (!status && client->perform_read != read_from_client)
             return client->perform_read(client);
+
+        /* On error fall through in connection cleanup below while */
     }
 
     while (status == APR_SUCCESS) {
