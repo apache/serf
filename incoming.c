@@ -347,6 +347,9 @@ static apr_status_t read_from_client(serf_incoming_t *client)
     }
     while (status == APR_SUCCESS);
 
+    if (APR_STATUS_IS_EAGAIN(status) || status == SERF_ERROR_WAIT_CONN)
+        return APR_SUCCESS;
+
     return status;
 }
 
@@ -607,6 +610,9 @@ apr_status_t serf__process_listener(serf_listener_t *l)
         return status;
     }
 
+    if ((status = apr_socket_opt_set(l->skt, APR_SO_NONBLOCK, 1)))
+        return status;
+
     /* Set the socket to be non-blocking */
     if ((status = apr_socket_timeout_set(in, 0)) != APR_SUCCESS)
         return status;
@@ -752,6 +758,14 @@ apr_status_t serf_listener_create(
                            APR_PROTO_TCP,
 #endif
                            l->pool);
+    if (rv)
+        return rv;
+
+    rv = apr_socket_opt_set(l->skt, APR_SO_NONBLOCK, 1);
+    if (rv)
+        return rv;
+
+    rv = apr_socket_timeout_set(l->skt, 0);
     if (rv)
         return rv;
 
