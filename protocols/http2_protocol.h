@@ -228,7 +228,7 @@ serf_bucket_t *
 serf_http2__stream_handle_hpack(serf_http2_stream_t *stream,
                                 serf_bucket_t *bucket,
                                 unsigned char frametype,
-                                int end_stream,
+                                bool end_stream,
                                 apr_size_t max_entry_size,
                                 serf_hpack_table_t *hpack_tbl,
                                 serf_config_t *config,
@@ -238,7 +238,7 @@ serf_bucket_t *
 serf_http2__stream_handle_data(serf_http2_stream_t *stream,
                                serf_bucket_t *bucket,
                                unsigned char frametype,
-                               int end_stream,
+                               bool end_stream,
                                serf_config_t *config,
                                serf_bucket_alloc_t *allocator);
 
