@@ -56,6 +56,13 @@ typedef struct request_ctx_t {
     int http_version;
 } request_ctx_t;
 
+static int pool_abort_func(int retcode)
+{
+    fprintf(stderr, "Out of memory\n");
+    abort();
+    return 0;
+}
+
 static apr_status_t client_setup(apr_socket_t *skt,
                                  serf_bucket_t **read_bkt,
                                  serf_bucket_t **write_bkt,
@@ -343,6 +350,7 @@ int main(int argc, const char **argv)
     serf_context_t *context;
     app_ctx_t app_ctx;
     apr_getopt_t *opt;
+    apr_allocator_t *allocator;
     int opt_c;
     const char *opt_arg;
     const char *root_dir;
@@ -351,6 +359,15 @@ int main(int argc, const char **argv)
     atexit(apr_terminate);
 
     apr_pool_create(&app_pool, NULL);
+
+    apr_pool_abort_set(pool_abort_func, app_pool);
+
+    /* Keep a maximum of 16 MB unused memory inside APR. */
+    allocator = apr_pool_allocator_get(app_pool);
+    if (allocator != NULL)
+        apr_allocator_max_free_set(allocator, 16384 * 1024);
+    /* else: APR pool debugging... leave this to apr */
+
     apr_pool_create(&scratch_pool, app_pool);
 
     apr_getopt_init(&opt, scratch_pool, argc, argv);
