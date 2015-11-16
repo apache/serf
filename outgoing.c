@@ -1758,20 +1758,20 @@ void serf_connection_set_framing_type(
             conn->perform_teardown(conn);
             conn->protocol_baton = NULL;
         }
+    }
 
-        /* Reset to default */
-        conn->perform_read = read_from_connection;
-        conn->perform_write = write_to_connection;
-        conn->perform_hangup = hangup_connection;
-        conn->perform_teardown = NULL;
+    /* Reset to default */
+    conn->perform_read = read_from_connection;
+    conn->perform_write = write_to_connection;
+    conn->perform_hangup = hangup_connection;
+    conn->perform_teardown = NULL;
 
-        switch (framing_type) {
-            case SERF_CONNECTION_FRAMING_TYPE_HTTP2:
-                serf__http2_protocol_init(conn);
-                break;
-            default:
-                break;
-        }
+    switch (framing_type) {
+        case SERF_CONNECTION_FRAMING_TYPE_HTTP2:
+            serf__http2_protocol_init(conn);
+            break;
+        default:
+            break;
     }
 }
 
