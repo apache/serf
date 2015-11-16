@@ -536,7 +536,7 @@ typedef apr_status_t (*serf_incoming_request_setup_t)(
     serf_incoming_request_handler_t *handler,
     void **handler_baton,
     serf_incoming_response_setup_t *response_setup,
-    void *response_setup_baton,
+    void **response_setup_baton,
     apr_pool_t *pool);
 
 /* ### Deprecated: can't do anything with request */
@@ -873,7 +873,7 @@ serf_bucket_t *serf_request_bucket_request_create(
  */
 #define SERF_NEWLINE_CRLF_SPLIT 0x0010
 
-/** Used to indicate that length of remaining data in bucket is unknown. See 
+/** Used to indicate that length of remaining data in bucket is unknown. See
  * serf_bucket_type_t->get_remaining().
  */
 #define SERF_LENGTH_UNKNOWN ((apr_uint64_t) -1)
@@ -1301,7 +1301,7 @@ apr_status_t serf_config_set_object(serf_config_t *config,
                                     serf_config_key_t key,
                                     void *value);
 
-/* Get the value for configuration item CATEGORY+KEY. The value's type will 
+/* Get the value for configuration item CATEGORY+KEY. The value's type will
    be fixed, see the above table.
    Returns APR_EINVAL when getting a key from a category that this config
    object doesn't contain, APR_SUCCESS otherwise.
