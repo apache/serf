@@ -1869,3 +1869,19 @@ serf_http2__enqueue_stream_reset(serf_http2_protocol_t *h2,
                                             h2->allocator),
             TRUE);
 }
+
+apr_status_t
+serf_http2__setup_incoming_request(serf_incoming_request_t **in_request,
+                                   serf_incoming_request_setup_t *req_setup,
+                                   void **req_setup_baton,
+                                   serf_http2_protocol_t *h2)
+{
+    if (!h2->client)
+        return SERF_ERROR_HTTP2_PROTOCOL_ERROR;
+
+    *in_request = serf__incoming_request_create(h2->client);
+    *req_setup = h2->client->req_setup;
+    *req_setup_baton = h2->client->req_setup_baton;
+
+    return APR_SUCCESS;
+}

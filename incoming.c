@@ -126,6 +126,25 @@ static apr_status_t response_finished(void *baton,
     return status;
 }
 
+static apr_status_t http1_enqueue_reponse(serf_incoming_request_t *request,
+                                          void *enqueue_baton,
+                                          serf_bucket_t *bucket)
+{
+    serf_bucket_aggregate_append(request->incoming->ostream_tail,
+                                 serf__bucket_event_create(bucket,
+                                                           request,
+                                                           NULL,
+                                                           NULL,
+                                                           response_finished,
+                                                           bucket->allocator));
+
+    /* Want write event */
+    request->incoming->dirty_conn = true;
+    request->incoming->ctx->dirty_pollset = true;
+
+    return APR_SUCCESS;
+}
+
 apr_status_t serf_incoming_response_create(serf_incoming_request_t *request)
 {
     apr_status_t status;
@@ -146,20 +165,7 @@ apr_status_t serf_incoming_response_create(serf_incoming_request_t *request)
 
     request->response_written = true;
 
-    /* ### Needs work for other protocols */
-    serf_bucket_aggregate_append(request->incoming->ostream_tail,
-                                 serf__bucket_event_create(bucket,
-                                                           request,
-                                                           NULL,
-                                                           NULL,
-                                                           response_finished,
-                                                           alloc));
-
-    /* Want write event */
-    request->incoming->dirty_conn = true;
-    request->incoming->ctx->dirty_pollset = true;
-
-    return APR_SUCCESS;
+    return request->enqueue_response(request, request->enqueue_baton, bucket);
 }
 
 apr_status_t perform_peek_protocol(serf_incoming_t *client)
@@ -255,6 +261,22 @@ apr_status_t perform_peek_protocol(serf_incoming_t *client)
     return status;
 }
 
+serf_incoming_request_t *serf__incoming_request_create(serf_incoming_t *client)
+{
+    serf_incoming_request_t *rq;
+    serf_bucket_t *read_bkt;
+
+    rq = serf_bucket_mem_calloc(client->allocator, sizeof(*rq));
+
+    apr_pool_create(&rq->pool, client->pool);
+    rq->incoming = client;
+
+    rq->enqueue_response = http1_enqueue_reponse;
+    rq->enqueue_baton = rq;
+
+    return rq;
+}
+
 static apr_status_t read_from_client(serf_incoming_t *client)
 {
     apr_status_t status;
@@ -274,12 +296,9 @@ static apr_status_t read_from_client(serf_incoming_t *client)
     do {
         rq = client->current_request;
         if (!rq) {
-
             serf_bucket_t *read_bkt;
-            rq = serf_bucket_mem_calloc(client->allocator, sizeof(*rq));
 
-            apr_pool_create(&rq->pool, client->pool);
-            rq->incoming = client;
+            rq = serf__incoming_request_create(client);
 
             if (client->proto_peek_bkt) {
                 read_bkt = client->proto_peek_bkt;

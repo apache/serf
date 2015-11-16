@@ -32,6 +32,7 @@
 struct serf_http2_stream_data_t
 {
     serf_request_t *request; /* May be NULL as streams may outlive requests */
+    serf_incoming_request_t *in_request;
     serf_bucket_t *response_agg;
 };
 
@@ -53,6 +54,7 @@ serf_http2__stream_create(serf_http2_protocol_t *h2,
     /* Delay creating this? */
     stream->data = serf_bucket_mem_alloc(alloc, sizeof(*stream->data));
     stream->data->request = NULL;
+    stream->data->in_request = NULL;
     stream->data->response_agg = NULL;
 
     stream->lr_window = lr_window;
@@ -233,32 +235,75 @@ stream_response_eof(void *baton,
     }
 }
 
-static void
+static apr_status_t
+http2_stream_enqueue_response(serf_incoming_request_t *request,
+                              void *enqueue_baton,
+                              serf_bucket_t *response_bkt)
+{
+    serf_http2_stream_t *stream = enqueue_baton;
+
+    return APR_ENOTIMPL;
+}
+
+static apr_status_t
 stream_setup_response(serf_http2_stream_t *stream,
                       serf_config_t *config)
 {
-    serf_request_t *request;
     serf_bucket_t *agg;
+    apr_status_t status;
 
     agg = serf_bucket_aggregate_create(stream->alloc);
     serf_bucket_aggregate_hold_open(agg, stream_response_eof, stream);
 
     serf_bucket_set_config(agg, config);
+    stream->data->response_agg = agg;
 
-    request = stream->data->request;
+    if (stream->data->request) {
+        serf_request_t *request = stream->data->request;
 
-    if (!request)
-        return;
+        if (!request->resp_bkt) {
+            apr_pool_t *scratch_pool = request->respool; /* ### Pass scratch pool */
 
-    if (!request->resp_bkt) {
-        apr_pool_t *scratch_pool = request->respool; /* ### Pass scratch pool */
+            request->resp_bkt = request->acceptor(request, agg,
+                                                  request->acceptor_baton,
+                                                  scratch_pool);
+        }
+    }
+    else {
+        serf_incoming_request_t *in_request = stream->data->in_request;
 
-        request->resp_bkt = request->acceptor(request, agg,
-                                              request->acceptor_baton,
-                                              scratch_pool);
+        if (!in_request) {
+            serf_incoming_request_setup_t req_setup;
+            void *req_setup_baton;
+
+            status = serf_http2__setup_incoming_request(&in_request, &req_setup,
+                                                        &req_setup_baton,
+                                                        stream->h2);
+
+            if (status)
+                return status;
+
+            stream->data->in_request = in_request;
+
+            status = req_setup(&in_request->req_bkt, agg,
+                               in_request, req_setup_baton,
+                               &in_request->handler,
+                               &in_request->handler_baton,
+                               &in_request->response_setup,
+                               &in_request->response_setup_baton,
+                               in_request->pool);
+
+            if (status)
+                return status;
+
+            stream->status = H2S_OPEN;
+
+            in_request->enqueue_response = http2_stream_enqueue_response;
+            in_request->enqueue_baton = stream;
+        }
     }
 
-    stream->data->response_agg = agg;
+    return APR_SUCCESS;
 }
 
 static apr_status_t
@@ -403,17 +448,17 @@ serf_http2__stream_processor(void *baton,
 {
     serf_http2_stream_t *stream = baton;
     apr_status_t status = APR_SUCCESS;
-    serf_request_t *request = stream->data->request;
 
     SERF_H2_assert(stream->data->response_agg != NULL);
 
-    if (request) {
+    if (stream->data->request) {
+        serf_request_t *request = stream->data->request;
 
         SERF_H2_assert(request->resp_bkt != NULL);
 
-        status = stream->data->request->handler(request, request->resp_bkt,
-                                                request->handler_baton,
-                                                request->respool);
+        status = request->handler(request, request->resp_bkt,
+                                  request->handler_baton,
+                                  request->respool);
 
         if (!APR_STATUS_IS_EOF(status)
             && !SERF_BUCKET_READ_ERROR(status))
@@ -470,6 +515,37 @@ serf_http2__stream_processor(void *baton,
                Usually this is 0 bytes */
 
         status = APR_SUCCESS;
+    }
+    else if (stream->data->in_request) {
+        serf_incoming_request_t *request = stream->data->in_request;
+
+        SERF_H2_assert(request->req_bkt != NULL);
+
+        status = request->handler(request, request->req_bkt,
+                                  request->handler_baton,
+                                  request->pool);
+
+        if (!APR_STATUS_IS_EOF(status)
+            && !SERF_BUCKET_READ_ERROR(status))
+            return status;
+
+        if (APR_STATUS_IS_EOF(status)) {
+            apr_status_t status = serf_incoming_response_create(request);
+
+            if (status)
+                return status;
+        }
+
+        if (SERF_BUCKET_READ_ERROR(status)) {
+
+            if (stream->status != H2S_CLOSED) {
+                /* Tell the other side that we are no longer interested
+                to receive more data */
+                serf_http2__stream_reset(stream, status, TRUE);
+            }
+
+            return status;
+        }
     }
 
     while (!status)

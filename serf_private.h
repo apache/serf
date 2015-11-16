@@ -197,6 +197,11 @@ struct serf_incoming_request_t
     serf_incoming_response_setup_t response_setup;
     void *response_setup_baton;
 
+    apr_status_t (*enqueue_response)(serf_incoming_request_t *request,
+                                     void *enqueue_baton,
+                                     serf_bucket_t *response);
+    void *enqueue_baton;
+
     bool request_read;
     bool response_written;
     bool response_finished;
@@ -638,6 +643,7 @@ apr_status_t serf__process_client(serf_incoming_t *l, apr_int16_t events);
 apr_status_t serf__process_listener(serf_listener_t *l);
 apr_status_t serf__incoming_update_pollset(serf_incoming_t *incoming);
 apr_status_t serf__incoming_client_flush(serf_incoming_t *client, bool pump);
+serf_incoming_request_t *serf__incoming_request_create(serf_incoming_t *client);
 
 /* from outgoing.c */
 apr_status_t serf__open_connections(serf_context_t *ctx);

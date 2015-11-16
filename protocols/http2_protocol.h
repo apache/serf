@@ -56,7 +56,7 @@ extern "C" {
 
 #define HTTP2_SETTING_SIZE              6
 
-#define HTTP2_WINDOW_MAX_ALLOWED        0x7FFFFFF
+#define HTTP2_WINDOW_MAX_ALLOWED        0x7FFFFFFF
 
 /* Frame type is an 8 bit unsigned integer */
 
@@ -197,6 +197,12 @@ serf_http2__stream_setup_next_request(serf_http2_stream_t *stream,
                                       serf_connection_t *conn,
                                       apr_size_t max_payload_size,
                                       serf_hpack_table_t *hpack_tbl);
+
+apr_status_t
+serf_http2__setup_incoming_request(serf_incoming_request_t **in_request,
+                                   serf_incoming_request_setup_t *req_setup,
+                                   void **req_setup_baton,
+                                   serf_http2_protocol_t *h2);
 
 apr_status_t
 serf_http2__stream_reset(serf_http2_stream_t *stream,
