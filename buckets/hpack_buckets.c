@@ -268,7 +268,7 @@ static void hpack_free_entry(serf_hpack_entry_t *entry,
   serf_bucket_mem_free(alloc, entry);
 }
 
-/* https://tools.ietf.org/html/rfc7541#section-4.1 
+/* https://tools.ietf.org/html/rfc7541#section-4.1
 
   The size of an entry is the sum of its name's length in octets (as
   defined in Section 5.2), its value's length in octets, and 32.
@@ -635,7 +635,7 @@ serf__bucket_hpack_create(serf_hpack_table_t *hpack_table,
   return serf_bucket_create(&serf_bucket_type__hpack, allocator, ctx);
 }
 
-void 
+void
 serf__bucket_hpack_setc(serf_bucket_t *hpack_bucket,
                         const char *key,
                         const char *value)
@@ -816,7 +816,7 @@ serialize(serf_bucket_t *bucket)
      Needs A LOT of improvement.
 
      Currently implements a complete in memory copy to the least
-     efficient HTTP2 / HPACK header format 
+     efficient HTTP2 / HPACK header format
    */
   serf_hpack_context_t *ctx = bucket->data;
   serf_bucket_alloc_t *alloc = bucket->allocator;
@@ -1083,13 +1083,18 @@ typedef struct serf_hpack_decode_ctx_t
     HPACK_DECODE_STATE_VALUE,
     HPACK_DECODE_TABLESIZE_UPDATE
   } state;
-  
+
   /* When producing HTTP/1.1 style output */
   serf_bucket_t *agg;
   serf_config_t *config;
 
-  char wrote_header;
-  char hit_eof;
+  bool wrote_header;
+  bool is_request;
+  bool hit_eof;
+
+  const char *method;
+  const char *path;
+  const char *authority;
 } serf_hpack_decode_ctx_t;
 
 serf_bucket_t *
@@ -1256,6 +1261,48 @@ read_hpack_int(apr_uint32_t *v,
   return APR_SUCCESS;
 }
 
+static void
+write_request_header(serf_hpack_decode_ctx_t *ctx)
+{
+  serf_bucket_t *b;
+  serf_bucket_alloc_t *alloc = ctx->agg->allocator;
+
+  ctx->wrote_header = TRUE;
+
+  if (ctx->method)
+    b = serf_bucket_simple_own_create(ctx->method, strlen(ctx->method), alloc);
+  else
+    b = SERF_BUCKET_SIMPLE_STRING("GET", alloc);
+
+  serf_bucket_aggregate_append(ctx->agg, b);
+
+  b = SERF_BUCKET_SIMPLE_STRING(" ", alloc);
+  serf_bucket_aggregate_append(ctx->agg, b);
+
+  if (ctx->path)
+    b = serf_bucket_simple_own_create(ctx->path, strlen(ctx->path), alloc);
+  else
+    b = SERF_BUCKET_SIMPLE_STRING("/", alloc);
+  serf_bucket_aggregate_append(ctx->agg, b);
+
+  b = SERF_BUCKET_SIMPLE_STRING(" HTTP/2.0\r\n", alloc);
+  serf_bucket_aggregate_append(ctx->agg, b);
+
+  if (ctx->authority)
+    {
+      b = SERF_BUCKET_SIMPLE_STRING("Host: ", alloc);
+      serf_bucket_aggregate_append(ctx->agg, b);
+
+      b = serf_bucket_simple_own_create(ctx->authority, strlen(ctx->authority),
+                                        alloc);
+      serf_bucket_aggregate_append(ctx->agg, b);
+      b = SERF_BUCKET_SIMPLE_STRING("\r\n", alloc);
+      serf_bucket_aggregate_append(ctx->agg, b);
+    }
+  /* Now owned by bucket */
+  ctx->method = ctx->path = ctx->authority = NULL;
+}
+
 static apr_status_t
 handle_read_entry_and_clear(serf_hpack_decode_ctx_t *ctx,
                             serf_bucket_alloc_t *alloc)
@@ -1297,6 +1344,30 @@ handle_read_entry_and_clear(serf_hpack_decode_ctx_t *ctx,
           b = SERF_BUCKET_SIMPLE_STRING(" <http2>\r\n", alloc);
           serf_bucket_aggregate_append(ctx->agg, b);
         }
+      else if (ctx->key_size == 7 && !strcmp(ctx->key, ":method"))
+        {
+          ctx->is_request = true;
+          ctx->method = serf_bstrmemdup(ctx->agg->allocator,
+                                        ctx->val, ctx->val_size);
+          if (ctx->authority && ctx->method && ctx->path)
+            write_request_header(ctx);
+        }
+      else if (ctx->key_size == 10 && !strcmp(ctx->key, ":authority"))
+        {
+          ctx->is_request = true;
+          ctx->authority = serf_bstrmemdup(ctx->agg->allocator,
+                                      ctx->val, ctx->val_size);
+          if (ctx->authority && ctx->method && ctx->path)
+            write_request_header(ctx);
+        }
+      else if (ctx->key_size == 5 && !strcmp(ctx->key, ":path"))
+        {
+          ctx->is_request = true;
+          ctx->path = serf_bstrmemdup(ctx->agg->allocator,
+                                      ctx->val, ctx->val_size);
+          if (ctx->authority && ctx->method && ctx->path)
+            write_request_header(ctx);
+        }
       else if (ctx->key_size && ctx->key[0] == ':')
         {
           /* Ignore all magic headers */
@@ -1306,10 +1377,15 @@ handle_read_entry_and_clear(serf_hpack_decode_ctx_t *ctx,
           /* Write some header with some status code first */
           ctx->wrote_header = TRUE;
 
-          b = SERF_BUCKET_SIMPLE_STRING(
-                      "HTTP/2.0 505 Missing ':status' header\r\n",
-                      alloc);
-          serf_bucket_aggregate_append(ctx->agg, b);
+          if (ctx->is_request)
+            write_request_header(ctx);
+          else
+            {
+              b = SERF_BUCKET_SIMPLE_STRING(
+                  "HTTP/2.0 505 Missing ':status' header\r\n",
+                  alloc);
+              serf_bucket_aggregate_append(ctx->agg, b);
+            }
 
           /* And now the actual header */
           b = serf_bucket_simple_copy_create(ctx->key, ctx->key_size, alloc);
@@ -1833,6 +1909,13 @@ serf_hpack_decode_destroy(serf_bucket_t *bucket)
 
   if (ctx->agg)
     serf_bucket_destroy(ctx->agg);
+
+  if (ctx->method)
+    serf_bucket_mem_free(bucket->allocator, (void*)ctx->method);
+  if (ctx->path)
+    serf_bucket_mem_free(bucket->allocator, (void*)ctx->method);
+  if (ctx->authority)
+    serf_bucket_mem_free(bucket->allocator, (void*)ctx->authority);
 
   serf_bucket_mem_free(bucket->allocator, ctx->buffer);
 
