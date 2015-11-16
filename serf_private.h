@@ -184,6 +184,25 @@ struct serf_request_t {
     struct serf_request_t *next;
 };
 
+struct serf_incoming_request_t
+{
+    serf_incoming_t *incoming;
+    apr_pool_t *pool;
+
+    serf_bucket_t *req_bkt;
+
+    serf_incoming_request_handler_t handler;
+    void *handler_baton;
+
+    serf_incoming_response_setup_t response_setup;
+    void *response_setup_baton;
+
+    bool request_read;
+    bool response_written;
+    bool response_finished;
+    serf_bucket_t *response_bkt;
+};
+
 typedef struct serf_pollset_t {
     /* the set of connections to poll */
     apr_pollset_t *pollset;
@@ -329,8 +348,8 @@ struct serf_listener_t {
 struct serf_incoming_t {
     serf_context_t *ctx;
     serf_io_baton_t baton;
-    void *request_baton;
-    serf_incoming_request_cb_t request;
+    serf_incoming_request_setup_t req_setup;
+    void *req_setup_baton;
 
     apr_socket_t *skt; /* Lives in parent of POOL */
     apr_pool_t *pool; 
@@ -349,9 +368,14 @@ struct serf_incoming_t {
     serf_incoming_closed_t closed;
     void *closed_baton;
 
+    serf_connection_framing_type_t framing;
+
     bool dirty_conn;
     bool wait_for_connect;
     bool hit_eof;
+    bool stop_writing;
+
+    void *protocol_baton;
 
     /* A bucket wrapped around our socket (for reading responses). */
     serf_bucket_t *stream;
@@ -365,6 +389,10 @@ struct serf_incoming_t {
     serf_bucket_t *ssltunnel_ostream;
 
     serf_config_t *config;
+
+    serf_bucket_t *proto_peek_bkt;
+
+    serf_incoming_request_t *current_request; /* For HTTP/1 */
 };
 
 /* States for the different stages in the lifecyle of a connection. */
