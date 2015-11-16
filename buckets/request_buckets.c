@@ -327,6 +327,9 @@ static apr_status_t serf_incoming_rq_parse_rqline(serf_bucket_t *bucket)
     const char *spc, *spc2;
     int res;
 
+    if (ctx->linebuf.state != SERF_LINEBUF_READY)
+        return APR_SUCCESS;
+
     if (ctx->linebuf.used == 0) {
         return SERF_ERROR_TRUNCATED_STREAM;
     }
@@ -371,6 +374,9 @@ static apr_status_t serf_incoming_rq_parse_headerline(serf_bucket_t *bucket)
     incoming_request_context_t *ctx = bucket->data;
     const char *split;
 
+    if (ctx->linebuf.state != SERF_LINEBUF_READY)
+        return APR_SUCCESS;
+
     if (ctx->linebuf.used == 0) {
         ctx->state++;
         return APR_SUCCESS;
@@ -392,7 +398,7 @@ static apr_status_t serf_incoming_rq_wait_for(serf_bucket_t *bucket,
                                               incoming_rq_status_t wait_for)
 {
     incoming_request_context_t *ctx = bucket->data;
-    apr_status_t status;
+    apr_status_t read_status, status;
 
     if (ctx->state == STATE_TRAILERS && wait_for == STATE_BODY) {
         /* We are done with the body, but not with the request.
@@ -403,25 +409,25 @@ static apr_status_t serf_incoming_rq_wait_for(serf_bucket_t *bucket,
     while (ctx->state < wait_for) {
         switch (ctx->state) {
             case STATE_INIT:
-                status = serf_linebuf_fetch(&ctx->linebuf, ctx->stream,
-                                            SERF_NEWLINE_ANY);
-                if (status)
-                    return status;
+                read_status = serf_linebuf_fetch(&ctx->linebuf, ctx->stream,
+                                                 SERF_NEWLINE_ANY);
+                if (SERF_BUCKET_READ_ERROR(read_status))
+                    return read_status;
 
                 status = serf_incoming_rq_parse_rqline(bucket);
-                if (status)
-                    return status;
+                if (status || read_status)
+                    return status ? status : read_status;
                 break;
             case STATE_HEADERS:
             case STATE_TRAILERS:
-                status = serf_linebuf_fetch(&ctx->linebuf, ctx->stream,
-                                            SERF_NEWLINE_ANY);
-                if (status)
-                    return status;
+                read_status = serf_linebuf_fetch(&ctx->linebuf, ctx->stream,
+                                                 SERF_NEWLINE_ANY);
+                if (SERF_BUCKET_READ_ERROR(read_status))
+                    return read_status;
 
                 status = serf_incoming_rq_parse_headerline(bucket);
-                if (status)
-                    return status;
+                if (status || read_status)
+                    return status ? status : read_status;
                 break;
             case STATE_PREBODY:
                 /* TODO: Determine the body type.. Wrap bucket if necessary,
