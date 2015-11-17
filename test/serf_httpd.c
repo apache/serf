@@ -276,8 +276,9 @@ static const apr_getopt_option_t options[] =
 {
 
     { "help",    'h', 0, "Display this help" },
-    { NULL,      'v', 0, "Display version" },
+    { "version", 'V', 0, "Display version" },
     { "listen",  'l', 1, "<[protocol,][host:]port> Configure listener"},
+    { "verbose", 'v', 0, "Enable debug logging" },
 /*    { NULL,      'H', 0, "Print response headers" },
     { NULL,      'n', 1, "<count> Fetch URL <count> times" },
     { NULL,      'c', 1, "<count> Use <count> concurrent connections" },
@@ -290,7 +291,6 @@ static const apr_getopt_option_t options[] =
     { "cert",    CERTFILE, 1, "<file> Use SSL client certificate <file>" },
     { "certpwd", CERTPWD, 1, "<password> Password for the SSL client certificate" },
     { NULL,      'r', 1, "<header:value> Use <header:value> as request header" },
-    { "debug",   'd', 0, "Enable debugging" },
     { "http2",   HTTP2FLAG, 0, "Enable http2 (https only) (Experimental)" },
     { "h2direct",H2DIRECT, 0, "Enable h2direct (Experimental)" },*/
 
@@ -380,6 +380,7 @@ int main(int argc, const char **argv)
     apr_getopt_t *opt;
     apr_allocator_t *allocator;
     int opt_c;
+    int verbose = 0;
     const char *opt_arg;
     const char *root_dir;
 
@@ -427,12 +428,16 @@ int main(int argc, const char **argv)
                 print_usage(scratch_pool);
                 exit(0);
                 break;
-            case 'v':
+            case 'V':
                 puts("Serf version: " SERF_VERSION_STRING);
                 exit(0);
             case 'l':
                 configure_listener(context, &app_ctx, opt_arg, app_pool);
                 break;
+            case 'v':
+                verbose++;
+                break;
+
             default:
                 break;
         }
@@ -444,6 +449,24 @@ int main(int argc, const char **argv)
     }
 
     root_dir = argv[opt->ind];
+
+    /* Setup debug logging */
+    if (verbose) {
+        serf_log_output_t *output;
+        apr_status_t status;
+
+        status = serf_logging_create_stream_output(
+            &output,
+            context,
+            SERF_LOG_INFO,
+            SERF_LOGCOMP_ALL_MSG & ~(SERF_LOGCOMP_RAWMSG | SERF_LOGCOMP_SSLMSG),
+            SERF_LOG_DEFAULT_LAYOUT,
+            stderr,
+            app_pool);
+
+        if (!status)
+            serf_logging_add_output(context, output);
+    }
 
     while (1) {
         apr_pool_clear(scratch_pool);

@@ -41,8 +41,20 @@ static apr_status_t client_connected(serf_incoming_t *client)
     /* serf_context_t *ctx = client->ctx; */
     apr_status_t status;
     serf_bucket_t *ostream;
+    apr_sockaddr_t *sa;
 
-    /* ### TODO: Store ip address in config for logging */
+    if (apr_socket_addr_get(&sa, APR_LOCAL, client->skt) == APR_SUCCESS) {
+        char buf[48];
+        if (!apr_sockaddr_ip_getbuf(buf, sizeof(buf), sa))
+            serf_config_set_stringf(client->config, SERF_CONFIG_CONN_LOCALIP,
+                                    "%s:%d", buf, sa->port);
+    }
+    if (apr_socket_addr_get(&sa, APR_REMOTE, client->skt) == APR_SUCCESS) {
+        char buf[48];
+        if (!apr_sockaddr_ip_getbuf(buf, sizeof(buf), sa))
+            serf_config_set_stringf(client->config, SERF_CONFIG_CONN_REMOTEIP,
+                                    "%s:%d", buf, sa->port);
+    }
 
     serf__log(LOGLVL_DEBUG, LOGCOMP_CONN, __FILE__, client->config,
               "socket for client 0x%x connected\n", client);
@@ -718,6 +730,7 @@ apr_status_t serf_incoming_create2(
     apr_status_t rv;
     apr_pool_t *ic_pool;
     serf_incoming_t *ic;
+    serf_config_t *config;
 
     apr_pool_create(&ic_pool, pool);
 
@@ -762,14 +775,12 @@ apr_status_t serf_incoming_create2(
     ic->seen_in_pollset = 0;
 
     /* Store the connection specific info in the configuration store */
-    /* ### Doesn't work... Doesn't support listeners yet*/
-    /*rv = serf__config_store_get_config(ctx, ic, &config, pool);
+    rv = serf__config_store_get_client_config(ctx, ic, &config, pool);
     if (rv) {
-    apr_pool_destroy(l->pool);
-    return rv;
+        apr_pool_destroy(ic->pool);
+        return rv;
     }
-    ic->config = config;*/
-    ic->config = NULL; /* FIX!! */
+    ic->config = config;
 
     rv = ctx->pollset_add(ctx->pollset_baton,
                          &ic->desc, &ic->baton);
