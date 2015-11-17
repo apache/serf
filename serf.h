@@ -611,7 +611,8 @@ void serf_connection_set_async_responses(
 typedef enum serf_connection_framing_type_t {
   SERF_CONNECTION_FRAMING_TYPE_NONE = 0,
   SERF_CONNECTION_FRAMING_TYPE_HTTP1,
-  SERF_CONNECTION_FRAMING_TYPE_HTTP2
+  SERF_CONNECTION_FRAMING_TYPE_HTTP2,
+  SERF_CONNECTION_FRAMING_TYPE_FCGI
 } serf_connection_framing_type_t;
 
 /**

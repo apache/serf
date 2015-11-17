@@ -685,6 +685,10 @@ serf_bucket_t *serf__bucket_log_wrapper_create(serf_bucket_t *wrapped,
 void serf__http2_protocol_init(serf_connection_t *conn);
 void serf__http2_protocol_init_server(serf_incoming_t *client);
 
+/* From fcgi_protocol.c: Initializes http2 state on connection */
+void serf__fcgi_protocol_init(serf_connection_t *conn);
+void serf__fcgi_protocol_init_server(serf_incoming_t *client);
+
 typedef struct serf_hpack_table_t serf_hpack_table_t;
 
 /* From http2_hpack_buckets.c */
