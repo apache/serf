@@ -600,23 +600,165 @@ extern const serf_bucket_type_t serf_bucket_type__fcgi_params_decode =
     serf_default_ignore_config
 };
 /* ==================================================================== */
+typedef struct fcgi_frame_ctx_t
+{
+    serf_bucket_t *stream;
+    serf_bucket_t *agg;
+    apr_uint16_t stream_id;
+    apr_uint16_t frame_type;
+    bool send_stream;
+    bool send_eof;
+    bool at_eof;
+
+    char record_data[FCGI_RECORD_SIZE];
+} fcgi_frame_ctx_t;
+
 
 serf_bucket_t *
 serf__bucket_fcgi_frame_create(serf_bucket_t *stream,
                                apr_uint16_t stream_id,
                                apr_uint16_t frame_type,
+                               bool send_as_stream,
+                               bool send_eof,
                                serf_bucket_alloc_t *alloc)
 {
-    return NULL;
+    fcgi_frame_ctx_t *ctx;
+
+    ctx = serf_bucket_mem_alloc(alloc, sizeof(*ctx));
+    ctx->stream = stream;
+    ctx->stream_id = stream_id;
+    ctx->frame_type = frame_type;
+    ctx->send_stream = send_as_stream;
+    ctx->send_eof = send_eof;
+    ctx->at_eof = false;
+    ctx->agg = NULL;
+
+    return serf_bucket_create(&serf_bucket_type__fcgi_frame, alloc, ctx);
 }
 
+static apr_status_t serf_fcgi_frame_refill(serf_bucket_t *bucket)
+{
+    fcgi_frame_ctx_t *ctx = bucket->data;
+    apr_status_t status;
+    serf_bucket_t *head = NULL;
+    apr_size_t payload;
+
+    if (ctx->at_eof)
+        return APR_EOF;
+
+    if (!ctx->agg)
+        ctx->agg = serf_bucket_aggregate_create(bucket->allocator);
+
+    if (!ctx->stream)
+    {
+        payload = 0;
+    }
+    else if (ctx->send_stream)
+    {
+        apr_uint64_t remaining;
+        serf_bucket_split_create(&head, &ctx->stream, ctx->stream,
+                                 8192, 0xFFF0); /* Some guesses */
+
+        remaining = serf_bucket_get_remaining(head);
+        if (remaining != SERF_LENGTH_UNKNOWN) {
+            serf_bucket_aggregate_append(ctx->agg, head);
+            payload = (apr_size_t)remaining;
+        }
+        else if (remaining == 0)
+        {
+            payload = 0;
+            serf_bucket_destroy(head);
+            ctx->at_eof = true;
+        }
+        else
+        {
+            struct iovec vecs[IOV_MAX];
+            int vecs_used;
+
+            status = serf_bucket_read_iovec(head, 0xFFF0,
+                                            IOV_MAX, vecs, &vecs_used);
+
+            if (SERF_BUCKET_READ_ERROR(status))
+                return status;
+
+            if (vecs_used) {
+                serf_bucket_aggregate_append_iovec(ctx->agg, vecs, vecs_used);
+                payload = (apr_size_t)serf_bucket_get_remaining(ctx->agg);
+
+                if (APR_STATUS_IS_EOF(status)) {
+                    /* Keep head alive by appending it to the aggregate */
+                    serf_bucket_aggregate_append(ctx->agg, head);
+                }
+                else {
+                    /* Write a new record for the remaining part of head :( */
+                    serf_bucket_aggregate_append(ctx->agg,
+                                serf__bucket_fcgi_frame_create(head, ctx->stream_id,
+                                                            ctx->frame_type,
+                                                            true /* send_as_stream */,
+                                                            false /* send_eof */,
+                                                            bucket->allocator));
+                }
+            }
+            else
+                payload = 0;
+
+            if (APR_STATUS_IS_EOF(status))
+                ctx->at_eof = true;
+        }
+
+        if (!payload && !ctx->send_eof)
+            return APR_SUCCESS;
+    }
+    else
+    {
+        abort(); /* ### TODO */
+    }
+
+    /* Create FCGI record */
+    ctx->record_data[0] = (ctx->frame_type >> 8);
+    ctx->record_data[1] = (ctx->frame_type & 0xFF);
+    ctx->record_data[2] = (ctx->stream_id >> 8);
+    ctx->record_data[3] = (ctx->stream_id & 0xFF);
+    ctx->record_data[4] = (payload >> 8) & 0xFF;
+    ctx->record_data[5] = (payload & 0xFF);
+    ctx->record_data[6] = 0; /* padding */
+    ctx->record_data[7] = 0; /* reserved */
+
+    serf_bucket_aggregate_prepend(ctx->agg,
+                                  serf_bucket_simple_create(ctx->record_data,
+                                                            FCGI_RECORD_SIZE,
+                                                            NULL, NULL,
+                                                            bucket->allocator));
+    return APR_SUCCESS;
+}
 
 static apr_status_t serf_fcgi_frame_read(serf_bucket_t *bucket,
                                          apr_size_t requested,
                                          const char **data,
                                          apr_size_t *len)
 {
-    return APR_ENOTIMPL;
+    fcgi_frame_ctx_t *ctx = bucket->data;
+    apr_status_t status;
+
+    if (ctx->agg) {
+        status = serf_bucket_read(ctx->agg, requested, data, len);
+
+        if (!APR_STATUS_IS_EOF(status))
+            return status;
+    }
+
+    status = serf_fcgi_frame_refill(bucket);
+    if (status) {
+        *len = 0;
+        return status;
+    }
+
+    status = serf_bucket_read(ctx->agg, requested, data, len);
+
+    if (APR_STATUS_IS_EOF(status) && !ctx->at_eof)
+        status = APR_SUCCESS;
+
+    return status;
 }
 
 static apr_status_t serf_fcgi_frame_read_iovec(serf_bucket_t *bucket,
@@ -625,30 +767,89 @@ static apr_status_t serf_fcgi_frame_read_iovec(serf_bucket_t *bucket,
                                                struct iovec *vecs,
                                                int *vecs_used)
 {
-    return APR_ENOTIMPL;
+    fcgi_frame_ctx_t *ctx = bucket->data;
+    apr_status_t status;
+
+    if (ctx->agg) {
+        status = serf_bucket_read_iovec(ctx->agg, requested, vecs_size,
+                                        vecs, vecs_used);
+
+        if (!APR_STATUS_IS_EOF(status))
+            return status;
+    }
+
+    status = serf_fcgi_frame_refill(bucket);
+    if (status) {
+        *vecs_used = 0;
+        return status;
+    }
+
+    status = serf_bucket_read_iovec(ctx->agg, requested, vecs_size,
+                                        vecs, vecs_used);
+
+    if (APR_STATUS_IS_EOF(status) && !ctx->at_eof)
+        status = APR_SUCCESS;
+
+    return status;
 }
 
 static apr_status_t serf_fcgi_frame_peek(serf_bucket_t *bucket,
                                          const char **data,
                                          apr_size_t *len)
 {
-    return APR_ENOTIMPL;
+    fcgi_frame_ctx_t *ctx = bucket->data;
+    apr_status_t status;
+
+    if (ctx->agg) {
+        status = serf_bucket_peek(ctx->agg, data, len);
+
+        if (!APR_STATUS_IS_EOF(status))
+            return status;
+    }
+
+    status = serf_fcgi_frame_refill(bucket);
+    if (status) {
+        *len = 0;
+        return status;
+    }
+
+    status = serf_bucket_peek(ctx->agg, data, len);
+
+    if (APR_STATUS_IS_EOF(status) && !ctx->at_eof)
+        status = APR_SUCCESS;
+
+    return status;
 }
 
 static void serf_fcgi_frame_destroy(serf_bucket_t *bucket)
 {
+    fcgi_frame_ctx_t *ctx = bucket->data;
+
+    if (ctx->agg)
+        serf_bucket_destroy(ctx->agg);
+    if (ctx->stream)
+        serf_bucket_destroy(ctx->stream);
+
     serf_default_destroy_and_data(bucket);
 }
 
 static apr_uint64_t serf_fcgi_frame_get_remaining(serf_bucket_t *bucket)
 {
-    return APR_ENOTIMPL;
+    return SERF_LENGTH_UNKNOWN;
 }
 
 static apr_status_t serf_fcgi_frame_set_config(serf_bucket_t *bucket,
-                                                 serf_config_t *config)
+                                               serf_config_t *config)
 {
-    return APR_ENOTIMPL;
+    fcgi_frame_ctx_t *ctx = bucket->data;
+
+    if (!ctx->agg)
+        ctx->agg = serf_bucket_aggregate_create(bucket->allocator);
+    serf_bucket_set_config(ctx->agg, config);
+    if (ctx->stream)
+        serf_bucket_set_config(ctx->stream, config);
+
+    return APR_SUCCESS;
 }
 
 extern const serf_bucket_type_t serf_bucket_type__fcgi_frame =

@@ -347,8 +347,76 @@ static apr_status_t fcgi_read(serf_fcgi_protocol_t *fcgi)
     return APR_SUCCESS;
 }
 
+apr_status_t serf_fcgi__enqueue_frame(serf_fcgi_protocol_t *fcgi,
+                                      serf_bucket_t *frame,
+                                      bool pump)
+{
+    apr_status_t status;
+    bool want_write;
+
+    if (!pump && !*fcgi->dirty_pollset)
+    {
+        const char *data;
+        apr_size_t len;
+
+        /* Cheap check to see if we should request a write
+        event next time around */
+        status = serf_bucket_peek(fcgi->ostream, &data, &len);
+
+        if (SERF_BUCKET_READ_ERROR(status))
+        {
+            serf_bucket_destroy(frame);
+            return status;
+        }
+
+        if (len == 0)
+        {
+            *fcgi->dirty_pollset = true;
+            fcgi->ctx->dirty_pollset = true;
+        }
+    }
+
+    serf_bucket_aggregate_append(fcgi->ostream, frame);
+
+    if (!pump)
+        return APR_SUCCESS;
+
+    /* Flush final output buffer (after ssl, etc.) */
+    if (fcgi->conn)
+        status = serf__connection_flush(fcgi->conn, TRUE);
+    else
+        status = serf__incoming_client_flush(fcgi->client, TRUE);
+
+    want_write = APR_STATUS_IS_EAGAIN(status);
+
+    if ((want_write && !(*fcgi->req_events & APR_POLLOUT))
+        || (!want_write && (*fcgi->req_events & APR_POLLOUT)))
+    {
+        *fcgi->dirty_pollset = true;
+        fcgi->ctx->dirty_pollset = true;
+    }
+
+    return status;
+}
+
 static apr_status_t fcgi_write(serf_fcgi_protocol_t *fcgi)
 {
+    apr_status_t status;
+
+    if (fcgi->client)
+        status = serf__incoming_client_flush(fcgi->client, true);
+    else
+        status = serf__connection_flush(fcgi->conn, true);
+
+    if (APR_STATUS_IS_EAGAIN(status))
+        return APR_SUCCESS;
+    else if (status)
+        return status;
+
+    /* Probably nothing to write. */
+    *fcgi->dirty_pollset = true;
+    fcgi->ctx->dirty_pollset = true;
+
     return APR_SUCCESS;
 }
 

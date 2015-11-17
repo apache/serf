@@ -22,6 +22,7 @@
 
 #include <apr_pools.h>
 #include <apr_strings.h>
+#include <apr_date.h>
 
 #include "serf.h"
 #include "serf_bucket_util.h"
@@ -77,12 +78,59 @@ fcgi_stream_enqueue_response(serf_incoming_request_t *request,
                              void *enqueue_baton,
                              serf_bucket_t *response_bkt)
 {
-    return APR_SUCCESS;
+    serf_fcgi_stream_t *stream = enqueue_baton;
+    serf_bucket_alloc_t *alloc = response_bkt->allocator;
+    serf_linebuf_t *linebuf;
+    serf_bucket_t *agg;
+    serf_bucket_t *tmp;
+    apr_status_t status;
+
+    /* With FCGI we don't send the usual first line of the response.
+       We just send a "Status: 200" instead and the actual http
+       server will handle the rest */
+    agg = serf_bucket_aggregate_create(alloc);
+
+    /* Too big for the stack :( */
+    linebuf = serf_bucket_mem_alloc(alloc, sizeof(*linebuf));
+    serf_linebuf_init(linebuf);
+
+    do
+    {
+        status = serf_linebuf_fetch(linebuf, response_bkt, SERF_NEWLINE_ANY);
+    } while (status == APR_SUCCESS && linebuf->state != SERF_LINEBUF_READY);
+
+    if (status
+        || linebuf->state != SERF_LINEBUF_READY
+        || !apr_date_checkmask(linebuf->line, "HTTP/#.# ###*"))
+    {
+        /* We can't write a response in this state yet :( */
+        serf_bucket_mem_free(alloc, linebuf);
+        return status;
+    }
+
+    tmp = SERF_BUCKET_SIMPLE_STRING("Status: ", alloc);
+    serf_bucket_aggregate_append(agg, tmp);
+
+    tmp = serf_bucket_simple_copy_create(linebuf->line + 9, 3, alloc);
+    serf_bucket_aggregate_append(agg, tmp);
+    serf_bucket_mem_free(alloc, linebuf);
+
+    tmp = SERF_BUCKET_SIMPLE_STRING("\r\n", alloc);
+    serf_bucket_aggregate_append(agg, tmp);
+
+    serf_bucket_aggregate_append(agg, response_bkt);
+
+    return serf_fcgi__enqueue_frame(
+        stream->fcgi,
+        serf__bucket_fcgi_frame_create(agg, stream->streamid,
+                                       FCGI_FRAMETYPE(FCGI_V1, FCGI_STDOUT),
+                                       true, true,
+                                       alloc), true);
 }
 
 static apr_status_t
 stream_setup_request(serf_fcgi_stream_t *stream,
-                      serf_config_t *config)
+                     serf_config_t *config)
 {
     serf_bucket_t *agg;
     apr_status_t status;
