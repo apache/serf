@@ -216,7 +216,7 @@ static apr_status_t serf_chunk_peek(serf_bucket_t *bucket,
 
     /* Mask EOF from aggregate bucket. */
     if (APR_STATUS_IS_EOF(status) && ctx->state == STATE_CHUNK) {
-        status = APR_EAGAIN;
+        status = APR_SUCCESS;
     }
 
     return status;
