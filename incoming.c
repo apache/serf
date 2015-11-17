@@ -580,6 +580,8 @@ void serf_incoming_set_framing_type(
             case SERF_CONNECTION_FRAMING_TYPE_HTTP2:
                 serf__http2_protocol_init_server(client);
                 break;
+            case SERF_CONNECTION_FRAMING_TYPE_FCGI:
+                serf__fcgi_protocol_init_server(client);
             default:
                 break;
         }

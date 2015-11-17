@@ -220,21 +220,39 @@ static apr_status_t client_accept(serf_context_t *ctx,
                                   apr_socket_t *insock,
                                   apr_pool_t *pool)
 {
-    serf_incoming_t *incoming;
+    serf_incoming_t *client;
     listener_ctx_t *lctx = accept_baton;
     apr_pool_t *cctx_pool;
     client_ctx_t *cctx;
+    apr_status_t status;
 
     apr_pool_create(&cctx_pool, pool);
     cctx = apr_pcalloc(cctx_pool, sizeof(*cctx));
     cctx->pool = cctx_pool;
     cctx->listener = lctx;
 
-    return serf_incoming_create2(&incoming, ctx, insock,
-                                 client_setup, cctx,
-                                 client_closed, cctx,
-                                 client_request_acceptor, cctx,
-                                 pool);
+    status = serf_incoming_create2(&client, ctx, insock,
+                                   client_setup, cctx,
+                                   client_closed, cctx,
+                                   client_request_acceptor, cctx,
+                                   pool);
+    if (status)
+        return status;
+
+    if (lctx->proto && !strcmp(lctx->proto, "fcgi")) {
+        serf_incoming_set_framing_type(client,
+                                       SERF_CONNECTION_FRAMING_TYPE_FCGI);
+    }
+    else if (lctx->proto && !strcmp(lctx->proto, "h2c")) {
+        serf_incoming_set_framing_type(client,
+                                       SERF_CONNECTION_FRAMING_TYPE_HTTP2);
+    }
+    else if (lctx->proto && !strcmp(lctx->proto, "http1")) {
+        serf_incoming_set_framing_type(client,
+                                       SERF_CONNECTION_FRAMING_TYPE_HTTP1);
+    }
+
+    return status;
 }
 
 
