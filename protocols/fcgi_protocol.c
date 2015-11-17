@@ -31,6 +31,9 @@
 #include "protocols/fcgi_buckets.h"
 #include "protocols/fcgi_protocol.h"
 
+#define SERF_ERROR_FCGI_RECORD_SIZE_ERROR   SERF_ERROR_HTTP2_FRAME_SIZE_ERROR
+#define SERF_ERROR_FCGI_PROTOCOL_ERROR      SERF_ERROR_HTTP2_PROTOCOL_ERROR
+
 typedef struct serf_fcgi_protocol_t
 {
     serf_context_t *ctx;
@@ -53,6 +56,10 @@ typedef struct serf_fcgi_protocol_t
     serf_bucket_t *read_frame;
     bool in_frame;
 
+    serf_fcgi_stream_t *first, *last;
+
+    bool no_keep_conn;
+
 } serf_fcgi_protocol_t;
 
 static apr_status_t fcgi_cleanup(void *baton)
@@ -63,6 +70,31 @@ static apr_status_t fcgi_cleanup(void *baton)
 
     return APR_SUCCESS;
 }
+
+/* Implements serf_bucket_prefix_handler_t.
+   Handles PING frames for pings initiated locally */
+static apr_status_t fcgi_begin_request(void *baton,
+                                       serf_bucket_t *bucket,
+                                       const char *data,
+                                       apr_size_t len)
+{
+    serf_fcgi_stream_t *stream = baton;
+    const FCGI_BeginRequestBody *brb;
+
+    if (len != sizeof(*brb))
+        return SERF_ERROR_FCGI_RECORD_SIZE_ERROR;
+
+    brb = (const void*)data;
+
+    stream->role = (brb->roleB1 << 8) | (brb->roleB0);
+
+    if (!(brb->flags & FCGI_KEEP_CONN))
+        stream->fcgi->no_keep_conn = true;
+
+
+    return APR_SUCCESS;
+}
+
 
 /* Implements the serf_bucket_end_of_frame_t callback */
 static apr_status_t
@@ -164,7 +196,6 @@ static apr_status_t fcgi_process(serf_fcgi_protocol_t *fcgi)
             void *process_baton = NULL;
             serf_bucket_t *process_bucket = NULL;
             serf_fcgi_stream_t *stream;
-            apr_uint32_t reset_reason;
 
             status = serf__bucket_fcgi_unframe_read_info(body, &sid,
                                                          &frametype);
@@ -195,6 +226,25 @@ static apr_status_t fcgi_process(serf_fcgi_protocol_t *fcgi)
             switch (frametype)
             {
                 case FCGI_FRAMETYPE(FCGI_V1, FCGI_BEGIN_REQUEST):
+                    stream = serf_fcgi__stream_get(fcgi, sid, FALSE, FALSE);
+
+                    if (stream) {
+                        /* Stream must be new */
+                        return SERF_ERROR_FCGI_PROTOCOL_ERROR;
+                    }
+                    stream = serf_fcgi__stream_get(fcgi, sid, TRUE, TRUE);
+
+                    remaining = (apr_size_t)serf_bucket_get_remaining(body);
+                    if (remaining != sizeof(FCGI_BeginRequestBody)) {
+                        return SERF_ERROR_FCGI_RECORD_SIZE_ERROR;
+                    }
+                    body = serf_bucket_prefix_create(
+                                        body,
+                                        sizeof(FCGI_BeginRequestBody),
+                                        fcgi_begin_request, stream,
+                                        fcgi->allocator);
+
+                    /* Just reading will handle this frame now*/
                     process_bucket = body;
                     break;
                 case FCGI_FRAMETYPE(FCGI_V1, FCGI_ABORT_REQUEST):
@@ -204,10 +254,44 @@ static apr_status_t fcgi_process(serf_fcgi_protocol_t *fcgi)
                     process_bucket = body;
                     break;
                 case FCGI_FRAMETYPE(FCGI_V1, FCGI_PARAMS):
-                    process_bucket = body;
+                    stream = serf_fcgi__stream_get(fcgi, sid, FALSE, FALSE);
+                    if (!stream) {
+                        return SERF_ERROR_FCGI_PROTOCOL_ERROR;
+                    }
+
+                    body = serf_fcgi__stream_handle_params(stream, body,
+                                                           fcgi->allocator);
+
+                    if (body) {
+                        /* We will take care of discarding */
+                        process_bucket = body;
+                    }
+                    else
+                    {
+                        /* The stream wants to handle the reading itself */
+                        process_handler = serf_fcgi__stream_processor;
+                        process_baton = stream;
+                    }
                     break;
                 case FCGI_FRAMETYPE(FCGI_V1, FCGI_STDIN):
-                    process_bucket = body;
+                    stream = serf_fcgi__stream_get(fcgi, sid, FALSE, FALSE);
+                    if (!stream) {
+                        return SERF_ERROR_FCGI_PROTOCOL_ERROR;
+                    }
+
+                    body = serf_fcgi__stream_handle_stdin(stream, body,
+                                                          fcgi->allocator);
+
+                    if (body) {
+                        /* We will take care of discarding */
+                        process_bucket = body;
+                    }
+                    else
+                    {
+                        /* The stream wants to handle the reading itself */
+                        process_handler = serf_fcgi__stream_processor;
+                        process_baton = stream;
+                    }
                     break;
                 case FCGI_FRAMETYPE(FCGI_V1, FCGI_STDOUT):
                     process_bucket = body;
@@ -263,12 +347,63 @@ static apr_status_t fcgi_read(serf_fcgi_protocol_t *fcgi)
 
 static apr_status_t fcgi_write(serf_fcgi_protocol_t *fcgi)
 {
+    return APR_SUCCESS;
+}
+
+static apr_status_t fcgi_hangup(serf_fcgi_protocol_t *fcgi)
+{
     return APR_ENOTIMPL;
 }
 
 static apr_status_t fcgi_teardown(serf_fcgi_protocol_t *fcgi)
 {
     return APR_ENOTIMPL;
+}
+
+static void
+move_to_head(serf_fcgi_stream_t *stream)
+{
+    /* Not implemented yet */
+}
+
+serf_fcgi_stream_t *
+serf_fcgi__stream_get(serf_fcgi_protocol_t *fcgi,
+                      apr_uint16_t streamid,
+                      bool create,
+                      bool move_first)
+{
+    serf_fcgi_stream_t *stream;
+
+    if (streamid == 0)
+        return NULL;
+
+    for (stream = fcgi->first; stream; stream = stream->next)
+    {
+        if (stream->streamid == streamid)
+        {
+            if (move_first && stream != fcgi->first)
+                move_to_head(stream);
+
+            return stream;
+        }
+    }
+
+    if (create)
+    {
+        stream = serf_fcgi__stream_create(fcgi, streamid, fcgi->allocator);
+
+        if (fcgi->first)
+        {
+            stream->next = fcgi->first;
+            fcgi->first->prev = stream;
+            fcgi->first = stream;
+        }
+        else
+            fcgi->last = fcgi->first = stream;
+
+        return stream;
+    }
+    return NULL;
 }
 
 
@@ -287,21 +422,21 @@ static apr_status_t fcgi_outgoing_write(serf_connection_t *conn)
 {
     serf_fcgi_protocol_t *fcgi = conn->protocol_baton;
 
-    return fcgi_read(fcgi);
+    return fcgi_teardown(fcgi);
 }
 
 static apr_status_t fcgi_outgoing_hangup(serf_connection_t *conn)
 {
     serf_fcgi_protocol_t *fcgi = conn->protocol_baton;
 
-    return fcgi_read(fcgi);
+    return fcgi_teardown(fcgi);
 }
 
 static apr_status_t fcgi_outgoing_teardown(serf_connection_t *conn)
 {
     serf_fcgi_protocol_t *fcgi = conn->protocol_baton;
 
-    return fcgi_read(fcgi);
+    return fcgi_teardown(fcgi);
 }
 
 void serf__fcgi_protocol_init(serf_connection_t *conn)
@@ -353,21 +488,26 @@ static apr_status_t fcgi_server_write(serf_incoming_t *client)
 {
     serf_fcgi_protocol_t *fcgi = client->protocol_baton;
 
-    return fcgi_read(fcgi);
+    if (!fcgi->stream) {
+        fcgi->stream = client->stream;
+        fcgi->ostream = client->ostream_tail;
+    }
+
+    return fcgi_write(fcgi);
 }
 
 static apr_status_t fcgi_server_hangup(serf_incoming_t *client)
 {
     serf_fcgi_protocol_t *fcgi = client->protocol_baton;
 
-    return fcgi_read(fcgi);
+    return fcgi_hangup(fcgi);
 }
 
 static apr_status_t fcgi_server_teardown(serf_incoming_t *client)
 {
     serf_fcgi_protocol_t *fcgi = client->protocol_baton;
 
-    return fcgi_read(fcgi);
+    return fcgi_teardown(fcgi);
 }
 
 void serf__fcgi_protocol_init_server(serf_incoming_t *client)

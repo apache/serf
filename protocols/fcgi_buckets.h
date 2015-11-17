@@ -66,6 +66,15 @@ apr_status_t serf__bucket_fcgi_unframe_read_info(serf_bucket_t *bucket,
                                                  apr_uint16_t *frame_type);
 
 /* ==================================================================== */
+extern const serf_bucket_type_t serf_bucket_type__fcgi_params_decode;
+#define SERF__BUCKET_IS_FCGI_PARAMS_DECODE(b)               \
+            SERF_BUCKET_CHECK((b), _fcgi_params_decode)
+
+serf_bucket_t *
+serf__bucket_fcgi_params_decode_create(serf_bucket_t *stream,
+                                       serf_bucket_alloc_t *alloc);
+
+/* ==================================================================== */
 extern const serf_bucket_type_t serf_bucket_type__fcgi_frame;
 
 #define SERF__BUCKET_IS_FCGI_FRAME(b) SERF_BUCKET_CHECK((b), _fcgi_frame)

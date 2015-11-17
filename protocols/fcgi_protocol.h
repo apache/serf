@@ -46,6 +46,37 @@ typedef struct serf_fcgi_stream_data_t serf_fcgi_stream_data_t;
 
 #define FCGI_V1     0x1
 
+/* From protocol specs */
+/*
+* Listening socket file number
+*/
+#define FCGI_LISTENSOCK_FILENO 0
+
+typedef struct FCGI_Header {
+    unsigned char version;
+    unsigned char type;
+    unsigned char requestIdB1;
+    unsigned char requestIdB0;
+    unsigned char contentLengthB1;
+    unsigned char contentLengthB0;
+    unsigned char paddingLength;
+    unsigned char reserved;
+} FCGI_Header;
+
+/*
+ * Number of bytes in a FCGI_Header.  Future versions of the protocol
+ * will not reduce this number.
+ */
+#define FCGI_HEADER_LEN  8
+
+/*
+ * Value for version component of FCGI_Header
+ */
+#define FCGI_VERSION_1           1
+
+/*
+ * Values for type component of FCGI_Header
+ */
 #define FCGI_BEGIN_REQUEST       1
 #define FCGI_ABORT_REQUEST       2
 #define FCGI_END_REQUEST         3
@@ -59,11 +90,84 @@ typedef struct serf_fcgi_stream_data_t serf_fcgi_stream_data_t;
 #define FCGI_UNKNOWN_TYPE       11
 #define FCGI_MAXTYPE (FCGI_UNKNOWN_TYPE)
 
+/*
+* Value for requestId component of FCGI_Header
+*/
+#define FCGI_NULL_REQUEST_ID     0
+
+typedef struct FCGI_BeginRequestBody {
+    unsigned char roleB1;
+    unsigned char roleB0;
+    unsigned char flags;
+    unsigned char reserved[5];
+} FCGI_BeginRequestBody;
+
+typedef struct FCGI_BeginRequestRecord {
+    FCGI_Header header;
+    FCGI_BeginRequestBody body;
+} FCGI_BeginRequestRecord;
+
+/*
+ * Mask for flags component of FCGI_BeginRequestBody
+ */
+#define FCGI_KEEP_CONN  1
+
+/*
+ * Values for role component of FCGI_BeginRequestBody
+ */
+#define FCGI_RESPONDER  1
+#define FCGI_AUTHORIZER 2
+#define FCGI_FILTER     3
+
+typedef struct FCGI_EndRequestBody {
+    unsigned char appStatusB3;
+    unsigned char appStatusB2;
+    unsigned char appStatusB1;
+    unsigned char appStatusB0;
+    unsigned char protocolStatus;
+    unsigned char reserved[3];
+} FCGI_EndRequestBody;
+
+typedef struct FCGI_EndRequestRecord {
+    FCGI_Header header;
+    FCGI_EndRequestBody body;
+} FCGI_EndRequestRecord;
+
+/*
+* Values for protocolStatus component of FCGI_EndRequestBody
+*/
+#define FCGI_REQUEST_COMPLETE 0
+#define FCGI_CANT_MPX_CONN    1
+#define FCGI_OVERLOADED       2
+#define FCGI_UNKNOWN_ROLE     3
+
+/*
+* Variable names for FCGI_GET_VALUES / FCGI_GET_VALUES_RESULT records
+*/
+#define FCGI_MAX_CONNS  "FCGI_MAX_CONNS"
+#define FCGI_MAX_REQS   "FCGI_MAX_REQS"
+#define FCGI_MPXS_CONNS "FCGI_MPXS_CONNS"
+
+typedef struct FCGI_UnknownTypeBody {
+    unsigned char type;
+    unsigned char reserved[7];
+} FCGI_UnknownTypeBody;
+
+typedef struct FCGI_UnknownTypeRecord {
+    FCGI_Header header;
+    FCGI_UnknownTypeBody body;
+} FCGI_UnknownTypeRecord;
+
+
+/**************************************************/
 
 typedef struct serf_fcgi_stream_t
 {
-    struct serf_fcgi_protocol_t *h2;
+    struct serf_fcgi_protocol_t *fcgi;
     serf_bucket_alloc_t *alloc;
+
+    apr_uint16_t streamid;
+    apr_uint16_t role;
 
     /* Opaque implementation details */
     serf_fcgi_stream_data_t *data;
@@ -76,6 +180,31 @@ typedef struct serf_fcgi_stream_t
 typedef apr_status_t(*serf_fcgi_processor_t)(void *baton,
                                              serf_fcgi_protocol_t *fcgi,
                                              serf_bucket_t *body);
+
+
+/* From fcgi_protocol.c */
+serf_fcgi_stream_t * serf_fcgi__stream_get(serf_fcgi_protocol_t *fcgi,
+                                           apr_uint16_t streamid,
+                                           bool create,
+                                           bool move_first);
+
+
+/* From fcgi_stream.c */
+serf_fcgi_stream_t * serf_fcgi__stream_create(serf_fcgi_protocol_t *fcgi,
+                                              apr_uint16_t streamid,
+                                              serf_bucket_alloc_t *alloc);
+
+apr_status_t serf_fcgi__stream_processor(void *baton,
+                                         serf_fcgi_protocol_t *fcgi,
+                                         serf_bucket_t *body);
+
+serf_bucket_t * serf_fcgi__stream_handle_params(serf_fcgi_stream_t *stream,
+                                                serf_bucket_t *body,
+                                                serf_bucket_alloc_t *alloc);
+
+serf_bucket_t * serf_fcgi__stream_handle_stdin(serf_fcgi_stream_t *stream,
+                                               serf_bucket_t *body,
+                                               serf_bucket_alloc_t *alloc);
 
 
 
