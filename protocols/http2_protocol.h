@@ -189,8 +189,8 @@ serf_http2__stream_cleanup(serf_http2_stream_t *stream);
 serf_http2_stream_t *
 serf_http2__stream_get(serf_http2_protocol_t *h2,
                        apr_int32_t streamid,
-                       int create_for_remote,
-                       int move_first);
+                       bool create_for_remote,
+                       bool move_first);
 
 /* Sets up STREAM to handle the next request from CONN */
 apr_status_t
