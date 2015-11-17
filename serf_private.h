@@ -282,6 +282,13 @@ apr_status_t serf__config_store_get_config(serf_context_t *ctx,
                                            serf_config_t **config,
                                            apr_pool_t *out_pool);
 
+/* Same thing, but for incoming connections */
+apr_status_t serf__config_store_get_client_config(serf_context_t *ctx,
+                                                  serf_incoming_t *client,
+                                                  serf_config_t **config,
+                                                  apr_pool_t *out_pool);
+
+
 /* Cleans up all connection specific configuration values */
 apr_status_t
 serf__config_store_remove_connection(serf__config_store_t config_store,
