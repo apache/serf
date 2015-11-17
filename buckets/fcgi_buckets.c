@@ -259,8 +259,346 @@ extern const serf_bucket_type_t serf_bucket_type__fcgi_unframe =
     serf_fcgi_unframe_get_remaining,
     serf_fcgi_unframe_set_config
 };
+/* ==================================================================== */
+
+typedef struct fcgi_params_decode_ctx_t
+{
+    serf_bucket_t *stream;
+
+    const char *last_data;
+    apr_size_t last_len;
+
+    apr_size_t key_sz;
+    apr_size_t val_sz;
+
+    enum fcgi_param_decode_status_t
+    {
+        DS_SIZES = 0,
+        DS_KEY,
+        DS_VALUE,
+    } state;
+
+    char size_buffer[8];
+    apr_size_t tmp_size;
+
+    char *key;
+    char *val;
+
+    const char *method;
+    const char *path;
+
+    serf_bucket_t *headers;
+
+} fcgi_params_decode_ctx_t;
+
+serf_bucket_t *
+serf__bucket_fcgi_params_decode_create(serf_bucket_t *stream,
+                                       serf_bucket_alloc_t *alloc)
+{
+    fcgi_params_decode_ctx_t *ctx;
+
+    ctx = serf_bucket_mem_calloc(alloc, sizeof(*ctx));
+    ctx->stream = stream;
+
+    return serf_bucket_create(&serf_bucket_type__fcgi_params_decode, alloc,
+                              ctx);
+}
+
+static apr_size_t size_data_requested(fcgi_params_decode_ctx_t *ctx)
+{
+    apr_size_t requested;
+
+    if (ctx->tmp_size < 1)
+        requested = 2;
+    else if (ctx->size_buffer[0] & 0x80) {
+        requested = 5;
+
+        if (ctx->tmp_size > 4
+            && ctx->size_buffer[4] & 0x80) {
+            requested = 8;
+        }
+    }
+    else if (ctx->tmp_size >= 2
+             && ctx->size_buffer[1] & 0x80) {
+        requested = 5;
+    }
+    else
+        requested = 2;
+
+    return requested;
+}
+
+void fcgi_handle_keypair(serf_bucket_t *bucket)
+{
+    fcgi_params_decode_ctx_t *ctx = bucket->data;
+    char *key = ctx->key;
+    char *val = ctx->val;
+
+    ctx->key = NULL;
+    ctx->val = NULL;
+
+    if (!ctx->headers)
+        ctx->headers = serf_bucket_headers_create(bucket->allocator);
+
+    if (strncasecmp(key, "HTTP_", 5) == 0
+        && strncasecmp(key + 5, "_FCGI_", 6) != 0)
+    {
+        apr_size_t i;
+        memmove(key, key + 5, ctx->key_sz - 5 + 1);
+        for (i = 0; i < ctx->key_sz; i++) {
+            if (key[i] == '_')
+                key[i] = '-';
+        }
+        ctx->key_sz -= 5;
+    }
+    else if (ctx->key_sz == 6 && !strcasecmp(key, "METHOD"))
+    {
+        ctx->method = val;
+        serf_bucket_mem_free(bucket->allocator, key);
+        return;
+    }
+    else if (ctx->key_sz == 11 && !strcasecmp(key, "REQUEST_URI"))
+    {
+        ctx->path = val;
+        serf_bucket_mem_free(bucket->allocator, key);
+        return;
+    }
+    else
+    {
+        memmove(key + 6, key, ctx->key_sz + 1);
+        memcpy(key, "_FCGI_", 6);
+        ctx->key_sz += 6;
+    }
+
+    serf_bucket_headers_setx(ctx->headers,
+                             key, ctx->key_sz, TRUE,
+                             val, ctx->val_sz, TRUE);
+    serf_bucket_mem_free(bucket->allocator, key);
+    serf_bucket_mem_free(bucket->allocator, val);
+}
+
+apr_status_t fcgi_params_decode(serf_bucket_t *bucket)
+{
+    fcgi_params_decode_ctx_t *ctx = bucket->data;
+    apr_status_t status = APR_SUCCESS;
+
+    while (status == APR_SUCCESS) {
+        apr_size_t requested;
+        const char *data;
+        const unsigned char *udata;
+        apr_size_t len;
+
+        switch (ctx->state) {
+            case DS_SIZES:
+                requested = size_data_requested(ctx);
+                status = serf_bucket_read(ctx->stream,
+                                          requested - ctx->tmp_size,
+                                          &data, &len);
+                if (SERF_BUCKET_READ_ERROR(status))
+                    return status;
+
+                if (len < requested) {
+                    memcpy(ctx->size_buffer + ctx->tmp_size, data, len);
+                    ctx->tmp_size += len;
+
+                    len = ctx->tmp_size;
+                    data = ctx->size_buffer;
+                }
+
+                if (size_data_requested(ctx) < len) {
+                    /* Read again. More bytes needed for
+                       determining lengths */
+                    if (data != ctx->size_buffer) {
+                        memcpy(ctx->size_buffer, data, len);
+                        ctx->tmp_size = len;
+                    }
+                    break;
+                }
+
+                udata = (const unsigned char*)data;
+
+                if (udata[0] & 0x80) {
+                    ctx->key_sz = (udata[0] & 0x7F) << 24 | (udata[1] << 16)
+                                        | (udata[2] << 8) | (udata[3]);
+                    udata += 4;
+                }
+                else {
+                    ctx->key_sz = udata[0] & 0x7F;
+                    udata += 1;
+                }
+
+                if (udata[0] & 0x80) {
+                    ctx->val_sz = (udata[0] & 0x7F) << 24 | (udata[1] << 16)
+                                        | (udata[2] << 8) | (udata[3]);
+                    udata += 4;
+                }
+                else {
+                    ctx->val_sz = udata[0] & 0x7F;
+                    udata += 1;
+                }
+
+                ctx->tmp_size = 0;
+                ctx->state++;
+                break;
+            case DS_KEY:
+                status = serf_bucket_read(ctx->stream, ctx->key_sz,
+                                          &data, &len);
+                if (SERF_BUCKET_READ_ERROR(status))
+                    break;
+
+                if (!ctx->key) {
+                    ctx->key = serf_bucket_mem_alloc(bucket->allocator,
+                                                     ctx->key_sz + 1 + 6);
+                    ctx->key[ctx->key_sz] = 0;
+                }
+
+                memcpy(ctx->key + ctx->tmp_size, data, len);
+                ctx->tmp_size += len;
+
+                if (ctx->tmp_size == ctx->key_sz) {
+                    ctx->state++;
+                    ctx->tmp_size = 0;
+                }
+                break;
+            case DS_VALUE:
+                status = serf_bucket_read(ctx->stream, ctx->val_sz,
+                                          &data, &len);
+                if (SERF_BUCKET_READ_ERROR(status))
+                    break;
+                if (!ctx->val) {
+                    ctx->val = serf_bucket_mem_alloc(bucket->allocator,
+                                                     ctx->val_sz + 1);
+                    ctx->val[ctx->val_sz] = 0;
+                }
+
+                if (len == ctx->val_sz)
+                    ctx->state++;
+
+                memcpy(ctx->val + ctx->tmp_size, data, len);
+                ctx->tmp_size += len;
+
+                if (ctx->tmp_size == ctx->val_sz) {
+
+                    fcgi_handle_keypair(bucket);
+                    ctx->state = DS_SIZES;
+                    ctx->tmp_size = 0;
+                }
+                break;
+        }
+    }
+
+    if (APR_STATUS_IS_EOF(status)) {
+        if (ctx->state == DS_SIZES && !ctx->tmp_size
+            || (ctx->state == DS_KEY && !ctx->key_sz && !ctx->val_sz))
+        {
+            return APR_SUCCESS;
+        }
+
+        return SERF_ERROR_TRUNCATED_STREAM;
+    }
+
+    return status;
+}
+
+static void fcgi_serialize(serf_bucket_t *bucket)
+{
+    fcgi_params_decode_ctx_t *ctx = bucket->data;
+    serf_bucket_t *tmp;
+
+    serf_bucket_aggregate_become(bucket);
+
+    if (ctx->method || ctx->path) {
+        if (ctx->method) {
+            tmp = serf_bucket_simple_own_create(ctx->method, strlen(ctx->method),
+                                                bucket->allocator);
+        }
+        else
+            tmp = SERF_BUCKET_SIMPLE_STRING("GET", bucket->allocator);
+        serf_bucket_aggregate_append(bucket, tmp);
+
+        tmp = SERF_BUCKET_SIMPLE_STRING(" ", bucket->allocator);
+        serf_bucket_aggregate_append(bucket, tmp);
+
+        if (ctx->path) {
+            tmp = serf_bucket_simple_own_create(ctx->path, strlen(ctx->path),
+                                                bucket->allocator);
+        }
+        else
+            tmp = SERF_BUCKET_SIMPLE_STRING("/", bucket->allocator);
+        serf_bucket_aggregate_append(bucket, tmp);
+
+        tmp = SERF_BUCKET_SIMPLE_STRING(" HTTP/2.0\r\n", bucket->allocator);
+        serf_bucket_aggregate_append(bucket, tmp);
+    }
+
+    if (ctx->headers)
+        serf_bucket_aggregate_append(bucket, ctx->headers);
+
+    if (ctx->key)
+        serf_bucket_mem_free(bucket->allocator, ctx->key);
+    if (ctx->val)
+        serf_bucket_mem_free(bucket->allocator, ctx->val);
+
+    serf_bucket_mem_free(bucket->allocator, ctx);
+}
+
+static apr_status_t fcgi_params_decode_read(serf_bucket_t *bucket,
+                                            apr_size_t requested,
+                                            const char **data,
+                                            apr_size_t *len)
+{
+    apr_status_t status;
+
+    status = fcgi_params_decode(bucket);
+
+    if (status) {
+        *len = 0;
+        return status;
+    }
+
+    fcgi_serialize(bucket);
+    return bucket->type->read(bucket, requested, data, len);
+}
+
+static apr_status_t fcgi_params_decode_peek(serf_bucket_t *bucket,
+                                            const char **data,
+                                            apr_size_t *len)
+{
+    apr_status_t status;
+
+    status = fcgi_params_decode(bucket);
+
+    if (status) {
+        *len = 0;
+        return status;
+    }
+
+    fcgi_serialize(bucket);
+    return bucket->type->peek(bucket, data, len);
+}
+
+static void fcgi_params_decode_destroy(serf_bucket_t *bucket)
+{
+    fcgi_serialize(bucket);
+
+    bucket->type->destroy(bucket);
+}
 
 
+extern const serf_bucket_type_t serf_bucket_type__fcgi_params_decode =
+{
+    "FCGI-PARAMS_DECODE",
+    fcgi_params_decode_read,
+    serf_default_readline,
+    serf_default_read_iovec,
+    serf_default_read_for_sendfile,
+    serf_buckets_are_v2,
+    fcgi_params_decode_peek,
+    fcgi_params_decode_destroy,
+    serf_default_read_bucket,
+    serf_default_get_remaining,
+    serf_default_ignore_config
+};
 /* ==================================================================== */
 
 serf_bucket_t *
@@ -327,3 +665,4 @@ extern const serf_bucket_type_t serf_bucket_type__fcgi_frame =
     serf_fcgi_frame_get_remaining,
     serf_fcgi_frame_set_config
 };
+
