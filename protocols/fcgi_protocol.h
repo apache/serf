@@ -189,6 +189,13 @@ serf_fcgi_stream_t * serf_fcgi__stream_get(serf_fcgi_protocol_t *fcgi,
                                            bool move_first);
 
 
+apr_status_t serf_fcgi__setup_incoming_request(
+    serf_incoming_request_t **in_request,
+    serf_incoming_request_setup_t *req_setup,
+    void **req_setup_baton,
+    serf_fcgi_protocol_t *fcgi);
+
+
 /* From fcgi_stream.c */
 serf_fcgi_stream_t * serf_fcgi__stream_create(serf_fcgi_protocol_t *fcgi,
                                               apr_uint16_t streamid,
@@ -200,10 +207,12 @@ apr_status_t serf_fcgi__stream_processor(void *baton,
 
 serf_bucket_t * serf_fcgi__stream_handle_params(serf_fcgi_stream_t *stream,
                                                 serf_bucket_t *body,
+                                                serf_config_t *config,
                                                 serf_bucket_alloc_t *alloc);
 
 serf_bucket_t * serf_fcgi__stream_handle_stdin(serf_fcgi_stream_t *stream,
                                                serf_bucket_t *body,
+                                               serf_config_t *config,
                                                serf_bucket_alloc_t *alloc);
 
 
