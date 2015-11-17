@@ -260,6 +260,7 @@ static apr_status_t fcgi_process(serf_fcgi_protocol_t *fcgi)
                     }
 
                     body = serf_fcgi__stream_handle_params(stream, body,
+                                                           fcgi->config,
                                                            fcgi->allocator);
 
                     if (body) {
@@ -280,6 +281,7 @@ static apr_status_t fcgi_process(serf_fcgi_protocol_t *fcgi)
                     }
 
                     body = serf_fcgi__stream_handle_stdin(stream, body,
+                                                          fcgi->config,
                                                           fcgi->allocator);
 
                     if (body) {
@@ -404,6 +406,22 @@ serf_fcgi__stream_get(serf_fcgi_protocol_t *fcgi,
         return stream;
     }
     return NULL;
+}
+
+apr_status_t serf_fcgi__setup_incoming_request(
+    serf_incoming_request_t **in_request,
+    serf_incoming_request_setup_t *req_setup,
+    void **req_setup_baton,
+    serf_fcgi_protocol_t *fcgi)
+{
+    if (!fcgi->client)
+        return SERF_ERROR_FCGI_PROTOCOL_ERROR;
+
+    *in_request = serf__incoming_request_create(fcgi->client);
+    *req_setup = fcgi->client->req_setup;
+    *req_setup_baton = fcgi->client->req_setup_baton;
+
+    return APR_SUCCESS;
 }
 
 

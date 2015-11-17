@@ -72,16 +72,81 @@ static apr_status_t stream_agg_eof(void *baton,
     return APR_EOF;
 }
 
+static apr_status_t
+fcgi_stream_enqueue_response(serf_incoming_request_t *request,
+                             void *enqueue_baton,
+                             serf_bucket_t *response_bkt)
+{
+    return APR_SUCCESS;
+}
+
+static apr_status_t
+stream_setup_request(serf_fcgi_stream_t *stream,
+                      serf_config_t *config)
+{
+    serf_bucket_t *agg;
+    apr_status_t status;
+
+    agg = serf_bucket_aggregate_create(stream->alloc);
+    serf_bucket_aggregate_hold_open(agg, stream_agg_eof, stream);
+
+    serf_bucket_set_config(agg, config);
+    stream->data->req_agg = agg;
+
+    if (stream->data->request) {
+        serf_request_t *request = stream->data->request;
+
+        if (!request->resp_bkt) {
+            apr_pool_t *scratch_pool = request->respool; /* ### Pass scratch pool */
+
+            request->resp_bkt = request->acceptor(request, agg,
+                                                  request->acceptor_baton,
+                                                  scratch_pool);
+        }
+    }
+    else {
+        serf_incoming_request_t *in_request = stream->data->in_request;
+
+        if (!in_request) {
+            serf_incoming_request_setup_t req_setup;
+            void *req_setup_baton;
+
+            status = serf_fcgi__setup_incoming_request(&in_request, &req_setup,
+                                                       &req_setup_baton,
+                                                       stream->fcgi);
+
+            if (status)
+                return status;
+
+            stream->data->in_request = in_request;
+
+            status = req_setup(&in_request->req_bkt, agg,
+                               in_request, req_setup_baton,
+                               &in_request->handler,
+                               &in_request->handler_baton,
+                               &in_request->response_setup,
+                               &in_request->response_setup_baton,
+                               in_request->pool);
+
+            if (status)
+                return status;
+
+            in_request->enqueue_response = fcgi_stream_enqueue_response;
+            in_request->enqueue_baton = stream;
+        }
+    }
+
+    return APR_SUCCESS;
+}
+
 serf_bucket_t * serf_fcgi__stream_handle_params(serf_fcgi_stream_t *stream,
                                                 serf_bucket_t *body,
+                                                serf_config_t *config,
                                                 serf_bucket_alloc_t *alloc)
 {
     apr_size_t remaining;
     if (!stream->data->req_agg) {
-        stream->data->req_agg = serf_bucket_aggregate_create(stream->alloc);
-
-        serf_bucket_aggregate_hold_open(stream->data->req_agg,
-                                        stream_agg_eof, stream);
+        stream_setup_request(stream, config);
     }
 
     remaining = (apr_size_t)serf_bucket_get_remaining(body);
@@ -101,15 +166,13 @@ serf_bucket_t * serf_fcgi__stream_handle_params(serf_fcgi_stream_t *stream,
 
 serf_bucket_t * serf_fcgi__stream_handle_stdin(serf_fcgi_stream_t *stream,
                                                serf_bucket_t *body,
+                                               serf_config_t *config,
                                                serf_bucket_alloc_t *alloc)
 {
     apr_size_t remaining;
     SERF_FCGI_assert(stream->data->headers_eof);
     if (!stream->data->req_agg) {
-        stream->data->req_agg = serf_bucket_aggregate_create(stream->alloc);
-
-        serf_bucket_aggregate_hold_open(stream->data->req_agg,
-                                        stream_agg_eof, stream);
+        stream_setup_request(stream, config);
     }
 
     remaining = (apr_size_t)serf_bucket_get_remaining(body);
