@@ -85,6 +85,9 @@ serf_http2__stream_cleanup(serf_http2_stream_t *stream)
         if (stream->data->response_agg)
             serf_bucket_destroy(stream->data->response_agg);
 
+        if (stream->data->data_tail)
+            serf_bucket_destroy(stream->data->data_tail);
+
         serf_bucket_mem_free(stream->alloc, stream->data);
         stream->data = NULL;
     }
@@ -377,6 +380,7 @@ serf_http2__stream_setup_next_request(serf_http2_stream_t *stream,
                                      request->allocator);
 
     stream->status = H2S_OPEN; /* Headers sent. Body to go */
+    request->writing = SERF_WRITING_STARTED;
     return stream_send_data(stream, body);
 }
 
