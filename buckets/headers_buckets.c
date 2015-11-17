@@ -407,12 +407,12 @@ static apr_status_t serf_headers_readline(serf_bucket_t *bucket,
         return APR_EOF;
     }
 
-    /* we consumed this chunk. advance the state. */
-    status = consume_chunk(ctx);
-
     /* the type of newline found is easy... */
     *found = (ctx->state == READ_CRLF || ctx->state == READ_TERM)
-        ? SERF_NEWLINE_CRLF : SERF_NEWLINE_NONE;
+                ? SERF_NEWLINE_CRLF : SERF_NEWLINE_NONE;
+
+    /* we consumed this chunk. advance the state. */
+    status = consume_chunk(ctx);
 
     return status;
 }
