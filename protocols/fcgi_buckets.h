@@ -83,6 +83,8 @@ serf_bucket_t *
 serf__bucket_fcgi_frame_create(serf_bucket_t *stream,
                                apr_uint16_t stream_id,
                                apr_uint16_t frame_type,
+                               bool send_as_stream,
+                               bool send_eof,
                                serf_bucket_alloc_t *alloc);
 
 #ifdef __cplusplus

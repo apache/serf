@@ -195,6 +195,10 @@ apr_status_t serf_fcgi__setup_incoming_request(
     void **req_setup_baton,
     serf_fcgi_protocol_t *fcgi);
 
+apr_status_t serf_fcgi__enqueue_frame(serf_fcgi_protocol_t *fcgi,
+                                      serf_bucket_t *frame,
+                                      bool pump);
+
 
 /* From fcgi_stream.c */
 serf_fcgi_stream_t * serf_fcgi__stream_create(serf_fcgi_protocol_t *fcgi,

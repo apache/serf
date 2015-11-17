@@ -141,9 +141,6 @@ static apr_status_t request_generate_response(serf_bucket_t **resp_bkt,
     tmp = SERF_BUCKET_SIMPLE_STRING("HTTP/1.1 200 OK" CRLF, alloc);
     serf_bucket_aggregate_append(agg, tmp);
 
-    tmp = SERF_BUCKET_SIMPLE_STRING("Transfer-Encoding: chunked" CRLF, alloc);
-    serf_bucket_aggregate_append(agg, tmp);
-
     tmp = SERF_BUCKET_SIMPLE_STRING("Content-Type: text/plain" CRLF, alloc);
     serf_bucket_aggregate_append(agg, tmp);
 
@@ -173,7 +170,7 @@ static apr_status_t request_generate_response(serf_bucket_t **resp_bkt,
     tmp = SERF_BUCKET_SIMPLE_STRING(CRLF, alloc);
     serf_bucket_aggregate_append(body, tmp);
 
-    tmp = serf_bucket_chunk_create(body, alloc);
+    tmp = body;
     serf_bucket_aggregate_append(agg, tmp);
 
     tmp = SERF_BUCKET_SIMPLE_STRING(CRLF, alloc);
