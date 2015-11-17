@@ -406,6 +406,8 @@ const char *serf_error_string(apr_status_t errcode)
         return "The HTTP response header too long";
     case SERF_ERROR_CONNECTION_TIMEDOUT:
         return "The connection timed out";
+    case SERF_ERROR_TRUNCATED_STREAM:
+        return "The stream returned less data than was expected";
     case SERF_ERROR_SSL_COMM_FAILED:
         return "An error occurred during SSL communication";
     case SERF_ERROR_SSL_SETUP_FAILED:
