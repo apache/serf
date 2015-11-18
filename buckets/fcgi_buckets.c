@@ -634,6 +634,7 @@ serf__bucket_fcgi_frame_create(serf_bucket_t *stream,
     ctx->send_eof = send_eof;
     ctx->at_eof = false;
     ctx->agg = NULL;
+    ctx->config = NULL;
 
     return serf_bucket_create(&serf_bucket_type__fcgi_frame, alloc, ctx);
 }
