@@ -151,7 +151,7 @@ static apr_status_t request_generate_response(serf_bucket_t **resp_bkt,
     serf_bucket_t *tmp;
 #define CRLF "\r\n"
 
-    tmp = SERF_BUCKET_SIMPLE_STRING("HTTP/1.1 200 OK" CRLF, alloc);
+    tmp = SERF_BUCKET_SIMPLE_STRING("HTTP/1.1 200 BOE" CRLF, alloc);
     serf_bucket_aggregate_append(agg, tmp);
 
     tmp = SERF_BUCKET_SIMPLE_STRING("Content-Type: text/plain" CRLF, alloc);
@@ -454,11 +454,18 @@ int main(int argc, const char **argv)
     if (verbose) {
         serf_log_output_t *output;
         apr_status_t status;
+        apr_uint32_t level;
+
+        level = SERF_LOG_WARNING;
+        if (verbose >= 3)
+            level = SERF_LOG_DEBUG;
+        else if (verbose >= 2)
+            level = SERF_LOG_INFO;
 
         status = serf_logging_create_stream_output(
             &output,
             context,
-            SERF_LOG_INFO,
+            level,
             SERF_LOGCOMP_ALL_MSG & ~(SERF_LOGCOMP_RAWMSG | SERF_LOGCOMP_SSLMSG),
             SERF_LOG_DEFAULT_LAYOUT,
             stderr,

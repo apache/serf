@@ -610,6 +610,8 @@ typedef struct fcgi_frame_ctx_t
     bool send_eof;
     bool at_eof;
 
+    serf_config_t *config;
+
     char record_data[FCGI_RECORD_SIZE];
 } fcgi_frame_ctx_t;
 
@@ -636,6 +638,14 @@ serf__bucket_fcgi_frame_create(serf_bucket_t *stream,
     return serf_bucket_create(&serf_bucket_type__fcgi_frame, alloc, ctx);
 }
 
+static apr_status_t destroy_bucket(void *baton,
+                                   apr_uint64_t bytes_read)
+{
+    serf_bucket_t *head = baton;
+    serf_bucket_destroy(head);
+    return APR_SUCCESS;
+}
+
 static apr_status_t serf_fcgi_frame_refill(serf_bucket_t *bucket)
 {
     fcgi_frame_ctx_t *ctx = bucket->data;
@@ -652,23 +662,28 @@ static apr_status_t serf_fcgi_frame_refill(serf_bucket_t *bucket)
     if (!ctx->stream)
     {
         payload = 0;
+        ctx->at_eof = true;
+
+        if (ctx->send_stream && !ctx->send_eof)
+            return APR_EOF;
     }
     else if (ctx->send_stream)
     {
         apr_uint64_t remaining;
+
         serf_bucket_split_create(&head, &ctx->stream, ctx->stream,
-                                 8192, 0xFFF0); /* Some guesses */
+                                 1, 0xFFFF);
 
         remaining = serf_bucket_get_remaining(head);
-        if (remaining != SERF_LENGTH_UNKNOWN) {
-            serf_bucket_aggregate_append(ctx->agg, head);
-            payload = (apr_size_t)remaining;
-        }
-        else if (remaining == 0)
+        if (remaining == 0)
         {
             payload = 0;
             serf_bucket_destroy(head);
             ctx->at_eof = true;
+        }
+        else if (remaining != SERF_LENGTH_UNKNOWN) {
+            serf_bucket_aggregate_append(ctx->agg, head);
+            payload = (apr_size_t)remaining;
         }
         else
         {
@@ -680,30 +695,25 @@ static apr_status_t serf_fcgi_frame_refill(serf_bucket_t *bucket)
 
             if (SERF_BUCKET_READ_ERROR(status))
                 return status;
+            else if (!APR_STATUS_IS_EOF(status)) {
+                /* No get_remaining()... then the split screen should stop
+                   directly when done reading this amount of vecs */
+                return SERF_ERROR_TRUNCATED_STREAM;
+            }
 
             if (vecs_used) {
-                serf_bucket_aggregate_append_iovec(ctx->agg, vecs, vecs_used);
+                serf_bucket_t *tmp;
+
+                tmp = serf_bucket_iovec_create(vecs, vecs_used, bucket->allocator);
                 payload = (apr_size_t)serf_bucket_get_remaining(ctx->agg);
 
-                if (APR_STATUS_IS_EOF(status)) {
-                    /* Keep head alive by appending it to the aggregate */
-                    serf_bucket_aggregate_append(ctx->agg, head);
-                }
-                else {
-                    /* Write a new record for the remaining part of head :( */
-                    serf_bucket_aggregate_append(ctx->agg,
-                                serf__bucket_fcgi_frame_create(head, ctx->stream_id,
-                                                            ctx->frame_type,
-                                                            true /* send_as_stream */,
-                                                            false /* send_eof */,
-                                                            bucket->allocator));
-                }
+                tmp = serf__bucket_event_create(tmp, head, NULL, NULL,
+                                                destroy_bucket, bucket->allocator);
+
+                serf_bucket_aggregate_append(ctx->agg, tmp);
             }
             else
                 payload = 0;
-
-            if (APR_STATUS_IS_EOF(status))
-                ctx->at_eof = true;
         }
 
         if (!payload && !ctx->send_eof)
@@ -711,8 +721,21 @@ static apr_status_t serf_fcgi_frame_refill(serf_bucket_t *bucket)
     }
     else
     {
-        abort(); /* ### TODO */
+        apr_uint64_t remaining = serf_bucket_get_remaining(ctx->stream);
+
+        if (remaining >= 0xFFFF)
+            abort(); /* Impossible (or unimplemented yet) */
+
+        payload = (apr_size_t)remaining;
+        ctx->at_eof = true;
+
+        serf_bucket_aggregate_append(ctx->agg, ctx->stream);
+        ctx->stream = NULL;
     }
+
+    serf__log(LOGLVL_DEBUG, LOGCOMP_CONN, __FILE__, ctx->config,
+              "Generating 0x%x frame on stream 0x%x of size 0x%x\n",
+              ctx->frame_type, ctx->stream_id, payload);
 
     /* Create FCGI record */
     ctx->record_data[0] = (ctx->frame_type >> 8);
@@ -745,6 +768,8 @@ static apr_status_t serf_fcgi_frame_read(serf_bucket_t *bucket,
 
         if (!APR_STATUS_IS_EOF(status))
             return status;
+        else if (*len)
+            return APR_SUCCESS;
     }
 
     status = serf_fcgi_frame_refill(bucket);
@@ -776,6 +801,8 @@ static apr_status_t serf_fcgi_frame_read_iovec(serf_bucket_t *bucket,
 
         if (!APR_STATUS_IS_EOF(status))
             return status;
+        else if (*vecs_used)
+            return APR_SUCCESS;
     }
 
     status = serf_fcgi_frame_refill(bucket);
@@ -805,6 +832,8 @@ static apr_status_t serf_fcgi_frame_peek(serf_bucket_t *bucket,
 
         if (!APR_STATUS_IS_EOF(status))
             return status;
+        else if (*len)
+            return APR_SUCCESS;
     }
 
     status = serf_fcgi_frame_refill(bucket);
@@ -842,6 +871,8 @@ static apr_status_t serf_fcgi_frame_set_config(serf_bucket_t *bucket,
                                                serf_config_t *config)
 {
     fcgi_frame_ctx_t *ctx = bucket->data;
+
+    ctx->config = config;
 
     if (!ctx->agg)
         ctx->agg = serf_bucket_aggregate_create(bucket->allocator);
