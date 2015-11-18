@@ -142,6 +142,9 @@ typedef struct serf_io_baton_t {
     serf_context_t *ctx;
     bool dirty_conn;
 
+    /* the last reqevents we gave to pollset_add */
+    apr_int16_t reqevents;
+
 } serf_io_baton_t;
 
 /* Should we use static APR_INLINE instead? */
@@ -387,8 +390,6 @@ struct serf_incoming_t {
 
     apr_pollfd_t desc;
 
-    /* the last reqevents we gave to pollset_add */
-    apr_int16_t reqevents;
     apr_int16_t seen_in_pollset;
 
     struct iovec vec[IOV_MAX];
@@ -452,9 +453,6 @@ struct serf_connection_t {
 
     apr_socket_t *skt;
     apr_pool_t *skt_pool;
-
-    /* the last reqevents we gave to pollset_add */
-    apr_int16_t reqevents;
 
     /* the events we've seen for this connection in our returned pollset */
     apr_int16_t seen_in_pollset;

@@ -158,7 +158,7 @@ apr_status_t serf__conn_update_pollset(serf_connection_t *conn)
     /* Remove the socket from the poll set. */
     desc.desc_type = APR_POLL_SOCKET;
     desc.desc.s = conn->skt;
-    desc.reqevents = conn->reqevents;
+    desc.reqevents = conn->io.reqevents;
 
     status = ctx->pollset_rm(ctx->pollset_baton,
                              &desc, &conn->io);
@@ -253,7 +253,7 @@ apr_status_t serf__conn_update_pollset(serf_connection_t *conn)
     }
 
     /* save our reqevents, so we can pass it in to remove later. */
-    conn->reqevents = desc.reqevents;
+    conn->io.reqevents = desc.reqevents;
 
     /* Note: even if we don't want to read/write this socket, we still
      * want to poll it for hangups and errors.
@@ -639,7 +639,7 @@ static apr_status_t remove_connection(serf_context_t *ctx,
 
     desc.desc_type = APR_POLL_SOCKET;
     desc.desc.s = conn->skt;
-    desc.reqevents = conn->reqevents;
+    desc.reqevents = conn->io.reqevents;
 
     return ctx->pollset_rm(ctx->pollset_baton,
                            &desc, &conn->io);
@@ -1504,7 +1504,7 @@ apr_status_t serf__process_connection(serf_connection_t *conn,
     if (conn->status) {
         tdesc.desc_type = APR_POLL_SOCKET;
         tdesc.desc.s = conn->skt;
-        tdesc.reqevents = conn->reqevents;
+        tdesc.reqevents = conn->io.reqevents;
         ctx->pollset_rm(ctx->pollset_baton,
                         &tdesc, &conn->io);
         return conn->status;
@@ -1524,7 +1524,7 @@ apr_status_t serf__process_connection(serf_connection_t *conn,
         if (conn->skt) {
             tdesc.desc_type = APR_POLL_SOCKET;
             tdesc.desc.s = conn->skt;
-            tdesc.reqevents = conn->reqevents;
+            tdesc.reqevents = conn->io.reqevents;
             ctx->pollset_rm(ctx->pollset_baton,
                             &tdesc, &conn->io);
         }
@@ -1561,6 +1561,7 @@ serf_connection_t *serf_connection_create(
     conn->io.u.conn = conn;
     conn->io.ctx = ctx;
     conn->io.dirty_conn = false;
+    conn->io.reqevents = 0;
     conn->hit_eof = 0;
     conn->state = SERF_CONN_INIT;
     conn->latency = -1; /* unknown */

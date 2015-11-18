@@ -123,7 +123,6 @@ struct serf_http2_protocol_t
 
     serf_io_baton_t *io; /* Low level connection */
 
-    apr_int16_t *req_events;
     serf_bucket_t *stream, *ostream;
     serf_bucket_alloc_t *allocator;
 
@@ -240,7 +239,6 @@ void serf__http2_protocol_init(serf_connection_t *conn)
     h2->pool = protocol_pool;
     h2->conn = conn;
     h2->io = &conn->io;
-    h2->req_events = &conn->reqevents;
     h2->stream = conn->stream;
     h2->ostream = conn->ostream_tail;
     h2->allocator = conn->allocator;
@@ -333,7 +331,6 @@ void serf__http2_protocol_init_server(serf_incoming_t *client)
     h2->pool = protocol_pool;
     h2->client = client;
     h2->io = &client->io;
-    h2->req_events = &client->reqevents;
     h2->stream = client->stream;
     h2->ostream = client->ostream_tail;
     h2->allocator = client->allocator;
@@ -475,8 +472,8 @@ serf_http2__enqueue_frame(serf_http2_protocol_t *h2,
 
     want_write = APR_STATUS_IS_EAGAIN(status);
 
-    if ((want_write && !(*h2->req_events & APR_POLLOUT))
-        || (!want_write && (*h2->req_events & APR_POLLOUT)))
+    if ((want_write && !(h2->io->reqevents & APR_POLLOUT))
+        || (!want_write && (h2->io->reqevents & APR_POLLOUT)))
     {
         serf_io__set_pollset_dirty(h2->io);
     }

@@ -45,8 +45,6 @@ typedef struct serf_fcgi_protocol_t
     serf_bucket_alloc_t *allocator;
     serf_config_t *config;
 
-    apr_int16_t *req_events;
-
     serf_bucket_t *stream;
     serf_bucket_t *ostream;
 
@@ -388,8 +386,8 @@ apr_status_t serf_fcgi__enqueue_frame(serf_fcgi_protocol_t *fcgi,
 
     want_write = APR_STATUS_IS_EAGAIN(status);
 
-    if ((want_write && !(*fcgi->req_events & APR_POLLOUT))
-        || (!want_write && (*fcgi->req_events & APR_POLLOUT)))
+    if ((want_write && !(fcgi->io->reqevents & APR_POLLOUT))
+        || (!want_write && (fcgi->io->reqevents & APR_POLLOUT)))
     {
         serf_io__set_pollset_dirty(fcgi->io);
     }
@@ -539,7 +537,6 @@ void serf__fcgi_protocol_init(serf_connection_t *conn)
     fcgi->pool = protocol_pool;
     fcgi->conn = conn;
     fcgi->io = &conn->io;
-    fcgi->req_events = &conn->reqevents;
     fcgi->stream = conn->stream;
     fcgi->ostream = conn->ostream_tail;
     fcgi->allocator = conn->allocator;
@@ -609,7 +606,6 @@ void serf__fcgi_protocol_init_server(serf_incoming_t *client)
     fcgi->pool = protocol_pool;
     fcgi->client = client;
     fcgi->io = &client->io;
-    fcgi->req_events = &client->reqevents;
     fcgi->stream = client->stream;
     fcgi->ostream = client->ostream_tail;
     fcgi->allocator = client->allocator;
