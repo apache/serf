@@ -199,6 +199,17 @@ static apr_uint64_t serf_event_get_remaining(serf_bucket_t *bucket)
     }
 }
 
+apr_status_t serf_event_set_config(serf_bucket_t *bucket,
+                                   serf_config_t *config)
+{
+    event_context_t *ctx = bucket->data;
+
+    if (ctx->stream)
+        return serf_bucket_set_config(ctx->stream, config);
+
+    return APR_SUCCESS;
+}
+
 static void serf_event_destroy(serf_bucket_t *bucket)
 {
     event_context_t *ctx = bucket->data;
@@ -223,5 +234,5 @@ const serf_bucket_type_t serf_bucket_type__event = {
     serf_event_destroy,
     serf_default_read_bucket,
     serf_event_get_remaining,
-    serf_default_ignore_config,
+    serf_event_set_config
 };
