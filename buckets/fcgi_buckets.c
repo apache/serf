@@ -144,7 +144,10 @@ apr_status_t serf__bucket_fcgi_unframe_read_info(serf_bucket_t *bucket,
         {
             /* Reading frame failed because we couldn't read the header. Report
                a read failure instead of semi-success */
-            status = SERF_ERROR_TRUNCATED_STREAM;
+            if (ctx->record_remaining == FCGI_RECORD_SIZE)
+                status = SERF_ERROR_EMPTY_STREAM;
+            else
+                status = SERF_ERROR_TRUNCATED_STREAM;
         }
         else if (!status)
             status = APR_EAGAIN;

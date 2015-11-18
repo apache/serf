@@ -109,6 +109,8 @@ typedef struct serf_config_t serf_config_t;
 #define SERF_ERROR_CONNECTION_TIMEDOUT (SERF_ERROR_START + 12)
 /* The stream returned less data than was expected */
 #define SERF_ERROR_TRUNCATED_STREAM (SERF_ERROR_START + 13)
+/* The stream is empty */
+#define SERF_ERROR_EMPTY_STREAM (SERF_ERROR_START + 14)
 
 /* Http-2 stream errors, mapped into our error range */
 #define SERF_ERROR_HTTP2_NO_ERROR (SERF_ERROR_START + 50)
