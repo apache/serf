@@ -31,8 +31,11 @@
 #include "protocols/fcgi_buckets.h"
 #include "protocols/fcgi_protocol.h"
 
+/* Fully opaque variant of serf_fcgi_stream_t */
 struct serf_fcgi_stream_data_t
 {
+    serf_fcgi_stream_t stream_data;
+
     serf_bucket_t *req_agg;
     bool headers_eof;
     bool stdin_eof;
@@ -45,8 +48,12 @@ serf_fcgi_stream_t * serf_fcgi__stream_create(serf_fcgi_protocol_t *fcgi,
                                               apr_uint16_t streamid,
                                               serf_bucket_alloc_t *alloc)
 {
-    serf_fcgi_stream_t *stream = serf_bucket_mem_alloc(alloc,
-                                                        sizeof(*stream));
+    serf_fcgi_stream_t *stream;
+    serf_fcgi_stream_data_t *data = serf_bucket_mem_calloc(alloc,
+                                                           sizeof(*data));
+
+    stream = &data->stream_data;
+    stream->data = data;
 
     stream->fcgi = fcgi;
     stream->alloc = alloc;
@@ -54,10 +61,17 @@ serf_fcgi_stream_t * serf_fcgi__stream_create(serf_fcgi_protocol_t *fcgi,
 
     stream->next = stream->prev = NULL;
 
-    /* Delay creating this? */
-    stream->data = serf_bucket_mem_calloc(alloc, sizeof(*stream->data));
-
     return stream;
+}
+
+void serf_fcgi__stream_destroy(serf_fcgi_stream_t * stream)
+{
+    if (stream->data->in_request)
+        serf__incoming_request_destroy(stream->data->in_request);
+
+
+    /* Destroy stream and stream->data */
+    serf_bucket_mem_free(stream->alloc, stream);
 }
 
 /* Aggregate hold open callback for what requests will think is the
@@ -71,6 +85,16 @@ static apr_status_t stream_agg_eof(void *baton,
         return APR_EAGAIN;
 
     return APR_EOF;
+}
+
+static apr_status_t close_stream(void *baton,
+                                 apr_uint64_t bytes_read)
+{
+    serf_fcgi_stream_t *stream = baton;
+
+    serf_fcgi__close_stream(stream->fcgi, stream);
+
+    return APR_SUCCESS;
 }
 
 static apr_status_t
@@ -136,12 +160,15 @@ fcgi_stream_enqueue_response(serf_incoming_request_t *request,
 
     /* Send end of request: FCGI_REQUEST_COMPLETE, exit code 0 */
     tmp = SERF_BUCKET_SIMPLE_STRING_LEN("\0\0\0\0\0\0\0\0", 8, alloc);
-    status = serf_fcgi__enqueue_frame(
-        stream->fcgi,
-        serf__bucket_fcgi_frame_create(tmp, stream->streamid,
-                                       FCGI_FRAMETYPE(FCGI_V1, FCGI_END_REQUEST),
-                                       false, false,
-                                       alloc), true);
+    tmp = serf__bucket_fcgi_frame_create(tmp, stream->streamid,
+                                         FCGI_FRAMETYPE(FCGI_V1, FCGI_END_REQUEST),
+                                         false, false,
+                                         alloc);
+
+    tmp = serf__bucket_event_create(tmp, stream, NULL, NULL,
+                                    close_stream, alloc);
+
+    status = serf_fcgi__enqueue_frame(stream->fcgi, tmp, true);
     return status;
 }
 

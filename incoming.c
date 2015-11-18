@@ -113,14 +113,12 @@ static apr_status_t client_connected(serf_incoming_t *client)
 }
 
 /* Destroy an incoming request and its resources */
-static apr_status_t destroy_request(serf_incoming_request_t *request)
+void serf__incoming_request_destroy(serf_incoming_request_t *request)
 {
     serf_incoming_t *incoming = request->incoming;
     apr_pool_destroy(request->pool);
 
     serf_bucket_mem_free(incoming->allocator, request);
-
-    return APR_SUCCESS;
 }
 
 /* Called when the response is completely written and the write bucket
@@ -129,14 +127,13 @@ static apr_status_t response_finished(void *baton,
                                       apr_uint64_t bytes_written)
 {
     serf_incoming_request_t *request = baton;
-    apr_status_t status = APR_SUCCESS;
 
     request->response_finished = true;
 
     if (request->request_read && request->response_finished) {
-        status = destroy_request(request);
+        serf__incoming_request_destroy(request);
     }
-    return status;
+    return APR_SUCCESS;
 }
 
 static apr_status_t http1_enqueue_reponse(serf_incoming_request_t *request,
@@ -351,7 +348,7 @@ static apr_status_t read_from_client(serf_incoming_t *client)
             client->current_request = NULL;
 
             if (rq->request_read && rq->response_finished) {
-                status = destroy_request(rq);
+                serf__incoming_request_destroy(rq);
             }
 
             /* Is the connection at eof or just the request? */
@@ -369,7 +366,6 @@ static apr_status_t read_from_client(serf_incoming_t *client)
 
     {
         apr_pollfd_t tdesc = { 0 };
-        int i;
 
         /* Remove us from the pollset */
         tdesc.desc_type = APR_POLL_SOCKET;
@@ -378,17 +374,14 @@ static apr_status_t read_from_client(serf_incoming_t *client)
         client->ctx->pollset_rm(client->ctx->pollset_baton,
                                 &tdesc, &client->baton);
 
-        /* And from the incommings list */
-        for (i = 0; i < client->ctx->incomings->nelts; i++) {
-            if (GET_INCOMING(client->ctx, i) == client) {
-                GET_INCOMING(client->ctx, i)
-                    = GET_INCOMING(client->ctx,
-                                   client->ctx->incomings->nelts - 1);
-                break;
-            }
-        }
-        client->ctx->incomings->nelts--;
         client->seen_in_pollset |= APR_POLLHUP; /* No more events */
+
+        /* Note that the client is done. The pool containing skt
+           and this listener will now be cleared from the context
+           handlers dirty pollset support */
+        client->skt = NULL;
+        client->dirty_conn = true;
+        client->ctx->dirty_pollset = true;
     }
 
     status = client->closed(client, client->closed_baton, status,
@@ -760,7 +753,6 @@ apr_status_t serf_incoming_create2(
     ic->stream = NULL;
     ic->ostream_head = NULL;
     ic->ostream_tail = NULL;
-    ic->ssltunnel_ostream = NULL;
 
     ic->protocol_baton = NULL;
     ic->perform_read = read_from_client;
@@ -872,24 +864,52 @@ apr_status_t serf_listener_create(
     return APR_SUCCESS;
 }
 
-apr_status_t serf__incoming_update_pollset(serf_incoming_t *incoming)
+apr_status_t serf__incoming_update_pollset(serf_incoming_t *client)
 {
-    serf_context_t *ctx = incoming->ctx;
+    serf_context_t *ctx = client->ctx;
     apr_status_t status;
     apr_pollfd_t desc = { 0 };
     bool data_waiting;
 
-    if (!incoming->skt) {
+    if (!client->skt) {
+        int cid;
+        /* We are in the proces of being cleaned up. As we are not
+           in the event loop and already notified the close callback
+           we can now clear our pool and remove us from the context */
+
+        if (client->config)
+            serf__config_store_remove_client(ctx->config_store, client);
+
+        /* And from the incommings list */
+        for (cid = 0; cid < ctx->incomings->nelts; cid++) {
+            if (GET_INCOMING(ctx, cid) == client) {
+                GET_INCOMING(ctx, cid) =
+                                GET_INCOMING(ctx,
+                                             ctx->incomings->nelts - 1);
+                break;
+            }
+        }
+        client->ctx->incomings->nelts--;
+
+        apr_pool_destroy(client->pool);
+
+        if (cid >= ctx->incomings->nelts) {
+            /* We skipped updating the pollset on this item as we moved it.
+               Let's run it now */
+
+            return serf__incoming_update_pollset(GET_INCOMING(ctx, cid));
+        }
+
         return APR_SUCCESS;
     }
 
     /* Remove the socket from the poll set. */
     desc.desc_type = APR_POLL_SOCKET;
-    desc.desc.s = incoming->skt;
-    desc.reqevents = incoming->reqevents;
+    desc.desc.s = client->skt;
+    desc.reqevents = client->reqevents;
 
     status = ctx->pollset_rm(ctx->pollset_baton,
-                             &desc, &incoming->baton);
+                             &desc, &client->baton);
     if (status && !APR_STATUS_IS_NOTFOUND(status))
         return status;
 
@@ -897,7 +917,7 @@ apr_status_t serf__incoming_update_pollset(serf_incoming_t *incoming)
     desc.reqevents = APR_POLLIN | APR_POLLHUP | APR_POLLERR;
 
     /* If we are not connected yet, we just want to know when we are */
-    if (incoming->wait_for_connect) {
+    if (client->wait_for_connect) {
         data_waiting = true;
         desc.reqevents |= APR_POLLOUT;
     }
@@ -909,7 +929,7 @@ apr_status_t serf__incoming_update_pollset(serf_incoming_t *incoming)
            But it also has the nice side effect of removing references
            from the aggregate to requests that are done.
          */
-        if (incoming->vec_len) {
+        if (client->vec_len) {
             /* We still have vecs in the connection, which lifetime is
                managed by buckets inside client->ostream_head.
 
@@ -920,10 +940,7 @@ apr_status_t serf__incoming_update_pollset(serf_incoming_t *incoming)
         else {
             serf_bucket_t *ostream;
 
-            ostream = incoming->ostream_head;
-
-            if (!ostream)
-              ostream = incoming->ssltunnel_ostream;
+            ostream = client->ostream_head;
 
             if (ostream) {
                 const char *dummy_data;
@@ -951,11 +968,11 @@ apr_status_t serf__incoming_update_pollset(serf_incoming_t *incoming)
     }
 
     /* save our reqevents, so we can pass it in to remove later. */
-    incoming->reqevents = desc.reqevents;
+    client->reqevents = desc.reqevents;
 
     /* Note: even if we don't want to read/write this socket, we still
      * want to poll it for hangups and errors.
      */
     return ctx->pollset_add(ctx->pollset_baton,
-                            &desc, &incoming->baton);
+                            &desc, &client->baton);
 }

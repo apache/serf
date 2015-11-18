@@ -225,14 +225,22 @@ apr_status_t
 serf__config_store_remove_connection(serf__config_store_t config_store,
                                      serf_connection_t *conn)
 {
-    return APR_ENOTIMPL;
+    return APR_ENOTIMPL; /* Mem leak? */
 }
+
+apr_status_t
+serf__config_store_remove_client(serf__config_store_t config_store,
+                                 serf_incoming_t *client)
+{
+    return APR_ENOTIMPL; /* Mem leak? */
+}
+
 
 apr_status_t
 serf__config_store_remove_host(serf__config_store_t config_store,
                                const char *hostname_port)
 {
-    return APR_ENOTIMPL;
+    return APR_ENOTIMPL; /* Mem leak? */
 }
 
 /*** Config ***/
