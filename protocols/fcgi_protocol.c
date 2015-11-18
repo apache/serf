@@ -500,7 +500,7 @@ static apr_status_t fcgi_outgoing_read(serf_connection_t *conn)
     serf_fcgi_protocol_t *fcgi = conn->protocol_baton;
 
     if (!fcgi->stream)
-        fcgi->stream = conn->stream;
+        fcgi->stream = conn->pump.stream;
 
     return fcgi_read(fcgi);
 }
@@ -537,8 +537,8 @@ void serf__fcgi_protocol_init(serf_connection_t *conn)
     fcgi->pool = protocol_pool;
     fcgi->conn = conn;
     fcgi->io = &conn->io;
-    fcgi->stream = conn->stream;
-    fcgi->ostream = conn->ostream_tail;
+    fcgi->stream = conn->pump.stream;
+    fcgi->ostream = conn->pump.ostream_tail;
     fcgi->allocator = conn->allocator;
     fcgi->config = conn->config;
 

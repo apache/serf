@@ -239,8 +239,8 @@ void serf__http2_protocol_init(serf_connection_t *conn)
     h2->pool = protocol_pool;
     h2->conn = conn;
     h2->io = &conn->io;
-    h2->stream = conn->stream;
-    h2->ostream = conn->ostream_tail;
+    h2->stream = conn->pump.stream;
+    h2->ostream = conn->pump.ostream_tail;
     h2->allocator = conn->allocator;
     h2->config = conn->config;
 
@@ -1644,14 +1644,14 @@ http2_outgoing_read(serf_connection_t *conn)
 
     /* If the stop_writing flag was set on the connection, reset it now because
        there is some data to read. */
-    if (conn->stop_writing)
+    if (conn->pump.stop_writing)
     {
-        conn->stop_writing = 0;
+        conn->pump.stop_writing = false;
         serf_io__set_pollset_dirty(&conn->io);
     }
 
     if (h2->stream == NULL)
-        h2->stream = conn->stream;
+        h2->stream = conn->pump.stream;
 
     status = http2_process(h2);
 

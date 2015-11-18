@@ -58,9 +58,35 @@ void serf_pump__init(serf_pump_t *pump,
     pump->allocator = allocator;
     pump->config = config;
     pump->skt = skt;
+    pump->pool = pool;
 
     apr_pool_cleanup_register(pool, pump, pump_cleanup,
                               apr_pool_cleanup_null);
+}
+
+void serf_pump__done(serf_pump_t *pump)
+{
+    if (pump->pool) {
+        apr_pool_cleanup_run(pump->pool, pump, pump_cleanup);
+    }
+
+    pump->io = NULL;
+    pump->allocator = NULL;
+    pump->config = NULL;
+
+    /* pump->stream is managed by the current reader! */
+
+    pump->ostream_head = NULL;
+    pump->ostream_tail = NULL;
+
+    pump->skt = NULL;
+    pump->vec_len = 0;
+
+    pump->done_writing = false;
+    pump->stop_writing = false;
+    pump->hit_eof = false;
+
+    pump->pool = NULL;
 }
 
 /* Safely check if there is still data pending on the connection, carefull
@@ -118,8 +144,10 @@ void serf_pump__prepare_setup(serf_pump_t *pump)
 }
 
 void serf_pump__complete_setup(serf_pump_t *pump,
+                               serf_bucket_t *stream,
                                serf_bucket_t *ostream)
 {
+    pump->stream = stream;
     if (ostream)
         serf_bucket_aggregate_append(pump->ostream_head, ostream);
     else
