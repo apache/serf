@@ -274,16 +274,15 @@ apr_status_t serf_pump__write(serf_pump_t *pump,
 {
     apr_status_t status = APR_SUCCESS;
     apr_status_t read_status = APR_SUCCESS;
-    serf_pump_t *const conn = pump;
 
-    conn->hit_eof = FALSE;
+    pump->hit_eof = FALSE;
 
     while (status == APR_SUCCESS) {
 
         /* First try to write out what is already stored in the
            connection vecs. */
-        while (conn->vec_len && !status) {
-            status = socket_writev(conn);
+        while (pump->vec_len && !status) {
+            status = socket_writev(pump);
 
             /* If the write would have blocked, then we're done.
              * Don't try to write anything else to the socket.
@@ -291,12 +290,12 @@ apr_status_t serf_pump__write(serf_pump_t *pump,
             if (APR_STATUS_IS_EPIPE(status)
                 || APR_STATUS_IS_ECONNRESET(status)
                 || APR_STATUS_IS_ECONNABORTED(status))
-              return no_more_writes(conn);
+              return no_more_writes(pump);
         }
 
-        if (status || !pump)
+        if (status || !fetch_new)
             return status;
-        else if (read_status || conn->vec_len || conn->hit_eof)
+        else if (read_status || pump->vec_len || pump->hit_eof)
             return read_status;
 
         /* ### optimize at some point by using read_for_sendfile */
@@ -304,12 +303,12 @@ apr_status_t serf_pump__write(serf_pump_t *pump,
            data as available, we probably don't want to read ALL_AVAIL, but
            a lower number, like the size of one or a few TCP packets, the
            available TCP buffer size ... */
-        conn->hit_eof = 0;
+        pump->hit_eof = false;
         read_status = serf_bucket_read_iovec(pump->ostream_head,
                                              SERF_READ_ALL_AVAIL,
                                              IOV_MAX,
-                                             conn->vec,
-                                             &conn->vec_len);
+                                             pump->vec,
+                                             &pump->vec_len);
 
         if (read_status == SERF_ERROR_WAIT_CONN) {
             /* The bucket told us that it can't provide more data until
@@ -321,15 +320,15 @@ apr_status_t serf_pump__write(serf_pump_t *pump,
             we can actually write something. otherwise, we could
             end up in a CPU spin: socket wants something, but we
             don't have anything (and keep returning EAGAIN) */
-            conn->stop_writing = true;
-            serf_io__set_pollset_dirty(conn->io);
+            pump->stop_writing = true;
+            serf_io__set_pollset_dirty(pump->io);
 
             read_status = APR_EAGAIN;
         }
         else if (APR_STATUS_IS_EAGAIN(read_status)) {
 
             /* We read some stuff, but did we read everything ? */
-            if (conn->hit_eof)
+            if (pump->hit_eof)
                 read_status = APR_SUCCESS;
         }
         else if (SERF_BUCKET_READ_ERROR(read_status)) {
@@ -341,4 +340,3 @@ apr_status_t serf_pump__write(serf_pump_t *pump,
 
     return status;
 }
-

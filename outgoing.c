@@ -485,23 +485,6 @@ apr_status_t serf__open_connections(serf_context_t *ctx)
     return APR_SUCCESS;
 }
 
-static apr_status_t no_more_writes(serf_connection_t *conn)
-{
-    /* Note that we should hold new requests until we open our new socket. */
-    conn->state = SERF_CONN_CLOSING;
-    serf__log(LOGLVL_DEBUG, LOGCOMP_CONN, __FILE__, conn->config,
-              "stop writing on conn 0x%x\n", conn);
-
-    /* Clear our iovec. */
-    conn->pump.vec_len = 0;
-
-    /* Update the pollset to know we don't want to write on this socket any
-     * more.
-     */
-    serf_io__set_pollset_dirty(&conn->io);
-    return APR_SUCCESS;
-}
-
 /* Read the 'Connection' header from the response. Return SERF_ERROR_CLOSING if
  * the header contains value 'close' indicating the server is closing the
  * connection right after this response.
@@ -650,136 +633,32 @@ static apr_status_t reset_connection(serf_connection_t *conn,
     return APR_SUCCESS;
 }
 
-static apr_status_t socket_writev(serf_pump_t *conn)
-{
-    apr_size_t written;
-    apr_status_t status;
-
-    status = apr_socket_sendv(conn->skt, conn->vec,
-                              conn->vec_len, &written);
-    if (status && !APR_STATUS_IS_EAGAIN(status))
-        serf__log(LOGLVL_DEBUG, LOGCOMP_CONN, __FILE__, conn->config,
-                  "socket_sendv error %d\n", status);
-
-    /* did we write everything? */
-    if (written) {
-        apr_size_t len = 0;
-        int i;
-
-        serf__log(LOGLVL_DEBUG, LOGCOMP_CONN, __FILE__, conn->config,
-                  "--- socket_sendv: %d bytes. --\n", written);
-
-        for (i = 0; i < conn->vec_len; i++) {
-            len += conn->vec[i].iov_len;
-            if (written < len) {
-                serf__log_nopref(LOGLVL_DEBUG, LOGCOMP_RAWMSG, conn->config,
-                                 "%.*s", conn->vec[i].iov_len - (len - written),
-                                 conn->vec[i].iov_base);
-                if (i) {
-                    memmove(conn->vec, &conn->vec[i],
-                            sizeof(struct iovec) * (conn->vec_len - i));
-                    conn->vec_len -= i;
-                }
-                conn->vec[0].iov_base = (char *)conn->vec[0].iov_base + (conn->vec[0].iov_len - (len - written));
-                conn->vec[0].iov_len = len - written;
-                break;
-            } else {
-                serf__log_nopref(LOGLVL_DEBUG, LOGCOMP_RAWMSG, conn->config,
-                                 "%.*s",
-                                 conn->vec[i].iov_len, conn->vec[i].iov_base);
-            }
-        }
-        if (len == written) {
-            conn->vec_len = 0;
-        }
-        serf__log_nopref(LOGLVL_DEBUG, LOGCOMP_RAWMSG, conn->config, "\n");
-
-        /* Log progress information */
-        serf__context_progress_delta(conn->io->ctx, 0, written);
-    }
-
-    return status;
-}
 
 apr_status_t serf__connection_flush(serf_connection_t *conn,
-                                    int pump)
+                                    bool fetch_new)
 {
-    apr_status_t status = APR_SUCCESS;
-    apr_status_t read_status = APR_SUCCESS;
-    serf_bucket_t *ostreamh = NULL;
+    apr_status_t status;
+    serf_bucket_t *tmp_bkt = NULL;
 
-    conn->pump.hit_eof = FALSE;
+    if (fetch_new) {
+        serf_bucket_t *ostreamh, *ostreamt;
 
-    while (status == APR_SUCCESS) {
-
-        /* First try to write out what is already stored in the
-           connection vecs. */
-        while (conn->pump.vec_len && !status) {
-            status = socket_writev(&conn->pump);
-
-            /* If the write would have blocked, then we're done.
-             * Don't try to write anything else to the socket.
-             */
-            if (APR_STATUS_IS_EPIPE(status)
-                || APR_STATUS_IS_ECONNRESET(status)
-                || APR_STATUS_IS_ECONNABORTED(status))
-              return no_more_writes(conn);
-        }
-
-        if (status || !pump)
+        status = prepare_conn_streams(conn, &ostreamt, &ostreamh);
+        if (status)
             return status;
-        else if (read_status || conn->pump.vec_len || conn->pump.hit_eof)
-            return read_status;
 
-        /* Ok, with the vecs written, we can now refill the per connection
-           output vecs */
-        if (!ostreamh) {
-            serf_bucket_t *ostreamt;
-
-            status = prepare_conn_streams(conn, &ostreamt, &ostreamh);
-            if (status)
-                return status;
-        }
-
-        /* ### optimize at some point by using read_for_sendfile */
-        /* TODO: now that read_iovec will effectively try to return as much
-           data as available, we probably don't want to read ALL_AVAIL, but
-           a lower number, like the size of one or a few TCP packets, the
-           available TCP buffer size ... */
-        conn->pump.hit_eof = 0;
-        read_status = serf_bucket_read_iovec(ostreamh,
-                                             SERF_READ_ALL_AVAIL,
-                                             IOV_MAX,
-                                             conn->pump.vec,
-                                             &conn->pump.vec_len);
-
-        if (read_status == SERF_ERROR_WAIT_CONN) {
-            /* The bucket told us that it can't provide more data until
-            more data is read from the socket. This normally happens
-            during a SSL handshake.
-
-            We should avoid looking for writability for a while so
-            that (hopefully) something will appear in the bucket so
-            we can actually write something. otherwise, we could
-            end up in a CPU spin: socket wants something, but we
-            don't have anything (and keep returning EAGAIN) */
-            conn->pump.stop_writing = 1;
-            serf_io__set_pollset_dirty(&conn->io);
-
-            read_status = APR_EAGAIN;
-        }
-        else if (APR_STATUS_IS_EAGAIN(read_status)) {
-
-            /* We read some stuff, but did we read everything ? */
-            if (conn->pump.hit_eof)
-                read_status = APR_SUCCESS;
-        }
-        else if (SERF_BUCKET_READ_ERROR(read_status)) {
-
-            /* Something bad happened. Propagate any errors. */
-            return read_status;
-        }
+        tmp_bkt = conn->pump.ostream_head;
+        conn->pump.ostream_head = ostreamh;
     }
+
+    status = serf_pump__write(&conn->pump, fetch_new);
+
+    if (fetch_new) {
+        conn->pump.ostream_head = tmp_bkt;
+    }
+
+    if (conn->pump.done_writing)
+        conn->state = SERF_CONN_CLOSING;
 
     return status;
 }
