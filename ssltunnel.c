@@ -105,14 +105,26 @@ static apr_status_t handle_response(serf_request_t *request,
         serf_bucket_t *hdrs;
         const char *val;
 
-        conn->state = SERF_CONN_CONNECTED;
+
 
         /* Body is supposed to be empty. */
         apr_pool_destroy(ctx->pool);
-        serf_bucket_destroy(conn->ssltunnel_ostream);
-        conn->ssltunnel_ostream = NULL;
+
+        /* If there was outgoing data waiting, we can't use it
+           any more. It's lifetime is limited by ostream_head
+           ... (There shouldn't be any, as we disabled pipelining) */
+        conn->pump.vec_len = 0; 
+
+        conn->state = SERF_CONN_CONNECTED;
+
+        /* Destroy the unencrypted head */
+        serf_bucket_destroy(conn->pump.ostream_head);
+        conn->pump.ostream_head = NULL;
+        /* And the unencrypted stream */
         serf_bucket_destroy(conn->pump.stream);
         conn->pump.stream = NULL;
+
+        /* New ones will be created in the normal setup code */
         ctx = NULL;
 
         serf__log(LOGLVL_INFO, LOGCOMP_CONN, __FILE__, conn->config,
@@ -170,11 +182,18 @@ static apr_status_t setup_request(serf_request_t *request,
     return APR_SUCCESS;
 }
 
-static apr_status_t detect_eof(void *baton, serf_bucket_t *aggregate_bucket)
+apr_status_t ssltunnel_ostream_destroyed(void *baton,
+                                         apr_uint64_t bytes_read)
 {
     serf_connection_t *conn = baton;
-    conn->pump.hit_eof = true;
-    return APR_EAGAIN;
+
+    if (conn->state == SERF_CONN_SETUP_SSLTUNNEL) {
+        /* Connection is destroyed while not connected.
+           Destroy tail to avoid leaking memory */
+        serf_bucket_destroy(conn->pump.ostream_tail);
+        conn->pump.ostream_tail = NULL;
+    }
+    return APR_SUCCESS;
 }
 
 /* SSL tunnel is needed, push a CONNECT request on the connection. */
@@ -182,7 +201,7 @@ apr_status_t serf__ssltunnel_connect(serf_connection_t *conn)
 {
     req_ctx_t *ctx;
     apr_pool_t *ssltunnel_pool;
-    serf_bucket_t *ssltunnel_ostream;
+    serf_bucket_t *stream, *ostream;
 
     apr_pool_create(&ssltunnel_pool, conn->pool);
 
@@ -191,10 +210,29 @@ apr_status_t serf__ssltunnel_connect(serf_connection_t *conn)
     ctx->uri = apr_psprintf(ctx->pool, "%s:%d", conn->host_info.hostname,
                             conn->host_info.port);
 
-    ssltunnel_ostream = serf_bucket_aggregate_create(conn->allocator);
-    serf_bucket_aggregate_hold_open(ssltunnel_ostream, detect_eof, conn);
+    /* We want to setup a plain http request to be sent before the
+       actual streams are connected... */
+    serf_pump__prepare_setup(&conn->pump);
 
-    conn->ssltunnel_ostream = ssltunnel_ostream;
+    /* Ok, we now have a head and a tail bucket. The tail has pump
+       events attached to it so we don't want to destroy that one
+       later. Let's create a barrier around it and manage the lifetime
+       ourself. */
+
+    ostream = serf_bucket_barrier_create(conn->pump.ostream_tail,
+                                         conn->allocator);
+
+    ostream = serf__bucket_event_create(ostream,
+                                        conn, NULL, NULL,
+                                        ssltunnel_ostream_destroyed,
+                                        conn->allocator);
+
+    stream = serf_context_bucket_socket_create(conn->ctx,
+                                               conn->skt,
+                                               conn->allocator);
+
+    serf_pump__complete_setup(&conn->pump, stream, ostream);
+
 
     serf__ssltunnel_request_create(conn,
                                    setup_request,

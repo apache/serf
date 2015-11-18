@@ -152,7 +152,7 @@ apr_status_t serf__conn_update_pollset(serf_connection_t *conn)
            from the aggregate to requests that are done.
          */
         data_waiting = serf_pump__data_pending(&conn->pump)
-                       && (conn->state != SERF_CONN_CLOSING);
+                       && !conn->pump.done_writing;
 
         if (data_waiting) {
             desc.reqevents |= APR_POLLOUT;
@@ -228,11 +228,6 @@ void serf__connection_pre_cleanup(serf_connection_t *conn)
     conn->pump.vec_len = 0;
 
     serf_pump__done(&conn->pump);
-
-    if (conn->ssltunnel_ostream != NULL) {
-        serf_bucket_destroy(conn->ssltunnel_ostream);
-        conn->ssltunnel_ostream = NULL;
-    }
 
     /* Tell all written request that they are free to destroy themselves */
     rq = conn->written_reqs;
@@ -313,9 +308,7 @@ static apr_status_t do_conn_setup(serf_connection_t *conn)
  [en/de]cryption.
  */
 
-static apr_status_t prepare_conn_streams(serf_connection_t *conn,
-                                         serf_bucket_t **ostreamt,
-                                         serf_bucket_t **ostreamh)
+static apr_status_t prepare_conn_streams(serf_connection_t *conn)
 {
     apr_status_t status;
 
@@ -330,28 +323,6 @@ static apr_status_t prepare_conn_streams(serf_connection_t *conn,
                 return status;
             }
         }
-        *ostreamt = conn->pump.ostream_tail;
-        *ostreamh = conn->pump.ostream_head;
-    } else if (conn->state == SERF_CONN_SETUP_SSLTUNNEL) {
-
-        /* SSL tunnel needed and not set up yet, get a direct unencrypted
-         stream for this socket */
-        if (conn->pump.stream == NULL) {
-            conn->pump.stream =
-                serf_context_bucket_socket_create(conn->ctx,
-                                                  conn->skt,
-                                                  conn->allocator);
-        }
-
-        /* Don't create the ostream bucket chain including the ssl_encrypt
-         bucket yet. This ensure the CONNECT request is sent unencrypted
-         to the proxy. */
-        *ostreamt = *ostreamh = conn->ssltunnel_ostream;
-    } else {
-        /* SERF_CONN_CLOSING or SERF_CONN_INIT */
-
-        *ostreamt = conn->pump.ostream_tail;
-        *ostreamh = conn->pump.ostream_head;
     }
 
     return APR_SUCCESS;
@@ -637,30 +608,7 @@ static apr_status_t reset_connection(serf_connection_t *conn,
 apr_status_t serf__connection_flush(serf_connection_t *conn,
                                     bool fetch_new)
 {
-    apr_status_t status;
-    serf_bucket_t *tmp_bkt = NULL;
-
-    if (fetch_new) {
-        serf_bucket_t *ostreamh, *ostreamt;
-
-        status = prepare_conn_streams(conn, &ostreamt, &ostreamh);
-        if (status)
-            return status;
-
-        tmp_bkt = conn->pump.ostream_head;
-        conn->pump.ostream_head = ostreamh;
-    }
-
-    status = serf_pump__write(&conn->pump, fetch_new);
-
-    if (fetch_new) {
-        conn->pump.ostream_head = tmp_bkt;
-    }
-
-    if (conn->pump.done_writing)
-        conn->state = SERF_CONN_CLOSING;
-
-    return status;
+    return serf_pump__write(&conn->pump, fetch_new);
 }
 
 /* Implements serf_bucket_event_callback_t and is called (potentially
@@ -750,8 +698,6 @@ static apr_status_t write_to_connection(serf_connection_t *conn)
         serf_request_t *request;
         apr_status_t status;
         apr_status_t read_status;
-        serf_bucket_t *ostreamt;
-        serf_bucket_t *ostreamh;
 
         /* If we have unwritten data in iovecs, then write what we can
            directly. */
@@ -805,7 +751,7 @@ static apr_status_t write_to_connection(serf_connection_t *conn)
             return APR_SUCCESS;
         }
 
-        status = prepare_conn_streams(conn, &ostreamt, &ostreamh);
+        status = prepare_conn_streams(conn);
         if (status) {
             return status;
         }
@@ -831,7 +777,8 @@ static apr_status_t write_to_connection(serf_connection_t *conn)
                                                      request_writing_done,
                                                      request_writing_finished,
                                                      conn->allocator);
-            serf_bucket_aggregate_append(ostreamt, event_bucket);
+            serf_bucket_aggregate_append(conn->pump.ostream_tail,
+                                         event_bucket);
         }
 
         /* If we got some data, then deliver it. */
@@ -902,12 +849,10 @@ static apr_status_t read_from_connection(serf_connection_t *conn)
 
     /* Invoke response handlers until we have no more work. */
     while (1) {
-        serf_bucket_t *dummy1, *dummy2;
-
         apr_pool_clear(tmppool);
 
         /* Only interested in the input stream here. */
-        status = prepare_conn_streams(conn, &dummy1, &dummy2);
+        status = prepare_conn_streams(conn);
         if (status) {
             goto error;
         }
