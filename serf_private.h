@@ -460,8 +460,6 @@ typedef enum {
     SERF_CONN_INIT,             /* no socket created yet */
     SERF_CONN_SETUP_SSLTUNNEL,  /* ssl tunnel being setup, no requests sent */
     SERF_CONN_CONNECTED,        /* conn is ready to send requests */
-    SERF_CONN_CLOSING           /* conn is closing, no more requests,
-                                   start a new socket */
 } serf__connection_state_t;
 
 struct serf_connection_t {
@@ -501,9 +499,6 @@ struct serf_connection_t {
     void *async_acceptor_baton;
     serf_response_handler_t async_handler;
     void *async_handler_baton;
-
-    /* Aggregate bucket used to send the CONNECT request. */
-    serf_bucket_t *ssltunnel_ostream;
 
     /* The list of requests that are written but no response has been received
        yet. */
