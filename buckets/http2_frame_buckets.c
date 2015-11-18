@@ -180,7 +180,10 @@ serf__bucket_http2_unframe_read_info(serf_bucket_t *bucket,
         else if (APR_STATUS_IS_EOF(status)) {
           /* Reading frame failed because we couldn't read the header. Report
              a read failure instead of semi-success */
-            status = SERF_ERROR_HTTP2_FRAME_SIZE_ERROR;
+            if (ctx->prefix_remaining == FRAME_PREFIX_SIZE)
+                status = SERF_ERROR_EMPTY_STREAM;
+            else
+                status = SERF_ERROR_HTTP2_FRAME_SIZE_ERROR;
         }
         else if (!status)
             status = APR_EAGAIN;
