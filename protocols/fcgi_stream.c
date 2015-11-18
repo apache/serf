@@ -111,7 +111,9 @@ fcgi_stream_enqueue_response(serf_incoming_request_t *request,
     tmp = SERF_BUCKET_SIMPLE_STRING("Status: ", alloc);
     serf_bucket_aggregate_append(agg, tmp);
 
-    tmp = serf_bucket_simple_copy_create(linebuf->line + 9, 3, alloc);
+    /* Skip "HTTP/1.1 " but send status and reason */
+    tmp = serf_bucket_simple_copy_create(linebuf->line + 9, linebuf->used - 9,
+                                         alloc);
     serf_bucket_aggregate_append(agg, tmp);
     serf_bucket_mem_free(alloc, linebuf);
 
@@ -120,12 +122,27 @@ fcgi_stream_enqueue_response(serf_incoming_request_t *request,
 
     serf_bucket_aggregate_append(agg, response_bkt);
 
-    return serf_fcgi__enqueue_frame(
+    /* Send response over STDOUT, closing stdout when done */
+    status = serf_fcgi__enqueue_frame(
         stream->fcgi,
         serf__bucket_fcgi_frame_create(agg, stream->streamid,
                                        FCGI_FRAMETYPE(FCGI_V1, FCGI_STDOUT),
-                                       true, true,
+                                       true, false,
+                                       alloc), false);
+    if (status)
+        return status;
+
+    /* As we don't use STDERR we don't have to close it either */
+
+    /* Send end of request: FCGI_REQUEST_COMPLETE, exit code 0 */
+    tmp = SERF_BUCKET_SIMPLE_STRING_LEN("\0\0\0\0\0\0\0\0", 8, alloc);
+    status = serf_fcgi__enqueue_frame(
+        stream->fcgi,
+        serf__bucket_fcgi_frame_create(tmp, stream->streamid,
+                                       FCGI_FRAMETYPE(FCGI_V1, FCGI_END_REQUEST),
+                                       false, false,
                                        alloc), true);
+    return status;
 }
 
 static apr_status_t
