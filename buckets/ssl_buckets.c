@@ -2337,13 +2337,15 @@ static apr_status_t serf_ssl_set_config(serf_bucket_t *bucket,
         }
     }
 
-    status = serf_config_get_string(config, SERF_CONFIG_CONN_PIPELINING,
-                                    &pipelining);
-    if (status)
-        return status;
+    if (config) {
+        status = serf_config_get_string(config, SERF_CONFIG_CONN_PIPELINING,
+                                        &pipelining);
+        if (status)
+            return status;
 
-    if (strcmp(pipelining, "Y") == 0) {
-        SSL_CTX_set_info_callback(ssl_ctx->ctx, detect_renegotiate);
+        if (strcmp(pipelining, "Y") == 0) {
+            SSL_CTX_set_info_callback(ssl_ctx->ctx, detect_renegotiate);
+        }
     }
 
     return err_status;
