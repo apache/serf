@@ -122,8 +122,8 @@ struct serf_http2_protocol_t
     serf_incoming_t *client;
 
     serf_io_baton_t *io; /* Low level connection */
+    serf_pump_t *pump;
 
-    serf_bucket_t *stream, *ostream;
     serf_bucket_alloc_t *allocator;
 
     serf_http2_processor_t processor;
@@ -239,8 +239,7 @@ void serf__http2_protocol_init(serf_connection_t *conn)
     h2->pool = protocol_pool;
     h2->conn = conn;
     h2->io = &conn->io;
-    h2->stream = conn->pump.stream;
-    h2->ostream = conn->pump.ostream_tail;
+    h2->pump = &conn->pump;
     h2->allocator = conn->allocator;
     h2->config = conn->config;
 
@@ -289,7 +288,7 @@ void serf__http2_protocol_init(serf_connection_t *conn)
 
     /* Send the HTTP/2 Connection Preface */
     tmp = SERF_BUCKET_SIMPLE_STRING(HTTP2_CONNECTION_PREFIX, h2->allocator);
-    serf_bucket_aggregate_append(h2->ostream, tmp);
+    serf_pump__add_output(h2->pump, tmp, false);
 
     /* And now a settings frame and a huge window */
     {
@@ -331,8 +330,7 @@ void serf__http2_protocol_init_server(serf_incoming_t *client)
     h2->pool = protocol_pool;
     h2->client = client;
     h2->io = &client->io;
-    h2->stream = client->pump.stream;
-    h2->ostream = client->pump.ostream_tail;
+    h2->pump = &client->pump;
     h2->allocator = client->allocator;
     h2->config = client->config;
 
@@ -432,53 +430,9 @@ enqueue_http2_request(serf_http2_protocol_t *h2)
 apr_status_t
 serf_http2__enqueue_frame(serf_http2_protocol_t *h2,
                           serf_bucket_t *frame,
-                          int pump)
+                          bool flush)
 {
-    apr_status_t status;
-    bool want_write;
-
-
-    if (!pump && !h2->io->dirty_conn)
-    {
-        const char *data;
-        apr_size_t len;
-
-        /* Cheap check to see if we should request a write
-           event next time around */
-        status = serf_bucket_peek(h2->ostream, &data, &len);
-
-        if (SERF_BUCKET_READ_ERROR(status))
-        {
-            serf_bucket_destroy(frame);
-            return status;
-        }
-
-        if (len == 0)
-        {
-            serf_io__set_pollset_dirty(h2->io);
-        }
-    }
-
-    serf_bucket_aggregate_append(h2->ostream, frame);
-
-    if (!pump)
-        return APR_SUCCESS;
-
-      /* Flush final output buffer (after ssl, etc.) */
-    if (h2->conn)
-        status = serf__connection_flush(h2->conn, TRUE);
-    else
-        status = serf__incoming_client_flush(h2->client, TRUE);
-
-    want_write = APR_STATUS_IS_EAGAIN(status);
-
-    if ((want_write && !(h2->io->reqevents & APR_POLLOUT))
-        || (!want_write && (h2->io->reqevents & APR_POLLOUT)))
-    {
-        serf_io__set_pollset_dirty(h2->io);
-    }
-
-    return status;
+    return serf_pump__add_output(h2->pump, frame, flush);
 }
 
 /* Implements serf_bucket_prefix_handler_t.
@@ -1072,7 +1026,7 @@ http2_process(serf_http2_protocol_t *h2)
             SERF_H2_assert(!h2->in_frame);
 
             body = serf__bucket_http2_unframe_create(
-                h2->stream,
+                h2->pump->stream,
                 h2->rl_max_framesize,
                 h2->allocator);
 
@@ -1650,9 +1604,6 @@ http2_outgoing_read(serf_connection_t *conn)
         serf_io__set_pollset_dirty(&conn->io);
     }
 
-    if (h2->stream == NULL)
-        h2->stream = conn->pump.stream;
-
     status = http2_process(h2);
 
     if (!status)
@@ -1765,8 +1716,6 @@ http2_incoming_read(serf_incoming_t *client)
             /* Peek buffer is now empty. Use actual stream */
             serf_bucket_destroy(client->proto_peek_bkt);
             client->proto_peek_bkt = NULL;
-
-            h2->stream = client->pump.stream;
         }
 
         if (APR_STATUS_IS_EAGAIN(status) || status == SERF_ERROR_WAIT_CONN)

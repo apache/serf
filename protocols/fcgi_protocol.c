@@ -40,13 +40,11 @@ typedef struct serf_fcgi_protocol_t
     serf_incoming_t *client;
 
     serf_io_baton_t *io; /* Low level connection */
+    serf_pump_t *pump;
 
     apr_pool_t *pool;
     serf_bucket_alloc_t *allocator;
     serf_config_t *config;
-
-    serf_bucket_t *stream;
-    serf_bucket_t *ostream;
 
     serf_fcgi_processor_t processor;
     void *processor_baton;
@@ -175,7 +173,7 @@ static apr_status_t fcgi_process(serf_fcgi_protocol_t *fcgi)
         {
             SERF_FCGI_assert(!fcgi->in_frame);
 
-            body = serf__bucket_fcgi_unframe_create(fcgi->stream,
+            body = serf__bucket_fcgi_unframe_create(fcgi->pump->stream,
                                                     fcgi->allocator);
 
             serf__bucket_fcgi_unframe_set_eof(body,
@@ -347,52 +345,9 @@ static apr_status_t fcgi_read(serf_fcgi_protocol_t *fcgi)
 
 apr_status_t serf_fcgi__enqueue_frame(serf_fcgi_protocol_t *fcgi,
                                       serf_bucket_t *frame,
-                                      bool pump)
+                                      bool flush)
 {
-    apr_status_t status;
-    bool want_write;
-
-    if (!pump && !fcgi->io->dirty_conn)
-    {
-        const char *data;
-        apr_size_t len;
-
-        /* Cheap check to see if we should request a write
-        event next time around */
-        status = serf_bucket_peek(fcgi->ostream, &data, &len);
-
-        if (SERF_BUCKET_READ_ERROR(status))
-        {
-            serf_bucket_destroy(frame);
-            return status;
-        }
-
-        if (len == 0)
-        {
-            serf_io__set_pollset_dirty(fcgi->io);
-        }
-    }
-
-    serf_bucket_aggregate_append(fcgi->ostream, frame);
-
-    if (!pump)
-        return APR_SUCCESS;
-
-    /* Flush final output buffer (after ssl, etc.) */
-    if (fcgi->conn)
-        status = serf__connection_flush(fcgi->conn, TRUE);
-    else
-        status = serf__incoming_client_flush(fcgi->client, TRUE);
-
-    want_write = APR_STATUS_IS_EAGAIN(status);
-
-    if ((want_write && !(fcgi->io->reqevents & APR_POLLOUT))
-        || (!want_write && (fcgi->io->reqevents & APR_POLLOUT)))
-    {
-        serf_io__set_pollset_dirty(fcgi->io);
-    }
-
-    return status;
+    return serf_pump__add_output(fcgi->pump, frame, flush);
 }
 
 static apr_status_t fcgi_write(serf_fcgi_protocol_t *fcgi)
@@ -499,9 +454,6 @@ static apr_status_t fcgi_outgoing_read(serf_connection_t *conn)
 {
     serf_fcgi_protocol_t *fcgi = conn->protocol_baton;
 
-    if (!fcgi->stream)
-        fcgi->stream = conn->pump.stream;
-
     return fcgi_read(fcgi);
 }
 
@@ -537,8 +489,7 @@ void serf__fcgi_protocol_init(serf_connection_t *conn)
     fcgi->pool = protocol_pool;
     fcgi->conn = conn;
     fcgi->io = &conn->io;
-    fcgi->stream = conn->pump.stream;
-    fcgi->ostream = conn->pump.ostream_tail;
+    fcgi->pump = &conn->pump;
     fcgi->allocator = conn->allocator;
     fcgi->config = conn->config;
 
@@ -561,22 +512,12 @@ static apr_status_t fcgi_server_read(serf_incoming_t *client)
 {
     serf_fcgi_protocol_t *fcgi = client->protocol_baton;
 
-    if (! fcgi->stream) {
-        fcgi->stream = client->pump.stream;
-        fcgi->ostream = client->pump.ostream_tail;
-    }
-
     return fcgi_read(fcgi);
 }
 
 static apr_status_t fcgi_server_write(serf_incoming_t *client)
 {
     serf_fcgi_protocol_t *fcgi = client->protocol_baton;
-
-    if (!fcgi->stream) {
-        fcgi->stream = client->pump.stream;
-        fcgi->ostream = client->pump.ostream_tail;
-    }
 
     return fcgi_write(fcgi);
 }
@@ -606,8 +547,7 @@ void serf__fcgi_protocol_init_server(serf_incoming_t *client)
     fcgi->pool = protocol_pool;
     fcgi->client = client;
     fcgi->io = &client->io;
-    fcgi->stream = client->pump.stream;
-    fcgi->ostream = client->pump.ostream_tail;
+    fcgi->pump = &client->pump;
     fcgi->allocator = client->allocator;
     fcgi->config = client->config;
 

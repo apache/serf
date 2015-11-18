@@ -196,7 +196,7 @@ apr_status_t serf_fcgi__setup_incoming_request(
 
 apr_status_t serf_fcgi__enqueue_frame(serf_fcgi_protocol_t *fcgi,
                                       serf_bucket_t *frame,
-                                      bool pump);
+                                      bool flush);
 
 void serf_fcgi__close_stream(serf_fcgi_protocol_t *fcgi,
                              serf_fcgi_stream_t *stream);

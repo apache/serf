@@ -762,6 +762,10 @@ void serf_pump__store_ipaddresses_in_config(serf_pump_t *pump);
 apr_status_t serf_pump__write(serf_pump_t *pump,
                               bool fetch_new);
 
+apr_status_t serf_pump__add_output(serf_pump_t *pump,
+                                   serf_bucket_t *bucket,
+                                   bool flush);
+
 /* These must always be called as a pair to avoid a memory leak */
 void serf_pump__prepare_setup(serf_pump_t *pump);
 void serf_pump__complete_setup(serf_pump_t *pump,
