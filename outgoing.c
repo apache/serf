@@ -676,8 +676,8 @@ static apr_status_t reset_connection(serf_connection_t *conn,
 
     serf__connection_pre_cleanup(conn);
 
-    /* First, cancel all written requests for which we haven't received a 
-       response yet. Inform the application that the request is cancelled, 
+    /* First, cancel all written requests for which we haven't received a
+       response yet. Inform the application that the request is cancelled,
        so it can requeue them if needed. */
     while (conn->written_reqs) {
         serf__cancel_request(conn->written_reqs, &conn->written_reqs,
@@ -1013,7 +1013,7 @@ static apr_status_t write_to_connection(serf_connection_t *conn)
 
         /* We try to limit the number of in-flight requests so that we
            don't have to repeat too many if the connection drops.
-           
+
            This check matches that in serf__conn_update_pollset()
            */
         if ((conn->probable_keepalive_limit &&
@@ -1394,8 +1394,8 @@ static apr_status_t hangup_connection(serf_connection_t *conn)
 }
 
 /* process all events on the connection */
-apr_status_t serf__process_connection(serf_connection_t *conn,
-                                      apr_int16_t events)
+static apr_status_t process_connection(serf_connection_t *conn,
+                                       apr_int16_t events)
 {
     apr_status_t status;
 #ifdef SERF_DEBUG_BUCKET_USE
@@ -1462,7 +1462,7 @@ apr_status_t serf__process_connection(serf_connection_t *conn,
                     status = APR_FROM_OS_ERROR(error);
 
                     /* Handle fallback for multi-homed servers.
-                     
+
                        ### Improve algorithm to find better than just 'next'?
 
                        Current Windows versions already handle re-ordering for
@@ -1499,6 +1499,47 @@ apr_status_t serf__process_connection(serf_connection_t *conn,
 
         if ((status = conn->perform_write(conn)) != APR_SUCCESS)
             return status;
+    }
+    return APR_SUCCESS;
+}
+
+apr_status_t serf__process_connection(serf_connection_t *conn,
+                                      apr_int16_t events)
+{
+    serf_context_t *ctx = conn->ctx;
+    apr_pollfd_t tdesc = { 0 };
+
+    /* If this connection has already failed, return the error again, and try
+    * to remove it from the pollset again
+    */
+    if (conn->status) {
+        tdesc.desc_type = APR_POLL_SOCKET;
+        tdesc.desc.s = conn->skt;
+        tdesc.reqevents = conn->reqevents;
+        ctx->pollset_rm(ctx->pollset_baton,
+                        &tdesc, &conn->baton);
+        return conn->status;
+    }
+    /* apr_pollset_poll() can return a conn multiple times... */
+    if ((conn->seen_in_pollset & events) != 0 ||
+        (conn->seen_in_pollset & APR_POLLHUP) != 0) {
+        return APR_SUCCESS;
+    }
+
+    conn->seen_in_pollset |= events;
+
+    if ((conn->status = process_connection(conn, events)) != APR_SUCCESS)
+    {
+        /* it's possible that the connection was already reset and thus the
+        socket cleaned up. */
+        if (conn->skt) {
+            tdesc.desc_type = APR_POLL_SOCKET;
+            tdesc.desc.s = conn->skt;
+            tdesc.reqevents = conn->reqevents;
+            ctx->pollset_rm(ctx->pollset_baton,
+                            &tdesc, &conn->baton);
+        }
+        return conn->status;
     }
     return APR_SUCCESS;
 }
@@ -1717,7 +1758,7 @@ void serf_connection_set_max_outstanding_requests(
     conn->max_outstanding_requests = max_requests;
 }
 
-/* Disable HTTP pipelining, ensure that only one request is outstanding at a 
+/* Disable HTTP pipelining, ensure that only one request is outstanding at a
    time. This is an internal method, an application that wants to disable
    HTTP pipelining can achieve this by calling:
      serf_connection_set_max_outstanding_requests(conn, 1) .
