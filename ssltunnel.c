@@ -111,8 +111,8 @@ static apr_status_t handle_response(serf_request_t *request,
         apr_pool_destroy(ctx->pool);
         serf_bucket_destroy(conn->ssltunnel_ostream);
         conn->ssltunnel_ostream = NULL;
-        serf_bucket_destroy(conn->stream);
-        conn->stream = NULL;
+        serf_bucket_destroy(conn->pump.stream);
+        conn->pump.stream = NULL;
         ctx = NULL;
 
         serf__log(LOGLVL_INFO, LOGCOMP_CONN, __FILE__, conn->config,
@@ -173,7 +173,7 @@ static apr_status_t setup_request(serf_request_t *request,
 static apr_status_t detect_eof(void *baton, serf_bucket_t *aggregate_bucket)
 {
     serf_connection_t *conn = baton;
-    conn->hit_eof = 1;
+    conn->pump.hit_eof = true;
     return APR_EAGAIN;
 }
 
@@ -182,6 +182,7 @@ apr_status_t serf__ssltunnel_connect(serf_connection_t *conn)
 {
     req_ctx_t *ctx;
     apr_pool_t *ssltunnel_pool;
+    serf_bucket_t *ssltunnel_ostream;
 
     apr_pool_create(&ssltunnel_pool, conn->pool);
 
@@ -190,8 +191,10 @@ apr_status_t serf__ssltunnel_connect(serf_connection_t *conn)
     ctx->uri = apr_psprintf(ctx->pool, "%s:%d", conn->host_info.hostname,
                             conn->host_info.port);
 
-    conn->ssltunnel_ostream = serf_bucket_aggregate_create(conn->allocator);
-    serf_bucket_aggregate_hold_open(conn->ssltunnel_ostream, detect_eof, conn);
+    ssltunnel_ostream = serf_bucket_aggregate_create(conn->allocator);
+    serf_bucket_aggregate_hold_open(ssltunnel_ostream, detect_eof, conn);
+
+    conn->ssltunnel_ostream = ssltunnel_ostream;
 
     serf__ssltunnel_request_create(conn,
                                    setup_request,
