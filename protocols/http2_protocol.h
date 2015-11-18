@@ -157,7 +157,7 @@ typedef apr_status_t (* serf_http2_processor_t)(void *baton,
 apr_status_t
 serf_http2__enqueue_frame(serf_http2_protocol_t *h2,
                           serf_bucket_t *frame,
-                          int pump);
+                          bool flush);
 
 /* Creates a new stream */
 serf_http2_stream_t *

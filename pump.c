@@ -293,8 +293,18 @@ apr_status_t serf_pump__write(serf_pump_t *pump,
               return no_more_writes(pump);
         }
 
-        if (status || !fetch_new)
+        if (status || !fetch_new) {
+
+            /* If we couldn't write everything that we tried,
+               make sure that we will receive a write event next time */
+            if (APR_STATUS_IS_EAGAIN(status)
+                && !pump->io->dirty_conn
+                && !(pump->io->reqevents & APR_POLLOUT))
+            {
+                serf_io__set_pollset_dirty(pump->io);
+            }
             return status;
+        }
         else if (read_status || pump->vec_len || pump->hit_eof)
             return read_status;
 
@@ -340,3 +350,31 @@ apr_status_t serf_pump__write(serf_pump_t *pump,
 
     return status;
 }
+
+apr_status_t serf_pump__add_output(serf_pump_t *pump,
+                                   serf_bucket_t *bucket,
+                                   bool flush)
+{
+    if (!flush
+        && !pump->io->dirty_conn
+        && !pump->stop_writing
+        && !(pump->io->reqevents & APR_POLLOUT)
+        && !serf_pump__data_pending(pump))
+    {
+        /* If not writing now,
+           * and not already dirty
+           * and nothing pending yet
+           Then mark the pollset dirty to trigger a write */
+
+        serf_io__set_pollset_dirty(pump->io);
+    }
+
+    serf_bucket_aggregate_append(pump->ostream_tail, bucket);
+
+    if (!flush)
+        return APR_SUCCESS;
+
+    /* Flush final output buffer (after ssl, etc.) */
+    return serf_pump__write(pump, TRUE);
+}
+

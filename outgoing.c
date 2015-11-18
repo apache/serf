@@ -777,8 +777,7 @@ static apr_status_t write_to_connection(serf_connection_t *conn)
                                                      request_writing_done,
                                                      request_writing_finished,
                                                      conn->allocator);
-            serf_bucket_aggregate_append(conn->pump.ostream_tail,
-                                         event_bucket);
+            serf_pump__add_output(&conn->pump, event_bucket, false);
         }
 
         /* If we got some data, then deliver it. */
