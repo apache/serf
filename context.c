@@ -64,12 +64,12 @@ static apr_status_t check_dirty_pollsets(serf_context_t *ctx)
         apr_status_t status;
 
         /* if this connection isn't dirty, skip it. */
-        if (!conn->dirty_conn) {
+        if (!conn->io.dirty_conn) {
             continue;
         }
 
         /* reset this connection's flag before we update. */
-        conn->dirty_conn = 0;
+        conn->io.dirty_conn = false;
 
         if ((status = serf__conn_update_pollset(conn)) != APR_SUCCESS)
             return status;
@@ -79,18 +79,18 @@ static apr_status_t check_dirty_pollsets(serf_context_t *ctx)
         serf_incoming_t *incoming = GET_INCOMING(ctx, i);
         apr_status_t status;
 
-        if (!incoming->dirty_conn) {
+        if (!incoming->io.dirty_conn) {
             continue;
         }
 
-        incoming->dirty_conn = false;
+        incoming->io.dirty_conn = false;
 
         if ((status = serf__incoming_update_pollset(incoming)) != APR_SUCCESS)
             return status;
     }
 
     /* reset our context flag now */
-    ctx->dirty_pollset = 0;
+    ctx->dirty_pollset = false;
 
     return APR_SUCCESS;
 }

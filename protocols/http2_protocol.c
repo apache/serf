@@ -120,8 +120,9 @@ struct serf_http2_protocol_t
     apr_pool_t *pool;
     serf_connection_t *conn; /* Either CONN or CLIENT is set */
     serf_incoming_t *client;
-    serf_context_t *ctx;
-    bool *dirty_pollset;
+
+    serf_io_baton_t *io; /* Low level connection */
+
     apr_int16_t *req_events;
     serf_bucket_t *stream, *ostream;
     serf_bucket_alloc_t *allocator;
@@ -238,8 +239,7 @@ void serf__http2_protocol_init(serf_connection_t *conn)
     h2 = apr_pcalloc(protocol_pool, sizeof(*h2));
     h2->pool = protocol_pool;
     h2->conn = conn;
-    h2->ctx = conn->ctx;
-    h2->dirty_pollset = &conn->dirty_conn;
+    h2->io = &conn->io;
     h2->req_events = &conn->reqevents;
     h2->stream = conn->stream;
     h2->ostream = conn->ostream_tail;
@@ -332,8 +332,7 @@ void serf__http2_protocol_init_server(serf_incoming_t *client)
     h2 = apr_pcalloc(protocol_pool, sizeof(*h2));
     h2->pool = protocol_pool;
     h2->client = client;
-    h2->ctx = client->ctx;
-    h2->dirty_pollset = &client->dirty_conn;
+    h2->io = &client->io;
     h2->req_events = &client->reqevents;
     h2->stream = client->stream;
     h2->ostream = client->ostream_tail;
@@ -442,7 +441,7 @@ serf_http2__enqueue_frame(serf_http2_protocol_t *h2,
     bool want_write;
 
 
-    if (!pump && !*h2->dirty_pollset)
+    if (!pump && !h2->io->dirty_conn)
     {
         const char *data;
         apr_size_t len;
@@ -459,8 +458,7 @@ serf_http2__enqueue_frame(serf_http2_protocol_t *h2,
 
         if (len == 0)
         {
-            *h2->dirty_pollset = true;
-            h2->ctx->dirty_pollset = true;
+            serf_io__set_pollset_dirty(h2->io);
         }
     }
 
@@ -480,8 +478,7 @@ serf_http2__enqueue_frame(serf_http2_protocol_t *h2,
     if ((want_write && !(*h2->req_events & APR_POLLOUT))
         || (!want_write && (*h2->req_events & APR_POLLOUT)))
     {
-        *h2->dirty_pollset = true;
-        h2->ctx->dirty_pollset = true;
+        serf_io__set_pollset_dirty(h2->io);
     }
 
     return status;
@@ -1653,8 +1650,7 @@ http2_outgoing_read(serf_connection_t *conn)
     if (conn->stop_writing)
     {
         conn->stop_writing = 0;
-        conn->dirty_conn = 1;
-        conn->ctx->dirty_pollset = 1;
+        serf_io__set_pollset_dirty(&conn->io);
     }
 
     if (h2->stream == NULL)
@@ -1705,8 +1701,7 @@ http2_outgoing_write(serf_connection_t *conn)
         return status;
 
       /* Probably nothing to write. Connection will check new requests */
-    conn->dirty_conn = 1;
-    h2->ctx->dirty_pollset = 1;
+    serf_io__set_pollset_dirty(&conn->io);
 
     return APR_SUCCESS;
 }
@@ -1739,8 +1734,7 @@ http2_incoming_read(serf_incoming_t *client)
     if (client->stop_writing)
     {
         client->stop_writing = 0;
-        client->dirty_conn = 1;
-        client->ctx->dirty_pollset = 1;
+        serf_io__set_pollset_dirty(&client->io);
     }
 
     if (h2->prefix_left) {
@@ -1824,8 +1818,7 @@ http2_incoming_write(serf_incoming_t *client)
         return status;
 
     /* Probably nothing to write. Connection will check new requests */
-    client->dirty_conn = true;
-    h2->ctx->dirty_pollset = true;
+    serf_io__set_pollset_dirty(&client->io);
 
     return APR_SUCCESS;
 }
