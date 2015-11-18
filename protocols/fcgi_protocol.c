@@ -36,13 +36,13 @@
 
 typedef struct serf_fcgi_protocol_t
 {
-    serf_context_t *ctx;
     serf_connection_t *conn;
     serf_incoming_t *client;
 
+    serf_io_baton_t *io; /* Low level connection */
+
     apr_pool_t *pool;
     serf_bucket_alloc_t *allocator;
-    bool *dirty_pollset;
     serf_config_t *config;
 
     apr_int16_t *req_events;
@@ -354,7 +354,7 @@ apr_status_t serf_fcgi__enqueue_frame(serf_fcgi_protocol_t *fcgi,
     apr_status_t status;
     bool want_write;
 
-    if (!pump && !*fcgi->dirty_pollset)
+    if (!pump && !fcgi->io->dirty_conn)
     {
         const char *data;
         apr_size_t len;
@@ -371,8 +371,7 @@ apr_status_t serf_fcgi__enqueue_frame(serf_fcgi_protocol_t *fcgi,
 
         if (len == 0)
         {
-            *fcgi->dirty_pollset = true;
-            fcgi->ctx->dirty_pollset = true;
+            serf_io__set_pollset_dirty(fcgi->io);
         }
     }
 
@@ -392,8 +391,7 @@ apr_status_t serf_fcgi__enqueue_frame(serf_fcgi_protocol_t *fcgi,
     if ((want_write && !(*fcgi->req_events & APR_POLLOUT))
         || (!want_write && (*fcgi->req_events & APR_POLLOUT)))
     {
-        *fcgi->dirty_pollset = true;
-        fcgi->ctx->dirty_pollset = true;
+        serf_io__set_pollset_dirty(fcgi->io);
     }
 
     return status;
@@ -414,8 +412,7 @@ static apr_status_t fcgi_write(serf_fcgi_protocol_t *fcgi)
         return status;
 
     /* Probably nothing to write. */
-    *fcgi->dirty_pollset = true;
-    fcgi->ctx->dirty_pollset = true;
+    serf_io__set_pollset_dirty(fcgi->io);
 
     return APR_SUCCESS;
 }
@@ -541,8 +538,7 @@ void serf__fcgi_protocol_init(serf_connection_t *conn)
     fcgi = apr_pcalloc(protocol_pool, sizeof(*fcgi));
     fcgi->pool = protocol_pool;
     fcgi->conn = conn;
-    fcgi->ctx = conn->ctx;
-    fcgi->dirty_pollset = &conn->dirty_conn;
+    fcgi->io = &conn->io;
     fcgi->req_events = &conn->reqevents;
     fcgi->stream = conn->stream;
     fcgi->ostream = conn->ostream_tail;
@@ -612,8 +608,7 @@ void serf__fcgi_protocol_init_server(serf_incoming_t *client)
     fcgi = apr_pcalloc(protocol_pool, sizeof(*fcgi));
     fcgi->pool = protocol_pool;
     fcgi->client = client;
-    fcgi->ctx = client->ctx;
-    fcgi->dirty_pollset = &client->dirty_conn;
+    fcgi->io = &client->io;
     fcgi->req_events = &client->reqevents;
     fcgi->stream = client->stream;
     fcgi->ostream = client->ostream_tail;

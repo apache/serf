@@ -149,8 +149,7 @@ static apr_status_t http1_enqueue_reponse(serf_incoming_request_t *request,
                                                            bucket->allocator));
 
     /* Want write event */
-    request->incoming->dirty_conn = true;
-    request->incoming->ctx->dirty_pollset = true;
+    serf_io__set_pollset_dirty(&request->incoming->io);
 
     return APR_SUCCESS;
 }
@@ -372,7 +371,7 @@ static apr_status_t read_from_client(serf_incoming_t *client)
         tdesc.desc.s = client->skt;
         tdesc.reqevents = client->reqevents;
         client->ctx->pollset_rm(client->ctx->pollset_baton,
-                                &tdesc, &client->baton);
+                                &tdesc, &client->io);
 
         client->seen_in_pollset |= APR_POLLHUP; /* No more events */
 
@@ -380,8 +379,7 @@ static apr_status_t read_from_client(serf_incoming_t *client)
            and this listener will now be cleared from the context
            handlers dirty pollset support */
         client->skt = NULL;
-        client->dirty_conn = true;
-        client->ctx->dirty_pollset = true;
+        serf_io__set_pollset_dirty(&client->io);
     }
 
     status = client->closed(client, client->closed_baton, status,
@@ -455,8 +453,7 @@ static apr_status_t no_more_writes(serf_incoming_t *client)
   /* Update the pollset to know we don't want to write on this socket any
   * more.
   */
-  client->dirty_conn = true;
-  client->ctx->dirty_pollset = true;
+  serf_io__set_pollset_dirty(&client->io);
   return APR_SUCCESS;
 }
 
@@ -513,8 +510,7 @@ apr_status_t serf__incoming_client_flush(serf_incoming_t *client,
             end up in a CPU spin: socket wants something, but we
             don't have anything (and keep returning EAGAIN) */
             client->stop_writing = true;
-            client->dirty_conn = true;
-            client->ctx->dirty_pollset = true;
+            serf_io__set_pollset_dirty(&client->io);
 
             read_status = APR_EAGAIN;
         }
@@ -546,8 +542,7 @@ static apr_status_t write_to_client(serf_incoming_t *client)
         return status;
 
     /* Probably nothing to write. Connection will check new requests */
-    client->dirty_conn = 1;
-    client->ctx->dirty_pollset = 1;
+    serf_io__set_pollset_dirty(&client->io);
 
     return APR_SUCCESS;
 }
@@ -565,8 +560,7 @@ void serf_incoming_set_framing_type(
     client->framing_type = framing_type;
 
     if (client->skt) {
-        client->dirty_conn = true;
-        client->ctx->dirty_pollset = true;
+        serf_io__set_pollset_dirty(&client->io);
         client->stop_writing = 0;
 
         /* Close down existing protocol */
@@ -732,13 +726,14 @@ apr_status_t serf_incoming_create2(
     ic->ctx = ctx;
     ic->pool = ic_pool;
     ic->allocator = serf_bucket_allocator_create(ic_pool, NULL, NULL);
-    ic->baton.type = SERF_IO_CLIENT;
-    ic->baton.u.client = ic;
+    ic->io.type = SERF_IO_CLIENT;
+    ic->io.u.client = ic;
+    ic->io.ctx = ctx;
+    ic->io.dirty_conn = false;
     ic->req_setup = req_setup;
     ic->req_setup_baton = req_setup_baton;
     ic->skt = insock;
 
-    ic->dirty_conn = false;
     ic->wait_for_connect = true;
     ic->vec_len = 0;
     /* Detect HTTP 1 or 2 via peek operation */
@@ -775,7 +770,7 @@ apr_status_t serf_incoming_create2(
     ic->config = config;
 
     rv = ctx->pollset_add(ctx->pollset_baton,
-                         &ic->desc, &ic->baton);
+                         &ic->desc, &ic->io);
 
     if (!rv) {
         apr_pool_cleanup_register(ic->pool, ic, incoming_cleanup,
@@ -806,8 +801,10 @@ apr_status_t serf_listener_create(
     serf_listener_t *l = apr_palloc(pool, sizeof(*l));
 
     l->ctx = ctx;
-    l->baton.type = SERF_IO_LISTENER;
-    l->baton.u.listener = l;
+    l->io.type = SERF_IO_LISTENER;
+    l->io.u.listener = l;
+    l->io.ctx = ctx;
+    l->io.dirty_conn = false;
     l->accept_func = accept;
     l->accept_baton = accept_baton;
 
@@ -853,7 +850,7 @@ apr_status_t serf_listener_create(
     l->desc.reqevents = APR_POLLIN;
 
     rv = ctx->pollset_add(ctx->pollset_baton,
-                            &l->desc, &l->baton);
+                            &l->desc, &l->io);
     if (rv) {
         apr_pool_destroy(l->pool);
         return rv;
@@ -909,7 +906,7 @@ apr_status_t serf__incoming_update_pollset(serf_incoming_t *client)
     desc.reqevents = client->reqevents;
 
     status = ctx->pollset_rm(ctx->pollset_baton,
-                             &desc, &client->baton);
+                             &desc, &client->io);
     if (status && !APR_STATUS_IS_NOTFOUND(status))
         return status;
 
@@ -974,5 +971,5 @@ apr_status_t serf__incoming_update_pollset(serf_incoming_t *client)
      * want to poll it for hangups and errors.
      */
     return ctx->pollset_add(ctx->pollset_baton,
-                            &desc, &client->baton);
+                            &desc, &client->io);
 }

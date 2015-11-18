@@ -219,14 +219,14 @@ apr_status_t serf__handle_response(serf_request_t *request,
             /* There was an error while checking the authentication headers of
                the response. We need to inform the application - which
                hasn't seen this response yet - of the error.
-             
+
                These are the possible causes of the error:
 
                1. A communication error while reading the response status line,
                   headers or while discarding the response body: pass the
                   response unchanged to the application, it will see the same
                   error as serf did.
-             
+
                2. A 401/407 response status for a supported authn scheme that
                   resulted in authn failure:
                   Pass the response as received to the application, the response
@@ -243,7 +243,7 @@ apr_status_t serf__handle_response(serf_request_t *request,
                   Pass the response headers to the application. The response
                   body is untrusted, so we should drop it and return the AUTHN
                   error instead of APR_EOF.
-             
+
                   serf__handle_auth_response will already discard the response
                   body, so we can handle this case the same as 2.
 
@@ -372,8 +372,7 @@ serf_request_t *serf_connection_request_create(
     conn->nr_of_unwritten_reqs++;
 
     /* Ensure our pollset becomes writable in context run */
-    conn->ctx->dirty_pollset = 1;
-    conn->dirty_conn = 1;
+    serf_io__set_pollset_dirty(&conn->io);
 
     return request;
 }
@@ -405,7 +404,7 @@ priority_request_create(serf_connection_t *conn,
 
     /* A CONNECT request to setup an ssltunnel has absolute priority over all
        other requests on the connection, so:
-       a. add it first to the queue 
+       a. add it first to the queue
        b. ensure that other priority requests are added after the CONNECT
           request */
     if (!request->ssltunnel) {
@@ -426,8 +425,7 @@ priority_request_create(serf_connection_t *conn,
     conn->nr_of_unwritten_reqs++;
 
     /* Ensure our pollset becomes writable in context run */
-    conn->ctx->dirty_pollset = 1;
-    conn->dirty_conn = 1;
+    serf_io__set_pollset_dirty(&conn->io);
 
     return request;
 }

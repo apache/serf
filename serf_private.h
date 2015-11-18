@@ -137,7 +137,20 @@ typedef struct serf_io_baton_t {
         serf_connection_t *conn;
         serf_listener_t *listener;
     } u;
+
+    /* are we a dirty connection that needs its poll status updated? */
+    serf_context_t *ctx;
+    bool dirty_conn;
+
 } serf_io_baton_t;
+
+/* Should we use static APR_INLINE instead? */
+#define serf_io__set_pollset_dirty(io_baton)                    \
+    do                                                          \
+    {   serf_io_baton_t *serf__tmp_io_baton = io_baton;         \
+        serf__tmp_io_baton->dirty_conn = true;                  \
+        serf__tmp_io_baton->ctx->dirty_pollset = true;          \
+    } while (0)
 
 typedef enum serf_request_writing_t {
     SERF_WRITING_NONE,          /* Nothing written */
@@ -353,7 +366,7 @@ struct serf_context_t {
 
 struct serf_listener_t {
     serf_context_t *ctx;
-    serf_io_baton_t baton;
+    serf_io_baton_t io;
     apr_socket_t *skt;
     apr_pool_t *pool;
     apr_pollfd_t desc;
@@ -364,7 +377,7 @@ struct serf_listener_t {
 struct serf_incoming_t {
     serf_context_t *ctx;
 
-    serf_io_baton_t baton;
+    serf_io_baton_t io;
     serf_incoming_request_setup_t req_setup;
     void *req_setup_baton;
 
@@ -388,7 +401,6 @@ struct serf_incoming_t {
 
     serf_connection_framing_type_t framing_type;
 
-    bool dirty_conn;
     bool wait_for_connect;
     bool hit_eof;
     bool stop_writing;
@@ -431,7 +443,7 @@ struct serf_connection_t {
     serf_context_t *ctx;
 
     apr_status_t status;
-    serf_io_baton_t baton;
+    serf_io_baton_t io;
 
     apr_pool_t *pool;
     serf_bucket_alloc_t *allocator;
@@ -446,9 +458,6 @@ struct serf_connection_t {
 
     /* the events we've seen for this connection in our returned pollset */
     apr_int16_t seen_in_pollset;
-
-    /* are we a dirty connection that needs its poll status updated? */
-    bool dirty_conn;
 
     /* number of completed requests we've sent */
     unsigned int completed_requests;

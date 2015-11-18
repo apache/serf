@@ -161,7 +161,7 @@ apr_status_t serf__conn_update_pollset(serf_connection_t *conn)
     desc.reqevents = conn->reqevents;
 
     status = ctx->pollset_rm(ctx->pollset_baton,
-                             &desc, &conn->baton);
+                             &desc, &conn->io);
     if (status && !APR_STATUS_IS_NOTFOUND(status))
         return status;
 
@@ -259,7 +259,7 @@ apr_status_t serf__conn_update_pollset(serf_connection_t *conn)
      * want to poll it for hangups and errors.
      */
     return ctx->pollset_add(ctx->pollset_baton,
-                            &desc, &conn->baton);
+                            &desc, &conn->io);
 }
 
 #ifdef SERF_DEBUG_BUCKET_USE
@@ -582,8 +582,7 @@ apr_status_t serf__open_connections(serf_context_t *ctx)
             return status;
 
         /* Flag our pollset as dirty now that we have a new socket. */
-        conn->dirty_conn = 1;
-        ctx->dirty_pollset = 1;
+        serf_io__set_pollset_dirty(&conn->io);
 
         if (! conn->wait_for_connect) {
             status = connect_connection(conn);
@@ -609,8 +608,7 @@ static apr_status_t no_more_writes(serf_connection_t *conn)
     /* Update the pollset to know we don't want to write on this socket any
      * more.
      */
-    conn->dirty_conn = 1;
-    conn->ctx->dirty_pollset = 1;
+    serf_io__set_pollset_dirty(&conn->io);
     return APR_SUCCESS;
 }
 
@@ -644,7 +642,7 @@ static apr_status_t remove_connection(serf_context_t *ctx,
     desc.reqevents = conn->reqevents;
 
     return ctx->pollset_rm(ctx->pollset_baton,
-                           &desc, &conn->baton);
+                           &desc, &conn->io);
 }
 
 /* A socket was closed, inform the application. */
@@ -727,8 +725,7 @@ static apr_status_t reset_connection(serf_connection_t *conn,
     /* Don't try to resume any writes */
     conn->vec_len = 0;
 
-    conn->dirty_conn = 1;
-    conn->ctx->dirty_pollset = 1;
+    serf_io__set_pollset_dirty(&conn->io);
     conn->state = SERF_CONN_INIT;
 
     conn->hit_eof = 0;
@@ -877,8 +874,7 @@ apr_status_t serf__connection_flush(serf_connection_t *conn,
             end up in a CPU spin: socket wants something, but we
             don't have anything (and keep returning EAGAIN) */
             conn->stop_writing = 1;
-            conn->dirty_conn = 1;
-            conn->ctx->dirty_pollset = 1;
+            serf_io__set_pollset_dirty(&conn->io);
 
             read_status = APR_EAGAIN;
         }
@@ -1021,8 +1017,7 @@ static apr_status_t write_to_connection(serf_connection_t *conn)
             (conn->max_outstanding_requests &&
              REQS_IN_PROGRESS(conn) >= conn->max_outstanding_requests)) {
 
-            conn->dirty_conn = 1;
-            conn->ctx->dirty_pollset = 1;
+            serf_io__set_pollset_dirty(&conn->io);
 
             /* backoff for now. */
             return APR_SUCCESS;
@@ -1037,8 +1032,7 @@ static apr_status_t write_to_connection(serf_connection_t *conn)
              * Let's update the pollset so that we don't try to write to this
              * socket again.
              */
-            conn->dirty_conn = 1;
-            conn->ctx->dirty_pollset = 1;
+            serf_io__set_pollset_dirty(&conn->io);
             return APR_SUCCESS;
         }
 
@@ -1129,8 +1123,7 @@ static apr_status_t read_from_connection(serf_connection_t *conn)
        there is some data to read. */
     if (conn->stop_writing) {
         conn->stop_writing = 0;
-        conn->dirty_conn = 1;
-        conn->ctx->dirty_pollset = 1;
+        serf_io__set_pollset_dirty(&conn->io);
     }
 
     /* assert: request != NULL */
@@ -1252,8 +1245,7 @@ static apr_status_t read_from_connection(serf_connection_t *conn)
                serf will not check for socket writability, so force this here.
              */
             if (request_or_data_pending(&request, conn) && !request) {
-                conn->dirty_conn = 1;
-                conn->ctx->dirty_pollset = 1;
+                serf_io__set_pollset_dirty(&conn->io);
             }
             status = APR_SUCCESS;
             goto error;
@@ -1301,8 +1293,7 @@ static apr_status_t read_from_connection(serf_connection_t *conn)
            requests on this connection, we should stop polling for READ events
            for now. */
         if (!conn->written_reqs && !conn->unwritten_reqs) {
-            conn->dirty_conn = 1;
-            conn->ctx->dirty_pollset = 1;
+            serf_io__set_pollset_dirty(&conn->io);
         }
 
         /* This means that we're being advised that the connection is done. */
@@ -1328,8 +1319,7 @@ static apr_status_t read_from_connection(serf_connection_t *conn)
          * more. We are definitely done with this loop, too.
          */
         if (request == NULL || request->writing == SERF_WRITING_NONE) {
-            conn->dirty_conn = 1;
-            conn->ctx->dirty_pollset = 1;
+            serf_io__set_pollset_dirty(&conn->io);
             status = APR_SUCCESS;
             goto error;
         }
@@ -1490,8 +1480,7 @@ static apr_status_t process_connection(serf_connection_t *conn,
             conn->wait_for_connect = FALSE;
 
             /* We are now connected. Socket is now usable */
-            conn->dirty_conn = TRUE;
-            conn->ctx->dirty_pollset = TRUE;
+            serf_io__set_pollset_dirty(&conn->io);
 
             if ((status = connect_connection(conn)) != APR_SUCCESS)
                 return status;
@@ -1517,7 +1506,7 @@ apr_status_t serf__process_connection(serf_connection_t *conn,
         tdesc.desc.s = conn->skt;
         tdesc.reqevents = conn->reqevents;
         ctx->pollset_rm(ctx->pollset_baton,
-                        &tdesc, &conn->baton);
+                        &tdesc, &conn->io);
         return conn->status;
     }
     /* apr_pollset_poll() can return a conn multiple times... */
@@ -1537,7 +1526,7 @@ apr_status_t serf__process_connection(serf_connection_t *conn,
             tdesc.desc.s = conn->skt;
             tdesc.reqevents = conn->reqevents;
             ctx->pollset_rm(ctx->pollset_baton,
-                            &tdesc, &conn->baton);
+                            &tdesc, &conn->io);
         }
         return conn->status;
     }
@@ -1568,8 +1557,10 @@ serf_connection_t *serf_connection_create(
     conn->stream = NULL;
     conn->ostream_head = NULL;
     conn->ostream_tail = NULL;
-    conn->baton.type = SERF_IO_CONN;
-    conn->baton.u.conn = conn;
+    conn->io.type = SERF_IO_CONN;
+    conn->io.u.conn = conn;
+    conn->io.ctx = ctx;
+    conn->io.dirty_conn = false;
     conn->hit_eof = 0;
     conn->state = SERF_CONN_INIT;
     conn->latency = -1; /* unknown */
@@ -1789,8 +1780,7 @@ void serf_connection_set_framing_type(
     conn->framing_type = framing_type;
 
     if (conn->skt) {
-        conn->dirty_conn = 1;
-        conn->ctx->dirty_pollset = 1;
+        serf_io__set_pollset_dirty(&conn->io);
         conn->stop_writing = 0;
         conn->write_now = 1;
 
