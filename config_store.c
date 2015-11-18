@@ -332,6 +332,10 @@ apr_status_t serf_config_get_object(serf_config_t *config,
 {
     serf__config_hdr_t *target;
 
+    if (config == NULL) {
+        *value = NULL;
+        return APR_EINVARG;
+    }
     if (key & SERF_CONFIG_PER_CONTEXT)
         target = config->per_context;
     else if (key & SERF_CONFIG_PER_HOST)
