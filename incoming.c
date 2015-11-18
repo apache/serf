@@ -369,7 +369,7 @@ static apr_status_t read_from_client(serf_incoming_t *client)
         /* Remove us from the pollset */
         tdesc.desc_type = APR_POLL_SOCKET;
         tdesc.desc.s = client->skt;
-        tdesc.reqevents = client->reqevents;
+        tdesc.reqevents = client->io.reqevents;
         client->ctx->pollset_rm(client->ctx->pollset_baton,
                                 &tdesc, &client->io);
 
@@ -730,6 +730,7 @@ apr_status_t serf_incoming_create2(
     ic->io.u.client = ic;
     ic->io.ctx = ctx;
     ic->io.dirty_conn = false;
+    ic->io.reqevents = 0;
     ic->req_setup = req_setup;
     ic->req_setup_baton = req_setup_baton;
     ic->skt = insock;
@@ -805,6 +806,7 @@ apr_status_t serf_listener_create(
     l->io.u.listener = l;
     l->io.ctx = ctx;
     l->io.dirty_conn = false;
+    l->io.reqevents = 0;
     l->accept_func = accept;
     l->accept_baton = accept_baton;
 
@@ -903,7 +905,7 @@ apr_status_t serf__incoming_update_pollset(serf_incoming_t *client)
     /* Remove the socket from the poll set. */
     desc.desc_type = APR_POLL_SOCKET;
     desc.desc.s = client->skt;
-    desc.reqevents = client->reqevents;
+    desc.reqevents = client->io.reqevents;
 
     status = ctx->pollset_rm(ctx->pollset_baton,
                              &desc, &client->io);
@@ -965,7 +967,7 @@ apr_status_t serf__incoming_update_pollset(serf_incoming_t *client)
     }
 
     /* save our reqevents, so we can pass it in to remove later. */
-    client->reqevents = desc.reqevents;
+    client->io.reqevents = desc.reqevents;
 
     /* Note: even if we don't want to read/write this socket, we still
      * want to poll it for hangups and errors.
