@@ -294,6 +294,10 @@ apr_status_t
 serf__config_store_remove_connection(serf__config_store_t config_store,
                                      serf_connection_t *conn);
 
+apr_status_t
+serf__config_store_remove_client(serf__config_store_t config_store,
+                                 serf_incoming_t *client);
+
 /* Cleans up all host specific configuration values */
 apr_status_t
 serf__config_store_remove_host(serf__config_store_t config_store,
@@ -406,9 +410,6 @@ struct serf_incoming_t {
     */
     serf_bucket_t *ostream_head;
     serf_bucket_t *ostream_tail;
-
-    /* Aggregate bucket used to send the CONNECT request. */
-    serf_bucket_t *ssltunnel_ostream;
 
     serf_config_t *config;
 
@@ -653,6 +654,7 @@ apr_status_t serf__process_listener(serf_listener_t *l);
 apr_status_t serf__incoming_update_pollset(serf_incoming_t *incoming);
 apr_status_t serf__incoming_client_flush(serf_incoming_t *client, bool pump);
 serf_incoming_request_t *serf__incoming_request_create(serf_incoming_t *client);
+void serf__incoming_request_destroy(serf_incoming_request_t *request);
 
 /* from outgoing.c */
 apr_status_t serf__open_connections(serf_context_t *ctx);

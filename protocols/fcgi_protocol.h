@@ -185,8 +185,7 @@ typedef apr_status_t(*serf_fcgi_processor_t)(void *baton,
 /* From fcgi_protocol.c */
 serf_fcgi_stream_t * serf_fcgi__stream_get(serf_fcgi_protocol_t *fcgi,
                                            apr_uint16_t streamid,
-                                           bool create,
-                                           bool move_first);
+                                           bool create);
 
 
 apr_status_t serf_fcgi__setup_incoming_request(
@@ -198,6 +197,9 @@ apr_status_t serf_fcgi__setup_incoming_request(
 apr_status_t serf_fcgi__enqueue_frame(serf_fcgi_protocol_t *fcgi,
                                       serf_bucket_t *frame,
                                       bool pump);
+
+void serf_fcgi__close_stream(serf_fcgi_protocol_t *fcgi,
+                             serf_fcgi_stream_t *stream);
 
 
 /* From fcgi_stream.c */
@@ -219,6 +221,7 @@ serf_bucket_t * serf_fcgi__stream_handle_stdin(serf_fcgi_stream_t *stream,
                                                serf_config_t *config,
                                                serf_bucket_alloc_t *alloc);
 
+void serf_fcgi__stream_destroy(serf_fcgi_stream_t *stream);
 
 
 #ifdef __cplusplus

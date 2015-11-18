@@ -226,13 +226,13 @@ static apr_status_t fcgi_process(serf_fcgi_protocol_t *fcgi)
             switch (frametype)
             {
                 case FCGI_FRAMETYPE(FCGI_V1, FCGI_BEGIN_REQUEST):
-                    stream = serf_fcgi__stream_get(fcgi, sid, FALSE, FALSE);
+                    stream = serf_fcgi__stream_get(fcgi, sid, false);
 
                     if (stream) {
                         /* Stream must be new */
                         return SERF_ERROR_FCGI_PROTOCOL_ERROR;
                     }
-                    stream = serf_fcgi__stream_get(fcgi, sid, TRUE, TRUE);
+                    stream = serf_fcgi__stream_get(fcgi, sid, true);
 
                     remaining = (apr_size_t)serf_bucket_get_remaining(body);
                     if (remaining != sizeof(FCGI_BeginRequestBody)) {
@@ -254,7 +254,7 @@ static apr_status_t fcgi_process(serf_fcgi_protocol_t *fcgi)
                     process_bucket = body;
                     break;
                 case FCGI_FRAMETYPE(FCGI_V1, FCGI_PARAMS):
-                    stream = serf_fcgi__stream_get(fcgi, sid, FALSE, FALSE);
+                    stream = serf_fcgi__stream_get(fcgi, sid, false);
                     if (!stream) {
                         return SERF_ERROR_FCGI_PROTOCOL_ERROR;
                     }
@@ -275,7 +275,7 @@ static apr_status_t fcgi_process(serf_fcgi_protocol_t *fcgi)
                     }
                     break;
                 case FCGI_FRAMETYPE(FCGI_V1, FCGI_STDIN):
-                    stream = serf_fcgi__stream_get(fcgi, sid, FALSE, FALSE);
+                    stream = serf_fcgi__stream_get(fcgi, sid, false);
                     if (!stream) {
                         return SERF_ERROR_FCGI_PROTOCOL_ERROR;
                     }
@@ -430,17 +430,10 @@ static apr_status_t fcgi_teardown(serf_fcgi_protocol_t *fcgi)
     return APR_ENOTIMPL;
 }
 
-static void
-move_to_head(serf_fcgi_stream_t *stream)
-{
-    /* Not implemented yet */
-}
-
 serf_fcgi_stream_t *
 serf_fcgi__stream_get(serf_fcgi_protocol_t *fcgi,
                       apr_uint16_t streamid,
-                      bool create,
-                      bool move_first)
+                      bool create)
 {
     serf_fcgi_stream_t *stream;
 
@@ -450,12 +443,7 @@ serf_fcgi__stream_get(serf_fcgi_protocol_t *fcgi,
     for (stream = fcgi->first; stream; stream = stream->next)
     {
         if (stream->streamid == streamid)
-        {
-            if (move_first && stream != fcgi->first)
-                move_to_head(stream);
-
             return stream;
-        }
     }
 
     if (create)
@@ -474,6 +462,24 @@ serf_fcgi__stream_get(serf_fcgi_protocol_t *fcgi,
         return stream;
     }
     return NULL;
+}
+
+void serf_fcgi__close_stream(serf_fcgi_protocol_t *fcgi,
+                             serf_fcgi_stream_t *stream)
+{
+    if (!stream->prev)
+        fcgi->first = stream->next;
+    else
+        stream->prev->next = stream;
+
+    if (stream->next)
+        stream->next->prev = stream->prev;
+    else
+        fcgi->last = stream->prev;
+
+    fcgi->first = fcgi->last = NULL;
+
+    serf_fcgi__stream_destroy(stream);
 }
 
 apr_status_t serf_fcgi__setup_incoming_request(
