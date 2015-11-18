@@ -331,8 +331,8 @@ void serf__http2_protocol_init_server(serf_incoming_t *client)
     h2->pool = protocol_pool;
     h2->client = client;
     h2->io = &client->io;
-    h2->stream = client->stream;
-    h2->ostream = client->ostream_tail;
+    h2->stream = client->pump.stream;
+    h2->ostream = client->pump.ostream_tail;
     h2->allocator = client->allocator;
     h2->config = client->config;
 
@@ -1728,9 +1728,9 @@ http2_incoming_read(serf_incoming_t *client)
 
     /* If the stop_writing flag was set on the connection, reset it now because
     there is some data to read. */
-    if (client->stop_writing)
+    if (client->pump.stop_writing)
     {
-        client->stop_writing = 0;
+        client->pump.stop_writing = false;
         serf_io__set_pollset_dirty(&client->io);
     }
 
@@ -1740,7 +1740,7 @@ http2_incoming_read(serf_incoming_t *client)
         if (client->proto_peek_bkt)
             stream = client->proto_peek_bkt;
         else
-            stream = client->stream;
+            stream = client->pump.stream;
 
         do {
             const char *data;
@@ -1766,7 +1766,7 @@ http2_incoming_read(serf_incoming_t *client)
             serf_bucket_destroy(client->proto_peek_bkt);
             client->proto_peek_bkt = NULL;
 
-            h2->stream = client->stream;
+            h2->stream = client->pump.stream;
         }
 
         if (APR_STATUS_IS_EAGAIN(status) || status == SERF_ERROR_WAIT_CONN)
