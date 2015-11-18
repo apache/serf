@@ -562,8 +562,8 @@ static apr_status_t fcgi_server_read(serf_incoming_t *client)
     serf_fcgi_protocol_t *fcgi = client->protocol_baton;
 
     if (! fcgi->stream) {
-        fcgi->stream = client->stream;
-        fcgi->ostream = client->ostream_tail;
+        fcgi->stream = client->pump.stream;
+        fcgi->ostream = client->pump.ostream_tail;
     }
 
     return fcgi_read(fcgi);
@@ -574,8 +574,8 @@ static apr_status_t fcgi_server_write(serf_incoming_t *client)
     serf_fcgi_protocol_t *fcgi = client->protocol_baton;
 
     if (!fcgi->stream) {
-        fcgi->stream = client->stream;
-        fcgi->ostream = client->ostream_tail;
+        fcgi->stream = client->pump.stream;
+        fcgi->ostream = client->pump.ostream_tail;
     }
 
     return fcgi_write(fcgi);
@@ -606,8 +606,8 @@ void serf__fcgi_protocol_init_server(serf_incoming_t *client)
     fcgi->pool = protocol_pool;
     fcgi->client = client;
     fcgi->io = &client->io;
-    fcgi->stream = client->stream;
-    fcgi->ostream = client->ostream_tail;
+    fcgi->stream = client->pump.stream;
+    fcgi->ostream = client->pump.ostream_tail;
     fcgi->allocator = client->allocator;
     fcgi->config = client->config;
 

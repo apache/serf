@@ -147,6 +147,33 @@ typedef struct serf_io_baton_t {
 
 } serf_io_baton_t;
 
+typedef struct serf_pump_io_t
+{
+    serf_io_baton_t *io;
+
+    serf_bucket_alloc_t *allocator;
+    serf_config_t *config;
+
+    serf_bucket_t *stream;
+    serf_bucket_t *ostream_head;
+    serf_bucket_t *ostream_tail;
+
+    apr_socket_t *skt;
+
+    /* Outgoing vecs, waiting to be written.
+    Read from ostream_head */
+    struct iovec vec[IOV_MAX];
+    int vec_len;
+
+    /* True when connection failed while writing */
+    bool done_writing;
+    bool stop_writing; /* Wait for read (E.g. SSL) */
+
+    /* Set to true when ostream_tail was read to EOF */
+    bool hit_eof;
+} serf_pump_t;
+
+
 /* Should we use static APR_INLINE instead? */
 #define serf_io__set_pollset_dirty(io_baton)                    \
     do                                                          \
@@ -381,6 +408,7 @@ struct serf_incoming_t {
     serf_context_t *ctx;
 
     serf_io_baton_t io;
+    serf_pump_t pump;
     serf_incoming_request_setup_t req_setup;
     void *req_setup_baton;
 
@@ -403,8 +431,6 @@ struct serf_incoming_t {
     serf_connection_framing_type_t framing_type;
 
     bool wait_for_connect;
-    bool hit_eof;
-    bool stop_writing;
 
     /* Event callbacks, called from serf__process_client() to do the actual
     processing. */
@@ -416,13 +442,6 @@ struct serf_incoming_t {
     void(*perform_teardown)(serf_incoming_t *conn);
     void *protocol_baton;
 
-    /* A bucket wrapped around our socket (for reading responses). */
-    serf_bucket_t *stream;
-    /* A reference to the aggregate bucket that provides the boundary between
-    * request level buckets and connection level buckets.
-    */
-    serf_bucket_t *ostream_head;
-    serf_bucket_t *ostream_tail;
 
     serf_config_t *config;
 
@@ -741,6 +760,25 @@ void serf__link_requests(serf_request_t **list, serf_request_t **tail,
 
 apr_status_t serf__handle_response(serf_request_t *request,
                                    apr_pool_t *pool);
+
+/* From pump.c */
+void serf_pump__init(serf_pump_t *pump,
+                     serf_io_baton_t *io,
+                     apr_socket_t *skt,
+                     serf_config_t *config,
+                     serf_bucket_alloc_t *allocator,
+                     apr_pool_t *pool);
+
+bool serf_pump__data_pending(serf_pump_t *pump);
+void serf_pump__store_ipaddresses_in_config(serf_pump_t *pump);
+
+apr_status_t serf_pump__write(serf_pump_t *pump,
+                              bool fetch_new);
+
+/* These must always be called as a pair to avoid a memory leak */
+void serf_pump__prepare_setup(serf_pump_t *pump);
+void serf_pump__complete_setup(serf_pump_t *pump, serf_bucket_t *ostream);
+
 
 /** Logging functions. **/
 

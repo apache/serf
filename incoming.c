@@ -28,76 +28,35 @@
 
 #include "serf_private.h"
 
-static apr_status_t client_detect_eof(void *baton,
-                                      serf_bucket_t *aggregator)
-{
-    serf_incoming_t *client = baton;
-    client->hit_eof = true;
-    return APR_EAGAIN;
-}
-
 static apr_status_t client_connected(serf_incoming_t *client)
 {
     /* serf_context_t *ctx = client->ctx; */
     apr_status_t status;
     serf_bucket_t *ostream;
-    apr_sockaddr_t *sa;
 
-    if (apr_socket_addr_get(&sa, APR_LOCAL, client->skt) == APR_SUCCESS) {
-        char buf[48];
-        if (!apr_sockaddr_ip_getbuf(buf, sizeof(buf), sa))
-            serf_config_set_stringf(client->config, SERF_CONFIG_CONN_LOCALIP,
-                                    "%s:%d", buf, sa->port);
-    }
-    if (apr_socket_addr_get(&sa, APR_REMOTE, client->skt) == APR_SUCCESS) {
-        char buf[48];
-        if (!apr_sockaddr_ip_getbuf(buf, sizeof(buf), sa))
-            serf_config_set_stringf(client->config, SERF_CONFIG_CONN_REMOTEIP,
-                                    "%s:%d", buf, sa->port);
-    }
+    serf_pump__store_ipaddresses_in_config(&client->pump);
 
     serf__log(LOGLVL_DEBUG, LOGCOMP_CONN, __FILE__, client->config,
               "socket for client 0x%x connected\n", client);
 
     /* ### Connection does auth setup here */
 
-    if (client->ostream_head == NULL) {
-        client->ostream_head = serf_bucket_aggregate_create(client->allocator);
-    }
+    serf_pump__prepare_setup(&client->pump);
 
-    if (client->ostream_tail == NULL) {
-        client->ostream_tail = serf_bucket_aggregate_create(client->allocator);
-
-        serf_bucket_aggregate_hold_open(client->ostream_tail,
-                                        client_detect_eof, client);
-    }
-
-    ostream = client->ostream_tail;
+    ostream = client->pump.ostream_tail;
 
     status = client->setup(client->skt,
-                           &client->stream,
+                           &client->pump.stream,
                            &ostream,
                            client->setup_baton, client->pool);
 
     if (status) {
-        /* extra destroy here since it wasn't added to the head bucket yet. */
-        serf_bucket_destroy(client->ostream_tail);
+        serf_pump__complete_setup(&client->pump, NULL);
         /* ### Cleanup! (serf__connection_pre_cleanup) */
         return status;
     }
 
-    /* Share the configuration with all the buckets in the newly created output
-    chain (see PLAIN or ENCRYPTED scenario's), including the request buckets
-    created by the application (ostream_tail will handle this for us). */
-    serf_bucket_set_config(client->ostream_head, client->config);
-
-    /* Share the configuration with the ssl_decrypt and socket buckets. The
-    response buckets wrapping the ssl_decrypt/socket buckets won't get the
-    config automatically because they are upstream. */
-    serf_bucket_set_config(client->stream, client->config);
-
-    serf_bucket_aggregate_append(client->ostream_head,
-                                 ostream);
+    serf_pump__complete_setup(&client->pump, ostream);
 
     if (client->framing_type == SERF_CONNECTION_FRAMING_TYPE_NONE) {
         client->proto_peek_bkt = serf_bucket_aggregate_create(
@@ -105,7 +64,7 @@ static apr_status_t client_connected(serf_incoming_t *client)
 
         serf_bucket_aggregate_append(
             client->proto_peek_bkt,
-            serf_bucket_barrier_create(client->stream,
+            serf_bucket_barrier_create(client->pump.stream,
                                        client->allocator));
     }
 
@@ -140,7 +99,7 @@ static apr_status_t http1_enqueue_reponse(serf_incoming_request_t *request,
                                           void *enqueue_baton,
                                           serf_bucket_t *bucket)
 {
-    serf_bucket_aggregate_append(request->incoming->ostream_tail,
+    serf_bucket_aggregate_append(request->incoming->pump.ostream_tail,
                                  serf__bucket_event_create(bucket,
                                                            request,
                                                            NULL,
@@ -194,7 +153,7 @@ apr_status_t perform_peek_protocol(serf_incoming_t *client)
 
     if (!peek_data) {
 
-        status = serf_bucket_peek(client->stream, &data, &len);
+        status = serf_bucket_peek(client->pump.stream, &data, &len);
 
         if (len > h2prefixlen)
           len = h2prefixlen;
@@ -227,7 +186,7 @@ apr_status_t perform_peek_protocol(serf_incoming_t *client)
     }
 
     do {
-        status = serf_bucket_read(client->stream,
+        status = serf_bucket_read(client->pump.stream,
                                   h2prefixlen - peek_data->read,
                                   &data, &len);
 
@@ -314,7 +273,7 @@ static apr_status_t read_from_client(serf_incoming_t *client)
                 client->proto_peek_bkt = NULL;
             }
             else
-                read_bkt = serf_bucket_barrier_create(client->stream,
+                read_bkt = serf_bucket_barrier_create(client->pump.stream,
                                                       client->allocator);
 
             status = client->req_setup(&rq->req_bkt, read_bkt, rq,
@@ -355,7 +314,7 @@ static apr_status_t read_from_client(serf_incoming_t *client)
                 const char *data;
                 apr_size_t len;
 
-                status = serf_bucket_peek(client->stream, &data, &len);
+                status = serf_bucket_peek(client->pump.stream, &data, &len);
             }
         }
     }
@@ -390,144 +349,10 @@ static apr_status_t read_from_client(serf_incoming_t *client)
     return status;
 }
 
-static apr_status_t socket_writev(serf_incoming_t *client)
-{
-    apr_size_t written;
-    apr_status_t status;
-
-    status = apr_socket_sendv(client->skt, client->vec,
-                              client->vec_len, &written);
-    if (status && !APR_STATUS_IS_EAGAIN(status))
-        serf__log(LOGLVL_DEBUG, LOGCOMP_CONN, __FILE__, client->config,
-                  "socket_sendv error %d\n", status);
-
-    /* did we write everything? */
-    if (written) {
-        apr_size_t len = 0;
-        int i;
-
-        serf__log(LOGLVL_DEBUG, LOGCOMP_CONN, __FILE__, client->config,
-                  "--- socket_sendv: %d bytes. --\n", written);
-
-        for (i = 0; i < client->vec_len; i++) {
-            len += client->vec[i].iov_len;
-            if (written < len) {
-                serf__log_nopref(LOGLVL_DEBUG, LOGCOMP_RAWMSG, client->config,
-                                 "%.*s", client->vec[i].iov_len - (len - written),
-                                 client->vec[i].iov_base);
-                if (i) {
-                    memmove(client->vec, &client->vec[i],
-                            sizeof(struct iovec) * (client->vec_len - i));
-                    client->vec_len -= i;
-                }
-                client->vec[0].iov_base = (char *)client->vec[0].iov_base + (client->vec[0].iov_len - (len - written));
-                client->vec[0].iov_len = len - written;
-                break;
-            } else {
-                serf__log_nopref(LOGLVL_DEBUG, LOGCOMP_RAWMSG, client->config,
-                                 "%.*s",
-                                 client->vec[i].iov_len, client->vec[i].iov_base);
-            }
-        }
-        if (len == written) {
-            client->vec_len = 0;
-        }
-        serf__log_nopref(LOGLVL_DEBUG, LOGCOMP_RAWMSG, client->config, "\n");
-
-        /* Log progress information */
-        serf__context_progress_delta(client->ctx, 0, written);
-    }
-
-    return status;
-}
-
-static apr_status_t no_more_writes(serf_incoming_t *client)
-{
-  /* Note that we should hold new requests until we open our new socket. */
-  serf__log(LOGLVL_DEBUG, LOGCOMP_CONN, __FILE__, client->config,
-            "stop writing on client 0x%x\n", client);
-
-  /* Clear our iovec. */
-  client->vec_len = 0;
-
-  /* Update the pollset to know we don't want to write on this socket any
-  * more.
-  */
-  serf_io__set_pollset_dirty(&client->io);
-  return APR_SUCCESS;
-}
-
 apr_status_t serf__incoming_client_flush(serf_incoming_t *client,
                                          bool pump)
 {
-    apr_status_t status = APR_SUCCESS;
-    apr_status_t read_status = APR_SUCCESS;
-    serf_bucket_t *ostreamh = client->ostream_head;
-
-    client->hit_eof = FALSE;
-
-    while (status == APR_SUCCESS) {
-
-        /* First try to write out what is already stored in the
-           connection vecs. */
-        while (client->vec_len && !status) {
-            status = socket_writev(client);
-
-            /* If the write would have blocked, then we're done.
-             * Don't try to write anything else to the socket.
-             */
-            if (APR_STATUS_IS_EPIPE(status)
-                || APR_STATUS_IS_ECONNRESET(status)
-                || APR_STATUS_IS_ECONNABORTED(status))
-              return no_more_writes(client);
-        }
-
-        if (status || !pump)
-            return status;
-        else if (read_status || client->vec_len || client->hit_eof)
-            return read_status;
-
-        /* ### optimize at some point by using read_for_sendfile */
-        /* TODO: now that read_iovec will effectively try to return as much
-           data as available, we probably don't want to read ALL_AVAIL, but
-           a lower number, like the size of one or a few TCP packets, the
-           available TCP buffer size ... */
-        client->hit_eof = 0;
-        read_status = serf_bucket_read_iovec(ostreamh,
-                                             SERF_READ_ALL_AVAIL,
-                                             IOV_MAX,
-                                             client->vec,
-                                             &client->vec_len);
-
-        if (read_status == SERF_ERROR_WAIT_CONN) {
-            /* The bucket told us that it can't provide more data until
-            more data is read from the socket. This normally happens
-            during a SSL handshake.
-
-            We should avoid looking for writability for a while so
-            that (hopefully) something will appear in the bucket so
-            we can actually write something. otherwise, we could
-            end up in a CPU spin: socket wants something, but we
-            don't have anything (and keep returning EAGAIN) */
-            client->stop_writing = true;
-            serf_io__set_pollset_dirty(&client->io);
-
-            read_status = APR_EAGAIN;
-        }
-        else if (APR_STATUS_IS_EAGAIN(read_status)) {
-
-            /* We read some stuff, but did we read everything ? */
-            if (client->hit_eof)
-                read_status = APR_SUCCESS;
-        }
-        else if (SERF_BUCKET_READ_ERROR(read_status)) {
-
-            /* Something bad happened. Propagate any errors. */
-            return read_status;
-        }
-    }
-
-    return status;
+    return serf_pump__write(&client->pump, pump);
 }
 
 static apr_status_t write_to_client(serf_incoming_t *client)
@@ -561,7 +386,7 @@ void serf_incoming_set_framing_type(
 
     if (client->skt) {
         serf_io__set_pollset_dirty(&client->io);
-        client->stop_writing = 0;
+        client->pump.stop_writing = false;
 
         /* Close down existing protocol */
         if (client->protocol_baton && client->perform_teardown) {
@@ -745,10 +570,16 @@ apr_status_t serf_incoming_create2(
     ic->closed = closed;
     ic->closed_baton = closed_baton;
 
-    /* A bucket wrapped around our socket (for reading responses). */
-    ic->stream = NULL;
-    ic->ostream_head = NULL;
-    ic->ostream_tail = NULL;
+    /* Store the connection specific info in the configuration store */
+    rv = serf__config_store_get_client_config(ctx, ic, &config, pool);
+    if (rv) {
+        apr_pool_destroy(ic->pool);
+        return rv;
+    }
+    ic->config = config;
+
+    /* Prepare wrapping the socket with buckets. */
+    serf_pump__init(&ic->pump, &ic->io, ic->skt, config, ic->allocator, ic->pool);
 
     ic->protocol_baton = NULL;
     ic->perform_read = read_from_client;
@@ -761,14 +592,6 @@ apr_status_t serf_incoming_create2(
     ic->desc.desc.s = ic->skt;
     ic->desc.reqevents = APR_POLLIN | APR_POLLERR | APR_POLLHUP;
     ic->seen_in_pollset = 0;
-
-    /* Store the connection specific info in the configuration store */
-    rv = serf__config_store_get_client_config(ctx, ic, &config, pool);
-    if (rv) {
-        apr_pool_destroy(ic->pool);
-        return rv;
-    }
-    ic->config = config;
 
     rv = ctx->pollset_add(ctx->pollset_baton,
                          &ic->desc, &ic->io);
@@ -928,38 +751,8 @@ apr_status_t serf__incoming_update_pollset(serf_incoming_t *client)
            But it also has the nice side effect of removing references
            from the aggregate to requests that are done.
          */
-        if (client->vec_len) {
-            /* We still have vecs in the connection, which lifetime is
-               managed by buckets inside client->ostream_head.
 
-               Don't touch ostream as that might destroy the vecs */
-
-            data_waiting = true;
-        }
-        else {
-            serf_bucket_t *ostream;
-
-            ostream = client->ostream_head;
-
-            if (ostream) {
-                const char *dummy_data;
-                apr_size_t len;
-
-                status = serf_bucket_peek(ostream, &dummy_data, &len);
-
-                if (SERF_BUCKET_READ_ERROR(status) || len > 0) {
-                    /* DATA or error waiting */
-                    data_waiting = TRUE; /* Error waiting */
-                }
-                else if (! status || APR_STATUS_IS_EOF(status)) {
-                    data_waiting = FALSE;
-                }
-                else
-                    data_waiting = FALSE; /* EAGAIN / EOF / WAIT_CONN */
-            }
-            else
-                data_waiting = FALSE;
-        }
+        data_waiting = serf_pump__data_pending(&client->pump);
 
         if (data_waiting) {
             desc.reqevents |= APR_POLLOUT;
