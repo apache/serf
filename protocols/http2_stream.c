@@ -259,6 +259,7 @@ static apr_status_t stream_send_data(serf_http2_stream_t *stream,
 
         wai = serf_bucket_mem_alloc(stream->alloc, sizeof(*wai));
         wai->stream = stream;
+        wai->bkt = data;
         wai->allocated = prefix_len;
 
         data = serf__bucket_event_create(data, wai,
