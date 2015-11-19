@@ -289,16 +289,14 @@ struct serf_hpack_table_t
     char send_tablesize_update;
 
     /* The local -> remote 'encoder' list */
-    serf_hpack_entry_t *lr_first, *lr_last, *lr_start;
-    unsigned int lr_count; /* Number of items (first..last) */
-    unsigned int lr_indexable; /* Number of items (start..last) */
+    serf_hpack_entry_t *lr_first, *lr_last;
+    unsigned int lr_count; /* Number of items */
     apr_size_t lr_size; /* 'Bytes' in list, calculated by HPACK_ENTRY_SIZE() */
     apr_size_t lr_max_table_size;
     apr_size_t lr_sys_table_size;
 
-    serf_hpack_entry_t *rl_first, *rl_last, *rl_start;
-    unsigned int rl_count; /* Number of items (first..last) */
-    unsigned int rl_indexable; /* Number of items (start..last) */
+    serf_hpack_entry_t *rl_first, *rl_last;
+    unsigned int rl_count; /* Number of items */
     apr_size_t rl_size; /* 'Bytes' in list, calculated by HPACK_ENTRY_SIZE() */
     apr_size_t rl_max_table_size;
     apr_size_t rl_sys_table_size;
@@ -392,7 +390,7 @@ cleanup_hpack_table(void *data)
 
         hpack_free_entry(hi, tbl->alloc);
     }
-    tbl->lr_first = tbl->lr_start = tbl->lr_last = NULL;
+    tbl->lr_first = tbl->lr_last = NULL;
     tbl->lr_size = 0;
 
     for (hi = tbl->rl_first; hi; hi = next)
@@ -401,7 +399,7 @@ cleanup_hpack_table(void *data)
 
         hpack_free_entry(hi, tbl->alloc);
     }
-    tbl->rl_first = tbl->rl_start = tbl->rl_last = NULL;
+    tbl->rl_first = tbl->rl_last = NULL;
     tbl->rl_size = 0;
 #endif
     return APR_SUCCESS;
@@ -444,7 +442,6 @@ serf__hpack_table_create(int for_http2,
 
 static void
 hpack_shrink_table(serf_hpack_entry_t **first,
-                   serf_hpack_entry_t **start,
                    serf_hpack_entry_t **last,
                    apr_size_t *size,
                    apr_size_t max_size,
@@ -456,8 +453,6 @@ hpack_shrink_table(serf_hpack_entry_t **first,
 
         *last = entry->prev;
 
-        if (start && (*start == entry))
-            *start = NULL;
         if (first && (*first == entry))
             *first = NULL;
 
@@ -489,7 +484,7 @@ serf__hpack_table_set_max_table_size(serf_hpack_table_t *hpack_tbl,
         if (max_encoder_size < hpack_tbl->lr_max_table_size)
             hpack_tbl->send_tablesize_update = TRUE;
 
-        hpack_shrink_table(&hpack_tbl->lr_first, &hpack_tbl->lr_start,
+        hpack_shrink_table(&hpack_tbl->lr_first,
                            &hpack_tbl->lr_last, &hpack_tbl->lr_size,
                            hpack_tbl->lr_max_table_size, hpack_tbl->alloc);
     }
@@ -503,7 +498,7 @@ hpack_table_size_update(serf_hpack_table_t *hpack_tbl,
     {
         hpack_tbl->rl_max_table_size = size;
 
-        hpack_shrink_table(&hpack_tbl->rl_first, &hpack_tbl->rl_start,
+        hpack_shrink_table(&hpack_tbl->rl_first,
                            &hpack_tbl->rl_last, &hpack_tbl->rl_size,
                            hpack_tbl->rl_max_table_size, hpack_tbl->alloc);
     }
@@ -533,7 +528,7 @@ hpack_table_get(apr_uint32_t v,
         serf_hpack_entry_t *i;
         v -= sizeof(hpack_static_table) / sizeof(hpack_static_table[0]);
 
-        for (i = tbl->rl_start; i; i = i->next)
+        for (i = tbl->rl_first; i; i = i->next)
         {
             if (!v)
             {
@@ -1151,10 +1146,6 @@ serf__bucket_hpack_decode_create(serf_bucket_t *stream,
         ctx->item_baton = NULL;
         ctx->agg = serf_bucket_aggregate_create(alloc);
     }
-
-  /* Prepare TBL for decoding */
-    ctx->tbl->rl_start = ctx->tbl->rl_first;
-    ctx->tbl->rl_indexable = ctx->tbl->rl_count;
 
     return serf_bucket_create(&serf_bucket_type__hpack_decode, alloc, ctx);
 }
@@ -1849,7 +1840,7 @@ hpack_process(serf_bucket_t *bucket)
             serf_hpack_table_t *tbl = ctx->tbl;
             ctx->hit_eof = TRUE;
 
-            hpack_shrink_table(&tbl->rl_first, &tbl->rl_start,
+            hpack_shrink_table(&tbl->rl_first,
                                &tbl->rl_last, &tbl->rl_size,
                                tbl->rl_max_table_size, tbl->alloc);
 
