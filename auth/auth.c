@@ -29,10 +29,10 @@
 
 /* These authentication schemes are in order of decreasing security, the topmost
    scheme will be used first when the server supports it.
- 
+
    Each set of handlers should support both server (401) and proxy (407)
    authentication.
- 
+
    Use lower case for the scheme names to enable case insensitive matching.
  */
 static const serf__authn_scheme_t *serf_authn_schemes[] = {
@@ -275,7 +275,7 @@ static apr_status_t dispatch_auth(int code,
     return APR_SUCCESS;
 }
 
-/* Read the headers of the response and try the available handlers if 
+/* Read the headers of the response and try the available handlers if
    authentication or validation is needed.
    *CONSUMED_RESPONSE will be 1 if authentication is involved (either a 401/407
    response or a response with an authn header), 0 otherwise. */
@@ -320,7 +320,7 @@ apr_status_t serf__handle_auth_response(int *consumed_response,
            again when more data is received. */
         status = discard_body(response);
         *consumed_response = 1;
-        
+
         /* Discard all response body before processing authentication. */
         if (!APR_STATUS_IS_EOF(status)) {
             return status;

@@ -254,7 +254,7 @@ serf__spnego_init_sec_context(serf_connection_t *conn,
     /* Prepare input buffer description. */
     sspi_in_buffer.BufferType = SECBUFFER_TOKEN;
     sspi_in_buffer.pvBuffer = input_buf->value;
-    sspi_in_buffer.cbBuffer = input_buf->length; 
+    sspi_in_buffer.cbBuffer = input_buf->length;
 
     sspi_in_buffer_desc.cBuffers = 1;
     sspi_in_buffer_desc.pBuffers = &sspi_in_buffer;
@@ -262,7 +262,7 @@ serf__spnego_init_sec_context(serf_connection_t *conn,
 
     /* Output buffers. Output buffer will be allocated by system. */
     sspi_out_buffer.BufferType = SECBUFFER_TOKEN;
-    sspi_out_buffer.pvBuffer = NULL; 
+    sspi_out_buffer.pvBuffer = NULL;
     sspi_out_buffer.cbBuffer = 0;
 
     sspi_out_buffer_desc.cBuffers = 1;

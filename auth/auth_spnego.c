@@ -80,7 +80,7 @@
  *
  * Note: It's possible that the server returns 401 again in step 2, if the
  *       Kerberos context isn't complete yet. This means there is 3rd step
- *       where we'll send a request with an Authorization header to the 
+ *       where we'll send a request with an Authorization header to the
  *       server. Some (simple) tests with mod_auth_kerb and MIT Kerberos 5 show
  *       this never happens.
  *
@@ -106,7 +106,7 @@ typedef enum gss_api_auth_state {
    authn_persistence_state_t: state that indicates if we are talking with a
    server that requires authentication only of the first request (stateful),
    or of each request (stateless).
- 
+
    INIT: Begin state. Authenticating the first request on this connection.
    UNDECIDED: we haven't identified the server yet, assume STATEFUL for now.
      Pipeline mode disabled, requests are sent only after the response off the
@@ -292,7 +292,7 @@ do_auth(const serf__authn_scheme_t *scheme,
         }
     } else {
         /* This is a new request, not a retry in response to a 40x of the
-           host/proxy. 
+           host/proxy.
            Only add the Authorization header if we know the server requires
            per-request authentication (stateless). */
         if (gss_info->pstate != pstate_stateless)
@@ -377,7 +377,7 @@ serf__init_spnego_connection(const serf__authn_scheme_t *scheme,
     serf__authn_info_t *authn_info;
     gss_authn_info_t *gss_info = NULL;
 
-    /* For proxy authentication, reuse the gss context for all connections. 
+    /* For proxy authentication, reuse the gss context for all connections.
        For server authentication, create a new gss context per connection. */
     if (code == 401) {
         authn_info = &conn->authn_info;

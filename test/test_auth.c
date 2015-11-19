@@ -259,10 +259,10 @@ static void digest_authentication(CuTest *tc, int close_conn)
        correctly. */
     num_requests_sent = 1;
 
-    
+
     /* Expected string relies on strict order of attributes of Digest, which are
        not guaranteed.
-       6ff0d4cc201513ce970d5c6b25e1043b is encoded as: 
+       6ff0d4cc201513ce970d5c6b25e1043b is encoded as:
          md5hex(md5hex("serf:Test Suite:serftest") & ":" &
                 md5hex("ABCDEF1234567890") & ":" &
                 md5hex("GET:/test/index.html"))

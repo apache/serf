@@ -202,7 +202,7 @@ static void test_simple_bucket_readline(CuTest *tc)
     int found;
     apr_size_t len;
     const char *body;
-    
+
     serf_bucket_alloc_t *alloc = test__create_bucket_allocator(tc, tb->pool);
 
     bkt = SERF_BUCKET_SIMPLE_STRING(
@@ -268,7 +268,7 @@ static void test_simple_bucket_readline(CuTest *tc)
 
 #if 0
     /* TODO: looks like a bug, CRLF acceptable on buffer with CR returns
-       SERF_NEWLINE_CRLF_SPLIT, but here that CR comes at the end of the 
+       SERF_NEWLINE_CRLF_SPLIT, but here that CR comes at the end of the
        buffer (APR_EOF), so should have been SERF_NEWLINE_NONE! */
     bkt = SERF_BUCKET_SIMPLE_STRING("line1" CR, alloc);
     readlines_and_check_bucket(tc, bkt, SERF_NEWLINE_CRLF, "line1" CR, 1);
@@ -949,7 +949,7 @@ static void test_response_body_too_small_cl(CuTest *tc)
                                     CRLF
                                     BODY,
                                     alloc);
-    
+
     bkt = serf_bucket_response_create(tmp, alloc);
 
     {
@@ -1148,7 +1148,7 @@ static void test_response_bucket_peek_at_headers(CuTest *tc)
     CuAssertIntEquals(tc, 200, sl.code);
     CuAssertStrEquals(tc, "OK", sl.reason);
     CuAssertIntEquals(tc, SERF_HTTP_11, sl.version);
-    
+
     /* Ensure that the status line & headers are read in the response_bucket. */
     status = serf_bucket_response_wait_for_headers(resp_bkt1);
     CuAssert(tc, "Unexpected error when waiting for response headers",
@@ -1222,7 +1222,7 @@ static void test_copy_bucket(CuTest *tc)
 
     CuAssertIntEquals(tc, strlen(BODY),
                       (int)serf_bucket_get_remaining(aggbkt));
-    CuAssertIntEquals(tc, strlen(BODY), 
+    CuAssertIntEquals(tc, strlen(BODY),
                       (int)serf_bucket_get_remaining(copybkt));
 
     /* When < min_size, everything should be read in one go */
@@ -1710,7 +1710,7 @@ static apr_status_t deflate_compress(const char **data, apr_size_t *len,
         serf_bucket_mem_free(alloc, write_buf);
         *data = "";
     }
-    
+
     return APR_SUCCESS;
 }
 
@@ -1886,7 +1886,7 @@ create_gzip_deflate_bucket(serf_bucket_t *stream, z_stream *outzstr,
     return defbkt;
 }
 
-/* Test for issue #152: the trailers of gzipped data only store the 4 most 
+/* Test for issue #152: the trailers of gzipped data only store the 4 most
    significant bytes of the length, so when the compressed data is >4GB
    we can't just compare actual length with expected length. */
 static void test_deflate_4GBplus_buckets(CuTest *tc)
@@ -2004,7 +2004,7 @@ static void test_linebuf_fetch_crlf(CuTest *tc)
     serf_bucket_t *bkt;
     serf_linebuf_t linebuf;
     serf_bucket_type_t *unfriendly;
-    
+
     serf_bucket_alloc_t *alloc = test__create_bucket_allocator(tc, tb->pool);
 
     bkt = serf_bucket_mock_create(actions, sizeof(actions)/sizeof(actions[0]),
@@ -2750,7 +2750,7 @@ static void test_hpack_huffman_encode(CuTest *tc)
                                                  sizeof(encoded),
                                                  encoded, &encoded_len));
     /* Nice.. need 583 bytes to encode these 256 bytes :-) */
-    CuAssertIntEquals(tc, 583, encoded_len); 
+    CuAssertIntEquals(tc, 583, encoded_len);
     text[256] = 0xFE;
     CuAssertIntEquals(tc, 0,
                       serf__hpack_huffman_decode(encoded, encoded_len,
@@ -2906,7 +2906,7 @@ CuSuite *test_buckets(void)
     SUITE_ADD_TEST(suite, test_deflate_4GBplus_buckets);
 #endif
 
-    
+
 
     return suite;
 }

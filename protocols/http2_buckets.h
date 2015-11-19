@@ -148,9 +148,9 @@ typedef int (serf_bucket_hpack_do_callback_fn_t)(void *baton,
                                                  apr_size_t value_len);
 
 /**
- * Iterates over all headers of the message and invokes the callback 
+ * Iterates over all headers of the message and invokes the callback
  * function with header key and value. Stop iterating when no more
- * headers are available or when the callback function returned a 
+ * headers are available or when the callback function returned a
  * non-0 value.
  *
  * @param headers_bucket headers to iterate over

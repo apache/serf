@@ -171,7 +171,7 @@ void serf_bucket_aggregate_append(
     serf_bucket_set_config(append_bucket, ctx->config);
 }
 
-void serf_bucket_aggregate_hold_open(serf_bucket_t *aggregate_bucket, 
+void serf_bucket_aggregate_hold_open(serf_bucket_t *aggregate_bucket,
                                      serf_bucket_aggregate_eof_t fn,
                                      void *baton)
 {

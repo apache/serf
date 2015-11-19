@@ -323,7 +323,7 @@ static apr_status_t serf_deflate_refill(serf_bucket_t *bucket)
                                                 bucket->allocator,
                                                 DEFLATE_VERIFY_SIZE);
 
-                     verify_header[0] =  ctx->crc        & 0xFF;                       
+                     verify_header[0] =  ctx->crc        & 0xFF;
                      verify_header[1] = (ctx->crc >>  8) & 0xFF;
                      verify_header[2] = (ctx->crc >> 16) & 0xFF;
                      verify_header[3] = (ctx->crc >> 24) & 0xFF;

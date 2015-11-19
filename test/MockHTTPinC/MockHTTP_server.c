@@ -139,7 +139,7 @@ static void * APR_THREAD_FUNC run_thread(apr_thread_t *tid, void *baton)
 }
 
 /**
- * Callback called when the mhServCtx_t pool is destroyed. 
+ * Callback called when the mhServCtx_t pool is destroyed.
  */
 static apr_status_t cleanupServer(void *baton)
 {
@@ -147,7 +147,7 @@ static apr_status_t cleanupServer(void *baton)
     apr_status_t status = APR_SUCCESS;
 
     /* If mhCleanup() wasn't called before pool cleanup, the server is still
-       running. Stop it here to avoid a crash, but this will result in a 
+       running. Stop it here to avoid a crash, but this will result in a
        (currently unidentified) pool cleanup crash.
        Conclusion: Always run mhCleanup() at the end of a test!
      */
@@ -259,7 +259,7 @@ static apr_status_t setupTCPServer(mhServCtx_t *ctx)
 }
 
 /**
- * Opens a non-blocking connection to a remote server at URL (in form 
+ * Opens a non-blocking connection to a remote server at URL (in form
  * localhost:30080).
  */
 static apr_status_t connectToServer(mhServCtx_t *ctx, _mhClientCtx_t *cctx)
@@ -655,7 +655,7 @@ readHeader(bucket_t *bkt, mhRequest_t *req, bool *done)
 }
 
 /**
- * Append a block of data in BUF of length LEN (not-'\0' terminated) to the 
+ * Append a block of data in BUF of length LEN (not-'\0' terminated) to the
  * list in REQ. Data will be copied in the REQ->pool.
  */
 static void
@@ -713,7 +713,7 @@ static apr_status_t readBody(bucket_t *bkt, mhRequest_t *req, bool *done)
 
 /**
  * Reads a chunk of the body from the buffer in CCTX. The length
- * of the body is determined by reading the chunk header, length of current 
+ * of the body is determined by reading the chunk header, length of current
  * chunk and partial read data will be stored in REQ->chunks.
  * The chunk will be copied in REQ->pool and stored in REQ.
  *
@@ -834,7 +834,7 @@ static apr_status_t readChunk(bucket_t *bkt, mhRequest_t *req, bool *done)
  * Keeps reading chunks until no more data is available.
  *
  * Returns APR_EAGAIN if a chunk isn't completely available.
- *         APR_SUCCESS + *DONE = YES when the last chunk and the trailer were 
+ *         APR_SUCCESS + *DONE = YES when the last chunk and the trailer were
  *              read.
  *         error in case of problems parsing the chunk header, length or trailer.
  */
@@ -857,7 +857,7 @@ readChunked(bucket_t *bkt, mhRequest_t *req, bool *done)
  *
  * Returns APR_EAGAIN: wait for more data
  *         APR_EOF: request received, or no more data available.
- *         MH_STATUS_INCOMPLETE_REQUEST: APR_EOF but the request wasn't received 
+ *         MH_STATUS_INCOMPLETE_REQUEST: APR_EOF but the request wasn't received
  *             completely.
  */
 static apr_status_t readRequest(_mhClientCtx_t *cctx, mhRequest_t **preq)
@@ -1194,7 +1194,7 @@ _mhMatchRequest(const mhServCtx_t *ctx, const _mhClientCtx_t *cctx,
 }
 
 /**
- * Tries to match an incomplete (partial) request REQ with the list of 
+ * Tries to match an incomplete (partial) request REQ with the list of
  * incomplete request matchers.
  * Returns NO if the request wasn't matched.
  *         YES + *RESP + *ACTION if the request was matched successfully.
@@ -1716,7 +1716,7 @@ mhServCtx_t *mhFindServerByID(const MockHTTP *mh, const char *serverID)
 }
 
 /**
- * Takes a list of builders of type mhServerSetupBldr_t *'s and executes them 
+ * Takes a list of builders of type mhServerSetupBldr_t *'s and executes them
  * one by one (in the order they are passed as arguments) to configure the
  * server SERV_CTX.
  */
@@ -1832,7 +1832,7 @@ mhServerSetupBldr_t *mhSetServerID(mhServCtx_t *ctx, const char *serverID)
 }
 
 /**
- * Builder callback, sets the number of maximum requests per connection on 
+ * Builder callback, sets the number of maximum requests per connection on
  * server CTX.
  */
 static bool
@@ -1843,7 +1843,7 @@ set_server_maxreqs_per_conn(const mhServerSetupBldr_t *ssb, mhServCtx_t *ctx)
 }
 
 /**
- * Create a builder of type mhServerSetupBldr_t, sets the number of maximum 
+ * Create a builder of type mhServerSetupBldr_t, sets the number of maximum
  * requests per connection.
  */
 mhServerSetupBldr_t *
@@ -2040,7 +2040,7 @@ mhSetServerCertKeyFile(mhServCtx_t *ctx, const char *keyFile)
 }
 
 /**
- * Builder callback, sets the passphrase to be used to decrypt the private key 
+ * Builder callback, sets the passphrase to be used to decrypt the private key
  * file on server CTX.
  */
 static bool
@@ -2417,7 +2417,7 @@ static int ocspCreateResponse(OCSP_RESPONSE **resp, mhOCSPRespnseStatus_t status
 
 /**
  * OpenSSL callback, executed on the server when the client has enabled OCSP
- * support. If an OCSP responder was defined in the test, call it now with an 
+ * support. If an OCSP responder was defined in the test, call it now with an
  * OCSP request to get an OCSP response that can be returned to the client.
  */
 static int ocspStatusCallback(SSL *ssl, void *userdata)
@@ -2630,7 +2630,7 @@ static apr_status_t initSSLCtx(_mhClientCtx_t *cctx)
 
         if (cctx->protocols == mhProtoSSLv2) {
             /* In recent versions of OpenSSL, SSLv2 has been disabled by removing
-               all SSLv2 ciphers from the cipher string. 
+               all SSLv2 ciphers from the cipher string.
                If SSLv2 is the only protocol this test wants to be enabled,
                re-add the SSLv2 ciphers. */
             SSL_CTX_set_cipher_list(ssl_ctx->ctx, "SSLv2");
@@ -2638,7 +2638,7 @@ static apr_status_t initSSLCtx(_mhClientCtx_t *cctx)
         }
 
         /* Always set this callback, even if no passphrase is set. Otherwise
-           OpenSSL will prompt the user to provide a passphrase if one is 
+           OpenSSL will prompt the user to provide a passphrase if one is
            needed. */
         SSL_CTX_set_default_passwd_cb(ssl_ctx->ctx, pem_passwd_cb);
         SSL_CTX_set_default_passwd_cb_userdata(ssl_ctx->ctx, cctx);
@@ -2764,7 +2764,7 @@ sslSocketWrite(_mhClientCtx_t *cctx, const char *data, apr_size_t *len)
     if (result == 0)
         return APR_EAGAIN;
 
-    
+
 
     return ssl_ctx->bio_status ? ssl_ctx->bio_status : APR_EGENERAL;
 }

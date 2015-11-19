@@ -144,7 +144,7 @@ struct mhServCtx_t {
     apr_array_header_t *reqMatchers;    /* array of ReqMatcherRespPair_t *'s */
     apr_array_header_t *incompleteReqMatchers;       /*       .... same type */
 };
-    
+
 
 typedef enum reqReadState_t {
     ReadStateStatusLine = 0,

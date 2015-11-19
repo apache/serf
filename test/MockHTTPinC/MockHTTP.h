@@ -27,7 +27,7 @@ extern "C" {
 /* TODO: define all macro's with mh prefix, + create shortcuts with flag to
       not define this (in case of conflicts with other code ) */
 /* TODO: connection level checks:
-   - ssl related: client certificate, handshake successful, 
+   - ssl related: client certificate, handshake successful,
    - authn: Negotiate, NTLM, Kerberos */
 
 typedef enum mhServerType_t {
@@ -166,7 +166,7 @@ typedef struct mhResponseBldr_t mhResponseBldr_t;
 #define     InSeparateThread\
                 mhSetServerThreading(__servctx, mhThreadSeparate)
 
-/* Runs the mock server and proxy in the main thread, use this when testing a 
+/* Runs the mock server and proxy in the main thread, use this when testing a
    non-blocking http client library.
    This is the default. */
 #define     InMainThread\
@@ -384,7 +384,7 @@ typedef struct mhResponseBldr_t mhResponseBldr_t;
 #define     WithBody(x)\
                 mhRespSetBody(__resp, (x))
 
-/* Set the chunked body of a response. This will automatically add a 
+/* Set the chunked body of a response. This will automatically add a
    Transfer-Encoding: chunked header.
    e.g. WithChunkedBody("chunk1", "chunk2") */
 #define     WithChunkedBody(...)\
@@ -412,7 +412,7 @@ typedef struct mhResponseBldr_t mhResponseBldr_t;
                 mhRespSetBodyPattern(__resp, (pattern), (repeat))
 
 #define EndGiven\
-                /* Assign local variables to NULL to avoid 'variable unused' 
+                /* Assign local variables to NULL to avoid 'variable unused'
                    warnings. */\
                 (void)__resp; (void)__rm; (void)__mh;\
             }
@@ -456,7 +456,7 @@ typedef struct mhResponseBldr_t mhResponseBldr_t;
 #define   VerifyAllRequestsReceived\
                 mhVerifyAllRequestsReceived(__mh)
 
-/* Verify that all stubbed requests where received once by the serer, in the 
+/* Verify that all stubbed requests where received once by the serer, in the
    order in which they were defined. */
 #define   VerifyAllRequestsReceivedInOrder\
                 mhVerifyAllRequestsReceivedInOrder(__mh)
@@ -506,7 +506,7 @@ typedef struct mhStats_t {
      */
     unsigned int requestsReceived;
 
-    /* Number of requests the server responded to. This includes default 
+    /* Number of requests the server responded to. This includes default
        responses or 500 Internal Server Error responses */
     unsigned int requestsResponded;
 
@@ -534,7 +534,7 @@ typedef struct MockHTTP MockHTTP;
 
 /**
  * Initialize a MockHTTP context.
- * 
+ *
  * This context manages the server(s), stubs, expectations of a test. It also
  * manages one pool of memory which only gets freed when this context is
  * cleaned up, so a MockHTTP context should be short-lived.
@@ -564,7 +564,7 @@ mhError_t mhRunServerLoopCompleteRequests(MockHTTP *mh);
  *
  * Returns:
  * MOCKHTTP_NO_ERROR if there's nothing more to be done at this time
- * MOCKHTTP_TIMEOUT  maximum timeout exceeded when waiting for a complete 
+ * MOCKHTTP_TIMEOUT  maximum timeout exceeded when waiting for a complete
  *                   request
  */
 mhError_t mhRunServerLoop(MockHTTP *mh);
