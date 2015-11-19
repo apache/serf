@@ -69,7 +69,7 @@ typedef apr_status_t
                               serf_bucket_t *hdrs_bkt);
 
 /**
- * This function will be called when a response is received, so that the 
+ * This function will be called when a response is received, so that the
  * scheme handler can validate the Authentication related response headers
  * (if needed).
  */
@@ -124,7 +124,7 @@ const char *serf__construct_realm(peer_t peer,
 
 /** Basic authentication **/
 extern const serf__authn_scheme_t serf__basic_authn_scheme;
-;
+
 /** Digest authentication **/
 extern const serf__authn_scheme_t serf__digest_authn_scheme;
 
