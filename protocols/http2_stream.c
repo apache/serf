@@ -342,7 +342,7 @@ serf_http2__stream_setup_next_request(serf_http2_stream_t *stream,
     serf__link_requests(&conn->written_reqs, &conn->written_reqs_tail,
                         request);
     conn->nr_of_written_reqs++;
-    conn->nr_of_written_reqs--;
+    conn->nr_of_unwritten_reqs--;
 
     serf__bucket_request_read(request->req_bkt, &body, NULL, NULL);
     status = serf__bucket_hpack_create_from_request(
