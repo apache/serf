@@ -1639,13 +1639,12 @@ http2_outgoing_write(serf_connection_t *conn)
 
     status = serf__connection_flush(conn, TRUE);
 
+    if (!status)
+        status = http2_write_data(h2);
+
     if (APR_STATUS_IS_EAGAIN(status))
         return APR_SUCCESS;
     else if (status)
-        return status;
-
-    status = http2_write_data(h2);
-    if (status)
         return status;
 
       /* Probably nothing to write. Connection will check new requests */
