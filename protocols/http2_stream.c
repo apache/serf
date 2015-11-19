@@ -697,9 +697,7 @@ serf_http2__stream_processor(void *baton,
 
         SERF_H2_assert(request->resp_bkt != NULL);
 
-        status = request->handler(request, request->resp_bkt,
-                                  request->handler_baton,
-                                  request->respool);
+        status = serf__handle_response(request, request->respool);
 
         if (!APR_STATUS_IS_EOF(status)
             && !SERF_BUCKET_READ_ERROR(status))
