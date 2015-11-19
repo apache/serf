@@ -38,7 +38,7 @@ static apr_status_t client_connected(serf_incoming_t *client)
     serf_pump__store_ipaddresses_in_config(&client->pump);
 
     serf__log(LOGLVL_DEBUG, LOGCOMP_CONN, __FILE__, client->config,
-              "socket for client 0x%pp connected\n", client);
+              "socket for client 0x%p connected\n", client);
 
     /* ### Connection does auth setup here */
 

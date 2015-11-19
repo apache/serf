@@ -61,7 +61,7 @@ static apr_status_t clean_conn(void *data)
     serf_connection_t *conn = data;
 
     serf__log(LOGLVL_DEBUG, LOGCOMP_CONN, __FILE__, conn->config,
-              "cleaning up connection 0x%pp\n", conn);
+              "cleaning up connection 0x%p\n", conn);
     serf_connection_close(conn);
 
     return APR_SUCCESS;
@@ -336,7 +336,7 @@ static apr_status_t connect_connection(serf_connection_t *conn)
     serf_pump__store_ipaddresses_in_config(&conn->pump);
 
     serf__log(LOGLVL_DEBUG, LOGCOMP_CONN, __FILE__, conn->config,
-              "socket for conn 0x%pp connected\n", conn);
+              "socket for conn 0x%p connected\n", conn);
 
     /* If the authentication was already started on another connection,
        prepare this connection (it might be possible to skip some
@@ -397,7 +397,7 @@ apr_status_t serf__open_connections(serf_context_t *ctx)
 #endif
                                    conn->skt_pool);
         serf__log(LOGLVL_DEBUG, LOGCOMP_CONN, __FILE__, conn->config,
-                  "created socket for conn 0x%pp, status %d\n", conn, status);
+                  "created socket for conn 0x%p, status %d\n", conn, status);
         if (status != APR_SUCCESS)
             return status;
 
@@ -504,7 +504,7 @@ static apr_status_t reset_connection(serf_connection_t *conn,
     serf_request_t *old_reqs;
 
     serf__log(LOGLVL_DEBUG, LOGCOMP_CONN, __FILE__, conn->config,
-              "reset connection 0x%pp\n", conn);
+              "reset connection 0x%p\n", conn);
 
     conn->probable_keepalive_limit = conn->completed_responses;
     conn->completed_requests = 0;
@@ -1054,7 +1054,7 @@ error:
            disable pipelining and reconnect to the server. */
         serf__log(LOGLVL_WARNING, LOGCOMP_CONN, __FILE__, conn->config,
                   "The server requested renegotiation. Disable HTTP "
-                  "pipelining and reset the connection 0x%pp.\n", conn);
+                  "pipelining and reset the connection 0x%p.\n", conn);
 
         serf__connection_set_pipelining(conn, 0);
         reset_connection(conn, 1);
@@ -1363,7 +1363,7 @@ apr_status_t serf_connection_create2(
     *conn = c;
 
     serf__log(LOGLVL_DEBUG, LOGCOMP_CONN, __FILE__, c->config,
-              "created connection 0x%pp\n", c);
+              "created connection 0x%p\n", c);
 
     return status;
 }
@@ -1429,7 +1429,7 @@ apr_status_t serf_connection_close(
             --ctx->conns->nelts;
 
             serf__log(LOGLVL_DEBUG, LOGCOMP_CONN, __FILE__, conn->config,
-                      "closed connection 0x%pp\n", conn);
+                      "closed connection 0x%p\n", conn);
 
             /* Found the connection. Closed it. All done. */
             return APR_SUCCESS;
