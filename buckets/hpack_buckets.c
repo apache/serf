@@ -1190,9 +1190,12 @@ read_hpack_int(apr_uint32_t *v,
         const char *data;
         apr_size_t len;
 
-        status = serf_bucket_read(ctx->stream, 1, &data, &len);
-        if (status || len == 0)
-            return status ? status : APR_EAGAIN;
+        do {
+            status = serf_bucket_read(ctx->stream, 1, &data, &len);
+        } while ((status == APR_SUCCESS) && !len);
+
+        if (SERF_BUCKET_READ_ERROR(status) || len == 0)
+            return status;
 
         ctx->buffer[0] = *data;
         ctx->buffer_used++;
@@ -1227,9 +1230,12 @@ read_hpack_int(apr_uint32_t *v,
             if ((7 * (ctx->buffer_used - 1) + bits) >= 32)
                 return SERF_ERROR_HTTP2_COMPRESSION_ERROR;
 
-            status = serf_bucket_read(ctx->stream, 1, &data, &len);
-            if (status || len == 0)
-                return status ? status : APR_EAGAIN;
+            do {
+                status = serf_bucket_read(ctx->stream, 1, &data, &len);
+            } while ((status == APR_SUCCESS) && !len);
+
+            if (SERF_BUCKET_READ_ERROR(status) || len == 0)
+                return status;
 
             ctx->buffer[ctx->buffer_used] = *data;
             ctx->buffer_used++;
@@ -1562,9 +1568,12 @@ hpack_process(serf_bucket_t *bucket)
                     const char *data;
                     apr_size_t len;
 
-                    status = serf_bucket_read(ctx->stream, 1, &data, &len);
-                    if (status || !len)
-                        continue;
+                    do {
+                        status = serf_bucket_read(ctx->stream, 1, &data, &len);
+                    } while (status == APR_SUCCESS && !len);
+
+                    if (SERF_BUCKET_READ_ERROR(status) || len == 0)
+                        break;
 
                     ctx->key_hm = ctx->val_hm = FALSE;
                     ctx->reuse_item = 0;
@@ -1623,14 +1632,15 @@ hpack_process(serf_bucket_t *bucket)
                                                  read_hpack_int() */
                         ctx->index_item = (uc & 0x40) != 0;
                     }
-                    continue;
+                    status = APR_SUCCESS; /* Or we exit the loop */
+                    break;
                 }
             case HPACK_DECODE_STATE_INDEX:
                 {
                     apr_uint32_t v;
                     status = read_hpack_int(&v, NULL, bucket, 7);
                     if (status)
-                        continue;
+                        break;
                     if (v == 0)
                         return SERF_ERROR_HTTP2_COMPRESSION_ERROR;
 
@@ -1656,7 +1666,7 @@ hpack_process(serf_bucket_t *bucket)
 
                       /* Get key and value from table and handle result */
                     ctx->state = HPACK_DECODE_STATE_INITIAL;
-                    continue;
+                    break;
                 }
             case HPACK_DECODE_STATE_KEYINDEX:
                 {
@@ -1679,7 +1689,7 @@ hpack_process(serf_bucket_t *bucket)
                         return SERF_ERROR_HTTP2_COMPRESSION_ERROR;
 
                     ctx->header_allowed -= HPACK_KEY_SIZE(ctx->key_size);
-                    continue;
+                    break;
                 }
             case HPACK_DECODE_STATE_KEY_LEN:
                 {
@@ -1803,10 +1813,10 @@ hpack_process(serf_bucket_t *bucket)
                     status = handle_read_entry_and_clear(ctx,
                                                          bucket->allocator);
                     if (status)
-                        continue;
+                        return status;
 
                     ctx->state = HPACK_DECODE_STATE_INITIAL;
-                    continue;
+                    break;
                 }
             case HPACK_DECODE_TABLESIZE_UPDATE:
                 {
@@ -1820,9 +1830,11 @@ hpack_process(serf_bucket_t *bucket)
                     if (v >= APR_SIZE_MAX)
                         return SERF_ERROR_HTTP2_COMPRESSION_ERROR;
                     status = hpack_table_size_update(ctx->tbl, (apr_size_t)v);
+                    if (status)
+                        return status;
 
                     ctx->state = HPACK_DECODE_STATE_INITIAL;
-                    continue;
+                    break;
                 }
             default:
                 abort();
