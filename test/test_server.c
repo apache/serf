@@ -72,14 +72,26 @@ static apr_status_t client_generate_response(serf_bucket_t **resp_bkt,
                                              serf_bucket_alloc_t *allocator,
                                              apr_pool_t *pool)
 {
+    test_baton_t *tb = setup_baton;
     serf_bucket_t *tmp;
 #define CRLF "\r\n"
 
-    tmp = SERF_BUCKET_SIMPLE_STRING("HTTP/1.1 200 OK" CRLF
-                                    "Content-Length: 4" CRLF
-                                    CRLF
-                                    "OK" CRLF,
-                                    allocator);
+    if (tb->user_baton_l == 401) {
+        tb->user_baton_l = 0;
+
+        tmp = SERF_BUCKET_SIMPLE_STRING("HTTP/1.1 401 Unauth" CRLF
+                    "WWW-Authenticate: Basic realm=\"Test Suite\"" CRLF
+                                        "Content-Length: 4" CRLF
+                                        CRLF
+                                        "OK" CRLF,
+                                        allocator);
+    }
+    else
+        tmp = SERF_BUCKET_SIMPLE_STRING("HTTP/1.1 200 OK" CRLF
+                                        "Content-Length: 4" CRLF
+                                        CRLF
+                                        "OK" CRLF,
+                                        allocator);
 
     *resp_bkt = tmp;
     return APR_SUCCESS;
@@ -240,6 +252,82 @@ void test_listen_http2(CuTest *tc)
     CuAssertIntEquals(tc, APR_SUCCESS, status);
 }
 
+static apr_status_t authn_callback(char **username,
+                                   char **password,
+                                   serf_request_t *request, void *baton,
+                                   int code, const char *authn_type,
+                                   const char *realm,
+                                   apr_pool_t *pool)
+{
+    handler_baton_t *handler_ctx = baton;
+    test_baton_t *tb = handler_ctx->tb;
+
+    /* Skip "<http://localhost...." */
+    realm = strchr(realm, '>');
+
+    CuAssertStrEquals(tb->user_baton, "> Test Suite", realm);
+    *username = "serf";
+    *password = "fres";
+
+    return APR_SUCCESS;
+}
+
+
+void test_listen_auth_http(CuTest *tc)
+{
+    test_baton_t *tb = tc->testBaton;
+    apr_status_t status;
+    handler_baton_t handler_ctx[2];
+    const int num_requests = sizeof(handler_ctx) / sizeof(handler_ctx[0]);
+
+    setup_test_server(tb);
+
+    status = setup_test_client_context(tb, NULL, tb->pool);
+    CuAssertIntEquals(tc, APR_SUCCESS, status);
+
+    serf_config_authn_types(tb->context, SERF_AUTHN_ALL);
+    serf_config_credentials_callback(tb->context,
+                                     authn_callback);
+
+    create_new_request(tb, &handler_ctx[0], "GET", "/", 1);
+    create_new_request(tb, &handler_ctx[1], "GET", "/", 2);
+
+    tb->user_baton_l = 401;
+    tb->user_baton = tc;
+
+    status = run_client_server_loop(tb, num_requests,
+                                    handler_ctx, tb->pool);
+    CuAssertIntEquals(tc, APR_SUCCESS, status);
+}
+
+void test_listen_auth_http2(CuTest *tc)
+{
+    test_baton_t *tb = tc->testBaton;
+    apr_status_t status;
+    handler_baton_t handler_ctx[2];
+    const int num_requests = sizeof(handler_ctx) / sizeof(handler_ctx[0]);
+
+    setup_test_server(tb);
+
+    status = setup_test_client_context(tb, connection_setup_http2,
+                                       tb->pool);
+    CuAssertIntEquals(tc, APR_SUCCESS, status);
+
+    serf_config_authn_types(tb->context, SERF_AUTHN_ALL);
+    serf_config_credentials_callback(tb->context,
+                                     authn_callback);
+
+    create_new_request(tb, &handler_ctx[0], "GET", "/", 1);
+    create_new_request(tb, &handler_ctx[1], "GET", "/", 2);
+
+    tb->user_baton_l = 401;
+    tb->user_baton = tc;
+
+    status = run_client_server_loop(tb, num_requests,
+                                    handler_ctx, tb->pool);
+    CuAssertIntEquals(tc, APR_SUCCESS, status);
+}
+
 /*****************************************************************************/
 CuSuite *test_server(void)
 {
@@ -249,6 +337,9 @@ CuSuite *test_server(void)
 
     SUITE_ADD_TEST(suite, test_listen_http);
     SUITE_ADD_TEST(suite, test_listen_http2);
+
+    SUITE_ADD_TEST(suite, test_listen_auth_http);
+    SUITE_ADD_TEST(suite, test_listen_auth_http2);
 
     return suite;
 }
