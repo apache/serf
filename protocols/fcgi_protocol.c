@@ -376,9 +376,9 @@ static apr_status_t fcgi_hangup(serf_fcgi_protocol_t *fcgi)
     return APR_ENOTIMPL;
 }
 
-static apr_status_t fcgi_teardown(serf_fcgi_protocol_t *fcgi)
+void fcgi_teardown(serf_fcgi_protocol_t *fcgi)
 {
-    return APR_ENOTIMPL;
+
 }
 
 serf_fcgi_stream_t *
@@ -462,21 +462,21 @@ static apr_status_t fcgi_outgoing_write(serf_connection_t *conn)
 {
     serf_fcgi_protocol_t *fcgi = conn->protocol_baton;
 
-    return fcgi_teardown(fcgi);
+    return fcgi_write(fcgi);
 }
 
 static apr_status_t fcgi_outgoing_hangup(serf_connection_t *conn)
 {
     serf_fcgi_protocol_t *fcgi = conn->protocol_baton;
 
-    return fcgi_teardown(fcgi);
+    return fcgi_hangup(fcgi);
 }
 
-static apr_status_t fcgi_outgoing_teardown(serf_connection_t *conn)
+void fcgi_outgoing_teardown(serf_connection_t *conn)
 {
     serf_fcgi_protocol_t *fcgi = conn->protocol_baton;
 
-    return fcgi_teardown(fcgi);
+    fcgi_teardown(fcgi);
 }
 
 void serf__fcgi_protocol_init(serf_connection_t *conn)
@@ -530,11 +530,11 @@ static apr_status_t fcgi_server_hangup(serf_incoming_t *client)
     return fcgi_hangup(fcgi);
 }
 
-static apr_status_t fcgi_server_teardown(serf_incoming_t *client)
+void fcgi_server_teardown(serf_incoming_t *client)
 {
     serf_fcgi_protocol_t *fcgi = client->protocol_baton;
 
-    return fcgi_teardown(fcgi);
+    fcgi_teardown(fcgi);
 }
 
 void serf__fcgi_protocol_init_server(serf_incoming_t *client)
