@@ -697,7 +697,17 @@ serf_http2__stream_processor(void *baton,
 
         SERF_H2_assert(request->resp_bkt != NULL);
 
-        status = serf__handle_response(request, request->respool);
+        /* Response handlers are expected to read until they get some error,
+           but at least some implementations assume that just returning
+           APR_SUCCESS will have them called again, as that used to work as
+           an APR_EAGAIN like system in HTTP/1.
+
+           But we can't just fall back with HTTP/2, as we might still have
+           some part of the frame open (good case), or we might have completed
+           the frame and are never called again. */
+        do {
+            status = serf__handle_response(request, request->respool);
+        } while (status == APR_SUCCESS);
 
         if (!APR_STATUS_IS_EOF(status)
             && !SERF_BUCKET_READ_ERROR(status))
