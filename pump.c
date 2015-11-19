@@ -202,7 +202,7 @@ static apr_status_t no_more_writes(serf_pump_t *pump)
     /* Note that we should hold new requests until we open our new socket. */
     pump->done_writing = true;
     serf__log(LOGLVL_DEBUG, LOGCOMP_CONN, __FILE__, pump->config,
-              "stop writing on 0x%pp\n", pump->io->u.v);
+              "stop writing on 0x%p\n", pump->io->u.v);
 
     /* Clear our iovec. */
     pump->vec_len = 0;
@@ -224,7 +224,7 @@ static apr_status_t socket_writev(serf_pump_t *pump)
                               pump->vec_len, &written);
     if (status && !APR_STATUS_IS_EAGAIN(status))
         serf__log(LOGLVL_DEBUG, LOGCOMP_CONN, __FILE__, pump->config,
-                  "socket_sendv error %d on 0x%pp\n", status, pump->io->u.v);
+                  "socket_sendv error %d on 0x%p\n", status, pump->io->u.v);
 
     /* did we write everything? */
     if (written) {
@@ -232,7 +232,7 @@ static apr_status_t socket_writev(serf_pump_t *pump)
         int i;
 
         serf__log(LOGLVL_DEBUG, LOGCOMP_CONN, __FILE__, conn->config,
-                  "--- socket_sendv: %d bytes on 0x%pp. --\n",
+                  "--- socket_sendv: %d bytes on 0x%p. --\n",
                   written, pump->io->u.v);
 
         for (i = 0; i < conn->vec_len; i++) {
@@ -331,7 +331,7 @@ apr_status_t serf_pump__write(serf_pump_t *pump,
 
             serf__log(LOGLVL_INFO, LOGCOMP_CONN, __FILE__, pump->config,
                       "Output stream requested temporary write delay "
-                      "on 0x%pp\n", pump->io->u.v);
+                      "on 0x%p\n", pump->io->u.v);
 
             pump->stop_writing = true;
             serf_io__set_pollset_dirty(pump->io);
