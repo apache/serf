@@ -30,9 +30,6 @@
 #define SERF_FCGI_assert(x) ((void)0)
 #endif
 
-#define SERF_LOGFCGI \
-    SERF_LOGCOMP_PROTOCOL, (__FILE__ ":" APR_STRINGIFY(__LINE__))
-
 #ifdef __cplusplus
 extern "C" {
 #endif
