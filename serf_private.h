@@ -43,6 +43,8 @@ typedef int serf__bool_t; /* Not _Bool */
 #endif
 #endif
 
+#include <apr.h> /* For __attribute__ */
+
  /* Define a MAX macro if we don't already have one */
 #ifndef MAX
 #define MAX(a, b) ((a) < (b) ? (b) : (a))
@@ -136,6 +138,7 @@ typedef struct serf_io_baton_t {
         serf_incoming_t *client;
         serf_connection_t *conn;
         serf_listener_t *listener;
+        const void *const v;
     } u;
 
     /* are we a dirty connection that needs its poll status updated? */
@@ -782,11 +785,13 @@ apr_status_t serf__log_init(serf_context_t *ctx);
 /* Logs a standard event, but without prefix. This is useful to build up
    log lines in parts. */
 void serf__log_nopref(apr_uint32_t level, apr_uint32_t comp,
-                      serf_config_t *config, const char *fmt, ...);
+                      serf_config_t *config, const char *fmt, ...)
+                      __attribute__((format(printf, 4, 5)));
 
 /* Logs an event, uses CONFIG to find out socket related info. */
 void serf__log(apr_uint32_t level, apr_uint32_t comp, const char *filename,
-               serf_config_t *config, const char *fmt, ...);
+               serf_config_t *config, const char *fmt, ...)
+               __attribute__((format(printf, 5, 6)));
 
 /* Returns non-zero if logging is enabled for provided LEVEL/COMP.
  * This function can be useful in cases if logging information if somewhat

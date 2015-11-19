@@ -104,9 +104,6 @@ bool serf_pump__data_pending(serf_pump_t *pump)
         status = serf_bucket_peek(pump->ostream_head, &data, &len);
         if (!SERF_BUCKET_READ_ERROR(status)) {
             if (len > 0) {
-                serf__log(LOGLVL_DEBUG, LOGCOMP_CONN, __FILE__, pump->config,
-                          "Extra data to be written after sending complete "
-                          "requests.\n");
                 return true;
             }
         }
@@ -205,7 +202,7 @@ static apr_status_t no_more_writes(serf_pump_t *pump)
     /* Note that we should hold new requests until we open our new socket. */
     pump->done_writing = true;
     serf__log(LOGLVL_DEBUG, LOGCOMP_CONN, __FILE__, pump->config,
-              "stop writing on 0x%x\n", pump->io->u.conn);
+              "stop writing on 0x%pp\n", pump->io->u.v);
 
     /* Clear our iovec. */
     pump->vec_len = 0;
@@ -227,7 +224,7 @@ static apr_status_t socket_writev(serf_pump_t *pump)
                               pump->vec_len, &written);
     if (status && !APR_STATUS_IS_EAGAIN(status))
         serf__log(LOGLVL_DEBUG, LOGCOMP_CONN, __FILE__, pump->config,
-                  "socket_sendv error %d\n", status);
+                  "socket_sendv error %d on 0x%pp\n", status, pump->io->u.v);
 
     /* did we write everything? */
     if (written) {
@@ -235,7 +232,8 @@ static apr_status_t socket_writev(serf_pump_t *pump)
         int i;
 
         serf__log(LOGLVL_DEBUG, LOGCOMP_CONN, __FILE__, conn->config,
-                  "--- socket_sendv: %d bytes. --\n", written);
+                  "--- socket_sendv: %d bytes on 0x%pp. --\n",
+                  written, pump->io->u.v);
 
         for (i = 0; i < conn->vec_len; i++) {
             len += conn->vec[i].iov_len;
@@ -330,6 +328,11 @@ apr_status_t serf_pump__write(serf_pump_t *pump,
             we can actually write something. otherwise, we could
             end up in a CPU spin: socket wants something, but we
             don't have anything (and keep returning EAGAIN) */
+
+            serf__log(LOGLVL_INFO, LOGCOMP_CONN, __FILE__, pump->config,
+                      "Output stream requested temporary write delay "
+                      "on 0x%pp\n", pump->io->u.v);
+
             pump->stop_writing = true;
             serf_io__set_pollset_dirty(pump->io);
 

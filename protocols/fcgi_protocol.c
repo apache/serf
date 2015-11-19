@@ -214,7 +214,7 @@ static apr_status_t fcgi_process(serf_fcgi_protocol_t *fcgi)
                 SERF_FCGI_assert(fcgi->read_frame != NULL);
             }
 
-            serf__log(LOGLVL_INFO, SERF_LOGFCGI, fcgi->config,
+            serf__log(LOGLVL_INFO, SERF_LOGFCGI, __FILE__, fcgi->config,
                       "Reading 0x%x frame, stream=0x%x\n",
                       frametype, sid);
 

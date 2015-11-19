@@ -177,7 +177,7 @@ struct serf_ssl_context_t {
 
     const char *selected_protocol; /* Cached protocol value once available */
     /* Protocol callback */
-    serf_ssl_protocol_result_cb_t protocol_callback; 
+    serf_ssl_protocol_result_cb_t protocol_callback;
     void *protocol_userdata;
 
     serf_config_t *config;
@@ -255,7 +255,7 @@ apps_ssl_info_callback(const SSL *s, int where, int ret)
         if (ret > 0) {
             /* ret > 0: Just a state change; not an error */
             serf__log(level, LOGCOMP_SSL, __FILE__, ctx->config,
-                      "%s: %s\n",
+                      "%s: %s (%d)\n",
                       str, SSL_state_string_long(s),
                       ctx->crypt_status);
         }
@@ -282,7 +282,7 @@ apps_ssl_info_callback(const SSL *s, int where, int ret)
 #endif
 
 
-/* Listens for the SSL renegotiate ciphers alert and report it back to the 
+/* Listens for the SSL renegotiate ciphers alert and report it back to the
    serf context. */
 static void
 detect_renegotiate(const SSL *s, int where, int ret)
@@ -647,7 +647,7 @@ get_subject_alt_names(apr_array_header_t **san_arr, X509 *ssl_cert,
         }
         sk_GENERAL_NAME_pop_free(names, GENERAL_NAME_free);
     }
-    
+
     return APR_SUCCESS;
 }
 
@@ -698,7 +698,7 @@ validate_server_certificate(int cert_valid, X509_STORE_CTX *store_ctx)
         int err = X509_STORE_CTX_get_error(store_ctx);
 
         switch(err) {
-            case X509_V_ERR_CERT_NOT_YET_VALID: 
+            case X509_V_ERR_CERT_NOT_YET_VALID:
                     failures |= SERF_SSL_CERT_NOTYETVALID;
                     break;
             case X509_V_ERR_CERT_HAS_EXPIRED:
@@ -840,7 +840,7 @@ validate_server_certificate(int cert_valid, X509_STORE_CTX *store_ctx)
     {
         ctx->pending_err = SERF_ERROR_SSL_CERT_FAILED;
     }
-        
+
     return cert_valid;
 }
 
@@ -1005,7 +1005,7 @@ static apr_status_t ssl_decrypt(void *baton, apr_size_t bufsize,
         serf__log(LOGLVL_DEBUG, LOGCOMP_SSLMSG, __FILE__, ctx->config,
                     "---\n%.*s\n-(%d)-\n", *len, buf, *len);
     }
- 
+
 
     if (!ctx->handshake_finished
         && !SERF_BUCKET_READ_ERROR(status)) {
@@ -1166,7 +1166,7 @@ static apr_status_t ssl_encrypt(void *baton, apr_size_t bufsize,
                     serf__log(LOGLVL_DEBUG, LOGCOMP_SSL, __FILE__, ctx->config,
                               "---\n%.*s\n-(%d)-\n",
                               interim_len, vecs_data, interim_len);
-                    
+
                 }
             }
         }
@@ -1352,10 +1352,10 @@ static void init_ssl_libraries(void)
            thread has completed */
         while (val != INIT_DONE) {
             apr_sleep(APR_USEC_PER_SEC / 1000);
-      
+
             val = apr_atomic_cas32(&have_init_ssl,
                                    INIT_UNINITIALIZED,
-                                   INIT_UNINITIALIZED);            
+                                   INIT_UNINITIALIZED);
         }
     }
 }
@@ -2196,7 +2196,7 @@ const char *serf_ssl_cert_export(
 
     encoded_cert = apr_palloc(pool, apr_base64_encode_len(len));
     apr_base64_encode(encoded_cert, binary_cert, len);
-    
+
     return encoded_cert;
 }
 
