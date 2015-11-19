@@ -111,7 +111,7 @@ serf__spnego_init_sec_context(serf_connection_t *conn,
  */
 apr_status_t
 serf__spnego_reset_sec_context(serf__spnego_context_t *ctx);
-    
+
 #ifdef __cplusplus
 }
 #endif

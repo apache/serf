@@ -42,9 +42,9 @@ void setHeader(apr_table_t *hdrs, const char *hdr, const char *val)
 }
 
 /* To enable calls like Assert(expected, Verify...(), ErrorMessage()), with the
-   evaluation order of the arguments not specified in C, we need the pointer to 
+   evaluation order of the arguments not specified in C, we need the pointer to
    where an error message will be stored before the call to Verify...().
-   So we allocate up to ERRMSG_MAXSIZE bytes for the error message memory up 
+   So we allocate up to ERRMSG_MAXSIZE bytes for the error message memory up
    front and use it when needed */
 #define ERRMSG_MAXSIZE 65000
 
@@ -125,7 +125,7 @@ void mhCleanup(MockHTTP *mh)
  * as there's data to read or write.
  *
  * reqState: NoReqsReceived if no requests were received
- *           PartialReqReceived if either proxy or server blocks on a partly 
+ *           PartialReqReceived if either proxy or server blocks on a partly
  *                              read request.
  *           FullReqReceived if all requests have been read completely.
  */
@@ -527,9 +527,9 @@ mhMatchHeaderEqualTo(const MockHTTP *mh, const char *hdr, const char *value)
 }
 
 /**
- * Builder callback, checks if a header's value is not equal to the expected 
+ * Builder callback, checks if a header's value is not equal to the expected
  * value.
- * When a header isn't set its value will be NULL, so a non-NULL check can be 
+ * When a header isn't set its value will be NULL, so a non-NULL check can be
  * used to check if the header exists.
  */
 static bool

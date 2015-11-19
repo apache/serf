@@ -57,7 +57,7 @@ static void split_detach_head(split_stream_ctx_t *sctx)
         ctx->head = sctx->next;
         sctx->next->prev = NULL;
 
-        /* Did somebody ask for the size while it wasn't possible? 
+        /* Did somebody ask for the size while it wasn't possible?
            Perhaps we can retrieve and store it now */
         if (ctx->want_size) {
             ctx->want_size = false;

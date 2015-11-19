@@ -275,7 +275,7 @@ static void test_eof_connection_with_authn_cb(CuTest *tc)
 }
 
 /* Test that serf correctly handles aborted connections. This can happen
-   on Windows when the server (cleanly) closes the connection, and where it 
+   on Windows when the server (cleanly) closes the connection, and where it
    happens between responses, it should be handled as a normal connection
    closure. */
 static void test_aborted_connection(CuTest *tc)
@@ -439,7 +439,7 @@ static void test_keepalive_limit_one_by_one(CuTest *tc)
     CuAssertIntEquals(tc, APR_SUCCESS, status);
 
     /* Reduce the bandwidth to one at a time. The first request will be resend
-       twice as priority requests, so iff the bandwidth reduction is in effect 
+       twice as priority requests, so iff the bandwidth reduction is in effect
        these should be sent before all other requests. */
     serf_connection_set_max_outstanding_requests(tb->connection, 1);
 
@@ -946,7 +946,7 @@ static void test_max_keepalive_requests(CuTest *tc)
       ConfigServerWithID("server", WithMaxKeepAliveRequests(4))
     EndInit
 
-    /* We will NUM_REQUESTS requests to the mock server, close connection after 
+    /* We will NUM_REQUESTS requests to the mock server, close connection after
        every 4th response. */
     Given(tb->mh)
       DefaultResponse(WithCode(200), WithRequestBody)

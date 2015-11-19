@@ -113,7 +113,7 @@ static apr_status_t handle_response(serf_request_t *request,
         /* If there was outgoing data waiting, we can't use it
            any more. It's lifetime is limited by ostream_head
            ... (There shouldn't be any, as we disabled pipelining) */
-        conn->pump.vec_len = 0; 
+        conn->pump.vec_len = 0;
 
         conn->state = SERF_CONN_CONNECTED;
 

@@ -232,7 +232,7 @@ static apr_status_t log_to_stream_output(serf_log_output_t *output,
                 fprintf(logfp, "%s", remoteip);
             }
             fprintf(logfp, "] ");
-            
+
             if (prefix)
                 fprintf(logfp, "%s: ", prefix);
         }

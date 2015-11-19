@@ -165,7 +165,7 @@ static apr_status_t serf_mock_peek(serf_bucket_t *bucket,
 /* An action { "", 0, APR_EAGAIN } means that serf should exit serf_context_run
    and pass the buck back to the application. As long as no new data arrives,
    this action remains active.
- 
+
    This function allows the 'application' to trigger the arrival of more data.
    If the current action is { "", 0, APR_EAGAIN }, reduce the number of times
    the action should run by one, and proceed with the next action if needed.
@@ -258,7 +258,7 @@ static void test_basic_mock_bucket(CuTest *tc)
 
             expected += len;
         } while(!APR_STATUS_IS_EOF(status));
-        
+
         CuAssert(tc, "Read less data than expected.", strlen(expected) == 0);
         serf_bucket_destroy(mock_bkt);
     }

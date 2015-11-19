@@ -239,8 +239,8 @@ typedef apr_status_t (*serf_bucket_aggregate_eof_t)(
     serf_bucket_t *aggregate_bucket);
 
 /** serf_bucket_aggregate_cleanup will instantly destroy all buckets in
-    the aggregate bucket that have been read completely. Whereas normally, 
-    these buckets are destroyed on every read operation. */ 
+    the aggregate bucket that have been read completely. Whereas normally,
+    these buckets are destroyed on every read operation. */
 void serf_bucket_aggregate_cleanup(
     serf_bucket_t *bucket,
     serf_bucket_alloc_t *allocator);
@@ -262,7 +262,7 @@ void serf_bucket_aggregate_prepend(
 void serf_bucket_aggregate_append(
     serf_bucket_t *aggregate_bucket,
     serf_bucket_t *append_bucket);
-    
+
 void serf_bucket_aggregate_hold_open(
     serf_bucket_t *aggregate_bucket,
     serf_bucket_aggregate_eof_t fn,
@@ -303,7 +303,7 @@ serf_bucket_t *serf_bucket_socket_create(
  * Call @a progress_func every time bytes are read from the socket, pass
  * the number of bytes read.
  *
- * When using serf's bytes read & written progress indicator, pass 
+ * When using serf's bytes read & written progress indicator, pass
  * @a serf_context_progress_delta for progress_func and the serf_context for
  * progress_baton.
  */
@@ -454,9 +454,9 @@ typedef int (serf_bucket_headers_do_callback_fn_t)(
     const char *value);
 
 /**
- * Iterates over all headers of the message and invokes the callback 
+ * Iterates over all headers of the message and invokes the callback
  * function with header key and value. Stop iterating when no more
- * headers are available or when the callback function returned a 
+ * headers are available or when the callback function returned a
  * non-0 value.
  *
  * @param headers_bucket headers to iterate over
@@ -556,7 +556,7 @@ typedef apr_status_t (*serf_ssl_need_cert_password_t)(
 /* Callback type for server certificate status info and OCSP responses.
    Note that CERT can be NULL in case its called from the OCSP callback. */
 typedef apr_status_t (*serf_ssl_need_server_cert_t)(
-    void *data, 
+    void *data,
     int failures,
     const serf_ssl_certificate_t *cert);
 
@@ -580,7 +580,7 @@ void serf_ssl_client_cert_password_set(
     void *cache_pool);
 
 /**
- * Set a callback to override the default SSL server certificate validation 
+ * Set a callback to override the default SSL server certificate validation
  * algorithm.
  */
 void serf_ssl_server_cert_callback_set(
@@ -589,8 +589,8 @@ void serf_ssl_server_cert_callback_set(
     void *data);
 
 /**
- * Set callbacks to override the default SSL server certificate validation 
- * algorithm for the current certificate or the entire certificate chain. 
+ * Set callbacks to override the default SSL server certificate validation
+ * algorithm for the current certificate or the entire certificate chain.
  */
 void serf_ssl_server_cert_chain_callback_set(
     serf_ssl_context_t *context,
@@ -642,7 +642,7 @@ int serf_ssl_cert_depth(
     const serf_ssl_certificate_t *cert);
 
 /**
- * Extract the fields of the issuer in a table with keys (E, CN, OU, O, L, 
+ * Extract the fields of the issuer in a table with keys (E, CN, OU, O, L,
  * ST and C). The returned table will be allocated in @a pool.
  */
 apr_hash_t *serf_ssl_cert_issuer(
@@ -650,7 +650,7 @@ apr_hash_t *serf_ssl_cert_issuer(
     apr_pool_t *pool);
 
 /**
- * Extract the fields of the subject in a table with keys (E, CN, OU, O, L, 
+ * Extract the fields of the subject in a table with keys (E, CN, OU, O, L,
  * ST and C). The returned table will be allocated in @a pool.
  */
 apr_hash_t *serf_ssl_cert_subject(
@@ -684,15 +684,15 @@ apr_status_t serf_ssl_load_cert_file(
     apr_pool_t *pool);
 
 /**
- * Adds the certificate @a cert to the list of trusted certificates in 
- * @a ssl_ctx that will be used for verification. 
+ * Adds the certificate @a cert to the list of trusted certificates in
+ * @a ssl_ctx that will be used for verification.
  * See also @a serf_ssl_load_cert_file.
  */
 apr_status_t serf_ssl_trust_cert(
     serf_ssl_context_t *ssl_ctx,
     serf_ssl_certificate_t *cert);
 
-/** 
+/**
  * Load a CRL .pem file from @a file_path and enable CRL checking.
  */
 apr_status_t serf_ssl_add_crl_from_file(serf_ssl_context_t *ssl_ctx,
