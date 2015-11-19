@@ -355,6 +355,8 @@ apr_status_t serf_pump__add_output(serf_pump_t *pump,
                                    serf_bucket_t *bucket,
                                    bool flush)
 {
+    apr_status_t status;
+
     if (!flush
         && !pump->io->dirty_conn
         && !pump->stop_writing
@@ -375,6 +377,11 @@ apr_status_t serf_pump__add_output(serf_pump_t *pump,
         return APR_SUCCESS;
 
     /* Flush final output buffer (after ssl, etc.) */
-    return serf_pump__write(pump, TRUE);
+    status = serf_pump__write(pump, TRUE);
+
+    if (SERF_BUCKET_READ_ERROR(status))
+        return status;
+    else
+        return APR_SUCCESS;
 }
 
