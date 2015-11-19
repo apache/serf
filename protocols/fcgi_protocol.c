@@ -34,7 +34,7 @@
 #define SERF_ERROR_FCGI_RECORD_SIZE_ERROR   SERF_ERROR_HTTP2_FRAME_SIZE_ERROR
 #define SERF_ERROR_FCGI_PROTOCOL_ERROR      SERF_ERROR_HTTP2_PROTOCOL_ERROR
 
-typedef struct serf_fcgi_protocol_t
+struct serf_fcgi_protocol_t
 {
     serf_connection_t *conn;
     serf_incoming_t *client;
@@ -56,7 +56,7 @@ typedef struct serf_fcgi_protocol_t
 
     bool no_keep_conn;
 
-} serf_fcgi_protocol_t;
+};
 
 static apr_status_t fcgi_cleanup(void *baton)
 {
@@ -214,7 +214,8 @@ static apr_status_t fcgi_process(serf_fcgi_protocol_t *fcgi)
                 SERF_FCGI_assert(fcgi->read_frame != NULL);
             }
 
-            serf__log(LOGLVL_INFO, SERF_LOGFCGI, __FILE__, fcgi->config,
+            serf__log(LOGLVL_INFO, SERF_LOGCOMP_PROTOCOL, __FILE__,
+                      fcgi->config,
                       "Reading 0x%x frame, stream=0x%x\n",
                       frametype, sid);
 
