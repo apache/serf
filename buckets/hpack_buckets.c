@@ -1504,7 +1504,7 @@ static apr_status_t hpack_read_bytes(serf_bucket_t *bucket,
 
         hpack_decode_buffer_ensure(bucket, required);
 
-        memcpy(ctx->buffer, data, len);
+        memcpy(ctx->buffer, some_data, len);
         ctx->buffer_used = len;
 
         if (status)
