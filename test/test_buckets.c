@@ -1392,8 +1392,12 @@ static void test_response_no_body_expected(CuTest *tc)
 
         status = read_all(bkt, buf, sizeof(buf), &len);
 
-        CuAssertIntEquals(tc, APR_EOF, status);
-        CuAssertIntEquals(tc, 0, len);
+        if (i == 0) {
+            /* blablablablabla is parsed as the next status line */
+            CuAssertIntEquals(tc, SERF_ERROR_BAD_HTTP_RESPONSE, status);
+        }
+        else
+          CuAssertIntEquals(tc, 0, len);
 
         DRAIN_BUCKET(tmp);
         serf_bucket_destroy(bkt);
@@ -1579,6 +1583,94 @@ static void test_random_eagain_in_response(CuTest *tc)
     apr_pool_destroy(iter_pool);
 }
 #undef BODY
+
+static void test_response_continue(CuTest *tc)
+{
+    test_baton_t *tb = tc->testBaton;
+    serf_bucket_t *bkt, *headers;
+    serf_bucket_alloc_t *alloc = test__create_bucket_allocator(tc, tb->pool);
+    const char long_response[] =
+        "HTTP/1.1 100 Continue" CRLF
+        "H: 1" CRLF
+        "Foo: Bar" CRLF
+    CRLF
+        "HTTP/1.1 109 Welcome to HTTP-9" CRLF
+        "Connection: Upgrade" CRLF
+        "H: 2" CRLF
+        "Upgrade: h9c" CRLF
+    CRLF
+        "HTTP/9.0 200 OK" CRLF
+        "Content-Type: text/plain" CRLF
+        "Content-Length: 26" CRLF
+        "H: 3" CRLF
+    CRLF
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+    CRLF
+    CRLF;
+
+    /* 1: First verify that we just read the body*/
+    bkt = SERF_BUCKET_SIMPLE_STRING(long_response, alloc);
+    bkt = serf_bucket_response_create(bkt, alloc);
+
+    read_and_check_bucket(tc, bkt, "ABCDEFGHIJKLMNOPQRSTUVWXYZ");
+    serf_bucket_destroy(bkt);
+
+    /* 2: Check the headers the normal way */
+    bkt = SERF_BUCKET_SIMPLE_STRING(long_response, alloc);
+    bkt = serf_bucket_response_create(bkt, alloc);
+
+    CuAssertIntEquals(tc, APR_SUCCESS,
+                     serf_bucket_response_wait_for_headers(bkt));
+    headers = serf_bucket_response_get_headers(bkt);
+    /* Verify that we just have the final set */
+    CuAssertStrEquals(tc, "3", serf_bucket_headers_get(headers, "H"));
+    CuAssertStrEquals(tc, NULL, serf_bucket_headers_get(headers, "Foo"));
+    read_and_check_bucket(tc, bkt, "ABCDEFGHIJKLMNOPQRSTUVWXYZ");
+    serf_bucket_destroy(bkt);
+
+    /* 3: Fetch the separate headers */
+    bkt = SERF_BUCKET_SIMPLE_STRING(long_response, alloc);
+    bkt = serf_bucket_response_create(bkt, alloc);
+
+    CuAssertIntEquals(tc, APR_SUCCESS,
+                     serf_bucket_response_wait_for_some_headers(bkt, FALSE));
+    headers = serf_bucket_response_get_headers(bkt);
+    CuAssertStrEquals(tc, "1", serf_bucket_headers_get(headers, "H"));
+
+    /* Again*/
+    CuAssertIntEquals(tc, APR_SUCCESS,
+                     serf_bucket_response_wait_for_some_headers(bkt, FALSE));
+    headers = serf_bucket_response_get_headers(bkt);
+    CuAssertStrEquals(tc, "1", serf_bucket_headers_get(headers, "H"));
+
+    /* Now fetch second set */
+    CuAssertIntEquals(tc, APR_SUCCESS,
+                     serf_bucket_response_wait_for_some_headers(bkt, TRUE));
+    headers = serf_bucket_response_get_headers(bkt);
+    CuAssertStrEquals(tc, "2", serf_bucket_headers_get(headers, "H"));
+
+    /* Now fetch final set */
+    CuAssertIntEquals(tc, APR_SUCCESS,
+                     serf_bucket_response_wait_for_some_headers(bkt, TRUE));
+    headers = serf_bucket_response_get_headers(bkt);
+    CuAssertStrEquals(tc, "3", serf_bucket_headers_get(headers, "H"));
+
+    /* Fetch same again */
+    CuAssertIntEquals(tc, APR_SUCCESS,
+                     serf_bucket_response_wait_for_some_headers(bkt, TRUE));
+    headers = serf_bucket_response_get_headers(bkt);
+    CuAssertStrEquals(tc, "3", serf_bucket_headers_get(headers, "H"));
+
+    CuAssertIntEquals(tc, APR_SUCCESS,
+                     serf_bucket_response_wait_for_headers(bkt));
+
+    headers = serf_bucket_response_get_headers(bkt);
+    CuAssertStrEquals(tc, "3", serf_bucket_headers_get(headers, "H"));
+    CuAssertStrEquals(tc, NULL, serf_bucket_headers_get(headers, "Foo"));
+    read_and_check_bucket(tc, bkt, "ABCDEFGHIJKLMNOPQRSTUVWXYZ");
+    serf_bucket_destroy(bkt);
+}
+
 
 static void test_dechunk_buckets(CuTest *tc)
 {
@@ -2881,6 +2973,7 @@ CuSuite *test_buckets(void)
     SUITE_ADD_TEST(suite, test_response_bucket_peek_at_headers);
     SUITE_ADD_TEST(suite, test_response_bucket_iis_status_code);
     SUITE_ADD_TEST(suite, test_response_bucket_no_reason);
+    SUITE_ADD_TEST(suite, test_response_continue);
     SUITE_ADD_TEST(suite, test_bucket_header_set);
     SUITE_ADD_TEST(suite, test_bucket_header_do);
     SUITE_ADD_TEST(suite, test_iovec_buckets);

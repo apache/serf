@@ -150,6 +150,22 @@ apr_status_t serf_bucket_response_wait_for_headers(
     serf_bucket_t *response);
 
 /**
+ * Wait for the first HTTP headers to be processed for a @a response.
+ * If 1XX informational responses are received before the actual headers
+ * this function will return APR_SUCCESS as soon as such a set is processed,
+ * while serf_bucket_response_wait_for_headers() will wait until the
+ * actual headers to be available.
+ *
+ * If @a wait_for_next is TRUE, the function will wait for the next set
+ * of informational header instead of returning success for the first set.
+ *
+ * @since New in 1.4.
+ */
+apr_status_t serf_bucket_response_wait_for_some_headers(
+    serf_bucket_t *response,
+    int wait_for_next);
+
+/**
  * Get the headers bucket for @a response.
  */
 serf_bucket_t *serf_bucket_response_get_headers(
