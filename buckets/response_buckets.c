@@ -29,10 +29,12 @@
 typedef struct response_context_t {
     serf_bucket_t *stream;
     serf_bucket_t *body;        /* Pointer to the stream wrapping the body. */
-    serf_bucket_t *headers;     /* holds parsed headers */
+    serf_bucket_t *incoming_headers;     /* holds parsed headers */
+    serf_bucket_t *fetch_headers;        /* the current set of headers */
 
     enum {
         STATE_STATUS_LINE,      /* reading status line */
+        STATE_NEXT_STATUS_LINE,
         STATE_HEADERS,          /* reading headers */
         STATE_BODY,             /* reading body */
         STATE_TRAILERS,         /* reading trailers */
@@ -63,10 +65,6 @@ static int expect_body(response_context_t *ctx)
     if (ctx->head_req)
         return 0;
 
-    /* 100 Continue and 101 Switching Protocols */
-    if (ctx->sl.code >= 100 && ctx->sl.code < 200)
-        return 0;
-
     /* 204 No Content */
     if (ctx->sl.code == 204)
         return 0;
@@ -89,13 +87,15 @@ serf_bucket_t *serf_bucket_response_create(
     ctx = serf_bucket_mem_alloc(allocator, sizeof(*ctx));
     ctx->stream = stream;
     ctx->body = NULL;
-    ctx->headers = serf_bucket_headers_create(allocator);
+    ctx->incoming_headers = serf_bucket_headers_create(allocator);
+    ctx->fetch_headers = ctx->incoming_headers;
     ctx->state = STATE_STATUS_LINE;
     ctx->chunked = 0;
     ctx->head_req = 0;
     ctx->decode_content = TRUE;
     ctx->error_on_eof = 0;
     ctx->config = NULL;
+    ctx->sl.reason = NULL;
 
     serf_linebuf_init(&ctx->linebuf);
 
@@ -121,7 +121,7 @@ void serf_bucket_response_decode_content(serf_bucket_t *bucket,
 serf_bucket_t *serf_bucket_response_get_headers(
     serf_bucket_t *bucket)
 {
-    return ((response_context_t *)bucket->data)->headers;
+    return ((response_context_t *)bucket->data)->fetch_headers;
 }
 
 
@@ -129,14 +129,18 @@ static void serf_response_destroy_and_data(serf_bucket_t *bucket)
 {
     response_context_t *ctx = bucket->data;
 
-    if (ctx->state != STATE_STATUS_LINE) {
+    if (ctx->sl.reason) {
         serf_bucket_mem_free(bucket->allocator, (void*)ctx->sl.reason);
     }
 
     serf_bucket_destroy(ctx->stream);
     if (ctx->body != NULL)
         serf_bucket_destroy(ctx->body);
-    serf_bucket_destroy(ctx->headers);
+
+    if (ctx->incoming_headers)
+      serf_bucket_destroy(ctx->incoming_headers);
+    if (ctx->fetch_headers && ctx->fetch_headers != ctx->incoming_headers)
+      serf_bucket_destroy(ctx->fetch_headers);
 
     serf_default_destroy_and_data(bucket);
 }
@@ -151,6 +155,11 @@ static apr_status_t parse_status_line(response_context_t *ctx,
 {
     int res;
     char *reason; /* ### stupid APR interface makes this non-const */
+
+    if (ctx->sl.reason) {
+      serf_bucket_mem_free(allocator, (void*)ctx->sl.reason);
+      ctx->sl.reason = NULL;
+    }
 
     /* ctx->linebuf.line should be of form: 'HTTP/1.1 200 OK',
        but we also explicitly allow the forms 'HTTP/1.1 200' (no reason)
@@ -223,7 +232,7 @@ static apr_status_t fetch_headers(serf_bucket_t *bkt, response_context_t *ctx)
         /* Always copy the headers (from the linebuf into new mem). */
         /* ### we should be able to optimize some mem copies */
         serf_bucket_headers_setx(
-            ctx->headers,
+            ctx->incoming_headers,
             ctx->linebuf.line, end_key - ctx->linebuf.line, 1,
             c, ctx->linebuf.line + ctx->linebuf.used - c, 1);
     }
@@ -245,6 +254,7 @@ static apr_status_t run_machine(serf_bucket_t *bkt, response_context_t *ctx)
 
     switch (ctx->state) {
     case STATE_STATUS_LINE:
+    case STATE_NEXT_STATUS_LINE:
         /* RFC 2616 says that CRLF is the only line ending, but we can easily
          * accept any kind of line ending.
          */
@@ -296,10 +306,25 @@ static apr_status_t run_machine(serf_bucket_t *bkt, response_context_t *ctx)
             int chunked = 0;
             int gzip = 0;
 
+            if (ctx->fetch_headers != ctx->incoming_headers) {
+              /* We now only have one interesting set of headers remaining */
+              serf_bucket_destroy(ctx->fetch_headers);
+              ctx->fetch_headers = ctx->incoming_headers;
+            }
+
+            if (ctx->sl.code >= 100 && ctx->sl.code < 200) {
+                /* We received a set of informational headers.
+
+                   Prepare for the next set */
+                ctx->incoming_headers = serf_bucket_headers_create(
+                                            bkt->allocator);
+                ctx->state = STATE_NEXT_STATUS_LINE;
+                break;
+            }
             /* Advance the state. */
             ctx->state = STATE_BODY;
 
-            /* If this is a response to a HEAD request, or code 1xx, 204 or 304
+            /* If this is a response to a HEAD request, or 204 or 304
                then we don't receive a real body. */
             if (!expect_body(ctx)) {
                 ctx->body = serf_bucket_simple_create(NULL, 0, NULL, NULL,
@@ -312,7 +337,8 @@ static apr_status_t run_machine(serf_bucket_t *bkt, response_context_t *ctx)
                 serf_bucket_barrier_create(ctx->stream, bkt->allocator);
 
             /* Are we chunked, C-L, or conn close? */
-            v = serf_bucket_headers_get(ctx->headers, "Transfer-Encoding");
+            v = serf_bucket_headers_get(ctx->fetch_headers,
+                                        "Transfer-Encoding");
 
             /* Need a copy cuz we're going to write NUL characters into the
                string.  */
@@ -344,7 +370,8 @@ static apr_status_t run_machine(serf_bucket_t *bkt, response_context_t *ctx)
                    length via Transfer-Encoding chunked, when both chunked
                    and Content-Length are passed */
 
-                v = serf_bucket_headers_get(ctx->headers, "Content-Length");
+                v = serf_bucket_headers_get(ctx->fetch_headers,
+                                            "Content-Length");
                 if (v) {
                     apr_uint64_t length;
                     length = apr_strtoi64(v, NULL, 10);
@@ -365,7 +392,8 @@ static apr_status_t run_machine(serf_bucket_t *bkt, response_context_t *ctx)
                 serf_bucket_set_config(ctx->body, ctx->config);
             }
 
-            v = serf_bucket_headers_get(ctx->headers, "Content-Encoding");
+            v = serf_bucket_headers_get(ctx->fetch_headers,
+                                        "Content-Encoding");
             if (v && ctx->decode_content) {
                 /* Need to handle multiple content-encoding. */
                 if (v && strcasecmp("gzip", v) == 0) {
@@ -432,6 +460,47 @@ apr_status_t serf_bucket_response_wait_for_headers(
     response_context_t *ctx = bucket->data;
 
     return wait_for_body(bucket, ctx);
+}
+
+apr_status_t serf_bucket_response_wait_for_some_headers(
+    serf_bucket_t *bucket,
+     int wait_for_next)
+{
+    response_context_t *ctx = bucket->data;
+
+    if (ctx->incoming_headers != ctx->fetch_headers) {
+        /* We have a good set of informational
+           headers */
+
+        if (!wait_for_next)
+          return APR_SUCCESS;
+
+        /* We stop caring about a previous set, if there is one */
+        serf_bucket_destroy(ctx->fetch_headers);
+        ctx->fetch_headers = ctx->incoming_headers;
+
+        /* And fixup the state if we just read this one to avoid
+           theoretically returning success again */
+        if (ctx->state == STATE_NEXT_STATUS_LINE)
+            ctx->state = STATE_STATUS_LINE;
+    }
+
+    /* Keep reading and moving until we are in BODY or
+       STATE_NEXT_STATUS_LINE */
+    while (ctx->state != STATE_BODY
+           && ctx->state != STATE_NEXT_STATUS_LINE) {
+
+        apr_status_t status = run_machine(bucket, ctx);
+
+        /* Anything other than APR_SUCCESS means that we cannot immediately
+        * read again (for now).
+        */
+        if (status)
+          return status;
+    }
+
+    /* in STATE_BODY or STATE_NEXT_STATUS_LINE */
+    return APR_SUCCESS;
 }
 
 apr_status_t serf_bucket_response_status(
@@ -601,7 +670,7 @@ apr_status_t serf_response_full_become_aggregate(serf_bucket_t *bucket)
     serf_bucket_aggregate_append(bucket, bkt);
 
     /* Add headers and stream buckets in order. */
-    serf_bucket_aggregate_append(bucket, ctx->headers);
+    serf_bucket_aggregate_append(bucket, ctx->fetch_headers);
     serf_bucket_aggregate_append(bucket, ctx->stream);
 
     if (ctx->body != NULL)
