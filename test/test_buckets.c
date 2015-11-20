@@ -2789,13 +2789,16 @@ static void test_hpack_header_encode(CuTest *tc)
 {
   test_baton_t *tb = tc->testBaton;
   serf_bucket_alloc_t *alloc;
+  serf_hpack_table_t *tbl;
   serf_bucket_t *hpack;
+
   char resultbuffer[1024];
   apr_size_t sz;
 
   alloc = test__create_bucket_allocator(tc, tb->pool);
+  tbl = serf__hpack_table_create(TRUE, 16384, tb->pool);
 
-  hpack = serf__bucket_hpack_create(NULL, alloc);
+  hpack = serf__bucket_hpack_create(tbl, alloc);
 
   CuAssertTrue(tc, SERF_BUCKET_IS_HPACK(hpack));
 
@@ -2809,7 +2812,8 @@ static void test_hpack_header_encode(CuTest *tc)
 
   /* CuAssertTrue(tc, ! SERF_BUCKET_IS_HPACK(hpack)); */
   CuAssertTrue(tc, sz > 4);
-  CuAssertTrue(tc, sz <= 59); /* The all literal approach takes 59 bytes */
+  CuAssertTrue(tc, sz <= 20); /* The all literal approach takes 59 bytes
+                                 Current size (2015-11 is 15)*/
 
   serf_bucket_destroy(hpack);
 }
