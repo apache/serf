@@ -777,10 +777,10 @@ void serf__bucket_hpack_do(serf_bucket_t *hpack_bucket,
 }
 
 static void hpack_int(unsigned char flags,
-                      int bits,
-                      apr_uint32_t value,
-                      char to[6],
-                      apr_size_t *used)
+                       int bits,
+                       apr_uint32_t value,
+                       char to[6],
+                       apr_size_t *used)
 {
     unsigned char max_direct;
     apr_size_t u;
@@ -813,13 +813,6 @@ static void hpack_int(unsigned char flags,
 static apr_status_t
 serialize(serf_bucket_t *bucket)
 {
-  /* Quick and dirty write out headers for V2
-
-     Needs A LOT of improvement.
-
-     Currently implements a complete in memory copy to the least
-     efficient HTTP2 / HPACK header format
-   */
     serf_hpack_context_t *ctx = bucket->data;
     serf_bucket_alloc_t *alloc = bucket->allocator;
     serf_hpack_table_t *tbl = ctx->tbl;
@@ -850,11 +843,15 @@ serialize(serf_bucket_t *bucket)
     {
         apr_status_t status;
         apr_size_t len;
+        apr_uint32_t reuse = 0;
+        const serf_hpack_entry_t *e;
+        bool reuseVal = false;
+        apr_uint32_t i;
 
         next = entry->next;
 
         /* Make 100% sure the next entry will fit.
-           ### Temporarily wastes ram
+           ### Using the actual size later on is far more memory efficient
          */
         if (!buffer || (HPACK_ENTRY_SIZE(entry) > chunksize - offset))
         {
@@ -871,74 +868,137 @@ serialize(serf_bucket_t *bucket)
             offset = 0;
         }
 
-      /* Literal header, no indexing (=has a name) */
-        hpack_int(0x40, 6, 0, buffer + offset, &len);
-        offset += len;
+        for (i = 0; i < hpack_static_table_count; i++) {
+            e = &hpack_static_table[i];
 
-        /* ### TODO: Check if we can refer key or key+value by index */
+            if (e->key_len == entry->key_len
+                && !memcmp(e->key, entry->key, e->key_len))
+            {
+                if (e->value_len == entry->value_len
+                    && !memcmp(e->value, entry->value, e->value_len))
+                {
+                    reuse = i+1;
+                    reuseVal = true;
+                    break;
+                }
+                if (!reuse)
+                    reuse = i+1;
+            }
+        }
+        if (!reuseVal) {
+            for (e = tbl->lr_first; e; e = e->next) {
 
-        /* To huff or not... */
-        status = serf__hpack_huffman_encode(entry->key, entry->key_len,
-                                            0, NULL, &len);
-        if (!status && len < entry->key_len)
-        {
-            apr_size_t int_len;
+                i++;
 
-            /* It is more efficient to huffman encode */
-            hpack_int(0x80, 7, len, buffer + offset, &int_len);
-            offset += int_len;
+                if (e->key_len == entry->key_len
+                    && !memcmp(e->key, entry->key, e->key_len))
+                {
+                    if (e->value_len == entry->value_len
+                        && !memcmp(e->value, entry->value, e->value_len))
+                    {
+                        reuse = i;
+                        reuseVal = true;
+                        break;
+                    }
+                    if (!reuse)
+                        reuse = i;
+                }
+            }
+        }
 
+        if (reuseVal) {
+            /* Nice, we have an exact match of key+value. We can
+               use those, but never index them. */
+            hpack_int(0x80, 7, reuse, buffer + offset, &len);
+            offset += len;
+        }
+        else if (!entry->dont_index) {
+            /* We reuse the header name, but will add our own value.
+               Or we don't reuse, but do index (value 0) */
+            hpack_int(0x40, 6, reuse, buffer + offset, &len);
+            offset += len;
+        }
+        else if (entry->dont_index == 2) {
+            /* Never index the value */
+            hpack_int(0x10, 4, reuse, buffer + offset, &len);
+            offset += len;
+        }
+        else {
+            hpack_int(0x00, 4, reuse, buffer + offset, &len);
+            offset += len;
+        }
+
+        if (!reuse) {
+
+            /* To huff or not... */
             status = serf__hpack_huffman_encode(entry->key, entry->key_len,
-                                                len,
-                                                (void*)(buffer + offset),
-                                                &len);
-            offset += len;
+                                                0, NULL, &len);
+            if (!status && len < entry->key_len)
+            {
+                apr_size_t int_len;
 
-            if (status)
-                return status;
+                /* It is more efficient to huffman encode */
+                hpack_int(0x80, 7, len, buffer + offset, &int_len);
+                offset += int_len;
+
+                status = serf__hpack_huffman_encode(entry->key, entry->key_len,
+                                                    len,
+                                                    (void*)(buffer + offset),
+                                                    &len);
+                offset += len;
+
+                if (status)
+                    return status;
+            }
+            else
+            {
+              /* It is more efficient not to encode */
+                hpack_int(0x00, 7, entry->key_len, buffer + offset, &len);
+                offset += len;
+
+                memcpy(buffer + offset, entry->key, entry->key_len);
+                offset += entry->key_len;
+            }
+
         }
-        else
-        {
-          /* It is more efficient not to encode */
-            hpack_int(0, 7, entry->key_len, buffer + offset, &len);
-            offset += len;
+        if (!reuseVal) {
+            /* To huff or not... */
+            status = serf__hpack_huffman_encode(entry->value, entry->value_len,
+                                                0, NULL, &len);
+            if (!status && len < entry->key_len)
+            {
+                apr_size_t int_len;
 
-            memcpy(buffer + offset, entry->key, entry->key_len);
-            offset += entry->key_len;
+                /* It is more efficient to huffman encode */
+                hpack_int(0x80, 7, len, buffer + offset, &int_len);
+                offset += int_len;
+
+                status = serf__hpack_huffman_encode(entry->value,
+                                                    entry->value_len,
+                                                    len,
+                                                    (void*)(buffer + offset),
+                                                    &len);
+                offset += len;
+
+                if (status)
+                    return status;
+            }
+            else
+            {
+              /* It is more efficient not to encode */
+                hpack_int(0x00, 7, entry->value_len, buffer + offset, &len);
+                offset += len;
+
+                memcpy(buffer + offset, entry->value, entry->value_len);
+                offset += entry->value_len;
+            }
         }
 
-      /* To huff or not... */
-        status = serf__hpack_huffman_encode(entry->value, entry->value_len,
-                                            0, NULL, &len);
-        if (!status && len < entry->key_len)
-        {
-            apr_size_t int_len;
+        /* ### TODO: Store the item in the lr dynamic table if we are allowed
+                     to do that. We currently 'forget' that step, so we only
+                     use pre-cached values */
 
-            /* It is more efficient to huffman encode */
-            hpack_int(0x80, 7, len, buffer + offset, &int_len);
-            offset += int_len;
-
-            status = serf__hpack_huffman_encode(entry->value,
-                                                entry->value_len,
-                                                len,
-                                                (void*)(buffer + offset),
-                                                &len);
-            offset += len;
-
-            if (status)
-                return status;
-        }
-        else
-        {
-          /* It is more efficient not to encode */
-            hpack_int(0, 7, entry->value_len, buffer + offset, &len);
-            offset += len;
-
-            memcpy(buffer + offset, entry->value, entry->value_len);
-            offset += entry->value_len;
-        }
-
-      /* And now free the item */
+        /* And now free the item */
         hpack_free_entry(entry, alloc);
     }
     ctx->first = ctx->last = NULL;
