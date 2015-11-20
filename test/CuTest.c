@@ -367,9 +367,9 @@ void CuSuiteRun2(CuSuite* testSuite, int liveSummary)
     putc('\n', stdout);
 }
 
-void CuSuiteRun(CuSuite* testSuite, int liveSummary)
+void CuSuiteRun(CuSuite* testSuite)
 {
-    CuSuiteRun2(testSuite, FALSE);
+    CuSuiteRun2(testSuite, 0);
 }
 
 void CuSuiteSummary(CuSuite* testSuite, CuString* summary)
