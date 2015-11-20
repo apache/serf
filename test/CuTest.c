@@ -348,15 +348,28 @@ void CuSuiteAddSuite(CuSuite* testSuite, CuSuite* testSuite2)
     }
 }
 
-void CuSuiteRun(CuSuite* testSuite)
+void CuSuiteRun2(CuSuite* testSuite, int liveSummary)
 {
     int i;
-    for (i = 0 ; i < testSuite->count ; ++i)
+    for (i = 0; i < testSuite->count; ++i)
     {
         CuTest* testCase = testSuite->list[i];
         CuTestRun(testCase);
-        if (testCase->failed) { testSuite->failCount += 1; }
+        if (testCase->failed)
+        {
+            if (liveSummary)
+                putc('F', stdout);
+            testSuite->failCount += 1;
+        }
+        else if (liveSummary)
+            putc('.', stdout);
     }
+    putc('\n', stdout);
+}
+
+void CuSuiteRun(CuSuite* testSuite, int liveSummary)
+{
+    CuSuiteRun2(testSuite, FALSE);
 }
 
 void CuSuiteSummary(CuSuite* testSuite, CuString* summary)
