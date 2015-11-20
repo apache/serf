@@ -106,7 +106,7 @@ int main(int argc, char *argv[])
         }
     }
 
-    CuSuiteRun(alltests, TRUE);
+    CuSuiteRun2(alltests, TRUE);
     /* CuSuiteSummary(alltests, output); */
     CuSuiteDetails(alltests, output);
     printf("%s\n", output->buffer);
