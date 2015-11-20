@@ -1361,6 +1361,13 @@ static void test_response_no_body_expected(CuTest *tc)
           "Content-Length: 6500000" CRLF
           CRLF
           "blablablablabla" CRLF,
+        "HTTP/1.1 100 Continue" CRLF
+          CRLF
+        "HTTP/1.1 204 No Content" CRLF
+          "Content-Type: text/plain" CRLF
+          "Content-Length: 6500000" CRLF
+          CRLF
+          "blablablablabla" CRLF,
     };
 
     alloc = test__create_bucket_allocator(tc, tb->pool);
@@ -1395,11 +1402,15 @@ static void test_response_no_body_expected(CuTest *tc)
         if (i == 0) {
             /* blablablablabla is parsed as the next status line */
             CuAssertIntEquals(tc, SERF_ERROR_BAD_HTTP_RESPONSE, status);
+            DRAIN_BUCKET(tmp);
         }
-        else
-          CuAssertIntEquals(tc, 0, len);
+        else {
+            CuAssertIntEquals(tc, APR_EOF, status);
+            CuAssertIntEquals(tc, 0, len);
 
-        DRAIN_BUCKET(tmp);
+            read_and_check_bucket(tc, tmp, "blablablablabla" CRLF);
+        }
+
         serf_bucket_destroy(bkt);
     }
 }
