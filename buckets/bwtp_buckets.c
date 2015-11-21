@@ -32,6 +32,10 @@
 /* This is an implementation of Bidirectional Web Transfer Protocol (BWTP)
  * See:
  *   http://bwtp.wikidot.com/
+ *
+ * 2015-11: The BWTP protocol was one of the proposed implementations for
+ *          Websockets, which were eventually standardized in RFC 6455 but
+ *          using a completely different wire protocol.
  */
 
 typedef struct frame_context_t {
