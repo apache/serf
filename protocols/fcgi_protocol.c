@@ -376,7 +376,7 @@ static apr_status_t fcgi_hangup(serf_fcgi_protocol_t *fcgi)
     return APR_ENOTIMPL;
 }
 
-void fcgi_teardown(serf_fcgi_protocol_t *fcgi)
+static void fcgi_teardown(serf_fcgi_protocol_t *fcgi)
 {
 
 }
@@ -472,7 +472,7 @@ static apr_status_t fcgi_outgoing_hangup(serf_connection_t *conn)
     return fcgi_hangup(fcgi);
 }
 
-void fcgi_outgoing_teardown(serf_connection_t *conn)
+static void fcgi_outgoing_teardown(serf_connection_t *conn)
 {
     serf_fcgi_protocol_t *fcgi = conn->protocol_baton;
 
@@ -530,7 +530,7 @@ static apr_status_t fcgi_server_hangup(serf_incoming_t *client)
     return fcgi_hangup(fcgi);
 }
 
-void fcgi_server_teardown(serf_incoming_t *client)
+static void fcgi_server_teardown(serf_incoming_t *client)
 {
     serf_fcgi_protocol_t *fcgi = client->protocol_baton;
 
