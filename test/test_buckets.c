@@ -1770,6 +1770,8 @@ static void test_dechunk_buckets(CuTest *tc)
             serf_bucket_mock_more_data_arrived(mock_bkt);
     }
     while (!APR_STATUS_IS_EOF(status));
+
+    serf_bucket_destroy(bkt);
 }
 
 static apr_status_t deflate_compress(const char **data, apr_size_t *len,
