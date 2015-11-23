@@ -693,8 +693,11 @@ apr_status_t serf__provide_credentials(serf_context_t *ctx,
 /* Requeue a request (at the front).  */
 serf_request_t *serf__request_requeue(const serf_request_t *request);
 
+apr_status_t serf_connection__perform_setup(serf_connection_t *conn);
+
 /* from ssltunnel.c */
 apr_status_t serf__ssltunnel_connect(serf_connection_t *conn);
+
 
 
 /* Creates a bucket that logs all data returned by one of the read functions

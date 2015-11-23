@@ -144,6 +144,11 @@ static apr_status_t handle_response(serf_request_t *request,
             serf__bucket_headers_remove(hdrs, "Connection");
         }
 
+        status = serf_connection__perform_setup(conn);
+
+        if (status)
+            return SERF_BUCKET_READ_ERROR(status) ? status : APR_EGENERAL;
+
         return APR_EOF;
     }
 
