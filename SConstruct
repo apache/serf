@@ -239,10 +239,6 @@ if sys.platform == 'win32':
 env.Append(RPATH=[libdir],
            PDB='${TARGET.filebase}.pdb')
 
-if sys.platform == 'darwin':
-#  linkflags.append('-Wl,-install_name,@executable_path/%s.dylib' % (SHLIBNAME,))
-  env.Append(LINKFLAGS=['-Wl,-install_name,%s/%s.dylib' % (thisdir, SHLIBNAME,)])
-
 if sys.platform != 'win32':
   def CheckGnuCC(context):
     src = '''
