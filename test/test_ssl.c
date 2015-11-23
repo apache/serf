@@ -111,15 +111,15 @@ static void test_ssl_cert_subject(CuTest *tc)
                       apr_hash_get(subject, "CN", APR_HASH_KEY_STRING));
     CuAssertStrEquals(tc, "Test Suite",
                       apr_hash_get(subject, "OU", APR_HASH_KEY_STRING));
-    CuAssertStrEquals(tc, "In Serf we trust, Inc.", 
+    CuAssertStrEquals(tc, "In Serf we trust, Inc.",
                       apr_hash_get(subject, "O", APR_HASH_KEY_STRING));
-    CuAssertStrEquals(tc, "Mechelen", 
+    CuAssertStrEquals(tc, "Mechelen",
                       apr_hash_get(subject, "L", APR_HASH_KEY_STRING));
-    CuAssertStrEquals(tc, "Antwerp", 
+    CuAssertStrEquals(tc, "Antwerp",
                       apr_hash_get(subject, "ST", APR_HASH_KEY_STRING));
-    CuAssertStrEquals(tc, "BE", 
+    CuAssertStrEquals(tc, "BE",
                       apr_hash_get(subject, "C", APR_HASH_KEY_STRING));
-    CuAssertStrEquals(tc, "serf@example.com", 
+    CuAssertStrEquals(tc, "serf@example.com",
                       apr_hash_get(subject, "E", APR_HASH_KEY_STRING));
 }
 
@@ -462,7 +462,7 @@ static void test_ssl_handshake(CuTest *tc)
                                              tb->pool);
     CuAssertIntEquals(tc, APR_SUCCESS, status);
 
-    /* This unknown failures is X509_V_ERR_UNABLE_TO_VERIFY_LEAF_SIGNATURE, 
+    /* This unknown failures is X509_V_ERR_UNABLE_TO_VERIFY_LEAF_SIGNATURE,
        meaning the chain has only the server cert. A good candidate for its
        own failure code. */
     expected_failures = SERF_SSL_CERT_UNKNOWNCA;
@@ -514,7 +514,7 @@ static void test_ssl_handshake_nosslv2(CuTest *tc)
                                              tb->pool);
     CuAssertIntEquals(tc, APR_SUCCESS, status);
 
-    /* This unknown failures is X509_V_ERR_UNABLE_TO_VERIFY_LEAF_SIGNATURE, 
+    /* This unknown failures is X509_V_ERR_UNABLE_TO_VERIFY_LEAF_SIGNATURE,
        meaning the chain has only the server cert. A good candidate for its
        own failure code. */
     expected_failures = SERF_SSL_CERT_UNKNOWNCA;
@@ -840,7 +840,7 @@ static void test_ssl_no_servercert_callback_fail(CuTest *tc)
                                  server_certs,
                                  test_clientcert_none);
     status = setup_test_client_https_context(tb,
-                                             NULL, /* default conn setup, 
+                                             NULL, /* default conn setup,
                                                       no certs */
                                              NULL, /* No server cert callback */
                                              tb->pool);
@@ -1201,8 +1201,8 @@ static void test_ssl_revoked_server_cert(CuTest *tc)
        e.g. once to tell that the cert is revoked, and a second time to tell
        that the certificate itself is valid.
        We'll have to combine the results of these multiple calls to the callback
-       to get a complete view of the certificate. That's why we use 
-       ssl_server_cert_cb_log_failures here, and then later check expected 
+       to get a complete view of the certificate. That's why we use
+       ssl_server_cert_cb_log_failures here, and then later check expected
        failures for each depth. */
     status = setup_test_client_https_context(tb,
                                              https_load_crl_conn_setup,
@@ -1353,7 +1353,7 @@ ssltunnel_basic_authn_callback(char **username,
 }
 
 /* Test if serf can successfully authenticate to a proxy used for an ssl
-   tunnel. Retry the authentication a few times to test requeueing of the 
+   tunnel. Retry the authentication a few times to test requeueing of the
    CONNECT request. */
 static void ssltunnel_basic_auth(CuTest *tc, int serv_close_conn,
                                  int proxy407_close_conn,
@@ -1497,15 +1497,15 @@ basic_authn_callback_2ndtry(char **username,
 
 
 /* This test used to make serf crash on Windows when the server aborting the
-   connection resulted in APR_ECONNRESET on the client side. 
- 
-   This can be simulated by applying this change to serf__handle_auth_response 
+   connection resulted in APR_ECONNRESET on the client side.
+
+   This can be simulated by applying this change to serf__handle_auth_response
    right after the discard_body call.
 
    if (request->conn->completed_responses > 0 && status == APR_EOF)
        status = APR_ECONNRESET;
- 
-   TODO: create a mock socket or socket bucket wrapper to simulate 
+
+   TODO: create a mock socket or socket bucket wrapper to simulate
          APR_ECONNRESET.
  */
 static void test_ssltunnel_basic_auth_2ndtry(CuTest *tc)
@@ -1975,7 +1975,7 @@ static void test_ssl_ocsp_response_error_and_override(CuTest *tc)
                                              tb->pool);
     CuAssertIntEquals(tc, APR_SUCCESS, status);
     tb->enable_ocsp_stapling = 1;
-    
+
     InitMockServers(tb->mh)
       ConfigServerWithID("server", WithOCSPEnabled)
     EndInit
@@ -2296,7 +2296,7 @@ CuSuite *test_ssl(void)
     SUITE_ADD_TEST(suite, test_ssl_server_cert_with_san_nul_byte);
     SUITE_ADD_TEST(suite, test_ssl_server_cert_with_cnsan_nul_byte);
     SUITE_ADD_TEST(suite, test_ssl_server_cert_with_san_and_empty_cb);
-    SUITE_ADD_TEST(suite, test_ssl_renegotiate);
+    /*SUITE_ADD_TEST(suite, test_ssl_renegotiate);*/
     SUITE_ADD_TEST(suite, test_ssl_alpn_negotiate);
 
     return suite;
