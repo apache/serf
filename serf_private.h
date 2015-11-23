@@ -556,7 +556,7 @@ struct serf_connection_t {
 
     /* Wait for connect: connect() returned APR_EINPROGRESS.
        Socket not usable yet */
-    int wait_for_connect;
+    bool wait_for_connect;
 
     /* Event callbacks, called from serf__process_connection() to do the actual
        processing. */
