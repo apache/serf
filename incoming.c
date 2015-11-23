@@ -716,7 +716,7 @@ apr_status_t serf__incoming_update_pollset(serf_incoming_t *client)
 
         apr_pool_destroy(client->pool);
 
-        if (cid >= ctx->incomings->nelts) {
+        if (cid < ctx->incomings->nelts) {
             /* We skipped updating the pollset on this item as we moved it.
                Let's run it now */
 
