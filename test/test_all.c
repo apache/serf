@@ -114,8 +114,6 @@ int main(int argc, char *argv[])
                 sh++;
             }
 
-            /* ### We leak ram on specific function names.
-                   Patches welcome :) */
             for (j = 0; tests[j].func != NULL; j++) {
 
                 if (strncmp(argv[i], tests[j].testname, len) == 0
@@ -130,6 +128,8 @@ int main(int argc, char *argv[])
                             if (!strcmp(suite->list[k]->name, sh)) {
                                 suite->list[m++] = suite->list[k];
                             }
+                            else
+                                CuTestFree(suite->list[k]);
                         }
                         suite->count = m;
                     }
