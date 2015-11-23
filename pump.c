@@ -29,7 +29,7 @@
 
 #include "serf_private.h"
 
-apr_status_t pump_cleanup(void *baton)
+static apr_status_t pump_cleanup(void *baton)
 {
     serf_pump_t *pump = baton;
 
@@ -233,26 +233,30 @@ static apr_status_t socket_writev(serf_pump_t *pump)
 
         serf__log(LOGLVL_DEBUG, LOGCOMP_CONN, __FILE__, conn->config,
                   "--- socket_sendv: %d bytes on 0x%p. --\n",
-                  written, pump->io->u.v);
+                  (int)written, pump->io->u.v);
 
         for (i = 0; i < conn->vec_len; i++) {
             len += conn->vec[i].iov_len;
             if (written < len) {
                 serf__log_nopref(LOGLVL_DEBUG, LOGCOMP_RAWMSG, conn->config,
-                                 "%.*s", conn->vec[i].iov_len - (len - written),
+                                 "%.*s",
+                                 (int)(conn->vec[i].iov_len - (len - written)),
                                  conn->vec[i].iov_base);
                 if (i) {
                     memmove(conn->vec, &conn->vec[i],
                             sizeof(struct iovec) * (conn->vec_len - i));
                     conn->vec_len -= i;
                 }
-                conn->vec[0].iov_base = (char *)conn->vec[0].iov_base + (conn->vec[0].iov_len - (len - written));
+                conn->vec[0].iov_base = (char *)conn->vec[0].iov_base
+                                        + conn->vec[0].iov_len
+                                        - (len - written);
                 conn->vec[0].iov_len = len - written;
                 break;
             } else {
                 serf__log_nopref(LOGLVL_DEBUG, LOGCOMP_RAWMSG, conn->config,
                                  "%.*s",
-                                 conn->vec[i].iov_len, conn->vec[i].iov_base);
+                                 (int)conn->vec[i].iov_len,
+                                 (const char*)conn->vec[i].iov_base);
             }
         }
         if (len == written) {
