@@ -182,8 +182,8 @@ static apr_status_t setup_request(serf_request_t *request,
     return APR_SUCCESS;
 }
 
-apr_status_t ssltunnel_ostream_destroyed(void *baton,
-                                         apr_uint64_t bytes_read)
+static apr_status_t ssltunnel_ostream_destroyed(void *baton,
+                                                apr_uint64_t bytes_read)
 {
     serf_connection_t *conn = baton;
 
