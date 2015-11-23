@@ -135,7 +135,7 @@ static apr_status_t client_acceptor(serf_context_t *ctx,
                                  pool);
 }
 
-void setup_test_server(test_baton_t *tb)
+static void setup_test_server(test_baton_t *tb)
 {
     serf_listener_t *listener;
     apr_status_t status;
