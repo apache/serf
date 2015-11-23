@@ -158,8 +158,10 @@ void serf_pump__complete_setup(serf_pump_t *pump,
     /* Share the configuration with the ssl_decrypt and socket buckets. The
      response buckets wrapping the ssl_decrypt/socket buckets won't get the
      config automatically because they are upstream. */
-    if (stream != NULL)
+    if (stream != NULL) {
+        pump->stream = stream;
         serf_bucket_set_config(pump->stream, pump->config);
+    }
 
     /* We typically have one of two scenarios, based on whether the
        application decided to encrypt this connection:
