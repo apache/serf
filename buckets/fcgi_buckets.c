@@ -248,7 +248,7 @@ static apr_status_t serf_fcgi_unframe_set_config(serf_bucket_t *bucket,
     return serf_bucket_set_config(ctx->stream, config);
 }
 
-extern const serf_bucket_type_t serf_bucket_type__fcgi_unframe =
+const serf_bucket_type_t serf_bucket_type__fcgi_unframe =
 {
     "FCGI-UNFRAME",
     serf_fcgi_unframe_read,
@@ -887,7 +887,7 @@ static apr_status_t serf_fcgi_frame_set_config(serf_bucket_t *bucket,
     return APR_SUCCESS;
 }
 
-extern const serf_bucket_type_t serf_bucket_type__fcgi_frame =
+const serf_bucket_type_t serf_bucket_type__fcgi_frame =
 {
     "FCGI-FRAME",
     serf_fcgi_frame_read,

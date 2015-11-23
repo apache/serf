@@ -137,7 +137,7 @@ apr_status_t serf_incoming_response_create(serf_incoming_request_t *request)
     return request->enqueue_response(request, request->enqueue_baton, bucket);
 }
 
-apr_status_t perform_peek_protocol(serf_incoming_t *client)
+static apr_status_t perform_peek_protocol(serf_incoming_t *client)
 {
     const char h2prefix[] = "PRI * HTTP/2.0\r\n\r\n";
     const apr_size_t h2prefixlen = sizeof(h2prefix) - 1;
