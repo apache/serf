@@ -139,7 +139,7 @@ void CuAssertPtrEquals_LineMsg(CuTest* tc,
 
 #define SUITE_ADD_TEST(SUITE,TEST)      CuSuiteAdd(SUITE, CuTestNew(#TEST, TEST))
 
-typedef struct
+typedef struct CuSuite
 {
     int count;
     CuTest* list[MAX_TEST_CASES];

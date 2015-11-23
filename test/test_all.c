@@ -64,7 +64,17 @@ int main(int argc, char *argv[])
         }
         if (!strcmp(argv[i], "-l")) {
             for (i = 0; tests[i].func != NULL; i++) {
+                CuSuite *suite;
+                int j = 0;
+
                 printf("%s\n", tests[i].testname);
+                suite = tests[i].func();
+
+                for (j = 0; j < suite->count; j++) {
+                    printf("  %3d - %s\n", j+1, suite->list[j]->name);
+                }
+
+                printf("\n");
             }
             exit(0);
         }
