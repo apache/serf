@@ -42,6 +42,11 @@ static apr_status_t pump_cleanup(void *baton)
         pump->ostream_tail = NULL;
     }
 
+    pump->pool = NULL; /* Don't run again */
+    pump->allocator = NULL;
+    pump->skt = NULL;
+    pump->vec_len = 0;
+
     return APR_SUCCESS;
 }
 
@@ -78,9 +83,6 @@ void serf_pump__done(serf_pump_t *pump)
 
     pump->ostream_head = NULL;
     pump->ostream_tail = NULL;
-
-    pump->skt = NULL;
-    pump->vec_len = 0;
 
     pump->done_writing = false;
     pump->stop_writing = false;
