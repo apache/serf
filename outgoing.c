@@ -1288,7 +1288,7 @@ serf_connection_t *serf_connection_create(
     conn->nr_of_written_reqs = 0;
 
     conn->unwritten_reqs = conn->unwritten_reqs_tail = NULL;
-    conn->nr_of_unwritten_reqs = 0;
+    conn->nr_of_unwritten_reqs;
 
     conn->done_reqs = conn->done_reqs_tail = 0;
 
