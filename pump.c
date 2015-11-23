@@ -158,7 +158,8 @@ void serf_pump__complete_setup(serf_pump_t *pump,
     /* Share the configuration with the ssl_decrypt and socket buckets. The
      response buckets wrapping the ssl_decrypt/socket buckets won't get the
      config automatically because they are upstream. */
-    serf_bucket_set_config(pump->stream, pump->config);
+    if (stream != NULL)
+        serf_bucket_set_config(pump->stream, pump->config);
 
     /* We typically have one of two scenarios, based on whether the
        application decided to encrypt this connection:
@@ -187,13 +188,13 @@ void serf_pump__store_ipaddresses_in_config(serf_pump_t *pump)
         char buf[48];
         if (!apr_sockaddr_ip_getbuf(buf, sizeof(buf), sa))
             serf_config_set_stringf(pump->config, SERF_CONFIG_CONN_LOCALIP,
-                                    "%s:%d", buf, sa->port);
+                                    "%s:%d", buf, (int)sa->port);
     }
     if (apr_socket_addr_get(&sa, APR_REMOTE, pump->skt) == APR_SUCCESS) {
         char buf[48];
         if (!apr_sockaddr_ip_getbuf(buf, sizeof(buf), sa))
             serf_config_set_stringf(pump->config, SERF_CONFIG_CONN_REMOTEIP,
-                                    "%s:%d", buf, sa->port);
+                                    "%s:%d", buf, (int)sa->port);
     }
 }
 
@@ -241,7 +242,7 @@ static apr_status_t socket_writev(serf_pump_t *pump)
                 serf__log_nopref(LOGLVL_DEBUG, LOGCOMP_RAWMSG, conn->config,
                                  "%.*s",
                                  (int)(conn->vec[i].iov_len - (len - written)),
-                                 conn->vec[i].iov_base);
+                                 (const char *)conn->vec[i].iov_base);
                 if (i) {
                     memmove(conn->vec, &conn->vec[i],
                             sizeof(struct iovec) * (conn->vec_len - i));
