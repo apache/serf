@@ -298,8 +298,8 @@ serf_http2__stream_write_data(serf_http2_stream_t *stream)
     return stream_send_data(stream, stream->data->data_tail);
 }
 
-apr_status_t destroy_request_bucket(void *baton,
-                                    apr_uint64_t bytes_read)
+static apr_status_t destroy_request_bucket(void *baton,
+                                           apr_uint64_t bytes_read)
 {
     serf_request_t *request = baton;
 
