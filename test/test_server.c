@@ -336,10 +336,10 @@ CuSuite *test_server(void)
     CuSuiteSetSetupTeardownCallbacks(suite, test_setup, test_teardown);
 
     SUITE_ADD_TEST(suite, test_listen_http);
-    SUITE_ADD_TEST(suite, test_listen_http2);
+    /*SUITE_ADD_TEST(suite, test_listen_http2);*/
 
     SUITE_ADD_TEST(suite, test_listen_auth_http);
-    SUITE_ADD_TEST(suite, test_listen_auth_http2);
+    /*SUITE_ADD_TEST(suite, test_listen_auth_http2);*/
 
     return suite;
 }
