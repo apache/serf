@@ -250,7 +250,7 @@ void serf__connection_pre_cleanup(serf_connection_t *conn)
     conn->done_reqs = conn->done_reqs_tail = NULL;
 }
 
-static apr_status_t do_conn_setup(serf_connection_t *conn)
+apr_status_t serf_connection__perform_setup(serf_connection_t *conn)
 {
     apr_status_t status;
     serf_bucket_t *ostream, *stream;
@@ -298,36 +298,6 @@ static apr_status_t do_conn_setup(serf_connection_t *conn)
     return status;
 }
 
-/* Set up the input and output stream buckets.
- When a tunnel over an http proxy is needed, create a socket bucket and
- empty aggregate bucket for sending and receiving unencrypted requests
- over the socket.
-
- After the tunnel is there, or no tunnel was needed, ask the application
- to create the input and output buckets, which should take care of the
- [en/de]cryption.
- */
-
-static apr_status_t prepare_conn_streams(serf_connection_t *conn)
-{
-    apr_status_t status;
-
-    /* Do we need a SSL tunnel first? */
-    if (conn->state == SERF_CONN_CONNECTED) {
-        /* If the connection does not have an associated bucket, then
-         * call the setup callback to get one.
-         */
-        if (conn->pump.stream == NULL) {
-            status = do_conn_setup(conn);
-            if (status) {
-                return status;
-            }
-        }
-    }
-
-    return APR_SUCCESS;
-}
-
 static apr_status_t connect_connection(serf_connection_t *conn)
 {
     serf_context_t *ctx = conn->ctx;
@@ -357,7 +327,11 @@ static apr_status_t connect_connection(serf_connection_t *conn)
         serf__ssltunnel_connect(conn);
     else {
         conn->state = SERF_CONN_CONNECTED;
-        status = do_conn_setup(conn);
+
+        status = serf_connection__perform_setup(conn);
+
+        if (status)
+            return status;
     }
 
     return APR_SUCCESS;
@@ -751,11 +725,6 @@ static apr_status_t write_to_connection(serf_connection_t *conn)
             return APR_SUCCESS;
         }
 
-        status = prepare_conn_streams(conn);
-        if (status) {
-            return status;
-        }
-
         if (request && request->writing == SERF_WRITING_NONE) {
             serf_bucket_t *event_bucket;
 
@@ -849,12 +818,6 @@ static apr_status_t read_from_connection(serf_connection_t *conn)
     /* Invoke response handlers until we have no more work. */
     while (1) {
         apr_pool_clear(tmppool);
-
-        /* Only interested in the input stream here. */
-        status = prepare_conn_streams(conn);
-        if (status) {
-            goto error;
-        }
 
         /* We have a different codepath when we can have async responses. */
         if (conn->async_responses) {
