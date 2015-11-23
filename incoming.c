@@ -32,12 +32,13 @@ static apr_status_t client_connected(serf_incoming_t *client)
 {
     /* serf_context_t *ctx = client->ctx; */
     apr_status_t status;
+    serf_bucket_t *stream;
     serf_bucket_t *ostream;
 
     serf_pump__store_ipaddresses_in_config(&client->pump);
 
     serf__log(LOGLVL_DEBUG, LOGCOMP_CONN, __FILE__, client->config,
-              "socket for client 0x%x connected\n", client);
+              "socket for client 0x%p connected\n", client);
 
     /* ### Connection does auth setup here */
 
@@ -46,17 +47,17 @@ static apr_status_t client_connected(serf_incoming_t *client)
     ostream = client->pump.ostream_tail;
 
     status = client->setup(client->skt,
-                           &client->pump.stream,
+                           &stream,
                            &ostream,
                            client->setup_baton, client->pool);
 
     if (status) {
-        serf_pump__complete_setup(&client->pump, NULL);
+        serf_pump__complete_setup(&client->pump, NULL, NULL);
         /* ### Cleanup! (serf__connection_pre_cleanup) */
         return status;
     }
 
-    serf_pump__complete_setup(&client->pump, ostream);
+    serf_pump__complete_setup(&client->pump, stream, ostream);
 
     if (client->framing_type == SERF_CONNECTION_FRAMING_TYPE_NONE) {
         client->proto_peek_bkt = serf_bucket_aggregate_create(

@@ -136,6 +136,7 @@ typedef struct serf_io_baton_t {
         serf_incoming_t *client;
         serf_connection_t *conn;
         serf_listener_t *listener;
+        const void *const v;
     } u;
 
     /* are we a dirty connection that needs its poll status updated? */
@@ -147,14 +148,18 @@ typedef struct serf_io_baton_t {
 
 } serf_io_baton_t;
 
-typedef struct serf_pump_io_t
+typedef struct serf_pump_t
 {
     serf_io_baton_t *io;
 
     serf_bucket_alloc_t *allocator;
     serf_config_t *config;
 
+    /* The incoming stream. Stored here for easy access by users,
+       but not managed as part of the pump */
     serf_bucket_t *stream;
+
+    /* The outgoing stream */
     serf_bucket_t *ostream_head;
     serf_bucket_t *ostream_tail;
 
@@ -171,6 +176,8 @@ typedef struct serf_pump_io_t
 
     /* Set to true when ostream_tail was read to EOF */
     bool hit_eof;
+
+    apr_pool_t *pool;
 } serf_pump_t;
 
 
@@ -769,15 +776,23 @@ void serf_pump__init(serf_pump_t *pump,
                      serf_bucket_alloc_t *allocator,
                      apr_pool_t *pool);
 
+void serf_pump__done(serf_pump_t *pump);
+
 bool serf_pump__data_pending(serf_pump_t *pump);
 void serf_pump__store_ipaddresses_in_config(serf_pump_t *pump);
 
 apr_status_t serf_pump__write(serf_pump_t *pump,
                               bool fetch_new);
 
+apr_status_t serf_pump__add_output(serf_pump_t *pump,
+                                   serf_bucket_t *bucket,
+                                   bool flush);
+
 /* These must always be called as a pair to avoid a memory leak */
 void serf_pump__prepare_setup(serf_pump_t *pump);
-void serf_pump__complete_setup(serf_pump_t *pump, serf_bucket_t *ostream);
+void serf_pump__complete_setup(serf_pump_t *pump,
+                               serf_bucket_t *stream,
+                               serf_bucket_t *ostream);
 
 
 /** Logging functions. **/

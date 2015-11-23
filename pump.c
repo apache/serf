@@ -29,7 +29,7 @@
 
 #include "serf_private.h"
 
-apr_status_t pump_cleanup(void *baton)
+static apr_status_t pump_cleanup(void *baton)
 {
     serf_pump_t *pump = baton;
 
@@ -41,6 +41,11 @@ apr_status_t pump_cleanup(void *baton)
         pump->ostream_head = NULL;
         pump->ostream_tail = NULL;
     }
+
+    pump->pool = NULL; /* Don't run again */
+    pump->allocator = NULL;
+    pump->skt = NULL;
+    pump->vec_len = 0;
 
     return APR_SUCCESS;
 }
@@ -58,9 +63,32 @@ void serf_pump__init(serf_pump_t *pump,
     pump->allocator = allocator;
     pump->config = config;
     pump->skt = skt;
+    pump->pool = pool;
 
     apr_pool_cleanup_register(pool, pump, pump_cleanup,
                               apr_pool_cleanup_null);
+}
+
+void serf_pump__done(serf_pump_t *pump)
+{
+    if (pump->pool) {
+        apr_pool_cleanup_run(pump->pool, pump, pump_cleanup);
+    }
+
+    pump->io = NULL;
+    pump->allocator = NULL;
+    pump->config = NULL;
+
+    /* pump->stream is managed by the current reader! */
+
+    pump->ostream_head = NULL;
+    pump->ostream_tail = NULL;
+
+    pump->done_writing = false;
+    pump->stop_writing = false;
+    pump->hit_eof = false;
+
+    pump->pool = NULL;
 }
 
 /* Safely check if there is still data pending on the connection, carefull
@@ -78,9 +106,6 @@ bool serf_pump__data_pending(serf_pump_t *pump)
         status = serf_bucket_peek(pump->ostream_head, &data, &len);
         if (!SERF_BUCKET_READ_ERROR(status)) {
             if (len > 0) {
-                serf__log(LOGLVL_DEBUG, LOGCOMP_CONN, __FILE__, pump->config,
-                          "Extra data to be written after sending complete "
-                          "requests.\n");
                 return true;
             }
         }
@@ -118,8 +143,10 @@ void serf_pump__prepare_setup(serf_pump_t *pump)
 }
 
 void serf_pump__complete_setup(serf_pump_t *pump,
+                               serf_bucket_t *stream,
                                serf_bucket_t *ostream)
 {
+    pump->stream = stream;
     if (ostream)
         serf_bucket_aggregate_append(pump->ostream_head, ostream);
     else
@@ -133,7 +160,10 @@ void serf_pump__complete_setup(serf_pump_t *pump,
     /* Share the configuration with the ssl_decrypt and socket buckets. The
      response buckets wrapping the ssl_decrypt/socket buckets won't get the
      config automatically because they are upstream. */
-    serf_bucket_set_config(pump->stream, pump->config);
+    if (stream != NULL) {
+        pump->stream = stream;
+        serf_bucket_set_config(pump->stream, pump->config);
+    }
 
     /* We typically have one of two scenarios, based on whether the
        application decided to encrypt this connection:
@@ -162,13 +192,13 @@ void serf_pump__store_ipaddresses_in_config(serf_pump_t *pump)
         char buf[48];
         if (!apr_sockaddr_ip_getbuf(buf, sizeof(buf), sa))
             serf_config_set_stringf(pump->config, SERF_CONFIG_CONN_LOCALIP,
-                                    "%s:%d", buf, sa->port);
+                                    "%s:%d", buf, (int)sa->port);
     }
     if (apr_socket_addr_get(&sa, APR_REMOTE, pump->skt) == APR_SUCCESS) {
         char buf[48];
         if (!apr_sockaddr_ip_getbuf(buf, sizeof(buf), sa))
             serf_config_set_stringf(pump->config, SERF_CONFIG_CONN_REMOTEIP,
-                                    "%s:%d", buf, sa->port);
+                                    "%s:%d", buf, (int)sa->port);
     }
 }
 
@@ -177,7 +207,7 @@ static apr_status_t no_more_writes(serf_pump_t *pump)
     /* Note that we should hold new requests until we open our new socket. */
     pump->done_writing = true;
     serf__log(LOGLVL_DEBUG, LOGCOMP_CONN, __FILE__, pump->config,
-              "stop writing on 0x%x\n", pump->io->u.conn);
+              "stop writing on 0x%p\n", pump->io->u.v);
 
     /* Clear our iovec. */
     pump->vec_len = 0;
@@ -199,7 +229,7 @@ static apr_status_t socket_writev(serf_pump_t *pump)
                               pump->vec_len, &written);
     if (status && !APR_STATUS_IS_EAGAIN(status))
         serf__log(LOGLVL_DEBUG, LOGCOMP_CONN, __FILE__, pump->config,
-                  "socket_sendv error %d\n", status);
+                  "socket_sendv error %d on 0x%p\n", status, pump->io->u.v);
 
     /* did we write everything? */
     if (written) {
@@ -207,26 +237,31 @@ static apr_status_t socket_writev(serf_pump_t *pump)
         int i;
 
         serf__log(LOGLVL_DEBUG, LOGCOMP_CONN, __FILE__, conn->config,
-                  "--- socket_sendv: %d bytes. --\n", written);
+                  "--- socket_sendv: %d bytes on 0x%p. --\n",
+                  (int)written, pump->io->u.v);
 
         for (i = 0; i < conn->vec_len; i++) {
             len += conn->vec[i].iov_len;
             if (written < len) {
                 serf__log_nopref(LOGLVL_DEBUG, LOGCOMP_RAWMSG, conn->config,
-                                 "%.*s", conn->vec[i].iov_len - (len - written),
-                                 conn->vec[i].iov_base);
+                                 "%.*s",
+                                 (int)(conn->vec[i].iov_len - (len - written)),
+                                 (const char *)conn->vec[i].iov_base);
                 if (i) {
                     memmove(conn->vec, &conn->vec[i],
                             sizeof(struct iovec) * (conn->vec_len - i));
                     conn->vec_len -= i;
                 }
-                conn->vec[0].iov_base = (char *)conn->vec[0].iov_base + (conn->vec[0].iov_len - (len - written));
+                conn->vec[0].iov_base = (char *)conn->vec[0].iov_base
+                                        + conn->vec[0].iov_len
+                                        - (len - written);
                 conn->vec[0].iov_len = len - written;
                 break;
             } else {
                 serf__log_nopref(LOGLVL_DEBUG, LOGCOMP_RAWMSG, conn->config,
                                  "%.*s",
-                                 conn->vec[i].iov_len, conn->vec[i].iov_base);
+                                 (int)conn->vec[i].iov_len,
+                                 (const char*)conn->vec[i].iov_base);
             }
         }
         if (len == written) {
@@ -246,16 +281,15 @@ apr_status_t serf_pump__write(serf_pump_t *pump,
 {
     apr_status_t status = APR_SUCCESS;
     apr_status_t read_status = APR_SUCCESS;
-    serf_pump_t *const conn = pump;
 
-    conn->hit_eof = FALSE;
+    pump->hit_eof = FALSE;
 
     while (status == APR_SUCCESS) {
 
         /* First try to write out what is already stored in the
            connection vecs. */
-        while (conn->vec_len && !status) {
-            status = socket_writev(conn);
+        while (pump->vec_len && !status) {
+            status = socket_writev(pump);
 
             /* If the write would have blocked, then we're done.
              * Don't try to write anything else to the socket.
@@ -263,12 +297,22 @@ apr_status_t serf_pump__write(serf_pump_t *pump,
             if (APR_STATUS_IS_EPIPE(status)
                 || APR_STATUS_IS_ECONNRESET(status)
                 || APR_STATUS_IS_ECONNABORTED(status))
-              return no_more_writes(conn);
+              return no_more_writes(pump);
         }
 
-        if (status || !pump)
+        if (status || !fetch_new) {
+
+            /* If we couldn't write everything that we tried,
+               make sure that we will receive a write event next time */
+            if (APR_STATUS_IS_EAGAIN(status)
+                && !pump->io->dirty_conn
+                && !(pump->io->reqevents & APR_POLLOUT))
+            {
+                serf_io__set_pollset_dirty(pump->io);
+            }
             return status;
-        else if (read_status || conn->vec_len || conn->hit_eof)
+        }
+        else if (read_status || pump->vec_len || pump->hit_eof)
             return read_status;
 
         /* ### optimize at some point by using read_for_sendfile */
@@ -276,12 +320,12 @@ apr_status_t serf_pump__write(serf_pump_t *pump,
            data as available, we probably don't want to read ALL_AVAIL, but
            a lower number, like the size of one or a few TCP packets, the
            available TCP buffer size ... */
-        conn->hit_eof = 0;
+        pump->hit_eof = false;
         read_status = serf_bucket_read_iovec(pump->ostream_head,
                                              SERF_READ_ALL_AVAIL,
                                              IOV_MAX,
-                                             conn->vec,
-                                             &conn->vec_len);
+                                             pump->vec,
+                                             &pump->vec_len);
 
         if (read_status == SERF_ERROR_WAIT_CONN) {
             /* The bucket told us that it can't provide more data until
@@ -293,15 +337,20 @@ apr_status_t serf_pump__write(serf_pump_t *pump,
             we can actually write something. otherwise, we could
             end up in a CPU spin: socket wants something, but we
             don't have anything (and keep returning EAGAIN) */
-            conn->stop_writing = true;
-            serf_io__set_pollset_dirty(conn->io);
+
+            serf__log(LOGLVL_INFO, LOGCOMP_CONN, __FILE__, pump->config,
+                      "Output stream requested temporary write delay "
+                      "on 0x%p\n", pump->io->u.v);
+
+            pump->stop_writing = true;
+            serf_io__set_pollset_dirty(pump->io);
 
             read_status = APR_EAGAIN;
         }
         else if (APR_STATUS_IS_EAGAIN(read_status)) {
 
             /* We read some stuff, but did we read everything ? */
-            if (conn->hit_eof)
+            if (pump->hit_eof)
                 read_status = APR_SUCCESS;
         }
         else if (SERF_BUCKET_READ_ERROR(read_status)) {
@@ -312,5 +361,39 @@ apr_status_t serf_pump__write(serf_pump_t *pump,
     }
 
     return status;
+}
+
+apr_status_t serf_pump__add_output(serf_pump_t *pump,
+                                   serf_bucket_t *bucket,
+                                   bool flush)
+{
+    apr_status_t status;
+
+    if (!flush
+        && !pump->io->dirty_conn
+        && !pump->stop_writing
+        && !(pump->io->reqevents & APR_POLLOUT)
+        && !serf_pump__data_pending(pump))
+    {
+        /* If not writing now,
+           * and not already dirty
+           * and nothing pending yet
+           Then mark the pollset dirty to trigger a write */
+
+        serf_io__set_pollset_dirty(pump->io);
+    }
+
+    serf_bucket_aggregate_append(pump->ostream_tail, bucket);
+
+    if (!flush)
+        return APR_SUCCESS;
+
+    /* Flush final output buffer (after ssl, etc.) */
+    status = serf_pump__write(pump, TRUE);
+
+    if (SERF_BUCKET_READ_ERROR(status))
+        return status;
+    else
+        return APR_SUCCESS;
 }
 
