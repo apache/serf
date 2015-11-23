@@ -99,14 +99,45 @@ int main(int argc, char *argv[])
         for (i = 1; i < argc; i++) {
             int j;
             int found = 0;
+            const char *sh;
+            apr_size_t len;
 
             if (argv[i][0] == '-') {
                 continue;
             }
+
+            sh = strchr(argv[i], '#');
+            if (!sh)
+                len = strlen(argv[i]);
+            else {
+                len = sh - argv[i];
+                sh++;
+            }
+
+            /* ### We leak ram on specific function names.
+                   Patches welcome :) */
             for (j = 0; tests[j].func != NULL; j++) {
-                if (!strcmp(argv[i], tests[j].testname)) {
-                    CuSuiteAddSuite(alltests, tests[j].func());
-                    found = 1;
+
+                if (strncmp(argv[i], tests[j].testname, len) == 0
+                    && tests[j].testname[len] == '\0')
+                {
+                    CuSuite *suite = tests[j].func();
+
+                    if (sh) {
+                        int k, m = 0;
+
+                        for (k = 0; k < suite->count; k++) {
+                            if (!strcmp(suite->list[k]->name, sh)) {
+                                suite->list[m++] = suite->list[k];
+                            }
+                        }
+                        suite->count = m;
+                    }
+
+                    if (suite->count) {
+                        CuSuiteAddSuite(alltests, suite);
+                        found = 1;
+                    }
                 }
             }
             if (!found) {
