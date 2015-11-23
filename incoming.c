@@ -702,7 +702,7 @@ apr_status_t serf__incoming_update_pollset(serf_incoming_t *client)
 
         if (client->config)
             serf__config_store_remove_client(ctx->config_store, client);
-
+#if 0
         /* And from the incommings list */
         for (cid = 0; cid < ctx->incomings->nelts; cid++) {
             if (GET_INCOMING(ctx, cid) == client) {
@@ -713,8 +713,8 @@ apr_status_t serf__incoming_update_pollset(serf_incoming_t *client)
             }
         }
         client->ctx->incomings->nelts--;
-
         apr_pool_destroy(client->pool);
+#endif
 
         if (cid >= ctx->incomings->nelts) {
             /* We skipped updating the pollset on this item as we moved it.
