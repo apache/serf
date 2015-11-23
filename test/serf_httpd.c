@@ -325,10 +325,10 @@ static void print_usage(apr_pool_t *pool)
     }
 }
 
-void configure_listener(serf_context_t *ctx,
-                        app_ctx_t *app,
-                        const char *arg,
-                        apr_pool_t *pool)
+static void configure_listener(serf_context_t *ctx,
+                               app_ctx_t *app,
+                               const char *arg,
+                               apr_pool_t *pool)
 {
     const char *listen_spec;
     char *addr = NULL;
