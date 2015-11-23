@@ -448,23 +448,26 @@ apr_status_t serf__auth_setup_connection(peer_t peer,
 {
     serf__authn_info_t *authn_info;
     serf_context_t *ctx = conn->ctx;
+    apr_status_t status = APR_SUCCESS;
 
     if (peer == PROXY) {
         authn_info = &ctx->proxy_authn_info;
         if (authn_info->scheme) {
-            authn_info->scheme->init_conn_func(authn_info->scheme, 407,
-                                               conn, conn->pool);
+            status = authn_info->scheme->init_conn_func(authn_info->scheme,
+                                                        407, conn,
+                                                        conn->pool);
         }
     }
     else {
         authn_info = serf__get_authn_info_for_server(conn);
         if (authn_info->scheme) {
-            authn_info->scheme->init_conn_func(authn_info->scheme, 401,
-                                               conn, conn->pool);
+            status = authn_info->scheme->init_conn_func(authn_info->scheme,
+                                                        401, conn,
+                                                        conn->pool);
         }
     }
 
-    return APR_SUCCESS;
+    return status;
 }
 
 apr_status_t serf__auth_setup_request(peer_t peer,
