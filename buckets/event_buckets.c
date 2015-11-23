@@ -199,8 +199,8 @@ static apr_uint64_t serf_event_get_remaining(serf_bucket_t *bucket)
     }
 }
 
-apr_status_t serf_event_set_config(serf_bucket_t *bucket,
-                                   serf_config_t *config)
+static apr_status_t serf_event_set_config(serf_bucket_t *bucket,
+                                          serf_config_t *config)
 {
     event_context_t *ctx = bucket->data;
 

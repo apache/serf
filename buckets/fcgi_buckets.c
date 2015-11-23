@@ -331,7 +331,7 @@ static apr_size_t size_data_requested(fcgi_params_decode_ctx_t *ctx)
     return requested;
 }
 
-void fcgi_handle_keypair(serf_bucket_t *bucket)
+static void fcgi_handle_keypair(serf_bucket_t *bucket)
 {
     fcgi_params_decode_ctx_t *ctx = bucket->data;
     char *key = ctx->key;
@@ -380,7 +380,7 @@ void fcgi_handle_keypair(serf_bucket_t *bucket)
     serf_bucket_mem_free(bucket->allocator, val);
 }
 
-apr_status_t fcgi_params_decode(serf_bucket_t *bucket)
+static apr_status_t fcgi_params_decode(serf_bucket_t *bucket)
 {
     fcgi_params_decode_ctx_t *ctx = bucket->data;
     apr_status_t status = APR_SUCCESS;
@@ -491,7 +491,7 @@ apr_status_t fcgi_params_decode(serf_bucket_t *bucket)
     }
 
     if (APR_STATUS_IS_EOF(status)) {
-        if (ctx->state == DS_SIZES && !ctx->tmp_size
+        if ((ctx->state == DS_SIZES && !ctx->tmp_size)
             || (ctx->state == DS_KEY && !ctx->key_sz && !ctx->val_sz))
         {
             return APR_SUCCESS;
