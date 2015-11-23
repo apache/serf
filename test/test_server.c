@@ -211,7 +211,7 @@ static apr_status_t connection_setup_http2(apr_socket_t *skt,
 
     return APR_SUCCESS;
 }
-void test_listen_http(CuTest *tc)
+static void test_listen_http(CuTest *tc)
 {
     test_baton_t *tb = tc->testBaton;
     apr_status_t status;
@@ -231,7 +231,7 @@ void test_listen_http(CuTest *tc)
     CuAssertIntEquals(tc, APR_SUCCESS, status);
 }
 
-void test_listen_http2(CuTest *tc)
+static void test_listen_http2(CuTest *tc)
 {
     test_baton_t *tb = tc->testBaton;
     apr_status_t status;
@@ -335,11 +335,11 @@ CuSuite *test_server(void)
 
     CuSuiteSetSetupTeardownCallbacks(suite, test_setup, test_teardown);
 
-    /*SUITE_ADD_TEST(suite, test_listen_http);*/
-    /*SUITE_ADD_TEST(suite, test_listen_http2);*/
+    SUITE_ADD_TEST(suite, test_listen_http);
+    SUITE_ADD_TEST(suite, test_listen_http2);
 
-    /*SUITE_ADD_TEST(suite, test_listen_auth_http);*/
-    /*SUITE_ADD_TEST(suite, test_listen_auth_http2);*/
+    SUITE_ADD_TEST(suite, test_listen_auth_http);
+    SUITE_ADD_TEST(suite, test_listen_auth_http2);
 
     return suite;
 }
