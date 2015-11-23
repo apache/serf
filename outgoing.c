@@ -119,7 +119,7 @@ apr_status_t serf__conn_update_pollset(serf_connection_t *conn)
     serf_context_t *ctx = conn->ctx;
     apr_status_t status;
     apr_pollfd_t desc = { 0 };
-    int data_waiting;
+    bool data_waiting;
 
     if (!conn->skt) {
         return APR_SUCCESS;
@@ -140,7 +140,7 @@ apr_status_t serf__conn_update_pollset(serf_connection_t *conn)
 
     /* If we are not connected yet, we just want to know when we are */
     if (conn->wait_for_connect) {
-        data_waiting = TRUE;
+        data_waiting = true;
         desc.reqevents |= APR_POLLOUT;
     }
     else {
@@ -429,8 +429,11 @@ apr_status_t serf__open_connections(serf_context_t *ctx)
                 return status;
 
             /* Keep track of when we really connect */
-            conn->wait_for_connect = TRUE;
+            conn->wait_for_connect = true;
         }
+
+        serf_pump__init(&conn->pump, &conn->io, skt, conn->config,
+                        conn->allocator, conn->pool);
 
         status = serf_config_set_string(conn->config,
                      SERF_CONFIG_CONN_PIPELINING,
@@ -438,9 +441,6 @@ apr_status_t serf__open_connections(serf_context_t *ctx)
                       conn->pipelining == 1) ? "Y" : "N");
         if (status)
             return status;
-
-        serf_pump__init(&conn->pump, &conn->io, skt, conn->config,
-                        conn->allocator, conn->pool);
 
         /* Flag our pollset as dirty now that we have a new socket. */
         serf_io__set_pollset_dirty(&conn->io);
@@ -1190,7 +1190,7 @@ static apr_status_t process_connection(serf_connection_t *conn,
     }
     if ((events & APR_POLLOUT) != 0) {
         if (conn->wait_for_connect) {
-            conn->wait_for_connect = FALSE;
+            conn->wait_for_connect = false;
 
             /* We are now connected. Socket is now usable */
             serf_io__set_pollset_dirty(&conn->io);
@@ -1275,7 +1275,7 @@ serf_connection_t *serf_connection_create(
     conn->state = SERF_CONN_INIT;
     conn->latency = -1; /* unknown */
     conn->write_now = false;
-    conn->wait_for_connect = 0;
+    conn->wait_for_connect = false;
     conn->pipelining = 1;
     conn->framing_type = SERF_CONNECTION_FRAMING_TYPE_HTTP1;
     conn->perform_read = read_from_connection;
