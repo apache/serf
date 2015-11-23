@@ -681,7 +681,7 @@ apr_status_t serf_incoming_create2(
 
     apr_pool_create(&ic_pool, pool);
 
-    ic = apr_palloc(ic_pool, sizeof(*ic));
+    ic = apr_pcalloc(ic_pool, sizeof(*ic));
 
     ic->ctx = ctx;
     ic->pool = ic_pool;
@@ -757,7 +757,7 @@ apr_status_t serf_listener_create(
 {
     apr_sockaddr_t *sa;
     apr_status_t rv;
-    serf_listener_t *l = apr_palloc(pool, sizeof(*l));
+    serf_listener_t *l = apr_pcalloc(pool, sizeof(*l));
 
     l->ctx = ctx;
     l->io.type = SERF_IO_LISTENER;
