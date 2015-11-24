@@ -621,7 +621,8 @@ apr_status_t serf__process_listener(serf_listener_t *l)
     apr_socket_t *in;
     apr_pool_t *p;
     /* THIS IS NOT OPTIMAL */
-    apr_pool_create(&p, l->pool);
+    if ((status = apr_pool_create(&p, l->pool)))
+        return status;
 
     status = apr_socket_accept(&in, l->skt, p);
 
@@ -690,6 +691,7 @@ apr_status_t serf_incoming_create2(
 
     ic->ctx = ctx;
     ic->pool = ic_pool;
+    fprintf(stderr, "Creating allocator in pool %p\n", ic_pool);
     ic->allocator = serf_bucket_allocator_create(ic_pool, NULL, NULL);
     ic->io.type = SERF_IO_CLIENT;
     ic->io.u.client = ic;
