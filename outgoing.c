@@ -564,6 +564,8 @@ static apr_status_t reset_connection(serf_connection_t *conn,
     conn->perform_write = write_to_connection;
     conn->perform_hangup = hangup_connection;
     conn->perform_teardown = NULL;
+    conn->perform_cancel_request = NULL;
+    conn->perform_prioritize_request = NULL;
 
     conn->status = APR_SUCCESS;
 
@@ -1245,6 +1247,8 @@ serf_connection_t *serf_connection_create(
     conn->perform_write = write_to_connection;
     conn->perform_hangup = hangup_connection;
     conn->perform_teardown = NULL;
+    conn->perform_cancel_request = NULL;
+    conn->perform_prioritize_request = NULL;
     conn->protocol_baton = NULL;
 
     conn->written_reqs = conn->written_reqs_tail = NULL;
@@ -1467,6 +1471,8 @@ void serf_connection_set_framing_type(
     conn->perform_read = read_from_connection;
     conn->perform_write = write_to_connection;
     conn->perform_hangup = hangup_connection;
+    conn->perform_cancel_request = NULL;
+    conn->perform_prioritize_request = NULL;
     conn->perform_teardown = NULL;
 
     switch (framing_type) {

@@ -235,12 +235,21 @@ struct serf_request_t {
     /* 1 if this is a request to setup a SSL tunnel, 0 for normal requests. */
     int ssltunnel;
 
+    serf_request_t *depends_on;      /* On what request do we depend */
+    serf_request_t *depends_next;    /* Next dependency on parent*/
+    serf_request_t *depends_first;   /* First dependency on us */
+    apr_uint16_t dep_priority;
+
     /* This baton is currently only used for digest authentication, which
        needs access to the uri of the request in the response handler.
        If serf_request_t is replaced by a serf_http_request_t in the future,
        which knows about uri and method and such, this baton won't be needed
        anymore. */
     void *auth_baton;
+
+    /* This baton is free to set by protocol handlers. They typically use it
+       for identifying or storing related information */
+    void *protocol_baton;
 
     struct serf_request_t *next;
 };
@@ -580,6 +589,12 @@ struct serf_connection_t {
     /* Cleanup of protocol handling */
     void (*perform_teardown)(serf_connection_t *conn);
     void *protocol_baton;
+
+    /* Request callbacks. NULL unless handled by the protocol implementation */
+    void (*perform_cancel_request)(serf_request_t *request,
+                                   apr_status_t reason);
+    void (*perform_prioritize_request)(serf_request_t *request,
+                                       bool exclusive);
 
     /* Configuration shared with buckets and authn plugins */
     serf_config_t *config;

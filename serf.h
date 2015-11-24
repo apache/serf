@@ -722,6 +722,39 @@ serf_request_t *serf_connection_priority_request_create(
     serf_request_setup_t setup,
     void *setup_baton);
 
+/** The default request priority */
+#define SERF_REQUEST_PRIORITY_DEFAULT 0x1000
+
+/**
+ * Updates the request's priority information. Some protocol implementations,
+ * such as HTTP/2 may use this information for response scheduling. The
+ * actual behavior depends on the server, intermediate proxies and of course
+ * the protocol implementation.
+ *
+ * It is recommended to prioritize a request before sending it to the server,
+ * as that avoids race conditions and receiving unwanted results.
+ *
+ * If @a depends_on is set, then the request is marked as dependent on
+ * @a depends_on, and the result of @a request will only be received if
+ * no progress can be made on @a depends_on itself.
+ *
+ * @a priority is used to relatively prioritize multiple dependencies on the
+ * same target. Passing 0 will keep the original priority. In case of HTTP/2
+ * this value is mapped to a 8 bit value by ignoring the lowest 8 bits.
+ *
+ * By default a request is created at priority SERF_REQUEST_PRIORITY_DEFAULT.
+ *
+ * If @a exclusive is set to TRUE, then all existing dependencies on @a
+ * depends_on will be updated to now depend on @a request, to make @a
+ * request the only dependency of @a request. When FALSE, request will just
+ * be added as a dependency.
+ *
+ * @since New in 1.4.
+ */
+void serf_connection_request_prioritize(serf_request_t *request,
+                                        serf_request_t *depends_on,
+                                        apr_uint16_t priority,
+                                        int exclusive);
 
 /** Returns detected network latency for the @a conn connection. Negative
  *  value means that latency is unknwon.
