@@ -440,6 +440,8 @@ if CALLOUT_OKAY:
   conf = Configure(env)
 
   ### some configuration stuffs
+  if conf.CheckCHeader('stdbool.h'):
+    env.Append(CPPDEFINES=['HAVE_STDBOOL_H'])
 
   env = conf.Finish()
 
