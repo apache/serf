@@ -967,13 +967,13 @@ http2_bucket_processor(void *baton,
                        serf_http2_protocol_t *h2,
                        serf_bucket_t *frame_bucket)
 {
-    struct iovec vecs[IOV_MAX];
+    struct iovec vecs[SERF__STD_IOV_COUNT];
     int vecs_used;
     serf_bucket_t *payload = baton;
     apr_status_t status;
 
-    status = serf_bucket_read_iovec(payload, SERF_READ_ALL_AVAIL, IOV_MAX,
-                                    vecs, &vecs_used);
+    status = serf_bucket_read_iovec(payload, SERF_READ_ALL_AVAIL,
+                                    COUNT_OF(vecs), vecs, &vecs_used);
 
     if (APR_STATUS_IS_EOF(status))
     {

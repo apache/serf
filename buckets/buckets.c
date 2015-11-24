@@ -359,11 +359,12 @@ void serf__bucket_drain(serf_bucket_t *bucket)
     apr_status_t status;
 
     do {
-        struct iovec vecs[IOV_MAX];
+        struct iovec vecs[SERF__STD_IOV_COUNT];
         int vecs_used;
 
         status = serf_bucket_read_iovec(bucket, SERF_READ_ALL_AVAIL,
-                                        IOV_MAX, vecs, &vecs_used);
+                                        COUNT_OF(vecs), vecs,
+                                        &vecs_used);
     }
     while (status == APR_SUCCESS);
 }

@@ -691,11 +691,11 @@ static apr_status_t serf_fcgi_frame_refill(serf_bucket_t *bucket)
         }
         else
         {
-            struct iovec vecs[IOV_MAX];
+            struct iovec vecs[SERF__STD_IOV_COUNT];
             int vecs_used;
 
-            status = serf_bucket_read_iovec(head, 0xFFF0,
-                                            IOV_MAX, vecs, &vecs_used);
+            status = serf_bucket_read_iovec(head, 0xFFF0, COUNT_OF(vecs),
+                                            vecs, &vecs_used);
 
             if (SERF_BUCKET_READ_ERROR(status))
                 return status;

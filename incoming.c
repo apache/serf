@@ -566,7 +566,6 @@ apr_status_t serf_incoming_create2(
     ic->skt = insock;
 
     ic->wait_for_connect = true;
-    ic->vec_len = 0;
     /* Detect HTTP 1 or 2 via peek operation */
     ic->framing_type = SERF_CONNECTION_FRAMING_TYPE_NONE;
 
