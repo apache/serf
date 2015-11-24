@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AutoVisualizer xmlns="http://schemas.microsoft.com/vstudio/debugger/natvis/2010">
+    <Type Name="serf_bucket_t" >
+        <DisplayString>{{{type->name,s} bucket }}</DisplayString>
+        <Expand>
+            <!-- Show detailed types instead of just void* pointer -->
+            <Item Name="data" Condition="type->name == serf_bucket_type_aggregate.name">
+                (aggregate_context_t *)data
+            </Item>
+            <Item Name="data" Condition="type->name == serf_bucket_type_iovec.name">
+                (iovec_context_t *)data
+            </Item>
+            <Item Name="data" Condition="type->name == serf_bucket_type_request.name">
+                (request_context_t *)data
+            </Item>
+            <Item Name="data" Condition="type->name == serf_bucket_type__event.name">
+                (event_context_t *)data
+            </Item>
+        </Expand>
+    </Type>
+    <!-- Inside aggregate buckets -->
+    <Type Name="aggregate_context_t">
+        <Expand>
+            <LinkedListItems>
+                <HeadPointer>list</HeadPointer>
+                <NextPointer>next</NextPointer>
+                <ValueNode>bucket</ValueNode>
+            </LinkedListItems>
+        </Expand>
+    </Type>
+    <!-- Standard iovec -->
+    <Type Name="iovec">
+        <DisplayString>{(const char*)iov_base,na}</DisplayString>
+        <StringView>(const char*)iov_base,na</StringView>
+        <Expand>
+            <ArrayItems>
+                <Size>iov_len</Size>
+                <ValuePointer>(const char*)iov_base</ValuePointer>
+            </ArrayItems>
+        </Expand>
+    </Type>
+    <!-- Stored inside iovec bucket -->
+    <Type Name="iovec_context_t">
+        <Expand>
+            <ArrayItems>
+                <Size>vecs_len</Size>
+                <ValuePointer>vecs</ValuePointer>
+            </ArrayItems>
+        </Expand>
+    </Type>
+</AutoVisualizer>
