@@ -124,14 +124,19 @@ static apr_status_t client_acceptor(serf_context_t *ctx,
 {
     serf_incoming_t *incoming;
     test_baton_t *tb = accept_baton;
+    apr_status_t status;
 
     fprintf(stderr, "In client acceptor\n");
 
-    return serf_incoming_create2(&incoming, ctx, insock,
-                                 client_setup, tb,
-                                 client_closed, tb,
-                                 client_request_acceptor, tb,
-                                 pool);
+    status = serf_incoming_create2(&incoming, ctx, insock,
+                                   client_setup, tb,
+                                   client_closed, tb,
+                                   client_request_acceptor, tb,
+                                   pool);
+
+    fprintf(stderr, "Created incoming\n");
+
+    return status;
 }
 
 void setup_test_server(test_baton_t *tb)
