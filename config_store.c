@@ -202,10 +202,12 @@ apr_status_t serf__config_store_get_client_config(serf_context_t *ctx,
 
         /* Find the config values for this connection, create empty structure
         if needed */
+        fprintf(stderr, "Looking for existing item\n");
         client_key = conn_key_for_client(client, tmp_pool);
         per_conn = apr_hash_get(config_store->global_per_conn, client_key,
                                 APR_HASH_KEY_STRING);
         if (!per_conn) {
+            fprintf(stderr, "Adding item\n");
             per_conn = create_config_hdr(client->pool);
             apr_hash_set(config_store->global_per_conn,
                          apr_pstrdup(client->pool, client_key),
