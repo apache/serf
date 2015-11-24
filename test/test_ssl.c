@@ -2296,7 +2296,7 @@ CuSuite *test_ssl(void)
     SUITE_ADD_TEST(suite, test_ssl_server_cert_with_san_nul_byte);
     SUITE_ADD_TEST(suite, test_ssl_server_cert_with_cnsan_nul_byte);
     SUITE_ADD_TEST(suite, test_ssl_server_cert_with_san_and_empty_cb);
-    /*SUITE_ADD_TEST(suite, test_ssl_renegotiate);*/
+    SUITE_ADD_TEST(suite, test_ssl_renegotiate);
     SUITE_ADD_TEST(suite, test_ssl_alpn_negotiate);
 
     return suite;
