@@ -36,6 +36,7 @@ static apr_status_t client_setup(apr_socket_t *skt,
                                  apr_pool_t *pool)
 {
     test_baton_t *tb = setup_baton;
+    fprintf(stderr, "In client setup\n");
 
     *read_bkt = serf_bucket_socket_create(skt, tb->bkt_alloc);
     return APR_SUCCESS;
@@ -46,6 +47,7 @@ static apr_status_t client_closed(serf_incoming_t *client,
                                   apr_status_t why,
                                   apr_pool_t *pool)
 {
+    fprintf(stderr, "In client closed\n");
     return APR_ENOTIMPL;
 }
 
@@ -57,6 +59,8 @@ static apr_status_t client_request_handler(serf_incoming_request_t *req,
     const char *data;
     apr_size_t len;
     apr_status_t status;
+
+    fprintf(stderr, "In request handler\n");
 
     do
     {
@@ -74,6 +78,8 @@ static apr_status_t client_generate_response(serf_bucket_t **resp_bkt,
 {
     serf_bucket_t *tmp;
 #define CRLF "\r\n"
+
+    fprintf(stderr, "In create response\n");
 
     tmp = SERF_BUCKET_SIMPLE_STRING("HTTP/1.1 200 OK" CRLF
                                     "Content-Length: 4" CRLF
@@ -96,6 +102,9 @@ static apr_status_t client_request_acceptor(serf_bucket_t **req_bkt,
                                             apr_pool_t *pool)
 {
     test_baton_t *tb = request_baton;
+
+    fprintf(stderr, "In request acceptor\n");
+
     *req_bkt = serf_bucket_incoming_request_create(stream, stream->allocator);
 
     *handler = client_request_handler;
@@ -116,6 +125,8 @@ static apr_status_t client_acceptor(serf_context_t *ctx,
     serf_incoming_t *incoming;
     test_baton_t *tb = accept_baton;
 
+    fprintf(stderr, "In client acceptor\n");
+
     return serf_incoming_create2(&incoming, ctx, insock,
                                  client_setup, tb,
                                  client_closed, tb,
@@ -129,8 +140,12 @@ void setup_test_server(test_baton_t *tb)
     apr_status_t status;
     apr_port_t listen_port = 47080;
 
+    fprintf(stderr, "In setup server\n");
+
     if (!tb->mh)    /* TODO: move this to test_setup */
         tb->mh = mhInit();
+
+    fprintf(stderr, "In setup server (2)\n");
 
     tb->context = serf_context_create(tb->pool);
 
@@ -146,6 +161,8 @@ void setup_test_server(test_baton_t *tb)
     tb->serv_host = apr_psprintf(tb->pool, "%s:%d", "localhost",
                                  tb->serv_port);
     tb->serv_url = apr_psprintf(tb->pool, "http://%s", tb->serv_host);
+
+    fprintf(stderr, "In setup server (3)\n");
 }
 
 static apr_status_t
@@ -160,6 +177,8 @@ run_client_server_loop(test_baton_t *tb,
     apr_time_t finish_time = apr_time_now() + apr_time_from_sec(15);
 
     apr_pool_create(&iter_pool, pool);
+
+    fprintf(stderr, "Starting loop\n");
 
     while (!done)
     {
@@ -179,6 +198,8 @@ run_client_server_loop(test_baton_t *tb,
             return APR_ETIMEDOUT;
     }
     apr_pool_destroy(iter_pool);
+
+    fprintf(stderr, "Loop done\n");
 
     return APR_SUCCESS;
 }

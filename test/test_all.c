@@ -29,11 +29,11 @@ static const struct testlist {
     const char *testname;
     CuSuite *(*func)(void);
 } tests[] = {
-    {"context",     test_context},
+/*    {"context",     test_context},
     {"buckets",     test_buckets},
     {"ssl",         test_ssl},
     {"auth",        test_auth},
-    {"internal",    test_internal},
+    {"internal",    test_internal},*/
     {"server",      test_server},
 #if 0
     /* internal test for the mock bucket. */
