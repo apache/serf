@@ -40,7 +40,7 @@ typedef struct config_entry_t {
 static serf__config_hdr_t *create_config_hdr(apr_pool_t *pool)
 {
     serf__config_hdr_t *hdr;
-    fprintf(stderr, "In alloc helper\n");
+    fprintf(stderr, "In alloc helper (pool=%p)\n", pool);
     hdr = apr_palloc(pool, sizeof(serf__config_hdr_t));
     fprintf(stderr, "Header: %p\n", hdr);
     memset(hdr, 0, sizeof(serf__config_hdr_t));
@@ -200,7 +200,7 @@ apr_status_t serf__config_store_get_client_config(serf_context_t *ctx,
 
         cfg->conn_pool = client->pool;
 
-        fprintf(stderr, "Create subpool\n");
+        fprintf(stderr, "Create subpool (client pool=%p, out pool=%p)\n", client->pool, out_pool);
         if ((status = apr_pool_create(&tmp_pool, out_pool)) != APR_SUCCESS)
             return status;
 
