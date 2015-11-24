@@ -55,6 +55,10 @@ typedef int serf__bool_t; /* Not _Bool */
 #define MIN(a, b) ((a) < (b) ? (a) : (b))
 #endif
 
+/* Define a COUNT_OF macro if we don't already have one */
+#ifndef COUNT_OF
+#define COUNT_OF(x) (sizeof(x) / sizeof(x[0]))
+#endif
 
 /* ### what the hell? why does the APR interface have a "size" ??
    ### the implication is that, if we bust this limit, we'd need to
@@ -67,6 +71,11 @@ typedef int serf__bool_t; /* Not _Bool */
    allocates WSABUF structures on stack if vecs_count <= 50. */
 #define IOV_MAX 50
 #endif
+
+/* But we use our own limit in most cases. Typically 50 on Windows
+   (see IOV_MAX definition above) and typically 64 on posix */
+#define SERF__STD_IOV_COUNT MIN(IOV_MAX, 64)
+
 
 /* Older versions of APR do not have this macro.  */
 #ifdef APR_SIZE_MAX
@@ -168,8 +177,8 @@ typedef struct serf_pump_t
     apr_socket_t *skt;
 
     /* Outgoing vecs, waiting to be written.
-    Read from ostream_head */
-    struct iovec vec[IOV_MAX];
+       Read from ostream_head as outgoing data buffer */
+    struct iovec vec[SERF__STD_IOV_COUNT];
     int vec_len;
 
     /* True when connection failed while writing */
@@ -428,9 +437,6 @@ struct serf_incoming_t {
     apr_pollfd_t desc;
 
     apr_int16_t seen_in_pollset;
-
-    struct iovec vec[IOV_MAX];
-    int vec_len;
 
     serf_connection_setup_t setup;
     void *setup_baton;

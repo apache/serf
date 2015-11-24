@@ -323,7 +323,7 @@ apr_status_t serf_pump__write(serf_pump_t *pump,
         pump->hit_eof = false;
         read_status = serf_bucket_read_iovec(pump->ostream_head,
                                              SERF_READ_ALL_AVAIL,
-                                             IOV_MAX,
+                                             COUNT_OF(pump->vec),
                                              pump->vec,
                                              &pump->vec_len);
 

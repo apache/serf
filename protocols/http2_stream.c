@@ -799,13 +799,13 @@ serf_http2__stream_processor(void *baton,
 
     while (!status)
     {
-        struct iovec vecs[IOV_MAX];
+        struct iovec vecs[SERF__STD_IOV_COUNT];
         int vecs_used;
 
         /* Drain the bucket as efficiently as possible */
         status = serf_bucket_read_iovec(stream->data->response_agg,
-                                        SERF_READ_ALL_AVAIL,
-                                        IOV_MAX, vecs, &vecs_used);
+                                        SERF_READ_ALL_AVAIL, COUNT_OF(vecs),
+                                        vecs, &vecs_used);
 
         if (vecs_used) {
           /* We have data... What should we do with it? */
