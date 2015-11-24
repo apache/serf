@@ -209,13 +209,16 @@ apr_status_t serf__config_store_get_client_config(serf_context_t *ctx,
         if (!per_conn) {
             fprintf(stderr, "Adding item\n");
             per_conn = create_config_hdr(client->pool);
+            fprintf(stderr, "Header created\n");
             apr_hash_set(config_store->global_per_conn,
                          apr_pstrdup(client->pool, client_key),
                          APR_HASH_KEY_STRING, per_conn);
+            fprintf(stderr, "Added conn to hash\n");
         }
         cfg->per_conn = per_conn;
         cfg->per_host = NULL;
 
+        fprintf(stderr, "Destroying tmppool\n");
         apr_pool_destroy(tmp_pool);
     }
 

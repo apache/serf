@@ -680,7 +680,11 @@ apr_status_t serf_incoming_create2(
     serf_config_t *config;
 
     fprintf(stderr, "Create pool\n");
-    apr_pool_create(&ic_pool, pool);
+    rv = apr_pool_create(&ic_pool, pool);
+    if (rv) {
+        fprintf(stderr, "Pool create failed");
+        return rv;
+    }
 
     ic = apr_pcalloc(ic_pool, sizeof(*ic));
 
