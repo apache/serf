@@ -255,8 +255,12 @@ static apr_status_t read_from_client(serf_incoming_t *client)
         status = perform_peek_protocol(client);
 
         /* Did we switch protocol? */
-        if (!status && client->perform_read != read_from_client)
+        if (!status
+            && client->framing_type != SERF_CONNECTION_FRAMING_TYPE_NONE
+            && client->framing_type != SERF_CONNECTION_FRAMING_TYPE_HTTP1)
+        {
             return client->perform_read(client);
+        }
 
         /* On error fall through in connection cleanup below while */
     }
