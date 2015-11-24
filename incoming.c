@@ -679,6 +679,7 @@ apr_status_t serf_incoming_create2(
     serf_incoming_t *ic;
     serf_config_t *config;
 
+    fprintf(stderr, "Create pool\n");
     apr_pool_create(&ic_pool, pool);
 
     ic = apr_pcalloc(ic_pool, sizeof(*ic));
@@ -705,6 +706,8 @@ apr_status_t serf_incoming_create2(
     ic->closed = closed;
     ic->closed_baton = closed_baton;
 
+    fprintf(stderr, "Create config\n");
+
     /* Store the connection specific info in the configuration store */
     rv = serf__config_store_get_client_config(ctx, ic, &config, pool);
     if (rv) {
@@ -713,6 +716,7 @@ apr_status_t serf_incoming_create2(
     }
     ic->config = config;
 
+    fprintf(stderr, "Create pump\n");
     /* Prepare wrapping the socket with buckets. */
     serf_pump__init(&ic->pump, &ic->io, ic->skt, config, ic->allocator, ic->pool);
 
@@ -728,20 +732,22 @@ apr_status_t serf_incoming_create2(
     ic->desc.reqevents = APR_POLLIN | APR_POLLERR | APR_POLLHUP;
     ic->seen_in_pollset = 0;
 
+    fprintf(stderr, "Add to pollset\n");
     rv = ctx->pollset_add(ctx->pollset_baton,
                          &ic->desc, &ic->io);
 
     if (!rv) {
+        fprintf(stderr, "Setup cleanup\n");
         apr_pool_cleanup_register(ic->pool, ic, incoming_cleanup,
                                   apr_pool_cleanup_null);
         *client = ic;
+        *(serf_incoming_t **)apr_array_push(ctx->incomings) = ic;
     }
     else {
         apr_pool_destroy(ic_pool);
         /* Let caller handle the socket */
+        return rv;
     }
-
-    *(serf_incoming_t **)apr_array_push(ctx->incomings) = *client;
 
     return rv;
 }
