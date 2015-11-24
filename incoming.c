@@ -712,7 +712,7 @@ apr_status_t serf_incoming_create2(
     ic->closed = closed;
     ic->closed_baton = closed_baton;
 
-    fprintf(stderr, "Create config in pool %p\n", ic_pool);
+    fprintf(stderr, "Create config in pool %p / stored pool = %p\n", ic_pool, ic->pool);
 
     /* Store the connection specific info in the configuration store */
     rv = serf__config_store_get_client_config(ctx, ic, &config, ic_pool);
