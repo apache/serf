@@ -117,68 +117,16 @@ static const char * conn_key_for_client(serf_incoming_t *incoming,
     return apr_psprintf(pool, "%pp", incoming);
 }
 
-
-/* TODO: when will this be released? Related config to a specific lifecyle:
-   connection or context */
-apr_status_t serf__config_store_get_config(serf_context_t *ctx,
-                                           serf_connection_t *conn,
-                                           serf_config_t **config,
-                                           apr_pool_t *out_pool)
+/* Defines the key to use for per connection settings */
+static const char * conn_key_for_listener(serf_listener_t *listener,
+                                          apr_pool_t *pool)
 {
-    serf__config_store_t *config_store = &ctx->config_store;
-
-    serf_config_t *cfg = apr_pcalloc(out_pool, sizeof(serf_config_t));
-    cfg->ctx_pool = ctx->pool;
-    cfg->per_context = config_store->global_per_context;
-
-    if (conn) {
-        const char *host_key, *conn_key;
-        serf__config_hdr_t *per_conn, *per_host;
-        apr_pool_t *tmp_pool;
-        apr_status_t status;
-
-        cfg->conn_pool = conn->pool;
-
-        if ((status = apr_pool_create(&tmp_pool, out_pool)) != APR_SUCCESS)
-            return status;
-
-        /* Find the config values for this connection, create empty structure
-           if needed */
-        conn_key = conn_key_for_conn(conn, tmp_pool);
-        per_conn = apr_hash_get(config_store->global_per_conn, conn_key,
-                                APR_HASH_KEY_STRING);
-        if (!per_conn) {
-            per_conn = create_config_hdr(conn->pool);
-            apr_hash_set(config_store->global_per_conn,
-                         apr_pstrdup(conn->pool, conn_key),
-                         APR_HASH_KEY_STRING, per_conn);
-        }
-        cfg->per_conn = per_conn;
-
-        /* Find the config values for this host, create empty structure
-           if needed */
-        host_key = host_key_for_conn(conn, tmp_pool);
-        per_host = apr_hash_get(config_store->global_per_host,
-                                host_key,
-                                APR_HASH_KEY_STRING);
-        if (!per_host) {
-            per_host = create_config_hdr(config_store->pool);
-            apr_hash_set(config_store->global_per_host,
-                         apr_pstrdup(config_store->pool, host_key),
-                         APR_HASH_KEY_STRING, per_host);
-        }
-        cfg->per_host = per_host;
-
-        apr_pool_destroy(tmp_pool);
-    }
-
-    *config = cfg;
-
-    return APR_SUCCESS;
+    /* Key needs to be unique per connection, so stringify its pointer value */
+    return apr_psprintf(pool, "%pp", listener);
 }
 
-apr_status_t serf__config_store_get_client_config(serf_context_t *ctx,
-                                                  serf_incoming_t *client,
+
+apr_status_t serf__config_store_create_ctx_config(serf_context_t *ctx,
                                                   serf_config_t **config,
                                                   apr_pool_t *out_pool)
 {
@@ -188,33 +136,138 @@ apr_status_t serf__config_store_get_client_config(serf_context_t *ctx,
     cfg->ctx_pool = ctx->pool;
     cfg->per_context = config_store->global_per_context;
 
-    if (client) {
-        const char *client_key;
-        serf__config_hdr_t *per_conn;
-        apr_pool_t *tmp_pool;
-        apr_status_t status;
+    *config = cfg;
+    return APR_SUCCESS;
+}
 
-        cfg->conn_pool = client->pool;
+apr_status_t serf__config_store_create_conn_config(serf_connection_t *conn,
+                                                   serf_config_t **config,
+                                                   apr_pool_t *out_pool)
+{
+    serf__config_store_t *config_store = &conn->ctx->config_store;
+    const char *host_key, *conn_key;
+    serf__config_hdr_t *per_conn, *per_host;
+    apr_pool_t *tmp_pool;
+    apr_status_t status;
 
-        if ((status = apr_pool_create(&tmp_pool, out_pool)) != APR_SUCCESS)
-            return status;
+    serf_config_t *cfg = apr_pcalloc(out_pool, sizeof(serf_config_t));
+    cfg->ctx_pool = conn->ctx->pool;
+    cfg->per_context = config_store->global_per_context;
 
-        /* Find the config values for this connection, create empty structure
+    cfg->conn_pool = conn->pool;
+
+    if ((status = apr_pool_create(&tmp_pool, out_pool)) != APR_SUCCESS)
+        return status;
+
+    /* Find the config values for this connection, create empty structure
         if needed */
-        client_key = conn_key_for_client(client, tmp_pool);
-        per_conn = apr_hash_get(config_store->global_per_conn, client_key,
-                                APR_HASH_KEY_STRING);
-        if (!per_conn) {
-            per_conn = create_config_hdr(client->pool);
-            apr_hash_set(config_store->global_per_conn,
-                         apr_pstrdup(client->pool, client_key),
-                         APR_HASH_KEY_STRING, per_conn);
-        }
-        cfg->per_conn = per_conn;
-        cfg->per_host = NULL;
-
-        apr_pool_destroy(tmp_pool);
+    conn_key = conn_key_for_conn(conn, tmp_pool);
+    per_conn = apr_hash_get(config_store->global_per_conn, conn_key,
+                            APR_HASH_KEY_STRING);
+    if (!per_conn) {
+        per_conn = create_config_hdr(conn->pool);
+        apr_hash_set(config_store->global_per_conn,
+                        apr_pstrdup(conn->pool, conn_key),
+                        APR_HASH_KEY_STRING, per_conn);
     }
+    cfg->per_conn = per_conn;
+
+    /* Find the config values for this host, create empty structure
+        if needed */
+    host_key = host_key_for_conn(conn, tmp_pool);
+    per_host = apr_hash_get(config_store->global_per_host,
+                            host_key,
+                            APR_HASH_KEY_STRING);
+    if (!per_host) {
+        per_host = create_config_hdr(config_store->pool);
+        apr_hash_set(config_store->global_per_host,
+                        apr_pstrdup(config_store->pool, host_key),
+                        APR_HASH_KEY_STRING, per_host);
+    }
+    cfg->per_host = per_host;
+
+    apr_pool_destroy(tmp_pool);
+
+    *config = cfg;
+
+    return APR_SUCCESS;
+}
+
+apr_status_t serf__config_store_create_client_config(serf_incoming_t *client,
+                                                     serf_config_t **config,
+                                                     apr_pool_t *out_pool)
+{
+    serf__config_store_t *config_store = &client->ctx->config_store;
+    const char *client_key;
+    serf__config_hdr_t *per_conn;
+    apr_pool_t *tmp_pool;
+    apr_status_t status;
+
+    serf_config_t *cfg = apr_pcalloc(out_pool, sizeof(serf_config_t));
+    cfg->ctx_pool = client->ctx->pool;
+    cfg->per_context = config_store->global_per_context;
+
+
+    cfg->conn_pool = client->pool;
+
+    if ((status = apr_pool_create(&tmp_pool, out_pool)) != APR_SUCCESS)
+        return status;
+
+    /* Find the config values for this connection, create empty structure
+    if needed */
+    client_key = conn_key_for_client(client, tmp_pool);
+    per_conn = apr_hash_get(config_store->global_per_conn, client_key,
+                            APR_HASH_KEY_STRING);
+    if (!per_conn) {
+        per_conn = create_config_hdr(client->pool);
+        apr_hash_set(config_store->global_per_conn,
+                        apr_pstrdup(client->pool, client_key),
+                        APR_HASH_KEY_STRING, per_conn);
+    }
+    cfg->per_conn = per_conn;
+    cfg->per_host = NULL;
+
+    apr_pool_destroy(tmp_pool);
+
+    *config = cfg;
+
+    return APR_SUCCESS;
+}
+
+apr_status_t serf__config_store_create_listener_config(serf_listener_t *listener,
+                                                       serf_config_t **config,
+                                                       apr_pool_t *out_pool)
+{
+    serf__config_store_t *config_store = &listener->ctx->config_store;
+    const char *client_key;
+    serf__config_hdr_t *per_conn;
+    apr_pool_t *tmp_pool;
+    apr_status_t status;
+
+    serf_config_t *cfg = apr_pcalloc(out_pool, sizeof(serf_config_t));
+    cfg->ctx_pool = listener->ctx->pool;
+    cfg->per_context = config_store->global_per_context;
+
+    cfg->conn_pool = listener->pool;
+
+    if ((status = apr_pool_create(&tmp_pool, out_pool)) != APR_SUCCESS)
+        return status;
+
+    /* Find the config values for this connection, create empty structure
+    if needed */
+    client_key = conn_key_for_listener(listener, tmp_pool);
+    per_conn = apr_hash_get(config_store->global_per_conn, client_key,
+                            APR_HASH_KEY_STRING);
+    if (!per_conn) {
+        per_conn = create_config_hdr(listener->pool);
+        apr_hash_set(config_store->global_per_conn,
+                     apr_pstrdup(listener->pool, client_key),
+                     APR_HASH_KEY_STRING, per_conn);
+    }
+    cfg->per_conn = per_conn;
+    cfg->per_host = NULL;
+
+    apr_pool_destroy(tmp_pool);
 
     *config = cfg;
 

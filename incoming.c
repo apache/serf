@@ -570,8 +570,7 @@ apr_status_t serf_incoming_create2(
     ic->closed_baton = closed_baton;
 
     /* Store the connection specific info in the configuration store */
-    status = serf__config_store_get_client_config(ctx, ic, &config,
-                                                  client_pool);
+    status = serf__config_store_create_client_config(ic, &config, client_pool);
     if (status)
         return status;
 
@@ -617,7 +616,15 @@ apr_status_t serf_listener_create(
 {
     apr_sockaddr_t *sa;
     apr_status_t rv;
-    serf_listener_t *l = apr_palloc(pool, sizeof(*l));
+    apr_pool_t *listener_pool;
+    serf_listener_t *l;
+    serf_config_t *config;
+
+    apr_pool_create(&listener_pool, pool);
+
+    l = apr_palloc(pool, sizeof(*l));
+
+    l->pool = listener_pool;
 
     l->ctx = ctx;
     l->io.type = SERF_IO_LISTENER;
@@ -627,8 +634,6 @@ apr_status_t serf_listener_create(
     l->io.reqevents = 0;
     l->accept_func = accept;
     l->accept_baton = accept_baton;
-
-    apr_pool_create(&l->pool, pool);
 
     rv = apr_sockaddr_info_get(&sa, host, APR_UNSPEC, port, 0, l->pool);
     if (rv) {
@@ -675,6 +680,13 @@ apr_status_t serf_listener_create(
         apr_pool_destroy(l->pool);
         return rv;
     }
+
+    /* Store the connection specific info in the configuration store */
+    rv = serf__config_store_create_listener_config(l, &config, l->pool);
+    if (rv)
+        return rv;
+
+    l->config = config;
 
     *listener = l;
 
