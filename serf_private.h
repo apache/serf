@@ -324,13 +324,11 @@ typedef struct serf__config_store_t {
 /* Initializes the data structures used by the configuration store */
 apr_status_t serf__config_store_init(serf_context_t *ctx);
 
-/* Returns a config object, which is a read/write view on the configuration
+/* Create a config object, which is a read/write view on the configuration
    store. This view is limited to:
    - all per context configuration
    - per host configuration (host as defined in CONN)
    - per connection configuration
-
-   If CONN is NULL, only the per context configuration will be available.
 
    The host and connection entries will be created in the configuration store
    when not existing already.
@@ -338,14 +336,22 @@ apr_status_t serf__config_store_init(serf_context_t *ctx);
    The config object will be allocated in OUT_POOL. The config object's
    lifecycle cannot extend beyond that of the serf context!
  */
-apr_status_t serf__config_store_get_config(serf_context_t *ctx,
-                                           serf_connection_t *conn,
-                                           serf_config_t **config,
-                                           apr_pool_t *out_pool);
+apr_status_t serf__config_store_create_conn_config(serf_connection_t *conn,
+                                                   serf_config_t **config,
+                                                   apr_pool_t *out_pool);
 
 /* Same thing, but for incoming connections */
-apr_status_t serf__config_store_get_client_config(serf_context_t *ctx,
-                                                  serf_incoming_t *client,
+apr_status_t serf__config_store_create_client_config(serf_incoming_t *client,
+                                                     serf_config_t **config,
+                                                     apr_pool_t *out_pool);
+
+/* Same thing, but for listeners */
+apr_status_t serf__config_store_create_listener_config(serf_listener_t *listener,
+                                                       serf_config_t **config,
+                                                       apr_pool_t *out_pool);
+
+/* Same thing, but for the context itself */
+apr_status_t serf__config_store_create_ctx_config(serf_context_t *ctx,
                                                   serf_config_t **config,
                                                   apr_pool_t *out_pool);
 
@@ -420,6 +426,7 @@ struct serf_listener_t {
     apr_pollfd_t desc;
     void *accept_baton;
     serf_accept_client_t accept_func;
+    serf_config_t *config;
 };
 
 struct serf_incoming_t {
