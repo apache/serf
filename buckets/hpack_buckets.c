@@ -1152,9 +1152,9 @@ typedef struct serf_hpack_decode_ctx_t
 
     /* When producing HTTP/1.1 style output */
     serf_bucket_t *agg;
+    serf_bucket_t *headers; /* When not NULL added in agg */
     serf_config_t *config;
 
-    bool wrote_header;
     bool is_request;
     bool hit_eof;
 
@@ -1205,6 +1205,7 @@ serf__bucket_hpack_decode_create(serf_bucket_t *stream,
         ctx->item_callback = NULL;
         ctx->item_baton = NULL;
         ctx->agg = serf_bucket_aggregate_create(alloc);
+        ctx->headers = NULL;
     }
 
     return serf_bucket_create(&serf_bucket_type__hpack_decode, alloc, ctx);
@@ -1335,8 +1336,6 @@ write_request_header(serf_hpack_decode_ctx_t *ctx)
     serf_bucket_t *b;
     serf_bucket_alloc_t *alloc = ctx->agg->allocator;
 
-    ctx->wrote_header = TRUE;
-
     if (ctx->method)
         b = serf_bucket_simple_own_create(ctx->method, strlen(ctx->method),
                                           alloc);
@@ -1372,6 +1371,9 @@ write_request_header(serf_hpack_decode_ctx_t *ctx)
     }
   /* Now owned by bucket */
     ctx->method = ctx->path = ctx->authority = NULL;
+
+    ctx->headers = serf_bucket_headers_create(ctx->agg->allocator);
+    serf_bucket_aggregate_append(ctx->agg, ctx->headers);
 }
 
 static apr_status_t
@@ -1398,14 +1400,12 @@ handle_read_entry_and_clear(serf_hpack_decode_ctx_t *ctx,
         if (status)
             return status;
     }
-    else if (!ctx->wrote_header)
+    else if (!ctx->headers)
     {
         serf_bucket_t *b;
 
         if (ctx->key_size == 7 && !strcmp(ctx->key, ":status"))
         {
-            ctx->wrote_header = TRUE;
-
             b = SERF_BUCKET_SIMPLE_STRING("HTTP/2.0 ", alloc);
             serf_bucket_aggregate_append(ctx->agg, b);
 
@@ -1414,6 +1414,9 @@ handle_read_entry_and_clear(serf_hpack_decode_ctx_t *ctx,
 
             b = SERF_BUCKET_SIMPLE_STRING(" <http2>\r\n", alloc);
             serf_bucket_aggregate_append(ctx->agg, b);
+
+            ctx->headers = serf_bucket_headers_create(alloc);
+            serf_bucket_aggregate_append(ctx->agg, ctx->headers);
         }
         else if (ctx->key_size == 7 && !strcmp(ctx->key, ":method"))
         {
@@ -1446,8 +1449,6 @@ handle_read_entry_and_clear(serf_hpack_decode_ctx_t *ctx,
         else
         {
           /* Write some header with some status code first */
-            ctx->wrote_header = TRUE;
-
             if (ctx->is_request)
                 write_request_header(ctx);
             else
@@ -1456,38 +1457,17 @@ handle_read_entry_and_clear(serf_hpack_decode_ctx_t *ctx,
                     "HTTP/2.0 505 Missing ':status' header\r\n",
                     alloc);
                 serf_bucket_aggregate_append(ctx->agg, b);
+
+                ctx->headers = serf_bucket_headers_create(alloc);
+                serf_bucket_aggregate_append(ctx->agg, ctx->headers);
             }
 
-          /* And now the actual header */
-            b = serf_bucket_simple_copy_create(ctx->key, ctx->key_size, alloc);
-            serf_bucket_aggregate_append(ctx->agg, b);
-
-            b = SERF_BUCKET_SIMPLE_STRING(": ", alloc);
-            serf_bucket_aggregate_append(ctx->agg, b);
-
-            b = serf_bucket_simple_copy_create(ctx->val, ctx->val_size, alloc);
-            serf_bucket_aggregate_append(ctx->agg, b);
-
-            b = SERF_BUCKET_SIMPLE_STRING("\r\n", alloc);
-            serf_bucket_aggregate_append(ctx->agg, b);
+            serf_bucket_headers_setc(ctx->headers, ctx->key, ctx->val);
         }
     }
     else if (ctx->key_size && ctx->key[0] != ':')
     {
-        serf_bucket_t *b;
-
-        /* Write header */
-        b = serf_bucket_simple_copy_create(ctx->key, ctx->key_size, alloc);
-        serf_bucket_aggregate_append(ctx->agg, b);
-
-        b = SERF_BUCKET_SIMPLE_STRING(": ", alloc);
-        serf_bucket_aggregate_append(ctx->agg, b);
-
-        b = serf_bucket_simple_copy_create(ctx->val, ctx->val_size, alloc);
-        serf_bucket_aggregate_append(ctx->agg, b);
-
-        b = SERF_BUCKET_SIMPLE_STRING("\r\n", alloc);
-        serf_bucket_aggregate_append(ctx->agg, b);
+        serf_bucket_headers_setc(ctx->headers, ctx->key, ctx->val);
     }
 
     if (ctx->reuse_item)
@@ -1915,13 +1895,6 @@ hpack_process(serf_bucket_t *bucket)
             hpack_shrink_table(&tbl->rl_first,
                                &tbl->rl_last, &tbl->rl_size,
                                tbl->rl_max_table_size, tbl->alloc);
-
-            if (!ctx->item_callback)
-            {
-              /* Write the final "\r\n" for http/1.1 compatibility */
-                b = SERF_BUCKET_SIMPLE_STRING("\r\n", bucket->allocator);
-                serf_bucket_aggregate_append(ctx->agg, b);
-            }
         }
     }
 
