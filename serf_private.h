@@ -34,7 +34,7 @@
 /* bool defined some other way (C99 compatible) */
 #else
 /* Do something C99 like ourself */
-typedef int serf__bool_t; /* Not _Bool */
+typedef char serf__bool_t; /* Not _Bool */
 #define __bool_true_false_are_defined 1
 #define bool serf__bool_t
 #ifndef true
