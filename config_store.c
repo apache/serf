@@ -188,6 +188,8 @@ apr_status_t serf__config_store_get_client_config(serf_context_t *ctx,
 {
     serf__config_store_t *config_store = &ctx->config_store;
 
+    fprintf(stderr, "Getting config (client pool=%p, out pool=%p)\n", client->pool, out_pool);
+
     serf_config_t *cfg = apr_pcalloc(out_pool, sizeof(serf_config_t));
     cfg->ctx_pool = ctx->pool;
     cfg->per_context = config_store->global_per_context;

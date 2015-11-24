@@ -691,7 +691,7 @@ apr_status_t serf_incoming_create2(
 
     ic->ctx = ctx;
     ic->pool = ic_pool;
-    fprintf(stderr, "Creating allocator in pool %p\n", ic_pool);
+    fprintf(stderr, "Creating allocator in  pool %p\n", ic_pool);
     ic->allocator = serf_bucket_allocator_create(ic_pool, NULL, NULL);
     ic->io.type = SERF_IO_CLIENT;
     ic->io.u.client = ic;
@@ -712,7 +712,7 @@ apr_status_t serf_incoming_create2(
     ic->closed = closed;
     ic->closed_baton = closed_baton;
 
-    fprintf(stderr, "Create config in pool %p / stored pool = %p\n", ic_pool, ic->pool);
+    fprintf(stderr, "Create config in clientpool %p / stored pool = %p\n", ic_pool, ic->pool);
 
     /* Store the connection specific info in the configuration store */
     rv = serf__config_store_get_client_config(ctx, ic, &config, ic_pool);
