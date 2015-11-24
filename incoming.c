@@ -349,8 +349,6 @@ static apr_status_t read_from_client(serf_incoming_t *client)
     status = client->closed(client, client->closed_baton, status,
                             client->pool);
 
-    /* ### Somehow do a apr_pool_destroy(client->pool); */
-
     return status;
 }
 
@@ -542,20 +540,17 @@ apr_status_t serf_incoming_create2(
     void *closed_baton,
     serf_incoming_request_setup_t req_setup,
     void *req_setup_baton,
-    apr_pool_t *pool)
+    apr_pool_t *client_pool)
 {
-    apr_status_t rv;
-    apr_pool_t *ic_pool;
+    apr_status_t status;
     serf_incoming_t *ic;
     serf_config_t *config;
 
-    apr_pool_create(&ic_pool, pool);
-
-    ic = apr_palloc(ic_pool, sizeof(*ic));
+    ic = apr_palloc(client_pool, sizeof(*ic));
 
     ic->ctx = ctx;
-    ic->pool = ic_pool;
-    ic->allocator = serf_bucket_allocator_create(ic_pool, NULL, NULL);
+    ic->pool = client_pool;
+    ic->allocator = serf_bucket_allocator_create(client_pool, NULL, NULL);
     ic->io.type = SERF_IO_CLIENT;
     ic->io.u.client = ic;
     ic->io.ctx = ctx;
@@ -575,11 +570,11 @@ apr_status_t serf_incoming_create2(
     ic->closed_baton = closed_baton;
 
     /* Store the connection specific info in the configuration store */
-    rv = serf__config_store_get_client_config(ctx, ic, &config, pool);
-    if (rv) {
-        apr_pool_destroy(ic->pool);
-        return rv;
-    }
+    status = serf__config_store_get_client_config(ctx, ic, &config,
+                                                  client_pool);
+    if (status)
+        return status;
+
     ic->config = config;
 
     /* Prepare wrapping the socket with buckets. */
@@ -597,22 +592,18 @@ apr_status_t serf_incoming_create2(
     ic->desc.reqevents = APR_POLLIN | APR_POLLERR | APR_POLLHUP;
     ic->seen_in_pollset = 0;
 
-    rv = ctx->pollset_add(ctx->pollset_baton,
-                         &ic->desc, &ic->io);
+    status = ctx->pollset_add(ctx->pollset_baton, &ic->desc, &ic->io);
 
-    if (!rv) {
-        apr_pool_cleanup_register(ic->pool, ic, incoming_cleanup,
-                                  apr_pool_cleanup_null);
-        *client = ic;
-    }
-    else {
-        apr_pool_destroy(ic_pool);
-        /* Let caller handle the socket */
-    }
+    if (status)
+        return status;
 
-    *(serf_incoming_t **)apr_array_push(ctx->incomings) = *client;
+    apr_pool_cleanup_register(ic->pool, ic, incoming_cleanup,
+                              apr_pool_cleanup_null);
 
-    return rv;
+    APR_ARRAY_PUSH(ctx->incomings, serf_incoming_t *) = ic;
+    *client = ic;
+
+    return status;
 }
 
 apr_status_t serf_listener_create(

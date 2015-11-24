@@ -558,6 +558,28 @@ apr_status_t serf_incoming_create(
     serf_incoming_request_cb_t request,
     apr_pool_t *pool);
 
+/**
+ * Creates a new client associated with @a ctx for socket @a insock. The client
+ * takes responsibility for @a client_pool and will destroy it after the
+ * connection is closed. Typically this would be the same pool as where the
+ * incomming socket @a insock is allocated in.
+ *
+ * This non-standard behavior is needed to support listeners inside the same
+ * @a ctx instance without leaking memory for each used connections. Callers
+ * might want to create a specific client pool if they use a non-standard
+ * listening pattern.
+ *
+ * Once the connection is setup @a setup will be called with @a setup_baton
+ * to setup the connection's bucket support.
+ *
+ * When the connection closed @a closed will be called with @a closed_baton to
+ * notify that the client and its pool are about to be destroyed.
+ *
+ * Once the connection is fully setup incoming requests will be routed to @a
+ * req_setup with @a req_setup_baton, to handle processing.
+ *
+ * @since New in 1.4.
+ */
 apr_status_t serf_incoming_create2(
     serf_incoming_t **client,
     serf_context_t *ctx,
@@ -568,7 +590,7 @@ apr_status_t serf_incoming_create2(
     void *closed_baton,
     serf_incoming_request_setup_t req_setup,
     void *req_setup_baton,
-    apr_pool_t *pool);
+    apr_pool_t *client_pool);
 
 /* Allows creating a response before the request is completely
    read. Will call the response create function if it hasn't
