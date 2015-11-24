@@ -222,7 +222,14 @@ void serf_http2__ensure_writable(serf_http2_stream_t *stream);
 apr_status_t
 serf_http2__stream_reset(serf_http2_stream_t *stream,
                          apr_status_t reason,
-                         int local_reset);
+                         bool local_reset);
+
+void serf_http2__stream_cancel_request(serf_http2_stream_t *stream,
+                                       serf_request_t *rq,
+                                       apr_status_t reason);
+
+void serf_http2__stream_prioritize_request(serf_http2_stream_t *stream,
+                                           serf_request_t *rq, bool exclusive);
 
 serf_bucket_t *
 serf_http2__stream_handle_hpack(serf_http2_stream_t *stream,

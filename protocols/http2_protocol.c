@@ -58,6 +58,12 @@ http2_incoming_teardown(serf_incoming_t *conn);
 static apr_status_t
 http2_process(serf_http2_protocol_t *h2);
 
+static void
+http2_cancel_request(serf_request_t *rq, apr_status_t reason);
+
+static void
+http2_prioritize_request(serf_request_t *rq, bool exclusive);
+
 static serf_bucket_t *
 serf_bucket_create_numberv(serf_bucket_alloc_t *allocator, const char *format,
                            ...)
@@ -280,6 +286,8 @@ void serf__http2_protocol_init(serf_connection_t *conn)
     conn->perform_write = http2_outgoing_write;
     conn->perform_hangup = http2_outgoing_hangup;
     conn->perform_teardown = http2_outgoing_teardown;
+    conn->perform_cancel_request = http2_cancel_request;
+    conn->perform_prioritize_request = http2_prioritize_request;
     conn->protocol_baton = h2;
 
     /* Disable HTTP/1.1 guessing that affects writability */
@@ -1668,6 +1676,28 @@ http2_outgoing_teardown(serf_connection_t *conn)
 
     apr_pool_destroy(ctx->pool);
     conn->protocol_baton = NULL;
+}
+
+static void http2_cancel_request(serf_request_t *rq, apr_status_t reason)
+{
+    serf_connection_t *conn = rq->conn;
+
+    if (!conn || !conn->protocol_baton || !rq->protocol_baton)
+        return;
+
+    serf_http2__stream_cancel_request(rq->protocol_baton,
+                                      rq, reason);
+}
+
+static void http2_prioritize_request(serf_request_t *rq, bool exclusive)
+{
+    serf_connection_t *conn = rq->conn;
+
+    if (!conn || !conn->protocol_baton || !rq->protocol_baton)
+        return;
+
+    serf_http2__stream_prioritize_request(rq->protocol_baton,
+                                          rq, exclusive);
 }
 
 static apr_status_t

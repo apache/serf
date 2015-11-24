@@ -97,7 +97,8 @@ serf_http2__stream_cleanup(serf_http2_stream_t *stream)
 static apr_status_t stream_send_headers(serf_http2_stream_t *stream,
                                         serf_bucket_t *hpack,
                                         apr_size_t max_payload_size,
-                                        bool end_stream)
+                                        bool end_stream,
+                                        bool priority)
 {
     apr_status_t status;
     bool first_frame = true;
@@ -138,7 +139,10 @@ static apr_status_t stream_send_headers(serf_http2_stream_t *stream,
                                                 : 0)
                                                | ((hpack != NULL)
                                                   ? 0
-                                                  : HTTP2_FLAG_END_HEADERS),
+                                                  : HTTP2_FLAG_END_HEADERS)
+                                               | (priority
+                                                  ? HTTP2_FLAG_PRIORITY
+                                                  : 0),
                                                &stream->streamid,
                                                serf_http2__allocate_stream_id,
                                                stream,
@@ -320,12 +324,14 @@ serf_http2__stream_setup_next_request(serf_http2_stream_t *stream,
     serf_bucket_t *hpack;
     serf_bucket_t *body;
     bool end_stream;
+    bool priority = false;
 
     SERF_H2_assert(request != NULL);
     if (!request)
         return APR_EGENERAL;
 
     stream->data->request = request;
+    request->protocol_baton = stream;
 
     if (!request->req_bkt) {
         status = serf__setup_request(request);
@@ -353,6 +359,35 @@ serf_http2__stream_setup_next_request(serf_http2_stream_t *stream,
     if (status)
         return status;
 
+    if (request->depends_on && request->depends_on->protocol_baton)
+    {
+        serf_http2_stream_t *ds = request->depends_on->protocol_baton;
+
+        if (ds->streamid >= 0) {
+            serf_bucket_t *agg;
+            unsigned char priority_data[5];
+
+            agg = serf_bucket_aggregate_create(request->allocator);
+
+            priority_data[0] = (ds->streamid >> 24) & 0x7F;
+            /* bit 7 of [0] is the exclusive flag */
+            priority_data[1] = (ds->streamid >> 16) & 0xFF;
+            priority_data[2] = (ds->streamid >> 8) & 0xFF;
+            priority_data[3] = ds->streamid & 0xFF;
+            priority_data[4] = request->dep_priority >> 8;
+
+            serf_bucket_aggregate_append(
+                agg,
+                serf_bucket_simple_copy_create((void *)priority_data,
+                                               5, request->allocator));
+
+            serf_bucket_aggregate_append(agg, hpack);
+            hpack = agg;
+
+            priority = true;
+        }
+    }
+
     if (!body) {
         serf_bucket_destroy(request->req_bkt);
         request->req_bkt = NULL;
@@ -362,7 +397,7 @@ serf_http2__stream_setup_next_request(serf_http2_stream_t *stream,
         end_stream = false;
 
     status = stream_send_headers(stream, hpack, max_payload_size,
-                                 end_stream);
+                                 end_stream, priority);
     if (status)
         return status;
 
@@ -388,7 +423,7 @@ serf_http2__stream_setup_next_request(serf_http2_stream_t *stream,
 apr_status_t
 serf_http2__stream_reset(serf_http2_stream_t *stream,
                          apr_status_t reason,
-                         int local_reset)
+                         bool local_reset)
 {
     stream->status = H2S_CLOSED;
 
@@ -402,6 +437,47 @@ serf_http2__stream_reset(serf_http2_stream_t *stream,
 
     return APR_SUCCESS;
 }
+
+void serf_http2__stream_cancel_request(serf_http2_stream_t *stream,
+                                               serf_request_t *rq,
+                                               apr_status_t reason)
+{
+    if (stream->streamid < 0)
+        return; /* Never hit the wire */
+    else if (stream->status == H2S_CLOSED)
+        return; /* We are already detached */
+
+    if (reason < SERF_ERROR_HTTP2_NO_ERROR
+        || reason > SERF_ERROR_HTTP2_HTTP_1_1_REQUIRED)
+    {
+        reason = SERF_ERROR_HTTP2_CANCEL;
+    }
+
+    /* Let the other party know we don't want anything */
+    serf_http2__stream_reset(stream, reason, true);
+
+    if (!stream->data)
+        return;
+
+    if (stream->data && stream->data->request)
+        stream->data->request = NULL;
+
+    /* Would be nice if we could response_agg, but that is typically
+       not safe here, as we might still be reading from it */
+}
+
+void serf_http2__stream_prioritize_request(serf_http2_stream_t *stream,
+                                           serf_request_t *rq,
+                                           bool exclusive)
+{
+    if (stream->streamid < 0)
+        return; /* Never hit the wire */
+    else if (stream->status == H2S_CLOSED)
+        return; /* We are already detached */
+
+    /* Ignore for now. We start by handling this at setup */
+}
+
 
 static apr_status_t
 stream_response_eof(void *baton,
@@ -476,7 +552,7 @@ http2_stream_enqueue_response(serf_incoming_request_t *request,
 
     status = stream_send_headers(stream, hpack,
                                  serf_http2__max_payload_size(stream->h2),
-                                 false);
+                                 false /* eos */, false /* priority */);
 
     if (status)
         return status;

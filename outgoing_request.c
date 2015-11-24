@@ -101,6 +101,69 @@ apr_status_t serf__destroy_request(serf_request_t *request)
 {
     serf_connection_t *conn = request->conn;
 
+    if (request->depends_first && request->depends_on) {
+        apr_uint64_t total = 0;
+        serf_request_t *r, **pr;
+
+        /* Calculate total priority of descendants */
+        for (r = request->depends_first; r; r = r->depends_next) {
+            total += r->dep_priority;
+        }
+
+        if (r->priority)
+            total *= r->priority;
+
+        /* Apply now, as if they depend on the parent */
+        for (r = request->depends_first; r; r = r->depends_next) {
+            if (r->dep_priority)
+                r->dep_priority = (apr_uint16_t)(total / r->dep_priority);
+            r->depends_on = request->depends_on;
+        }
+
+        /* Remove us from parent */
+        pr = &request->depends_on->depends_first;
+        while (*pr) {
+            if (*pr == request)
+                *pr = request->depends_next;
+
+            pr = &(*pr)->depends_next;
+        }
+
+        /* And append all our descendants */
+        *pr = request->depends_first;
+
+        request->depends_on = NULL;
+        request->depends_first = NULL;
+        request->depends_next = NULL;
+    }
+    else if (request->depends_first) {
+        /* Dependencies will lose their parent */
+        serf_request_t *r, *next;
+
+        for (r = request->depends_first; r; r = next) {
+            next = r->next;
+
+            r->depends_on = NULL;
+            r->depends_next = NULL;
+        }
+        request->depends_first = NULL;
+    }
+    else if (request->depends_on) {
+        serf_request_t **pr;
+
+        /* Remove us from parent */
+        pr = &request->depends_on->depends_first;
+        while (*pr) {
+            if (*pr == request) {
+                *pr = request->depends_next;
+                break;
+            }
+
+            pr = &(*pr)->depends_next;
+        }
+        request->depends_on = NULL;
+    }
+
     if (request->writing >= SERF_WRITING_STARTED
         && request->writing < SERF_WRITING_FINISHED) {
 
@@ -136,8 +199,15 @@ apr_status_t serf__cancel_request(serf_request_t *request,
         /* We actually don't care what the handler returns.
          * We have bigger matters at hand.
          */
-        (*request->handler)(request, NULL, request->handler_baton,
-                            request->respool);
+        (void)request->handler(request, NULL, request->handler_baton,
+                               request->respool);
+
+        request->handler = NULL;
+    }
+
+    if (request->conn && request->conn->perform_cancel_request) {
+        request->conn->perform_cancel_request(request,
+                                              SERF_ERROR_HTTP2_CANCEL);
     }
 
     if (*list == request) {
@@ -352,6 +422,11 @@ create_request(serf_connection_t *conn,
     request->ssltunnel = ssltunnel;
     request->next = NULL;
     request->auth_baton = NULL;
+    request->protocol_baton = NULL;
+    request->depends_on = NULL;
+    request->depends_next = NULL;
+    request->depends_first = NULL;
+    request->dep_priority = SERF_REQUEST_PRIORITY_DEFAULT;
 
     return request;
 }
@@ -475,6 +550,92 @@ apr_status_t serf_request_cancel(serf_request_t *request)
         return serf__cancel_request(request, &conn->written_reqs, 0);
 
 }
+
+void serf_connection_request_prioritize(serf_request_t *request,
+                                        serf_request_t *depends_on,
+                                        apr_uint16_t priority,
+                                        int exclusive)
+{
+    if (request->depends_on != depends_on) {
+        serf_request_t *r;
+
+        if (depends_on->conn != request->conn || depends_on == request)
+            abort();
+
+        /* If we are indirectly made dependent on ourself, we first
+           reprioritize the descendant on our current parent. See
+           https://tools.ietf.org/html/rfc7540#section-5.3.3
+
+           If a stream is made dependent on one of its own dependencies, the
+           formerly dependent stream is first moved to be dependent on the
+           reprioritized stream's previous parent.  The moved dependency
+           retains its weight. */
+
+        r = depends_on;
+
+        while (r && r != request && r->depends_on)
+            r = r->depends_on;
+
+        if (r == request)
+        {
+            serf_connection_request_prioritize(depends_on,
+                                               request->depends_on,
+                                               depends_on->dep_priority,
+                                               false /* exclusive */);
+        }
+
+        if (request->depends_on) {
+        /* Ok, we can now update our dependency */
+
+            serf_request_t **pr = &request->depends_on->depends_first;
+
+            while (*pr) {
+                if (*pr == request) {
+                    *pr = request->depends_next;
+                    break;
+                }
+                pr = &(*pr)->depends_next;
+            }
+        }
+
+        request->depends_on = depends_on;
+
+        if (depends_on) {
+            if (exclusive) {
+                r = depends_on->depends_first;
+
+                while (r) {
+                    r->depends_on = request;
+
+                    if (r->depends_next)
+                        r = r->depends_next;
+                    else
+                        break;
+                }
+
+                if (r) {
+                    r->depends_next = request->depends_first;
+                    r->depends_first = depends_on->depends_first;
+                }
+                request->depends_next = NULL;
+            }
+            else {
+                request->depends_next = depends_on->depends_first;
+            }
+            depends_on->depends_first = request;
+        }
+        else
+            request->depends_next = NULL;
+    }
+
+    if (priority)
+        request->dep_priority = priority;
+
+    /* And now tell the protocol about this */
+    if (request->conn->perform_prioritize_request)
+        request->conn->perform_prioritize_request(request, exclusive != 0);
+}
+
 
 apr_status_t serf_request_is_written(serf_request_t *request)
 {
