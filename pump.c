@@ -369,6 +369,11 @@ apr_status_t serf_pump__add_output(serf_pump_t *pump,
 {
     apr_status_t status;
 
+    if (!pump->ostream_tail) {
+        serf_bucket_destroy(bucket);
+        return APR_ENOSOCKET;
+    }
+
     if (!flush
         && !pump->io->dirty_conn
         && !pump->stop_writing
