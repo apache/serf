@@ -41,8 +41,9 @@ static serf__config_hdr_t *create_config_hdr(apr_pool_t *pool)
 {
     serf__config_hdr_t *hdr;
     fprintf(stderr, "In alloc helper\n");
-    hdr  = apr_pcalloc(pool, sizeof(serf__config_hdr_t));
+    hdr = apr_palloc(pool, sizeof(serf__config_hdr_t));
     fprintf(stderr, "Header: %p\n", hdr);
+    memset(hdr, 0, sizeof(serf__config_hdr_t));
     hdr->pool = pool;
     return hdr;
 }
