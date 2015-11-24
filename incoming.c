@@ -709,8 +709,9 @@ apr_status_t serf_incoming_create2(
     fprintf(stderr, "Create config\n");
 
     /* Store the connection specific info in the configuration store */
-    rv = serf__config_store_get_client_config(ctx, ic, &config, pool);
+    rv = serf__config_store_get_client_config(ctx, ic, &config, ic_pool);
     if (rv) {
+        fprintf(stderr, "Config create failed\n");
         apr_pool_destroy(ic->pool);
         return rv;
     }

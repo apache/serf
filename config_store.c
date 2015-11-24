@@ -196,6 +196,7 @@ apr_status_t serf__config_store_get_client_config(serf_context_t *ctx,
 
         cfg->conn_pool = client->pool;
 
+        fprintf(stderr, "Create subpool\n");
         if ((status = apr_pool_create(&tmp_pool, out_pool)) != APR_SUCCESS)
             return status;
 
@@ -217,6 +218,9 @@ apr_status_t serf__config_store_get_client_config(serf_context_t *ctx,
     }
 
     *config = cfg;
+
+    fprintf(stderr, "Returning\n");
+
 
     return APR_SUCCESS;
 }
