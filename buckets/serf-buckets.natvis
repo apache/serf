@@ -7,6 +7,9 @@
             <Item Name="data" Condition="type->name == serf_bucket_type_aggregate.name">
                 (aggregate_context_t *)data
             </Item>
+            <Item Name="data" Condition="type->name == serf_bucket_type_headers.name">
+                (headers_context_t *)data
+            </Item>
             <Item Name="data" Condition="type->name == serf_bucket_type_iovec.name">
                 (iovec_context_t *)data
             </Item>
@@ -27,6 +30,18 @@
                 <ValueNode>bucket</ValueNode>
             </LinkedListItems>
         </Expand>
+    </Type>
+    <Type Name="headers_context_t">
+        <Expand>
+            <LinkedListItems>
+                <HeadPointer>list</HeadPointer>
+                <NextPointer>next</NextPointer>
+                <ValueNode>this</ValueNode>
+            </LinkedListItems>
+        </Expand>
+    </Type>
+    <Type Name="header_list">
+        <DisplayString>{header,na}: {value,na}</DisplayString>
     </Type>
     <!-- Standard iovec -->
     <Type Name="iovec">
