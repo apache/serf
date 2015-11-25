@@ -1118,13 +1118,6 @@ typedef struct serf_hpack_decode_ctx_t
     serf_bucket_t *stream;
     apr_size_t header_allowed;
 
-    apr_status_t(*item_callback)(void *baton,
-                                 const char *key,
-                                 apr_size_t key_size,
-                                 const char *value,
-                                 apr_size_t value_size);
-    void *item_baton;
-
     char *buffer;
     apr_size_t buffer_size;
     apr_size_t buffer_used;
@@ -1165,13 +1158,6 @@ typedef struct serf_hpack_decode_ctx_t
 
 serf_bucket_t *
 serf__bucket_hpack_decode_create(serf_bucket_t *stream,
-                                 apr_status_t(*item_callback)(
-                                     void *baton,
-                                     const char *key,
-                                     apr_size_t key_size,
-                                     const char *value,
-                                     apr_size_t value_size),
-                                 void *item_baton,
                                  apr_size_t max_header_size,
                                  serf_hpack_table_t *hpack_table,
                                  serf_bucket_alloc_t *alloc)
@@ -1194,19 +1180,8 @@ serf__bucket_hpack_decode_create(serf_bucket_t *stream,
     ctx->buffer_used = 0;
     ctx->buffer = serf_bucket_mem_alloc(alloc, ctx->buffer_size);
 
-    if (item_callback)
-    {
-        ctx->item_callback = item_callback;
-        ctx->item_baton = item_baton;
-        ctx->agg = NULL;
-    }
-    else
-    {
-        ctx->item_callback = NULL;
-        ctx->item_baton = NULL;
-        ctx->agg = serf_bucket_aggregate_create(alloc);
-        ctx->headers = NULL;
-    }
+    ctx->agg = serf_bucket_aggregate_create(alloc);
+    ctx->headers = NULL;
 
     return serf_bucket_create(&serf_bucket_type__hpack_decode, alloc, ctx);
 }
@@ -1390,16 +1365,7 @@ handle_read_entry_and_clear(serf_hpack_decode_ctx_t *ctx,
               "Parsed from HPACK: %.*s: %.*s\n",
               ctx->key_size, ctx->key, ctx->val_size, ctx->val);
 
-    if (ctx->item_callback)
-    {
-        status = ctx->item_callback(ctx->item_baton,
-                                    ctx->key, ctx->key_size,
-                                    ctx->val, ctx->val_size);
-
-        if (status)
-            return status;
-    }
-    else if (!ctx->headers)
+    if (!ctx->headers)
     {
         serf_bucket_t *b;
 
@@ -1597,7 +1563,7 @@ hpack_process(serf_bucket_t *bucket)
     apr_status_t status = APR_SUCCESS;
 
     if (ctx->hit_eof)
-        return APR_EOF;
+        return APR_SUCCESS;
 
     while (status == APR_SUCCESS)
     {
@@ -1895,6 +1861,7 @@ hpack_process(serf_bucket_t *bucket)
                                &tbl->rl_last, &tbl->rl_size,
                                tbl->rl_max_table_size, tbl->alloc);
         }
+        return APR_SUCCESS;
     }
 
     return status;

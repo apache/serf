@@ -622,31 +622,6 @@ stream_setup_response(serf_http2_stream_t *stream,
 }
 
 static apr_status_t
-stream_promise_item(void *baton,
-                    const char *key,
-                    apr_size_t key_sz,
-                    const char *value,
-                    apr_size_t value_sz)
-{
-    serf_http2_stream_t *parent_stream = baton;
-    serf_http2_stream_t *stream = parent_stream->new_reserved_stream;
-
-    SERF_H2_assert(stream != NULL);
-
-    /* TODO: Store key+value somewhere to allow asking the application
-             if it is interested in the promised stream.
-
-             Most likely it is not interested *yet* as the HTTP/2 spec
-             recommends pushing promised items *before* the stream that
-             references them.
-
-             So we probably want to store the request anyway, to allow
-             matching this against a later added outgoing request.
-     */
-    return APR_SUCCESS;
-}
-
-static apr_status_t
 stream_promise_done(void *baton,
                     serf_bucket_t *done_agg)
 {
@@ -697,8 +672,7 @@ serf_http2__stream_handle_hpack(serf_http2_stream_t *stream,
 
         stream->data->tbl = hpack_tbl;
 
-        bucket = serf__bucket_hpack_decode_create(bucket, NULL, NULL,
-                                                  max_entry_size,
+        bucket = serf__bucket_hpack_decode_create(bucket, max_entry_size,
                                                   hpack_tbl, allocator);
 
         serf_bucket_aggregate_append(stream->data->response_agg, bucket);
@@ -718,9 +692,18 @@ serf_http2__stream_handle_hpack(serf_http2_stream_t *stream,
         SERF_H2_assert(frametype == HTTP2_FRAME_TYPE_PUSH_PROMISE);
 
         /* First create the HPACK decoder as requested */
-        bucket = serf__bucket_hpack_decode_create(bucket,
-                                                  stream_promise_item, stream,
-                                                  max_entry_size,
+
+     /* TODO: Store key+value somewhere to allow asking the application
+             if it is interested in the promised stream.
+
+             Most likely it is not interested *yet* as the HTTP/2 spec
+             recommends pushing promised items *before* the stream that
+             references them.
+
+             So we probably want to store the request anyway, to allow
+             matching this against a later added outgoing request.
+     */
+        bucket = serf__bucket_hpack_decode_create(bucket, max_entry_size,
                                                   hpack_tbl, allocator);
 
         /* And now wrap around it the easiest way to get an EOF callback */
