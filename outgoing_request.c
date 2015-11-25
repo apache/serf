@@ -18,6 +18,8 @@
  * ====================================================================
  */
 
+#include <stdlib.h>
+
 #include <apr_pools.h>
 #include <apr_poll.h>
 #include <apr_version.h>
