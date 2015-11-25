@@ -21,6 +21,7 @@
 #include <apr_pools.h>
 
 #include "serf.h"
+#include "serf_private.h"
 #include "serf_bucket_util.h"
 
 
