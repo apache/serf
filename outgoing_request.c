@@ -104,27 +104,33 @@ apr_status_t serf__destroy_request(serf_request_t *request)
     if (request->depends_first && request->depends_on) {
         apr_uint64_t total = 0;
         serf_request_t *r, **pr;
+        apr_uint64_t rqd = request->dep_priority;
 
         /* Calculate total priority of descendants */
         for (r = request->depends_first; r; r = r->depends_next) {
             total += r->dep_priority;
         }
 
-        if (r->priority)
-            total *= r->priority;
-
         /* Apply now, as if they depend on the parent */
         for (r = request->depends_first; r; r = r->depends_next) {
-            if (r->dep_priority)
-                r->dep_priority = (apr_uint16_t)(total / r->dep_priority);
+            if (total) {
+
+                r->dep_priority = (apr_uint16_t)(rqd * r->dep_priority
+                                                 / total);
+            }
+            else
+                r->dep_priority = 0;
+
             r->depends_on = request->depends_on;
         }
 
         /* Remove us from parent */
         pr = &request->depends_on->depends_first;
         while (*pr) {
-            if (*pr == request)
+            if (*pr == request) {
                 *pr = request->depends_next;
+                continue;
+            }
 
             pr = &(*pr)->depends_next;
         }
