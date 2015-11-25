@@ -74,8 +74,7 @@ apr_status_t serf__bucket_fcgi_unframe_read_info(serf_bucket_t *bucket,
                                                  apr_uint16_t *frame_type)
 {
     fcgi_unframe_ctx_t *ctx = bucket->data;
-    const char *data;
-    apr_size_t len;
+    const unsigned char *header;
     apr_status_t status;
 
     if (ctx->record_remaining == 0)
@@ -88,71 +87,74 @@ apr_status_t serf__bucket_fcgi_unframe_read_info(serf_bucket_t *bucket,
         return APR_SUCCESS;
     }
 
-    status = serf_bucket_read(ctx->stream, ctx->record_remaining, &data, &len);
-    if (!SERF_BUCKET_READ_ERROR(status))
+    do
     {
-        const unsigned char *header;
+        const char *data;
+        apr_size_t len;
 
-        if (len < FCGI_RECORD_SIZE)
-        {
+        status = serf_bucket_read(ctx->stream, ctx->record_remaining, &data, &len);
+
+        if (SERF_BUCKET_READ_ERROR(status))
+            return status;
+
+        if (len < FCGI_RECORD_SIZE) {
             memcpy(ctx->buffer + FCGI_RECORD_SIZE - ctx->record_remaining,
                    data, len);
 
             ctx->record_remaining -= len;
             header = ctx->buffer;
         }
-        else
-        {
+        else {
             header = (const void *)data;
             ctx->record_remaining = 0;
         }
+    } while (!status && ctx->record_remaining > 0);
 
-        if (ctx->record_remaining == 0)
-        {
-            /* We combine version and frametype in a single value */
-            ctx->frame_type = (header[0] << 8) | header[1];
-            ctx->streamid = (header[2] << 8) | header[3];
-            ctx->payload_remaining = (header[4] << 8) | header[5];
-            /* header[6] is reserved */
-            ctx->pad_remaining = header[7];
+    if (ctx->record_remaining == 0)
+    {
+        /* We combine version and frametype in a single value */
+        ctx->frame_type = (header[0] << 8) | header[1];
+        ctx->streamid = (header[2] << 8) | header[3];
+        ctx->payload_remaining = (header[4] << 8) | header[5];
+        /* header[6] is reserved */
+        ctx->pad_remaining = header[7];
 
-            /* Fill output arguments if necessary */
-            if (stream_id)
-                *stream_id = ctx->streamid;
-            if (frame_type)
-                *frame_type = ctx->frame_type;
+        /* Fill output arguments if necessary */
+        if (stream_id)
+            *stream_id = ctx->streamid;
+        if (frame_type)
+            *frame_type = ctx->frame_type;
 
-            status = (ctx->payload_remaining == 0) ? APR_EOF
-                : APR_SUCCESS;
-
-            /* If we hava a zero-length frame we have to call the eof callback
-            now, as the read operations will just shortcut to APR_EOF */
-            if (ctx->payload_remaining == 0 && ctx->end_of_frame)
-            {
-                apr_status_t cb_status;
-
-                cb_status = (*ctx->end_of_frame)(ctx->end_of_frame_baton,
-                                                 bucket);
-
-                ctx->end_of_frame = NULL;
-
-                if (SERF_BUCKET_READ_ERROR(cb_status))
-                    status = cb_status;
-            }
-        }
+        if (ctx->payload_remaining == 0)
+            status = APR_EOF;
         else if (APR_STATUS_IS_EOF(status))
-        {
-            /* Reading frame failed because we couldn't read the header. Report
-               a read failure instead of semi-success */
-            if (ctx->record_remaining == FCGI_RECORD_SIZE)
-                status = SERF_ERROR_EMPTY_STREAM;
-            else
-                status = SERF_ERROR_TRUNCATED_STREAM;
-        }
-        else if (!status)
-            status = APR_EAGAIN;
+            status = SERF_ERROR_TRUNCATED_STREAM;
 
+        /* If we hava a zero-length frame we have to call the eof callback
+           now, as the read operations will just shortcut to APR_EOF */
+        if (ctx->payload_remaining == 0 && ctx->end_of_frame)
+        {
+            apr_status_t cb_status;
+
+            cb_status = (*ctx->end_of_frame)(ctx->end_of_frame_baton,
+                                                bucket);
+
+            ctx->end_of_frame = NULL;
+
+            if (SERF_BUCKET_READ_ERROR(cb_status))
+                status = cb_status;
+        }
     }
+    else if (APR_STATUS_IS_EOF(status))
+    {
+        /* Reading frame failed because we couldn't read the header. Report
+            a read failure instead of semi-success */
+        if (ctx->record_remaining == FCGI_RECORD_SIZE)
+            status = SERF_ERROR_EMPTY_STREAM;
+        else
+            status = SERF_ERROR_TRUNCATED_STREAM;
+    }
+
     return status;
 }
 
