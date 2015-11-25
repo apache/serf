@@ -872,8 +872,8 @@ static apr_status_t
 serf_http2_frame_read_iovec(serf_bucket_t *bucket,
                             apr_size_t requested,
                             int vecs_size,
-struct iovec *vecs,
-    int *vecs_used)
+                            struct iovec *vecs,
+                            int *vecs_used)
 {
     serf_http2_frame_context_t *ctx = bucket->data;
     apr_status_t status;
@@ -944,6 +944,10 @@ serf_http2_frame_set_config(serf_bucket_t *bucket,
 {
     serf_http2_frame_context_t *ctx = bucket->data;
     ctx->config = config;
+
+    if (ctx->stream)
+        return serf_bucket_set_config(ctx->stream, config);
+
     return APR_SUCCESS;
 }
 
