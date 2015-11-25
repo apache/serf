@@ -177,22 +177,13 @@ serf__hpack_table_set_max_table_size(serf_hpack_table_t *hpack_tbl,
 extern const serf_bucket_type_t serf_bucket_type__hpack_decode;
 #define SERF_BUCKET_IS_HPACK_DECODE(b) SERF_BUCKET_CHECK((b), hpack_decode)
 
-/* If ITEM_CALLBACK is not null calls it for every item while reading, and
-   the bucket will just return no data until EOF.
-
-   If ITEM_CALLBACK is NULL, the bucket will read as a HTTP/1 like header block,
-   starting with a status line and ending with "\r\n\r\n", which allows using
-   the result as the start of the result for a response_bucket.
+/* The bucket will read as a HTTP/1 like header block,
+   starting with either a status or a request line and ending with "\r\n\r\n",
+   which allows using the result as the start of the result for a response
+   or request bucket.
  */
 serf_bucket_t *
 serf__bucket_hpack_decode_create(serf_bucket_t *stream,
-                                 apr_status_t(*item_callback)(
-                                                  void *baton,
-                                                  const char *key,
-                                                  apr_size_t key_size,
-                                                  const char *value,
-                                                  apr_size_t value_size),
-                                 void *item_baton,
                                  apr_size_t max_header_size,
                                  serf_hpack_table_t *hpack_table,
                                  serf_bucket_alloc_t *alloc);

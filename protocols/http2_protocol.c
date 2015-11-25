@@ -1071,7 +1071,8 @@ http2_process(serf_http2_protocol_t *h2)
             {
                 SERF_H2_assert(h2->read_frame != NULL);
                 SERF_H2_assert(!h2->in_frame);
-                return status;
+                return (status == SERF_ERROR_EMPTY_READ) ? APR_SUCCESS
+                                                         : status;
             }
             else
             {
@@ -1255,7 +1256,7 @@ http2_process(serf_http2_protocol_t *h2)
                           /* Even when we don't want to process the headers we
                               must read them to update the HPACK state */
                             body = serf__bucket_hpack_decode_create(
-                                body, NULL, NULL,
+                                body,
                                 HTTP2_MAX_HEADER_ENTRYSIZE,
                                 h2->hpack_tbl, h2->allocator);
                         }

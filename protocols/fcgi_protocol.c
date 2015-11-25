@@ -206,7 +206,8 @@ static apr_status_t fcgi_process(serf_fcgi_protocol_t *fcgi)
             {
                 SERF_FCGI_assert(fcgi->read_frame != NULL);
                 SERF_FCGI_assert(!fcgi->in_frame);
-                return status;
+                return (status == SERF_ERROR_EMPTY_READ) ? APR_SUCCESS
+                                                         : status;
             }
             else
             {
