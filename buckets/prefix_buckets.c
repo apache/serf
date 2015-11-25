@@ -65,8 +65,11 @@ static apr_status_t read_prefix(serf_bucket_t *bucket)
     if (!ctx->read_len) {
 
         /* Perhaps we can handle this without copying any data? */
-        status = serf_bucket_read(ctx->stream, ctx->prefix_len, &data,
-                                  &len);
+        do
+        {
+            status = serf_bucket_read(ctx->stream, ctx->prefix_len, &data,
+                                      &len);
+        } while (!status && !len);
 
         if (SERF_BUCKET_READ_ERROR(status))
             return status;
@@ -87,7 +90,7 @@ static apr_status_t read_prefix(serf_bucket_t *bucket)
         }
         else if (len == 0) {
             /* Nothing read at all. Try again later */
-            return APR_EAGAIN;
+            return status;
         }
 
         /* Create a buffer to hold what we already read */
