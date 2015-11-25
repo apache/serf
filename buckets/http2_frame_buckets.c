@@ -166,8 +166,10 @@ serf__bucket_http2_unframe_read_info(serf_bucket_t *bucket,
             return SERF_ERROR_HTTP2_FRAME_SIZE_ERROR;
         }
 
-        status = (ctx->payload_remaining == 0) ? APR_EOF
-            : APR_SUCCESS;
+        if (ctx->payload_remaining == 0)
+            status = APR_EOF;
+        else if (APR_STATUS_IS_EOF(status))
+            status = SERF_ERROR_TRUNCATED_STREAM;
 
         /* If we hava a zero-length frame we have to call the eof callback
             now, as the read operations will just shortcut to APR_EOF */

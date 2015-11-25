@@ -178,7 +178,7 @@ extern const serf_bucket_type_t serf_bucket_type__hpack_decode;
 #define SERF_BUCKET_IS_HPACK_DECODE(b) SERF_BUCKET_CHECK((b), hpack_decode)
 
 /* If ITEM_CALLBACK is not null calls it for every item while reading, and
-   the bucket will just return no data and APR_EAGAIN until done.
+   the bucket will just return no data until EOF.
 
    If ITEM_CALLBACK is NULL, the bucket will read as a HTTP/1 like header block,
    starting with a status line and ending with "\r\n\r\n", which allows using
