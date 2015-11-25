@@ -1251,11 +1251,11 @@ read_hpack_int(apr_uint32_t *v,
         const char *data;
         apr_size_t len;
 
-        do {
-            status = serf_bucket_read(ctx->stream, 1, &data, &len);
-        } while ((status == APR_SUCCESS) && !len);
+        status = serf_bucket_read(ctx->stream, 1, &data, &len);
 
-        if (SERF_BUCKET_READ_ERROR(status) || len == 0)
+        if (!status && !len)
+            return SERF_ERROR_EMPTY_READ;
+        else if (SERF_BUCKET_READ_ERROR(status) || len == 0)
             return status;
 
         ctx->buffer[0] = *data;
@@ -1291,11 +1291,10 @@ read_hpack_int(apr_uint32_t *v,
             if ((7 * (ctx->buffer_used - 1) + bits) >= 32)
                 return SERF_ERROR_HTTP2_COMPRESSION_ERROR;
 
-            do {
-                status = serf_bucket_read(ctx->stream, 1, &data, &len);
-            } while ((status == APR_SUCCESS) && !len);
-
-            if (SERF_BUCKET_READ_ERROR(status) || len == 0)
+            status = serf_bucket_read(ctx->stream, 1, &data, &len);
+            if (!status && !len)
+                return SERF_ERROR_EMPTY_READ;
+            else if (SERF_BUCKET_READ_ERROR(status) || len == 0)
                 return status;
 
             ctx->buffer[ctx->buffer_used] = *data;
@@ -1577,6 +1576,8 @@ static apr_status_t hpack_read_bytes(serf_bucket_t *bucket,
 
         if (status)
             break;
+        else if (!status && !len)
+            return SERF_ERROR_EMPTY_READ;
     }
 
     if (ctx->buffer_used == required)
@@ -1608,11 +1609,10 @@ hpack_process(serf_bucket_t *bucket)
                     const char *data;
                     apr_size_t len;
 
-                    do {
-                        status = serf_bucket_read(ctx->stream, 1, &data, &len);
-                    } while (status == APR_SUCCESS && !len);
-
-                    if (SERF_BUCKET_READ_ERROR(status) || len == 0)
+                    status = serf_bucket_read(ctx->stream, 1, &data, &len);
+                    if (!status && !len)
+                        return SERF_ERROR_EMPTY_READ;
+                    else if (SERF_BUCKET_READ_ERROR(status) || len == 0)
                         break;
 
                     ctx->key_hm = ctx->val_hm = FALSE;
@@ -1883,7 +1883,6 @@ hpack_process(serf_bucket_t *bucket)
 
     if (APR_STATUS_IS_EOF(status))
     {
-        serf_bucket_t *b;
         if (ctx->state != HPACK_DECODE_STATE_INITIAL)
             return SERF_ERROR_HTTP2_COMPRESSION_ERROR;
 
@@ -1911,10 +1910,10 @@ serf_hpack_decode_read(serf_bucket_t *bucket,
     apr_status_t status;
 
     status = hpack_process(bucket);
-    if (SERF_BUCKET_READ_ERROR(status) || !ctx->agg)
+    if (status || !ctx->agg)
     {
         *len = 0;
-        return status;
+        return (status == SERF_ERROR_EMPTY_READ) ? APR_SUCCESS : status;
     }
 
     return serf_bucket_read(ctx->agg, requested, data, len);
@@ -1929,10 +1928,10 @@ serf_hpack_decode_peek(serf_bucket_t *bucket,
     apr_status_t status;
 
     status = hpack_process(bucket);
-    if (SERF_BUCKET_READ_ERROR(status) || !ctx->agg)
+    if (status || !ctx->agg)
     {
         *len = 0;
-        return status;
+        return (status == SERF_ERROR_EMPTY_READ) ? APR_SUCCESS : status;
     }
 
     return serf_bucket_peek(ctx->agg, data, len);

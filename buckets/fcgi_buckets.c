@@ -96,6 +96,8 @@ apr_status_t serf__bucket_fcgi_unframe_read_info(serf_bucket_t *bucket,
 
         if (SERF_BUCKET_READ_ERROR(status))
             return status;
+        else if (!len && !status)
+            return SERF_ERROR_EMPTY_READ;
 
         if (len < FCGI_RECORD_SIZE) {
             memcpy(ctx->buffer + FCGI_RECORD_SIZE - ctx->record_remaining,
@@ -170,7 +172,7 @@ static apr_status_t serf_fcgi_unframe_read(serf_bucket_t *bucket,
     if (status)
     {
         *len = 0;
-        return status;
+        return (status == SERF_ERROR_EMPTY_READ) ? APR_SUCCESS : status;
     }
 
     if (requested > ctx->payload_remaining)
@@ -219,7 +221,7 @@ static apr_status_t serf_fcgi_unframe_peek(serf_bucket_t *bucket,
     if (status)
     {
         *len = 0;
-        return status;
+        return (status == SERF_ERROR_EMPTY_READ) ? APR_SUCCESS : status;
     }
 
     status = serf_bucket_peek(ctx->stream, data, len);
