@@ -87,6 +87,7 @@ serf__bucket_http2_unframe_read_info(serf_bucket_t *bucket,
     const char *data;
     apr_size_t len;
     apr_status_t status;
+    const unsigned char *header;
 
     if (ctx->prefix_remaining == 0) {
         if (stream_id)
@@ -99,9 +100,11 @@ serf__bucket_http2_unframe_read_info(serf_bucket_t *bucket,
         return APR_SUCCESS;
     }
 
-    status = serf_bucket_read(ctx->stream, ctx->prefix_remaining, &data, &len);
-    if (!SERF_BUCKET_READ_ERROR(status)) {
-        const unsigned char *header;
+    do
+    {
+        status = serf_bucket_read(ctx->stream, ctx->prefix_remaining, &data, &len);
+        if (SERF_BUCKET_READ_ERROR(status))
+            return status;
 
         if (len < FRAME_PREFIX_SIZE) {
             memcpy(ctx->buffer + FRAME_PREFIX_SIZE - ctx->prefix_remaining,
@@ -114,81 +117,79 @@ serf__bucket_http2_unframe_read_info(serf_bucket_t *bucket,
             header = (const void *)data;
             ctx->prefix_remaining = 0;
         }
+    } while (!status && ctx->prefix_remaining > 0);
 
-        if (ctx->prefix_remaining == 0) {
-            apr_size_t payload_length = (header[0] << 16)
-                | (header[1] << 8)
-                | (header[2]);
-            ctx->frame_type = header[3];
-            ctx->flags = header[4];
-            /* Highest bit of stream_id MUST be ignored */
-            ctx->stream_id = ((header[5] & 0x7F) << 24)
-                | (header[6] << 16)
-                | (header[7] << 8)
-                | (header[8]);
+    if (ctx->prefix_remaining == 0) {
+        apr_size_t payload_length = (header[0] << 16)
+            | (header[1] << 8)
+            | (header[2]);
+        ctx->frame_type = header[3];
+        ctx->flags = header[4];
+        /* Highest bit of stream_id MUST be ignored */
+        ctx->stream_id = ((header[5] & 0x7F) << 24)
+            | (header[6] << 16)
+            | (header[7] << 8)
+            | (header[8]);
 
-            ctx->payload_remaining = payload_length;
+        ctx->payload_remaining = payload_length;
 
-            /* Fill output arguments if necessary */
-            if (stream_id)
-                *stream_id = ctx->stream_id;
-            if (frame_type)
-                *frame_type = ctx->frame_type;
-            if (flags)
-                *flags = ctx->flags;
+        /* Fill output arguments if necessary */
+        if (stream_id)
+            *stream_id = ctx->stream_id;
+        if (frame_type)
+            *frame_type = ctx->frame_type;
+        if (flags)
+            *flags = ctx->flags;
 
-              /* https://tools.ietf.org/html/rfc7540#section-4.2
-                An endpoint MUST send an error code of FRAME_SIZE_ERROR if a
-                frame exceeds the size defined in SETTINGS_MAX_FRAME_SIZE,
-                exceeds any limit defined for the frame type, or is too small
-                to contain mandatory frame data.
-              */
-            if (ctx->max_payload_size < payload_length)
+            /* https://tools.ietf.org/html/rfc7540#section-4.2
+            An endpoint MUST send an error code of FRAME_SIZE_ERROR if a
+            frame exceeds the size defined in SETTINGS_MAX_FRAME_SIZE,
+            exceeds any limit defined for the frame type, or is too small
+            to contain mandatory frame data.
+            */
+        if (ctx->max_payload_size < payload_length)
+        {
+            if (payload_length == 0x485454 && ctx->frame_type == 0x50
+                && ctx->flags == 0x2F)
             {
-                if (payload_length == 0x485454 && ctx->frame_type == 0x50
-                    && ctx->flags == 0x2F)
-                {
-                  /* We found "HTTP/" instead of an actual frame. This
-                     is clearly above the initial max payload size of 16384,
-                     which applies before we negotiate a bigger size.
+                /* We found "HTTP/" instead of an actual frame. This
+                    is clearly above the initial max payload size of 16384,
+                    which applies before we negotiate a bigger size.
 
-                     We found a HTTP/1.1 server that didn't understand our
-                     HTTP2 prefix "PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n"
-                   */
+                    We found a HTTP/1.1 server that didn't understand our
+                    HTTP2 prefix "PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n"
+                */
 
-                    return SERF_ERROR_HTTP2_PROTOCOL_ERROR;
-                }
-
-                return SERF_ERROR_HTTP2_FRAME_SIZE_ERROR;
+                return SERF_ERROR_HTTP2_PROTOCOL_ERROR;
             }
 
-            status = (ctx->payload_remaining == 0) ? APR_EOF
-                : APR_SUCCESS;
-
-            /* If we hava a zero-length frame we have to call the eof callback
-               now, as the read operations will just shortcut to APR_EOF */
-            if (ctx->payload_remaining == 0 && ctx->end_of_frame) {
-                apr_status_t cb_status;
-
-                cb_status = (*ctx->end_of_frame)(ctx->end_of_frame_baton,
-                                                 bucket);
-
-                if (SERF_BUCKET_READ_ERROR(cb_status))
-                    status = cb_status;
-            }
+            return SERF_ERROR_HTTP2_FRAME_SIZE_ERROR;
         }
-        else if (APR_STATUS_IS_EOF(status)) {
-          /* Reading frame failed because we couldn't read the header. Report
-             a read failure instead of semi-success */
-            if (ctx->prefix_remaining == FRAME_PREFIX_SIZE)
-                status = SERF_ERROR_EMPTY_STREAM;
-            else
-                status = SERF_ERROR_HTTP2_FRAME_SIZE_ERROR;
-        }
-        else if (!status)
-            status = APR_EAGAIN;
 
+        status = (ctx->payload_remaining == 0) ? APR_EOF
+            : APR_SUCCESS;
+
+        /* If we hava a zero-length frame we have to call the eof callback
+            now, as the read operations will just shortcut to APR_EOF */
+        if (ctx->payload_remaining == 0 && ctx->end_of_frame) {
+            apr_status_t cb_status;
+
+            cb_status = (*ctx->end_of_frame)(ctx->end_of_frame_baton,
+                                                bucket);
+
+            if (SERF_BUCKET_READ_ERROR(cb_status))
+                status = cb_status;
+        }
     }
+    else if (APR_STATUS_IS_EOF(status)) {
+        /* Reading frame failed because we couldn't read the header. Report
+            a read failure instead of semi-success */
+        if (ctx->prefix_remaining == FRAME_PREFIX_SIZE)
+            status = SERF_ERROR_EMPTY_STREAM;
+        else
+            status = SERF_ERROR_HTTP2_FRAME_SIZE_ERROR;
+    }
+
     return status;
 }
 
@@ -612,7 +613,7 @@ typedef struct serf_http2_frame_context_t {
     void *stream_id_baton;
     void(*stream_id_alloc)(void *baton, apr_int32_t *stream_id);
 
-    apr_size_t current_window;
+    serf_config_t *config;
 
 } serf_http2_frame_context_t;
 
@@ -662,7 +663,7 @@ serf__bucket_http2_frame_create(serf_bucket_t *stream,
         ctx->stream_id_baton = stream_id_baton;
     }
 
-    ctx->current_window = 0;
+    ctx->config = NULL;
     ctx->created_frame = FALSE;
 
     return serf_bucket_create(&serf_bucket_type__http2_frame, alloc, ctx);
@@ -924,6 +925,26 @@ serf_http2_frame_peek(serf_bucket_t *bucket,
     return serf_bucket_peek(ctx->chunk, data, len);
 }
 
+static apr_uint64_t
+serf_http2_frame_get_remaining(serf_bucket_t *bucket)
+{
+    serf_http2_frame_context_t *ctx = bucket->data;
+
+    if (!ctx->created_frame)
+        return SERF_LENGTH_UNKNOWN;
+    else
+        return ctx->bytes_remaining;
+}
+
+static apr_status_t
+serf_http2_frame_set_config(serf_bucket_t *bucket,
+                            serf_config_t *config)
+{
+    serf_http2_frame_context_t *ctx = bucket->data;
+    ctx->config = config;
+    return APR_SUCCESS;
+}
+
 static void
 serf_http2_frame_destroy(serf_bucket_t *bucket)
 {
@@ -948,7 +969,7 @@ const serf_bucket_type_t serf_bucket_type__http2_frame =
     serf_http2_frame_peek,
     serf_http2_frame_destroy,
     serf_default_read_bucket,
-    serf_default_get_remaining,
-    serf_default_ignore_config
+    serf_http2_frame_get_remaining,
+    serf_http2_frame_set_config
 };
 
