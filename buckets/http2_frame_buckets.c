@@ -105,6 +105,8 @@ serf__bucket_http2_unframe_read_info(serf_bucket_t *bucket,
         status = serf_bucket_read(ctx->stream, ctx->prefix_remaining, &data, &len);
         if (SERF_BUCKET_READ_ERROR(status))
             return status;
+        else if (!status && !len)
+            return SERF_ERROR_EMPTY_READ;
 
         if (len < FRAME_PREFIX_SIZE) {
             memcpy(ctx->buffer + FRAME_PREFIX_SIZE - ctx->prefix_remaining,
@@ -208,7 +210,7 @@ serf_http2_unframe_read(serf_bucket_t *bucket,
 
     if (status) {
         *len = 0;
-        return status;
+        return (status == SERF_ERROR_EMPTY_READ) ? APR_SUCCESS : status;
     }
 
     if (ctx->payload_remaining == 0) {
@@ -242,8 +244,8 @@ static apr_status_t
 serf_http2_unframe_read_iovec(serf_bucket_t *bucket,
                               apr_size_t requested,
                               int vecs_size,
-struct iovec *vecs,
-    int *vecs_used)
+                              struct iovec *vecs,
+                              int *vecs_used)
 {
     http2_unframe_context_t *ctx = bucket->data;
     apr_status_t status;
@@ -252,7 +254,7 @@ struct iovec *vecs,
 
     if (status) {
         *vecs_used = 0;
-        return status;
+        return (status == SERF_ERROR_EMPTY_READ) ? APR_SUCCESS : status;
     }
 
     if (ctx->payload_remaining == 0) {
@@ -301,7 +303,7 @@ serf_http2_unframe_peek(serf_bucket_t *bucket,
 
     if (status) {
         *len = 0;
-        return status;
+        return (status == SERF_ERROR_EMPTY_READ) ? APR_SUCCESS : status;
     }
 
     status = serf_bucket_peek(ctx->stream, data, len);

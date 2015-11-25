@@ -111,6 +111,8 @@ typedef struct serf_config_t serf_config_t;
 #define SERF_ERROR_TRUNCATED_STREAM (SERF_ERROR_START + 13)
 /* The stream is empty */
 #define SERF_ERROR_EMPTY_STREAM (SERF_ERROR_START + 14)
+/* An empty read was returned. */
+#define SERF_ERROR_EMPTY_READ (SERF_ERROR_START + 15)
 
 /* Http-2 stream errors, mapped into our error range */
 #define SERF_ERROR_HTTP2_NO_ERROR (SERF_ERROR_START + 50)
