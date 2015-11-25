@@ -129,7 +129,7 @@ apr_status_t serf__destroy_request(serf_request_t *request)
         while (*pr) {
             if (*pr == request) {
                 *pr = request->depends_next;
-                continue;
+                break;
             }
 
             pr = &(*pr)->depends_next;
