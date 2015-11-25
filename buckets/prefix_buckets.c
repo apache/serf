@@ -65,13 +65,11 @@ static apr_status_t read_prefix(serf_bucket_t *bucket)
     if (!ctx->read_len) {
 
         /* Perhaps we can handle this without copying any data? */
-        do
-        {
-            status = serf_bucket_read(ctx->stream, ctx->prefix_len, &data,
-                                      &len);
-        } while (!status && !len);
+        status = serf_bucket_read(ctx->stream, ctx->prefix_len, &data, &len);
 
-        if (SERF_BUCKET_READ_ERROR(status))
+        if (!status && !len)
+            return SERF_ERROR_EMPTY_READ;
+        else if (SERF_BUCKET_READ_ERROR(status))
             return status;
 
         if (APR_STATUS_IS_EOF(status) || (len == ctx->prefix_len)) {
@@ -111,6 +109,8 @@ static apr_status_t read_prefix(serf_bucket_t *bucket)
 
         if (SERF_BUCKET_READ_ERROR(status))
             return status;
+        else if (!status && !len)
+            return SERF_ERROR_EMPTY_READ;
 
         memcpy(ctx->buffer + ctx->read_len, data, len);
         ctx->read_len += len;
@@ -149,7 +149,8 @@ static apr_status_t serf_prefix_read(serf_bucket_t *bucket,
 
         if (status) {
             *len = 0;
-            return status;
+            return (status == SERF_ERROR_EMPTY_READ) ? APR_SUCCESS
+                                                     : status;
         }
     }
 
@@ -169,7 +170,8 @@ static apr_status_t serf_prefix_read_iovec(serf_bucket_t *bucket,
 
         if (status) {
             *vecs_used = 0;
-            return status;
+            return (status == SERF_ERROR_EMPTY_READ) ? APR_SUCCESS
+                                                     : status;
         }
     }
 
@@ -188,7 +190,8 @@ static apr_status_t serf_prefix_peek(serf_bucket_t *bucket,
 
         if (status) {
             *len = 0;
-            return status;
+            return (status == SERF_ERROR_EMPTY_READ) ? APR_SUCCESS
+                                                     : status;
         }
     }
 
