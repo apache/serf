@@ -1877,7 +1877,7 @@ serf_hpack_decode_read(serf_bucket_t *bucket,
     apr_status_t status;
 
     status = hpack_process(bucket);
-    if (status || !ctx->agg)
+    if (status)
     {
         *len = 0;
         return (status == SERF_ERROR_EMPTY_READ) ? APR_SUCCESS : status;
@@ -1895,13 +1895,25 @@ serf_hpack_decode_peek(serf_bucket_t *bucket,
     apr_status_t status;
 
     status = hpack_process(bucket);
-    if (status || !ctx->agg)
+    if (status)
     {
         *len = 0;
         return (status == SERF_ERROR_EMPTY_READ) ? APR_SUCCESS : status;
     }
 
     return serf_bucket_peek(ctx->agg, data, len);
+}
+
+static serf_bucket_t *
+serf_hpack_decode_read_bucket(serf_bucket_t *bucket,
+                              const serf_bucket_type_t *type)
+{
+    serf_hpack_decode_ctx_t *ctx = bucket->data;
+
+    if (!ctx->hit_eof)
+        return serf_default_read_bucket(bucket, type);
+    else
+        return serf_bucket_read_bucket(ctx->agg, type);
 }
 
 static apr_status_t
@@ -1930,10 +1942,9 @@ static void
 serf_hpack_decode_destroy(serf_bucket_t *bucket)
 {
     serf_hpack_decode_ctx_t *ctx = bucket->data;
-    serf_bucket_destroy(ctx->stream);
 
-    if (ctx->agg)
-        serf_bucket_destroy(ctx->agg);
+    serf_bucket_destroy(ctx->stream);
+    serf_bucket_destroy(ctx->agg);
 
     if (ctx->method)
         serf_bucket_mem_free(bucket->allocator, (void*)ctx->method);
@@ -1960,7 +1971,7 @@ const serf_bucket_type_t serf_bucket_type__hpack_decode = {
   serf_buckets_are_v2,
   serf_hpack_decode_peek,
   serf_hpack_decode_destroy,
-  serf_default_read_bucket,
+  serf_hpack_decode_read_bucket,
   serf_default_get_remaining,
   serf_hpack_decode_set_config
 };

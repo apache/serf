@@ -72,6 +72,20 @@ static apr_status_t serf_barrier_readline(serf_bucket_t *bucket,
     return serf_bucket_readline(stream, acceptable, found, data, len);
 }
 
+static serf_bucket_t *serf_barrier_read_bucket(serf_bucket_t *bucket,
+                                               const serf_bucket_type_t *type)
+{
+    serf_bucket_t *stream = bucket->data;
+
+    /* If a not-NULL bucket is returned then the ownership of that bucket may
+       now have been transferred. (See aggregate bucket read support).
+
+       This may affect something in our bucket, like any read does, but
+       we still perform our 'barrier job' of keeping the stream alive. */
+
+    return serf_bucket_read_bucket(stream, type);
+}
+
 static apr_status_t serf_barrier_peek(serf_bucket_t *bucket,
                                      const char **data,
                                      apr_size_t *len)
@@ -118,7 +132,7 @@ const serf_bucket_type_t serf_bucket_type_barrier = {
     serf_buckets_are_v2,
     serf_barrier_peek,
     serf_barrier_destroy,
-    serf_default_read_bucket, /* ### TODO? */
+    serf_barrier_read_bucket,
     serf_barrier_get_remaining,
     serf_barrier_set_config,
 };

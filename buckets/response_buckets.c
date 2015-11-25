@@ -35,7 +35,9 @@ typedef struct response_context_t {
     enum {
         STATE_STATUS_LINE,      /* reading status line */
         STATE_NEXT_STATUS_LINE,
+        STATE_PRE_HEADERS,
         STATE_HEADERS,          /* reading headers */
+        STATE_PRE_BODY,
         STATE_BODY,             /* reading body */
         STATE_TRAILERS,         /* reading trailers */
         STATE_DONE              /* we've sent EOF */
@@ -87,8 +89,8 @@ serf_bucket_t *serf_bucket_response_create(
     ctx = serf_bucket_mem_alloc(allocator, sizeof(*ctx));
     ctx->stream = stream;
     ctx->body = NULL;
-    ctx->incoming_headers = serf_bucket_headers_create(allocator);
-    ctx->fetch_headers = ctx->incoming_headers;
+    ctx->incoming_headers = NULL;
+    ctx->fetch_headers = NULL;
     ctx->state = STATE_STATUS_LINE;
     ctx->chunked = 0;
     ctx->head_req = 0;
@@ -118,10 +120,21 @@ void serf_bucket_response_decode_content(serf_bucket_t *bucket,
     ctx->decode_content = decode;
 }
 
-serf_bucket_t *serf_bucket_response_get_headers(
-    serf_bucket_t *bucket)
+serf_bucket_t *serf_bucket_response_get_headers(serf_bucket_t *bucket)
 {
-    return ((response_context_t *)bucket->data)->fetch_headers;
+    response_context_t *ctx = bucket->data;
+
+    if (!ctx->fetch_headers) {
+
+        if (!ctx->incoming_headers) {
+            ctx->incoming_headers = serf_bucket_headers_create(
+                                                        bucket->allocator);
+        }
+
+        ctx->fetch_headers = ctx->incoming_headers;
+    }
+
+    return ctx->fetch_headers;
 }
 
 
@@ -281,7 +294,7 @@ static apr_status_t run_machine(serf_bucket_t *bkt, response_context_t *ctx)
             }
 
             /* Okay... move on to reading the headers. */
-            ctx->state = STATE_HEADERS;
+            ctx->state = STATE_PRE_HEADERS;
         }
         else {
             /* The connection closed before we could get the next
@@ -293,6 +306,34 @@ static apr_status_t run_machine(serf_bucket_t *bkt, response_context_t *ctx)
             }
         }
         break;
+    case STATE_PRE_HEADERS:
+        {
+            serf_bucket_t *read_hdrs;
+
+            ctx->state = STATE_HEADERS;
+
+            /* Perhaps we can just read a headers bucket? */
+            read_hdrs = serf_bucket_read_bucket(ctx->stream,
+                                                &serf_bucket_type_headers);
+
+            if (read_hdrs) {
+                if (ctx->incoming_headers)
+                    serf_bucket_destroy(ctx->incoming_headers);
+
+                ctx->incoming_headers = read_hdrs;
+
+                ctx->state = STATE_PRE_BODY;
+            }
+            else if (!ctx->incoming_headers) {
+                ctx->incoming_headers =
+                    serf_bucket_headers_create(bkt->allocator);
+            }
+
+            if (!ctx->fetch_headers)
+                ctx->fetch_headers = ctx->incoming_headers;
+        }
+        break;
+
     case STATE_HEADERS:
         status = fetch_headers(bkt, ctx);
         if (SERF_BUCKET_READ_ERROR(status))
@@ -301,7 +342,15 @@ static apr_status_t run_machine(serf_bucket_t *bkt, response_context_t *ctx)
         /* If an empty line was read, then we hit the end of the headers.
          * Move on to the body.
          */
-        if (ctx->linebuf.state == SERF_LINEBUF_READY && !ctx->linebuf.used) {
+        if (ctx->linebuf.state != SERF_LINEBUF_READY || ctx->linebuf.used)
+            break;
+
+        /* Advance the state. */
+        ctx->state = STATE_PRE_BODY;
+        /* fall through */
+
+    case STATE_PRE_BODY:
+        {
             const char *v;
             int chunked = 0;
             int gzip = 0;
@@ -523,7 +572,7 @@ apr_status_t serf_bucket_response_status(
      * it is quite possible to advance *and* to return APR_EAGAIN.
      */
     status = run_machine(bkt, ctx);
-    if (ctx->state == STATE_HEADERS) {
+    if (ctx->state != STATE_STATUS_LINE) {
         *sline = ctx->sl;
     }
     else {
