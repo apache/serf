@@ -592,7 +592,7 @@ static void fcgi_params_decode_destroy(serf_bucket_t *bucket)
 }
 
 
-extern const serf_bucket_type_t serf_bucket_type__fcgi_params_decode =
+const serf_bucket_type_t serf_bucket_type__fcgi_params_decode =
 {
     "FCGI-PARAMS_DECODE",
     fcgi_params_decode_read,
