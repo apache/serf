@@ -65,6 +65,9 @@ serf_http2__stream_create(serf_http2_protocol_t *h2,
     stream->lr_window = lr_window;
     stream->rl_window = rl_window;
 
+    stream->rl_window_upd_below = 1024 * 1024;
+    stream->rl_window_upd_to = 16 * 1024 * 1024;
+
     if (streamid >= 0)
         stream->streamid = streamid;
     else
