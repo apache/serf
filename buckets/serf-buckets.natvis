@@ -7,6 +7,9 @@
             <Item Name="data" Condition="type->name == serf_bucket_type_aggregate.name">
                 (aggregate_context_t *)data
             </Item>
+            <Item Name="data" Condition="type->name == serf_bucket_type_barrier.name">
+                (serf_bucket_t *)data
+            </Item>
             <Item Name="data" Condition="type->name == serf_bucket_type_headers.name">
                 (headers_context_t *)data
             </Item>
@@ -15,6 +18,15 @@
             </Item>
             <Item Name="data" Condition="type->name == serf_bucket_type_request.name">
                 (request_context_t *)data
+            </Item>
+            <Item Name="data" Condition="type->name == serf_bucket_type_response.name">
+                (response_context_t *)data
+            </Item>
+            <Item Name="data" Condition="type->name == serf_bucket_type_simple.name">
+                (simple_context_t *)data
+            </Item>
+            <Item Name="data" Condition="type->name == serf_bucket_type_socket.name">
+                (socket_context_t *)data
             </Item>
             <Item Name="data" Condition="type->name == serf_bucket_type__event.name">
                 (event_context_t *)data
