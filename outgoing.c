@@ -796,15 +796,6 @@ static apr_status_t read_from_connection(serf_connection_t *conn)
     apr_pool_t *tmppool;
     apr_status_t close_connection = APR_SUCCESS;
 
-    /* Whatever is coming in on the socket corresponds to the first request
-     * on our chain.
-     */
-    serf_request_t *request = conn->written_reqs;
-    if (!request) {
-        /* Request wasn't completely written yet! */
-        request = conn->unwritten_reqs;
-    }
-
     /* If the stop_writing flag was set on the connection, reset it now because
        there is some data to read. */
     if (conn->pump.stop_writing) {
@@ -819,7 +810,17 @@ static apr_status_t read_from_connection(serf_connection_t *conn)
 
     /* Invoke response handlers until we have no more work. */
     while (1) {
+        serf_request_t *request;
         apr_pool_clear(tmppool);
+
+        /* Whatever is coming in on the socket corresponds to the first request
+         * on our chain.
+         */
+        request = conn->written_reqs;
+        if (!request) {
+            /* Request wasn't completely written yet! */
+            request = conn->unwritten_reqs;
+        }
 
         /* We have a different codepath when we can have async responses. */
         if (conn->async_responses) {
