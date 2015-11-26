@@ -634,12 +634,20 @@ static apr_status_t serf_response_readline(serf_bucket_t *bucket,
     /* Delegate to the stream bucket to do the readline. */
     status = serf_bucket_readline(ctx->body, acceptable, found, data, len);
 
-fake_eof:
-    if (APR_STATUS_IS_EOF(status) && ctx->error_on_eof) {
-        *len = 0;
-        *found = SERF_NEWLINE_NONE;
-        return ctx->error_on_eof;
+    if (APR_STATUS_IS_EOF(status)) {
+        if (ctx->chunked) {
+            ctx->state = STATE_TRAILERS;
+            /* Mask the result. */
+            status = APR_SUCCESS;
+        }
+        else {
+            ctx->state = STATE_DONE;
+        }
     }
+
+fake_eof:
+    if (APR_STATUS_IS_EOF(status) && ctx->error_on_eof)
+        return ctx->error_on_eof;
 
     return status;
 }
@@ -661,6 +669,17 @@ static apr_status_t serf_response_read_iovec(serf_bucket_t *bucket,
 
     status = serf_bucket_read_iovec(ctx->body, requested, vecs_size,
                                     vecs, vecs_used);
+
+    if (APR_STATUS_IS_EOF(status)) {
+        if (ctx->chunked) {
+            ctx->state = STATE_TRAILERS;
+            /* Mask the result. */
+            status = APR_SUCCESS;
+        }
+        else {
+            ctx->state = STATE_DONE;
+        }
+    }
 
 fake_eof:
     if (APR_STATUS_IS_EOF(status) && ctx->error_on_eof)
