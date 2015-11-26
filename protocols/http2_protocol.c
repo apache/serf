@@ -1392,8 +1392,7 @@ http2_process(serf_http2_protocol_t *h2)
                     if (stream)
                     {
                         body = serf_bucket_prefix_create(
-                                                body,
-                                                HTTP2_FRAME_TYPE_RST_STREAM,
+                                                body, HTTP2_RST_DATA_SIZE,
                                                 http2_handle_frame_reset,
                                                 stream, h2->allocator);
                     }
