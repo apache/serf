@@ -127,6 +127,9 @@ typedef struct serf_http2_stream_t
   apr_uint32_t lr_window; /* local->remote */
   apr_uint32_t rl_window; /* remote->local */
 
+  apr_uint32_t rl_window_upd_below;
+  apr_uint32_t rl_window_upd_to;
+
   /* -1 until allocated. Odd is client side initiated, even server side */
   apr_int32_t streamid;
 
