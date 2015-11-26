@@ -279,7 +279,7 @@ static apr_status_t dispatch_auth(int code,
    authentication or validation is needed.
    *CONSUMED_RESPONSE will be 1 if authentication is involved (either a 401/407
    response or a response with an authn header), 0 otherwise. */
-apr_status_t serf__handle_auth_response(int *consumed_response,
+apr_status_t serf__handle_auth_response(bool *consumed_response,
                                         serf_request_t *request,
                                         serf_bucket_t *response,
                                         apr_pool_t *pool)
@@ -287,7 +287,7 @@ apr_status_t serf__handle_auth_response(int *consumed_response,
     apr_status_t status;
     serf_status_line sl;
 
-    *consumed_response = 0;
+    *consumed_response = false;
 
     /* TODO: the response bucket was created by the application, not at all
        guaranteed that this is of type response_bucket!! */
@@ -318,25 +318,23 @@ apr_status_t serf__handle_auth_response(int *consumed_response,
         /* Don't bother handling the authentication request if the response
            wasn't received completely yet. Serf will call serf__handle_auth_response
            again when more data is received. */
-        status = discard_body(response);
-        *consumed_response = 1;
-
-        /* Discard all response body before processing authentication. */
-        if (!APR_STATUS_IS_EOF(status)) {
-            return status;
-        }
 
         status = dispatch_auth(sl.code, request, response, pool);
         if (status != APR_SUCCESS) {
             return status;
         }
 
-        /* Requeue the request with the necessary auth headers. */
-        /* ### application doesn't know about this request! we just drop it
-           ### on the floor.  */
-        (void) serf__request_requeue(request);
+        request->auth_done = true;
 
-        return APR_EOF;
+        /* Requeue the request with the necessary auth headers.*/
+        status = serf_connection__request_requeue(request);
+
+        if (status)
+            return status;
+
+        *consumed_response = true;
+
+        return APR_SUCCESS;
     } else {
         serf__validate_response_func_t validate_resp;
         serf_connection_t *conn = request->conn;
@@ -365,7 +363,7 @@ apr_status_t serf__handle_auth_response(int *consumed_response,
             /* If there was an error in the final step of the authentication,
                consider the reponse body as invalid and discard it. */
             status = discard_body(response);
-            *consumed_response = 1;
+            *consumed_response = true;
 
             if (!APR_STATUS_IS_EOF(status)) {
                 return status;
@@ -374,6 +372,8 @@ apr_status_t serf__handle_auth_response(int *consumed_response,
             return resp_status;
         }
     }
+
+    request->auth_done = true;
 
     return APR_SUCCESS;
 }

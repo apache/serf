@@ -36,6 +36,11 @@ static apr_status_t clean_resp(void *data)
     serf_request_t *request = data;
     apr_pool_t *respool = request->respool;
 
+    /* Note that this function must handle rehooking several
+       variables to a different request!
+
+       See serf_connection__request_requeue() */
+
     request->respool = NULL;
 
     /* The request's RESPOOL is being cleared.  */
@@ -276,7 +281,7 @@ apr_status_t serf__setup_request(serf_request_t *request)
 apr_status_t serf__handle_response(serf_request_t *request,
                                    apr_pool_t *pool)
 {
-    int consumed_response = 0;
+    bool consumed_response = false;
 
     /* Only enable the new authentication framework if the program has
      * registered an authentication credential callback.
@@ -284,7 +289,7 @@ apr_status_t serf__handle_response(serf_request_t *request,
      * This permits older Serf apps to still handle authentication
      * themselves by not registering credential callbacks.
      */
-    if (request->conn->ctx->cred_cb) {
+    if (!request->auth_done && request->conn->ctx->cred_cb) {
         apr_status_t status;
 
         status = serf__handle_auth_response(&consumed_response,
@@ -411,8 +416,8 @@ static serf_request_t *
 create_request(serf_connection_t *conn,
                serf_request_setup_t setup,
                void *setup_baton,
-               int priority,
-               int ssltunnel)
+               bool priority,
+               bool ssltunnel)
 {
     serf_request_t *request;
 
@@ -428,6 +433,7 @@ create_request(serf_connection_t *conn,
     request->priority = priority;
     request->writing = SERF_WRITING_NONE;
     request->ssltunnel = ssltunnel;
+    request->auth_done = FALSE;
     request->next = NULL;
     request->auth_baton = NULL;
     request->protocol_baton = NULL;
@@ -447,8 +453,8 @@ serf_request_t *serf_connection_request_create(
     serf_request_t *request;
 
     request = create_request(conn, setup, setup_baton,
-                             0, /* priority */
-                             0  /* ssl tunnel */);
+                             false /* priority */,
+                             false /* ssl tunnel */);
 
     /* Link the request to the end of the request chain. */
     serf__link_requests(&conn->unwritten_reqs, &conn->unwritten_reqs_tail, request);
@@ -460,18 +466,11 @@ serf_request_t *serf_connection_request_create(
     return request;
 }
 
-static serf_request_t *
-priority_request_create(serf_connection_t *conn,
-                        int ssltunnelreq,
-                        serf_request_setup_t setup,
-                        void *setup_baton)
+static void
+insert_priority_request(serf_request_t *request)
 {
-    serf_request_t *request;
     serf_request_t *iter, *prev;
-
-    request = create_request(conn, setup, setup_baton,
-                             1, /* priority */
-                             ssltunnelreq);
+    serf_connection_t *conn = request->conn;
 
     /* Link the new request after the last written request. */
     iter = conn->unwritten_reqs;
@@ -509,6 +508,21 @@ priority_request_create(serf_connection_t *conn,
 
     /* Ensure our pollset becomes writable in context run */
     serf_io__set_pollset_dirty(&conn->io);
+}
+
+static serf_request_t *
+priority_request_create(serf_connection_t *conn,
+                        int ssltunnelreq,
+                        serf_request_setup_t setup,
+                        void *setup_baton)
+{
+    serf_request_t *request;
+
+    request = create_request(conn, setup, setup_baton,
+                             true /* priority */,
+                             ssltunnelreq);
+
+    insert_priority_request(request);
 
     return request;
 }
@@ -532,16 +546,141 @@ serf_request_t *serf__ssltunnel_request_create(serf_connection_t *conn,
                                    setup, setup_baton);
 }
 
-
-serf_request_t *serf__request_requeue(const serf_request_t *request)
+/* Serf request_handler_t to discard a request */
+static apr_status_t discard_response_handler(serf_request_t *request,
+                                             serf_bucket_t *response,
+                                             void *handler_baton,
+                                             apr_pool_t *pool)
 {
-    /* ### in the future, maybe we could reset REQUEST and try again?  */
-    return priority_request_create(request->conn,
-                                   request->ssltunnel,
-                                   request->setup,
-                                   request->setup_baton);
+    apr_status_t status;
+    apr_size_t len;
+
+    do
+    {
+        const char *data;
+
+        status = serf_bucket_read(response, SERF_READ_ALL_AVAIL, &data, &len);
+    } while (!status && len);
+
+    return status;
 }
 
+apr_status_t serf_connection__request_requeue(serf_request_t *request)
+{
+    serf_request_t *discard;
+    serf_request_t **pr;
+
+    /* For some reason, somebody wants to restart this request, that was
+       at least partially written and partially read. Most likely to
+       slightly change it. (E.g. to add auth headers).
+
+       To handle this we have to do two things: we have to handle remaining
+       incoming data on the existing request. And we have to make the request
+       ready to write it again.. preferably as the first new request.
+     */
+
+    /* Setup a new request to handle discarding the remaining body */
+    discard = create_request(request->conn,
+                             NULL, NULL,
+                             request->priority,
+                             request->ssltunnel);
+
+    discard->respool = request->respool;
+    discard->allocator = request->allocator;
+    discard->req_bkt = request->req_bkt;
+    discard->resp_bkt = request->resp_bkt;
+
+    discard->setup = NULL;  /* Already setup */
+    discard->setup_baton = NULL;
+
+    discard->acceptor = NULL;
+    discard->acceptor_baton = NULL; /* Already accepted */
+
+    discard->handler = discard_response_handler;
+    discard->handler_baton = NULL;
+
+    discard->protocol_baton = request->protocol_baton;
+    discard->auth_done = request->auth_done;
+    discard->auth_baton = request->auth_baton;
+
+    discard->writing = request->writing;
+
+    if (discard->respool) {
+        apr_pool_cleanup_kill(discard->respool, request, clean_resp);
+        apr_pool_cleanup_register(discard->respool, discard,
+                                  clean_resp, apr_pool_cleanup_null);
+    }
+
+    if (request->depends_on) {
+        /* Update request dependencies */
+        discard->depends_on = request->depends_on;
+
+        for (pr = &discard->depends_on->depends_first;
+             *pr;
+             pr = &(*pr)->depends_next)
+        {
+            if (*pr == request) {
+                *pr = discard;
+                discard->depends_next = request->depends_next;
+                request->depends_next = NULL;
+                request->depends_on = NULL;
+                break;
+            }
+        }
+    }
+    if (request->depends_first) {
+        serf_request_t *r;
+
+        for (r = request->depends_first; r; r = r->depends_next) {
+            r->depends_on = discard;
+        }
+        discard->depends_first = request->depends_first;
+        request->depends_first = NULL;
+    }
+
+    /* And now make the discard request take the place of the old request */
+    for (pr = &request->conn->written_reqs; *pr; pr = &(*pr)->next) {
+        if (*pr == request) {
+            *pr = discard;
+            discard->next = request->next;
+            request->next = NULL;
+
+            if (!discard->next)
+                request->conn->written_reqs_tail = discard;
+            break;
+        }
+    }
+
+    /* Tell the protocol handler (if any) that we are no longer looking at the
+       request */
+
+    if (request->conn->perform_cancel_request)
+        request->conn->perform_cancel_request(discard, SERF_ERROR_HTTP2_CANCEL);
+
+    /* And now unhook the existing request */
+    request->allocator = NULL;
+    request->respool = NULL;
+    request->req_bkt = NULL;
+    request->resp_bkt = NULL;
+    request->writing = SERF_WRITING_NONE;
+    request->auth_baton = NULL;
+    request->protocol_baton = NULL;
+
+    request->acceptor = NULL;
+    request->acceptor_baton = NULL;
+    request->handler = NULL;
+    request->handler_baton = NULL;
+    request->auth_done = false;
+
+    if (discard->depends_first || discard->depends_on) {
+        serf_connection_request_prioritize(request, discard, 0xFFFF,
+                                           TRUE);
+    }
+
+    insert_priority_request(request);
+
+    return APR_SUCCESS;
+}
 
 apr_status_t serf_request_cancel(serf_request_t *request)
 {

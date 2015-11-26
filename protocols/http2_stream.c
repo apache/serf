@@ -37,6 +37,7 @@ struct serf_http2_stream_data_t
     serf_bucket_t *response_agg;
     serf_hpack_table_t *tbl;
     serf_bucket_t *data_tail;
+    bool resetted;
 };
 
 serf_http2_stream_t *
@@ -61,6 +62,7 @@ serf_http2__stream_create(serf_http2_protocol_t *h2,
     stream->data->response_agg = NULL;
     stream->data->tbl = NULL;
     stream->data->data_tail = NULL;
+    stream->data->resetted = false;
 
     stream->lr_window = lr_window;
     stream->rl_window = rl_window;
@@ -430,8 +432,10 @@ serf_http2__stream_reset(serf_http2_stream_t *stream,
 {
     stream->status = H2S_CLOSED;
 
-    if (stream->streamid < 0)
+    if (stream->streamid < 0 || stream->data->resetted)
         return APR_SUCCESS;
+
+    stream->data->resetted = true;
 
     if (local_reset)
         return serf_http2__enqueue_stream_reset(stream->h2,
@@ -442,8 +446,8 @@ serf_http2__stream_reset(serf_http2_stream_t *stream,
 }
 
 void serf_http2__stream_cancel_request(serf_http2_stream_t *stream,
-                                               serf_request_t *rq,
-                                               apr_status_t reason)
+                                       serf_request_t *rq,
+                                       apr_status_t reason)
 {
     if (stream->streamid < 0)
         return; /* Never hit the wire */
@@ -456,17 +460,11 @@ void serf_http2__stream_cancel_request(serf_http2_stream_t *stream,
         reason = SERF_ERROR_HTTP2_CANCEL;
     }
 
+    stream->data->request = rq; /* Might have changed! */
+
     /* Let the other party know we don't want anything */
     serf_http2__stream_reset(stream, reason, true);
 
-    if (!stream->data)
-        return;
-
-    if (stream->data && stream->data->request)
-        stream->data->request = NULL;
-
-    /* Would be nice if we could response_agg, but that is typically
-       not safe here, as we might still be reading from it */
 }
 
 void serf_http2__stream_prioritize_request(serf_http2_stream_t *stream,
@@ -487,6 +485,9 @@ stream_response_eof(void *baton,
                     serf_bucket_t *aggregate_bucket)
 {
     serf_http2_stream_t *stream = baton;
+
+    if (stream->data->resetted)
+        return APR_EAGAIN;
 
     switch (stream->status)
     {
@@ -750,14 +751,15 @@ serf_http2__stream_processor(void *baton,
                              serf_bucket_t *bucket)
 {
     serf_http2_stream_t *stream = baton;
+    serf_http2_stream_data_t *sd = stream->data;
     apr_status_t status = APR_SUCCESS;
 
-    SERF_H2_assert(stream->data->response_agg != NULL);
+    SERF_H2_assert(stream->data->response_agg != NULL
+                   && !stream->data->resetted);
 
-    if (stream->data->request) {
-        serf_request_t *request = stream->data->request;
+    if (sd->request) {
 
-        SERF_H2_assert(request->resp_bkt != NULL);
+        SERF_H2_assert(sd->request->resp_bkt != NULL);
 
         /* Response handlers are expected to read until they get some error,
            but at least some implementations assume that just returning
@@ -768,36 +770,42 @@ serf_http2__stream_processor(void *baton,
            some part of the frame open (good case), or we might have completed
            the frame and are never called again. */
         do {
-            status = serf__handle_response(request, request->respool);
+            status = serf__handle_response(sd->request,
+                                           sd->request->respool);
         } while (status == APR_SUCCESS);
 
-        if (!APR_STATUS_IS_EOF(status)
-            && !SERF_BUCKET_READ_ERROR(status))
+        if (sd->resetted) {
+            status = APR_EOF;
+        }
+        else if (!APR_STATUS_IS_EOF(status)
+                 && !SERF_BUCKET_READ_ERROR(status))
+        {
             return status;
+        }
 
           /* Ok, the request thinks is done, let's handle the bookkeeping,
              to remove it from the outstanding requests */
         {
-            serf_connection_t *conn = serf_request_get_conn(request);
+            serf_connection_t *conn = serf_request_get_conn(sd->request);
             serf_request_t **rq = &conn->written_reqs;
             serf_request_t *last = NULL;
 
-            while (*rq && (*rq != request)) {
+            while (*rq && (*rq != sd->request)) {
                 last = *rq;
                 rq = &last->next;
             }
 
             if (*rq)
             {
-                (*rq) = request->next;
+                (*rq) = sd->request->next;
 
-                if (conn->written_reqs_tail == request)
+                if (conn->written_reqs_tail == sd->request)
                     conn->written_reqs_tail = last;
 
                 conn->nr_of_written_reqs--;
             }
 
-            serf__destroy_request(request);
+            serf__destroy_request(sd->request);
             stream->data->request = NULL;
         }
 
@@ -874,7 +882,7 @@ serf_http2__stream_processor(void *baton,
         }
     }
 
-    if (APR_STATUS_IS_EOF(status)
+    if ((APR_STATUS_IS_EOF(status) || sd->resetted)
         && (stream->status == H2S_CLOSED
             || stream->status == H2S_HALFCLOSED_REMOTE))
     {
@@ -883,6 +891,7 @@ serf_http2__stream_processor(void *baton,
          frames */
         serf_bucket_destroy(stream->data->response_agg);
         stream->data->response_agg = NULL;
+        status = APR_EOF;
     }
 
     return status;
