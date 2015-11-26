@@ -82,13 +82,8 @@ static apr_status_t wait_for_chunk(serf_bucket_t *bucket)
 
             /* if a line was read, then parse it. */
             if (ctx->linebuf.state == SERF_LINEBUF_READY) {
-                /* NUL-terminate the line. if it filled the entire buffer,
-                   then just assume the thing is too large. */
-                if (ctx->linebuf.used == sizeof(ctx->linebuf.line))
-                    return APR_FROM_OS_ERROR(ERANGE);
-                ctx->linebuf.line[ctx->linebuf.used] = '\0';
 
-                /* convert from HEX digits. */
+                /* Convert from HEX digits. The linebuffer ensures a '\0' */
                 ctx->body_left = apr_strtoi64(ctx->linebuf.line, NULL, 16);
                 if (errno == ERANGE) {
                     return APR_FROM_OS_ERROR(ERANGE);
