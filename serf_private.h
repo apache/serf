@@ -65,16 +65,9 @@ typedef int serf__bool_t; /* Not _Bool */
    ### stop, rebuild a pollset, and repopulate it. what suckage.  */
 #define MAX_CONN 16
 
-/* Windows does not define IOV_MAX, so we need to ensure it is defined. */
-#ifndef IOV_MAX
-/* There is no limit for iovec count on Windows, but apr_socket_sendv
-   allocates WSABUF structures on stack if vecs_count <= 50. */
-#define IOV_MAX 50
-#endif
-
 /* But we use our own limit in most cases. Typically 50 on Windows
    (see IOV_MAX definition above) and typically 64 on posix */
-#define SERF__STD_IOV_COUNT MIN(IOV_MAX, 64)
+#define SERF__STD_IOV_COUNT MIN(APR_MAX_IOVEC_SIZE, 64)
 
 
 /* Older versions of APR do not have this macro.  */
@@ -231,9 +224,10 @@ struct serf_request_t {
     serf_bucket_t *resp_bkt;
 
     serf_request_writing_t writing;
-    int priority;
+    bool priority;
     /* 1 if this is a request to setup a SSL tunnel, 0 for normal requests. */
-    int ssltunnel;
+    bool ssltunnel;
+    bool auth_done; /* auth and connection level handling done */
 
     serf_request_t *depends_on;      /* On what request do we depend */
     serf_request_t *depends_next;    /* Next dependency on parent*/
@@ -673,7 +667,7 @@ apr_status_t serf__auth_setup_request(peer_t peer,
  * Handles a 401 or 407 response, tries the different available authentication
  * handlers.
  */
-apr_status_t serf__handle_auth_response(int *consumed_response,
+apr_status_t serf__handle_auth_response(bool *consumed_response,
                                         serf_request_t *request,
                                         serf_bucket_t *response,
                                         apr_pool_t *pool);
@@ -719,7 +713,7 @@ apr_status_t serf__provide_credentials(serf_context_t *ctx,
                                        apr_pool_t *pool);
 
 /* Requeue a request (at the front).  */
-serf_request_t *serf__request_requeue(const serf_request_t *request);
+apr_status_t serf_connection__request_requeue(serf_request_t *request);
 
 apr_status_t serf_connection__perform_setup(serf_connection_t *conn);
 
