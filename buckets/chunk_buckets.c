@@ -23,6 +23,7 @@
 
 #include "serf.h"
 #include "serf_bucket_util.h"
+#include "serf_private.h"
 
 
 typedef struct chunk_context_t {
@@ -65,7 +66,8 @@ static apr_status_t create_chunk(serf_bucket_t *bucket)
     serf_bucket_t *simple_bkt;
     apr_size_t chunk_len;
     apr_size_t stream_len;
-    struct iovec vecs[66]; /* 64 + chunk trailer + EOF trailer = 66 */
+    /* 64 + chunk trailer + EOF trailer = 66 */
+    struct iovec vecs[MIN(APR_MAX_IOVEC_SIZE, SERF__STD_IOV_COUNT + 2)];
     int vecs_read;
     int i;
 
@@ -75,7 +77,7 @@ static apr_status_t create_chunk(serf_bucket_t *bucket)
 
     ctx->last_status =
         serf_bucket_read_iovec(ctx->stream, SERF_READ_ALL_AVAIL,
-                               64, vecs, &vecs_read);
+                               COUNT_OF(vecs) - 2, vecs, &vecs_read);
 
     if (SERF_BUCKET_READ_ERROR(ctx->last_status)) {
         /* Uh-oh. */

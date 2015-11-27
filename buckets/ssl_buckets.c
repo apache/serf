@@ -1097,11 +1097,12 @@ static apr_status_t ssl_encrypt(void *baton, apr_size_t bufsize,
         apr_size_t interim_len;
 
         if (!ctx->want_read) {
-            struct iovec vecs[64];
+            struct iovec vecs[SERF__STD_IOV_COUNT];
             int vecs_read;
 
             status = serf_bucket_read_iovec(ctx->encrypt.stream,
-                                            interim_bufsize, 64, vecs,
+                                            interim_bufsize,
+                                            COUNT_OF(vecs), vecs,
                                             &vecs_read);
 
             if (!SERF_BUCKET_READ_ERROR(status) && vecs_read) {
@@ -1185,12 +1186,12 @@ static apr_status_t ssl_encrypt(void *baton, apr_size_t bufsize,
     /* Okay, we exhausted our underlying stream. */
     if (!SERF_BUCKET_READ_ERROR(status)) {
         apr_status_t agg_status;
-        struct iovec vecs[64];
+        struct iovec vecs[SERF__STD_IOV_COUNT];
         int vecs_read, i;
 
         /* We read something! */
         agg_status = serf_bucket_read_iovec(ctx->encrypt_pending, bufsize,
-                                            64, vecs, &vecs_read);
+                                            COUNT_OF(vecs), vecs, &vecs_read);
         *len = 0;
         for (i = 0; i < vecs_read; i++) {
             memcpy(buf + *len, vecs[i].iov_base, vecs[i].iov_len);
