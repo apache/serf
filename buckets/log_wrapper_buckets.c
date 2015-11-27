@@ -59,7 +59,7 @@ serf_log_wrapped_readline(serf_bucket_t *bucket,
 
     if (*len) {
         serf__log(LOGLVL_DEBUG, LOGCOMP_CONN, ctx->prefix, ctx->config,
-                  "--- %d bytes. --\n", *len);
+                  "--- %"APR_SIZE_T_FMT" bytes. --\n", *len);
         serf__log(LOGLVL_DEBUG, LOGCOMP_RAWMSG, ctx->prefix, ctx->config,
                   "%.*s\n", *len, *data);
     }
@@ -89,7 +89,7 @@ serf_log_wrapped_read_iovec(serf_bucket_t *bucket,
     for (i = 0, len = 0; i < *vecs_used; i++)
         len += vecs[i].iov_len;
     serf__log(LOGLVL_DEBUG, LOGCOMP_CONN, ctx->prefix, ctx->config,
-              "--- %d bytes. --\n", len);
+              "--- %"APR_SIZE_T_FMT" bytes. --\n", len);
 
     for (i = 0; i < *vecs_used; i++) {
         serf__log_nopref(LOGLVL_DEBUG, LOGCOMP_RAWMSG, ctx->config,
@@ -114,7 +114,7 @@ serf_log_wrapped_read(serf_bucket_t *bucket, apr_size_t requested,
                   "Error %d while reading.\n", status);
     else if (*len) {
         serf__log(LOGLVL_DEBUG, LOGCOMP_CONN, ctx->prefix, ctx->config,
-                  "--- %d bytes. --\n", *len);
+                  "--- %"APR_SIZE_T_FMT" bytes. --\n", *len);
         serf__log(LOGLVL_DEBUG, LOGCOMP_RAWMSG, ctx->prefix, ctx->config,
                   "%.*s\n", *len, *data);
     }
