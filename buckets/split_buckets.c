@@ -127,11 +127,18 @@ static apr_status_t serf_split_read(serf_bucket_t *bucket,
             sctx->fixed_size = sctx->max_size = sctx->read_size;
             status = APR_EOF;
         }
-        else if (APR_STATUS_IS_EOF(status)
-                 && (sctx->fixed_size && sctx->read_size != sctx->fixed_size)) {
+        else if (APR_STATUS_IS_EOF(status)) {
+            sctx->at_eof = true;
 
-            /* We promised more data via get_remaining() than we can deliver */
-            status = SERF_ERROR_TRUNCATED_STREAM;
+            if (sctx->fixed_size && sctx->read_size != sctx->fixed_size) {
+                /* We promised more data via get_remaining() than we can
+                   deliver. -> BAD get_remaining()  */
+                status = SERF_ERROR_TRUNCATED_STREAM;
+            }
+            else {
+                /* Ok, then this is our size */
+                sctx->max_size = sctx->fixed_size = sctx->read_size;
+            }
         }
     }
     else
@@ -197,6 +204,10 @@ static apr_status_t serf_split_read_iovec(serf_bucket_t *bucket,
                    deliver. -> BAD get_remaining()  */
                 status = SERF_ERROR_TRUNCATED_STREAM;
             }
+            else {
+                /* Ok, then this is our size */
+                sctx->max_size = sctx->fixed_size = sctx->read_size;
+            }
         }
     }
     else
@@ -251,7 +262,7 @@ static apr_status_t serf_split_peek(serf_bucket_t *bucket,
 
         sctx->cant_read = (*len > 0);
     }
-    else if (SERF_BUCKET_READ_ERROR(status))
+    else
         sctx->cant_read = false;
 
     return status;
