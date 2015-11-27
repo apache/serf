@@ -59,6 +59,7 @@ static void appendErrMessage(const MockHTTP *mh, const char *fmt, ...)
     va_start(argp, fmt);
     apr_pool_create(&scratchpool, mh->pool);
     msg = apr_pvsprintf(scratchpool, fmt, argp);
+    va_end(argp);
 
     len = strlen(msg) + 1; /* include trailing \0 */
     len = startpos + len > ERRMSG_MAXSIZE ? ERRMSG_MAXSIZE - startpos - 1: len;
