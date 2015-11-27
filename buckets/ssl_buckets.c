@@ -347,7 +347,7 @@ static int bio_bucket_read(BIO *bio, char *in, int inlen)
     }
 
     serf__log(LOGLVL_DEBUG, LOGCOMP_SSL, __FILE__, ctx->config,
-              "bio_bucket_read received %d bytes (%d)\n", len, status);
+              "bio_bucket_read received %"APR_SIZE_T_FMT" bytes (%d)\n", len, status);
 
     memcpy(in, data, len);
     return len;
@@ -957,7 +957,7 @@ static apr_status_t ssl_decrypt(void *baton, apr_size_t bufsize,
     }
 
     serf__log(LOGLVL_DEBUG, LOGCOMP_SSL, __FILE__, ctx->config,
-              "ssl_decrypt: begin %d\n", bufsize);
+              "ssl_decrypt: begin %" APR_SIZE_T_FMT "\n", bufsize);
 
     ctx->want_read = FALSE; /* Reading now */
     ctx->crypt_status = APR_SUCCESS; /* Clear before calling SSL */
@@ -1003,7 +1003,7 @@ static apr_status_t ssl_decrypt(void *baton, apr_size_t bufsize,
         *len = ssl_len;
         status = ctx->crypt_status;
         serf__log(LOGLVL_DEBUG, LOGCOMP_SSLMSG, __FILE__, ctx->config,
-                    "---\n%.*s\n-(%d)-\n", *len, buf, *len);
+                    "---\n%.*s\n-(%"APR_SIZE_T_FMT")-\n", *len, buf, *len);
     }
 
 
@@ -1039,7 +1039,7 @@ static apr_status_t ssl_decrypt(void *baton, apr_size_t bufsize,
     }
 
     serf__log(LOGLVL_DEBUG, LOGCOMP_SSL, __FILE__, ctx->config,
-              "ssl_decrypt: %d %d\n", status, *len);
+              "ssl_decrypt: %d %"APR_SIZE_T_FMT"\n", status, *len);
 
     return status;
 }
@@ -1058,7 +1058,7 @@ static apr_status_t ssl_encrypt(void *baton, apr_size_t bufsize,
         return ctx->fatal_err;
 
     serf__log(LOGLVL_DEBUG, LOGCOMP_SSL, __FILE__, ctx->config,
-              "ssl_encrypt: begin %d\n", bufsize);
+              "ssl_encrypt: begin %"APR_SIZE_T_FMT"\n", bufsize);
 
     if (!ctx->handshake_done) {
 
@@ -1085,7 +1085,7 @@ static apr_status_t ssl_encrypt(void *baton, apr_size_t bufsize,
         }
 
         serf__log(LOGLVL_DEBUG, LOGCOMP_SSL, __FILE__, ctx->config,
-                  "ssl_encrypt: %d %d (quick read)\n",
+                  "ssl_encrypt: %d %"APR_SIZE_T_FMT" (quick read)\n",
                   status, *len);
 
         return status;
@@ -1130,7 +1130,7 @@ static apr_status_t ssl_encrypt(void *baton, apr_size_t bufsize,
                 interim_len = vecs_data_len;
 
                 serf__log(LOGLVL_DEBUG, LOGCOMP_SSL, __FILE__, ctx->config,
-                          "ssl_encrypt: bucket read %d bytes; "\
+                          "ssl_encrypt: bucket read %"APR_SIZE_T_FMT" bytes; "\
                           "status %d\n", interim_len, status);
 
                 /* When an SSL_write() operation has to be repeated because of
@@ -1165,7 +1165,7 @@ static apr_status_t ssl_encrypt(void *baton, apr_size_t bufsize,
                     serf_bucket_mem_free(ctx->allocator, vecs_data);
 
                     serf__log(LOGLVL_DEBUG, LOGCOMP_SSL, __FILE__, ctx->config,
-                              "---\n%.*s\n-(%d)-\n",
+                              "---\n%.*s\n-(%"APR_SIZE_T_FMT")-\n",
                               interim_len, vecs_data, interim_len);
 
                 }
@@ -1199,7 +1199,7 @@ static apr_status_t ssl_encrypt(void *baton, apr_size_t bufsize,
         }
 
         serf__log(LOGLVL_DEBUG, LOGCOMP_SSL, __FILE__, ctx->config,
-                  "ssl_encrypt read agg: %d %d %d %d\n", status, agg_status,
+                  "ssl_encrypt read agg: %d %d %d %"APR_SIZE_T_FMT"\n", status, agg_status,
                   ctx->crypt_status, *len);
 
         if (!agg_status) {
@@ -1208,7 +1208,7 @@ static apr_status_t ssl_encrypt(void *baton, apr_size_t bufsize,
     }
 
     serf__log(LOGLVL_DEBUG, LOGCOMP_SSL, __FILE__, ctx->config,
-              "ssl_encrypt finished: %d %d\n", status, *len);
+              "ssl_encrypt finished: %d %"APR_SIZE_T_FMT"\n", status, *len);
 
     return status;
 }
