@@ -796,13 +796,6 @@ static apr_status_t read_from_connection(serf_connection_t *conn)
     apr_pool_t *tmppool;
     apr_status_t close_connection = APR_SUCCESS;
 
-    /* If the stop_writing flag was set on the connection, reset it now because
-       there is some data to read. */
-    if (conn->pump.stop_writing) {
-        conn->pump.stop_writing = false;
-        serf_io__set_pollset_dirty(&conn->io);
-    }
-
     /* assert: request != NULL */
 
     if ((status = apr_pool_create(&tmppool, conn->pool)) != APR_SUCCESS)
@@ -1091,6 +1084,13 @@ static apr_status_t process_connection(serf_connection_t *conn,
      */
     if ((events & APR_POLLIN) != 0
         && !conn->wait_for_connect) {
+
+        /* If the stop_writing flag was set on the connection, reset it now
+           because there is some data to read. */
+        if (conn->pump.stop_writing) {
+            conn->pump.stop_writing = false;
+            serf_io__set_pollset_dirty(&conn->io);
+        }
 
         if ((status = conn->perform_read(conn)) != APR_SUCCESS)
             return status;

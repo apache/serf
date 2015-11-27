@@ -429,6 +429,13 @@ apr_status_t serf__process_client(serf_incoming_t *client, apr_int16_t events)
     }
 
     if ((events & APR_POLLIN) != 0) {
+        /* If the stop_writing flag was set on the connection, reset it
+           now because there is some data to read. */
+        if (client->pump.stop_writing) {
+            client->pump.stop_writing = false;
+            serf_io__set_pollset_dirty(&client->io);
+        }
+
         status = client->perform_read(client);
         if (status) {
             return status;

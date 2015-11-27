@@ -1648,14 +1648,6 @@ http2_outgoing_read(serf_connection_t *conn)
     serf_http2_protocol_t *h2 = conn->protocol_baton;
     apr_status_t status;
 
-    /* If the stop_writing flag was set on the connection, reset it now because
-       there is some data to read. */
-    if (conn->pump.stop_writing)
-    {
-        conn->pump.stop_writing = false;
-        serf_io__set_pollset_dirty(&conn->io);
-    }
-
     status = http2_process(h2);
 
     if (!status)
@@ -1749,14 +1741,6 @@ http2_incoming_read(serf_incoming_t *client)
 {
     apr_status_t status;
     serf_http2_protocol_t *h2 = client->protocol_baton;
-
-    /* If the stop_writing flag was set on the connection, reset it now because
-    there is some data to read. */
-    if (client->pump.stop_writing)
-    {
-        client->pump.stop_writing = false;
-        serf_io__set_pollset_dirty(&client->io);
-    }
 
     if (h2->prefix_left) {
         serf_bucket_t *stream;
