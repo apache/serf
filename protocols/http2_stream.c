@@ -84,6 +84,15 @@ serf_http2__stream_create(serf_http2_protocol_t *h2,
 }
 
 void
+serf_http2__stream_pre_cleanup(serf_http2_stream_t *stream)
+{
+    if (stream->data) {
+        if (stream->data->data_tail)
+            serf_bucket_destroy(stream->data->data_tail);
+    }
+}
+
+void
 serf_http2__stream_cleanup(serf_http2_stream_t *stream)
 {
     if (stream->data) {

@@ -43,6 +43,9 @@ http2_outgoing_hangup(serf_connection_t *conn);
 static void
 http2_outgoing_teardown(serf_connection_t *conn);
 
+static void
+http2_outgoing_pre_teardown(serf_connection_t *conn);
+
 static apr_status_t
 http2_incoming_read(serf_incoming_t *client);
 
@@ -54,6 +57,9 @@ http2_incoming_hangup(serf_incoming_t *client);
 
 static void
 http2_incoming_teardown(serf_incoming_t *conn);
+
+static void
+http2_incoming_pre_teardown(serf_incoming_t *conn);
 
 static apr_status_t
 http2_process(serf_http2_protocol_t *h2);
@@ -345,6 +351,7 @@ void serf__http2_protocol_init(serf_connection_t *conn)
     conn->perform_write = http2_outgoing_write;
     conn->perform_hangup = http2_outgoing_hangup;
     conn->perform_teardown = http2_outgoing_teardown;
+    conn->perform_pre_teardown = http2_outgoing_pre_teardown;
     conn->perform_cancel_request = http2_cancel_request;
     conn->perform_prioritize_request = http2_prioritize_request;
     conn->protocol_baton = h2;
@@ -428,6 +435,7 @@ void serf__http2_protocol_init_server(serf_incoming_t *client)
     client->perform_write = http2_incoming_write;
     client->perform_hangup = http2_incoming_hangup;
     client->perform_teardown = http2_incoming_teardown;
+    client->perform_pre_teardown = http2_incoming_pre_teardown;
     client->protocol_baton = h2;
 
     /* Send a settings frame */
@@ -1706,6 +1714,18 @@ http2_outgoing_hangup(serf_connection_t *conn)
 }
 
 static void
+http2_outgoing_pre_teardown(serf_connection_t *conn)
+{
+    serf_http2_protocol_t *h2 = conn->protocol_baton;
+    serf_http2_stream_t *s = h2->first;
+
+    while (s) {
+        serf_http2__stream_pre_cleanup(s);
+        s = s->next;
+    }
+}
+
+static void
 http2_outgoing_teardown(serf_connection_t *conn)
 {
     serf_http2_protocol_t *ctx = conn->protocol_baton;
@@ -1842,6 +1862,19 @@ http2_incoming_teardown(serf_incoming_t *client)
     apr_pool_destroy(ctx->pool);
     client->protocol_baton = NULL;
 }
+
+static void
+http2_incoming_pre_teardown(serf_incoming_t *conn)
+{
+    serf_http2_protocol_t *h2 = conn->protocol_baton;
+    serf_http2_stream_t *s = h2->first;
+
+    while (s) {
+        serf_http2__stream_pre_cleanup(s);
+        s = s->next;
+    }
+}
+
 
 void
 serf_http2__allocate_stream_id(void *baton,

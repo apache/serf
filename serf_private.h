@@ -458,6 +458,7 @@ struct serf_incoming_t {
     apr_status_t(*perform_hangup)(serf_incoming_t *client);
 
     /* Cleanup of protocol handling */
+    void(*perform_pre_teardown)(serf_incoming_t *conn);
     void(*perform_teardown)(serf_incoming_t *conn);
     void *protocol_baton;
 
@@ -575,6 +576,7 @@ struct serf_connection_t {
     apr_status_t (*perform_hangup)(serf_connection_t *conn);
 
     /* Cleanup of protocol handling */
+    void(*perform_pre_teardown)(serf_connection_t *conn);
     void (*perform_teardown)(serf_connection_t *conn);
     void *protocol_baton;
 
