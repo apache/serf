@@ -1319,7 +1319,7 @@ apr_status_t serf_connection_create2(
     }
 
     /* Store the connection specific info in the configuration store */
-    status = serf__config_store_create_conn_config(c, &config, pool);
+    status = serf__config_store_create_conn_config(c, &config);
     if (status)
         return status;
     c->config = config;

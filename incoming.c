@@ -577,7 +577,7 @@ apr_status_t serf_incoming_create2(
     ic->closed_baton = closed_baton;
 
     /* Store the connection specific info in the configuration store */
-    status = serf__config_store_create_client_config(ic, &config, client_pool);
+    status = serf__config_store_create_client_config(ic, &config);
     if (status)
         return status;
 
@@ -689,7 +689,7 @@ apr_status_t serf_listener_create(
     }
 
     /* Store the connection specific info in the configuration store */
-    rv = serf__config_store_create_listener_config(l, &config, l->pool);
+    rv = serf__config_store_create_listener_config(l, &config);
     if (rv)
         return rv;
 

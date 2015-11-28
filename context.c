@@ -195,7 +195,7 @@ serf_context_t *serf_context_create_ex(
     /* Assume returned status is APR_SUCCESS */
     serf__config_store_init(ctx);
 
-    serf__config_store_create_ctx_config(ctx, &ctx->config, ctx->pool);
+    serf__config_store_create_ctx_config(ctx, &ctx->config);
 
     serf__log_init(ctx);
 

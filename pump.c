@@ -192,13 +192,13 @@ void serf_pump__store_ipaddresses_in_config(serf_pump_t *pump)
         char buf[48];
         if (!apr_sockaddr_ip_getbuf(buf, sizeof(buf), sa))
             serf_config_set_stringf(pump->config, SERF_CONFIG_CONN_LOCALIP,
-                                    "%s:%d", buf, (int)sa->port);
+                                    pump->pool, "%s:%d", buf, (int)sa->port);
     }
     if (apr_socket_addr_get(&sa, APR_REMOTE, pump->skt) == APR_SUCCESS) {
         char buf[48];
         if (!apr_sockaddr_ip_getbuf(buf, sizeof(buf), sa))
             serf_config_set_stringf(pump->config, SERF_CONFIG_CONN_REMOTEIP,
-                                    "%s:%d", buf, (int)sa->port);
+                                    pump->pool, "%s:%d", buf, (int)sa->port);
     }
 }
 

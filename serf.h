@@ -1351,6 +1351,7 @@ apr_status_t serf_config_set_stringc(serf_config_t *config,
  */
 apr_status_t serf_config_set_stringf(serf_config_t *config,
                                      serf_config_key_t key,
+                                     apr_pool_t *scratch_pool,
                                      const char *fmt, ...);
 
 /* Set a value of generic type for configuration item CATEGORY+KEY.
