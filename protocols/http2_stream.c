@@ -226,6 +226,7 @@ static apr_status_t stream_send_data(serf_http2_stream_t *stream,
 
     /* Sending DATA frames over HTTP/2 is not easy as this usually requires
        handling windowing, priority, etc. This code will improve over time */
+    stream->data->data_tail = NULL;
 
     if (!data)
         remaining = 0;
@@ -246,7 +247,6 @@ static apr_status_t stream_send_data(serf_http2_stream_t *stream,
                                                &stream->streamid,
                                                serf_http2__allocate_stream_id,
                                                stream, 0, stream->alloc);
-        stream->data->data_tail = NULL;
         return serf_http2__enqueue_frame(stream->h2, next, false);
     }
 
