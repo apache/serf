@@ -290,11 +290,8 @@ typedef struct serf__authn_info_t {
 typedef struct serf__config_hdr_t serf__config_hdr_t;
 
 struct serf_config_t {
-    /* Pool for per-connection configuration values */
-    apr_pool_t *conn_pool;
-    /* Pool for per-host and per-context configuration values */
     apr_pool_t *ctx_pool;
-
+    serf_bucket_alloc_t *allocator;
 
     /* Configuration key/value pairs per context */
     serf__config_hdr_t *per_context;
@@ -306,19 +303,20 @@ struct serf_config_t {
 
 typedef struct serf__config_store_t {
     apr_pool_t *pool;
+    serf_bucket_alloc_t *allocator;
 
     /* Configuration key/value pairs per context */
     serf__config_hdr_t *global_per_context;
 
-    /* Configuration per host, dual-layered:
+    /* Configuration per host:
      Key: hostname:port
-     Value: hash table of per host key/value pairs
+     Value: serf__config_hdr_t *
      */
     apr_hash_t *global_per_host;
 
-    /* Configuration per connection, dual-layered:
-     Key: string(connection ptr) (?)
-     Value: hash table of per host key/value pairs
+    /* Configuration per connection:
+     Key: string(connection ptr as string)
+     Value: serf__config_hdr_t *
      */
     apr_hash_t *global_per_conn;
 
@@ -340,23 +338,19 @@ apr_status_t serf__config_store_init(serf_context_t *ctx);
    lifecycle cannot extend beyond that of the serf context!
  */
 apr_status_t serf__config_store_create_conn_config(serf_connection_t *conn,
-                                                   serf_config_t **config,
-                                                   apr_pool_t *out_pool);
+                                                   serf_config_t **config);
 
 /* Same thing, but for incoming connections */
 apr_status_t serf__config_store_create_client_config(serf_incoming_t *client,
-                                                     serf_config_t **config,
-                                                     apr_pool_t *out_pool);
+                                                     serf_config_t **config);
 
 /* Same thing, but for listeners */
 apr_status_t serf__config_store_create_listener_config(serf_listener_t *listener,
-                                                       serf_config_t **config,
-                                                       apr_pool_t *out_pool);
+                                                       serf_config_t **config);
 
 /* Same thing, but for the context itself */
 apr_status_t serf__config_store_create_ctx_config(serf_context_t *ctx,
-                                                  serf_config_t **config,
-                                                  apr_pool_t *out_pool);
+                                                  serf_config_t **config);
 
 
 /* Cleans up all connection specific configuration values */
