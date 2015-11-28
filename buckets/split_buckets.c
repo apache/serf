@@ -121,7 +121,8 @@ static apr_status_t serf_split_read(serf_bucket_t *bucket,
         sctx->cant_read = (*len != 0);
         sctx->read_size += *len;
 
-        if (sctx->read_size >= sctx->min_size) {
+        if (sctx->min_size != SERF_READ_ALL_AVAIL
+            && sctx->read_size >= sctx->min_size) {
             /* We read enough. Fix the final length now */
             sctx->at_eof = true;
             sctx->fixed_size = sctx->max_size = sctx->read_size;
@@ -190,7 +191,8 @@ static apr_status_t serf_split_read_iovec(serf_bucket_t *bucket,
         sctx->cant_read = (len != 0);
         sctx->read_size += len;
 
-        if (sctx->read_size >= sctx->min_size) {
+        if (sctx->min_size != SERF_READ_ALL_AVAIL
+            && sctx->read_size >= sctx->min_size) {
             /* We read enough. Fix the final length now */
             sctx->at_eof = true;
             sctx->fixed_size = sctx->max_size = sctx->read_size;
@@ -244,7 +246,8 @@ static apr_status_t serf_split_peek(serf_bucket_t *bucket,
 
     if (!SERF_BUCKET_READ_ERROR(status)) {
 
-        if (*len >= (sctx->min_size - sctx->read_size)) {
+        if (sctx->min_size != SERF_READ_ALL_AVAIL
+            && *len >= (sctx->min_size - sctx->read_size)) {
             /* We peeked more data than we need to continue
                to the next bucket. We have to be careful that
                we don't promise data and not deliver later.
@@ -275,7 +278,7 @@ static apr_uint64_t serf_split_get_remaining(serf_bucket_t *bucket)
     split_stream_ctx_t *head;
     apr_uint64_t remaining;
 
-    if (!ctx) {
+    if (!ctx || sctx->at_eof) {
         return 0; /* at eof */
     }
     else if (ctx->head == sctx) {
