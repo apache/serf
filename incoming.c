@@ -393,6 +393,8 @@ void serf_incoming_set_framing_type(
 
         /* Close down existing protocol */
         if (client->protocol_baton && client->perform_teardown) {
+            if (client->perform_pre_teardown)
+                client->perform_pre_teardown(client);
             client->perform_teardown(client);
             client->protocol_baton = NULL;
         }
@@ -402,6 +404,7 @@ void serf_incoming_set_framing_type(
         client->perform_write = write_to_client;
         client->perform_hangup = hangup_client;
         client->perform_teardown = NULL;
+        client->perform_pre_teardown = NULL;
 
         switch (framing_type) {
             case SERF_CONNECTION_FRAMING_TYPE_HTTP2:
@@ -591,6 +594,7 @@ apr_status_t serf_incoming_create2(
     ic->perform_write = write_to_client;
     ic->perform_hangup = hangup_client;
     ic->perform_teardown = NULL;
+    ic->perform_pre_teardown = NULL;
     ic->current_request = NULL;
 
     ic->desc.desc_type = APR_POLL_SOCKET;

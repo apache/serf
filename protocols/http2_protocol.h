@@ -189,6 +189,10 @@ serf_http2__allocate_stream_id(void *baton,
 void
 serf_http2__stream_cleanup(serf_http2_stream_t *stream);
 
+void
+serf_http2__stream_pre_cleanup(serf_http2_stream_t *stream);
+
+
 serf_http2_stream_t *
 serf_http2__stream_get(serf_http2_protocol_t *h2,
                        apr_int32_t streamid,

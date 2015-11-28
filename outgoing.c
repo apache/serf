@@ -492,6 +492,9 @@ static apr_status_t reset_connection(serf_connection_t *conn,
 
     serf__connection_pre_cleanup(conn);
 
+    if (conn->perform_pre_teardown)
+        conn->perform_pre_teardown(conn);
+
     /* First, cancel all written requests for which we haven't received a
        response yet. Inform the application that the request is cancelled,
        so it can requeue them if needed. */
@@ -564,6 +567,7 @@ static apr_status_t reset_connection(serf_connection_t *conn,
     conn->perform_write = write_to_connection;
     conn->perform_hangup = hangup_connection;
     conn->perform_teardown = NULL;
+    conn->perform_pre_teardown = NULL;
     conn->perform_cancel_request = NULL;
     conn->perform_prioritize_request = NULL;
 
@@ -1248,6 +1252,7 @@ serf_connection_t *serf_connection_create(
     conn->perform_write = write_to_connection;
     conn->perform_hangup = hangup_connection;
     conn->perform_teardown = NULL;
+    conn->perform_pre_teardown = NULL;
     conn->perform_cancel_request = NULL;
     conn->perform_prioritize_request = NULL;
     conn->protocol_baton = NULL;
@@ -1359,6 +1364,9 @@ apr_status_t serf_connection_close(
                requests as fully written, allowing more efficient cleanup */
             serf__connection_pre_cleanup(conn);
 
+            if (conn->perform_pre_teardown)
+                conn->perform_pre_teardown(conn);
+
             /* The application asked to close the connection, no need to notify
                it for each cancelled request. */
             while (conn->written_reqs) {
@@ -1463,6 +1471,8 @@ void serf_connection_set_framing_type(
 
         /* Close down existing protocol */
         if (conn->protocol_baton) {
+            if (conn->perform_pre_teardown)
+                conn->perform_pre_teardown(conn);
             conn->perform_teardown(conn);
             conn->protocol_baton = NULL;
         }
@@ -1475,6 +1485,7 @@ void serf_connection_set_framing_type(
     conn->perform_cancel_request = NULL;
     conn->perform_prioritize_request = NULL;
     conn->perform_teardown = NULL;
+    conn->perform_pre_teardown = NULL;
 
     switch (framing_type) {
         case SERF_CONNECTION_FRAMING_TYPE_HTTP2:
