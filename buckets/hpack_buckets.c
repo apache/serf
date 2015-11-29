@@ -290,13 +290,11 @@ struct serf_hpack_table_t
 
     /* The local -> remote 'encoder' list */
     serf_hpack_entry_t *lr_first, *lr_last;
-    unsigned int lr_count; /* Number of items */
     apr_size_t lr_size; /* 'Bytes' in list, calculated by HPACK_ENTRY_SIZE() */
     apr_size_t lr_max_table_size;
     apr_size_t lr_sys_table_size;
 
     serf_hpack_entry_t *rl_first, *rl_last;
-    unsigned int rl_count; /* Number of items */
     apr_size_t rl_size; /* 'Bytes' in list, calculated by HPACK_ENTRY_SIZE() */
     apr_size_t rl_max_table_size;
     apr_size_t rl_sys_table_size;
@@ -810,6 +808,28 @@ static void hpack_int(unsigned char flags,
     *used = u;
 }
 
+static void
+serialize_ensure_buffer(serf_bucket_t *bucket, apr_size_t ensure,
+                        char **buffer, apr_size_t *offset)
+{
+    const apr_size_t chunksize = 1024;
+
+    if (*buffer && ((*offset + ensure) < chunksize))
+        return;
+
+    if (*buffer) {
+        serf_bucket_aggregate_append(
+            bucket,
+            serf_bucket_simple_own_create(*buffer, *offset, bucket->allocator));
+
+        *buffer = NULL;
+    }
+    *offset = 0;
+
+    *buffer = serf_bucket_mem_alloc(bucket->allocator, chunksize);
+    *offset = 0;
+}
+
 static apr_status_t
 serialize(serf_bucket_t *bucket)
 {
@@ -822,7 +842,6 @@ serialize(serf_bucket_t *bucket)
 
     char *buffer = NULL;
     apr_size_t offset = 0;
-    const apr_size_t chunksize = 2048; /* Wild guess */
 
     /* Put on our aggregate bucket cloak */
     serf_bucket_aggregate_become(bucket);
@@ -832,7 +851,7 @@ serialize(serf_bucket_t *bucket)
     {
         apr_size_t len;
 
-        buffer = serf_bucket_mem_alloc(alloc, chunksize);
+        serialize_ensure_buffer(bucket, 8, &buffer, &offset);
 
         hpack_int(0x20, 5, tbl->lr_max_table_size, buffer + offset, &len);
         offset += len;
@@ -850,23 +869,7 @@ serialize(serf_bucket_t *bucket)
 
         next = entry->next;
 
-        /* Make 100% sure the next entry will fit.
-           ### Using the actual size later on is far more memory efficient
-         */
-        if (!buffer || (HPACK_ENTRY_SIZE(entry) > chunksize - offset))
-        {
-            if (offset)
-            {
-                serf_bucket_aggregate_append(
-                    bucket,
-                    serf_bucket_simple_own_create(buffer, offset, alloc));
-            }
-
-            buffer = serf_bucket_mem_alloc(alloc,
-                                           MAX(chunksize,
-                                               HPACK_ENTRY_SIZE(entry)));
-            offset = 0;
-        }
+        serialize_ensure_buffer(bucket, 16, &buffer, &offset);
 
         for (i = 0; i < hpack_static_table_count; i++) {
             e = &hpack_static_table[i];
@@ -938,6 +941,8 @@ serialize(serf_bucket_t *bucket)
                 apr_size_t int_len;
 
                 /* It is more efficient to huffman encode */
+                serialize_ensure_buffer(bucket, 8 + len, &buffer, &offset);
+
                 hpack_int(0x80, 7, len, buffer + offset, &int_len);
                 offset += int_len;
 
@@ -952,7 +957,10 @@ serialize(serf_bucket_t *bucket)
             }
             else
             {
-              /* It is more efficient not to encode */
+                /* It is more efficient not to encode */
+                serialize_ensure_buffer(bucket, 8 + entry->key_len,
+                                        &buffer, &offset);
+
                 hpack_int(0x00, 7, entry->key_len, buffer + offset, &len);
                 offset += len;
 
@@ -970,6 +978,7 @@ serialize(serf_bucket_t *bucket)
                 apr_size_t int_len;
 
                 /* It is more efficient to huffman encode */
+                serialize_ensure_buffer(bucket, 8 + len, &buffer, &offset);
                 hpack_int(0x80, 7, len, buffer + offset, &int_len);
                 offset += int_len;
 
@@ -985,7 +994,9 @@ serialize(serf_bucket_t *bucket)
             }
             else
             {
-              /* It is more efficient not to encode */
+                /* It is more efficient not to encode */
+                serialize_ensure_buffer(bucket, 8 + entry->value_len,
+                                        &buffer, &offset);
                 hpack_int(0x00, 7, entry->value_len, buffer + offset, &len);
                 offset += len;
 
@@ -994,9 +1005,36 @@ serialize(serf_bucket_t *bucket)
             }
         }
 
-        /* ### TODO: Store the item in the lr dynamic table if we are allowed
-                     to do that. We currently 'forget' that step, so we only
-                     use pre-cached values */
+        /* If we didn't re-use key+value and we are allowed to index the
+           item, let's do that. Note that we already told the other side that
+           we did this, as that side has to keep its table in sync */
+        if (!reuseVal && !entry->dont_index) {
+            serf_hpack_entry_t *tbl_entry;
+
+            tbl_entry = serf_bucket_mem_calloc(tbl->alloc, sizeof(*tbl_entry));
+
+            tbl_entry->key = serf_bstrmemdup(tbl->alloc,
+                                             entry->key, entry->key_len);
+            tbl_entry->key_len = entry->key_len;
+            tbl_entry->value = serf_bstrmemdup(tbl->alloc,
+                                               entry->value, entry->value_len);
+            tbl_entry->value_len = entry->value_len;
+            tbl_entry->free_key = entry->free_val = true;
+
+            tbl_entry->next = tbl->lr_first;
+            tbl->lr_first = tbl_entry;
+            tbl->lr_size += HPACK_ENTRY_SIZE(tbl_entry);
+            if (tbl_entry->next)
+                tbl_entry->next->prev = tbl_entry;
+            else
+                tbl->rl_last = tbl_entry;
+
+            if (tbl->lr_size > tbl->rl_max_table_size) {
+                hpack_shrink_table(&tbl->lr_first,
+                                   &tbl->lr_last, &tbl->lr_size,
+                                   tbl->lr_max_table_size, tbl->alloc);
+            }
+        }
 
         /* And now free the item */
         hpack_free_entry(entry, alloc);
@@ -1460,14 +1498,11 @@ handle_read_entry_and_clear(serf_hpack_decode_ctx_t *ctx,
         entry->free_key = entry->free_val = true;
         entry->next = tbl->rl_first;
         tbl->rl_first = entry;
-        tbl->rl_count++;
         tbl->rl_size += HPACK_ENTRY_SIZE(entry);
         if (entry->next)
             entry->next->prev = entry;
         else
             tbl->rl_last = entry;
-
-          /* We don't update lr_start... that is the idea */
     }
     else
     {
