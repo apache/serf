@@ -475,3 +475,52 @@ apr_status_t serf_config_remove_value(serf_config_t *config,
 {
     return serf_config_set_object(config, key, NULL);
 }
+
+struct ssl_session_data
+{
+    unsigned char *session;
+    apr_size_t session_len;
+};
+
+#define SERF_CONFIG__SSL_SESSION       (SERF_CONFIG_PER_HOST | 0xF00001)
+
+apr_status_t
+serf__config_store_set_ssl_session(serf_config_t *config,
+                                   const unsigned char *session,
+                                   apr_size_t session_len)
+{
+    struct ssl_session_data *ssld = serf_bucket_mem_alloc(config->allocator,
+                                                          sizeof(*ssld)
+                                                          + session_len);
+
+    ssld->session = ((unsigned char *)ssld) + sizeof(*ssld);
+    ssld->session_len = session_len;
+
+    memcpy(ssld->session, session, session_len);
+
+    return config_set_object(config, SERF_CONFIG__SSL_SESSION, ssld,
+                             serf_bucket_mem_free);
+}
+
+apr_status_t
+serf__config_store_get_ssl_session(serf_config_t *config,
+                                   const unsigned char **session,
+                                   apr_size_t *session_len)
+{
+    const struct ssl_session_data *ssld;
+    apr_status_t status;
+    void *value;
+
+    status = serf_config_get_object(config, SERF_CONFIG__SSL_SESSION, &value);
+
+    if (status)
+        return status;
+    else if (!value)
+        return APR_ENOENT;
+
+    ssld = value;
+
+    *session = ssld->session;
+    *session_len = ssld->session_len;
+    return APR_SUCCESS;
+}

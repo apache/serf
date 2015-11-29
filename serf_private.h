@@ -352,6 +352,16 @@ apr_status_t serf__config_store_create_listener_config(serf_listener_t *listener
 apr_status_t serf__config_store_create_ctx_config(serf_context_t *ctx,
                                                   serf_config_t **config);
 
+/* Stores session data for a host in the session cache*/
+apr_status_t serf__config_store_set_ssl_session(serf_config_t *config,
+                                                const unsigned char *session,
+                                                apr_size_t session_len);
+
+/* Tries to get session data for a host from the session cache */
+apr_status_t serf__config_store_get_ssl_session(serf_config_t *config,
+                                                const unsigned char **session,
+                                                apr_size_t *session_len);
+
 
 /* Cleans up all connection specific configuration values */
 apr_status_t
