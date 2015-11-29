@@ -1330,6 +1330,7 @@ static apr_status_t processServer(mhServCtx_t *ctx, _mhClientCtx_t *cctx,
                     if (resp->closeConn) {
                         _mhLog(MH_VERBOSE, cctx->skt,
                                "Actively closing connection.\n");
+                        cctx->shutdown(cctx, APR_SHUTDOWN_READWRITE);
                         return APR_EOF;
                     }
                     status = APR_SUCCESS;
