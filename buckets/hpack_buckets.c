@@ -1027,7 +1027,7 @@ serialize(serf_bucket_t *bucket)
             if (tbl_entry->next)
                 tbl_entry->next->prev = tbl_entry;
             else
-                tbl->rl_last = tbl_entry;
+                tbl->lr_last = tbl_entry;
 
             if (tbl->lr_size > tbl->rl_max_table_size) {
                 hpack_shrink_table(&tbl->lr_first,
