@@ -1613,7 +1613,7 @@ static apr_status_t http2_write_data(serf_http2_protocol_t *h2)
 {
     serf_http2_stream_t *stream = h2->cur_writable;
 
-    while (TRUE)
+    while (h2->lr_window > 0)
     {
         apr_status_t status;
 
@@ -1637,7 +1637,8 @@ static apr_status_t http2_write_data(serf_http2_protocol_t *h2)
             else
                 h2->last_writable = stream->prev_writable;
 
-            stream = stream->next_writable;
+            stream->prev_writable = stream->next_writable = NULL;
+            stream = NULL;
             continue;
         }
 
@@ -2052,8 +2053,8 @@ void serf_http2__ensure_writable(serf_http2_stream_t *stream)
 
     stream->prev_writable = h2->last_writable;
     h2->last_writable = stream;
-    if (h2->first_writable)
-        h2->last_writable->next_writable = stream;
+    if (stream->prev_writable)
+        stream->prev_writable->next_writable = stream;
     else
         h2->first_writable = stream;
 }
