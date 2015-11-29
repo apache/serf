@@ -826,7 +826,8 @@ serialize_ensure_buffer(serf_bucket_t *bucket, apr_size_t ensure,
     }
     *offset = 0;
 
-    *buffer = serf_bucket_mem_alloc(bucket->allocator, chunksize);
+    *buffer = serf_bucket_mem_alloc(bucket->allocator,
+                                    MAX(chunksize, ensure + 64));
     *offset = 0;
 }
 
