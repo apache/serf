@@ -60,6 +60,8 @@ static apr_status_t sslSocketWrite(_mhClientCtx_t *cctx, const char *data,
                                    apr_size_t *len);
 static apr_status_t sslSocketRead(apr_socket_t *skt, void *baton, char *data,
                                   apr_size_t *len);
+static apr_status_t sslSocketShutdown(_mhClientCtx_t *cctx, apr_shutdown_how_e how);
+
 static apr_status_t renegotiateSSLSession(_mhClientCtx_t *cctx);
 
 typedef apr_status_t (*handshake_func_t)(_mhClientCtx_t *cctx);
@@ -68,6 +70,10 @@ typedef apr_status_t (*send_func_t)(_mhClientCtx_t *cctx, const char *data,
                                     apr_size_t *len);
 typedef apr_status_t (*receive_func_t)(apr_socket_t *skt, void *baton,
                                        char *data, apr_size_t *len);
+
+typedef apr_status_t (*shutdown_func_t)(_mhClientCtx_t *cctx,
+                                        apr_shutdown_how_e how);
+
 
 typedef struct sslCtx_t sslCtx_t;
 typedef struct bucket_t bucket_t;
@@ -100,6 +106,7 @@ struct _mhClientCtx_t {
 
     send_func_t send;
     receive_func_t read;
+    shutdown_func_t shutdown;
 
     bucket_t *stream; /* Bucket for incoming data */
 
@@ -186,6 +193,12 @@ static apr_status_t socketRead(apr_socket_t *skt, void *baton, char *data,
                                apr_size_t *len)
 {
     return apr_socket_recv(skt, data, len);
+}
+
+static apr_status_t socketShutdown(_mhClientCtx_t *cctx,
+                                   apr_shutdown_how_e how)
+{
+    return apr_socket_shutdown(cctx->skt, how);
 }
 
 /**
@@ -1381,6 +1394,7 @@ static apr_status_t processServer(mhServCtx_t *ctx, _mhClientCtx_t *cctx,
                       case mhActionCloseConnection:
                         /* close conn after response */
                         resp->closeConn = YES;
+                        cctx->shutdown(cctx, APR_SHUTDOWN_READ);
                         break;
                       default:
                         break;
@@ -1394,6 +1408,7 @@ static apr_status_t processServer(mhServCtx_t *ctx, _mhClientCtx_t *cctx,
                 if (ctx->maxRequests && cctx->reqsReceived >= ctx->maxRequests) {
                     setHeader(resp->hdrs, "Connection", "close");
                     resp->closeConn = YES;
+                    cctx->shutdown(cctx, APR_SHUTDOWN_READ);
                 }
 
                 /* Link the request to the response, and push the response on the
@@ -1487,6 +1502,7 @@ static apr_status_t initClientCtx(_mhClientCtx_t **ppctx,
         type == mhHTTPv1Proxy || type == mhHTTPv11Proxy) {
         cctx->read = socketRead;
         cctx->send = socketWrite;
+        cctx->shutdown = socketShutdown;
     }
 #ifdef MOCKHTTP_OPENSSL
     if (type == mhHTTPSv1Server || type == mhHTTPSv11Server) {
@@ -1495,6 +1511,7 @@ static apr_status_t initClientCtx(_mhClientCtx_t **ppctx,
         cctx->handshake = sslHandshake;
         cctx->read = sslSocketRead;
         cctx->send = sslSocketWrite;
+        cctx->shutdown = sslSocketShutdown;
         cctx->keyFile = serv_ctx->keyFile;
         cctx->passphrase = serv_ctx->passphrase;
         cctx->certFiles = serv_ctx->certFiles;
@@ -2823,6 +2840,17 @@ sslSocketRead(apr_socket_t *skt, void *baton, char *data, apr_size_t *len)
 
     /* not reachable */
     return APR_EGENERAL;
+}
+
+static apr_status_t sslSocketShutdown(_mhClientCtx_t *cctx,
+                              apr_shutdown_how_e how)
+{
+    if (how == APR_SHUTDOWN_READ
+        || how == APR_SHUTDOWN_READWRITE) {
+        SSL_shutdown(cctx->ssl_ctx->ssl);
+        return APR_SUCCESS;
+    }
+    return APR_ENOTIMPL;
 }
 
 static void appendSSLErrMessage(const MockHTTP *mh, long result)
