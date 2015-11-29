@@ -374,6 +374,9 @@ static void serf_split_destroy(serf_bucket_t *bucket)
             sctx->next->prev = sctx->prev;
         else
             ctx->tail = sctx->prev;
+
+        sctx->ctx = NULL;
+        sctx->prev = sctx->next = NULL;
     }
 
     serf_default_destroy_and_data(bucket);

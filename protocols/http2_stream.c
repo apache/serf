@@ -87,8 +87,10 @@ void
 serf_http2__stream_pre_cleanup(serf_http2_stream_t *stream)
 {
     if (stream->data) {
-        if (stream->data->data_tail)
+        if (stream->data->data_tail) {
             serf_bucket_destroy(stream->data->data_tail);
+            stream->data->data_tail = NULL;
+        }
     }
 }
 
@@ -98,9 +100,6 @@ serf_http2__stream_cleanup(serf_http2_stream_t *stream)
     if (stream->data) {
         if (stream->data->response_agg)
             serf_bucket_destroy(stream->data->response_agg);
-
-        if (stream->data->data_tail)
-            serf_bucket_destroy(stream->data->data_tail);
 
         serf_bucket_mem_free(stream->alloc, stream->data);
         stream->data = NULL;
@@ -267,6 +266,10 @@ static apr_status_t stream_send_data(serf_http2_stream_t *stream,
     if (prefix_len == 0) {
         /* No window left */
         stream->data->data_tail = data;
+
+        /* Write more later */
+        serf_http2__ensure_writable(stream);
+
         return APR_SUCCESS;
     }
 
@@ -284,9 +287,17 @@ static apr_status_t stream_send_data(serf_http2_stream_t *stream,
                                          data_write_started,
                                          data_write_done, NULL, stream->alloc);
         end_stream = false;
+
+        serf_http2__ensure_writable(stream);
     }
-    else
+    else {
         end_stream = true;
+
+        if (stream->status == H2S_OPEN)
+            stream->status = H2S_HALFCLOSED_LOCAL;
+        else
+            stream->status = H2S_CLOSED;
+    }
 
     next = serf__bucket_http2_frame_create(data, HTTP2_FRAME_TYPE_DATA,
                                            end_stream ? HTTP2_FLAG_END_STREAM
@@ -297,11 +308,6 @@ static apr_status_t stream_send_data(serf_http2_stream_t *stream,
                                            data->allocator);
 
     status = serf_http2__enqueue_frame(stream->h2, next, TRUE);
-
-    if (!end_stream) {
-        /* Write more later */
-        serf_http2__ensure_writable(stream);
-    }
 
     return status;
 }
