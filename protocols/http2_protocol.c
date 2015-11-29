@@ -70,6 +70,8 @@ http2_cancel_request(serf_request_t *rq, apr_status_t reason);
 static void
 http2_prioritize_request(serf_request_t *rq, bool exclusive);
 
+static apr_status_t http2_write_data(serf_http2_protocol_t *h2);
+
 static serf_bucket_t *
 serf_bucket_create_numberv(serf_bucket_alloc_t *allocator, const char *format,
                            ...)
@@ -661,6 +663,7 @@ http2_handle_connection_window_update(void *baton,
 {
     serf_http2_protocol_t *h2 = baton;
     apr_uint32_t value;
+    bool was0;
     const struct window_update_t
     {
         unsigned char v3, v2, v1, v0;
@@ -687,6 +690,7 @@ http2_handle_connection_window_update(void *baton,
         return SERF_ERROR_HTTP2_PROTOCOL_ERROR;
     }
 
+    was0 = (h2->lr_window == 0);
     h2->lr_window += value;
 
     if (h2->lr_window > HTTP2_WINDOW_MAX_ALLOWED)
@@ -705,7 +709,10 @@ http2_handle_connection_window_update(void *baton,
               "Increasing window on connection with 0x%x to 0x%x\n",
               value, h2->lr_window);
 
-    return APR_SUCCESS;
+    if (was0)
+        return http2_write_data(h2);
+    else
+        return APR_SUCCESS;
 }
 
 /* Implements serf_bucket_prefix_handler_t.
@@ -817,6 +824,7 @@ http2_handle_settings(void *baton,
               /* Sanitize? */
                 serf__log(LOGLVL_INFO, SERF_LOGHTTP2, h2->config,
                           "Setting Initial Window Size %u\n", value);
+                h2->lr_window += (value - h2->lr_default_window);
                 h2->lr_default_window = value;
                 break;
             case HTTP2_SETTING_MAX_FRAME_SIZE:
