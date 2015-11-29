@@ -492,7 +492,7 @@ static apr_status_t reset_connection(serf_connection_t *conn,
 
     serf__connection_pre_cleanup(conn);
 
-    if (conn->perform_pre_teardown)
+    if (conn->protocol_baton && conn->perform_pre_teardown)
         conn->perform_pre_teardown(conn);
 
     /* First, cancel all written requests for which we haven't received a
@@ -1364,7 +1364,7 @@ apr_status_t serf_connection_close(
                requests as fully written, allowing more efficient cleanup */
             serf__connection_pre_cleanup(conn);
 
-            if (conn->perform_pre_teardown)
+            if (conn->protocol_baton && conn->perform_pre_teardown)
                 conn->perform_pre_teardown(conn);
 
             /* The application asked to close the connection, no need to notify

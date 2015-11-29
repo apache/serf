@@ -54,7 +54,7 @@ static void test_config_store_per_context(CuTest *tc)
     /* We don't have a serf connection yet, so only the per context config
        should be available to read and write */
     CuAssertIntEquals(tc, APR_SUCCESS,
-                      serf__config_store_create_ctx_config(ctx, &cfg, tb->pool));
+                      serf__config_store_create_ctx_config(ctx, &cfg));
     CuAssertPtrEquals(tc, NULL, cfg->per_conn);
     CuAssertPtrEquals(tc, NULL, cfg->per_host);
     CuAssertPtrNotNull(tc, cfg->per_context);
@@ -119,15 +119,13 @@ static void test_config_store_per_connection_different_host(CuTest *tc)
     /* Test 1: This should return a config object with per_context, per_host and
        per_connection hash_table's initialized. */
     CuAssertIntEquals(tc, APR_SUCCESS,
-                      serf__config_store_create_conn_config(conn1, &cfg1,
-                                                            tb->pool));
+                      serf__config_store_create_conn_config(conn1, &cfg1));
     CuAssertPtrNotNull(tc, cfg1->per_context);
     CuAssertPtrNotNull(tc, cfg1->per_host);
     CuAssertPtrNotNull(tc, cfg1->per_conn);
     /* Get a config object for the other connection also. */
     CuAssertIntEquals(tc, APR_SUCCESS,
-                      serf__config_store_create_conn_config(conn2, &cfg2,
-                                                            tb->pool));
+                      serf__config_store_create_conn_config(conn2, &cfg2));
 
     /* Test 2: Get a non-existing per connection key, value should be NULL */
     CuAssertIntEquals(tc, APR_SUCCESS,
@@ -182,15 +180,13 @@ static void test_config_store_per_connection_same_host(CuTest *tc)
     /* Test 1: This should return a config object with per_context, per_host and
      per_connection hash_table's initialized. */
     CuAssertIntEquals(tc, APR_SUCCESS,
-                      serf__config_store_create_conn_config(conn1, &cfg1,
-                                                            tb->pool));
+                      serf__config_store_create_conn_config(conn1, &cfg1));
     CuAssertPtrNotNull(tc, cfg1->per_context);
     CuAssertPtrNotNull(tc, cfg1->per_host);
     CuAssertPtrNotNull(tc, cfg1->per_conn);
     /* Get a config object for the other connection also. */
     CuAssertIntEquals(tc, APR_SUCCESS,
-                      serf__config_store_create_conn_config(conn2, &cfg2,
-                                                            tb->pool));
+                      serf__config_store_create_conn_config(conn2, &cfg2));
 
     /* Test 2: Get a non-existing per connection key, value should be NULL */
     CuAssertIntEquals(tc, APR_SUCCESS,
@@ -236,8 +232,7 @@ static void test_config_store_error_handling(CuTest *tc)
     serf_context_t *ctx = serf_context_create(tb->pool);
 
     CuAssertIntEquals(tc, APR_SUCCESS,
-                      serf__config_store_create_ctx_config(ctx, &cfg,
-                                                           tb->pool));
+                      serf__config_store_create_ctx_config(ctx, &cfg));
 
     /* Config only has per-context keys, check for no crashes when getting
        per-connection and per-host keys. */
@@ -282,8 +277,7 @@ static void test_config_store_remove_objects(CuTest *tc)
                             conn_closed, NULL, tb->pool);
 
     CuAssertIntEquals(tc, APR_SUCCESS,
-                      serf__config_store_create_conn_config(conn, &cfg,
-                                                            tb->pool));
+                      serf__config_store_create_conn_config(conn, &cfg));
 
     /* Add and remove a key per-context */
     CuAssertIntEquals(tc, APR_SUCCESS,
