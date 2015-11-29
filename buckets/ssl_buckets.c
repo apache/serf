@@ -917,6 +917,19 @@ static apr_status_t ssl_handshake(serf_ssl_context_t *ctx,
                                   int do_want_read)
 {
     int ssl_result;
+    const unsigned char *data;
+    apr_size_t len;
+
+    /* If we have a cached session, use it to allow speeding up the handshake */
+    if (ctx->config
+        && !serf__config_store_get_ssl_session(ctx->config, &data, &len)) {
+
+        SSL_SESSION *sess;
+
+        sess = d2i_SSL_SESSION(NULL, &data, (long)len);
+
+        SSL_set_session(ctx->ssl, sess);
+    }
 
     ctx->crypt_status = APR_SUCCESS; /* Clear before calling SSL */
     ssl_result = SSL_do_handshake(ctx->ssl);
@@ -1547,6 +1560,32 @@ void serf_ssl_server_cert_chain_callback_set(
     context->server_cert_userdata = data;
 }
 
+static int ssl_new_session(SSL *ssl, SSL_SESSION *session)
+{
+    serf_ssl_context_t *ctx = SSL_get_app_data(ssl);
+    void *mem;
+    unsigned char *der_data;
+    apr_size_t der_len;
+
+    if (!ctx->config)
+        return 0;
+
+    der_len = i2d_SSL_SESSION(session, NULL);
+
+    mem = serf_bucket_mem_alloc(ctx->allocator, der_len);
+    der_data = mem;
+    if (der_len == i2d_SSL_SESSION(session, &der_data)) {
+        /* der_data was modified by i2d_SSL_SESSION(), so
+           we store the original pointer */
+        (void)serf__config_store_set_ssl_session(ctx->config,
+                                                 mem, der_len);
+    }
+
+    serf_bucket_mem_free(ctx->allocator, mem);
+
+    return 0;
+}
+
 static serf_ssl_context_t *ssl_init_context(serf_bucket_alloc_t *allocator)
 {
     serf_ssl_context_t *ssl_ctx;
@@ -1595,6 +1634,10 @@ static serf_ssl_context_t *ssl_init_context(serf_bucket_alloc_t *allocator)
     ssl_ctx->bio->ptr = ssl_ctx;
 
     SSL_set_bio(ssl_ctx->ssl, ssl_ctx->bio, ssl_ctx->bio);
+
+    /* Enable SSL callback to store the SSL session state to allow
+       optimized resumption later. */
+    SSL_CTX_sess_set_new_cb(ssl_ctx->ctx, ssl_new_session);
 
     SSL_set_connect_state(ssl_ctx->ssl);
 
