@@ -1649,6 +1649,7 @@ static apr_status_t http2_write_data(serf_http2_protocol_t *h2)
         return status ? status : APR_EAGAIN;
     }
 
+    return APR_SUCCESS; /* Done for now */
 }
 
 static apr_status_t
@@ -1690,7 +1691,7 @@ http2_outgoing_write(serf_connection_t *conn)
             return status;
     }
 
-    status = serf__connection_flush(conn, TRUE);
+    status = serf_pump__write(h2->pump, true);
 
     if (!status)
         status = http2_write_data(h2);
@@ -1830,7 +1831,7 @@ http2_incoming_write(serf_incoming_t *client)
     serf_http2_protocol_t *h2 = client->protocol_baton;
     apr_status_t status;
 
-    status = serf__incoming_client_flush(client, TRUE);
+    status = serf_pump__write(h2->pump, true);
 
     if (APR_STATUS_IS_EAGAIN(status))
         return APR_SUCCESS;
