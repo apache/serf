@@ -881,32 +881,20 @@ static void serialize_outgoing_response(serf_bucket_t *bucket)
     serf_bucket_set_config(bucket, ctx->config);
 
     {
-        struct iovec status_vecs[9];
-        char http_high[10];
-        char http_low[10];
-        char status[10];
-        itoa(SERF_HTTP_VERSION_MAJOR(ctx->http_version), http_high, 10);
-        itoa(SERF_HTTP_VERSION_MINOR(ctx->http_version), http_low, 10);
-        itoa(ctx->status, status, 10);
+        char start[32];
+        struct iovec status_vecs[3];
 
-        status_vecs[0].iov_base = "HTTP/";
-        status_vecs[0].iov_len = 5;
-        status_vecs[1].iov_base = http_high;
-        status_vecs[1].iov_len = strlen(http_high);
-        status_vecs[2].iov_base = ".";
-        status_vecs[2].iov_len = 1;
-        status_vecs[3].iov_base = http_low;
-        status_vecs[3].iov_len = strlen(http_low);
-        status_vecs[4].iov_base = " ";
-        status_vecs[4].iov_len = 1;
-        status_vecs[5].iov_base = status;
-        status_vecs[5].iov_len = strlen(status);
-        status_vecs[6].iov_base = " ";
-        status_vecs[6].iov_len = 1;
-        status_vecs[7].iov_base = ctx->reason;
-        status_vecs[7].iov_len = strlen(ctx->reason);
-        status_vecs[8].iov_base = "\r\n";
-        status_vecs[8].iov_len = 2;
+        sprintf(start, "HTTP/%d.%d %03d ",
+                SERF_HTTP_VERSION_MAJOR(ctx->http_version),
+                SERF_HTTP_VERSION_MINOR(ctx->http_version),
+                ctx->status);
+
+        status_vecs[0].iov_base = start;
+        status_vecs[0].iov_len = strlen(start);
+        status_vecs[1].iov_base = ctx->reason;
+        status_vecs[1].iov_len = strlen(ctx->reason);
+        status_vecs[2].iov_base = "\r\n";
+        status_vecs[2].iov_len = 2;
 
         status_line = serf_bstrcatv(bucket->allocator,
                                     status_vecs, COUNT_OF(status_vecs),
