@@ -100,6 +100,9 @@ static apr_status_t http1_enqueue_reponse(serf_incoming_request_t *request,
                                           void *enqueue_baton,
                                           serf_bucket_t *bucket)
 {
+    if (SERF_BUCKET_IS_OUTGOING_RESPONSE(bucket))
+        serf_bucket_outgoing_response_prepare(bucket, SERF_HTTP_11, TRUE);
+
     serf_bucket_aggregate_append(request->incoming->pump.ostream_tail,
                                  serf__bucket_event_create(bucket,
                                                            request,

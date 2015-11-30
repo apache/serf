@@ -73,27 +73,34 @@ static apr_status_t client_generate_response(serf_bucket_t **resp_bkt,
                                              apr_pool_t *pool)
 {
     test_baton_t *tb = setup_baton;
-    serf_bucket_t *tmp;
+    serf_bucket_t *resp;
+    serf_bucket_t *body;
+    serf_bucket_t *headers;
 #define CRLF "\r\n"
 
     if (tb->user_baton_l == 401) {
         tb->user_baton_l = 0;
 
-        tmp = SERF_BUCKET_SIMPLE_STRING("HTTP/1.1 401 Unauth" CRLF
-                    "WWW-Authenticate: Basic realm=\"Test Suite\"" CRLF
-                                        "Content-Length: 4" CRLF
-                                        CRLF
-                                        "OK" CRLF,
-                                        allocator);
-    }
-    else
-        tmp = SERF_BUCKET_SIMPLE_STRING("HTTP/1.1 200 OK" CRLF
-                                        "Content-Length: 4" CRLF
-                                        CRLF
-                                        "OK" CRLF,
-                                        allocator);
+        body = SERF_BUCKET_SIMPLE_STRING("NOT HERE" CRLF, allocator);
 
-    *resp_bkt = tmp;
+        resp = serf_bucket_outgoing_response_create(body, 401, "Unauth",
+                                                    SERF_HTTP_11, allocator);
+
+        headers = serf_bucket_outgoing_response_get_headers(resp);
+
+        serf_bucket_headers_set(headers, "WWW-Authenticate",
+                                "Basic realm=\"Test Suite\"");
+    }
+    else {
+        body = SERF_BUCKET_SIMPLE_STRING("OK" CRLF, allocator);
+
+        resp = serf_bucket_outgoing_response_create(body, 200, "OK",
+                                                    SERF_HTTP_11, allocator);
+
+        headers = serf_bucket_outgoing_response_get_headers(resp);
+    }
+
+    *resp_bkt = resp;
     return APR_SUCCESS;
 }
 
