@@ -852,7 +852,7 @@ void serf_bucket_outgoing_response_prepare(
        (assuming this method is called for HTTP2) */
     if (content_length != SERF_LENGTH_UNKNOWN) {
         char buf[30];
-        sprintf(buf, "%" APR_INT64_T_FMT, content_length);
+        snprintf(buf, 30, "%" APR_INT64_T_FMT, content_length);
 
         serf_bucket_headers_setc(ctx->headers, "Content-Length", buf);
     }
@@ -884,7 +884,7 @@ static void serialize_outgoing_response(serf_bucket_t *bucket)
         char start[32];
         struct iovec status_vecs[3];
 
-        sprintf(start, "HTTP/%d.%d %03d ",
+        snprintf(start, 32, "HTTP/%d.%d %03d ",
                 SERF_HTTP_VERSION_MAJOR(ctx->http_version),
                 SERF_HTTP_VERSION_MINOR(ctx->http_version),
                 ctx->status);
