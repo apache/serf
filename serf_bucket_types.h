@@ -118,6 +118,8 @@ serf_bucket_t *serf_bucket_response_create(
 #define SERF_HTTP_VERSION(major, minor)  ((major) * 1000 + (minor))
 #define SERF_HTTP_11 SERF_HTTP_VERSION(1, 1)
 #define SERF_HTTP_10 SERF_HTTP_VERSION(1, 0)
+/** @since New in 1.4. */
+#define SERF_HTTP_20 SERF_HTTP_VERSION(2, 0)
 #define SERF_HTTP_VERSION_MAJOR(shv) ((int)shv / 1000)
 #define SERF_HTTP_VERSION_MINOR(shv) ((int)shv % 1000)
 
@@ -197,6 +199,31 @@ serf_bucket_t *serf_bucket_response_body_create(
     serf_bucket_t *stream,
     apr_uint64_t limit,
     serf_bucket_alloc_t *allocator);
+
+/* ==================================================================== */
+/** @since New in 1.4 */
+extern const serf_bucket_type_t serf_bucket_type_outgoing_response;
+/** @since New in 1.4 */
+#define SERF_BUCKET_IS_OUTGOING_RESPONSE(b)         \
+                SERF_BUCKET_CHECK((b), outgoing_response)
+
+/** @since New in 1.4 */
+serf_bucket_t *serf_bucket_outgoing_response_create(
+    serf_bucket_t *body,
+    int status,
+    const char *reason,
+    int http_version,
+    serf_bucket_alloc_t *allocator);
+
+/** @since New in 1.4 */
+serf_bucket_t *serf_bucket_outgoing_response_get_headers(
+    serf_bucket_t *outgoing_response);
+
+/** @since New in 1.4 */
+void serf_bucket_outgoing_response_prepare(
+    serf_bucket_t *outgoing_response,
+    int http_version,
+    int allow_chunking);
 
 /* ==================================================================== */
 

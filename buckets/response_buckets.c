@@ -779,3 +779,232 @@ const serf_bucket_type_t serf_bucket_type_response = {
     serf_default_get_remaining,
     serf_response_set_config,
 };
+
+/* ==================================================================== */
+
+typedef struct outgoing_response_t {
+    int status;
+    int http_version;
+    char *reason;
+
+    serf_bucket_t *body;
+    serf_bucket_t *headers;
+    serf_config_t *config;
+} outgoing_response_t;
+
+serf_bucket_t *serf_bucket_outgoing_response_create(
+    serf_bucket_t *body,
+    int status,
+    const char *reason,
+    int http_version,
+    serf_bucket_alloc_t *allocator)
+{
+    outgoing_response_t *ctx = serf_bucket_mem_alloc(allocator, sizeof(*ctx));
+
+    ctx->headers = serf_bucket_headers_create(allocator);
+    ctx->body = body;
+    ctx->config = NULL;
+
+    ctx->status = status;
+    ctx->reason = serf_bstrdup(allocator, reason ? reason : "-");
+    ctx->http_version = http_version;
+
+    return serf_bucket_create(&serf_bucket_type_outgoing_response,
+                              allocator, ctx);
+}
+
+serf_bucket_t *serf_bucket_outgoing_response_get_headers(
+    serf_bucket_t *outgoing_response)
+{
+    outgoing_response_t *ctx = outgoing_response->data;
+
+    return ctx->headers;
+}
+
+void serf_bucket_outgoing_response_prepare(
+    serf_bucket_t *outgoing_response,
+    int http_version,
+    int allow_chunking)
+{
+    outgoing_response_t *ctx = outgoing_response->data;
+    apr_uint64_t content_length;
+
+    if (serf_bucket_headers_get(ctx->headers, "Content-Length"))
+        return; /* Already safe */
+
+    if (ctx->status <= 199 || ctx->status == 304 || ctx->status == 204)
+        return; /* No body description necessary */
+
+    if (http_version == SERF_HTTP_11
+        && serf_bucket_headers_get(ctx->headers, "Transfer-Encoding")) {
+
+        return; /* Transfer method already described */
+    }
+
+    if (!ctx->body)
+        content_length = 0;
+    else
+        content_length = serf_bucket_get_remaining(ctx->body);
+
+    /* If we can produce a Content-Length, produce it. Even for HTTP/2
+       (assuming this method is called for HTTP2) */
+    if (content_length != SERF_LENGTH_UNKNOWN) {
+        char buf[30];
+        sprintf(buf, "%" APR_INT64_T_FMT, content_length);
+
+        serf_bucket_headers_setc(ctx->headers, "Content-Length", buf);
+    }
+    else if (http_version == SERF_HTTP_11) {
+        ctx->body = serf_bucket_chunk_create(ctx->body,
+                                                outgoing_response->allocator);
+        serf_bucket_headers_set(ctx->headers, "Transfer-Encoding",
+                                "chunked");
+    }
+
+    /* ELSE:
+            HTTP/2 works with streams, so OK
+            FCGI works with streams, so OK
+    */
+}
+
+
+
+static void serialize_outgoing_response(serf_bucket_t *bucket)
+{
+    outgoing_response_t *ctx = bucket->data;
+    const char *status_line;
+    apr_size_t status_line_len;
+
+    serf_bucket_aggregate_become(bucket);
+    serf_bucket_set_config(bucket, ctx->config);
+
+    {
+        struct iovec status_vecs[9];
+        char http_high[10];
+        char http_low[10];
+        char status[10];
+        itoa(SERF_HTTP_VERSION_MAJOR(ctx->http_version), http_high, 10);
+        itoa(SERF_HTTP_VERSION_MINOR(ctx->http_version), http_low, 10);
+        itoa(ctx->status, status, 10);
+
+        status_vecs[0].iov_base = "HTTP/";
+        status_vecs[0].iov_len = 5;
+        status_vecs[1].iov_base = http_high;
+        status_vecs[1].iov_len = strlen(http_high);
+        status_vecs[2].iov_base = ".";
+        status_vecs[2].iov_len = 1;
+        status_vecs[3].iov_base = http_low;
+        status_vecs[3].iov_len = strlen(http_low);
+        status_vecs[4].iov_base = " ";
+        status_vecs[4].iov_len = 1;
+        status_vecs[5].iov_base = status;
+        status_vecs[5].iov_len = strlen(status);
+        status_vecs[6].iov_base = " ";
+        status_vecs[6].iov_len = 1;
+        status_vecs[7].iov_base = ctx->reason;
+        status_vecs[7].iov_len = strlen(ctx->reason);
+        status_vecs[8].iov_base = "\r\n";
+        status_vecs[8].iov_len = 2;
+
+        status_line = serf_bstrcatv(bucket->allocator,
+                                    status_vecs, COUNT_OF(status_vecs),
+                                    &status_line_len);
+    }
+
+    serf_bucket_aggregate_append(
+        bucket,
+        serf_bucket_simple_own_create(status_line, status_line_len,
+                                      bucket->allocator));
+    serf_bucket_aggregate_append(bucket, ctx->headers);
+
+    if (ctx->body)
+        serf_bucket_aggregate_append(bucket, ctx->body);
+
+    if (ctx->reason)
+        serf_bucket_mem_free(bucket->allocator, ctx->reason);
+
+    serf_bucket_mem_free(bucket->allocator, ctx);
+}
+
+static apr_status_t serf_outgoing_resp_read(serf_bucket_t *bucket,
+                                            apr_size_t requested,
+                                            const char **data,
+                                            apr_size_t *len)
+{
+    serialize_outgoing_response(bucket);
+
+    return bucket->type->read(bucket, requested, data, len);
+}
+
+static apr_status_t serf_outgoing_resp_read_iovec(serf_bucket_t *bucket,
+                                                  apr_size_t requested,
+                                                  int vecs_size,
+                                                  struct iovec *vecs,
+                                                  int *vecs_used)
+{
+    serialize_outgoing_response(bucket);
+
+    return bucket->type->read_iovec(bucket, requested, vecs_size,
+                                    vecs, vecs_used);
+}
+
+static apr_status_t serf_outgoing_resp_readline(serf_bucket_t *bucket,
+                                                int acceptable,
+                                                int *found,
+                                                const char **data,
+                                                apr_size_t *len)
+{
+    serialize_outgoing_response(bucket);
+
+    return bucket->type->readline(bucket, acceptable, found, data, len);
+}
+
+static apr_status_t serf_outgoing_resp_peek(serf_bucket_t *bucket,
+                                            const char **data,
+                                            apr_size_t *len)
+{
+    serialize_outgoing_response(bucket);
+
+    return bucket->type->peek(bucket, data, len);
+}
+
+static apr_status_t serf_outgoing_resp_set_config(serf_bucket_t *bucket,
+                                                  serf_config_t *config)
+{
+    outgoing_response_t *ctx = bucket->data;
+    ctx->config = config;
+
+    if (ctx->body)
+        serf_bucket_set_config(ctx->body, config);
+
+    return serf_bucket_set_config(ctx->headers, config);
+}
+
+static void serf_outgoing_resp_destroy(serf_bucket_t *bucket)
+{
+    outgoing_response_t *ctx = bucket->data;
+
+    serf_bucket_destroy(ctx->headers);
+    if (ctx->body)
+        serf_bucket_destroy(ctx->body);
+
+    if (ctx->reason)
+        serf_bucket_mem_free(bucket->allocator, ctx->reason);
+
+    serf_default_destroy_and_data(bucket);
+}
+
+
+const serf_bucket_type_t serf_bucket_type_outgoing_response = {
+    "OUTGOING-RESPONSE",
+    serf_outgoing_resp_read,
+    serf_outgoing_resp_readline,
+    serf_outgoing_resp_read_iovec,
+    serf_default_read_for_sendfile,
+    serf_buckets_are_v2,
+    serf_outgoing_resp_peek,
+    serf_outgoing_resp_destroy,
+    serf_default_read_bucket,
+    serf_default_get_remaining,
+    serf_outgoing_resp_set_config,
+};
