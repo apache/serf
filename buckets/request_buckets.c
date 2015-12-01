@@ -144,7 +144,7 @@ static void serialize_data(serf_bucket_t *bucket)
        use chunked encoding for the request.  */
     if (ctx->len != LENGTH_UNKNOWN) {
         char buf[30];
-        snprintf(buf, 30, "%" APR_INT64_T_FMT, ctx->len);
+        apr_snprintf(buf, 30, "%" APR_INT64_T_FMT, ctx->len);
         serf_bucket_headers_set(ctx->headers, "Content-Length", buf);
         if (ctx->body != NULL)
             serf_bucket_aggregate_append(bucket, ctx->body);
