@@ -619,7 +619,7 @@ http2_handle_stream_window_update(void *baton,
     window_update = (const void *)data;
 
     value = (window_update->v3 << 24) | (window_update->v2 << 16)
-        | (window_update->v2 << 8) | window_update->v0;
+        | (window_update->v1 << 8) | window_update->v0;
 
     value &= HTTP2_WINDOW_MAX_ALLOWED; /* The highest bit is reserved */
 
@@ -647,7 +647,7 @@ http2_handle_stream_window_update(void *baton,
     }
 
     serf__log(LOGLVL_INFO, SERF_LOGHTTP2, stream->h2->config,
-              "Increasing window on frame %d with 0x%x to 0x%x\n",
+              "Increasing window on stream %d with 0x%x to 0x%x\n",
               stream->streamid, value, stream->lr_window);
 
     return APR_SUCCESS;
@@ -677,7 +677,7 @@ http2_handle_connection_window_update(void *baton,
     window_update = (const void *)data;
 
     value = (window_update->v3 << 24) | (window_update->v2 << 16)
-        | (window_update->v2 << 8) | window_update->v0;
+        | (window_update->v1 << 8) | window_update->v0;
 
     value &= HTTP2_WINDOW_MAX_ALLOWED; /* The highest bit is reserved */
 
