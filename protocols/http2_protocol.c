@@ -634,7 +634,7 @@ http2_handle_stream_window_update(void *baton,
 
     stream->lr_window += value;
 
-    if (stream->lr_window > HTTP2_WINDOW_MAX_ALLOWED)
+    if (stream->lr_window > HTTP2_WINDOW_MAX_ALLOWED || stream->lr_window < 0)
     {
       /* A sender MUST NOT allow a flow-control window to exceed 2^31-1
          octets.  If a sender receives a WINDOW_UPDATE that causes a flow-
@@ -693,7 +693,7 @@ http2_handle_connection_window_update(void *baton,
     was0 = (h2->lr_window == 0);
     h2->lr_window += value;
 
-    if (h2->lr_window > HTTP2_WINDOW_MAX_ALLOWED)
+    if (h2->lr_window > HTTP2_WINDOW_MAX_ALLOWED || h2->lr_window < 0)
     {
       /* A sender MUST NOT allow a flow-control window to exceed 2^31-1
          octets.  If a sender receives a WINDOW_UPDATE that causes a flow-
