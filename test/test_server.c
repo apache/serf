@@ -280,7 +280,7 @@ static apr_status_t authn_callback(char **username,
 }
 
 
-void test_listen_auth_http(CuTest *tc)
+static void test_listen_auth_http(CuTest *tc)
 {
     test_baton_t *tb = tc->testBaton;
     apr_status_t status;
@@ -307,7 +307,7 @@ void test_listen_auth_http(CuTest *tc)
     CuAssertIntEquals(tc, APR_SUCCESS, status);
 }
 
-void test_listen_auth_http2(CuTest *tc)
+static void test_listen_auth_http2(CuTest *tc)
 {
     test_baton_t *tb = tc->testBaton;
     apr_status_t status;
