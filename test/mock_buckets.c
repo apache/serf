@@ -189,7 +189,7 @@ apr_status_t serf_bucket_mock_more_data_arrived(serf_bucket_t *bucket)
     return APR_SUCCESS;
 }
 
-void serf_mock_destroy(serf_bucket_t *bucket)
+static void serf_mock_destroy(serf_bucket_t *bucket)
 {
 #ifndef SERF_DEBUG_BUCKET_USE
   serf_default_destroy_and_data(bucket);
