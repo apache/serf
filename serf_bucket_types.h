@@ -392,10 +392,10 @@ serf_bucket_t *serf_bucket_simple_own_create(
     serf_bucket_alloc_t *allocator);
 
 #define SERF_BUCKET_SIMPLE_STRING(s,a) \
-    serf_bucket_simple_create(s, strlen(s), NULL, NULL, a);
+    serf_bucket_simple_create(s, strlen(s), NULL, NULL, a)
 
 #define SERF_BUCKET_SIMPLE_STRING_LEN(s,l,a) \
-    serf_bucket_simple_create(s, l, NULL, NULL, a);
+    serf_bucket_simple_create(s, l, NULL, NULL, a)
 
 /* ==================================================================== */
 
