@@ -315,7 +315,7 @@ static void test_response_bucket_read(CuTest *tc)
             "abc1234" /* NO CRLF... just 7 bytes!*/
             "HTTP/1.1 304 Unmodified" CRLF
             CRLF,
-            alloc)
+            alloc);
 
     bkt = serf_bucket_response_create(
               serf_bucket_barrier_create(tmp, alloc),
