@@ -292,10 +292,15 @@ apr_status_t serf__handle_response(serf_request_t *request,
     if (!request->auth_done && request->conn->ctx->cred_cb) {
         apr_status_t status;
 
-        status = serf__handle_auth_response(&consumed_response,
-                                            request,
-                                            request->resp_bkt,
-                                            pool);
+        if (!SERF_BUCKET_IS_RESPONSE(request->resp_bkt)) {
+            request->auth_done = true;
+            status = APR_SUCCESS;
+        }
+        else
+            status = serf__handle_auth_response(&consumed_response,
+                                                request,
+                                                request->resp_bkt,
+                                                pool);
 
         if (SERF_BUCKET_READ_ERROR(status)) {
 
