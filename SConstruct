@@ -301,7 +301,7 @@ if sys.platform == 'win32':
   dll_res = env.RES(['serf.rc'])
   SHARED_SOURCES.append(dll_res)
 
-SOURCES = Glob('*.c') + Glob('buckets/*.c') + Glob('auth/*.c') + \
+SOURCES = Glob('src/*.c') + Glob('buckets/*.c') + Glob('auth/*.c') + \
           Glob('protocols/*.c')
 
 lib_static = env.StaticLibrary(LIBNAME, SOURCES)
