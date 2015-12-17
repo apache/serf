@@ -108,7 +108,6 @@ static apr_status_t create_chunk(serf_bucket_t *bucket)
          */
         simple_bkt = serf_bucket_simple_copy_create(ctx->chunk_hdr, chunk_len,
                                                     bucket->allocator);
-        serf_bucket_set_config(simple_bkt, ctx->config);
         serf_bucket_aggregate_append(ctx->chunk, simple_bkt);
 
         /* Insert the chunk footer. */
