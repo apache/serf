@@ -141,7 +141,7 @@ static apr_status_t cleanup_store(void *baton)
          hi;
          hi = apr_hash_next(hi))
       {
-          const char *key;
+          const void *key;
           void *val;
 
           apr_hash_this(hi, &key, NULL, &val);
@@ -155,7 +155,7 @@ static apr_status_t cleanup_store(void *baton)
          hi;
          hi = apr_hash_next(hi))
       {
-          const char *key;
+          const void *key;
           void *val;
 
           apr_hash_this(hi, &key, NULL, &val);
