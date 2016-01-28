@@ -230,11 +230,15 @@ incdir = '$PREFIX/include/serf-$MAJOR'
 if sys.platform != 'sunos5':
   env['SHLIBVERSION'] = '%d.%d.%d' % (MAJOR, MINOR, 0)
 
-SHLIBNAME = '%sserf-%d' % (env['SHLIBPREFIX'], MAJOR)
-LIBNAME   = '%sserf-%s' % (env['LIBPREFIX'], MAJOR)
+LIBNAME   = '%sserf-%d' % (env['LIBPREFIX'], MAJOR)
 if sys.platform == 'win32':
   # On Win32 SHLIBPREFIX and LIBPREFIX are empty and both produce a .lib file.
   SHLIBNAME = 'libserf-%d' % (MAJOR, )
+elif env['SHLIBPREFIX'] == '$LIBPREFIX':
+  # Let's avoid constructing '$LIBPREFIXserf...' which evaluates to ''
+  SHLIBNAME = LIBNAME
+else:
+  SHLIBNAME = '%sserf-%d' % (env['SHLIBPREFIX'], MAJOR)
 
 env.Append(RPATH=[libdir],
            PDB='${TARGET.filebase}.pdb')
