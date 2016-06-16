@@ -49,6 +49,11 @@
 #define APR_ARRAY_PUSH(ary,type) (*((type *)apr_array_push(ary)))
 #endif
 
+#if defined(OPENSSL_VERSION_NUMBER) && OPENSSL_VERSION_NUMBER < 0x10100000L
+#define USE_LEGACY_OPENSSL
+#define X509_STORE_get0_param(store) store->param
+#endif
+
 
 /*
  * Here's an overview of the SSL bucket's relationship to OpenSSL and serf.
@@ -128,6 +133,7 @@ struct serf_ssl_context_t {
     SSL_CTX *ctx;
     SSL *ssl;
     BIO *bio;
+    BIO_METHOD *biom;
 
     serf_ssl_stream_t encrypt;
     serf_ssl_stream_t decrypt;
@@ -294,7 +300,11 @@ detect_renegotiate(const SSL *s, int where, int ret)
 #endif
 
     /* The server asked to renegotiate the SSL session. */
+#ifndef USE_LEGACY_OPENSSL
+    if (SSL_get_state(s) == TLS_ST_SW_HELLO_REQ) {
+#else
     if (SSL_state(s) == SSL_ST_RENEGOTIATE) {
+#endif
         serf_ssl_context_t *ssl_ctx = SSL_get_app_data(s);
 
         ssl_ctx->renegotiation = 1;
@@ -310,10 +320,28 @@ static void log_ssl_error(serf_ssl_context_t *ctx)
 
 }
 
+static void bio_set_data(BIO *bio, void *data)
+{
+#ifndef USE_LEGACY_OPENSSL
+    BIO_set_data(bio, data);
+#else
+    bio->ptr = data;
+#endif
+}
+
+static void *bio_get_data(BIO *bio)
+{
+#ifndef USE_LEGACY_OPENSSL
+    return BIO_get_data(bio);
+#else
+    return bio->ptr;
+#endif
+}
+
 /* Returns the amount read. */
 static int bio_bucket_read(BIO *bio, char *in, int inlen)
 {
-    serf_ssl_context_t *ctx = bio->ptr;
+    serf_ssl_context_t *ctx = bio_get_data(bio);
     const char *data;
     apr_status_t status;
     apr_size_t len;
@@ -356,7 +384,7 @@ static int bio_bucket_read(BIO *bio, char *in, int inlen)
 /* Returns the amount written. */
 static int bio_bucket_write(BIO *bio, const char *in, int inl)
 {
-    serf_ssl_context_t *ctx = bio->ptr;
+    serf_ssl_context_t *ctx = bio_get_data(bio);
     serf_bucket_t *tmp;
 
     serf__log(LOGLVL_DEBUG, LOGCOMP_SSL, __FILE__, ctx->config,
@@ -384,7 +412,7 @@ static int bio_bucket_write(BIO *bio, const char *in, int inl)
 /* Returns the amount read. */
 static int bio_file_read(BIO *bio, char *in, int inlen)
 {
-    apr_file_t *file = bio->ptr;
+    apr_file_t *file = bio_get_data(bio);
     apr_status_t status;
     apr_size_t len;
 
@@ -406,7 +434,7 @@ static int bio_file_read(BIO *bio, char *in, int inlen)
 /* Returns the amount written. */
 static int bio_file_write(BIO *bio, const char *in, int inl)
 {
-    apr_file_t *file = bio->ptr;
+    apr_file_t *file = bio_get_data(bio);
     apr_size_t nbytes;
 
     BIO_clear_retry_flags(bio);
@@ -419,7 +447,7 @@ static int bio_file_write(BIO *bio, const char *in, int inl)
 
 static int bio_file_gets(BIO *bio, char *in, int inlen)
 {
-    apr_file_t *file = bio->ptr;
+    apr_file_t *file = bio_get_data(bio);
     apr_status_t status;
 
     status = apr_file_gets(in, inlen, file);
@@ -435,10 +463,16 @@ static int bio_file_gets(BIO *bio, char *in, int inlen)
 
 static int bio_bucket_create(BIO *bio)
 {
+#ifndef USE_LEGACY_OPENSSL
+    BIO_set_shutdown(bio, 1);
+    BIO_set_init(bio, 1);
+    BIO_set_data(bio, NULL);
+#else
     bio->shutdown = 1;
     bio->init = 1;
     bio->num = -1;
     bio->ptr = NULL;
+#endif
 
     return 1;
 }
@@ -472,6 +506,7 @@ static long bio_bucket_ctrl(BIO *bio, int cmd, long num, void *ptr)
     return ret;
 }
 
+#ifdef USE_LEGACY_OPENSSL
 static BIO_METHOD bio_bucket_method = {
     BIO_TYPE_MEM,
     "Serf SSL encryption and decryption buckets",
@@ -501,6 +536,56 @@ static BIO_METHOD bio_file_method = {
     NULL /* sslc does not have the callback_ctrl field */
 #endif
 };
+#endif
+
+static BIO_METHOD *bio_meth_bucket_new(void)
+{
+    BIO_METHOD *biom = NULL;
+
+#ifndef USE_LEGACY_OPENSSL
+    biom = BIO_meth_new(BIO_TYPE_MEM,
+                        "Serf SSL encryption and decryption buckets");
+    if (biom) {
+        BIO_meth_set_write(biom, bio_bucket_write);
+        BIO_meth_set_read(biom, bio_bucket_read);
+        BIO_meth_set_ctrl(biom, bio_bucket_ctrl);
+        BIO_meth_set_create(biom, bio_bucket_create);
+        BIO_meth_set_destroy(biom, bio_bucket_destroy);
+    }
+#else
+    biom = &bio_bucket_method;
+#endif
+
+    return biom;
+}
+
+static BIO_METHOD *bio_meth_file_new(void)
+{
+    BIO_METHOD *biom = NULL;
+
+#ifndef USE_LEGACY_OPENSSL
+    biom = BIO_meth_new(BIO_TYPE_FILE, "Wrapper around APR file structures");
+    if (biom) {
+        BIO_meth_set_write(biom, bio_file_write);
+        BIO_meth_set_read(biom, bio_file_read);
+        BIO_meth_set_gets(biom, bio_file_gets);
+        BIO_meth_set_ctrl(biom, bio_bucket_ctrl);
+        BIO_meth_set_create(biom, bio_bucket_create);
+        BIO_meth_set_destroy(biom, bio_bucket_destroy);
+    }
+#else
+    biom = &bio_file_method;
+#endif
+
+    return biom;
+}
+
+static void bio_meth_free(BIO_METHOD *biom)
+{
+#ifndef USE_LEGACY_OPENSSL
+    BIO_meth_free(biom);
+#endif
+}
 
 #ifndef OPENSSL_NO_TLSEXT
 /* Callback called when the server response has some OCSP info.
@@ -511,7 +596,6 @@ static int ocsp_callback(SSL *ssl, void *baton)
 {
     serf_ssl_context_t *ctx = (serf_ssl_context_t*)baton;
     OCSP_RESPONSE *response;
-    OCSP_RESPBYTES *rb;
     const unsigned char *resp_der;
     int len;
     long resp_status;
@@ -533,10 +617,8 @@ static int ocsp_callback(SSL *ssl, void *baton)
         return SSL_TLSEXT_ERR_ALERT_FATAL;
     }
 
-    rb = response->responseBytes;
-
     /* Did the server get a valid response from the OCSP responder */
-    resp_status = ASN1_ENUMERATED_get(response->responseStatus);
+    resp_status = OCSP_response_status(response);
     switch (resp_status) {
         case OCSP_RESPONSE_STATUS_SUCCESSFUL:
             break;
@@ -1028,8 +1110,12 @@ static apr_status_t ssl_decrypt(void *baton, apr_size_t bufsize,
         /* Once we got through the initial handshake, we should have received
            the ALPN information if there is such information. */
         ctx->handshake_finished = SSL_is_init_finished(ctx->ssl)
+#ifndef USE_LEGACY_OPENSSL
+                                  || (SSL_get_state(ctx->ssl) == TLS_ST_OK);
+#else
                                   || (SSL_state(ctx->ssl)
                                       & SSL_CB_HANDSHAKE_DONE);
+#endif
 
         /* Call the protocol callback as soon as possible as this triggers
            pipelining data for the selected protocol. */
@@ -1226,7 +1312,7 @@ static apr_status_t ssl_encrypt(void *baton, apr_size_t bufsize,
     return status;
 }
 
-#if APR_HAS_THREADS
+#if APR_HAS_THREADS && defined(USE_LEGACY_OPENSSL)
 static apr_pool_t *ssl_pool;
 static apr_thread_mutex_t **ssl_locks;
 
@@ -1313,7 +1399,7 @@ static void init_ssl_libraries(void)
     val = apr_atomic_cas32(&have_init_ssl, INIT_BUSY, INIT_UNINITIALIZED);
 
     if (!val) {
-#if APR_HAS_THREADS
+#if APR_HAS_THREADS && defined(USE_LEGACY_OPENSSL)
         int i, numlocks;
 #endif
 
@@ -1330,13 +1416,17 @@ static void init_ssl_libraries(void)
         }
 #endif
 
+#ifndef USE_LEGACY_OPENSSL
+        OPENSSL_malloc_init();
+#else
         CRYPTO_malloc_init();
+#endif
         ERR_load_crypto_strings();
         SSL_load_error_strings();
         SSL_library_init();
         OpenSSL_add_all_algorithms();
 
-#if APR_HAS_THREADS
+#if APR_HAS_THREADS && defined(USE_LEGACY_OPENSSL)
         numlocks = CRYPTO_num_locks();
         apr_pool_create(&ssl_pool, NULL);
         ssl_locks = apr_palloc(ssl_pool, sizeof(apr_thread_mutex_t*)*numlocks);
@@ -1392,6 +1482,7 @@ static int ssl_need_client_cert(SSL *ssl, X509 **cert, EVP_PKEY **pkey)
         const char *cert_path;
         apr_file_t *cert_file;
         BIO *bio;
+        BIO_METHOD *biom;
         PKCS12 *p12;
         int i;
         int retrying_success = 0;
@@ -1418,8 +1509,9 @@ static int ssl_need_client_cert(SSL *ssl, X509 **cert, EVP_PKEY **pkey)
             continue;
         }
 
-        bio = BIO_new(&bio_file_method);
-        bio->ptr = cert_file;
+        biom = bio_meth_file_new();
+        bio = BIO_new(biom);
+        bio_set_data(bio, cert_file);
 
         ctx->cert_path = cert_path;
         p12 = d2i_PKCS12_bio(bio, NULL);
@@ -1430,6 +1522,7 @@ static int ssl_need_client_cert(SSL *ssl, X509 **cert, EVP_PKEY **pkey)
 
         if (i == 1) {
             PKCS12_free(p12);
+            bio_meth_free(biom);
             ctx->cached_cert = *cert;
             ctx->cached_cert_pw = *pkey;
             if (!retrying_success && ctx->cert_cache_pool) {
@@ -1465,6 +1558,7 @@ static int ssl_need_client_cert(SSL *ssl, X509 **cert, EVP_PKEY **pkey)
                         i = PKCS12_parse(p12, password, pkey, cert, NULL);
                         if (i == 1) {
                             PKCS12_free(p12);
+                            bio_meth_free(biom);
                             ctx->cached_cert = *cert;
                             ctx->cached_cert_pw = *pkey;
                             if (!retrying_success && ctx->cert_cache_pool) {
@@ -1492,6 +1586,7 @@ static int ssl_need_client_cert(SSL *ssl, X509 **cert, EVP_PKEY **pkey)
                     }
                 }
                 PKCS12_free(p12);
+                bio_meth_free(biom);
                 return 0;
             }
             else {
@@ -1500,6 +1595,7 @@ static int ssl_need_client_cert(SSL *ssl, X509 **cert, EVP_PKEY **pkey)
                           ERR_GET_FUNC(err),
                           ERR_GET_REASON(err));
                 PKCS12_free(p12);
+                bio_meth_free(biom);
             }
         }
     }
@@ -1630,8 +1726,9 @@ static serf_ssl_context_t *ssl_init_context(serf_bucket_alloc_t *allocator)
     disable_compression(ssl_ctx);
 
     ssl_ctx->ssl = SSL_new(ssl_ctx->ctx);
-    ssl_ctx->bio = BIO_new(&bio_bucket_method);
-    ssl_ctx->bio->ptr = ssl_ctx;
+    ssl_ctx->biom = bio_meth_bucket_new();
+    ssl_ctx->bio = BIO_new(ssl_ctx->biom);
+    bio_set_data(ssl_ctx->bio, ssl_ctx);
 
     SSL_set_bio(ssl_ctx->ssl, ssl_ctx->bio, ssl_ctx->bio);
 
@@ -1677,6 +1774,7 @@ static apr_status_t ssl_free_context(
     /* SSL_free implicitly frees the underlying BIO. */
     SSL_free(ssl_ctx->ssl);
     SSL_CTX_free(ssl_ctx->ctx);
+    bio_meth_free(ssl_ctx->biom);
 
     serf_bucket_mem_free(ssl_ctx->allocator, ssl_ctx);
 
@@ -1822,6 +1920,7 @@ apr_status_t serf_ssl_load_cert_file(
     apr_file_t *cert_file;
     apr_status_t status;
     BIO *bio;
+    BIO_METHOD *biom;
     X509 *ssl_cert;
 
     /* We use an apr file instead of an stdio.h file to avoid usage problems
@@ -1835,13 +1934,15 @@ apr_status_t serf_ssl_load_cert_file(
 
     init_ssl_libraries();
 
-    bio = BIO_new(&bio_file_method);
-    bio->ptr = cert_file;
+    biom = bio_meth_file_new();
+    bio = BIO_new(biom);
+    bio_set_data(bio, cert_file);
 
     ssl_cert = PEM_read_bio_X509(bio, NULL, NULL, NULL);
 
     apr_file_close(cert_file);
     BIO_free(bio);
+    bio_meth_free(biom);
 
     if (ssl_cert) {
         /* TODO: Setup pool cleanup to free certificate */
@@ -1880,7 +1981,7 @@ apr_status_t serf_ssl_check_crl(serf_ssl_context_t *ssl_ctx, int enabled)
         X509_STORE_set_flags(store, X509_V_FLAG_CRL_CHECK|
                              X509_V_FLAG_CRL_CHECK_ALL);
     } else {
-        X509_VERIFY_PARAM_clear_flags(store->param, X509_V_FLAG_CRL_CHECK|
+        X509_VERIFY_PARAM_clear_flags(X509_STORE_get0_param(store), X509_V_FLAG_CRL_CHECK|
                                       X509_V_FLAG_CRL_CHECK_ALL);
     }
     return APR_SUCCESS;
@@ -1894,6 +1995,7 @@ apr_status_t serf_ssl_add_crl_from_file(serf_ssl_context_t *ssl_ctx,
     X509_CRL *crl = NULL;
     X509_STORE *store;
     BIO *bio;
+    BIO_METHOD *biom;
     int result;
     apr_status_t status;
 
@@ -1903,13 +2005,15 @@ apr_status_t serf_ssl_add_crl_from_file(serf_ssl_context_t *ssl_ctx,
         return status;
     }
 
-    bio = BIO_new(&bio_file_method);
-    bio->ptr = crl_file;
+    biom = bio_meth_file_new();
+    bio = BIO_new(biom);
+    bio_set_data(bio, crl_file);
 
     crl = PEM_read_bio_X509_CRL(bio, NULL, NULL, NULL);
 
     apr_file_close(crl_file);
     BIO_free(bio);
+    bio_meth_free(biom);
 
     store = SSL_CTX_get_cert_store(ssl_ctx->ctx);
 
