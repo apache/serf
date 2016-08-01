@@ -504,7 +504,7 @@ serf__validate_response_digest_auth(const serf__authn_scheme_t *scheme,
         *val++ = '\0';
 
         /* skip leading spaces */
-        while (*key && *key == ' ')
+        while (*key == ' ')
             key++;
 
         /* If the value is quoted, then remove the quotes.  */
