@@ -106,7 +106,6 @@ static void log_time(FILE *logfp)
 void serf__log_nopref(apr_uint32_t level, apr_uint32_t comp,
                       serf_config_t *config, const char *fmt, ...)
 {
-    va_list argp;
     log_baton_t *log_baton;
     apr_status_t status;
 
@@ -126,10 +125,11 @@ void serf__log_nopref(apr_uint32_t level, apr_uint32_t comp,
             serf_log_output_t *output = APR_ARRAY_IDX(log_baton->output_list,
                                                       i, serf_log_output_t *);
             if ((output->level >= level) && (comp & output->comps)) {
+                va_list argp;
+
                 va_start(argp, fmt);
                 output->logger(output, config, level, comp, 0, "", fmt, argp);
                 va_end(argp);
-
             }
         }
     }
@@ -138,7 +138,6 @@ void serf__log_nopref(apr_uint32_t level, apr_uint32_t comp,
 void serf__log(apr_uint32_t level, apr_uint32_t comp, const char *prefix,
                serf_config_t *config, const char *fmt, ...)
 {
-    va_list argp;
     log_baton_t *log_baton;
     apr_status_t status;
 
@@ -158,10 +157,11 @@ void serf__log(apr_uint32_t level, apr_uint32_t comp, const char *prefix,
             serf_log_output_t *output = APR_ARRAY_IDX(log_baton->output_list,
                                                       i, serf_log_output_t *);
             if ((output->level >= level) && (comp & output->comps)) {
+                va_list argp;
+
                 va_start(argp, fmt);
                 output->logger(output, config, level, comp, 1, prefix, fmt, argp);
                 va_end(argp);
-
             }
         }
     }

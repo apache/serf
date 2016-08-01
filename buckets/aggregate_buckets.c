@@ -501,7 +501,6 @@ static serf_bucket_t * serf_aggregate_read_bucket(
     const serf_bucket_type_t *type)
 {
     aggregate_context_t *ctx = bucket->data;
-    serf_bucket_t *found_bucket;
     bucket_list_t *list;
 
     if (!ctx->list) {
@@ -511,7 +510,7 @@ static serf_bucket_t * serf_aggregate_read_bucket(
     list = ctx->list;
     if (list->bucket->type == type) {
         /* Got the bucket. Consume it from our list. */
-        found_bucket = list->bucket;
+        serf_bucket_t *found_bucket = list->bucket;
         ctx->list = list->next;
 
         /* And destroy the now unused item */

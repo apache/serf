@@ -63,8 +63,6 @@ serf_bucket_t *serf_bucket_chunk_create(
 static apr_status_t create_chunk(serf_bucket_t *bucket)
 {
     chunk_context_t *ctx = bucket->data;
-    serf_bucket_t *simple_bkt;
-    apr_size_t chunk_len;
     apr_size_t stream_len;
     /* 64 + chunk trailer + EOF trailer = 66 */
     struct iovec vecs[MIN(APR_MAX_IOVEC_SIZE, SERF__STD_IOV_COUNT + 2)];
@@ -98,6 +96,8 @@ static apr_status_t create_chunk(serf_bucket_t *bucket)
      * we'll only do this if we have something to write.
      */
     if (stream_len) {
+        serf_bucket_t *simple_bkt;
+        apr_size_t chunk_len;
         /* Build the chunk header. */
         chunk_len = apr_snprintf(ctx->chunk_hdr, sizeof(ctx->chunk_hdr),
                                  "%" APR_UINT64_T_HEX_FMT CRLF,
