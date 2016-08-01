@@ -385,9 +385,6 @@ void CuSuiteSummary(CuSuite* testSuite, CuString* summary)
 
 void CuSuiteDetails(CuSuite* testSuite, CuString* details)
 {
-    int i;
-    int failCount = 0;
-
     if (testSuite->failCount == 0)
     {
         int passCount = testSuite->count - testSuite->failCount;
@@ -396,6 +393,9 @@ void CuSuiteDetails(CuSuite* testSuite, CuString* details)
     }
     else
     {
+        int i;
+        int failCount = 0;
+
         if (testSuite->failCount == 1)
             CuStringAppend(details, "There was 1 failure:\n");
         else

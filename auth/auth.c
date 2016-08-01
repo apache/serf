@@ -216,9 +216,8 @@ static apr_status_t dispatch_auth(int code,
                                   serf_bucket_t *response,
                                   apr_pool_t *pool)
 {
-    serf_bucket_t *hdrs;
-
     if (code == 401 || code == 407) {
+        serf_bucket_t *hdrs;
         auth_baton_t ab = { 0 };
 
         ab.hdrs = apr_hash_make(pool);

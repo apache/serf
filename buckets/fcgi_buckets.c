@@ -510,11 +510,11 @@ static apr_status_t fcgi_params_decode(serf_bucket_t *bucket)
 static void fcgi_serialize(serf_bucket_t *bucket)
 {
     fcgi_params_decode_ctx_t *ctx = bucket->data;
-    serf_bucket_t *tmp;
 
     serf_bucket_aggregate_become(bucket);
 
     if (ctx->method || ctx->path) {
+        serf_bucket_t *tmp;
         if (ctx->method) {
             tmp = serf_bucket_simple_own_create(ctx->method, strlen(ctx->method),
                                                 bucket->allocator);
