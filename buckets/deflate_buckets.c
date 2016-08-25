@@ -503,7 +503,7 @@ static apr_status_t serf_deflate_wait_for_data(serf_bucket_t *bucket)
               break;
             }
         case STATE_COMPRESS_INIT:
-            zRC = deflateInit2(&ctx->zstream, Z_DEFAULT_STRATEGY, Z_DEFLATED,
+            zRC = deflateInit2(&ctx->zstream, Z_DEFAULT_COMPRESSION, Z_DEFLATED,
                                ctx->windowSize, ctx->memLevel, Z_DEFAULT_STRATEGY);
             if (zRC != Z_OK) {
                 serf__log(LOGLVL_ERROR, LOGCOMP_COMPR, __FILE__, ctx->config,
