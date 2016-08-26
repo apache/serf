@@ -1,6 +1,6 @@
 #!/bin/sh
 
-REPOS="http://serf.googlecode.com/svn/"
+REPOS="https://svn.apache.org/repos/asf/serf"
 
 if test $# != 2; then
   echo "USAGE: $0 TAG APR-SOURCE-PARENT"
