@@ -47,7 +47,7 @@ actual_version="${major}.${minor}.${patch}"
 
 cd "${work}"
 
-if test "${version}" != "trunk" -a "${version}" != "${actual_version}"; then
+if test "${version}" != "trunk" -a "${version%%-*}" != "${actual_version}"; then
   echo "ERROR: exported version '${actual_version}' does not match '${version}'"
   exit 1
 fi
