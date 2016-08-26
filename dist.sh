@@ -2,15 +2,12 @@
 
 REPOS="https://svn.apache.org/repos/asf/serf"
 
-if test $# != 2; then
-  echo "USAGE: $0 TAG APR-SOURCE-PARENT"
+if test $# != 1; then
+  echo "USAGE: $0 TAG"
   exit 1
 fi
 
 version=$1
-
-# Convert to absolute path.
-srcdir=`(cd $2 ; pwd)`
 
 # provide for examining dist.sh output before creating a tag
 if test "${version}" = "trunk"; then
@@ -37,12 +34,6 @@ echo "`find ${release} -type f | wc -l` files exported"
 prepare_directory()
 {
 cd "${release}"
-
-echo "Running buildconf ..."
-if ! ./buildconf --with-apr="${srcdir}/apr" --with-apr-util="${srcdir}/apr-util" ; then
-  echo "Exiting..."
-  exit 1
-fi
 
 # Remove anything that should not be in the distribution
 echo "Removing from release: dist.sh"
@@ -79,7 +70,6 @@ echo "Exporting latest serf using CRLF ..."
 svn export --native-eol=CRLF --quiet "${url}" "${release}" || exit 1
 echo "`find ${release} -type f | wc -l` files exported"
 
-### generated files have wrong line-ending. is that an issue?
 prepare_directory
 
 if ! diff -brq "${release}.unix" "${release}"; then
