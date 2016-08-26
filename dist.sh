@@ -84,3 +84,49 @@ echo "${short}/${release}.zip ready."
 
 echo "Saving ${release} as ${release}.win"
 mv "${release}" "${release}.win"
+
+cd ${work}
+
+# allow md5sum and sha1sum tool names to be overridden
+[ -n "$MD5SUM" ] || MD5SUM=md5sum
+[ -n "$SHA1SUM" ] || SHA1SUM=sha1sum
+
+echo ""
+echo "Done:"
+
+sign_file()
+{
+  if [ -n "$SIGN" ]; then
+    type gpg > /dev/null 2>&1
+    if [ $? -eq 0 ]; then
+      if test -n "$user"; then
+        args="--default-key $user"
+      fi
+      for ARG in $@
+      do
+        gpg --armor $args --detach-sign $ARG
+      done
+    else
+      type pgp > /dev/null 2>&1
+      if [ $? -eq 0 ]; then
+        if test -n "$user"; then
+          args="-u $user"
+        fi
+        for ARG in $@
+        do
+          pgp -sba $ARG $args
+        done
+      fi
+    fi
+  fi
+}
+
+ls -l "${release}.tar.bz2" "${release}.zip"
+sign_file ${release}.tar.bz2 ${release}.zip
+echo ""
+echo "md5sums:"
+$MD5SUM "${release}.tar.bz2" "${release}.zip"
+echo ""
+echo "sha1sums:"
+$SHA1SUM "${release}.tar.bz2" "${release}.zip"
+echo ""
