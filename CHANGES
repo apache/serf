@@ -47,11 +47,11 @@ Serf 1.4.0 [2014-xx-xx, from /tags/1.4.0, rxxxx]
   Fix issue #157: Segmentation fault in test_ssl_init
 
 
-Serf 1.3.9 [2015-10-XX, from tags/1.3.9, rXXXXXXX]
+Apache Serf 1.3.9 [2016-09-01, from tags/1.3.9]
   serf is now Apache Serf; apply header changes (r1700062)
   Fix issue #151: SCons build broken when only one library in ENVPATH
   Fix issue #153: avoid SSPI handle leak
-  Fix issue #167: Explicitly use the  ANSI version of SSPI
+  Fix issue #167: Explicitly use the ANSI version of SSPI
   Fix issue #170: Allow building with Microsoft Visual Studio 2015
   Fix build of 'check' target when using VPATH-style builds (r1699858, ...)
     (builddir != srcdir).
@@ -61,6 +61,10 @@ Serf 1.3.9 [2015-10-XX, from tags/1.3.9, rXXXXXXX]
   Fix types of passed, but unused batons (r1699986, r1699987)
   Fix some usages of the openssl BIO api (r1699852)
   Improve handling of bad data in the response state line. (r1699985)
+  Resolve several compiler issues with less common compilers
+  Support VPath builds with SCons (r1699858, ...)
+  Support more overrides via SCons arguments (r1701836, ...)
+  Adapt to OpenSSL 1.1.x api
 
 
 Serf 1.3.8 [2014-10-20, from /tags/1.3.8, r2441]
