@@ -37,8 +37,8 @@
     <release>
       <Version>
         <name>Recommended current 1.3 release</name>
-        <created>2014-10-20</created>
-        <revision>1.3.8</revision>
+        <created>2016-09-01</created>
+        <revision>1.3.9</revision>
       </Version>
     </release>
     <repository>
