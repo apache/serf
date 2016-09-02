@@ -650,7 +650,6 @@ apr_status_t start_test_server(serv_ctx_t *servctx)
 
     apr_socket_opt_set(serv_sock, APR_SO_NONBLOCK, 1);
     apr_socket_timeout_set(serv_sock, 0);
-    apr_socket_opt_set(serv_sock, APR_SO_REUSEADDR, 1);
 
     status = apr_socket_bind(serv_sock, servctx->serv_addr);
     if (status != APR_SUCCESS)
