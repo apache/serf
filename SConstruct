@@ -400,6 +400,9 @@ else:
     apr_libs = ''
     apu_libs = ''
 
+  env.Append(CPPPATH=['$ZLIB/include'])
+  env.Append(LIBPATH=['$ZLIB/lib'])
+
   env.Append(CPPPATH=['$OPENSSL/include'])
   env.Append(LIBPATH=['$OPENSSL/lib'])
 
