@@ -93,6 +93,23 @@ static unsigned long getLong(unsigned char *string)
           | (((unsigned long)string[3]) << 24);
 }
 
+/* zlib alloc function. opaque is the bucket allocator. */
+static voidpf zalloc_func(voidpf opaque, uInt items, uInt size)
+{
+    serf_bucket_alloc_t *allocator = opaque;
+    apr_size_t alloc_size = items * size;
+    return serf_bucket_mem_alloc(allocator, alloc_size);
+}
+
+/* zlib free function */
+static void zfree_func(voidpf opaque, voidpf address)
+{
+    if (address) {
+        serf_bucket_alloc_t *allocator = opaque;
+        serf_bucket_mem_free(allocator, address);
+    }
+}
+
 serf_bucket_t *serf_bucket_deflate_create(
     serf_bucket_t *stream,
     serf_bucket_alloc_t *allocator,
@@ -109,6 +126,12 @@ serf_bucket_t *serf_bucket_deflate_create(
     ctx->config = NULL;
     /* zstream must be NULL'd out. */
     memset(&ctx->zstream, 0, sizeof(ctx->zstream));
+
+    /* Configure alloc/free callbacks to allocate memory from bucket
+     * allocator. */
+    ctx->zstream.zalloc = zalloc_func;
+    ctx->zstream.zfree = zfree_func;
+    ctx->zstream.opaque = allocator;
 
     switch (ctx->format) {
         case SERF_DEFLATE_GZIP:
@@ -150,6 +173,12 @@ serf_bucket_t *serf_bucket_deflate_compress_create(
     ctx->config = NULL;
     /* zstream must be NULL'd out. */
     memset(&ctx->zstream, 0, sizeof(ctx->zstream));
+
+    /* Configure alloc/free callbacks to allocate memory from bucket
+     * allocator. */
+    ctx->zstream.zalloc = zalloc_func;
+    ctx->zstream.zfree = zfree_func;
+    ctx->zstream.opaque = allocator;
 
     switch (ctx->format) {
         case SERF_DEFLATE_GZIP:
