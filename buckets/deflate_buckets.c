@@ -24,11 +24,6 @@
 
 #include <zlib.h>
 
-/* This conditional isn't defined anywhere yet. */
-#ifdef HAVE_ZUTIL_H
-#include <zutil.h>
-#endif
-
 #include "serf.h"
 #include "serf_bucket_util.h"
 #include "serf_private.h"
