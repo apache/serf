@@ -5,8 +5,9 @@ Portable Runtime (APR) library. It multiplexes connections, running the
 read/write communication asynchronously. Memory copies and transformations are
 kept to a minimum to provide high performance operation.
 
-  * Site: http://serf.apache.org/
-  * Code: http://svn.apache.org/repos/asf/serf/
+  * Site: https://serf.apache.org/
+  * Code: https://svn.apache.org/repos/asf/serf/
+  * Official Git Mirror: https://github.com/apache/serf/
   * Issues: https://issues.apache.org/jira/browse/SERF
   * Mail: dev@serf.apache.org
   * People: Justin Erenkrantz, Greg Stein 
