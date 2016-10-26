@@ -444,7 +444,7 @@ typedef apr_status_t (*serf_credentials_callback_t)(
  * If no proxy server is configured, a connection will be created to
  * (eventually) connect to the address specified by @a address. The address must
  * live at least as long as @a pool (thus, as long as the connection object).
- * If a proxy server is configured, @address will be ignored.
+ * If a proxy server is configured, @a address will be ignored.
  *
  * The connection object will be allocated within @a pool. Clearing or
  * destroying this pool will close the connection, and terminate any
@@ -457,7 +457,7 @@ typedef apr_status_t (*serf_credentials_callback_t)(
  * NULL may be passed for @a acceptor and @a closed; default implementations
  * will be used.
  *
- * Note: the connection is not made immediately. It will be opened on
+ * @note The connection is not made immediately. It will be opened on
  * the next call to @see serf_context_run.
  */
 serf_connection_t *serf_connection_create(
