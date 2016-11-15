@@ -1288,10 +1288,27 @@ apr_status_t serf_connection_create2(
     void *closed_baton,
     apr_pool_t *pool)
 {
+    return serf_connection_create3(conn, ctx, host_info, NULL,
+                                   setup, setup_baton,
+                                   closed, closed_baton,
+                                   pool);
+}
+
+
+apr_status_t serf_connection_create3(
+    serf_connection_t **conn,
+    serf_context_t *ctx,
+    apr_uri_t host_info,
+    apr_sockaddr_t *host_address,
+    serf_connection_setup_t setup,
+    void *setup_baton,
+    serf_connection_closed_t closed,
+    void *closed_baton,
+    apr_pool_t *pool)
+{
     apr_status_t status = APR_SUCCESS;
     serf_config_t *config;
     serf_connection_t *c;
-    apr_sockaddr_t *host_address = NULL;
 
     /* Set the port number explicitly, needed to create the socket later. */
     if (!host_info.port) {
@@ -1301,11 +1318,15 @@ apr_status_t serf_connection_create2(
     /* Only lookup the address of the server if no proxy server was
        configured. */
     if (!ctx->proxy_address) {
-        status = apr_sockaddr_info_get(&host_address,
-                                       host_info.hostname,
-                                       APR_UNSPEC, host_info.port, 0, pool);
-        if (status)
-            return status;
+        if (!host_address) {
+            status = apr_sockaddr_info_get(&host_address,
+                                           host_info.hostname,
+                                           APR_UNSPEC, host_info.port, 0, pool);
+            if (status)
+                return status;
+        }
+    } else {
+        host_address = NULL;
     }
 
     c = serf_connection_create(ctx, host_address, setup, setup_baton,
