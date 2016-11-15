@@ -403,8 +403,17 @@ else:
   env.Append(CPPPATH=['$ZLIB/include'])
   env.Append(LIBPATH=['$ZLIB/lib'])
 
-  env.Append(CPPPATH=['$OPENSSL/include'])
-  env.Append(LIBPATH=['$OPENSSL/lib'])
+  # MacOS ships ancient OpenSSL libraries, but no headers, so we can
+  # assume we're building with an OpenSSL installed outside the
+  # default include and link paths. To prevent accidentally linking to
+  # the old shared libraries, make sure that the OpenSSL paths are
+  # first in the search lists.
+  if sys.platform == 'darwin':
+    env.Prepend(CPPPATH=['$OPENSSL/include'])
+    env.Prepend(LIBPATH=['$OPENSSL/lib'])
+  else:
+    env.Append(CPPPATH=['$OPENSSL/include'])
+    env.Append(LIBPATH=['$OPENSSL/lib'])
 
 
 # If build with gssapi, get its information and define SERF_HAVE_GSSAPI
