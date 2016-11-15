@@ -472,11 +472,30 @@ serf_connection_t *serf_connection_create(
 /**
  * Create a new connection associated with the @a ctx serf context.
  *
+ * Like @see serf_connection_create3 but with @a host_address set to @c NULL.
+ */
+apr_status_t serf_connection_create2(
+    serf_connection_t **conn,
+    serf_context_t *ctx,
+    apr_uri_t host_info,
+    serf_connection_setup_t setup,
+    void *setup_baton,
+    serf_connection_closed_t closed,
+    void *closed_baton,
+    apr_pool_t *pool);
+
+
+/**
+ * Create a new connection associated with the @a ctx serf context.
+ *
  * A connection will be created to (eventually) connect to the address
  * specified by @a address. The address must live at least as long as
  * @a pool (thus, as long as the connection object).
  *
- * The host address will be looked up based on the hostname in @a host_info.
+ * If @a host_address is @c NULL, the host address will be looked up
+ * based on the hostname in @a host_info; otherwise @a host_address
+ * will be used to connect and @a host_info will only be used for
+ * setting request headers.
  *
  * The connection object will be allocated within @a pool. Clearing or
  * destroying this pool will close the connection, and terminate any
@@ -489,13 +508,14 @@ serf_connection_t *serf_connection_create(
  * NULL may be passed for @a acceptor and @a closed; default implementations
  * will be used.
  *
- * Note: the connection is not made immediately. It will be opened on
+ * @note the connection is not made immediately. It will be opened on
  * the next call to @see serf_context_run.
  */
-apr_status_t serf_connection_create2(
+apr_status_t serf_connection_create3(
     serf_connection_t **conn,
     serf_context_t *ctx,
     apr_uri_t host_info,
+    apr_sockaddr_t *host_address,
     serf_connection_setup_t setup,
     void *setup_baton,
     serf_connection_closed_t closed,
@@ -886,7 +906,8 @@ serf_bucket_t *serf_context_bucket_socket_create(
  * settings.
  *
  * This function will set following header(s):
- * - Host: if the connection was created with @a serf_connection_create2.
+ * - Host: if the connection was created with @see serf_connection_create2
+ *         or @see serf_connection_create3
  */
 serf_bucket_t *serf_request_bucket_request_create(
     serf_request_t *request,
