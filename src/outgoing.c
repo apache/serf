@@ -1216,7 +1216,7 @@ apr_status_t serf__process_connection(serf_connection_t *conn,
     return APR_SUCCESS;
 }
 
-static serf_connection_t *create_connection(
+serf_connection_t *serf_connection_create(
     serf_context_t *ctx,
     apr_sockaddr_t *address,
     serf_connection_setup_t setup,
@@ -1265,8 +1265,6 @@ static serf_connection_t *create_connection(
 
     conn->done_reqs = conn->done_reqs_tail = 0;
 
-    conn->config = NULL;
-
     /* Create a subpool for our connection. */
     apr_pool_create(&conn->skt_pool, conn->pool);
 
@@ -1277,23 +1275,6 @@ static serf_connection_t *create_connection(
     /* Add the connection to the context. */
     *(serf_connection_t **)apr_array_push(ctx->conns) = conn;
 
-    return conn;
-}
-
-serf_connection_t *serf_connection_create(
-    serf_context_t *ctx,
-    apr_sockaddr_t *address,
-    serf_connection_setup_t setup,
-    void *setup_baton,
-    serf_connection_closed_t closed,
-    void *closed_baton,
-    apr_pool_t *pool)
-{
-    serf_connection_t *conn = create_connection(ctx, address,
-                                                setup, setup_baton,
-                                                closed, closed_baton,
-                                                pool);
-    serf__config_store_create_conn_config(conn, &conn->config, pool);
     return conn;
 }
 
@@ -1327,8 +1308,8 @@ apr_status_t serf_connection_create2(
             return status;
     }
 
-    c = create_connection(ctx, host_address, setup, setup_baton,
-                          closed, closed_baton, pool);
+    c = serf_connection_create(ctx, host_address, setup, setup_baton,
+                               closed, closed_baton, pool);
 
     /* We're not interested in the path following the hostname. */
     c->host_url = apr_uri_unparse(c->pool,
@@ -1343,7 +1324,7 @@ apr_status_t serf_connection_create2(
     }
 
     /* Store the connection specific info in the configuration store */
-    status = serf__config_store_create_conn_config(c, &config, NULL);
+    status = serf__config_store_create_conn_config(c, &config);
     if (status)
         return status;
     c->config = config;

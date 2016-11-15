@@ -334,15 +334,11 @@ apr_status_t serf__config_store_init(serf_context_t *ctx);
    The host and connection entries will be created in the configuration store
    when not existing already.
 
-   The config object will be allocated in CONN's pool. The config object's
+   The config object will be allocated in OUT_POOL. The config object's
    lifecycle cannot extend beyond that of the serf context!
-
-   If OPT_POOL is is not NULL, it will be used for temporary
-   allocations and the function will always return APR_SUCCESS.
  */
 apr_status_t serf__config_store_create_conn_config(serf_connection_t *conn,
-                                                   serf_config_t **config,
-                                                   apr_pool_t *opt_pool);
+                                                   serf_config_t **config);
 
 /* Same thing, but for incoming connections */
 apr_status_t serf__config_store_create_client_config(serf_incoming_t *client,
