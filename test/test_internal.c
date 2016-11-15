@@ -119,13 +119,13 @@ static void test_config_store_per_connection_different_host(CuTest *tc)
     /* Test 1: This should return a config object with per_context, per_host and
        per_connection hash_table's initialized. */
     CuAssertIntEquals(tc, APR_SUCCESS,
-                      serf__config_store_create_conn_config(conn1, &cfg1, NULL));
+                      serf__config_store_create_conn_config(conn1, &cfg1));
     CuAssertPtrNotNull(tc, cfg1->per_context);
     CuAssertPtrNotNull(tc, cfg1->per_host);
     CuAssertPtrNotNull(tc, cfg1->per_conn);
     /* Get a config object for the other connection also. */
     CuAssertIntEquals(tc, APR_SUCCESS,
-                      serf__config_store_create_conn_config(conn2, &cfg2, NULL));
+                      serf__config_store_create_conn_config(conn2, &cfg2));
 
     /* Test 2: Get a non-existing per connection key, value should be NULL */
     CuAssertIntEquals(tc, APR_SUCCESS,
@@ -180,13 +180,13 @@ static void test_config_store_per_connection_same_host(CuTest *tc)
     /* Test 1: This should return a config object with per_context, per_host and
      per_connection hash_table's initialized. */
     CuAssertIntEquals(tc, APR_SUCCESS,
-                      serf__config_store_create_conn_config(conn1, &cfg1, NULL));
+                      serf__config_store_create_conn_config(conn1, &cfg1));
     CuAssertPtrNotNull(tc, cfg1->per_context);
     CuAssertPtrNotNull(tc, cfg1->per_host);
     CuAssertPtrNotNull(tc, cfg1->per_conn);
     /* Get a config object for the other connection also. */
     CuAssertIntEquals(tc, APR_SUCCESS,
-                      serf__config_store_create_conn_config(conn2, &cfg2, NULL));
+                      serf__config_store_create_conn_config(conn2, &cfg2));
 
     /* Test 2: Get a non-existing per connection key, value should be NULL */
     CuAssertIntEquals(tc, APR_SUCCESS,
@@ -277,7 +277,7 @@ static void test_config_store_remove_objects(CuTest *tc)
                             conn_closed, NULL, tb->pool);
 
     CuAssertIntEquals(tc, APR_SUCCESS,
-                      serf__config_store_create_conn_config(conn, &cfg, NULL));
+                      serf__config_store_create_conn_config(conn, &cfg));
 
     /* Add and remove a key per-context */
     CuAssertIntEquals(tc, APR_SUCCESS,

@@ -236,27 +236,21 @@ apr_status_t serf__config_store_create_ctx_config(serf_context_t *ctx,
 }
 
 apr_status_t serf__config_store_create_conn_config(serf_connection_t *conn,
-                                                   serf_config_t **config,
-                                                   apr_pool_t *opt_pool)
+                                                   serf_config_t **config)
 {
     serf__config_store_t *config_store = &conn->ctx->config_store;
     const char *host_key, *conn_key;
     serf__config_hdr_t *per_conn, *per_host;
     apr_pool_t *tmp_pool;
+    apr_status_t status;
 
     serf_config_t *cfg = apr_pcalloc(conn->pool, sizeof(serf_config_t));
     cfg->ctx_pool = config_store->pool;
     cfg->allocator = config_store->allocator;
     cfg->per_context = config_store->global_per_context;
 
-    if (!opt_pool) {
-        apr_status_t status = apr_pool_create(&tmp_pool, cfg->ctx_pool);
-        if (status != APR_SUCCESS)
-            return status;
-    }
-    else {
-        tmp_pool = opt_pool;
-    }
+    if ((status = apr_pool_create(&tmp_pool, cfg->ctx_pool)) != APR_SUCCESS)
+        return status;
 
     /* Find the config values for this connection, create empty structure
         if needed */
@@ -285,8 +279,7 @@ apr_status_t serf__config_store_create_conn_config(serf_connection_t *conn,
     }
     cfg->per_host = per_host;
 
-    if (tmp_pool != opt_pool)
-        apr_pool_destroy(tmp_pool);
+    apr_pool_destroy(tmp_pool);
 
     *config = cfg;
 
