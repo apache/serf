@@ -2348,6 +2348,33 @@ const char *serf_ssl_cert_export(
     return encoded_cert;
 }
 
+
+serf_ssl_certificate_t *serf_ssl_cert_import(
+    const char *encoded_cert,
+    apr_pool_t *pool)
+{
+    char *binary_cert;
+    int binary_len;
+    const unsigned char *unused;
+    X509* ssl_cert;
+    serf_ssl_certificate_t *cert;
+
+    binary_cert = apr_palloc(pool, apr_base64_decode_len(encoded_cert));
+    binary_len = apr_base64_decode(binary_cert, encoded_cert);
+
+    unused = (unsigned char*) binary_cert; /* unused is incremented  */
+    ssl_cert = d2i_X509(NULL, &unused, binary_len);
+    if (!ssl_cert) {
+        return NULL;
+    }
+
+    /* TODO: Setup pool cleanup to free certificate */
+    cert = apr_palloc(pool, sizeof(serf_ssl_certificate_t));
+    cert->ssl_cert = ssl_cert;
+    return cert;
+}
+
+
 /* Disables compression for all SSL sessions. */
 static void disable_compression(serf_ssl_context_t *ssl_ctx)
 {
