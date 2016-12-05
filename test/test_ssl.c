@@ -252,15 +252,38 @@ static const char *extract_cert_from_pem(const char *pemdata,
         return NULL;
 }
 
+static const char* load_cert_file_der(CuTest *tc,
+                                      const char *path,
+                                      apr_pool_t *pool)
+{
+    apr_file_t *fp;
+    apr_finfo_t file_info;
+    char *pembuf;
+    apr_size_t pemlen;
+    apr_status_t status;
+
+    status = apr_file_open(&fp, path,
+                           APR_FOPEN_READ | APR_FOPEN_BINARY,
+                           APR_FPROT_OS_DEFAULT, pool);
+    CuAssertIntEquals(tc, APR_SUCCESS, status);
+
+    status = apr_file_info_get(&file_info, APR_FINFO_SIZE, fp);
+    CuAssertIntEquals(tc, APR_SUCCESS, status);
+    pembuf = apr_palloc(pool, file_info.size + 1);
+
+    status = apr_file_read_full(fp, pembuf, file_info.size, &pemlen);
+    CuAssertIntEquals(tc, APR_SUCCESS, status);
+    pembuf[file_info.size] = '\0';
+
+    return extract_cert_from_pem(pembuf, pool);
+}
+
 static void test_ssl_cert_export(CuTest *tc)
 {
     test_baton_t *tb = tc->testBaton;
     serf_ssl_certificate_t *cert = NULL;
-    apr_file_t *fp;
-    apr_finfo_t file_info;
+    const char *extractedbuf;
     const char *base64derbuf;
-    char *pembuf;
-    apr_size_t pemlen;
     apr_status_t status;
 
 
@@ -273,25 +296,43 @@ static void test_ssl_cert_export(CuTest *tc)
 
     /* A .pem file contains a Base64 encoded DER certificate, which is exactly
        what serf_ssl_cert_export is supposed to be returning. */
-    status = apr_file_open(&fp,
-                           get_srcdir_file(tb->pool, "test/serftestca.pem"),
-                           APR_FOPEN_READ | APR_FOPEN_BINARY,
-                           APR_FPROT_OS_DEFAULT, tb->pool);
-    CuAssertIntEquals(tc, APR_SUCCESS, status);
-
-    status = apr_file_info_get(&file_info, APR_FINFO_SIZE, fp);
-    CuAssertIntEquals(tc, APR_SUCCESS, status);
-    pembuf = apr_palloc(tb->pool, file_info.size + 1);
-
-    status = apr_file_read_full(fp, pembuf, file_info.size, &pemlen);
-    CuAssertIntEquals(tc, APR_SUCCESS, status);
-    pembuf[file_info.size] = '\0';
-
+    extractedbuf = load_cert_file_der(tc,
+                                      get_srcdir_file(tb->pool,
+                                                      "test/serftestca.pem"),
+                                      tb->pool);
     base64derbuf = serf_ssl_cert_export(cert, tb->pool);
 
-    CuAssertStrEquals(tc,
-                      extract_cert_from_pem(pembuf, tb->pool),
-                      base64derbuf);
+    CuAssertStrEquals(tc, extractedbuf, base64derbuf);
+}
+
+static void test_ssl_cert_import(CuTest *tc)
+{
+    test_baton_t *tb = tc->testBaton;
+    serf_ssl_certificate_t *cert = NULL;
+    serf_ssl_certificate_t *imported_cert = NULL;
+    const char *extractedbuf;
+    const char *base64derbuf;
+    apr_status_t status;
+
+    status = serf_ssl_load_cert_file(&cert,
+                                     get_srcdir_file(tb->pool,
+                                                     "test/serftestca.pem"),
+                                     tb->pool);
+    CuAssertIntEquals(tc, APR_SUCCESS, status);
+    CuAssertPtrNotNull(tc, cert);
+
+    /* A .pem file contains a Base64 encoded DER certificate, which is exactly
+       what serf_ssl_cert_import expects as input. */
+    extractedbuf = load_cert_file_der(tc,
+                                      get_srcdir_file(tb->pool,
+                                                      "test/serftestca.pem"),
+                                      tb->pool);
+
+    imported_cert = serf_ssl_cert_import(extractedbuf, tb->pool);
+    CuAssertPtrNotNull(tc, imported_cert);
+
+    base64derbuf = serf_ssl_cert_export(imported_cert, tb->pool);
+    CuAssertStrEquals(tc, extractedbuf, base64derbuf);
 }
 
 /*****************************************************************************
@@ -2265,6 +2306,7 @@ CuSuite *test_ssl(void)
     SUITE_ADD_TEST(suite, test_ssl_cert_issuer);
     SUITE_ADD_TEST(suite, test_ssl_cert_certificate);
     SUITE_ADD_TEST(suite, test_ssl_cert_export);
+    SUITE_ADD_TEST(suite, test_ssl_cert_import);
     SUITE_ADD_TEST(suite, test_ssl_handshake);
     SUITE_ADD_TEST(suite, test_ssl_handshake_nosslv2);
     SUITE_ADD_TEST(suite, test_ssl_trust_rootca);
