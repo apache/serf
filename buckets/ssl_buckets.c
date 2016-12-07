@@ -733,6 +733,42 @@ get_subject_alt_names(apr_array_header_t **san_arr, X509 *ssl_cert,
     return APR_SUCCESS;
 }
 
+
+static apr_status_t
+get_ocsp_responders(apr_array_header_t **ocsp_arr, X509 *ssl_cert,
+                    apr_pool_t *pool)
+{
+    /* assert: (ocsp_arr && pool) */
+
+    if (ocsp_arr) {
+        STACK_OF(OPENSSL_STRING) *uris;
+
+        *ocsp_arr = NULL;
+        uris = X509_get1_ocsp(ssl_cert);
+        if (uris) {
+            int uris_count = sk_OPENSSL_STRING_num(uris);
+            int uri_idx;
+
+            *ocsp_arr = apr_array_make(pool, uris_count, sizeof(char*));
+
+            for (uri_idx = 0; uri_idx < uris_count; ++uri_idx) {
+                OPENSSL_STRING uri = sk_OPENSSL_STRING_value(uris, uri_idx);
+                if (uri) {
+                    char *p = apr_pstrdup(pool, uri);
+
+                    if (p) {
+                        APR_ARRAY_PUSH(*ocsp_arr, char*) = p;
+                    }
+                }
+            }
+        }
+        X509_email_free(uris);
+    }
+
+    return APR_SUCCESS;
+}
+
+
 static apr_status_t validate_cert_hostname(X509 *server_cert, apr_pool_t *pool)
 {
     char buf[1024];
@@ -2268,6 +2304,7 @@ apr_hash_t *serf_ssl_cert_certificate(
     unsigned char md[EVP_MAX_MD_SIZE];
     BIO *bio;
     apr_array_header_t *san_arr;
+    apr_array_header_t *ocsp_arr;
 
     /* sha1 fingerprint */
     if (X509_digest(cert->ssl_cert, EVP_sha1(), md, &md_size)) {
@@ -2315,6 +2352,10 @@ apr_hash_t *serf_ssl_cert_certificate(
     /* Get subjectAltNames */
     if (!get_subject_alt_names(&san_arr, cert->ssl_cert, EscapeNulAndCopy, pool))
       apr_hash_set(tgt, "subjectAltName", APR_HASH_KEY_STRING, san_arr);
+
+    /* Get authorityAccessInfo.OCSP */
+    if (!get_ocsp_responders(&ocsp_arr, cert->ssl_cert, pool))
+      apr_hash_set(tgt, "OCSP", APR_HASH_KEY_STRING, ocsp_arr);
 
     return tgt;
 }

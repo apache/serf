@@ -14,10 +14,9 @@ These are the proposed changes:
 
 1. serf_ssl_cert_certificate()
 
-   Extract the OCSP responder URL from the certificate's x509v3
-   extension field authorityInfoAccess:OCSP;URI and, if it is
-   present, insert it into the returned hash table with key
-   "ocsp.uri".
+   Extract the OCSP responder locations from the certificate's x509v3
+   extension field authorityInfoAccess:OCSP;URI and, if it is present,
+   insert the array into the returned hash table with key "OCSP".
 
 2. serf_ssl_cert_import()
 
