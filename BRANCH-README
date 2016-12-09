@@ -18,33 +18,59 @@ These are the proposed changes:
    extension field authorityInfoAccess:OCSP;URI and, if it is present,
    insert the array into the returned hash table with key "OCSP".
 
+
 2. serf_ssl_cert_import()
 
-   Add new function that is the inverse of serf_ssl_cert_export():
+   Add a new function that is the inverse of serf_ssl_cert_export():
 
        serf_ssl_certificate_t *serf_ssl_cert_import(
            const char *encoded_cert,
            apr_pool_t *pool);
 
-   Imports certificate from a base64-encoded, zero-terminated
-   string. The returned certificate is allocated in @a pool.
-   Returns NULL on failure.
+   Docstring:
 
-3. serf_ocsp_request_setup()
+     Imports certificate from a base64-encoded, zero-terminated
+     string. The returned certificate is allocated in @a pool.
+     Returns NULL on failure.
+
+   Discussion:
+
+     In order to create an OCSP request, the application needs both
+     the server certificate and its issuer certtificate. An
+     application may have to issue OCSP requests independently and
+     asynchronously of any other processing, so it's nice if it can
+     store the certificates in a form that's independent of pool
+     lifetimes. We provide this form with serf_ssl_cert_export(), but
+     there's no easy way to consume the exported form in existing Serf
+     APIs (writing it to a file in PEM format and reading it back
+     through serf_ssl_load_cert_file() is neither easy nor sane).
+
+
+3. serf_ocsp_request_create()
 
    Add a new function that can be used from within a request setup
-   handler to create an OCSP request bucket:
+   handler to create an OCSP request:
 
-       apr_status_t serf_ocsp_request_setup(
-           serf_request_t *request,
+       apr_status_t serf_ocsp_request_create(
            const serf_ssl_certificate_t *server_cert,
            const serf_ssl_certificate_t *issuer_cert,
-           serf_bucket_t **req_bkt,
+           const char **ocsp_request,
            apr_pool_t *pool);
 
-   Constructs an OCSP verification request for @a server_cert
-   with issuer certificate @a issuer_cert and sets the required
-   headers on @a request, returning the request bucket @a req_bkt.
+   Docstring:
+
+     Constructs an OCSP verification request for @a server_cert with
+     issuer certificate @a issuer_cert, returning the DER encoded
+     request in @a ocsp_request, allocated from @a pool.
+
+   Discussion:
+
+     HTTP OCSP requests can be sent using eithe the GET or POST
+     methods; see https://www.ietf.org/rfc/rfc2560.txt section A.1.1.
+     It's up to the application to decide which method to use, so we
+     don't provide a function to create the request body or set
+     request headers.
+
 
 4. serf_ocsp_response_parse()
 
