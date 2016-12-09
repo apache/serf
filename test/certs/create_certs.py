@@ -83,7 +83,8 @@ def create_crl(revokedcert, cakey, cacert, crlfile, next_crl_days=VALID_DAYS):
 # subjectAltName
 def create_cert(subjectkey, certfile, issuer=None, issuerkey=None, country='', 
                 state='', city='', org='', ou='', cn='', email='', ca=False, 
-                valid_before=0, days_valid=VALID_DAYS, subjectAltName=None):
+                valid_before=0, days_valid=VALID_DAYS, subjectAltName=None,
+                ocsp_responder_url=None):
     '''
     Create a X509 signed certificate.
     
@@ -129,6 +130,11 @@ def create_cert(subjectkey, certfile, issuer=None, issuerkey=None, country='',
         critical = True if not cn else False
         cert.add_extensions([
             crypto.X509Extension('subjectAltName', critical, ", ".join(subjectAltName))])
+
+    if ocsp_responder_url:
+        cert.add_extensions([
+            crypto.X509Extension('authorityInfoAccess', False,
+                                 'OCSP;URI:' + ocsp_responder_url)])
 
     cert.sign(issuerkey, SIGN_ALGO)
 
@@ -203,6 +209,20 @@ if __name__ == '__main__':
                                email='serfserver@example.com',
                                days_valid=13*365,
                                subjectAltName=['DNS:localhost'])
+
+    # server certificate with OCSP responder URL
+    ocspcert = create_cert(subjectkey=serverkey,
+                           certfile='serfserver_san_ocsp_cert.pem',
+                           issuer=cacert, issuerkey=cakey,
+                           country='BE', state='Antwerp', city='Mechelen',
+                           org='In Serf we trust, Inc.',
+                           ou='Test Suite Server',
+                           cn='localhost',
+                           email='serfserver@example.com',
+                           days_valid=13*365,
+                           subjectAltName=['DNS:localhost'],
+                           ocsp_responder_url='http://localhost:17080')
+
 
     # client key pair and certificate
     clientkey = create_key('private/serfclientkey.pem', 'serftest')

@@ -168,29 +168,38 @@ static void test_ssl_cert_certificate(CuTest *tc)
     apr_hash_t *kv;
     serf_ssl_certificate_t *cert = NULL;
     apr_array_header_t *san_arr;
+    apr_array_header_t *ocsp_arr;
     apr_status_t status;
 
 
-    status = serf_ssl_load_cert_file(&cert,
-                                     get_srcdir_file(tb->pool,
-                                                     "test/serftestca.pem"),
-                                     tb->pool);
+    status = serf_ssl_load_cert_file(
+        &cert,
+        get_srcdir_file(tb->pool, "test/certs/serfserver_san_ocsp_cert.pem"),
+        tb->pool);
     CuAssertIntEquals(tc, APR_SUCCESS, status);
     CuAssertPtrNotNull(tc, cert);
 
     kv = serf_ssl_cert_certificate(cert, tb->pool);
     CuAssertPtrNotNull(tc, kv);
 
-    CuAssertStrEquals(tc, "8A:4C:19:D5:F2:52:4E:35:49:5E:7A:14:80:B2:02:BD:B4:4D:22:18",
+    CuAssertStrEquals(tc, "3D:EC:C8:3B:C7:DB:FD:FB:9C:5D:5E:29:9F:ED:C1:A8:79:3B:28:14",
                       apr_hash_get(kv, "sha1", APR_HASH_KEY_STRING));
-    CuAssertStrEquals(tc, "Mar 21 13:18:17 2008 GMT",
+    CuAssertStrEquals(tc, "Dec  9 05:23:09 2016 GMT",
                       apr_hash_get(kv, "notBefore", APR_HASH_KEY_STRING));
-    CuAssertStrEquals(tc, "Mar 21 13:18:17 2011 GMT",
+    CuAssertStrEquals(tc, "Dec  6 05:23:09 2029 GMT",
                       apr_hash_get(kv, "notAfter", APR_HASH_KEY_STRING));
 
-    /* TODO: create a new test certificate with a/some sAN's. */
     san_arr = apr_hash_get(kv, "subjectAltName", APR_HASH_KEY_STRING);
-    CuAssertTrue(tc, san_arr == NULL);
+    CuAssertPtrNotNull(tc, san_arr);
+    CuAssertIntEquals(tc, 1, san_arr->nelts);
+    CuAssertStrEquals(tc, "localhost",
+                      APR_ARRAY_IDX(san_arr, 0, const char*));
+
+    ocsp_arr = apr_hash_get(kv, "OCSP", APR_HASH_KEY_STRING);
+    CuAssertPtrNotNull(tc, ocsp_arr);
+    CuAssertIntEquals(tc, 1, ocsp_arr->nelts);
+    CuAssertStrEquals(tc, "http://localhost:17080",
+                      APR_ARRAY_IDX(ocsp_arr, 0, const char*));
 }
 
 static const char *extract_cert_from_pem(const char *pemdata,
