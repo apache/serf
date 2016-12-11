@@ -769,6 +769,53 @@ apr_status_t
 serf_ssl_check_cert_status_request(serf_ssl_context_t *ssl_ctx, int enabled);
 
 /**
+ * Constructs an OCSP verification request for @a server_cert with
+ * issuer certificate @a issuer_cert, Retyurns the DER encoded
+ * request in @a ocsp_request and its size in @a ocsp_request_size.
+ *
+ * If @a nonce is not @c NULL, the request will contain a randomly
+ * generated nonce, which will be returned in @a *nonce and its
+ * size in @a nonce_size. If @a nonce is @c NULL, @a nonce_size
+ * is ignored.
+ *
+ * The request and nonce will be allocated from @a pool.
+ */
+apr_status_t serf_ssl_ocsp_request_create(
+    const serf_ssl_certificate_t *server_cert,
+    const serf_ssl_certificate_t *issuer_cert,
+    const void **ocsp_request,
+    apr_size_t *ocsp_request_size,
+    const void **nonce,
+    apr_size_t *nonce_size,
+    apr_pool_t *pool);
+
+/**
+ * Check if the given @a ocsp_response of size @a ocsp_response_size
+ * is valid for the given @a server_cert, @a issuer_cert and @a nonce.
+ *
+ * If @a nonce is @c NULL, the response _must not_ contain a nonce.
+ * Otherwise, it must contain an identical nonce with size @a nonce_size.
+ *
+ * The @a this_update, @a next_update and @a produced_at output arguments
+ * are described in RFC 2560, section 2.4 and, when not @c NULL, will be
+ * set from the parsed response. Any of these times that are not present
+ * in the response will be set to the epoch, i.e., @c APR_TIME_C(0).
+ *
+ * Uses @a pool for temporary allocations.
+ */
+apr_status_t serf_ssl_ocsp_response_verify(
+    const void *ocsp_response,
+    apr_size_t ocsp_response_size,
+    const serf_ssl_certificate_t *server_cert,
+    const serf_ssl_certificate_t *issuer_cert,
+    const void *nonce,
+    apr_size_t nonce_size,
+    apr_time_t *this_update,
+    apr_time_t *next_update,
+    apr_time_t *produced_at,
+    apr_pool_t *pool);
+
+/**
  * Enable or disable SSL compression on a SSL session.
  * @a enabled = 1 to enable compression, 0 to disable compression.
  * Default = disabled.

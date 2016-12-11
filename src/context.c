@@ -389,6 +389,13 @@ const char *serf_error_string(apr_status_t errcode)
         return "An error occurred during SSL setup";
     case SERF_ERROR_SSL_CERT_FAILED:
         return "An SSL certificate related error occurred ";
+    case SERF_ERROR_SSL_OCSP_RESPONSE_CERT_REVOKED:
+        return "An OCSP responder declared an SSL certificate is revoked";
+    case SERF_ERROR_SSL_OCSP_RESPONSE_CERT_UNKNOWN:
+        return "An OCSP responder declared an SSL certificate is unknown";
+    case SERF_ERROR_SSL_OCSP_RESPONSE_INVALID:
+        return "An OCSP responder returned an invalid response";
+
     case SERF_ERROR_AUTHN_FAILED:
         return "An error occurred during authentication";
     case SERF_ERROR_AUTHN_NOT_SUPPORTED:
