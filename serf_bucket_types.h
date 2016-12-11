@@ -769,53 +769,6 @@ apr_status_t
 serf_ssl_check_cert_status_request(serf_ssl_context_t *ssl_ctx, int enabled);
 
 /**
- * Constructs an OCSP verification request for @a server_cert with
- * issuer certificate @a issuer_cert, Retyurns the DER encoded
- * request in @a ocsp_request and its size in @a ocsp_request_size.
- *
- * If @a nonce is not @c NULL, the request will contain a randomly
- * generated nonce, which will be returned in @a *nonce and its
- * size in @a nonce_size. If @a nonce is @c NULL, @a nonce_size
- * is ignored.
- *
- * The request and nonce will be allocated from @a pool.
- */
-apr_status_t serf_ssl_ocsp_request_create(
-    const serf_ssl_certificate_t *server_cert,
-    const serf_ssl_certificate_t *issuer_cert,
-    const void **ocsp_request,
-    apr_size_t *ocsp_request_size,
-    const void **nonce,
-    apr_size_t *nonce_size,
-    apr_pool_t *pool);
-
-/**
- * Check if the given @a ocsp_response of size @a ocsp_response_size
- * is valid for the given @a server_cert, @a issuer_cert and @a nonce.
- *
- * If @a nonce is @c NULL, the response _must not_ contain a nonce.
- * Otherwise, it must contain an identical nonce with size @a nonce_size.
- *
- * The @a this_update, @a next_update and @a produced_at output arguments
- * are described in RFC 2560, section 2.4 and, when not @c NULL, will be
- * set from the parsed response. Any of these times that are not present
- * in the response will be set to the epoch, i.e., @c APR_TIME_C(0).
- *
- * Uses @a pool for temporary allocations.
- */
-apr_status_t serf_ssl_ocsp_response_verify(
-    const void *ocsp_response,
-    apr_size_t ocsp_response_size,
-    const serf_ssl_certificate_t *server_cert,
-    const serf_ssl_certificate_t *issuer_cert,
-    const void *nonce,
-    apr_size_t nonce_size,
-    apr_time_t *this_update,
-    apr_time_t *next_update,
-    apr_time_t *produced_at,
-    apr_pool_t *pool);
-
-/**
  * Enable or disable SSL compression on a SSL session.
  * @a enabled = 1 to enable compression, 0 to disable compression.
  * Default = disabled.
@@ -834,6 +787,128 @@ serf_ssl_context_t *serf_bucket_ssl_encrypt_context_get(
 
 /* ==================================================================== */
 
+/**
+ * Internal representation of an OCSP request.
+ */
+typedef struct serf_ssl_ocsp_request_t serf_ssl_ocsp_request_t;
+
+/**
+ * Constructs an OCSP verification request for @a server_cert with
+ * issuer certificate @a issuer_cert. If @a generate_nonce is
+ * non-zero, the request will contain a random nonce.
+ *
+ * The request will be allocated from @a result_pool.
+ *
+ * Use @a scratch_pool for temporary allocations.
+ */
+serf_ssl_ocsp_request_t *serf_ssl_ocsp_request_create(
+    const serf_ssl_certificate_t *server_cert,
+    const serf_ssl_certificate_t *issuer_cert,
+    int generate_nonce,
+    apr_pool_t *result_pool,
+    apr_pool_t *scratch_pool);
+
+/**
+ * Returns an pointer to the DER-encoded OCSP request
+ * body within the @a ocsp_request structure.
+ *
+ * The application must decide whether to use this data as the body of
+ * an HTTP POST request or Base64-encoded as part of the URI for a GET
+ * request; see RFC 560, section A.1.1.
+ *
+ * @see serf_ssl_ocsp_request_body_size()
+ */
+const void *serf_ssl_ocsp_request_body(
+    const serf_ssl_ocsp_request_t *ocsp_request);
+
+/**
+ * Returns the size of the DER-encoded OCSP request body.
+ * @see serf_ssl_ocsp_request_body().
+ */
+apr_size_t serf_ssl_ocsp_request_body_size(
+    const serf_ssl_ocsp_request_t *ocsp_request);
+
+/**
+ * Export @a ocsp_request, including request, server and issuer
+ * certificates, to a zero-terminated string, allocated from
+ * @a result_pool.
+ *
+ * Use @a scratch_pool for temporary allocations.
+ *
+ * Returns @c NULL on failure.
+ */
+const char *serf_ssl_ocsp_request_export(
+    const serf_ssl_ocsp_request_t *ocsp_request,
+    apr_pool_t *result_pool,
+    apr_pool_t *scratch_pool);
+
+/**
+ * Create an OCSP request from a previously exported zero-terminated
+ * string @a encoded_ocsp_request. The returned request will be
+ * allocated from @a result_pool.
+ *
+ * Use @a scratch_pool for temporary allocations.
+ *
+ * Returns @c NULL on failure.
+ */
+serf_ssl_ocsp_request_t *serf_ssl_ocsp_request_import(
+    const char *encoded_ocsp_request,
+    apr_pool_t *result_pool,
+    apr_pool_t *scratch_pool);
+
+/**
+ * Internal representation of an OCSP response.
+ */
+typedef struct serf_ssl_ocsp_response_t serf_ssl_ocsp_response_t;
+
+/**
+ * Parse the body of an HTTP OCSP response, @a ocsp_response_body,
+ * of size @a ocsp_response_size, and construct an OCSP response,
+ * allocated from @a result pool.
+ *
+ * Use @a scratch_pool for temporary allocations.
+ *
+ * Returns @c NULL if the response body is not well-formed.
+ */
+serf_ssl_ocsp_request_t *serf_ssl_ocsp_response_parse(
+    const void *ocsp_response_body,
+    apr_size_t ocsp_response_size,
+    apr_pool_t *result_pool,
+    apr_pool_t *scratch_pool);
+
+/**
+ * Check if the given @a ocsp_response is valid for the given
+ * @a ocsp_request, per the algorighm documented in RFC 2560,
+ * section 3.5.
+ *
+ * The returned value will be:
+ *
+ *   - APR_SUCCESS,
+ *     if all steps of the verification succeeded;
+ *   - SERF_ERROR_SSL_OCSP_RESPONSE_CERT_REVOKED,
+ *     if the certificate was revoked;
+ *   - SERF_ERROR_SSL_OCSP_RESPONSE_CERT_UNKNOWN,
+ *     if the responder knows nothing about the certificate;
+ *   - SERF_ERROR_SSL_OCSP_RESPONSE_INVALID,
+ *     if the response itself is invalid or not well-formed.
+ *
+ * The @a this_update, @a next_update and @a produced_at output
+ * arguments are described in RFC 2560, section 2.4 and, when not
+ * @c NULL and if the verificateion succeeded, will be parsed from
+ * the response. Any of these times that are not present in the
+ * response will be set to the epoch, i.e., @c APR_TIME_C(0).
+ *
+ * Uses @a scratch_pool for temporary allocations.
+ */
+apr_status_t serf_ssl_ocsp_response_verify(
+    const serf_ssl_ocsp_response_t *ocsp_response,
+    const serf_ssl_ocsp_request_t *ocsp_request,
+    apr_time_t *this_update,
+    apr_time_t *next_update,
+    apr_time_t *produced_at,
+    apr_pool_t *scratch_pool);
+
+/* ==================================================================== */
 
 extern const serf_bucket_type_t serf_bucket_type_ssl_decrypt;
 #define SERF_BUCKET_IS_SSL_DECRYPT(b) SERF_BUCKET_CHECK((b), ssl_decrypt)
