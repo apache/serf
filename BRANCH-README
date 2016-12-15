@@ -19,18 +19,43 @@ These are the proposed changes:
    insert the array into the returned hash table with key "OCSP".
 
 
-2. serf_ssl_cert_import()
+2. serf_ssl_cert_export2()
+
+   /**
+    * Export a certificate to base64-encoded, zero-terminated string.
+    * The returned string is allocated in @a result_pool.
+    * Uses @a scratch_pool for temporary allocations.
+    * Returns NULL on failure.
+    */
+   const char *serf_ssl_cert_export2(
+       const serf_ssl_certificate_t *cert,
+       apr_pool_t *result_pool,
+       apr_pool_t *scratch_pool);
+
+
+   Discussion:
+
+     serf_ssl_cert_export() uses a single pool for both the result and
+     for teporary allocations. The size of the temporary buffer is on
+     the order of the size of the result, so if we can use a scratch
+     pool for that, we can effectively halve the memory used by
+     exported certs.
+
+
+3. serf_ssl_cert_import()
 
    Add a new function that is the inverse of serf_ssl_cert_export():
 
    /**
-    * Imports certificate from a base64-encoded, zero-terminated
-    * string. The returned certificate is allocated in @a pool.
+    * Import a certificate from a base64-encoded, zero-terminated string.
+    * The returned certificate is allocated in @a result_pool.
+    * Uses @a scratch_pool for temporary allocations.
     * Returns NULL on failure.
     */
    serf_ssl_certificate_t *serf_ssl_cert_import(
        const char *encoded_cert,
-       apr_pool_t *pool);
+       apr_pool_t *result_pool,
+       apr_pool_t *scratch_pool);
 
    Discussion:
 
@@ -45,7 +70,7 @@ These are the proposed changes:
      through serf_ssl_load_cert_file() is neither easy nor sane).
 
 
-3. OCSP requests
+4. OCSP requests
 
    Add a new opaque type and accessor functions that can be used from
    within a request setup handler to create an OCSP request.
@@ -71,6 +96,13 @@ These are the proposed changes:
     * The request will be allocated from @a result_pool.
     *
     * Use @a scratch_pool for temporary allocations.
+    *
+    * Returns @c NULL on failure, e.g., if @a issuer_cert is not the
+    * issuer certificate of @a server_cert.
+    *
+    * @note The @a server_cert and @a issuer_cert will be copied into the
+    * OCSP request structure. The lifetime of the copies is controlled by
+    * the lifetime of @a result_pool.
     */
    serf_ssl_ocsp_request_t *serf_ssl_ocsp_request_create(
        const serf_ssl_certificate_t *server_cert,
@@ -128,7 +160,7 @@ These are the proposed changes:
        apr_pool_t *scratch_pool);
 
 
-4. OCSP responses
+5. OCSP responses
 
    Add a new opaque type, response body parser and response validator.
 
@@ -193,7 +225,7 @@ These are the proposed changes:
        apr_pool_t *scratch_pool);
 
 
-5. New error codes and macros
+6. New error codes and macros
 
        #define SERF_ERROR_SSL_OCSP_RESPONSE_CERT_REVOKED
        #define SERF_ERROR_SSL_OCSP_RESPONSE_CERT_UNKNOWN

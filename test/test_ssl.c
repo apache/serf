@@ -337,10 +337,10 @@ static void test_ssl_cert_import(CuTest *tc)
                                                       "test/serftestca.pem"),
                                       tb->pool);
 
-    imported_cert = serf_ssl_cert_import(extractedbuf, tb->pool);
+    imported_cert = serf_ssl_cert_import(extractedbuf, tb->pool, tb->pool);
     CuAssertPtrNotNull(tc, imported_cert);
 
-    base64derbuf = serf_ssl_cert_export(imported_cert, tb->pool);
+    base64derbuf = serf_ssl_cert_export2(imported_cert, tb->pool, tb->pool);
     CuAssertStrEquals(tc, extractedbuf, base64derbuf);
 }
 
