@@ -891,7 +891,7 @@ typedef struct serf_ssl_ocsp_response_t serf_ssl_ocsp_response_t;
  *
  * Returns @c NULL if the response body is not well-formed.
  */
-serf_ssl_ocsp_request_t *serf_ssl_ocsp_response_parse(
+serf_ssl_ocsp_response_t *serf_ssl_ocsp_response_parse(
     const void *ocsp_response_body,
     apr_size_t ocsp_response_size,
     apr_pool_t *result_pool,
