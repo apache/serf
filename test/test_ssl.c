@@ -2303,6 +2303,103 @@ static void test_ssl_alpn_negotiate(CuTest *tc)
                                                 handler_ctx, tb->pool);
 }
 
+
+#ifndef OPENSSL_NO_OCSP
+static void load_ocsp_test_certs(CuTest *tc,
+                                 serf_ssl_certificate_t **cert,
+                                 serf_ssl_certificate_t **issuer)
+{
+    test_baton_t *tb = tc->testBaton;
+    apr_status_t status;
+
+    status = serf_ssl_load_cert_file(
+        cert,
+        get_srcdir_file(tb->pool, "test/certs/serfserver_san_ocsp_cert.pem"),
+        tb->pool);
+    CuAssertIntEquals(tc, APR_SUCCESS, status);
+    CuAssertPtrNotNull(tc, *cert);
+
+    status = serf_ssl_load_cert_file(
+        issuer,
+        get_srcdir_file(tb->pool, "test/certs/serfcacert.pem"),
+        tb->pool);
+    CuAssertIntEquals(tc, APR_SUCCESS, status);
+    CuAssertPtrNotNull(tc, *issuer);
+}
+#endif  /* OPENSSL_NO_OCSP */
+
+static void test_ssl_ocsp_request_create(CuTest *tc)
+{
+#ifndef OPENSSL_NO_OCSP
+    test_baton_t *tb = tc->testBaton;
+    serf_ssl_certificate_t *cert = NULL;
+    serf_ssl_certificate_t *issuer = NULL;
+    serf_ssl_ocsp_request_t *req = NULL;
+
+    load_ocsp_test_certs(tc, &cert, &issuer);
+
+    /* no nonce */
+    req = serf_ssl_ocsp_request_create(cert, issuer, 0, tb->pool, tb->pool);
+    CuAssertPtrNotNull(tc, req);
+
+    /* add nonce */
+    req = serf_ssl_ocsp_request_create(cert, issuer, 1, tb->pool, tb->pool);
+    CuAssertPtrNotNull(tc, req);
+
+    /* certs switched */
+    req = serf_ssl_ocsp_request_create(issuer, cert, 0, tb->pool, tb->pool);
+    CuAssertPtrEquals(tc, NULL, req);
+#else
+    CuTestAssertTrue(tc, 1);
+#endif  /* OPENSSL_NO_OCSP */
+}
+
+
+static void test_ssl_ocsp_request_export_import(CuTest *tc)
+{
+#ifndef OPENSSL_NO_OCSP
+    test_baton_t *tb = tc->testBaton;
+    serf_ssl_certificate_t *cert = NULL;
+    serf_ssl_certificate_t *issuer = NULL;
+    serf_ssl_ocsp_request_t *req = NULL;
+    serf_ssl_ocsp_request_t *impreq = NULL;
+    const char *expreq = NULL;
+
+    load_ocsp_test_certs(tc, &cert, &issuer);
+
+    impreq = serf_ssl_ocsp_request_import("foo", tb->pool, tb->pool);
+    CuAssertPtrEquals(tc, NULL, impreq);
+
+    impreq = serf_ssl_ocsp_request_import("foo" "\x1" "bar", tb->pool, tb->pool);
+    CuAssertPtrEquals(tc, NULL, impreq);
+
+    impreq = serf_ssl_ocsp_request_import("foo" "\x1" "bar" "\x1" "baz", tb->pool, tb->pool);
+    CuAssertPtrEquals(tc, NULL, impreq);
+
+    req = serf_ssl_ocsp_request_create(cert, issuer, 0, tb->pool, tb->pool);
+    CuAssertPtrNotNull(tc, req);
+    CuAssertPtrNotNull(tc, serf_ssl_ocsp_request_body(req));
+    CuAssertTrue(tc, 0 < serf_ssl_ocsp_request_body_size(req));
+
+    expreq = serf_ssl_ocsp_request_export(req, tb->pool, tb->pool);
+    CuAssertPtrNotNull(tc, expreq);
+
+    impreq = serf_ssl_ocsp_request_import(expreq, tb->pool, tb->pool);
+    CuAssertPtrNotNull(tc, impreq);
+
+    CuAssertIntEquals(tc,
+                      serf_ssl_ocsp_request_body_size(req),
+                      serf_ssl_ocsp_request_body_size(impreq));
+    CuAssertTrue(tc,
+                 0 == memcmp(serf_ssl_ocsp_request_body(req),
+                             serf_ssl_ocsp_request_body(impreq),
+                             serf_ssl_ocsp_request_body_size(req)));
+#else
+    CuTestAssertTrue(tc, 1);
+#endif  /* OPENSSL_NO_OCSP */
+}
+
+
 CuSuite *test_ssl(void)
 {
     CuSuite *suite = CuSuiteNew();
@@ -2349,6 +2446,7 @@ CuSuite *test_ssl(void)
     SUITE_ADD_TEST(suite, test_ssl_server_cert_with_san_and_empty_cb);
     SUITE_ADD_TEST(suite, test_ssl_renegotiate);
     SUITE_ADD_TEST(suite, test_ssl_alpn_negotiate);
-
+    SUITE_ADD_TEST(suite, test_ssl_ocsp_request_create);
+    SUITE_ADD_TEST(suite, test_ssl_ocsp_request_export_import);
     return suite;
 }
