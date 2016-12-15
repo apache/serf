@@ -2621,8 +2621,8 @@ const serf_bucket_type_t serf_bucket_type_ssl_decrypt = {
  * defined in this file.
  */
 
-struct serf_ssl_ocsp_request_t {
 #ifndef OPENSSL_NO_OCSP
+struct serf_ssl_ocsp_request_t {
     /* OpenSSL's internal representation of the OCSP request. */
     OCSP_REQUEST *request;
 
@@ -2633,11 +2633,8 @@ struct serf_ssl_ocsp_request_t {
     /* Exported server and issuer certificates. */
     const char *encoded_server_cert;
     const char *encoded_issuer_cert;
-#endif  /* OPENSSL_NO_OCSP */
 };
 
-
-#ifndef OPENSSL_NO_OCSP
 static apr_status_t free_ocsp_request(void *data)
 {
     OCSP_REQUEST_free(data);
@@ -2837,12 +2834,12 @@ serf_ssl_ocsp_request_t *serf_ssl_ocsp_request_import(
 #endif  /* OPENSSL_NO_OCSP */
 }
 
-struct serf_ssl_ocsp_response_t {
 #ifndef OPENSSL_NO_OCSP
+struct serf_ssl_ocsp_response_t {
     /* OpenSSL's internal representation of the OCSP response. */
     OCSP_BASICRESP *response;
-#endif  /* OPENSSL_NO_OCSP */
 };
+#endif  /* OPENSSL_NO_OCSP */
 
 serf_ssl_ocsp_response_t *serf_ssl_ocsp_response_parse(
     const void *ocsp_response_body,
