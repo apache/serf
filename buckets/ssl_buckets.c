@@ -1098,7 +1098,7 @@ static apr_status_t ssl_decrypt(void *baton, apr_size_t bufsize,
         *len = ssl_len;
         status = ctx->crypt_status;
         serf__log(LOGLVL_DEBUG, LOGCOMP_SSLMSG, __FILE__, ctx->config,
-                    "---\n%.*s\n-(%"APR_SIZE_T_FMT")-\n", *len, buf, *len);
+                  "---\n%.*s\n-(%"APR_SIZE_T_FMT")-\n", (int)*len, buf, *len);
     }
 
 
@@ -1265,7 +1265,7 @@ static apr_status_t ssl_encrypt(void *baton, apr_size_t bufsize,
 
                     serf__log(LOGLVL_DEBUG, LOGCOMP_SSL, __FILE__, ctx->config,
                               "---\n%.*s\n-(%"APR_SIZE_T_FMT")-\n",
-                              interim_len, vecs_data, interim_len);
+                              (int)interim_len, vecs_data, interim_len);
 
                 }
             }

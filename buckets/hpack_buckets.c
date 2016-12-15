@@ -1402,7 +1402,7 @@ handle_read_entry_and_clear(serf_hpack_decode_ctx_t *ctx,
 
     serf__log(LOGLVL_INFO, SERF_LOGCOMP_PROTOCOL, __FILE__, ctx->config,
               "Parsed from HPACK: %.*s: %.*s\n",
-              ctx->key_size, ctx->key, ctx->val_size, ctx->val);
+              (int)ctx->key_size, ctx->key, (int)ctx->val_size, ctx->val);
 
     if (!ctx->headers)
     {

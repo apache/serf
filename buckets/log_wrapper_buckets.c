@@ -61,7 +61,7 @@ serf_log_wrapped_readline(serf_bucket_t *bucket,
         serf__log(LOGLVL_DEBUG, LOGCOMP_CONN, ctx->prefix, ctx->config,
                   "--- %"APR_SIZE_T_FMT" bytes. --\n", *len);
         serf__log(LOGLVL_DEBUG, LOGCOMP_RAWMSG, ctx->prefix, ctx->config,
-                  "%.*s\n", *len, *data);
+                  "%.*s\n", (int)*len, *data);
     }
 
     return status;
@@ -93,7 +93,7 @@ serf_log_wrapped_read_iovec(serf_bucket_t *bucket,
 
     for (i = 0; i < *vecs_used; i++) {
         serf__log_nopref(LOGLVL_DEBUG, LOGCOMP_RAWMSG, ctx->config,
-                         "%.*s", vecs[i].iov_len, vecs[i].iov_base);
+                         "%.*s", (int)vecs[i].iov_len, vecs[i].iov_base);
     }
     serf__log_nopref(LOGLVL_DEBUG, LOGCOMP_RAWMSG, ctx->config, "\n");
 
@@ -116,7 +116,7 @@ serf_log_wrapped_read(serf_bucket_t *bucket, apr_size_t requested,
         serf__log(LOGLVL_DEBUG, LOGCOMP_CONN, ctx->prefix, ctx->config,
                   "--- %"APR_SIZE_T_FMT" bytes. --\n", *len);
         serf__log(LOGLVL_DEBUG, LOGCOMP_RAWMSG, ctx->prefix, ctx->config,
-                  "%.*s\n", *len, *data);
+                  "%.*s\n", (int)*len, *data);
     }
 
     return status;
