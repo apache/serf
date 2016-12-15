@@ -1902,6 +1902,12 @@ static const char *ssl_get_selected_protocol(serf_ssl_context_t *context)
     return context->selected_protocol;
 }
 
+/* Pool cleanup function for certificates */
+static apr_status_t free_ssl_cert(void *data)
+{
+    X509_free(data);
+    return APR_SUCCESS;
+}
 
 apr_status_t serf_ssl_use_default_certificates(serf_ssl_context_t *ssl_ctx)
 {
@@ -1945,9 +1951,11 @@ apr_status_t serf_ssl_load_cert_file(
     bio_meth_free(biom);
 
     if (ssl_cert) {
-        /* TODO: Setup pool cleanup to free certificate */
         *cert = apr_palloc(pool, sizeof(serf_ssl_certificate_t));
         (*cert)->ssl_cert = ssl_cert;
+
+        apr_pool_cleanup_register(pool, ssl_cert, free_ssl_cert,
+                                  apr_pool_cleanup_null);
 
         return APR_SUCCESS;
     }
