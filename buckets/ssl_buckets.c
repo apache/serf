@@ -1134,7 +1134,7 @@ static apr_status_t ssl_decrypt(void *baton, apr_size_t bufsize,
         *len = ssl_len;
         status = ctx->crypt_status;
         serf__log(LOGLVL_DEBUG, LOGCOMP_SSLMSG, __FILE__, ctx->config,
-                    "---\n%.*s\n-(%"APR_SIZE_T_FMT")-\n", *len, buf, *len);
+                  "---\n%.*s\n-(%"APR_SIZE_T_FMT")-\n", (int)*len, buf, *len);
     }
 
 
@@ -1301,7 +1301,7 @@ static apr_status_t ssl_encrypt(void *baton, apr_size_t bufsize,
 
                     serf__log(LOGLVL_DEBUG, LOGCOMP_SSL, __FILE__, ctx->config,
                               "---\n%.*s\n-(%"APR_SIZE_T_FMT")-\n",
-                              interim_len, vecs_data, interim_len);
+                              (int)interim_len, vecs_data, interim_len);
 
                 }
             }
@@ -1938,6 +1938,12 @@ static const char *ssl_get_selected_protocol(serf_ssl_context_t *context)
     return context->selected_protocol;
 }
 
+/* Pool cleanup function for certificates */
+static apr_status_t free_ssl_cert(void *data)
+{
+    X509_free(data);
+    return APR_SUCCESS;
+}
 
 apr_status_t serf_ssl_use_default_certificates(serf_ssl_context_t *ssl_ctx)
 {
@@ -1981,9 +1987,11 @@ apr_status_t serf_ssl_load_cert_file(
     bio_meth_free(biom);
 
     if (ssl_cert) {
-        /* TODO: Setup pool cleanup to free certificate */
         *cert = apr_palloc(pool, sizeof(serf_ssl_certificate_t));
         (*cert)->ssl_cert = ssl_cert;
+
+        apr_pool_cleanup_register(pool, ssl_cert, free_ssl_cert,
+                                  apr_pool_cleanup_null);
 
         return APR_SUCCESS;
     }
