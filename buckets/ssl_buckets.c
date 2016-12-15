@@ -2426,9 +2426,12 @@ serf_ssl_certificate_t *serf_ssl_cert_import(
         return NULL;
     }
 
-    /* TODO: Setup pool cleanup to free certificate */
     cert = apr_palloc(result_pool, sizeof(serf_ssl_certificate_t));
     cert->ssl_cert = ssl_cert;
+
+    apr_pool_cleanup_register(result_pool, ssl_cert, free_ssl_cert,
+                              apr_pool_cleanup_null);
+
     return cert;
 }
 
