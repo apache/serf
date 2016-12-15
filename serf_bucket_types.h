@@ -710,20 +710,34 @@ apr_hash_t *serf_ssl_cert_certificate(
     apr_pool_t *pool);
 
 /**
- * Export a certificate to base64-encoded, zero-terminated string.
- * The returned string is allocated in @a pool. Returns NULL on failure.
+ * Like serf_ssl_cert_export2() but uses a single pool for both the
+ * result and temporary allocations.
  */
 const char *serf_ssl_cert_export(
     const serf_ssl_certificate_t *cert,
     apr_pool_t *pool);
 
 /**
+ * Export a certificate to base64-encoded, zero-terminated string.
+ * The returned string is allocated in @a result_pool.
+ * Uses @a scratch_pool for temporary allocations.
+ * Returns NULL on failure.
+ */
+const char *serf_ssl_cert_export2(
+    const serf_ssl_certificate_t *cert,
+    apr_pool_t *result_pool,
+    apr_pool_t *scratch_pool);
+
+/**
  * Import a certificate from a base64-encoded, zero-terminated string.
- * The returned certificates is allocated in @a pool. Returns NULL on failure.
+ * The returned certificate is allocated in @a result_pool.
+ * Uses @a scratch_pool for temporary allocations.
+ * Returns NULL on failure.
  */
 serf_ssl_certificate_t *serf_ssl_cert_import(
     const char *encoded_cert,
-    apr_pool_t *pool);
+    apr_pool_t *result_pool,
+    apr_pool_t *scratch_pool);
 
 /**
  * Load a CA certificate file from a path @a file_path. If the file was loaded
@@ -800,6 +814,13 @@ typedef struct serf_ssl_ocsp_request_t serf_ssl_ocsp_request_t;
  * The request will be allocated from @a result_pool.
  *
  * Use @a scratch_pool for temporary allocations.
+ *
+ * Returns @c NULL on failure, e.g., if @a issuer_cert is not the
+ * issuer certificate of @a server_cert.
+ *
+ * @note The @a server_cert and @a issuer_cert will be copied into the
+ * OCSP request structure. The lifetime of the copies is controlled by
+ * the lifetime of @a result_pool.
  */
 serf_ssl_ocsp_request_t *serf_ssl_ocsp_request_create(
     const serf_ssl_certificate_t *server_cert,

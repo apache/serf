@@ -2365,6 +2365,14 @@ const char *serf_ssl_cert_export(
     const serf_ssl_certificate_t *cert,
     apr_pool_t *pool)
 {
+    return serf_ssl_cert_export2(cert, pool, pool);
+}
+
+const char *serf_ssl_cert_export2(
+    const serf_ssl_certificate_t *cert,
+    apr_pool_t *result_pool,
+    apr_pool_t *scratch_pool)
+{
     char *binary_cert;
     char *encoded_cert;
     int len;
@@ -2376,14 +2384,14 @@ const char *serf_ssl_cert_export(
         return NULL;
     }
 
-    binary_cert = apr_palloc(pool, len);
+    binary_cert = apr_palloc(scratch_pool, len);
     unused = (unsigned char *)binary_cert;
     len = i2d_X509(cert->ssl_cert, &unused);  /* unused is incremented  */
     if (len < 0) {
         return NULL;
     }
 
-    encoded_cert = apr_palloc(pool, apr_base64_encode_len(len));
+    encoded_cert = apr_palloc(result_pool, apr_base64_encode_len(len));
     apr_base64_encode(encoded_cert, binary_cert, len);
 
     return encoded_cert;
@@ -2392,7 +2400,8 @@ const char *serf_ssl_cert_export(
 
 serf_ssl_certificate_t *serf_ssl_cert_import(
     const char *encoded_cert,
-    apr_pool_t *pool)
+    apr_pool_t *result_pool,
+    apr_pool_t *scratch_pool)
 {
     char *binary_cert;
     int binary_len;
@@ -2400,7 +2409,7 @@ serf_ssl_certificate_t *serf_ssl_cert_import(
     X509* ssl_cert;
     serf_ssl_certificate_t *cert;
 
-    binary_cert = apr_palloc(pool, apr_base64_decode_len(encoded_cert));
+    binary_cert = apr_palloc(scratch_pool, apr_base64_decode_len(encoded_cert));
     binary_len = apr_base64_decode(binary_cert, encoded_cert);
 
     unused = (unsigned char*) binary_cert; /* unused is incremented  */
@@ -2410,7 +2419,7 @@ serf_ssl_certificate_t *serf_ssl_cert_import(
     }
 
     /* TODO: Setup pool cleanup to free certificate */
-    cert = apr_palloc(pool, sizeof(serf_ssl_certificate_t));
+    cert = apr_palloc(result_pool, sizeof(serf_ssl_certificate_t));
     cert->ssl_cert = ssl_cert;
     return cert;
 }
