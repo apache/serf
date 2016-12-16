@@ -132,9 +132,8 @@ These are the proposed changes:
        const serf_ssl_ocsp_request_t *ocsp_request);
 
    /**
-    * Export @a ocsp_request, including request, server and issuer
-    * certificates, to a zero-terminated string, allocated from
-    * @a result_pool.
+    * Export @a ocsp_request to a zero-terminated string,
+    * allocated from @a result_pool.
     *
     * Use @a scratch_pool for temporary allocations.
     *
@@ -178,24 +177,32 @@ These are the proposed changes:
    typedef struct serf_ssl_ocsp_response_t serf_ssl_ocsp_response_t;
 
    /**
-    * Parse the body of an HTTP OCSP response, @a ocsp_response_body,
-    * of size @a ocsp_response_size, and construct an OCSP response,
-    * allocated from @a result pool.
+    * Parse the body of an OCSP response in DER form, @a ocsp_response,
+    * of size @a ocsp_response_size, and construct an internal
+    * representation, allocated from @a result_pool.
+    *
+    * If @a failures is not @c NULL, it will be set as in
+    * #serf_ssl_need_server_cert_t.
     *
     * Use @a scratch_pool for temporary allocations.
     *
-    * Returns @c NULL if the response body is not well-formed.
+    * Returns @c NULL if on failure.
     */
-   serf_ssl_ocsp_request_t *serf_ssl_ocsp_response_parse(
-       const void *ocsp_response_body,
+   serf_ssl_ocsp_response_t *serf_ssl_ocsp_response_parse(
+       const void *ocsp_response,
        apr_size_t ocsp_response_size,
+       int *failures,
        apr_pool_t *result_pool,
        apr_pool_t *scratch_pool);
 
    /**
     * Check if the given @a ocsp_response is valid for the given
-    * @a ocsp_request, per the algorighm documented in RFC 2560,
-    * section 3.5.
+    * @a ocsp_request in the provided @a ssl_ctx, as defined by
+    * the algorithm documented in RFC 2560, section 3.5.
+    *
+    * The OCSP responder and application wall clocks may be out of sync
+    * by @a clock_skew, and @a max_age is the acceptable age of the
+    * request. Their values are truncated to the nearest second.
     *
     * The returned value will be:
     *
@@ -208,20 +215,22 @@ These are the proposed changes:
     *   - SERF_ERROR_SSL_OCSP_RESPONSE_INVALID,
     *     if the response itself is invalid or not well-formed.
     *
-    * The @a this_update, @a next_update and @a produced_at output
-    * arguments are described in RFC 2560, section 2.4 and, when not
-    * @c NULL and if the verificateion succeeded, will be parsed from
-    * the response. Any of these times that are not present in the
-    * response will be set to the epoch, i.e., @c APR_TIME_C(0).
+    * The @a this_update and @a next_update output arguments are
+    * described in RFC 2560, section 2.4 and, when not @c NULL and if the
+    * verificateion succeeded, will be parsed from the response. Any of
+    * these times that are not present in the response will be set to the
+    * epoch, i.e., @c APR_TIME_C(0).
     *
     * Uses @a scratch_pool for temporary allocations.
     */
    apr_status_t serf_ssl_ocsp_response_verify(
+       serf_ssl_context_t *ssl_ctx,
        const serf_ssl_ocsp_response_t *ocsp_response,
        const serf_ssl_ocsp_request_t *ocsp_request,
+       apr_time_t clock_skew,
+       apr_time_t max_age,
        apr_time_t *this_update,
        apr_time_t *next_update,
-       apr_time_t *produced_at,
        apr_pool_t *scratch_pool);
 
 
