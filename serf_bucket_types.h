@@ -891,7 +891,7 @@ typedef struct serf_ssl_ocsp_response_t serf_ssl_ocsp_response_t;
  *
  * Use @a scratch_pool for temporary allocations.
  *
- * Returns @c NULL if on failure.
+ * Returns @c NULL on failure.
  */
 serf_ssl_ocsp_response_t *serf_ssl_ocsp_response_parse(
     const void *ocsp_response,
