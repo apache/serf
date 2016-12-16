@@ -588,6 +588,28 @@ static void bio_meth_free(BIO_METHOD *biom)
 }
 
 #ifndef OPENSSL_NO_TLSEXT
+static int ocsp_response_status(int failures, OCSP_RESPONSE *response)
+{
+    long resp_status = OCSP_response_status(response);
+    switch (resp_status) {
+        case OCSP_RESPONSE_STATUS_SUCCESSFUL:
+            break;
+        case OCSP_RESPONSE_STATUS_MALFORMEDREQUEST:
+        case OCSP_RESPONSE_STATUS_INTERNALERROR:
+        case OCSP_RESPONSE_STATUS_SIGREQUIRED:
+        case OCSP_RESPONSE_STATUS_UNAUTHORIZED:
+            failures |= SERF_SSL_OCSP_RESPONDER_ERROR;
+            break;
+        case OCSP_RESPONSE_STATUS_TRYLATER:
+            failures |= SERF_SSL_OCSP_RESPONDER_TRYLATER;
+            break;
+        default:
+            failures |= SERF_SSL_OCSP_RESPONDER_UNKNOWN_FAILURE;
+            break;
+    }
+    return failures;
+}
+
 /* Callback called when the server response has some OCSP info.
    Returns 1 if the application accepts the OCSP response as successful,
            0 in case of error.
@@ -598,7 +620,6 @@ static int ocsp_callback(SSL *ssl, void *baton)
     OCSP_RESPONSE *response;
     const unsigned char *resp_der;
     int len;
-    long resp_status;
     int failures = 0;
     int cert_valid = 0;
 
@@ -618,23 +639,7 @@ static int ocsp_callback(SSL *ssl, void *baton)
     }
 
     /* Did the server get a valid response from the OCSP responder */
-    resp_status = OCSP_response_status(response);
-    switch (resp_status) {
-        case OCSP_RESPONSE_STATUS_SUCCESSFUL:
-            break;
-        case OCSP_RESPONSE_STATUS_MALFORMEDREQUEST:
-        case OCSP_RESPONSE_STATUS_INTERNALERROR:
-        case OCSP_RESPONSE_STATUS_SIGREQUIRED:
-        case OCSP_RESPONSE_STATUS_UNAUTHORIZED:
-            failures |= SERF_SSL_OCSP_RESPONDER_ERROR;
-            break;
-        case OCSP_RESPONSE_STATUS_TRYLATER:
-            failures |= SERF_SSL_OCSP_RESPONDER_TRYLATER;
-            break;
-        default:
-            failures |= SERF_SSL_OCSP_RESPONDER_UNKNOWN_FAILURE;
-            break;
-    }
+    failures = ocsp_response_status(failures, response);
 
     /* TODO: check certificate status */
 
@@ -2626,18 +2631,23 @@ struct serf_ssl_ocsp_request_t {
     /* OpenSSL's internal representation of the OCSP request. */
     OCSP_REQUEST *request;
 
+    /* The certificate ID of the request. */
+    OCSP_CERTID *cert_id;
+
     /* DER-encoded request and size. */
     const void *der_request;
     apr_size_t der_request_size;
-
-    /* Exported server and issuer certificates. */
-    const char *encoded_server_cert;
-    const char *encoded_issuer_cert;
 };
 
 static apr_status_t free_ocsp_request(void *data)
 {
     OCSP_REQUEST_free(data);
+    return APR_SUCCESS;
+}
+
+static apr_status_t free_ocsp_cert_id(void *data)
+{
+    OCSP_CERTID_free(data);
     return APR_SUCCESS;
 }
 #endif  /* OPENSSL_NO_OCSP */
@@ -2675,7 +2685,12 @@ serf_ssl_ocsp_request_t *serf_ssl_ocsp_request_create(
 
     if (!OCSP_request_add0_id(ocsp_req, cert_id))
         goto cleanup;
-    cert_id = NULL;
+
+    /* Generate another ID to put into the result struct.
+       TODO: see above re hash algorithms. */
+    cert_id = OCSP_cert_to_id(NULL, cert, issuer);
+    if (!cert_id)
+        goto cleanup;
 
     if (generate_nonce) {
         /* Generates a random nonce, using the internal random generator. */
@@ -2696,17 +2711,18 @@ serf_ssl_ocsp_request_t *serf_ssl_ocsp_request_create(
     req = apr_palloc(result_pool, sizeof(*req));
     req->der_request = der;
     req->der_request_size = len;
-    req->encoded_server_cert =
-        serf_ssl_cert_export2(server_cert, result_pool, scratch_pool);
-    req->encoded_issuer_cert =
-        serf_ssl_cert_export2(issuer_cert, result_pool, scratch_pool);
 
-    /* Now move the unencoded request to the result. */
     req->request = ocsp_req;
     apr_pool_cleanup_register(result_pool, ocsp_req,
                               free_ocsp_request,
                               apr_pool_cleanup_null);
     ocsp_req = NULL;
+
+    req->cert_id = cert_id;
+    apr_pool_cleanup_register(result_pool, cert_id,
+                              free_ocsp_cert_id,
+                              apr_pool_cleanup_null);
+    cert_id = NULL;
 
   cleanup:
     if (ocsp_req)
@@ -2718,6 +2734,7 @@ serf_ssl_ocsp_request_t *serf_ssl_ocsp_request_create(
     return NULL;
 #endif  /* OPENSSL_NO_OCSP */
 }
+
 
 const void *serf_ssl_ocsp_request_body(
     const serf_ssl_ocsp_request_t *ocsp_request)
@@ -2739,6 +2756,7 @@ apr_size_t serf_ssl_ocsp_request_body_size(
 #endif  /* OPENSSL_NO_OCSP */
 }
 
+
 const char *serf_ssl_ocsp_request_export(
     const serf_ssl_ocsp_request_t *ocsp_request,
     apr_pool_t *result_pool,
@@ -2749,36 +2767,43 @@ const char *serf_ssl_ocsp_request_export(
     /*
       The structure of the exported request is:
 
-        "Base64-server-cert" "\x1"
-        "Base64-issuer-cert" "\x1"
-        "Base64-DER-formatted-request" "\0"
+        "Base64-DER-formatted-request" "\x1"
+        "Base64-DER-formatted-cert-id" "\0"
     */
 
-    const apr_size_t s_size = strlen(ocsp_request->encoded_server_cert);
-    const apr_size_t i_size = strlen(ocsp_request->encoded_issuer_cert);
-    const apr_size_t all_size = (
-        apr_base64_encode_len(ocsp_request->der_request_size)
-        + s_size + i_size + 3); /* Three terminator bytes */
+    OCSP_CERTID *const cert_id = ocsp_request->cert_id;
+    int id_len, req_size, id_size;
+    unsigned char *unused;
+    char *buffer = NULL;
+    char *p;
+    void *id_der;
 
-    char *const buffer = apr_palloc(result_pool, all_size);
-    char *p = buffer;
+    /* Generate the DER form of the certificate ID. */
+    id_len = i2d_OCSP_CERTID(cert_id, NULL);
+    if (id_len < 0)
+        return NULL;
 
-    memcpy(p, ocsp_request->encoded_server_cert, s_size);
-    p += s_size;
+    unused = id_der = apr_palloc(scratch_pool, id_len);
+    id_len = i2d_OCSP_CERTID(cert_id, &unused); /* unused is incremented */
+    if (id_len < 0)
+        return NULL;
+
+    req_size = apr_base64_encode_len(ocsp_request->der_request_size);
+    id_size = apr_base64_encode_len(id_len);
+
+    buffer = apr_palloc(result_pool, req_size + id_size + 2);
+    req_size = apr_base64_encode(buffer, ocsp_request->der_request,
+                                 ocsp_request->der_request_size);
+    p = buffer + req_size - 1;  /* The trailing \0 is part of the size! */
     *p++ = '\x1';
-
-    memcpy(p, ocsp_request->encoded_issuer_cert, i_size);
-    p += i_size;
-    *p++ = '\x1';
-
-    apr_base64_encode(p, ocsp_request->der_request,
-                      ocsp_request->der_request_size);
+    apr_base64_encode(p, id_der, id_len);
 
     return buffer;
 #else
     return NULL;
 #endif  /* OPENSSL_NO_OCSP */
 }
+
 
 serf_ssl_ocsp_request_t *serf_ssl_ocsp_request_import(
     const char *encoded_ocsp_request,
@@ -2787,44 +2812,46 @@ serf_ssl_ocsp_request_t *serf_ssl_ocsp_request_import(
 {
 #ifndef OPENSSL_NO_OCSP
     serf_ssl_ocsp_request_t *req = NULL;
-    const char *encoded_server_cert = encoded_ocsp_request;
-    const char *encoded_issuer_cert;
-    const char *end_server_cert;
-    const char *end_issuer_cert;
+    const char *end_request = strchr(encoded_ocsp_request, '\x1');
 
-    end_server_cert = strchr(encoded_server_cert, '\x1');
-    if (!end_server_cert)
-        return NULL;
-
-    encoded_issuer_cert = end_server_cert + 1;
-    end_issuer_cert = strchr(encoded_issuer_cert, '\x1');
-
-    if (end_issuer_cert) {
-        OCSP_REQUEST *ocsp_req;
-        const char *base64_request = end_issuer_cert + 1;
+    if (end_request) {
+        const char *base64_id = end_request + 1;
+        const char *base64_request = apr_pstrmemdup(
+            scratch_pool, encoded_ocsp_request,
+            end_request - encoded_ocsp_request);
         long der_request_size = apr_base64_decode_len(base64_request);
-        /* FIXME: Use scratch pool instead and pmemdup later? */
-        void *der_request = apr_palloc(result_pool, der_request_size);
-        const unsigned char *unused = der_request;
+        long der_id_size = apr_base64_decode_len(base64_id);
 
+        OCSP_REQUEST *ocsp_req;
+        OCSP_CERTID *cert_id;
+        const unsigned char *unused;
+        void *der_request;
+        void *der_id;
+
+        unused = der_request = apr_palloc(result_pool, der_request_size);
         der_request_size = apr_base64_decode(der_request, base64_request);
         ocsp_req = d2i_OCSP_REQUEST(NULL, &unused, der_request_size);
         if (!ocsp_req)
             return NULL;
 
+        unused = der_id = apr_palloc(scratch_pool, der_id_size);
+        der_id_size = apr_base64_decode(der_id, base64_id);
+        cert_id = d2i_OCSP_CERTID(NULL, &unused, der_id_size);
+        if (!cert_id)
+            return NULL;
+
         req = apr_palloc(result_pool, sizeof(*req));
         req->der_request = der_request;
         req->der_request_size = der_request_size;
-        req->encoded_server_cert =
-            apr_pstrmemdup(result_pool, encoded_server_cert,
-                           end_server_cert - encoded_server_cert);
-        req->encoded_issuer_cert =
-            apr_pstrmemdup(result_pool, encoded_issuer_cert,
-                           end_issuer_cert - encoded_issuer_cert);
 
         req->request = ocsp_req;
         apr_pool_cleanup_register(result_pool, ocsp_req,
                                   free_ocsp_request,
+                                  apr_pool_cleanup_null);
+
+        req->cert_id = cert_id;
+        apr_pool_cleanup_register(result_pool, cert_id,
+                                  free_ocsp_cert_id,
                                   apr_pool_cleanup_null);
     }
 
@@ -2834,36 +2861,189 @@ serf_ssl_ocsp_request_t *serf_ssl_ocsp_request_import(
 #endif  /* OPENSSL_NO_OCSP */
 }
 
+
 #ifndef OPENSSL_NO_OCSP
 struct serf_ssl_ocsp_response_t {
     /* OpenSSL's internal representation of the OCSP response. */
-    OCSP_BASICRESP *response;
+    OCSP_RESPONSE *response;
 };
+
+static apr_status_t free_ocsp_response(void *data)
+{
+    OCSP_RESPONSE_free(data);
+    return APR_SUCCESS;
+}
 #endif  /* OPENSSL_NO_OCSP */
 
+
 serf_ssl_ocsp_response_t *serf_ssl_ocsp_response_parse(
-    const void *ocsp_response_body,
+    const void *ocsp_response,
     apr_size_t ocsp_response_size,
+    int *failures,
     apr_pool_t *result_pool,
     apr_pool_t *scratch_pool)
 {
 #ifndef OPENSSL_NO_OCSP
-    return NULL;
+    serf_ssl_ocsp_response_t *rsp = NULL;
+    OCSP_RESPONSE *ocsp_rsp = NULL;
+    const unsigned char *unused;
+    int rsp_failures = 0;
+
+    unused = ocsp_response;
+    ocsp_rsp = d2i_OCSP_RESPONSE(NULL, &unused, ocsp_response_size);
+    if (!ocsp_rsp)
+        goto cleanup;
+
+    rsp_failures = ocsp_response_status(rsp_failures, ocsp_rsp);
+    if (rsp_failures)
+        goto cleanup;
+
+    rsp = apr_palloc(result_pool, sizeof(*rsp));
+    rsp->response = ocsp_rsp;
+    apr_pool_cleanup_register(result_pool, ocsp_rsp,
+                              free_ocsp_response,
+                              apr_pool_cleanup_null);
+    ocsp_rsp = NULL;
+
+  cleanup:
+    if (failures)
+        *failures = rsp_failures;
+    if (ocsp_rsp)
+        OCSP_RESPONSE_free(ocsp_rsp);
+    return rsp;
 #else
     return NULL;
 #endif  /* OPENSSL_NO_OCSP */
 }
 
+
+#ifndef OPENSSL_NO_OCSP
+/* Ripped from Subversion and well kneaded. */
+static apr_status_t
+convert_asn1_generalized_time(ASN1_GENERALIZEDTIME *asn1_time,
+                              apr_time_t *humane_time,
+                              apr_pool_t *scratch_pool,
+                              apr_status_t parse_error)
+{
+    apr_time_exp_t xt = { 0 };
+    void *data;
+    char *date;
+    int len;
+    char tz;
+
+    if (ASN1_STRING_type(asn1_time) != V_ASN1_GENERALIZEDTIME)
+        return 0;
+
+    len = ASN1_STRING_length(asn1_time);
+    data = ASN1_STRING_data(asn1_time);
+    date = apr_pstrndup(scratch_pool, data, len);
+
+    if (6 > sscanf(date, "%4d%2d%2d%2d%2d%2d%c",
+                   &xt.tm_year, &xt.tm_mon, &xt.tm_mday,
+                   &xt.tm_hour, &xt.tm_min, &xt.tm_sec, &tz))
+        return parse_error;
+
+    /* GeneralizedTime has the full 4 digit year.  But apr_time_exp_t
+       wants years as the number of years since 1900. */
+    xt.tm_year -= 1900;
+
+    /* Check that the timezone is GMT.
+       ASN.1 allows for the timezone to be specified but X.509 says it
+       must always be GMT.  A little bit of extra paranoia here seems
+       like a good idea. */
+    if (tz != 'Z')
+        return parse_error;
+
+    /* apr_time_exp_t expects months to be zero indexed, 0=Jan, 11=Dec. */
+    xt.tm_mon -= 1;
+
+    return apr_time_exp_gmt_get(humane_time, &xt);
+}
+#endif  /* OPENSSL_NO_OCSP */
+
 apr_status_t serf_ssl_ocsp_response_verify(
+    serf_ssl_context_t *ssl_ctx,
     const serf_ssl_ocsp_response_t *ocsp_response,
     const serf_ssl_ocsp_request_t *ocsp_request,
+    apr_time_t clock_skew,
+    apr_time_t max_age,
     apr_time_t *this_update,
     apr_time_t *next_update,
-    apr_time_t *produced_at,
     apr_pool_t *scratch_pool)
 {
 #ifndef OPENSSL_NO_OCSP
-    return SERF_ERROR_SSL_OCSP_RESPONSE_INVALID;
+    OCSP_BASICRESP *ocsp_basic = NULL;
+    apr_status_t status = SERF_ERROR_SSL_OCSP_RESPONSE_INVALID;
+    ASN1_GENERALIZEDTIME *asn1_revoked_at;
+    ASN1_GENERALIZEDTIME *asn1_this_update;
+    ASN1_GENERALIZEDTIME *asn1_next_update;
+    int cert_status, cert_reason;
+    X509_STORE *store;
+
+    ocsp_basic = OCSP_response_get1_basic(ocsp_response->response);
+    if (!ocsp_basic)
+        goto cleanup;
+
+    if (0 >= OCSP_check_nonce(ocsp_request->request, ocsp_basic))
+        goto cleanup;
+
+    store = SSL_CTX_get_cert_store(ssl_ctx->ctx);
+    if (0 >= OCSP_basic_verify(ocsp_basic, NULL, store, 0))
+        goto cleanup;
+
+    if (!OCSP_resp_find_status(ocsp_basic, ocsp_request->cert_id,
+                               &cert_status, &cert_reason,
+                               &asn1_revoked_at,
+                               &asn1_this_update,
+                               &asn1_next_update))
+        goto cleanup;
+
+    if (!OCSP_check_validity(asn1_this_update, asn1_next_update,
+                             (long)apr_time_sec(clock_skew),
+                             (long)apr_time_sec(max_age)))
+      goto cleanup;
+
+    if (this_update) {
+        if (asn1_this_update) {
+            status = convert_asn1_generalized_time(asn1_this_update, this_update,
+                                                   scratch_pool, status);
+            if (status)
+                goto cleanup;
+        }
+        else
+            *this_update = APR_TIME_C(0);
+    }
+
+    if (next_update) {
+        if (asn1_next_update) {
+            status = convert_asn1_generalized_time(asn1_next_update, next_update,
+                                                   scratch_pool, status);
+            if (status)
+                goto cleanup;
+        }
+        else
+            *next_update = APR_TIME_C(0);
+    }
+
+    switch (cert_status)
+    {
+    case V_OCSP_CERTSTATUS_REVOKED:
+        status = SERF_ERROR_SSL_OCSP_RESPONSE_CERT_REVOKED;
+        break;
+
+    case V_OCSP_CERTSTATUS_UNKNOWN:
+        status = SERF_ERROR_SSL_OCSP_RESPONSE_CERT_UNKNOWN;
+        break;
+
+    case V_OCSP_CERTSTATUS_GOOD:
+    default:
+        status = APR_SUCCESS;
+    }
+
+  cleanup:
+    if (ocsp_basic)
+        OCSP_BASICRESP_free(ocsp_basic);
+    return status;
 #else
     return SERF_ERROR_SSL_OCSP_RESPONSE_INVALID;
 #endif  /* OPENSSL_NO_OCSP */
