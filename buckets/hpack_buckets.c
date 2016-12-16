@@ -1868,9 +1868,7 @@ hpack_process(serf_bucket_t *bucket)
                     if (status)
                         continue;
 
-                      /* Send remote tablesize update to our table */
-                    if (v >= APR_SIZE_MAX)
-                        return SERF_ERROR_HTTP2_COMPRESSION_ERROR;
+                    /* Send remote tablesize update to our table */
                     status = hpack_table_size_update(ctx->tbl, (apr_size_t)v);
                     if (status)
                         return status;
