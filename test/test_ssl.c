@@ -1996,7 +1996,9 @@ static void test_ssl_ocsp_response_error_and_override(CuTest *tc)
                                                 handler_ctx, tb->pool);
 
     CuAssertTrue(tc, tb->result_flags & TEST_RESULT_SERVERCERTCB_CALLED);
+#if !defined(OPENSSL_NO_TLSEXT) && !defined(OPENSSL_NO_OCSP)
     CuAssertTrue(tc, tb->result_flags & TEST_RESULT_OCSP_CHECK_SUCCESSFUL);
+#endif
 }
 
 /* Validate that the subject's CN containing a '\0' byte is reported as failure
@@ -2164,6 +2166,7 @@ static void test_ssl_server_cert_with_san_and_empty_cb(CuTest *tc)
     CuAssertTrue(tc, tb->result_flags & TEST_RESULT_SERVERCERTCB_CALLED);
 }
 
+#ifndef OPENSSL_NO_TLSEXT
 static apr_status_t http11_select_protocol(void *baton,
                                            const char *protocol)
 {
@@ -2203,10 +2206,12 @@ static apr_status_t http11_alpn_setup(apr_socket_t *skt,
 
   return APR_SUCCESS;
 }
+#endif /* OPENSSL_NO_TLSEXT */
 
 
 static void test_ssl_alpn_negotiate(CuTest *tc)
 {
+#ifndef OPENSSL_NO_TLSEXT
     test_baton_t *tb = tc->testBaton;
     handler_baton_t handler_ctx[1];
     const int num_requests = sizeof(handler_ctx)/sizeof(handler_ctx[0]);
@@ -2251,6 +2256,7 @@ static void test_ssl_alpn_negotiate(CuTest *tc)
 
     run_client_and_mock_servers_loops_expect_ok(tc, tb, num_requests,
                                                 handler_ctx, tb->pool);
+#endif /* OPENSSL_NO_TLSEXT */
 }
 
 CuSuite *test_ssl(void)

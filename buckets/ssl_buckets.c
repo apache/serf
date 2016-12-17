@@ -587,7 +587,7 @@ static void bio_meth_free(BIO_METHOD *biom)
 #endif
 }
 
-#ifndef OPENSSL_NO_TLSEXT
+#if !defined(OPENSSL_NO_TLSEXT) && !defined(OPENSSL_NO_OCSP)
 /* Callback called when the server response has some OCSP info.
    Returns 1 if the application accepts the OCSP response as successful,
            0 in case of error.
@@ -670,7 +670,7 @@ static int ocsp_callback(SSL *ssl, void *baton)
 
     return cert_valid;
 }
-#endif
+#endif  /* OPENSSL_NO_TLSEXT && OPENSSL_NO_OCSP */
 
 typedef enum san_copy_t {
     EscapeNulAndCopy = 0,
@@ -2039,7 +2039,7 @@ apr_status_t
 serf_ssl_check_cert_status_request(serf_ssl_context_t *ssl_ctx, int enabled)
 {
 
-#ifndef OPENSSL_NO_TLSEXT
+#if !defined(OPENSSL_NO_TLSEXT) && !defined(OPENSSL_NO_OCSP)
     SSL_CTX_set_tlsext_status_cb(ssl_ctx->ctx, ocsp_callback);
     SSL_CTX_set_tlsext_status_arg(ssl_ctx->ctx, ssl_ctx);
     SSL_set_tlsext_status_type(ssl_ctx->ssl, TLSEXT_STATUSTYPE_ocsp);
