@@ -2349,8 +2349,6 @@ static void test_ssl_ocsp_request_create(CuTest *tc)
     /* certs switched */
     req = serf_ssl_ocsp_request_create(issuer, cert, 0, tb->pool, tb->pool);
     CuAssertPtrEquals(tc, NULL, req);
-#else
-    CuTestAssertTrue(tc, 1);
 #endif  /* OPENSSL_NO_OCSP */
 }
 
@@ -2394,8 +2392,6 @@ static void test_ssl_ocsp_request_export_import(CuTest *tc)
                  0 == memcmp(serf_ssl_ocsp_request_body(req),
                              serf_ssl_ocsp_request_body(impreq),
                              serf_ssl_ocsp_request_body_size(req)));
-#else
-    CuTestAssertTrue(tc, 1);
 #endif  /* OPENSSL_NO_OCSP */
 }
 
