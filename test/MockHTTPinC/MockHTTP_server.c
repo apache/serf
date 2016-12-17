@@ -2448,6 +2448,7 @@ static void bio_meth_free(BIO_METHOD *biom)
 #endif
 }
 
+#if !defined(OPENSSL_NO_TLSEXT) && !defined(OPENSSL_NO_OCSP)
 static int ocspCreateResponse(OCSP_RESPONSE **resp, mhOCSPRespnseStatus_t status)
 {
     int ret = 1;
@@ -2526,6 +2527,7 @@ static int ocspStatusCallback(SSL *ssl, void *userdata)
     /* Couldn't find match */
     return SSL_TLSEXT_ERR_ALERT_FATAL;
 }
+#endif  /* OPENSSL_NO_TLSEXT && OPENSSL_NO_OCSP */
 
 /* Convert an ssl error into an apr status code for a specific context */
 static apr_status_t status_from_ssl(sslCtx_t *ssl_ctx, int ret_code)
@@ -2625,6 +2627,7 @@ static apr_status_t initSSL(_mhClientCtx_t *cctx)
     return APR_SUCCESS;
 }
 
+#ifndef OPENSSL_NO_TLSEXT
 static int alpn_select_callback(SSL *ssl,
                                 const unsigned char **out,
                                 unsigned char *outlen,
@@ -2653,6 +2656,7 @@ static int alpn_select_callback(SSL *ssl,
 
   return SSL_TLSEXT_ERR_ALERT_FATAL;
 }
+#endif  /* OPENSSL_NO_TLSEXT */
 
 /**
  * Inits the OpenSSL context.
@@ -2703,11 +2707,13 @@ static apr_status_t initSSLCtx(_mhClientCtx_t *cctx)
 #endif
 
 #if OPENSSL_VERSION_NUMBER >= 0x10002000L /* >= 1.0.2 */
+#  ifndef OPENSSL_NO_TLSEXT
         if (cctx->serv_ctx->alpn) {
             SSL_CTX_set_alpn_select_cb(ssl_ctx->ctx,
                                        alpn_select_callback,
                                        cctx->serv_ctx);
         }
+#  endif
 #endif
 
         if (cctx->protocols == mhProtoSSLv2) {
@@ -2773,7 +2779,7 @@ static apr_status_t initSSLCtx(_mhClientCtx_t *cctx)
                 break;
         }
 
-#ifndef OPENSSL_NO_TLSEXT
+#if !defined(OPENSSL_NO_TLSEXT) && !defined(OPENSSL_NO_OCSP)
         if (cctx->ocspEnabled) {
             SSL_CTX_set_tlsext_status_cb(ssl_ctx->ctx, ocspStatusCallback);
             SSL_CTX_set_tlsext_status_arg(ssl_ctx->ctx, cctx);
