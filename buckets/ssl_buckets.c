@@ -587,7 +587,7 @@ static void bio_meth_free(BIO_METHOD *biom)
 #endif
 }
 
-#if !defined(OPENSSL_NO_TLSEXT) && !defined(OPENSSL_NO_OCSP)
+#ifndef OPENSSL_NO_OCSP
 static int ocsp_response_status(int failures, OCSP_RESPONSE *response)
 {
     long resp_status = OCSP_response_status(response);
@@ -610,6 +610,7 @@ static int ocsp_response_status(int failures, OCSP_RESPONSE *response)
     return failures;
 }
 
+#  ifndef OPENSSL_NO_TLSEXT
 /* Callback called when the server response has some OCSP info.
    Returns 1 if the application accepts the OCSP response as successful,
            0 in case of error.
@@ -675,7 +676,8 @@ static int ocsp_callback(SSL *ssl, void *baton)
 
     return cert_valid;
 }
-#endif  /* OPENSSL_NO_TLSEXT && OPENSSL_NO_OCSP */
+#  endif  /* OPENSSL_NO_TLSEXT */
+#endif    /* OPENSSL_NO_OCSP */
 
 typedef enum san_copy_t {
     EscapeNulAndCopy = 0,
