@@ -742,7 +742,8 @@ static apr_status_t serf_fcgi_frame_refill(serf_bucket_t *bucket)
     }
 
     serf__log(LOGLVL_DEBUG, LOGCOMP_CONN, __FILE__, ctx->config,
-              "Generating 0x%x frame on stream 0x%x of size 0x%x\n",
+              "Generating 0x%x frame on stream 0x%x of size %"
+              APR_SIZE_T_FMT "\n",
               ctx->frame_type, ctx->stream_id, payload);
 
     /* Create FCGI record */

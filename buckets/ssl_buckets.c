@@ -587,7 +587,7 @@ static void bio_meth_free(BIO_METHOD *biom)
 #endif
 }
 
-#ifndef OPENSSL_NO_TLSEXT
+#if !defined(OPENSSL_NO_TLSEXT) && !defined(OPENSSL_NO_OCSP)
 static int ocsp_response_status(int failures, OCSP_RESPONSE *response)
 {
     long resp_status = OCSP_response_status(response);
@@ -675,7 +675,7 @@ static int ocsp_callback(SSL *ssl, void *baton)
 
     return cert_valid;
 }
-#endif
+#endif  /* OPENSSL_NO_TLSEXT && OPENSSL_NO_OCSP */
 
 typedef enum san_copy_t {
     EscapeNulAndCopy = 0,
@@ -2080,7 +2080,7 @@ apr_status_t
 serf_ssl_check_cert_status_request(serf_ssl_context_t *ssl_ctx, int enabled)
 {
 
-#ifndef OPENSSL_NO_TLSEXT
+#if !defined(OPENSSL_NO_TLSEXT) && !defined(OPENSSL_NO_OCSP)
     SSL_CTX_set_tlsext_status_cb(ssl_ctx->ctx, ocsp_callback);
     SSL_CTX_set_tlsext_status_arg(ssl_ctx->ctx, ssl_ctx);
     SSL_set_tlsext_status_type(ssl_ctx->ssl, TLSEXT_STATUSTYPE_ocsp);
