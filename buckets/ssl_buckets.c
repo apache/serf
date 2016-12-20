@@ -300,7 +300,7 @@ detect_renegotiate(const SSL *s, int where, int ret)
 #endif
 
     /* The server asked to renegotiate the SSL session. */
-#ifndef USE_LEGACY_OPENSSL
+#ifndef SSL_ST_RENEGOTIATE
     if (SSL_get_state(s) == TLS_ST_SW_HELLO_REQ) {
 #else
     if (SSL_state(s) == SSL_ST_RENEGOTIATE) {
