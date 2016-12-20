@@ -54,7 +54,7 @@
 #endif
 
 #ifdef SERF_NO_SSL_X509_STORE_WRAPPERS
-#define X509_STORE_get0_param(store) store->param
+#define X509_STORE_get0_param(store) (store->param)
 #endif
 
 
