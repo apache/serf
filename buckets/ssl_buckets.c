@@ -51,6 +51,9 @@
 
 #if !defined(OPENSSL_VERSION_NUMBER) || OPENSSL_VERSION_NUMBER < 0x10100000L
 #define USE_LEGACY_OPENSSL
+#endif
+
+#ifdef SERF_NO_SSL_X509_STORE_WRAPPERS
 #define X509_STORE_get0_param(store) store->param
 #endif
 
