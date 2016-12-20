@@ -420,6 +420,8 @@ else:
 conf = Configure(env)
 if not conf.CheckFunc('BIO_set_init'):
   env.Append(CPPDEFINES=['SERF_NO_SSL_BIO_WRAPPERS'])
+if not conf.CheckFunc('X509_STORE_get0_param'):
+  env.Append(CPPDEFINES=['SERF_NO_SSL_X509_STORE_WRAPPERS'])
 if conf.CheckFunc('OPENSSL_malloc_init'):
   env.Append(CPPDEFINES=['SERF_HAVE_OPENSSL_MALLOC_INIT'])
 env = conf.Finish()
