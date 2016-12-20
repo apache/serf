@@ -322,7 +322,7 @@ static void log_ssl_error(serf_ssl_context_t *ctx)
 
 static void bio_set_data(BIO *bio, void *data)
 {
-#ifndef USE_LEGACY_OPENSSL
+#ifndef SERF_NO_SSL_BIO_WRAPPERS
     BIO_set_data(bio, data);
 #else
     bio->ptr = data;
@@ -331,7 +331,7 @@ static void bio_set_data(BIO *bio, void *data)
 
 static void *bio_get_data(BIO *bio)
 {
-#ifndef USE_LEGACY_OPENSSL
+#ifndef SERF_NO_SSL_BIO_WRAPPERS
     return BIO_get_data(bio);
 #else
     return bio->ptr;
@@ -463,7 +463,7 @@ static int bio_file_gets(BIO *bio, char *in, int inlen)
 
 static int bio_bucket_create(BIO *bio)
 {
-#ifndef USE_LEGACY_OPENSSL
+#ifndef SERF_NO_SSL_BIO_WRAPPERS
     BIO_set_shutdown(bio, 1);
     BIO_set_init(bio, 1);
     BIO_set_data(bio, NULL);
@@ -506,7 +506,7 @@ static long bio_bucket_ctrl(BIO *bio, int cmd, long num, void *ptr)
     return ret;
 }
 
-#ifdef USE_LEGACY_OPENSSL
+#ifdef SERF_NO_SSL_BIO_WRAPPERS
 static BIO_METHOD bio_bucket_method = {
     BIO_TYPE_MEM,
     "Serf SSL encryption and decryption buckets",
@@ -542,7 +542,7 @@ static BIO_METHOD *bio_meth_bucket_new(void)
 {
     BIO_METHOD *biom = NULL;
 
-#ifndef USE_LEGACY_OPENSSL
+#ifndef SERF_NO_SSL_BIO_WRAPPERS
     biom = BIO_meth_new(BIO_TYPE_MEM,
                         "Serf SSL encryption and decryption buckets");
     if (biom) {
@@ -563,7 +563,7 @@ static BIO_METHOD *bio_meth_file_new(void)
 {
     BIO_METHOD *biom = NULL;
 
-#ifndef USE_LEGACY_OPENSSL
+#ifndef SERF_NO_SSL_BIO_WRAPPERS
     biom = BIO_meth_new(BIO_TYPE_FILE, "Wrapper around APR file structures");
     if (biom) {
         BIO_meth_set_write(biom, bio_file_write);
@@ -582,7 +582,7 @@ static BIO_METHOD *bio_meth_file_new(void)
 
 static void bio_meth_free(BIO_METHOD *biom)
 {
-#ifndef USE_LEGACY_OPENSSL
+#ifndef SERF_NO_SSL_BIO_WRAPPERS
     BIO_meth_free(biom);
 #endif
 }

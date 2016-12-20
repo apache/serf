@@ -415,6 +415,12 @@ else:
     env.Append(CPPPATH=['$OPENSSL/include'])
     env.Append(LIBPATH=['$OPENSSL/lib'])
 
+# Check for OpenSSL functions which are only available in some of
+# the versions we support. Also handles forks like LibreSSL.
+conf = Configure(env)
+if not conf.CheckFunc('BIO_set_init'):
+  env.Append(CPPDEFINES=['SERF_NO_SSL_BIO_WRAPPERS'])
+env = conf.Finish()
 
 # If build with gssapi, get its information and define SERF_HAVE_GSSAPI
 if gssapi and CALLOUT_OKAY:
