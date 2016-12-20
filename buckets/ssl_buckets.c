@@ -1418,7 +1418,7 @@ static void init_ssl_libraries(void)
         }
 #endif
 
-#ifndef USE_LEGACY_OPENSSL
+#ifdef SERF_HAVE_OPENSSL_MALLOC_INIT
         OPENSSL_malloc_init();
 #else
         CRYPTO_malloc_init();
