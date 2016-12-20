@@ -1110,11 +1110,13 @@ static apr_status_t ssl_decrypt(void *baton, apr_size_t bufsize,
         /* Once we got through the initial handshake, we should have received
            the ALPN information if there is such information. */
         ctx->handshake_finished = SSL_is_init_finished(ctx->ssl)
-#ifndef USE_LEGACY_OPENSSL
+#ifdef TLS_ST_OK
                                   || (SSL_get_state(ctx->ssl) == TLS_ST_OK);
-#else
+#elif defined(SSL_CB_HANDSHAKE_DONE)
                                   || (SSL_state(ctx->ssl)
                                       & SSL_CB_HANDSHAKE_DONE);
+#else
+#error "neither TLS_ST_OK nor SSL_CB_HANDSHAKE_DONE is available"
 #endif
 
         /* Call the protocol callback as soon as possible as this triggers
