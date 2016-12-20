@@ -426,6 +426,8 @@ if conf.CheckFunc('CRYPTO_set_locking_callback'):
   env.Append(CPPDEFINES=['SERF_HAVE_SSL_LOCKING_CALLBACKS'])
 if conf.CheckFunc('OPENSSL_malloc_init'):
   env.Append(CPPDEFINES=['SERF_HAVE_OPENSSL_MALLOC_INIT'])
+if conf.CheckFunc('SSL_set_alpn_protos'):
+  env.Append(CPPDEFINES=['SERF_HAVE_OPENSSL_ALPN'])
 env = conf.Finish()
 
 # If build with gssapi, get its information and define SERF_HAVE_GSSAPI

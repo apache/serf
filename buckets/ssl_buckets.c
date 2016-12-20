@@ -1864,7 +1864,7 @@ apr_status_t serf_ssl_negotiate_protocol(serf_ssl_context_t *context,
     memcpy(at, protocols, len);
     at += len;
 
-#if OPENSSL_VERSION_NUMBER >= 0x10002000L /* >= 1.0.2 */
+#ifdef SERF_HAVE_OPENSSL_ALPN
     if (SSL_set_alpn_protos(context->ssl, raw_header, raw_len)) {
         ERR_clear_error();
     }
@@ -1889,7 +1889,7 @@ apr_status_t serf_ssl_negotiate_protocol(serf_ssl_context_t *context,
 static const char *ssl_get_selected_protocol(serf_ssl_context_t *context)
 {
     if (! context->selected_protocol) {
-#if OPENSSL_VERSION_NUMBER >= 0x10002000L /* >= 1.0.2 */
+#ifdef SERF_HAVE_OPENSSL_ALPN
         const unsigned char *data = NULL;
         unsigned len = 0;
 
