@@ -420,6 +420,8 @@ else:
 conf = Configure(env)
 if not conf.CheckFunc('BIO_set_init'):
   env.Append(CPPDEFINES=['SERF_NO_SSL_BIO_WRAPPERS'])
+if conf.CheckFunc('OPENSSL_malloc_init'):
+  env.Append(CPPDEFINES=['SERF_HAVE_OPENSSL_MALLOC_INIT'])
 env = conf.Finish()
 
 # If build with gssapi, get its information and define SERF_HAVE_GSSAPI
