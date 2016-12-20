@@ -1319,7 +1319,7 @@ static apr_status_t ssl_encrypt(void *baton, apr_size_t bufsize,
     return status;
 }
 
-#if APR_HAS_THREADS && defined(USE_LEGACY_OPENSSL)
+#if APR_HAS_THREADS && defined(SERF_HAVE_SSL_LOCKING_CALLBACKS)
 static apr_pool_t *ssl_pool;
 static apr_thread_mutex_t **ssl_locks;
 
@@ -1406,7 +1406,7 @@ static void init_ssl_libraries(void)
     val = apr_atomic_cas32(&have_init_ssl, INIT_BUSY, INIT_UNINITIALIZED);
 
     if (!val) {
-#if APR_HAS_THREADS && defined(USE_LEGACY_OPENSSL)
+#if APR_HAS_THREADS && defined(SERF_HAVE_SSL_LOCKING_CALLBACKS)
         int i, numlocks;
 #endif
 
@@ -1433,7 +1433,7 @@ static void init_ssl_libraries(void)
         SSL_library_init();
         OpenSSL_add_all_algorithms();
 
-#if APR_HAS_THREADS && defined(USE_LEGACY_OPENSSL)
+#if APR_HAS_THREADS && defined(SERF_HAVE_SSL_LOCKING_CALLBACKS)
         numlocks = CRYPTO_num_locks();
         apr_pool_create(&ssl_pool, NULL);
         ssl_locks = apr_palloc(ssl_pool, sizeof(apr_thread_mutex_t*)*numlocks);
