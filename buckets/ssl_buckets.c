@@ -300,10 +300,12 @@ detect_renegotiate(const SSL *s, int where, int ret)
 #endif
 
     /* The server asked to renegotiate the SSL session. */
-#ifndef SSL_ST_RENEGOTIATE
+#ifdef TLS_ST_SW_HELLO_REQ
     if (SSL_get_state(s) == TLS_ST_SW_HELLO_REQ) {
-#else
+#elif defined(SSL_ST_RENEGOTIATE)
     if (SSL_state(s) == SSL_ST_RENEGOTIATE) {
+#else
+#error "neither TLS_ST_SW_HELLO_REQ nor SSL_ST_RENEGOTIATE is available"
 #endif
         serf_ssl_context_t *ssl_ctx = SSL_get_app_data(s);
 
