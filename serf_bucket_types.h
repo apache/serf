@@ -817,10 +817,6 @@ typedef struct serf_ssl_ocsp_request_t serf_ssl_ocsp_request_t;
  *
  * Returns @c NULL on failure, e.g., if @a issuer_cert is not the
  * issuer certificate of @a server_cert.
- *
- * @note The @a server_cert and @a issuer_cert will be copied into the
- * OCSP request structure. The lifetime of the copies is controlled by
- * the lifetime of @a result_pool.
  */
 serf_ssl_ocsp_request_t *serf_ssl_ocsp_request_create(
     const serf_ssl_certificate_t *server_cert,
@@ -835,7 +831,7 @@ serf_ssl_ocsp_request_t *serf_ssl_ocsp_request_create(
  *
  * The application must decide whether to use this data as the body of
  * an HTTP POST request or Base64-encoded as part of the URI for a GET
- * request; see RFC 560, section A.1.1.
+ * request; see RFC 2560, section A.1.1.
  *
  * @see serf_ssl_ocsp_request_body_size()
  */
