@@ -60,14 +60,14 @@ These are the proposed changes:
    Discussion:
 
      In order to create an OCSP request, the application needs both
-     the server certificate and its issuer certtificate. An
-     application may have to issue OCSP requests independently and
-     asynchronously of any other processing, so it's nice if it can
-     store the certificates in a form that's independent of pool
-     lifetimes. We provide this form with serf_ssl_cert_export(), but
-     there's no easy way to consume the exported form in existing Serf
-     APIs (writing it to a file in PEM format and reading it back
-     through serf_ssl_load_cert_file() is neither easy nor sane).
+     the server certificate and its issuer certificate. An application
+     may have to issue OCSP requests independently and asynchronously
+     of any other processing, so it's nice if it can store the
+     certificates in a form that's independent of pool lifetimes. We
+     provide this form with serf_ssl_cert_export(), but there's no
+     easy way to consume the exported form in existing Serf APIs
+     (writing it to a file in PEM format and reading it back through
+     serf_ssl_load_cert_file() is neither easy nor sane).
 
 
 4. OCSP requests
@@ -99,10 +99,6 @@ These are the proposed changes:
     *
     * Returns @c NULL on failure, e.g., if @a issuer_cert is not the
     * issuer certificate of @a server_cert.
-    *
-    * @note The @a server_cert and @a issuer_cert will be copied into the
-    * OCSP request structure. The lifetime of the copies is controlled by
-    * the lifetime of @a result_pool.
     */
    serf_ssl_ocsp_request_t *serf_ssl_ocsp_request_create(
        const serf_ssl_certificate_t *server_cert,
@@ -117,7 +113,7 @@ These are the proposed changes:
     *
     * The application must decide whether to use this data as the body of
     * an HTTP POST request or Base64-encoded as part of the URI for a GET
-    * request; see RFC 560, section A.1.1.
+    * request; see RFC 2560, section A.1.1.
     *
     * @see serf_ssl_ocsp_request_body_size()
     */
