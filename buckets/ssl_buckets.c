@@ -49,9 +49,8 @@
 #define APR_ARRAY_PUSH(ary,type) (*((type *)apr_array_push(ary)))
 #endif
 
-#if !defined(OPENSSL_VERSION_NUMBER) || OPENSSL_VERSION_NUMBER < 0x10100000L
-#define USE_LEGACY_OPENSSL
-#define X509_STORE_get0_param(store) store->param
+#ifdef SERF_NO_SSL_X509_STORE_WRAPPERS
+#define X509_STORE_get0_param(store) ((store)->param)
 #endif
 
 
@@ -300,10 +299,12 @@ detect_renegotiate(const SSL *s, int where, int ret)
 #endif
 
     /* The server asked to renegotiate the SSL session. */
-#ifndef USE_LEGACY_OPENSSL
+#ifdef TLS_ST_SW_HELLO_REQ
     if (SSL_get_state(s) == TLS_ST_SW_HELLO_REQ) {
-#else
+#elif defined(SSL_ST_RENEGOTIATE)
     if (SSL_state(s) == SSL_ST_RENEGOTIATE) {
+#else
+#error "neither TLS_ST_SW_HELLO_REQ nor SSL_ST_RENEGOTIATE is available"
 #endif
         serf_ssl_context_t *ssl_ctx = SSL_get_app_data(s);
 
@@ -322,7 +323,7 @@ static void log_ssl_error(serf_ssl_context_t *ctx)
 
 static void bio_set_data(BIO *bio, void *data)
 {
-#ifndef USE_LEGACY_OPENSSL
+#ifndef SERF_NO_SSL_BIO_WRAPPERS
     BIO_set_data(bio, data);
 #else
     bio->ptr = data;
@@ -331,7 +332,7 @@ static void bio_set_data(BIO *bio, void *data)
 
 static void *bio_get_data(BIO *bio)
 {
-#ifndef USE_LEGACY_OPENSSL
+#ifndef SERF_NO_SSL_BIO_WRAPPERS
     return BIO_get_data(bio);
 #else
     return bio->ptr;
@@ -463,7 +464,7 @@ static int bio_file_gets(BIO *bio, char *in, int inlen)
 
 static int bio_bucket_create(BIO *bio)
 {
-#ifndef USE_LEGACY_OPENSSL
+#ifndef SERF_NO_SSL_BIO_WRAPPERS
     BIO_set_shutdown(bio, 1);
     BIO_set_init(bio, 1);
     BIO_set_data(bio, NULL);
@@ -506,7 +507,7 @@ static long bio_bucket_ctrl(BIO *bio, int cmd, long num, void *ptr)
     return ret;
 }
 
-#ifdef USE_LEGACY_OPENSSL
+#ifdef SERF_NO_SSL_BIO_WRAPPERS
 static BIO_METHOD bio_bucket_method = {
     BIO_TYPE_MEM,
     "Serf SSL encryption and decryption buckets",
@@ -542,7 +543,7 @@ static BIO_METHOD *bio_meth_bucket_new(void)
 {
     BIO_METHOD *biom = NULL;
 
-#ifndef USE_LEGACY_OPENSSL
+#ifndef SERF_NO_SSL_BIO_WRAPPERS
     biom = BIO_meth_new(BIO_TYPE_MEM,
                         "Serf SSL encryption and decryption buckets");
     if (biom) {
@@ -563,7 +564,7 @@ static BIO_METHOD *bio_meth_file_new(void)
 {
     BIO_METHOD *biom = NULL;
 
-#ifndef USE_LEGACY_OPENSSL
+#ifndef SERF_NO_SSL_BIO_WRAPPERS
     biom = BIO_meth_new(BIO_TYPE_FILE, "Wrapper around APR file structures");
     if (biom) {
         BIO_meth_set_write(biom, bio_file_write);
@@ -582,7 +583,7 @@ static BIO_METHOD *bio_meth_file_new(void)
 
 static void bio_meth_free(BIO_METHOD *biom)
 {
-#ifndef USE_LEGACY_OPENSSL
+#ifndef SERF_NO_SSL_BIO_WRAPPERS
     BIO_meth_free(biom);
 #endif
 }
@@ -1153,11 +1154,13 @@ static apr_status_t ssl_decrypt(void *baton, apr_size_t bufsize,
         /* Once we got through the initial handshake, we should have received
            the ALPN information if there is such information. */
         ctx->handshake_finished = SSL_is_init_finished(ctx->ssl)
-#ifndef USE_LEGACY_OPENSSL
+#ifdef TLS_ST_OK
                                   || (SSL_get_state(ctx->ssl) == TLS_ST_OK);
-#else
+#elif defined(SSL_CB_HANDSHAKE_DONE)
                                   || (SSL_state(ctx->ssl)
                                       & SSL_CB_HANDSHAKE_DONE);
+#else
+#error "neither TLS_ST_OK nor SSL_CB_HANDSHAKE_DONE is available"
 #endif
 
         /* Call the protocol callback as soon as possible as this triggers
@@ -1355,7 +1358,7 @@ static apr_status_t ssl_encrypt(void *baton, apr_size_t bufsize,
     return status;
 }
 
-#if APR_HAS_THREADS && defined(USE_LEGACY_OPENSSL)
+#if APR_HAS_THREADS && defined(SERF_HAVE_SSL_LOCKING_CALLBACKS)
 static apr_pool_t *ssl_pool;
 static apr_thread_mutex_t **ssl_locks;
 
@@ -1442,7 +1445,7 @@ static void init_ssl_libraries(void)
     val = apr_atomic_cas32(&have_init_ssl, INIT_BUSY, INIT_UNINITIALIZED);
 
     if (!val) {
-#if APR_HAS_THREADS && defined(USE_LEGACY_OPENSSL)
+#if APR_HAS_THREADS && defined(SERF_HAVE_SSL_LOCKING_CALLBACKS)
         int i, numlocks;
 #endif
 
@@ -1459,7 +1462,7 @@ static void init_ssl_libraries(void)
         }
 #endif
 
-#ifndef USE_LEGACY_OPENSSL
+#ifdef SERF_HAVE_OPENSSL_MALLOC_INIT
         OPENSSL_malloc_init();
 #else
         CRYPTO_malloc_init();
@@ -1469,7 +1472,7 @@ static void init_ssl_libraries(void)
         SSL_library_init();
         OpenSSL_add_all_algorithms();
 
-#if APR_HAS_THREADS && defined(USE_LEGACY_OPENSSL)
+#if APR_HAS_THREADS && defined(SERF_HAVE_SSL_LOCKING_CALLBACKS)
         numlocks = CRYPTO_num_locks();
         apr_pool_create(&ssl_pool, NULL);
         ssl_locks = apr_palloc(ssl_pool, sizeof(apr_thread_mutex_t*)*numlocks);
@@ -1904,7 +1907,7 @@ apr_status_t serf_ssl_negotiate_protocol(serf_ssl_context_t *context,
     memcpy(at, protocols, len);
     at += len;
 
-#if OPENSSL_VERSION_NUMBER >= 0x10002000L /* >= 1.0.2 */
+#ifdef SERF_HAVE_OPENSSL_ALPN
     if (SSL_set_alpn_protos(context->ssl, raw_header, raw_len)) {
         ERR_clear_error();
     }
@@ -1929,7 +1932,7 @@ apr_status_t serf_ssl_negotiate_protocol(serf_ssl_context_t *context,
 static const char *ssl_get_selected_protocol(serf_ssl_context_t *context)
 {
     if (! context->selected_protocol) {
-#if OPENSSL_VERSION_NUMBER >= 0x10002000L /* >= 1.0.2 */
+#ifdef SERF_HAVE_OPENSSL_ALPN
         const unsigned char *data = NULL;
         unsigned len = 0;
 
