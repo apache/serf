@@ -2755,8 +2755,8 @@ static apr_status_t initSSLCtx(_mhClientCtx_t *cctx)
                 X509 *ssl_cert = PEM_read_X509(fp, NULL, NULL, NULL);
                 fclose(fp);
 
-                SSL_CTX_add_extra_chain_cert(ssl_ctx->ctx, ssl_cert);
                 X509_STORE_add_cert(store, ssl_cert);
+                SSL_CTX_add_extra_chain_cert(ssl_ctx->ctx, ssl_cert);
             }
         }
 
