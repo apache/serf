@@ -372,7 +372,10 @@ static apr_status_t setup_request(serf_request_t *request,
     serf_bucket_headers_setn(hdrs_bkt, "User-Agent",
                              "Serf/" SERF_VERSION_STRING);
     /* Shouldn't serf do this for us? */
-    serf_bucket_headers_setn(hdrs_bkt, "Accept-Encoding", "gzip");
+    if (serf_bucket_is_brotli_supported())
+        serf_bucket_headers_setn(hdrs_bkt, "Accept-Encoding", "gzip, br");
+    else
+        serf_bucket_headers_setn(hdrs_bkt, "Accept-Encoding", "gzip");
 #ifdef CONNECTION_CLOSE_HDR
     serf_bucket_headers_setn(hdrs_bkt, "Connection", "close");
 #endif

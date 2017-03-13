@@ -191,7 +191,10 @@ static apr_status_t setup_request(serf_request_t *request,
     serf_bucket_headers_setn(hdrs_bkt, "User-Agent",
                              "Serf/" SERF_VERSION_STRING);
     /* Shouldn't serf do this for us? */
-    serf_bucket_headers_setn(hdrs_bkt, "Accept-Encoding", "gzip");
+    if (serf_bucket_is_brotli_supported())
+        serf_bucket_headers_setn(hdrs_bkt, "Accept-Encoding", "gzip, br");
+    else
+        serf_bucket_headers_setn(hdrs_bkt, "Accept-Encoding", "gzip");
 
     if (ctx->authn != NULL) {
         serf_bucket_headers_setn(hdrs_bkt, "Authorization", ctx->authn);
@@ -255,7 +258,10 @@ static apr_status_t setup_channel(serf_request_t *request,
     serf_bucket_headers_setn(hdrs_bkt, "User-Agent",
                              "Serf/" SERF_VERSION_STRING);
     /* Shouldn't serf do this for us? */
-    serf_bucket_headers_setn(hdrs_bkt, "Accept-Encoding", "gzip");
+    if (serf_bucket_is_brotli_supported())
+        serf_bucket_headers_setn(hdrs_bkt, "Accept-Encoding", "gzip, br");
+    else
+        serf_bucket_headers_setn(hdrs_bkt, "Accept-Encoding", "gzip");
 
     if (ctx->authn != NULL) {
         serf_bucket_headers_setn(hdrs_bkt, "Authorization", ctx->authn);
