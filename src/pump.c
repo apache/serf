@@ -35,7 +35,7 @@ static apr_status_t pump_cleanup(void *baton)
 
     if (pump->ostream_head != NULL) {
 #ifdef SERF_DEBUG_BUCKET_USE
-        serf__bucket_drain(conn->ostream_head);
+        serf__bucket_drain(pump->ostream_head);
 #endif
         serf_bucket_destroy(pump->ostream_head);
         pump->ostream_head = NULL;
