@@ -824,7 +824,14 @@ http2_handle_settings(void *baton,
               /* Sanitize? */
                 serf__log(LOGLVL_INFO, SERF_LOGHTTP2, h2->config,
                           "Setting Initial Window Size %u\n", value);
-                h2->lr_window += (value - h2->lr_default_window);
+                /* This only affects the default window size for new streams
+                   (the connection window size is left unchanged):
+
+                   Both endpoints can adjust the initial window size for new
+                   streams by including a value for SETTINGS_INITIAL_WINDOW_SIZE
+                   in the SETTINGS frame that forms part of the connection
+                   preface.  The connection flow-control window can only be
+                   changed using WINDOW_UPDATE frames. */
                 h2->lr_default_window = value;
                 break;
             case HTTP2_SETTING_MAX_FRAME_SIZE:
