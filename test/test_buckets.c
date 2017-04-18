@@ -3211,15 +3211,15 @@ CuSuite *test_buckets(void)
     SUITE_ADD_TEST(suite, test_hpack_huffman_encode);
     SUITE_ADD_TEST(suite, test_hpack_header_encode);
     SUITE_ADD_TEST(suite, test_http2_frame_bucket_basic);
-#ifdef SERF_HAVE_BROTLI
-    SUITE_ADD_TEST(suite, test_brotli_decompress_bucket_basic);
-    SUITE_ADD_TEST(suite, test_brotli_decompress_bucket_truncated_input);
-    SUITE_ADD_TEST(suite, test_brotli_decompress_bucket_read_bytewise);
-    SUITE_ADD_TEST(suite, test_brotli_decompress_bucket_chunked_input);
-    SUITE_ADD_TEST(suite, test_brotli_decompress_bucket_chunked_input2);
-    SUITE_ADD_TEST(suite, test_brotli_decompress_bucket_garbage_at_end);
-    SUITE_ADD_TEST(suite, test_brotli_decompress_response_body);
-#endif /* SERF_HAVE_BROTLI */
+    if (serf_bucket_is_brotli_supported()) {
+        SUITE_ADD_TEST(suite, test_brotli_decompress_bucket_basic);
+        SUITE_ADD_TEST(suite, test_brotli_decompress_bucket_truncated_input);
+        SUITE_ADD_TEST(suite, test_brotli_decompress_bucket_read_bytewise);
+        SUITE_ADD_TEST(suite, test_brotli_decompress_bucket_chunked_input);
+        SUITE_ADD_TEST(suite, test_brotli_decompress_bucket_chunked_input2);
+        SUITE_ADD_TEST(suite, test_brotli_decompress_bucket_garbage_at_end);
+        SUITE_ADD_TEST(suite, test_brotli_decompress_response_body);
+    }
 #if 0
     /* This test for issue #152 takes a lot of time generating 4GB+ of random
        data so it's disabled by default. */
