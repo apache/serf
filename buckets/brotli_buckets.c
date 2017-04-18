@@ -26,7 +26,7 @@
 
 #include <brotli/decode.h>
 
-int serf_bucket_is_brotli_supported()
+int serf_bucket_is_brotli_supported(void)
 {
     return TRUE;
 }
@@ -218,7 +218,7 @@ const serf_bucket_type_t serf_bucket_type_brotli_decompress = {
 
 #else /* SERF_HAVE_BROTLI */
 
-int serf_bucket_is_brotli_supported()
+int serf_bucket_is_brotli_supported(void)
 {
     return FALSE;
 }
