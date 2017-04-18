@@ -880,7 +880,7 @@ void serf_bucket_split_create(serf_bucket_t **head,
  *
  * @since New in 1.4.
  */
-int serf_bucket_is_brotli_supported();
+int serf_bucket_is_brotli_supported(void);
 
 /** @since New in 1.4. */
 extern const serf_bucket_type_t serf_bucket_type_brotli_decompress;
