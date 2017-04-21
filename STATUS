@@ -17,7 +17,7 @@ Candidate changes:
      Serf should compile out of the box.
    Branch: ^/serf/branches/1.3.x-sslbuild
    Votes:
-     +1: stsp
+     +1: stsp, astieger
 
 Veto-blocked changes:
 =====================
