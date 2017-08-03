@@ -82,6 +82,7 @@ static apr_status_t wait_for_chunk(serf_bucket_t *bucket)
 
             /* if a line was read, then parse it. */
             if (ctx->linebuf.state == SERF_LINEBUF_READY) {
+                char *end;
 
                 /* Do we have the chunk length? */
                 if (ctx->linebuf.line[0] == '\0') {
@@ -89,9 +90,13 @@ static apr_status_t wait_for_chunk(serf_bucket_t *bucket)
                 }
 
                 /* Convert from HEX digits. The linebuffer ensures a '\0' */
-                ctx->body_left = apr_strtoi64(ctx->linebuf.line, NULL, 16);
+                ctx->body_left = apr_strtoi64(ctx->linebuf.line, &end, 16);
                 if (errno == ERANGE) {
                     return APR_FROM_OS_ERROR(ERANGE);
+                }
+                else if (ctx->linebuf.line == end) {
+                    /* Invalid chunk length, bail out. */
+                    return SERF_ERROR_BAD_HTTP_RESPONSE;
                 }
 
                 if (ctx->body_left == 0) {
