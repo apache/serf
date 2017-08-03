@@ -1188,6 +1188,38 @@ static void test_response_body_chunked_invalid_len(CuTest *tc)
     serf_bucket_destroy(bkt);
 }
 
+static void test_response_body_chunked_overflow_len(CuTest *tc)
+{
+    test_baton_t *tb = tc->testBaton;
+    serf_bucket_t *bkt, *tmp;
+    serf_bucket_alloc_t *alloc = test__create_bucket_allocator(tc, tb->pool);
+
+    tmp = SERF_BUCKET_SIMPLE_STRING("HTTP/1.1 200 OK" CRLF
+                                    "Content-Type: text/plain" CRLF
+                                    "Transfer-Encoding: chunked" CRLF
+                                    CRLF
+                                    "2" CRLF
+                                    "AB" CRLF
+                                    "12345678901234567890123456789" CRLF
+                                    CRLF,
+                                    alloc);
+
+    bkt = serf_bucket_response_create(tmp, alloc);
+
+    {
+        char buf[1024];
+        apr_size_t len;
+        apr_status_t status;
+
+        status = read_all(bkt, buf, sizeof(buf), &len);
+
+        CuAssertIntEquals(tc, APR_FROM_OS_ERROR(ERANGE), status);
+    }
+
+    /* This will also destroy response stream bucket. */
+    serf_bucket_destroy(bkt);
+}
+
 static void test_response_bucket_peek_at_headers(CuTest *tc)
 {
     test_baton_t *tb = tc->testBaton;
@@ -3252,6 +3284,7 @@ CuSuite *test_buckets(void)
     SUITE_ADD_TEST(suite, test_response_body_chunked_gzip_small);
     SUITE_ADD_TEST(suite, test_response_body_chunked_truncated_with_crlf);
     SUITE_ADD_TEST(suite, test_response_body_chunked_invalid_len);
+    SUITE_ADD_TEST(suite, test_response_body_chunked_overflow_len);
     SUITE_ADD_TEST(suite, test_response_bucket_peek_at_headers);
     SUITE_ADD_TEST(suite, test_response_bucket_iis_status_code);
     SUITE_ADD_TEST(suite, test_response_bucket_no_reason);
