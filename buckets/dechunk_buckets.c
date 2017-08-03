@@ -84,11 +84,6 @@ static apr_status_t wait_for_chunk(serf_bucket_t *bucket)
             if (ctx->linebuf.state == SERF_LINEBUF_READY) {
                 char *end;
 
-                /* Do we have the chunk length? */
-                if (ctx->linebuf.line[0] == '\0') {
-                    return SERF_ERROR_TRUNCATED_HTTP_RESPONSE;
-                }
-
                 /* Convert from HEX digits. The linebuffer ensures a '\0' */
                 ctx->body_left = apr_strtoi64(ctx->linebuf.line, &end, 16);
                 if (errno == ERANGE) {

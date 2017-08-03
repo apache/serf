@@ -1125,7 +1125,7 @@ static void test_response_body_chunked_gzip_small(CuTest *tc)
 /* Test for issue: the server aborts the connection and also sends
    a bogus CRLF in place of the expected chunk size. Test that we get
    a decent error code from the response bucket instead of APR_EOF. */
-static void test_response_body_chunked_truncated_with_crlf(CuTest *tc)
+static void test_response_body_chunked_bogus_crlf(CuTest *tc)
 {
     test_baton_t *tb = tc->testBaton;
     serf_bucket_t *bkt, *tmp;
@@ -1149,7 +1149,7 @@ static void test_response_body_chunked_truncated_with_crlf(CuTest *tc)
 
         status = read_all(bkt, buf, sizeof(buf), &len);
 
-        CuAssertIntEquals(tc, SERF_ERROR_TRUNCATED_HTTP_RESPONSE, status);
+        CuAssertIntEquals(tc, SERF_ERROR_BAD_HTTP_RESPONSE, status);
     }
 
     /* This will also destroy response stream bucket. */
@@ -3282,7 +3282,7 @@ CuSuite *test_buckets(void)
     SUITE_ADD_TEST(suite, test_response_body_chunked_no_crlf);
     SUITE_ADD_TEST(suite, test_response_body_chunked_incomplete_crlf);
     SUITE_ADD_TEST(suite, test_response_body_chunked_gzip_small);
-    SUITE_ADD_TEST(suite, test_response_body_chunked_truncated_with_crlf);
+    SUITE_ADD_TEST(suite, test_response_body_chunked_bogus_crlf);
     SUITE_ADD_TEST(suite, test_response_body_chunked_invalid_len);
     SUITE_ADD_TEST(suite, test_response_body_chunked_overflow_len);
     SUITE_ADD_TEST(suite, test_response_bucket_peek_at_headers);
