@@ -456,8 +456,8 @@ static void test_keepalive_limit_one_by_one(CuTest *tc)
     EndGiven
 
     for (i = 0 ; i < SENT_REQUESTS ; i++) {
-        create_new_request_with_resp_hdlr(tb, &handler_ctx[i], "GET", "/", i+1,
-                                          handle_response_keepalive_limit);
+        create_new_request_ex(tb, &handler_ctx[i], "GET", "/", i+1,
+                              NULL, handle_response_keepalive_limit);
     }
 
     /* The two retries of request 1 both also have req_id=1, which means that
@@ -561,8 +561,8 @@ static void test_keepalive_limit_one_by_one_and_burst(CuTest *tc)
     EndGiven
 
     for (i = 0 ; i < SENT_REQUESTS ; i++) {
-        create_new_request_with_resp_hdlr(tb, &handler_ctx[i], "GET", "/", i+1,
-                                          handle_response_keepalive_limit_burst);
+        create_new_request_ex(tb, &handler_ctx[i], "GET", "/", i+1,
+                              NULL, handle_response_keepalive_limit_burst);
     }
 
     /* The two retries of request 1 both also have req_id=1, which means that
@@ -973,6 +973,50 @@ static void test_max_keepalive_requests(CuTest *tc)
     CuAssertIntEquals(tc, num_requests, tb->handled_requests->nelts);
 }
 
+/* Implements test_request_setup_t */
+static apr_status_t setup_request_err(serf_request_t *request,
+                                      void *setup_baton,
+                                      serf_bucket_t **req_bkt,
+                                      apr_pool_t *pool)
+{
+    static mockbkt_action actions[] = {
+        { 1, "a", APR_SUCCESS },
+        /* Return an error after first successful read. */
+        { 1, "", APR_EINVAL }
+    };
+    handler_baton_t *ctx = setup_baton;
+    serf_bucket_alloc_t *alloc;
+    serf_bucket_t *mock_bkt;
+
+    alloc = serf_request_get_alloc(request);
+    mock_bkt = serf_bucket_mock_create(actions, 2, alloc);
+    *req_bkt = serf_request_bucket_request_create(request,
+                                                  ctx->method, ctx->path,
+                                                  mock_bkt, alloc);
+    return APR_SUCCESS;
+}
+
+static void test_outgoing_request_err(CuTest *tc)
+{
+    test_baton_t *tb = tc->testBaton;
+    handler_baton_t handler_ctx[1];
+    apr_status_t status;
+
+    setup_test_mock_server(tb);
+    status = setup_test_client_context(tb, NULL, tb->pool);
+    CuAssertIntEquals(tc, APR_SUCCESS, status);
+
+    /* Setup an outgoing request with the body bucket returning an error. */
+    create_new_request_ex(tb, &handler_ctx[0], "POST", "/", 1,
+                          setup_request_err, NULL);
+
+    status = run_client_and_mock_servers_loops(tb, 1, handler_ctx, tb->pool);
+    CuAssertIntEquals(tc, APR_EINVAL, status);
+    CuAssertIntEquals(tc, 1, tb->sent_requests->nelts);
+    CuAssertIntEquals(tc, 0, tb->accepted_requests->nelts);
+    CuAssertIntEquals(tc, 0, tb->handled_requests->nelts);
+}
+
 /*****************************************************************************/
 CuSuite *test_context(void)
 {
@@ -998,6 +1042,7 @@ CuSuite *test_context(void)
     SUITE_ADD_TEST(suite, test_connection_large_response);
     SUITE_ADD_TEST(suite, test_connection_large_request);
     SUITE_ADD_TEST(suite, test_max_keepalive_requests);
+    SUITE_ADD_TEST(suite, test_outgoing_request_err);
 
     return suite;
 }
