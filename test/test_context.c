@@ -2283,10 +2283,10 @@ static void test_ssltunnel_digest_auth(CuTest *tc)
 }
 
 /* Implements test_request_setup_t */
-apr_status_t setup_request_err(serf_request_t *request,
-                               void *setup_baton,
-                               serf_bucket_t **req_bkt,
-                               apr_pool_t *pool)
+static apr_status_t setup_request_err(serf_request_t *request,
+                                      void *setup_baton,
+                                      serf_bucket_t **req_bkt,
+                                      apr_pool_t *pool)
 {
     static mockbkt_action actions[] = {
         { 1, "a", APR_SUCCESS },
