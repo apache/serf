@@ -815,6 +815,7 @@ static apr_status_t write_to_connection(serf_connection_t *conn)
            data as available, we probably don't want to read ALL_AVAIL, but
            a lower number, like the size of one or a few TCP packets, the
            available TCP buffer size ... */
+        conn->hit_eof = 0;
         read_status = serf_bucket_read_iovec(ostreamh,
                                              SERF_READ_ALL_AVAIL,
                                              IOV_MAX,
