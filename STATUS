@@ -48,6 +48,15 @@ Candidate changes:
    Votes:
      +1: kotkov
 
+ * r1805301
+   Fix an endless loop in the deflate bucket with the truncated input.
+   Justification:
+     Bug in the gzip/deflate decoder.
+   Branch:
+     ^/serf/branches/1.3.x-r1805301
+   Votes:
+     +1: kotkov
+
 Veto-blocked changes:
 =====================
 
