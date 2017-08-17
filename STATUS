@@ -19,6 +19,25 @@ Candidate changes:
    Votes:
      +1: stsp, astieger
 
+ * r1804534, r1804543, r1804553
+   Fix error handling when reading the outgoing request's body by not
+   ignoring such errors in some cases.
+   Justification:
+     Ignoring errors can cause invalid or undefined behavior further
+     down the line.
+   Branch:
+     ^/serf/branches/1.3.x-fix-outgoing-request-err
+   Notes:
+     - On trunk, this issue has been fixed in the process of adding
+       the pump.c layer.
+     - An example of a condition where the error could be incorrectly ignored
+       is Subversion's commit, if the error occurs when reading the body of
+       an outgoing PUT request.
+     - The added test doesn't fail without the fix, but is merely added to
+       cover the related code.  (See the r1804541 log message for details.)
+   Votes:
+     +1: kotkov
+
 Veto-blocked changes:
 =====================
 
