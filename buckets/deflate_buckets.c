@@ -277,14 +277,24 @@ static apr_status_t serf_deflate_refill(serf_bucket_t *bucket)
 
     while (1) {
 
-        if (ctx->memLevel < 0)
+        if (ctx->memLevel < 0) {
             zRC = inflate(&ctx->zstream, flush_v);
-        else
+            if (zRC == Z_BUF_ERROR && APR_STATUS_IS_EOF(ctx->stream_status) &&
+                ctx->zstream.avail_out > 0) {
+                /* Zlib can't continue, although there's still space in the
+                   output buffer.  This can happen either if the stream is
+                   truncated or corrupted.  As we don't know for sure,
+                   return a generic error. */
+                return SERF_ERROR_DECOMPRESSION_FAILED;
+            }
+        }
+        else {
             zRC = deflate(&ctx->zstream, flush_v);
+        }
 
-        /* We're full or zlib requires more space. Either case, clear
-            out our buffer, reset, and return. */
         if (zRC == Z_BUF_ERROR || ctx->zstream.avail_out == 0) {
+            /* We're full or zlib requires more space. Either case, clear
+               out our buffer, reset, and return. */
             apr_size_t private_len;
             serf_bucket_t *tmp;
 

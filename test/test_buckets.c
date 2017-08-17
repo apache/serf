@@ -3267,6 +3267,33 @@ static void test_brotli_decompress_response_body(CuTest *tc)
     serf_bucket_destroy(bkt);
 }
 
+static void test_deflate_bucket_truncated_data(CuTest *tc)
+{
+    test_baton_t *tb = tc->testBaton;
+    serf_bucket_t *input;
+    serf_bucket_t *bkt;
+    serf_bucket_alloc_t *alloc = test__create_bucket_allocator(tc, tb->pool);
+
+    /* This is a valid, but truncated gzip data (in two chunks). */
+    input = serf_bucket_aggregate_create(alloc);
+    serf_bucket_aggregate_append(input,
+        SERF_BUCKET_SIMPLE_STRING_LEN("\x1F\x8B\x08\x00\x00", 5, alloc));
+    serf_bucket_aggregate_append(input,
+        SERF_BUCKET_SIMPLE_STRING_LEN("\x00\x00\x00\x00\x03", 5, alloc));
+
+    bkt = serf_bucket_deflate_create(input, alloc, SERF_DEFLATE_GZIP);
+    {
+        char buf[1024];
+        apr_size_t len;
+        apr_status_t status;
+
+        status = read_all(bkt, buf, sizeof(buf), &len);
+        CuAssertIntEquals(tc, SERF_ERROR_DECOMPRESSION_FAILED, status);
+    }
+
+    serf_bucket_destroy(bkt);
+}
+
 CuSuite *test_buckets(void)
 {
     CuSuite *suite = CuSuiteNew();
@@ -3326,6 +3353,7 @@ CuSuite *test_buckets(void)
        data so it's disabled by default. */
     SUITE_ADD_TEST(suite, test_deflate_4GBplus_buckets);
 #endif
+    SUITE_ADD_TEST(suite, test_deflate_bucket_truncated_data);
 
 
 
