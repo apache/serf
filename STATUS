@@ -36,7 +36,7 @@ Candidate changes:
      - The added test doesn't fail without the fix, but is merely added to
        cover the related code.  (See the r1804541 log message for details.)
    Votes:
-     +1: kotkov
+     +1: kotkov, ivan
 
  * r1804005, r1804008, r1804016
    Return an error for invalid chunk lengths in the dechunk bucket.
