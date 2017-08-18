@@ -8,9 +8,9 @@
 #    to you under the Apache License, Version 2.0 (the
 #    "License"); you may not use this file except in compliance
 #    with the License.  You may obtain a copy of the License at
-# 
+#
 #      http://www.apache.org/licenses/LICENSE-2.0
-# 
+#
 #    Unless required by applicable law or agreed to in writing,
 #    software distributed under the License is distributed on an
 #    "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
@@ -123,7 +123,7 @@ opts.AddVariables(
   RawListVariable('LINKFLAGS', "Extra flags for the linker (space-separated)",
                   None),
   RawListVariable('CPPFLAGS', "Extra flags for the C preprocessor "
-                  "(space separated)", None), 
+                  "(space separated)", None),
   )
 
 if sys.platform == 'win32':
@@ -173,7 +173,7 @@ env = Environment(variables=opts,
 gen_def_script = env.File('build/gen_def.py').rstr()
 
 env.Append(BUILDERS = {
-    'GenDef' : 
+    'GenDef' :
       Builder(action = sys.executable + ' %s $SOURCES > $TARGET' % (gen_def_script,),
               suffix='.def', src_suffix='.h')
   })
@@ -456,8 +456,13 @@ if conf.CheckFunc('CRYPTO_set_locking_callback'):
   env.Append(CPPDEFINES=['SERF_HAVE_SSL_LOCKING_CALLBACKS'])
 if conf.CheckFunc('OPENSSL_malloc_init'):
   env.Append(CPPDEFINES=['SERF_HAVE_OPENSSL_MALLOC_INIT'])
+# In OpenSSL 1.1.x, OPENSSL_malloc_init is a function macro
+if conf.CheckDeclaration('OPENSSL_malloc_init()'):
+  env.Append(CPPDEFINES=['SERF_HAVE_OPENSSL_MALLOC_INIT'])
 if conf.CheckFunc('SSL_set_alpn_protos'):
   env.Append(CPPDEFINES=['SERF_HAVE_OPENSSL_ALPN'])
+if conf.CheckType('OSSL_HANDSHAKE_STATE', '#include <openssl/ssl.h>'):
+  env.Append(CPPDEFINES=['SERF_HAVE_OSSL_HANDSHAKE_STATE'])
 env = conf.Finish()
 
 # If build with gssapi, get its information and define SERF_HAVE_GSSAPI

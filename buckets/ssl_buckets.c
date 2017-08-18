@@ -299,12 +299,13 @@ detect_renegotiate(const SSL *s, int where, int ret)
 #endif
 
     /* The server asked to renegotiate the SSL session. */
-#ifdef TLS_ST_SW_HELLO_REQ
+#ifdef SERF_HAVE_OSSL_HANDSHAKE_STATE
     if (SSL_get_state(s) == TLS_ST_SW_HELLO_REQ) {
 #elif defined(SSL_ST_RENEGOTIATE)
     if (SSL_state(s) == SSL_ST_RENEGOTIATE) {
 #else
 #error "neither TLS_ST_SW_HELLO_REQ nor SSL_ST_RENEGOTIATE is available"
+    {
 #endif
         serf_ssl_context_t *ssl_ctx = SSL_get_app_data(s);
 
@@ -1111,7 +1112,7 @@ static apr_status_t ssl_decrypt(void *baton, apr_size_t bufsize,
         /* Once we got through the initial handshake, we should have received
            the ALPN information if there is such information. */
         ctx->handshake_finished = SSL_is_init_finished(ctx->ssl)
-#ifdef TLS_ST_OK
+#ifdef SERF_HAVE_OSSL_HANDSHAKE_STATE
                                   || (SSL_get_state(ctx->ssl) == TLS_ST_OK);
 #elif defined(SSL_CB_HANDSHAKE_DONE)
                                   || (SSL_state(ctx->ssl)
