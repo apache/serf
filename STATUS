@@ -46,7 +46,7 @@ Candidate changes:
    Branch:
      ^/serf/branches/1.3.x-r1804008-group
    Votes:
-     +1: kotkov
+     +1: kotkov, ivan
 
  * r1805301
    Fix an endless loop in the deflate bucket with the truncated input.
