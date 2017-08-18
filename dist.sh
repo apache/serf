@@ -87,9 +87,10 @@ mv "${release}" "${release}.win"
 
 cd ${work}
 
-# allow md5sum and sha1sum tool names to be overridden
+# allow checksum tool names to be overridden
 [ -n "$MD5SUM" ] || MD5SUM=md5sum
 [ -n "$SHA1SUM" ] || SHA1SUM=sha1sum
+[ -n "$SHA256SUM" ] || SHA256SUM=sha1sum
 
 echo ""
 echo "Done:"
@@ -129,4 +130,7 @@ $MD5SUM "${release}.tar.bz2" "${release}.zip"
 echo ""
 echo "sha1sums:"
 $SHA1SUM "${release}.tar.bz2" "${release}.zip"
+echo ""
+echo "sha256sums:"
+$SHA256SUM "${release}.tar.bz2" "${release}.zip"
 echo ""
