@@ -454,10 +454,7 @@ if not conf.CheckFunc('X509_STORE_get0_param'):
   env.Append(CPPDEFINES=['SERF_NO_SSL_X509_STORE_WRAPPERS'])
 if conf.CheckFunc('CRYPTO_set_locking_callback'):
   env.Append(CPPDEFINES=['SERF_HAVE_SSL_LOCKING_CALLBACKS'])
-if conf.CheckFunc('OPENSSL_malloc_init'):
-  env.Append(CPPDEFINES=['SERF_HAVE_OPENSSL_MALLOC_INIT'])
-# In OpenSSL 1.1.x, OPENSSL_malloc_init is a function macro
-if conf.CheckDeclaration('OPENSSL_malloc_init()'):
+if conf.CheckFunc('OPENSSL_malloc_init', '#include <openssl/crypto.h>'):
   env.Append(CPPDEFINES=['SERF_HAVE_OPENSSL_MALLOC_INIT'])
 if conf.CheckFunc('SSL_set_alpn_protos'):
   env.Append(CPPDEFINES=['SERF_HAVE_OPENSSL_ALPN'])
