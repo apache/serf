@@ -30,16 +30,6 @@ Veto-blocked changes:
 Approved changes:
 =================
 
- * r1804005, r1804008, r1804016
-   Return an error for invalid chunk lengths in the dechunk bucket.
-   Justification:
-     Invalid chunk lengths should cause an error, as otherwise the data
-     could be incorrectly interpreted further down the line.
-   Branch:
-     ^/serf/branches/1.3.x-r1804008-group
-   Votes:
-     +1: kotkov, ivan, rhuijben
-
  * r1805301
    Fix an endless loop in the deflate bucket with the truncated input.
    Justification:

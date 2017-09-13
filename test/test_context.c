@@ -1918,7 +1918,6 @@ static void test_ssltunnel_no_creds_cb(CuTest *tc)
             "Transfer-Encoding: chunked" CRLF
             "Proxy-Authenticate: Basic realm=""Test Suite Proxy""" CRLF
             CRLF
-            "1" CRLF CRLF
             "0" CRLF CRLF},
     };
 
@@ -2034,7 +2033,6 @@ static void ssltunnel_basic_auth(CuTest *tc, const char *server_resp_hdrs,
         "Proxy-Authenticate: Basic realm=""Test Suite Proxy""" CRLF
         "%s"
         CRLF
-        "1" CRLF CRLF
         "0" CRLF CRLF, proxy_407_resp_hdrs);
     action_list_proxy[1].kind = SERVER_RESPOND;
     action_list_proxy[1].text = apr_psprintf(test_pool,
@@ -2043,7 +2041,6 @@ static void ssltunnel_basic_auth(CuTest *tc, const char *server_resp_hdrs,
         "Proxy-Authenticate: Basic realm=""Test Suite Proxy""" CRLF
         "%s"
         CRLF
-        "1" CRLF CRLF
         "0" CRLF CRLF, proxy_407_resp_hdrs);
 
     action_list_proxy[2].kind = SERVER_RESPOND;
@@ -2053,7 +2050,6 @@ static void ssltunnel_basic_auth(CuTest *tc, const char *server_resp_hdrs,
         "Proxy-Authenticate: Basic realm=""Test Suite Proxy""" CRLF
         "%s"
         CRLF
-        "1" CRLF CRLF
         "0" CRLF CRLF, proxy_407_resp_hdrs);
 
     action_list_proxy[3].kind = SERVER_RESPOND;
@@ -2099,7 +2095,6 @@ static void ssltunnel_basic_auth(CuTest *tc, const char *server_resp_hdrs,
         "WWW-Authenticate: Basic realm=""Test Suite""" CRLF
         "%s"
         CRLF
-        "1" CRLF CRLF
         "0" CRLF CRLF, server_resp_hdrs);
     action_list_server[1].kind = SERVER_RESPOND;
     action_list_server[1].text = CHUNKED_EMPTY_RESPONSE;
@@ -2244,7 +2239,6 @@ static void test_ssltunnel_digest_auth(CuTest *tc)
             "nonce=\"ABCDEF1234567890\",opaque=\"myopaque\","
             "algorithm=\"MD5\",qop-options=\"auth\"" CRLF
             CRLF
-            "1" CRLF CRLF
             "0" CRLF CRLF},
         {SERVER_RESPOND, CHUNKED_EMPTY_RESPONSE},
         /* Forward the remainder of the data to the server without validation */
