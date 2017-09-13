@@ -815,11 +815,14 @@ static apr_status_t write_to_connection(serf_connection_t *conn)
            data as available, we probably don't want to read ALL_AVAIL, but
            a lower number, like the size of one or a few TCP packets, the
            available TCP buffer size ... */
+        conn->hit_eof = 0;
         read_status = serf_bucket_read_iovec(ostreamh,
                                              SERF_READ_ALL_AVAIL,
                                              IOV_MAX,
                                              conn->vec,
                                              &conn->vec_len);
+        if (SERF_BUCKET_READ_ERROR(read_status))
+            return read_status;
 
         if (!conn->hit_eof) {
             if (APR_STATUS_IS_EAGAIN(read_status)) {
@@ -841,9 +844,8 @@ static apr_status_t write_to_connection(serf_connection_t *conn)
                 conn->dirty_conn = 1;
                 conn->ctx->dirty_pollset = 1;
             }
-            else if (read_status && !APR_STATUS_IS_EOF(read_status)) {
-                /* Something bad happened. Propagate any errors. */
-                return read_status;
+            else if (APR_STATUS_IS_EOF(read_status)) {
+                /* Continue. */
             }
         }
 

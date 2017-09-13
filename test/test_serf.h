@@ -193,6 +193,13 @@ apr_status_t test_https_server_proxy_setup(
 void *test_setup(void *baton);
 void *test_teardown(void *baton);
 
+/* Simple variant of serf_request_setup_t for tests. */
+typedef apr_status_t (*test_request_setup_t)(
+    serf_request_t *request,
+    void *setup_baton,
+    serf_bucket_t **req_bkt,
+    apr_pool_t *pool);
+
 typedef struct {
     serf_response_acceptor_t acceptor;
     void *acceptor_baton;
@@ -208,6 +215,8 @@ typedef struct {
     const char *path;
     /* Use this for a raw request message */
     const char *request;
+    /* Or this, if more control is needed. */
+    test_request_setup_t request_setup;
     int done;
 
     test_baton_t *tb;
@@ -249,6 +258,7 @@ apr_status_t handle_response(serf_request_t *request,
 void setup_handler(test_baton_t *tb, handler_baton_t *handler_ctx,
                    const char *method, const char *path,
                    int req_id,
+                   test_request_setup_t req_setup,
                    serf_response_handler_t handler);
 void create_new_prio_request(test_baton_t *tb,
                              handler_baton_t *handler_ctx,
@@ -259,11 +269,12 @@ void create_new_request(test_baton_t *tb,
                         const char *method, const char *path,
                         int req_id);
 void
-create_new_request_with_resp_hdlr(test_baton_t *tb,
-                                  handler_baton_t *handler_ctx,
-                                  const char *method, const char *path,
-                                  int req_id,
-                                  serf_response_handler_t handler);
+create_new_request_ex(test_baton_t *tb,
+                      handler_baton_t *handler_ctx,
+                      const char *method, const char *path,
+                      int req_id,
+                      test_request_setup_t req_setup,
+                      serf_response_handler_t handler);
 
 /* Mock bucket type and constructor */
 typedef struct {

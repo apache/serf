@@ -397,8 +397,8 @@ static void test_keepalive_limit_one_by_one(CuTest *tc)
     CuAssertIntEquals(tc, APR_SUCCESS, status);
 
     for (i = 0 ; i < SEND_REQUESTS ; i++) {
-        create_new_request_with_resp_hdlr(tb, &handler_ctx[i], "GET", "/", i+1,
-                                          handle_response_keepalive_limit);
+        create_new_request_ex(tb, &handler_ctx[i], "GET", "/", i+1,
+                              NULL, handle_response_keepalive_limit);
         /* TODO: don't think this needs to be done in the loop. */
         serf_connection_set_max_outstanding_requests(tb->connection, 1);
     }
@@ -528,8 +528,8 @@ static void test_keepalive_limit_one_by_one_and_burst(CuTest *tc)
     CuAssertIntEquals(tc, APR_SUCCESS, status);
 
     for (i = 0 ; i < SEND_REQUESTS ; i++) {
-        create_new_request_with_resp_hdlr(tb, &handler_ctx[i], "GET", "/", i+1,
-                                          handle_response_keepalive_limit_burst);
+        create_new_request_ex(tb, &handler_ctx[i], "GET", "/", i+1,
+                              NULL, handle_response_keepalive_limit_burst);
         serf_connection_set_max_outstanding_requests(tb->connection, 1);
     }
 
@@ -2282,6 +2282,51 @@ static void test_ssltunnel_digest_auth(CuTest *tc)
     CuAssertTrue(tc, tb->result_flags & TEST_RESULT_AUTHNCB_CALLED);
 }
 
+/* Implements test_request_setup_t */
+static apr_status_t setup_request_err(serf_request_t *request,
+                                      void *setup_baton,
+                                      serf_bucket_t **req_bkt,
+                                      apr_pool_t *pool)
+{
+    static mockbkt_action actions[] = {
+        { 1, "a", APR_SUCCESS },
+        { 1, "", APR_EINVAL }
+    };
+    handler_baton_t *ctx = setup_baton;
+    serf_bucket_alloc_t *alloc;
+    serf_bucket_t *mock_bkt;
+
+    alloc = serf_request_get_alloc(request);
+    mock_bkt = serf_bucket_mock_create(actions, 2, alloc);
+    *req_bkt = serf_request_bucket_request_create(request,
+                                                  ctx->method, ctx->path,
+                                                  mock_bkt, alloc);
+    return APR_SUCCESS;
+}
+
+static void test_outgoing_request_err(CuTest *tc)
+{
+    test_baton_t *tb;
+    handler_baton_t handler_ctx[1];
+    apr_status_t status;
+    apr_pool_t *test_pool = tc->testBaton;
+
+    status = test_http_server_setup(&tb, NULL, 0,
+                                    NULL, 0, 0, NULL,
+                                    test_pool);
+    CuAssertIntEquals(tc, APR_SUCCESS, status);
+
+    create_new_request_ex(tb, &handler_ctx[0], "POST", "/", 1,
+                          setup_request_err, NULL);
+
+    status = test_helper_run_requests_no_check(tc, tb, 1, handler_ctx,
+                                               test_pool);
+    CuAssertIntEquals(tc, APR_EINVAL, status);
+    CuAssertIntEquals(tc, 1, tb->sent_requests->nelts);
+    CuAssertIntEquals(tc, 0, tb->accepted_requests->nelts);
+    CuAssertIntEquals(tc, 0, tb->handled_requests->nelts);
+}
+
 /*****************************************************************************/
 CuSuite *test_context(void)
 {
@@ -2319,6 +2364,7 @@ CuSuite *test_context(void)
     SUITE_ADD_TEST(suite, test_ssltunnel_basic_auth_proxy_has_keepalive_off);
     SUITE_ADD_TEST(suite, test_ssltunnel_basic_auth_proxy_close_conn_on_200resp);
     SUITE_ADD_TEST(suite, test_ssltunnel_digest_auth);
+    SUITE_ADD_TEST(suite, test_outgoing_request_err);
 
     return suite;
 }
