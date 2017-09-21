@@ -175,7 +175,7 @@ gen_def_script = env.File('build/gen_def.py').rstr()
 
 env.Append(BUILDERS = {
     'GenDef' :
-      Builder(action = sys.executable + ' %s $SOURCES > $TARGET' % (gen_def_script,),
+      Builder(action = '"%s" "%s" $SOURCES > $TARGET' % (sys.executable, gen_def_script,),
               suffix='.def', src_suffix='.h')
   })
 
