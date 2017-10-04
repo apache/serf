@@ -19,7 +19,7 @@ Candidate changes:
    Votes:
      +1: stsp, astieger
 
- * r1712131,1807594
+ * r1712131,1807594,1811088
    Add support for building with VS2017, assuming a new enough scons.
    Votes:
      +1: rhuijben
