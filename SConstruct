@@ -480,7 +480,7 @@ if brotli and CALLOUT_OKAY:
      conf.CheckFunc('BrotliDecoderTakeOutput'):
     env.Append(CPPDEFINES=['SERF_HAVE_BROTLI'])
   else:
-    print "Cannot find Brotli library >= 1.0.0 in '%s'." % env.get('BROTLI')
+    print("Cannot find Brotli library >= 1.0.0 in '%s'." % env.get('BROTLI'))
     Exit(1)
   env = conf.Finish()
 
