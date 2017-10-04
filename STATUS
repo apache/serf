@@ -24,6 +24,11 @@ Candidate changes:
    Votes:
      +1: rhuijben
 
+ * r1811083
+   Make the SCons script compatible with SCons 3.0.0.
+   Votes:
+     +1: rhuijben
+
 Veto-blocked changes:
 =====================
 
