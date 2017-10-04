@@ -199,7 +199,7 @@ CALLOUT_OKAY = not (env.GetOption('clean') or env.GetOption('help'))
 
 unknown = opts.UnknownVariables()
 if unknown:
-  print 'Warning: Used unknown variables:', ', '.join(unknown.keys())
+  print('Warning: Used unknown variables:', ', '.join(unknown.keys()))
 
 apr = str(env['APR'])
 apu = str(env['APU'])
