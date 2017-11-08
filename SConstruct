@@ -182,7 +182,7 @@ env.Append(BUILDERS = {
 match = re.search('SERF_MAJOR_VERSION ([0-9]+).*'
                   'SERF_MINOR_VERSION ([0-9]+).*'
                   'SERF_PATCH_VERSION ([0-9]+)',
-                  env.File('serf.h').get_contents(),
+                  env.File('serf.h').get_contents().decode('utf-8'),
                   re.DOTALL)
 MAJOR, MINOR, PATCH = [int(x) for x in match.groups()]
 env.Append(MAJOR=str(MAJOR))
