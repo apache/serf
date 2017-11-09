@@ -366,13 +366,20 @@ if sys.platform == 'win32':
                LIBPATH=['$ZLIB'])
 
   # openssl
-  env.Append(LIBS=['libeay32.lib', 'ssleay32.lib'])
   if not env.get('SOURCE_LAYOUT', None):
     env.Append(CPPPATH=['$OPENSSL/include/openssl'],
                LIBPATH=['$OPENSSL/lib'])
   else:
     env.Append(CPPPATH=['$OPENSSL/inc32'],
                LIBPATH=['$OPENSSL/out32dll'])
+  conf = Configure(env)
+  if conf.CheckLib('libcrypto'):
+    # OpenSSL 1.1.0+
+    env.Append(LIBS=['libcrypto.lib', 'libssl.lib'])
+  else:
+    # Legacy OpenSSL
+    env.Append(LIBS=['libeay32.lib', 'ssleay32.lib'])
+  conf.Finish()
 
   # brotli
   if brotli:
