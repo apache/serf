@@ -41,7 +41,7 @@ Candidate changes:
   * r1814604
     Make SCons script work with scons 3.0.0 when built with Python 3
     Votes:
-      +1: astieger
+      +1: astieger, rhuijben
 
 Veto-blocked changes:
 =====================
