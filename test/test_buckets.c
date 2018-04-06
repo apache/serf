@@ -1122,6 +1122,104 @@ static void test_response_body_chunked_gzip_small(CuTest *tc)
     serf_bucket_destroy(bkt);
 }
 
+/* Test for issue: the server aborts the connection and also sends
+   a bogus CRLF in place of the expected chunk size. Test that we get
+   a decent error code from the response bucket instead of APR_EOF. */
+static void test_response_body_chunked_bogus_crlf(CuTest *tc)
+{
+    test_baton_t *tb = tc->testBaton;
+    serf_bucket_t *bkt, *tmp;
+    serf_bucket_alloc_t *alloc = test__create_bucket_allocator(tc, tb->pool);
+
+    tmp = SERF_BUCKET_SIMPLE_STRING("HTTP/1.1 200 OK" CRLF
+                                    "Content-Type: text/plain" CRLF
+                                    "Transfer-Encoding: chunked" CRLF
+                                    CRLF
+                                    "2" CRLF
+                                    "AB" CRLF
+                                    CRLF,
+                                    alloc);
+
+    bkt = serf_bucket_response_create(tmp, alloc);
+
+    {
+        char buf[1024];
+        apr_size_t len;
+        apr_status_t status;
+
+        status = read_all(bkt, buf, sizeof(buf), &len);
+
+        CuAssertIntEquals(tc, SERF_ERROR_BAD_HTTP_RESPONSE, status);
+    }
+
+    /* This will also destroy response stream bucket. */
+    serf_bucket_destroy(bkt);
+}
+
+static void test_response_body_chunked_invalid_len(CuTest *tc)
+{
+    test_baton_t *tb = tc->testBaton;
+    serf_bucket_t *bkt, *tmp;
+    serf_bucket_alloc_t *alloc = test__create_bucket_allocator(tc, tb->pool);
+
+    tmp = SERF_BUCKET_SIMPLE_STRING("HTTP/1.1 200 OK" CRLF
+                                    "Content-Type: text/plain" CRLF
+                                    "Transfer-Encoding: chunked" CRLF
+                                    CRLF
+                                    "2" CRLF
+                                    "AB" CRLF
+                                    "invalid" CRLF
+                                    CRLF,
+                                    alloc);
+
+    bkt = serf_bucket_response_create(tmp, alloc);
+
+    {
+        char buf[1024];
+        apr_size_t len;
+        apr_status_t status;
+
+        status = read_all(bkt, buf, sizeof(buf), &len);
+
+        CuAssertIntEquals(tc, SERF_ERROR_BAD_HTTP_RESPONSE, status);
+    }
+
+    /* This will also destroy response stream bucket. */
+    serf_bucket_destroy(bkt);
+}
+
+static void test_response_body_chunked_overflow_len(CuTest *tc)
+{
+    test_baton_t *tb = tc->testBaton;
+    serf_bucket_t *bkt, *tmp;
+    serf_bucket_alloc_t *alloc = test__create_bucket_allocator(tc, tb->pool);
+
+    tmp = SERF_BUCKET_SIMPLE_STRING("HTTP/1.1 200 OK" CRLF
+                                    "Content-Type: text/plain" CRLF
+                                    "Transfer-Encoding: chunked" CRLF
+                                    CRLF
+                                    "2" CRLF
+                                    "AB" CRLF
+                                    "12345678901234567890123456789" CRLF
+                                    CRLF,
+                                    alloc);
+
+    bkt = serf_bucket_response_create(tmp, alloc);
+
+    {
+        char buf[1024];
+        apr_size_t len;
+        apr_status_t status;
+
+        status = read_all(bkt, buf, sizeof(buf), &len);
+
+        CuAssertIntEquals(tc, APR_FROM_OS_ERROR(ERANGE), status);
+    }
+
+    /* This will also destroy response stream bucket. */
+    serf_bucket_destroy(bkt);
+}
+
 static void test_response_bucket_peek_at_headers(CuTest *tc)
 {
     test_baton_t *tb = tc->testBaton;
@@ -1298,7 +1396,7 @@ static void test_linebuf_crlf_split(CuTest *tc)
              CRLF, APR_SUCCESS },
         { 1, "6" CR, APR_SUCCESS },
         { 1, "", APR_EAGAIN },
-        { 1,  LF "blabla" CRLF CRLF, APR_SUCCESS }, };
+        { 1,  LF "blabla" CRLF "0" CRLF CRLF, APR_SUCCESS }, };
     apr_status_t status;
 
     const char *expected = "blabla";
@@ -2968,6 +3066,234 @@ static void test_http2_frame_bucket_basic(CuTest *tc)
   serf_bucket_destroy(frame_out);
 }
 
+static void test_brotli_decompress_bucket_basic(CuTest *tc)
+{
+    test_baton_t *tb = tc->testBaton;
+    serf_bucket_t *input;
+    serf_bucket_t *bkt;
+    serf_bucket_alloc_t *alloc = test__create_bucket_allocator(tc, tb->pool);
+
+    {
+        const char input_data[] = {
+            "\x3B"
+        };
+
+        input = serf_bucket_simple_create(input_data, sizeof(input_data) - 1,
+                                          NULL, NULL, alloc);
+        bkt = serf_bucket_brotli_decompress_create(input, alloc);
+        read_and_check_bucket(tc, bkt, "");
+        serf_bucket_destroy(bkt);
+    }
+
+    {
+        const char input_data[] = {
+            "\x8B\x03\x80\x61\x62\x63\x64\x65\x66\x67\x68\x03"
+        };
+
+        input = serf_bucket_simple_create(input_data, sizeof(input_data) - 1,
+                                          NULL, NULL, alloc);
+        bkt = serf_bucket_brotli_decompress_create(input, alloc);
+        read_and_check_bucket(tc, bkt, "abcdefgh");
+        serf_bucket_destroy(bkt);
+    }
+
+    {
+        const char input_data[] = {
+            "\x1B\x0E\x00\x00\x84\x71\xC0\xC6\xDA\x50\x22\x80\x88\x26"
+            "\x81\x14\x35\x1F"
+        };
+
+        input = serf_bucket_simple_create(input_data, sizeof(input_data) - 1,
+                                          NULL, NULL, alloc);
+        bkt = serf_bucket_brotli_decompress_create(input, alloc);
+        read_and_check_bucket(tc, bkt, "aaabbbcccdddeee");
+        serf_bucket_destroy(bkt);
+    }
+}
+
+static void test_brotli_decompress_bucket_truncated_input(CuTest *tc)
+{
+    test_baton_t *tb = tc->testBaton;
+    serf_bucket_t *input;
+    serf_bucket_t *bkt;
+    serf_bucket_alloc_t *alloc = test__create_bucket_allocator(tc, tb->pool);
+    const char input_data[] = {
+        "\x8B\x03\x80\x61\x62\x63\x64\x65\x66\x67\x68\x03"
+    };
+
+    /* Truncate our otherwise valid input. */
+    input = serf_bucket_simple_create(input_data, 5, NULL, NULL, alloc);
+    bkt = serf_bucket_brotli_decompress_create(input, alloc);
+
+    {
+        char buf[1024];
+        apr_size_t len;
+        apr_status_t status;
+
+        status = read_all(bkt, buf, sizeof(buf), &len);
+        CuAssertIntEquals(tc, SERF_ERROR_DECOMPRESSION_FAILED, status);
+    }
+
+    serf_bucket_destroy(bkt);
+}
+
+static void test_brotli_decompress_bucket_read_bytewise(CuTest *tc)
+{
+    test_baton_t *tb = tc->testBaton;
+    serf_bucket_t *input;
+    serf_bucket_t *bkt;
+    serf_bucket_alloc_t *alloc = test__create_bucket_allocator(tc, tb->pool);
+    apr_status_t status;
+    apr_size_t total_read = 0;
+    /* Brotli-encoded sequence of 100,000 zeroes. */
+    const char input_data[] = {
+        "\x5B\x9F\x86\x01\x40\x02\x26\x1E\x0B\x24\xCB\x2F\x00"
+    };
+
+    input = serf_bucket_simple_create(input_data, sizeof(input_data) - 1,
+                                      NULL, NULL, alloc);
+    bkt = serf_bucket_brotli_decompress_create(input, alloc);
+
+    do {
+        const char *data;
+        apr_size_t len;
+
+        status = serf_bucket_read(bkt, 1, &data, &len);
+        if (SERF_BUCKET_READ_ERROR(status))
+            CuFail(tc, "Got error during bucket reading.");
+
+        if (len > 1) {
+            CuFail(tc, "Unexpected read with len > 1.");
+        }
+        else if (len == 1) {
+            CuAssertIntEquals(tc, '0', data[0]);
+            total_read += len;
+        }
+    } while (status != APR_EOF);
+
+    CuAssertIntEquals(tc, 100000, (int)total_read);
+
+    serf_bucket_destroy(bkt);
+}
+
+static void test_brotli_decompress_bucket_chunked_input(CuTest *tc)
+{
+    test_baton_t *tb = tc->testBaton;
+    serf_bucket_t *input;
+    serf_bucket_t *bkt;
+    serf_bucket_alloc_t *alloc = test__create_bucket_allocator(tc, tb->pool);
+
+    /* What if the encoded data spans over multiple chunks?
+     * (And let's throw in a couple of empty chunks as well...) */
+    input = serf_bucket_aggregate_create(alloc);
+    serf_bucket_aggregate_append(input,
+        SERF_BUCKET_SIMPLE_STRING("\x8B\x03", alloc));
+    serf_bucket_aggregate_append(input,
+        SERF_BUCKET_SIMPLE_STRING("\x80\x61\x62", alloc));
+    serf_bucket_aggregate_append(input,
+        SERF_BUCKET_SIMPLE_STRING("", alloc));
+    serf_bucket_aggregate_append(input,
+        SERF_BUCKET_SIMPLE_STRING("\x63\x64\x65\x66\x67\x68\x03", alloc));
+    serf_bucket_aggregate_append(input,
+        SERF_BUCKET_SIMPLE_STRING("", alloc));
+
+    bkt = serf_bucket_brotli_decompress_create(input, alloc);
+    read_and_check_bucket(tc, bkt, "abcdefgh");
+    serf_bucket_destroy(bkt);
+}
+
+static void test_brotli_decompress_bucket_chunked_input2(CuTest *tc)
+{
+    test_baton_t *tb = tc->testBaton;
+    serf_bucket_t *input;
+    serf_bucket_t *bkt;
+    serf_bucket_alloc_t *alloc = test__create_bucket_allocator(tc, tb->pool);
+
+    /* Try an edge case where the valid encoded data (empty string) is
+     * followed by an empty chunk. */
+    input = serf_bucket_aggregate_create(alloc);
+    serf_bucket_aggregate_append(input,
+        SERF_BUCKET_SIMPLE_STRING("\x3B", alloc));
+    serf_bucket_aggregate_append(input,
+        SERF_BUCKET_SIMPLE_STRING("", alloc));
+
+    bkt = serf_bucket_brotli_decompress_create(input, alloc);
+    read_and_check_bucket(tc, bkt, "");
+    serf_bucket_destroy(bkt);
+}
+
+static void test_brotli_decompress_bucket_garbage_at_end(CuTest *tc)
+{
+    test_baton_t *tb = tc->testBaton;
+    serf_bucket_t *input;
+    serf_bucket_t *bkt;
+    serf_bucket_alloc_t *alloc = test__create_bucket_allocator(tc, tb->pool);
+    const char input_data[] = {
+        "\x8B\x03\x80\x61\x62\x63\x64\x65\x66\x67\x68\x03garbage"
+    };
+
+    input = serf_bucket_simple_create(input_data, sizeof(input_data) - 1,
+                                      NULL, NULL, alloc);
+    bkt = serf_bucket_brotli_decompress_create(input, alloc);
+
+    {
+        char buf[1024];
+        apr_size_t len;
+        apr_status_t status;
+
+        status = read_all(bkt, buf, sizeof(buf), &len);
+        CuAssertIntEquals(tc, SERF_ERROR_DECOMPRESSION_FAILED, status);
+    }
+}
+
+static void test_brotli_decompress_response_body(CuTest *tc)
+{
+    test_baton_t *tb = tc->testBaton;
+    serf_bucket_t *input;
+    serf_bucket_t *bkt;
+    serf_bucket_alloc_t *alloc = test__create_bucket_allocator(tc, tb->pool);
+
+    input = SERF_BUCKET_SIMPLE_STRING(
+        "HTTP/1.1 200 OK" CRLF
+        "Content-Type: text/html" CRLF
+        "Content-Length: 12" CRLF
+        "Content-Encoding: br" CRLF
+        CRLF
+        "\x8B\x03\x80\x61\x62\x63\x64\x65\x66\x67\x68\x03",
+        alloc);
+
+    bkt = serf_bucket_response_create(input, alloc);
+    read_and_check_bucket(tc, bkt, "abcdefgh");
+    serf_bucket_destroy(bkt);
+}
+
+static void test_deflate_bucket_truncated_data(CuTest *tc)
+{
+    test_baton_t *tb = tc->testBaton;
+    serf_bucket_t *input;
+    serf_bucket_t *bkt;
+    serf_bucket_alloc_t *alloc = test__create_bucket_allocator(tc, tb->pool);
+
+    /* This is a valid, but truncated gzip data (in two chunks). */
+    input = serf_bucket_aggregate_create(alloc);
+    serf_bucket_aggregate_append(input,
+        SERF_BUCKET_SIMPLE_STRING_LEN("\x1F\x8B\x08\x00\x00", 5, alloc));
+    serf_bucket_aggregate_append(input,
+        SERF_BUCKET_SIMPLE_STRING_LEN("\x00\x00\x00\x00\x03", 5, alloc));
+
+    bkt = serf_bucket_deflate_create(input, alloc, SERF_DEFLATE_GZIP);
+    {
+        char buf[1024];
+        apr_size_t len;
+        apr_status_t status;
+
+        status = read_all(bkt, buf, sizeof(buf), &len);
+        CuAssertIntEquals(tc, SERF_ERROR_DECOMPRESSION_FAILED, status);
+    }
+
+    serf_bucket_destroy(bkt);
+}
+
 CuSuite *test_buckets(void)
 {
     CuSuite *suite = CuSuiteNew();
@@ -2983,6 +3309,9 @@ CuSuite *test_buckets(void)
     SUITE_ADD_TEST(suite, test_response_body_chunked_no_crlf);
     SUITE_ADD_TEST(suite, test_response_body_chunked_incomplete_crlf);
     SUITE_ADD_TEST(suite, test_response_body_chunked_gzip_small);
+    SUITE_ADD_TEST(suite, test_response_body_chunked_bogus_crlf);
+    SUITE_ADD_TEST(suite, test_response_body_chunked_invalid_len);
+    SUITE_ADD_TEST(suite, test_response_body_chunked_overflow_len);
     SUITE_ADD_TEST(suite, test_response_bucket_peek_at_headers);
     SUITE_ADD_TEST(suite, test_response_bucket_iis_status_code);
     SUITE_ADD_TEST(suite, test_response_bucket_no_reason);
@@ -3010,11 +3339,21 @@ CuSuite *test_buckets(void)
     SUITE_ADD_TEST(suite, test_hpack_huffman_encode);
     SUITE_ADD_TEST(suite, test_hpack_header_encode);
     SUITE_ADD_TEST(suite, test_http2_frame_bucket_basic);
+    if (serf_bucket_is_brotli_supported()) {
+        SUITE_ADD_TEST(suite, test_brotli_decompress_bucket_basic);
+        SUITE_ADD_TEST(suite, test_brotli_decompress_bucket_truncated_input);
+        SUITE_ADD_TEST(suite, test_brotli_decompress_bucket_read_bytewise);
+        SUITE_ADD_TEST(suite, test_brotli_decompress_bucket_chunked_input);
+        SUITE_ADD_TEST(suite, test_brotli_decompress_bucket_chunked_input2);
+        SUITE_ADD_TEST(suite, test_brotli_decompress_bucket_garbage_at_end);
+        SUITE_ADD_TEST(suite, test_brotli_decompress_response_body);
+    }
 #if 0
     /* This test for issue #152 takes a lot of time generating 4GB+ of random
        data so it's disabled by default. */
     SUITE_ADD_TEST(suite, test_deflate_4GBplus_buckets);
 #endif
+    SUITE_ADD_TEST(suite, test_deflate_bucket_truncated_data);
 
 
 

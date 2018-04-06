@@ -1029,6 +1029,28 @@ void serf_bucket_split_create(serf_bucket_t **head,
                               apr_size_t max_chunk_size);
 
 
+/**
+ * Check if Serf bucket functions support Brotli (RFC 7932) format.
+ * Return non-zero if Brotli is supported and zero otherwise.  If Brotli
+ * is not supported, the behavior of all related bucket functions such
+ * as @a serf_bucket_brotli_decompress_create is undefined.
+ *
+ * @since New in 1.4.
+ */
+int serf_bucket_is_brotli_supported(void);
+
+/** @since New in 1.4. */
+extern const serf_bucket_type_t serf_bucket_type_brotli_decompress;
+/** @since New in 1.4. */
+#define SERF_BUCKET_IS_BROTLI_DECOMPRESS(b) \
+    SERF_BUCKET_CHECK((b), brotli_decompress)
+
+/** @since New in 1.4. */
+serf_bucket_t *
+serf_bucket_brotli_decompress_create(serf_bucket_t *stream,
+                                     serf_bucket_alloc_t *alloc);
+
+
 /* ### do we need a PIPE bucket type? they are simple apr_file_t objects */
 
 

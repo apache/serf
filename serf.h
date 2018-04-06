@@ -1702,7 +1702,9 @@ struct serf_connection_type_t {
 /** @} */
 
 
-/* Internal functions for bucket use and lifecycle tracking */
+/* Internal functions for bucket use and lifecycle tracking.
+   ### Some of these are directly or via Macros used by third party
+   ### applications, such as Apache Subversion */
 apr_status_t serf_debug__record_read(
     const serf_bucket_t *bucket,
     apr_status_t status);
