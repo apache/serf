@@ -2239,10 +2239,6 @@ mhSetServerEnableOCSP(mhServCtx_t *ctx)
 #include <openssl/ssl.h>
 #include <openssl/err.h>
 
-#if defined(OPENSSL_VERSION_NUMBER) && OPENSSL_VERSION_NUMBER < 0x10100000L
-#define USE_LEGACY_OPENSSL
-#endif
-
 struct sslCtx_t {
     bool handshake_done;
     bool renegotiate;
@@ -2278,7 +2274,7 @@ static int pem_passwd_cb(char *buf, int size, int rwflag, void *userdata)
  */
 static int bio_apr_socket_create(BIO *bio)
 {
-#ifndef USE_LEGACY_OPENSSL
+#ifndef SERF_NO_SSL_BIO_WRAPPERS
     BIO_set_shutdown(bio, 1);
     BIO_set_init(bio, 1);
     BIO_set_data(bio, NULL);
@@ -2294,7 +2290,7 @@ static int bio_apr_socket_create(BIO *bio)
 
 static void bio_set_data(BIO *bio, void *data)
 {
-#ifndef USE_LEGACY_OPENSSL
+#ifndef SERF_NO_SSL_BIO_WRAPPERS
     BIO_set_data(bio, data);
 #else
     bio->ptr = data;
@@ -2303,7 +2299,7 @@ static void bio_set_data(BIO *bio, void *data)
 
 static void *bio_get_data(BIO *bio)
 {
-#ifndef USE_LEGACY_OPENSSL
+#ifndef SERF_NO_SSL_BIO_WRAPPERS
     return BIO_get_data(bio);
 #else
     return bio->ptr;
@@ -2404,7 +2400,7 @@ static int bio_apr_socket_write(BIO *bio, const char *in, int inlen)
 }
 
 
-#ifdef USE_LEGACY_OPENSSL
+#ifdef SERF_NO_SSL_BIO_WRAPPERS
 static BIO_METHOD bio_apr_socket_method = {
     BIO_TYPE_SOCKET,
     "APR sockets",
@@ -2425,7 +2421,7 @@ static BIO_METHOD *bio_meth_apr_socket_new(void)
 {
     BIO_METHOD *biom = NULL;
 
-#ifndef USE_LEGACY_OPENSSL
+#ifndef SERF_NO_SSL_BIO_WRAPPERS
     biom = BIO_meth_new(BIO_TYPE_SOCKET, "APR sockets");
     if (biom) {
         BIO_meth_set_write(biom, bio_apr_socket_write);
@@ -2443,7 +2439,7 @@ static BIO_METHOD *bio_meth_apr_socket_new(void)
 
 static void bio_meth_free(BIO_METHOD *biom)
 {
-#ifndef USE_LEGACY_OPENSSL
+#ifndef SERF_NO_SSL_BIO_WRAPPERS
     BIO_meth_free(biom);
 #endif
 }
@@ -2672,7 +2668,7 @@ static apr_status_t initSSLCtx(_mhClientCtx_t *cctx)
     /* Init OpenSSL globally */
     if (!init_done)
     {
-#ifndef USE_LEGACY_OPENSSL
+#ifdef SERF_HAVE_OPENSSL_MALLOC_INIT
         OPENSSL_malloc_init();
 #else
         CRYPTO_malloc_init();
@@ -2755,8 +2751,8 @@ static apr_status_t initSSLCtx(_mhClientCtx_t *cctx)
                 X509 *ssl_cert = PEM_read_X509(fp, NULL, NULL, NULL);
                 fclose(fp);
 
-                SSL_CTX_add_extra_chain_cert(ssl_ctx->ctx, ssl_cert);
                 X509_STORE_add_cert(store, ssl_cert);
+                SSL_CTX_add_extra_chain_cert(ssl_ctx->ctx, ssl_cert);
             }
         }
 

@@ -8,9 +8,9 @@
 #    to you under the Apache License, Version 2.0 (the
 #    "License"); you may not use this file except in compliance
 #    with the License.  You may obtain a copy of the License at
-# 
+#
 #      http://www.apache.org/licenses/LICENSE-2.0
-# 
+#
 #    Unless required by applicable law or agreed to in writing,
 #    software distributed under the License is distributed on an
 #    "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
@@ -102,6 +102,10 @@ opts.AddVariables(
                "Path to GSSAPI's install area",
                None,
                None),
+  PathVariable('BROTLI',
+               "Path to Brotli's install area",
+               None,
+               PathVariable.PathIsDir),
   BoolVariable('DEBUG',
                "Enable debugging info and strict compile warnings",
                False),
@@ -119,7 +123,7 @@ opts.AddVariables(
   RawListVariable('LINKFLAGS', "Extra flags for the linker (space-separated)",
                   None),
   RawListVariable('CPPFLAGS', "Extra flags for the C preprocessor "
-                  "(space separated)", None), 
+                  "(space separated)", None),
   )
 
 if sys.platform == 'win32':
@@ -143,14 +147,15 @@ if sys.platform == 'win32':
     EnumVariable('MSVC_VERSION',
                  "Visual C++ to use for building",
                  None,
-                 allowed_values=('15.0', '14.0', '12.0',
+                 allowed_values=('15.0', '14.1', '14.0', '12.0',
                                  '11.0', '10.0', '9.0', '8.0', '6.0'),
                  map={'2005' :  '8.0',
                       '2008' :  '9.0',
                       '2010' : '10.0',
                       '2012' : '11.0',
                       '2013' : '12.0',
-                      '2015' : '14.0'
+                      '2015' : '14.0',
+                      '2017' : '14.1',
                      }),
 
     # We always documented that we handle an install layout, but in fact we
@@ -169,15 +174,15 @@ env = Environment(variables=opts,
 gen_def_script = env.File('build/gen_def.py').rstr()
 
 env.Append(BUILDERS = {
-    'GenDef' : 
-      Builder(action = sys.executable + ' %s $SOURCES > $TARGET' % (gen_def_script,),
+    'GenDef' :
+      Builder(action = '"%s" "%s" $SOURCES > $TARGET' % (sys.executable, gen_def_script,),
               suffix='.def', src_suffix='.h')
   })
 
 match = re.search('SERF_MAJOR_VERSION ([0-9]+).*'
                   'SERF_MINOR_VERSION ([0-9]+).*'
                   'SERF_PATCH_VERSION ([0-9]+)',
-                  env.File('serf.h').get_contents(),
+                  env.File('serf.h').get_contents().decode('utf-8'),
                   re.DOTALL)
 MAJOR, MINOR, PATCH = [int(x) for x in match.groups()]
 env.Append(MAJOR=str(MAJOR))
@@ -194,12 +199,13 @@ CALLOUT_OKAY = not (env.GetOption('clean') or env.GetOption('help'))
 
 unknown = opts.UnknownVariables()
 if unknown:
-  print 'Warning: Used unknown variables:', ', '.join(unknown.keys())
+  print('Warning: Used unknown variables:', ', '.join(unknown.keys()))
 
 apr = str(env['APR'])
 apu = str(env['APU'])
 zlib = str(env['ZLIB'])
 gssapi = env.get('GSSAPI', None)
+brotli = env.get('BROTLI', None)
 
 if gssapi and os.path.isdir(gssapi):
   krb5_config = os.path.join(gssapi, 'bin', 'krb5-config')
@@ -278,6 +284,10 @@ if sys.platform != 'win32':
   if sys.platform == 'sunos5':
     env.Append(LIBS=['m'])
     env.Append(PLATFORM='posix')
+
+  if brotli:
+    env.Append(LIBS=['brotlicommon', 'brotlidec'])
+
 else:
   # Warning level 4, no unused argument warnings
   env.Append(CCFLAGS=['/W4',
@@ -356,13 +366,34 @@ if sys.platform == 'win32':
                LIBPATH=['$ZLIB'])
 
   # openssl
-  env.Append(LIBS=['libeay32.lib', 'ssleay32.lib'])
   if not env.get('SOURCE_LAYOUT', None):
     env.Append(CPPPATH=['$OPENSSL/include/openssl'],
                LIBPATH=['$OPENSSL/lib'])
   else:
     env.Append(CPPPATH=['$OPENSSL/inc32'],
                LIBPATH=['$OPENSSL/out32dll'])
+  conf = Configure(env)
+  if conf.CheckLib('libcrypto'):
+    # OpenSSL 1.1.0+
+    env.Append(LIBS=['libcrypto.lib', 'libssl.lib'])
+  else:
+    # Legacy OpenSSL
+    env.Append(LIBS=['libeay32.lib', 'ssleay32.lib'])
+  conf.Finish()
+
+  # brotli
+  if brotli:
+    brotli_libs = 'brotlicommon.lib brotlidec.lib'
+    env.Append(LIBS=['brotlicommon.lib', 'brotlidec.lib'])
+    if not env.get('SOURCE_LAYOUT', None):
+      env.Append(CPPPATH=['$BROTLI/include'],
+                 LIBPATH=['$BROTLI/lib'])
+    else:
+      env.Append(CPPPATH=['$BROTLI/include'],
+                 LIBPATH=['$BROTLI/Release'])
+  else:
+    brotli_libs = ''
+
 else:
   if CALLOUT_OKAY:
     if os.path.isdir(apr):
@@ -415,6 +446,13 @@ else:
     env.Append(CPPPATH=['$OPENSSL/include'])
     env.Append(LIBPATH=['$OPENSSL/lib'])
 
+  if brotli:
+    brotli_libs = '-lbrotlicommon -lbrotlienc'
+    env.Append(CPPPATH=['$BROTLI/include'],
+               LIBPATH=['$BROTLI/lib'])
+  else:
+    brotli_libs = ''
+
 # Check for OpenSSL functions which are only available in some of
 # the versions we support. Also handles forks like LibreSSL.
 conf = Configure(env)
@@ -424,10 +462,12 @@ if not conf.CheckFunc('X509_STORE_get0_param'):
   env.Append(CPPDEFINES=['SERF_NO_SSL_X509_STORE_WRAPPERS'])
 if conf.CheckFunc('CRYPTO_set_locking_callback'):
   env.Append(CPPDEFINES=['SERF_HAVE_SSL_LOCKING_CALLBACKS'])
-if conf.CheckFunc('OPENSSL_malloc_init'):
+if conf.CheckFunc('OPENSSL_malloc_init', '#include <openssl/crypto.h>'):
   env.Append(CPPDEFINES=['SERF_HAVE_OPENSSL_MALLOC_INIT'])
 if conf.CheckFunc('SSL_set_alpn_protos'):
   env.Append(CPPDEFINES=['SERF_HAVE_OPENSSL_ALPN'])
+if conf.CheckType('OSSL_HANDSHAKE_STATE', '#include <openssl/ssl.h>'):
+  env.Append(CPPDEFINES=['SERF_HAVE_OSSL_HANDSHAKE_STATE'])
 env = conf.Finish()
 
 # If build with gssapi, get its information and define SERF_HAVE_GSSAPI
@@ -440,6 +480,16 @@ if gssapi and CALLOUT_OKAY:
     env.Append(CPPDEFINES=['SERF_HAVE_GSSAPI'])
 if sys.platform == 'win32':
   env.Append(CPPDEFINES=['SERF_HAVE_SSPI'])
+
+if brotli and CALLOUT_OKAY:
+  conf = Configure(env)
+  if conf.CheckCHeader('brotli/decode.h') and \
+     conf.CheckFunc('BrotliDecoderTakeOutput'):
+    env.Append(CPPDEFINES=['SERF_HAVE_BROTLI'])
+  else:
+    print("Cannot find Brotli library >= 1.0.0 in '%s'." % env.get('BROTLI'))
+    Exit(1)
+  env = conf.Finish()
 
 # Set preprocessor define to disable the logging framework
 if disablelogging:
@@ -456,12 +506,13 @@ pkgconfig = env.Textfile('serf-%d.pc' % (MAJOR,),
                          env.File('build/serf.pc.in'),
                          SUBST_DICT = {
                            '@MAJOR@': str(MAJOR),
-                           '@PREFIX@': '$PREFIX',
-                           '@LIBDIR@': '$LIBDIR',
+                           '@PREFIX@': re.escape(str(env['PREFIX'])),
+                           '@LIBDIR@': re.escape(str(env['LIBDIR'])),
                            '@INCLUDE_SUBDIR@': 'serf-%d' % (MAJOR,),
                            '@VERSION@': '%d.%d.%d' % (MAJOR, MINOR, PATCH),
-                           '@LIBS@': '%s %s %s -lz' % (apu_libs, apr_libs,
-                                                       env.get('GSSAPI_LIBS', '')),
+                           '@LIBS@': '%s %s %s %s -lz' % (apu_libs, apr_libs,
+                                                          env.get('GSSAPI_LIBS', ''),
+                                                          brotli_libs),
                            })
 
 env.Default(lib_static, lib_shared, pkgconfig)

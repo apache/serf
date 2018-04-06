@@ -459,6 +459,14 @@ static apr_status_t run_machine(serf_bucket_t *bkt, response_context_t *ctx)
                                                    SERF_DEFLATE_DEFLATE);
                     serf_bucket_set_config(ctx->body, ctx->config);
                 }
+                else if (serf_bucket_is_brotli_supported()
+                         && v && strcasecmp("br", v) == 0)
+                {
+                    ctx->body =
+                        serf_bucket_brotli_decompress_create(ctx->body,
+                                                             bkt->allocator);
+                    serf_bucket_set_config(ctx->body, ctx->config);
+                }
             }
         }
         break;

@@ -34,7 +34,7 @@
 /* #define CONNECTION_CLOSE_HDR */
 
 typedef struct app_baton_t {
-    const char *hostinfo;
+    const char *hostname;
     int using_ssl;
     int head_request;
     int negotiate_http2;
@@ -223,7 +223,7 @@ static apr_status_t conn_setup(apr_socket_t *skt,
         serf_ssl_server_cert_chain_callback_set(conn_ctx->ssl_ctx, 
                                                 ignore_all_cert_errors, 
                                                 print_certs, NULL);
-        serf_ssl_set_hostname(conn_ctx->ssl_ctx, ctx->hostinfo);
+        serf_ssl_set_hostname(conn_ctx->ssl_ctx, ctx->hostname);
 
         *output_bkt = serf_bucket_ssl_encrypt_create(*output_bkt,
                                                      conn_ctx->ssl_ctx,
@@ -372,7 +372,10 @@ static apr_status_t setup_request(serf_request_t *request,
     serf_bucket_headers_setn(hdrs_bkt, "User-Agent",
                              "Serf/" SERF_VERSION_STRING);
     /* Shouldn't serf do this for us? */
-    serf_bucket_headers_setn(hdrs_bkt, "Accept-Encoding", "gzip");
+    if (serf_bucket_is_brotli_supported())
+        serf_bucket_headers_setn(hdrs_bkt, "Accept-Encoding", "gzip, br");
+    else
+        serf_bucket_headers_setn(hdrs_bkt, "Accept-Encoding", "gzip");
 #ifdef CONNECTION_CLOSE_HDR
     serf_bucket_headers_setn(hdrs_bkt, "Connection", "close");
 #endif
@@ -725,7 +728,7 @@ int main(int argc, const char **argv)
         app_ctx.head_request = 0;
     }
 
-    app_ctx.hostinfo = url.hostinfo;
+    app_ctx.hostname = url.hostname;
     app_ctx.pem_path = pem_path;
     app_ctx.pem_pwd = pem_pwd;
 
