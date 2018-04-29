@@ -29,6 +29,12 @@
 
 #include "test_serf.h"
 
+#include <openssl/ssl.h>
+#include <openssl/x509v3.h>
+#ifndef OPENSSL_NO_OCSP /* requires openssl 0.9.7 or later */
+#include <openssl/ocsp.h>
+#endif
+
 #if defined(WIN32) && defined(_DEBUG)
 /* Include this file to allow running a Debug build of serf with a Release
    build of OpenSSL. */
@@ -182,11 +188,11 @@ static void test_ssl_cert_certificate(CuTest *tc)
     kv = serf_ssl_cert_certificate(cert, tb->pool);
     CuAssertPtrNotNull(tc, kv);
 
-    CuAssertStrEquals(tc, "3D:EC:C8:3B:C7:DB:FD:FB:9C:5D:5E:29:9F:ED:C1:A8:79:3B:28:14",
+    CuAssertStrEquals(tc, "A8:73:BA:89:C5:2C:54:84:1A:2C:E8:04:87:EE:C1:04:48:83:86:F3",
                       apr_hash_get(kv, "sha1", APR_HASH_KEY_STRING));
-    CuAssertStrEquals(tc, "Dec  9 05:23:09 2016 GMT",
+    CuAssertStrEquals(tc, "Apr 29 08:50:37 2018 GMT",
                       apr_hash_get(kv, "notBefore", APR_HASH_KEY_STRING));
-    CuAssertStrEquals(tc, "Dec  6 05:23:09 2029 GMT",
+    CuAssertStrEquals(tc, "Apr 26 08:50:37 2031 GMT",
                       apr_hash_get(kv, "notAfter", APR_HASH_KEY_STRING));
 
     san_arr = apr_hash_get(kv, "subjectAltName", APR_HASH_KEY_STRING);
@@ -2313,24 +2319,239 @@ static void test_ssl_alpn_negotiate(CuTest *tc)
 #ifndef OPENSSL_NO_OCSP
 static void load_ocsp_test_certs(CuTest *tc,
                                  serf_ssl_certificate_t **cert,
-                                 serf_ssl_certificate_t **issuer)
+                                 serf_ssl_certificate_t **issuer,
+                                 serf_ssl_certificate_t **signer,
+                                 serf_ssl_certificate_t **root)
 {
     test_baton_t *tb = tc->testBaton;
     apr_status_t status;
 
-    status = serf_ssl_load_cert_file(
-        cert,
-        get_srcdir_file(tb->pool, "test/certs/serfserver_san_ocsp_cert.pem"),
-        tb->pool);
-    CuAssertIntEquals(tc, APR_SUCCESS, status);
-    CuAssertPtrNotNull(tc, *cert);
+    if (cert) {
+        status = serf_ssl_load_cert_file(
+            cert,
+            get_srcdir_file(tb->pool, "test/certs/serfserver_san_ocsp_cert.pem"),
+            tb->pool);
+        CuAssertIntEquals(tc, APR_SUCCESS, status);
+        CuAssertPtrNotNull(tc, *cert);
+    }
 
-    status = serf_ssl_load_cert_file(
-        issuer,
-        get_srcdir_file(tb->pool, "test/certs/serfcacert.pem"),
-        tb->pool);
-    CuAssertIntEquals(tc, APR_SUCCESS, status);
-    CuAssertPtrNotNull(tc, *issuer);
+    if (issuer) {
+        status = serf_ssl_load_cert_file(
+            issuer,
+            get_srcdir_file(tb->pool, "test/certs/serfcacert.pem"),
+            tb->pool);
+        CuAssertIntEquals(tc, APR_SUCCESS, status);
+        CuAssertPtrNotNull(tc, *issuer);
+    }
+
+    if (signer) {
+        status = serf_ssl_load_cert_file(
+            signer,
+            get_srcdir_file(tb->pool, "test/certs/serfocspresponder.pem"),
+            tb->pool);
+        CuAssertIntEquals(tc, APR_SUCCESS, status);
+        CuAssertPtrNotNull(tc, *signer);
+    }
+
+    if (root) {
+        status = serf_ssl_load_cert_file(
+            root,
+            get_srcdir_file(tb->pool, "test/certs/serfrootcacert.pem"),
+            tb->pool);
+        CuAssertIntEquals(tc, APR_SUCCESS, status);
+        CuAssertPtrNotNull(tc, *root);
+    }
+}
+
+static void create_ocsp_response(CuTest *tc,
+                                 const void **ocsp_response,
+                                 apr_size_t *ocsp_response_size,
+                                 serf_ssl_ocsp_request_t *req,
+                                 serf_ssl_certificate_t *signer,
+                                 serf_ssl_certificate_t *issuer,
+                                 serf_ssl_certificate_t *root,
+                                 EVP_PKEY *pkey,
+                                 int ignore_nonce,
+                                 apr_pool_t* pool)
+{
+    /* XXX The following four assignmengs rely on the specific struct
+       definitions in ssl_buckets.c. */
+    X509 *signer_cert = (signer ? *(X509**)signer : NULL);
+    X509 *issuer_cert = (issuer ? *(X509**)issuer : NULL);
+    X509 *root_cert = (root ? *(X509**)root : NULL);
+    OCSP_REQUEST *ocsp_req = *(OCSP_REQUEST**)req;
+    int id_count = OCSP_request_onereq_count(ocsp_req);
+
+    ASN1_TIME *this_update = X509_gmtime_adj(NULL, 0);
+    ASN1_TIME *next_update = X509_time_adj_ex(NULL, 1, 0, NULL);
+    OCSP_BASICRESP *basic = OCSP_BASICRESP_new();
+
+    OCSP_ONEREQ *one_req = NULL;
+    OCSP_CERTID *cid = NULL;
+    OCSP_RESPONSE *rsp = NULL;
+
+    *ocsp_response = NULL;
+    *ocsp_response_size = 0;
+
+    if (id_count != 1 || !this_update || !next_update || !basic)
+        goto cleanup;
+
+    /* Populate and sign the basic response. */
+    one_req = OCSP_request_onereq_get0(ocsp_req, 0);
+    cid = OCSP_onereq_get0_id(one_req);
+    OCSP_basic_add1_status(basic, cid,
+                           V_OCSP_CERTSTATUS_GOOD,
+                           0, NULL, this_update, next_update);
+
+    if (!ignore_nonce)
+        OCSP_copy_nonce(basic, ocsp_req);
+
+    if (signer_cert) {
+        STACK_OF(X509) *ca = NULL;
+
+        if (issuer_cert || root_cert) {
+            ca = sk_X509_new_null();
+            if (!ca)
+                goto cleanup;
+
+            if (issuer_cert && !sk_X509_push(ca, issuer_cert)) {
+                sk_X509_free(ca);
+                goto cleanup;
+            }
+            if (root_cert && !sk_X509_push(ca, root_cert)) {
+                sk_X509_free(ca);
+                goto cleanup;
+            }
+        }
+
+        if (!OCSP_basic_sign(basic, signer_cert, pkey,
+                             EVP_sha1(), ca, 0)) {
+            sk_X509_free(ca);
+            goto cleanup;
+        }
+
+        sk_X509_free(ca);
+    }
+
+    /* Create the response and convert it to DER form. */
+    rsp = OCSP_response_create(OCSP_RESPONSE_STATUS_SUCCESSFUL, basic);
+    if (rsp) {
+        void *der;
+        int der_len;
+        unsigned char *unused;
+
+        der_len = i2d_OCSP_RESPONSE(rsp, NULL);
+        if (der_len < 0)
+            goto cleanup;
+
+        unused = der = apr_palloc(pool, der_len);
+        der_len = i2d_OCSP_RESPONSE(rsp, &unused); /* unused is incremented */
+        if (der_len < 0)
+            goto cleanup;
+
+        *ocsp_response = der;
+        *ocsp_response_size = der_len;
+    }
+
+  cleanup:
+    ASN1_TIME_free(this_update);
+    ASN1_TIME_free(next_update);
+    OCSP_BASICRESP_free(basic);
+    OCSP_RESPONSE_free(rsp);
+}
+
+static int pkey_password_cb(char *buf, int size, int rwflag, void *u)
+{
+    (void)rwflag;
+    (void)u;
+
+    static const char passphrase[] = "serftest";
+
+    const int passlen = (int)strlen(passphrase);
+    if (size <= passlen)
+        return 0;
+
+    strcpy(buf, passphrase);
+    return passlen;
+}
+
+static apr_status_t verify_ocsp_response(CuTest *tc,
+                                         int ignore_signer,
+                                         int invalid_signer,
+                                         int skip_nonce,
+                                         int ignore_nonce)
+{
+    test_baton_t *tb = tc->testBaton;
+    serf_ssl_certificate_t *cert = NULL;
+    serf_ssl_certificate_t *issuer = NULL;
+    serf_ssl_certificate_t *signer = NULL;
+    serf_ssl_certificate_t *root = NULL;
+    serf_ssl_ocsp_request_t *req = NULL;
+    const void* ocsp_response = NULL;
+    apr_size_t ocsp_response_size = 0;
+    serf_ssl_ocsp_response_t *rsp = NULL;
+    EVP_PKEY *pkey = NULL;
+    int failures = 0;
+
+    load_ocsp_test_certs(tc, &cert, &issuer, &signer, &root);
+
+    req = serf_ssl_ocsp_request_create(cert, issuer,
+                                       (skip_nonce ? 0 : 1),
+                                       tb->pool, tb->pool);
+    if (!req)
+        return APR_EGENERAL;
+
+    if (!ignore_signer) {
+        const char *fname = (
+            invalid_signer
+            ? get_srcdir_file(tb->pool, "test/certs/private/serfrootcakey.pem")
+            : get_srcdir_file(tb->pool, "test/certs/private/serfserverkey.pem"));
+
+        FILE * pkey_file = fopen(fname, "rb");
+        if (pkey_file) {
+            pkey = PEM_read_PrivateKey(pkey_file, NULL, pkey_password_cb, NULL);
+            fclose(pkey_file);
+        }
+        if (!pkey)
+            return APR_EGENERAL;
+    }
+
+    create_ocsp_response(tc, &ocsp_response, &ocsp_response_size, req,
+                         (ignore_signer ? NULL
+                          : (invalid_signer ? root : signer)),
+                         issuer, root, pkey, ignore_nonce, tb->pool);
+    if (pkey)
+        EVP_PKEY_free(pkey);
+
+    if (!ocsp_response || !ocsp_response_size)
+        return APR_EGENERAL;
+
+    rsp = serf_ssl_ocsp_response_parse(ocsp_response, ocsp_response_size,
+                                       &failures, tb->pool, tb->pool);
+    if (!rsp || failures != 0)
+        return SERF_ERROR_SSL_OCSP_RESPONSE_INVALID;
+    else {
+        serf_bucket_alloc_t *alloc;
+        serf_bucket_t *in_stream;
+        serf_bucket_t *decrypt_bkt;
+        serf_ssl_context_t *ssl_ctx;
+        apr_status_t status;
+
+        alloc = test__create_bucket_allocator(tc, tb->pool);
+        in_stream = SERF_BUCKET_SIMPLE_STRING("", alloc);
+        decrypt_bkt = serf_bucket_ssl_decrypt_create(in_stream, NULL, alloc);
+        ssl_ctx = serf_bucket_ssl_decrypt_context_get(decrypt_bkt);
+
+        status = serf_ssl_trust_cert(ssl_ctx, issuer);
+        if (status == APR_SUCCESS)
+            status = serf_ssl_trust_cert(ssl_ctx, root);
+        if (status == APR_SUCCESS)
+            status = serf_ssl_ocsp_response_verify(ssl_ctx, rsp, req,
+                                                   APR_TIME_C(0),
+                                                   apr_time_from_sec(3600),
+                                                   NULL, NULL, tb->pool);
+        return status;
+    }
 }
 #endif  /* OPENSSL_NO_OCSP */
 
@@ -2342,7 +2563,7 @@ static void test_ssl_ocsp_request_create(CuTest *tc)
     serf_ssl_certificate_t *issuer = NULL;
     serf_ssl_ocsp_request_t *req = NULL;
 
-    load_ocsp_test_certs(tc, &cert, &issuer);
+    load_ocsp_test_certs(tc, &cert, &issuer, NULL, NULL);
 
     /* no nonce */
     req = serf_ssl_ocsp_request_create(cert, issuer, 0, tb->pool, tb->pool);
@@ -2358,7 +2579,6 @@ static void test_ssl_ocsp_request_create(CuTest *tc)
 #endif  /* OPENSSL_NO_OCSP */
 }
 
-
 static void test_ssl_ocsp_request_export_import(CuTest *tc)
 {
 #ifndef OPENSSL_NO_OCSP
@@ -2369,7 +2589,7 @@ static void test_ssl_ocsp_request_export_import(CuTest *tc)
     serf_ssl_ocsp_request_t *impreq = NULL;
     const char *expreq = NULL;
 
-    load_ocsp_test_certs(tc, &cert, &issuer);
+    load_ocsp_test_certs(tc, &cert, &issuer, NULL, NULL);
 
     impreq = serf_ssl_ocsp_request_import("foo", tb->pool, tb->pool);
     CuAssertPtrEquals(tc, NULL, impreq);
@@ -2401,6 +2621,53 @@ static void test_ssl_ocsp_request_export_import(CuTest *tc)
 #endif  /* OPENSSL_NO_OCSP */
 }
 
+static void test_ssl_ocsp_verify_response(CuTest *tc)
+{
+#ifndef OPENSSL_NO_OCSP
+    apr_status_t status = verify_ocsp_response(tc, 0, 0, 0, 0);
+    CuAssertIntEquals(tc, APR_SUCCESS, status);
+#endif  /* OPENSSL_NO_OCSP */
+}
+
+static void test_ssl_ocsp_verify_response_no_nonce(CuTest *tc)
+{
+#ifndef OPENSSL_NO_OCSP
+    apr_status_t status = verify_ocsp_response(tc, 0, 0, 1, 0);
+    CuAssertIntEquals(tc, APR_SUCCESS, status);
+#endif  /* OPENSSL_NO_OCSP */
+}
+
+static void test_ssl_ocsp_verify_response_missing_nonce(CuTest *tc)
+{
+#ifndef OPENSSL_NO_OCSP
+    apr_status_t status = verify_ocsp_response(tc, 0, 0, 0, 1);
+    CuAssertIntEquals(tc, SERF_ERROR_SSL_OCSP_RESPONSE_INVALID, status);
+#endif  /* OPENSSL_NO_OCSP */
+}
+
+static void test_ssl_ocsp_verify_response_ignore_missing_nonce(CuTest *tc)
+{
+#ifndef OPENSSL_NO_OCSP
+    apr_status_t status = verify_ocsp_response(tc, 0, 0, 1, 1);
+    CuAssertIntEquals(tc, APR_SUCCESS, status);
+#endif  /* OPENSSL_NO_OCSP */
+}
+
+static void test_ssl_ocsp_verify_response_no_signer(CuTest *tc)
+{
+#ifndef OPENSSL_NO_OCSP
+    apr_status_t status = verify_ocsp_response(tc, 1, 0, 0, 0);
+    CuAssertIntEquals(tc, SERF_ERROR_SSL_OCSP_RESPONSE_INVALID, status);
+#endif  /* OPENSSL_NO_OCSP */
+}
+
+static void test_ssl_ocsp_verify_response_wrong_signer(CuTest *tc)
+{
+#ifndef OPENSSL_NO_OCSP
+    apr_status_t status = verify_ocsp_response(tc, 0, 1, 0, 0);
+    CuAssertIntEquals(tc, SERF_ERROR_SSL_OCSP_RESPONSE_INVALID, status);
+#endif  /* OPENSSL_NO_OCSP */
+}
 
 CuSuite *test_ssl(void)
 {
@@ -2450,5 +2717,11 @@ CuSuite *test_ssl(void)
     SUITE_ADD_TEST(suite, test_ssl_alpn_negotiate);
     SUITE_ADD_TEST(suite, test_ssl_ocsp_request_create);
     SUITE_ADD_TEST(suite, test_ssl_ocsp_request_export_import);
+    SUITE_ADD_TEST(suite, test_ssl_ocsp_verify_response);
+    SUITE_ADD_TEST(suite, test_ssl_ocsp_verify_response_no_nonce);
+    SUITE_ADD_TEST(suite, test_ssl_ocsp_verify_response_missing_nonce);
+    SUITE_ADD_TEST(suite, test_ssl_ocsp_verify_response_ignore_missing_nonce);
+    SUITE_ADD_TEST(suite, test_ssl_ocsp_verify_response_no_signer);
+    SUITE_ADD_TEST(suite, test_ssl_ocsp_verify_response_wrong_signer);
     return suite;
 }
