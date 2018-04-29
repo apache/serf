@@ -84,7 +84,7 @@ def create_crl(revokedcert, cakey, cacert, crlfile, next_crl_days=VALID_DAYS):
 def create_cert(subjectkey, certfile, issuer=None, issuerkey=None, country='', 
                 state='', city='', org='', ou='', cn='', email='', ca=False, 
                 valid_before=0, days_valid=VALID_DAYS, subjectAltName=None,
-                ocsp_responder_url=None):
+                ocsp_responder_url=None, ocsp_signer=False):
     '''
     Create a X509 signed certificate.
     
@@ -135,6 +135,11 @@ def create_cert(subjectkey, certfile, issuer=None, issuerkey=None, country='',
         cert.add_extensions([
             crypto.X509Extension('authorityInfoAccess', False,
                                  'OCSP;URI:' + ocsp_responder_url)])
+
+    if ocsp_signer:
+        cert.add_extensions([
+            crypto.X509Extension('extendedKeyUsage', True, 'OCSPSigning')
+        ])
 
     cert.sign(issuerkey, SIGN_ALGO)
 
@@ -223,6 +228,17 @@ if __name__ == '__main__':
                            subjectAltName=['DNS:localhost'],
                            ocsp_responder_url='http://localhost:17080')
 
+    # OCSP responder certifi
+    ocsprspcert = create_cert(subjectkey=serverkey,
+                              certfile='serfocspresponder.pem',
+                              issuer=cacert, issuerkey=cakey,
+                              country='BE', state='Antwerp', city='Mechelen',
+                              org='In Serf we trust, Inc.',
+                              ou='Test Suite Server',
+                              cn='localhost',
+                              email='serfserver@example.com',
+                              days_valid=13*365,
+                              ocsp_signer=True)
 
     # client key pair and certificate
     clientkey = create_key('private/serfclientkey.pem', 'serftest')
