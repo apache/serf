@@ -2089,6 +2089,7 @@ create_gzip_deflate_bucket(serf_bucket_t *stream, z_stream *outzstr,
     return defbkt;
 }
 
+#ifdef SERF_TEST_DEFLATE_4GBPLUS_BUCKETS
 /* Test for issue #152: the trailers of gzipped data only store the 4 most
    significant bytes of the length, so when the compressed data is >4GB
    we can't just compare actual length with expected length. */
@@ -2125,6 +2126,7 @@ static void test_deflate_4GBplus_buckets(CuTest *tc)
     }
 #endif
 
+    printf("\n");
     actual_size = 0;
     for (i = 0; i < NR_OF_LOOPS; i++) {
         const char *data;
@@ -2132,8 +2134,11 @@ static void test_deflate_4GBplus_buckets(CuTest *tc)
         apr_size_t read_len;
         apr_status_t status;
 
-        if (i % 1000 == 0)
-            printf("%d\n", i);
+        if (i % 1000 == 0) {
+            printf("\rtest_deflate_4GBplus_buckets: %d of %d",
+                   i, NR_OF_LOOPS);
+            fflush(stdout);
+        }
 
         status = apr_generate_random_bytes(uncompressed, BUFSIZE);
         CuAssertIntEquals(tc, APR_SUCCESS, status);
@@ -2166,6 +2171,7 @@ static void test_deflate_4GBplus_buckets(CuTest *tc)
 
         actual_size += read_len;
     }
+    printf("\n");
 
     put_32bit(&gzip_trailer[0], unc_crc);
     put_32bit(&gzip_trailer[4], unc_length);
@@ -2193,6 +2199,7 @@ static void test_deflate_4GBplus_buckets(CuTest *tc)
 #undef NR_OF_LOOPS
 #undef BUFSIZE
 }
+#endif /* SERF_TEST_DEFLATE_4GBPLUS_BUCKETS */
 
 /* Basic test for serf_linebuf_fetch(). */
 static void test_linebuf_fetch_crlf(CuTest *tc)
@@ -3348,7 +3355,7 @@ CuSuite *test_buckets(void)
         SUITE_ADD_TEST(suite, test_brotli_decompress_bucket_garbage_at_end);
         SUITE_ADD_TEST(suite, test_brotli_decompress_response_body);
     }
-#if 0
+#ifdef SERF_TEST_DEFLATE_4GBPLUS_BUCKETS
     /* This test for issue #152 takes a lot of time generating 4GB+ of random
        data so it's disabled by default. */
     SUITE_ADD_TEST(suite, test_deflate_4GBplus_buckets);
