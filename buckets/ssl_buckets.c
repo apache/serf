@@ -65,6 +65,9 @@
 #define X509_STORE_CTX_get0_chain(store) (X509_STORE_CTX_get_chain(store))
 #endif
 
+#ifdef SERF_NO_SSL_ASN1_STRING_GET0_DATA
+#define ASN1_STRING_get0_data(asn1string) (ASN1_STRING_data(asn1string))
+#endif
 
 /*
  * Here's an overview of the SSL bucket's relationship to OpenSSL and serf.
@@ -2950,7 +2953,7 @@ convert_asn1_generalized_time(ASN1_GENERALIZEDTIME *asn1_time,
                               apr_status_t parse_error)
 {
     apr_time_exp_t xt = { 0 };
-    void *data;
+    const void *data;
     char *date;
     int len;
     char tz;
@@ -2959,7 +2962,7 @@ convert_asn1_generalized_time(ASN1_GENERALIZEDTIME *asn1_time,
         return 0;
 
     len = ASN1_STRING_length(asn1_time);
-    data = ASN1_STRING_data(asn1_time);
+    data = ASN1_STRING_get0_data(asn1_time);
     date = apr_pstrndup(scratch_pool, data, len);
 
     if (6 > sscanf(date, "%4d%2d%2d%2d%2d%2d%c",
