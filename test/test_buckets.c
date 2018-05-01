@@ -2046,6 +2046,7 @@ static void test_deflate_buckets(CuTest *tc)
     }
 }
 
+#ifdef SERF_TEST_DEFLATE_4GBPLUS_BUCKETS
 static apr_status_t hold_open(void *baton, serf_bucket_t *aggbkt)
 {
     test_baton_t *tb = baton;
@@ -2089,7 +2090,6 @@ create_gzip_deflate_bucket(serf_bucket_t *stream, z_stream *outzstr,
     return defbkt;
 }
 
-#ifdef SERF_TEST_DEFLATE_4GBPLUS_BUCKETS
 /* Test for issue #152: the trailers of gzipped data only store the 4 most
    significant bytes of the length, so when the compressed data is >4GB
    we can't just compare actual length with expected length. */
