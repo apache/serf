@@ -115,6 +115,9 @@ opts.AddVariables(
   BoolVariable('DISABLE_LOGGING',
                "Disable the logging framework at compile time",
                False),
+  BoolVariable('ENABLE_SLOW_TESTS',
+               "Enable long-running unit tests",
+               False),
   RawListVariable('CC', "Command name or path of the C compiler", None),
   RawListVariable('CFLAGS', "Extra flags for the C compiler (space-separated)",
                   None),
@@ -460,10 +463,20 @@ if not conf.CheckFunc('BIO_set_init'):
   env.Append(CPPDEFINES=['SERF_NO_SSL_BIO_WRAPPERS'])
 if not conf.CheckFunc('X509_STORE_get0_param'):
   env.Append(CPPDEFINES=['SERF_NO_SSL_X509_STORE_WRAPPERS'])
+if not conf.CheckFunc('X509_get0_notBefore'):
+  env.Append(CPPDEFINES=['SERF_NO_SSL_X509_GET0_NOTBEFORE'])
+if not conf.CheckFunc('X509_get0_notAfter'):
+  env.Append(CPPDEFINES=['SERF_NO_SSL_X509_GET0_NOTAFTER'])
+if not conf.CheckFunc('X509_STORE_CTX_get0_chain'):
+  env.Append(CPPDEFINES=['SERF_NO_SSL_X509_GET0_CHAIN'])
 if conf.CheckFunc('CRYPTO_set_locking_callback'):
   env.Append(CPPDEFINES=['SERF_HAVE_SSL_LOCKING_CALLBACKS'])
 if conf.CheckFunc('OPENSSL_malloc_init', '#include <openssl/crypto.h>'):
   env.Append(CPPDEFINES=['SERF_HAVE_OPENSSL_MALLOC_INIT'])
+if conf.CheckFunc('SSL_library_init', '#include <openssl/crypto.h>'):
+  env.Append(CPPDEFINES=['SERF_HAVE_OPENSSL_SSL_LIBRARY_INIT'])
+if conf.CheckFunc('OpenSSL_version_num', '#include <openssl/crypto.h>'):
+  env.Append(CPPDEFINES=['SERF_HAVE_OPENSSL_VERSION_NUM'])
 if conf.CheckFunc('SSL_set_alpn_protos'):
   env.Append(CPPDEFINES=['SERF_HAVE_OPENSSL_ALPN'])
 if conf.CheckType('OSSL_HANDSHAKE_STATE', '#include <openssl/ssl.h>'):
@@ -559,6 +572,10 @@ env.Alias('install', ['install-lib', 'install-inc', 'install-pc', ])
 ### make move to a separate scons file in the test/ subdir?
 
 tenv = env.Clone()
+
+# Check if long-running tests should be enabled
+if tenv.get('ENABLE_SLOW_TESTS', None):
+    tenv.Append(CPPDEFINES=['SERF_TEST_DEFLATE_4GBPLUS_BUCKETS'])
 
 # MockHTTP requires C99 standard, so use it for the test suite.
 cflags = tenv['CFLAGS']

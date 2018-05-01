@@ -53,6 +53,18 @@
 #define X509_STORE_get0_param(store) ((store)->param)
 #endif
 
+#ifdef SERF_NO_SSL_X509_GET0_NOTBEFORE
+#define X509_get0_notBefore(cert) (X509_get_notBefore(cert))
+#endif
+
+#ifdef SERF_NO_SSL_X509_GET0_NOTAFTER
+#define X509_get0_notAfter(cert) (X509_get_notAfter(cert))
+#endif
+
+#ifdef SERF_NO_SSL_X509_GET0_CHAIN
+#define X509_STORE_CTX_get0_chain(store) (X509_STORE_CTX_get_chain(store))
+#endif
+
 
 /*
  * Here's an overview of the SSL bucket's relationship to OpenSSL and serf.
@@ -864,10 +876,10 @@ validate_server_certificate(int cert_valid, X509_STORE_CTX *store_ctx)
         failures |= SERF_SSL_CERT_INVALID_HOST;
 
     /* Check certificate expiry dates. */
-    if (X509_cmp_current_time(X509_get_notBefore(server_cert)) >= 0) {
+    if (X509_cmp_current_time(X509_get0_notBefore(server_cert)) >= 0) {
         failures |= SERF_SSL_CERT_NOTYETVALID;
     }
-    else if (X509_cmp_current_time(X509_get_notAfter(server_cert)) <= 0) {
+    else if (X509_cmp_current_time(X509_get0_notAfter(server_cert)) <= 0) {
         failures |= SERF_SSL_CERT_EXPIRED;
     }
 
@@ -907,7 +919,7 @@ validate_server_certificate(int cert_valid, X509_STORE_CTX *store_ctx)
         apr_pool_create(&subpool, ctx->pool);
 
         /* Borrow the chain to pass to the callback. */
-        chain = X509_STORE_CTX_get_chain(store_ctx);
+        chain = X509_STORE_CTX_get0_chain(store_ctx);
 
         /* If the chain can't be retrieved, just pass the current
            certificate. */
@@ -1453,7 +1465,11 @@ static void init_ssl_libraries(void)
 #ifdef SERF_LOGGING_ENABLED
         /* Warn when compile-time and run-time version of OpenSSL differ in
            major/minor version number. */
+#ifdef SERF_HAVE_OPENSSL_VERSION_NUM
+        unsigned long libver = OpenSSL_version_num();
+#else
         long libver = SSLeay();
+#endif
 
         if ((libver ^ OPENSSL_VERSION_NUMBER) & 0xFFF00000) {
             serf__log(LOGLVL_WARNING, LOGCOMP_SSL, __FILE__, NULL,
@@ -1468,10 +1484,12 @@ static void init_ssl_libraries(void)
 #else
         CRYPTO_malloc_init();
 #endif
+#ifdef SERF_HAVE_OPENSSL_SSL_LIBRARY_INIT
         ERR_load_crypto_strings();
         SSL_load_error_strings();
         SSL_library_init();
         OpenSSL_add_all_algorithms();
+#endif
 
 #if APR_HAS_THREADS && defined(SERF_HAVE_SSL_LOCKING_CALLBACKS)
         numlocks = CRYPTO_num_locks();
@@ -2348,18 +2366,18 @@ apr_hash_t *serf_ssl_cert_certificate(
     /* set expiry dates */
     bio = BIO_new(BIO_s_mem());
     if (bio) {
-        ASN1_TIME *notBefore, *notAfter;
+        const ASN1_TIME *notBefore, *notAfter;
         char buf[256];
 
         memset (buf, 0, sizeof (buf));
-        notBefore = X509_get_notBefore(cert->ssl_cert);
+        notBefore = X509_get0_notBefore(cert->ssl_cert);
         if (ASN1_TIME_print(bio, notBefore)) {
             BIO_read(bio, buf, 255);
             apr_hash_set(tgt, "notBefore", APR_HASH_KEY_STRING,
                          apr_pstrdup(pool, buf));
         }
         memset (buf, 0, sizeof (buf));
-        notAfter = X509_get_notAfter(cert->ssl_cert);
+        notAfter = X509_get0_notAfter(cert->ssl_cert);
         if (ASN1_TIME_print(bio, notAfter)) {
             BIO_read(bio, buf, 255);
             apr_hash_set(tgt, "notAfter", APR_HASH_KEY_STRING,
