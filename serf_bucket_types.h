@@ -701,20 +701,43 @@ apr_hash_t *serf_ssl_cert_subject(
     apr_pool_t *pool);
 
 /**
- * Extract the fields of the certificate in a table with keys (sha1, notBefore,
- * notAfter, subjectAltName). The returned table will be allocated in @a pool.
+ * Extract the fields of the certificate in a table with keys
+ *   (sha1, notBefore, notAfter, subjectAltName, OCSP).
+ * The returned table will be allocated in @a pool.
  */
 apr_hash_t *serf_ssl_cert_certificate(
     const serf_ssl_certificate_t *cert,
     apr_pool_t *pool);
 
 /**
- * Export a certificate to base64-encoded, zero-terminated string.
- * The returned string is allocated in @a pool. Returns NULL on failure.
+ * Like serf_ssl_cert_export2() but uses a single pool for both the
+ * result and temporary allocations.
  */
 const char *serf_ssl_cert_export(
     const serf_ssl_certificate_t *cert,
     apr_pool_t *pool);
+
+/**
+ * Export a certificate to base64-encoded, zero-terminated string.
+ * The returned string is allocated in @a result_pool.
+ * Uses @a scratch_pool for temporary allocations.
+ * Returns NULL on failure.
+ */
+const char *serf_ssl_cert_export2(
+    const serf_ssl_certificate_t *cert,
+    apr_pool_t *result_pool,
+    apr_pool_t *scratch_pool);
+
+/**
+ * Import a certificate from a base64-encoded, zero-terminated string.
+ * The returned certificate is allocated in @a result_pool.
+ * Uses @a scratch_pool for temporary allocations.
+ * Returns NULL on failure.
+ */
+serf_ssl_certificate_t *serf_ssl_cert_import(
+    const char *encoded_cert,
+    apr_pool_t *result_pool,
+    apr_pool_t *scratch_pool);
 
 /**
  * Load a CA certificate file from a path @a file_path. If the file was loaded
@@ -778,6 +801,140 @@ serf_ssl_context_t *serf_bucket_ssl_encrypt_context_get(
 
 /* ==================================================================== */
 
+/**
+ * Internal representation of an OCSP request.
+ */
+typedef struct serf_ssl_ocsp_request_t serf_ssl_ocsp_request_t;
+
+/**
+ * Constructs an OCSP verification request for @a server_cert with
+ * issuer certificate @a issuer_cert. If @a generate_nonce is
+ * non-zero, the request will contain a random nonce.
+ *
+ * The request will be allocated from @a result_pool.
+ *
+ * Use @a scratch_pool for temporary allocations.
+ *
+ * Returns @c NULL on failure, e.g., if @a issuer_cert is not the
+ * issuer certificate of @a server_cert.
+ */
+serf_ssl_ocsp_request_t *serf_ssl_ocsp_request_create(
+    const serf_ssl_certificate_t *server_cert,
+    const serf_ssl_certificate_t *issuer_cert,
+    int generate_nonce,
+    apr_pool_t *result_pool,
+    apr_pool_t *scratch_pool);
+
+/**
+ * Returns an pointer to the DER-encoded OCSP request
+ * body within the @a ocsp_request structure.
+ *
+ * The application must decide whether to use this data as the body of
+ * an HTTP POST request or Base64-encoded as part of the URI for a GET
+ * request; see RFC 2560, section A.1.1.
+ *
+ * @see serf_ssl_ocsp_request_body_size()
+ */
+const void *serf_ssl_ocsp_request_body(
+    const serf_ssl_ocsp_request_t *ocsp_request);
+
+/**
+ * Returns the size of the DER-encoded OCSP request body.
+ * @see serf_ssl_ocsp_request_body().
+ */
+apr_size_t serf_ssl_ocsp_request_body_size(
+    const serf_ssl_ocsp_request_t *ocsp_request);
+
+/**
+ * Export @a ocsp_request to a zero-terminated string,
+ * allocated from @a result_pool.
+ *
+ * Use @a scratch_pool for temporary allocations.
+ *
+ * Returns @c NULL on failure.
+ */
+const char *serf_ssl_ocsp_request_export(
+    const serf_ssl_ocsp_request_t *ocsp_request,
+    apr_pool_t *result_pool,
+    apr_pool_t *scratch_pool);
+
+/**
+ * Create an OCSP request from a previously exported zero-terminated
+ * string @a encoded_ocsp_request. The returned request will be
+ * allocated from @a result_pool.
+ *
+ * Use @a scratch_pool for temporary allocations.
+ *
+ * Returns @c NULL on failure.
+ */
+serf_ssl_ocsp_request_t *serf_ssl_ocsp_request_import(
+    const char *encoded_ocsp_request,
+    apr_pool_t *result_pool,
+    apr_pool_t *scratch_pool);
+
+/**
+ * Internal representation of an OCSP response.
+ */
+typedef struct serf_ssl_ocsp_response_t serf_ssl_ocsp_response_t;
+
+/**
+ * Parse the body of an OCSP response in DER form, @a ocsp_response,
+ * of size @a ocsp_response_size, and construct an internal
+ * representation, allocated from @a result_pool.
+ *
+ * If @a failures is not @c NULL, it will be set as in
+ * #serf_ssl_need_server_cert_t.
+ *
+ * Use @a scratch_pool for temporary allocations.
+ *
+ * Returns @c NULL on failure.
+ */
+serf_ssl_ocsp_response_t *serf_ssl_ocsp_response_parse(
+    const void *ocsp_response,
+    apr_size_t ocsp_response_size,
+    int *failures,
+    apr_pool_t *result_pool,
+    apr_pool_t *scratch_pool);
+
+/**
+ * Check if the given @a ocsp_response is valid for the given
+ * @a ocsp_request in the provided @a ssl_ctx, as defined by
+ * the algorithm documented in RFC 2560, section 3.5.
+ *
+ * The OCSP responder and application wall clocks may be out of sync
+ * by @a clock_skew, and @a max_age is the acceptable age of the
+ * request. Their values are truncated to the nearest second.
+ *
+ * The returned value will be:
+ *
+ *   - APR_SUCCESS,
+ *     if all steps of the verification succeeded;
+ *   - SERF_ERROR_SSL_OCSP_RESPONSE_CERT_REVOKED,
+ *     if the certificate was revoked;
+ *   - SERF_ERROR_SSL_OCSP_RESPONSE_CERT_UNKNOWN,
+ *     if the responder knows nothing about the certificate;
+ *   - SERF_ERROR_SSL_OCSP_RESPONSE_INVALID,
+ *     if the response itself is invalid or not well-formed.
+ *
+ * The @a this_update and @a next_update output arguments are
+ * described in RFC 2560, section 2.4 and, when not @c NULL and if the
+ * verificateion succeeded, will be parsed from the response. Any of
+ * these times that are not present in the response will be set to the
+ * epoch, i.e., @c APR_TIME_C(0).
+ *
+ * Uses @a scratch_pool for temporary allocations.
+ */
+apr_status_t serf_ssl_ocsp_response_verify(
+    serf_ssl_context_t *ssl_ctx,
+    const serf_ssl_ocsp_response_t *ocsp_response,
+    const serf_ssl_ocsp_request_t *ocsp_request,
+    apr_time_t clock_skew,
+    apr_time_t max_age,
+    apr_time_t *this_update,
+    apr_time_t *next_update,
+    apr_pool_t *scratch_pool);
+
+/* ==================================================================== */
 
 extern const serf_bucket_type_t serf_bucket_type_ssl_decrypt;
 #define SERF_BUCKET_IS_SSL_DECRYPT(b) SERF_BUCKET_CHECK((b), ssl_decrypt)
