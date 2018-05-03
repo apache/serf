@@ -143,6 +143,19 @@ typedef struct serf_config_t serf_config_t;
    on a connection that uses HTTP pipelining. */
 #define SERF_ERROR_SSL_NEGOTIATE_IN_PROGRESS (SERF_ERROR_START + 73)
 
+/* OCSP responder says that the certificate is revoked. */
+#define SERF_ERROR_SSL_OCSP_RESPONSE_CERT_REVOKED (SERF_ERROR_START + 74)
+
+/* OCSP responder says that the certificate is unknown. */
+#define SERF_ERROR_SSL_OCSP_RESPONSE_CERT_UNKNOWN (SERF_ERROR_START + 75)
+
+/* The response from an OCSP responder was not valid. */
+#define SERF_ERROR_SSL_OCSP_RESPONSE_INVALID (SERF_ERROR_START + 76)
+
+#define SERF_OCSP_UNGOOD_ERROR(status) ((status) \
+    && ((SERF_ERROR_SSL_OCSP_CERT_REVOKED == (status)) \
+        ||(SERF_ERROR_SSL_OCSP_CERT_UNKNOWN == (status))))
+
 /* General authentication related errors */
 #define SERF_ERROR_AUTHN_FAILED (SERF_ERROR_START + 90)
 
