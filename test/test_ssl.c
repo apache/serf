@@ -2462,12 +2462,12 @@ static void create_ocsp_response(CuTest *tc,
 
 static int pkey_password_cb(char *buf, int size, int rwflag, void *u)
 {
+    static const char passphrase[] = "serftest";
+    const int passlen = (int)strlen(passphrase);
+
     (void)rwflag;
     (void)u;
 
-    static const char passphrase[] = "serftest";
-
-    const int passlen = (int)strlen(passphrase);
     if (size <= passlen)
         return 0;
 
