@@ -231,13 +231,18 @@ libdir = '$LIBDIR'
 incdir = '$PREFIX/include/serf-$MAJOR'
 
 # This version string is used in the dynamic library name, and for Mac OS X also
-# for the current_version and compatibility_version options in the .dylib
-#
-# Unfortunately we can't set the .dylib compatibility_version option separately
-# from current_version, so don't use the PATCH level to avoid that build and
-# runtime patch levels have to be identical.
+# for the compatibility_version option in the .dylib.
+soversion = '%d.%d.%d' % (MAJOR, MINOR, 0)
+libversion = '%d.%d.%d' % (MAJOR, MINOR, PATCH)
 if sys.platform != 'sunos5':
-  env['SHLIBVERSION'] = '%d.%d.%d' % (MAJOR, MINOR, 0)
+  env['SHLIBVERSION'] = soversion
+
+# XXX Since SCons 2.4.1, the SHLIBVERSION variable is no longer used to set the
+# shared library versions on Mac OS X, so we add explicit linker flags to set
+# the current_version and compatibility_version options.
+if sys.platform == 'darwin':
+  env.Append(LINKFLAGS=['-Wl,-current_version,' + libversion,
+                        '-Wl,-compatibility_version,' + soversion])
 
 LIBNAME   = '%sserf-%d' % (env['LIBPREFIX'], MAJOR)
 if sys.platform == 'win32':
