@@ -18,8 +18,6 @@ Serf 1.4.0 [2014-xx-xx, from /tags/1.4.0, rxxxx]
   Fix issue #152: handle compressed responses > 4GB
   Fix issue #147: remove unneeded ISC_REQ_CONFIDENTIALITY flag in SSPI code
   Fix issue #156+#164: C++ comment style breaks C89 build
-  Fix problems with NTLM authentication when accessing local server using
-    alias hostname on Windows (r1699914)
   Fix incorrect use of bio file handlers (r1699852)
   Initialize OpenSSL when using serf_ssl_load_cert_file outside a serf context
     (r1699848)
