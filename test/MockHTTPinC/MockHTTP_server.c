@@ -3050,6 +3050,11 @@ static apr_status_t sslHandshake(_mhClientCtx_t *cctx)
                         return APR_EAGAIN;
                     }
 
+                    /* XXX This is magic that makes the tests pass on macOS
+                           with OpenSSL 1.0.2n and later. Please don't ask
+                           for explanations; see above, re: "magic". */
+                    fprintf(stderr, "\n");
+
                     _mhLog(MH_VERBOSE, cctx->skt,
                            "SSL Error %d: Library=%d, Function=%d, Reason=%d",
                            ssl_err, lib, func, reason);
