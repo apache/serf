@@ -2668,11 +2668,6 @@ static apr_status_t initSSLCtx(_mhClientCtx_t *cctx)
     /* Init OpenSSL globally */
     if (!init_done)
     {
-#ifdef SERF_HAVE_OPENSSL_MALLOC_INIT
-        OPENSSL_malloc_init();
-#else
-        CRYPTO_malloc_init();
-#endif
         ERR_load_crypto_strings();
         SSL_load_error_strings();
         SSL_library_init();
