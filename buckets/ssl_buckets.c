@@ -1482,11 +1482,6 @@ static void init_ssl_libraries(void)
         }
 #endif
 
-#ifdef SERF_HAVE_OPENSSL_MALLOC_INIT
-        OPENSSL_malloc_init();
-#else
-        CRYPTO_malloc_init();
-#endif
 #ifdef SERF_HAVE_OPENSSL_SSL_LIBRARY_INIT
         ERR_load_crypto_strings();
         SSL_load_error_strings();
