@@ -375,7 +375,7 @@ if sys.platform == 'win32':
 
   # openssl
   if not env.get('SOURCE_LAYOUT', None):
-    env.Append(CPPPATH=['$OPENSSL/include/openssl'],
+    env.Append(CPPPATH=['$OPENSSL/include'],
                LIBPATH=['$OPENSSL/lib'])
   else:
     env.Append(CPPPATH=['$OPENSSL/inc32'],
@@ -464,19 +464,19 @@ else:
 # Check for OpenSSL functions which are only available in some of
 # the versions we support. Also handles forks like LibreSSL.
 conf = Configure(env)
-if not conf.CheckFunc('BIO_set_init'):
+if not conf.CheckFunc('BIO_set_init', '#include <openssl/crypto.h>'):
   env.Append(CPPDEFINES=['SERF_NO_SSL_BIO_WRAPPERS'])
-if not conf.CheckFunc('X509_STORE_get0_param'):
+if not conf.CheckFunc('X509_STORE_get0_param', '#include <openssl/crypto.h>'):
   env.Append(CPPDEFINES=['SERF_NO_SSL_X509_STORE_WRAPPERS'])
-if not conf.CheckFunc('X509_get0_notBefore'):
+if not conf.CheckFunc('X509_get0_notBefore', '#include <openssl/crypto.h>'):
   env.Append(CPPDEFINES=['SERF_NO_SSL_X509_GET0_NOTBEFORE'])
-if not conf.CheckFunc('X509_get0_notAfter'):
+if not conf.CheckFunc('X509_get0_notAfter', '#include <openssl/crypto.h>'):
   env.Append(CPPDEFINES=['SERF_NO_SSL_X509_GET0_NOTAFTER'])
-if not conf.CheckFunc('X509_STORE_CTX_get0_chain'):
+if not conf.CheckFunc('X509_STORE_CTX_get0_chain', '#include <openssl/crypto.h>'):
   env.Append(CPPDEFINES=['SERF_NO_SSL_X509_GET0_CHAIN'])
-if not conf.CheckFunc('ASN1_STRING_get0_data'):
+if not conf.CheckFunc('ASN1_STRING_get0_data', '#include <openssl/crypto.h>'):
   env.Append(CPPDEFINES=['SERF_NO_SSL_ASN1_STRING_GET0_DATA'])
-if conf.CheckFunc('CRYPTO_set_locking_callback'):
+if conf.CheckFunc('CRYPTO_set_locking_callback', '#include <openssl/crypto.h>'):
   env.Append(CPPDEFINES=['SERF_HAVE_SSL_LOCKING_CALLBACKS'])
 if conf.CheckFunc('OPENSSL_malloc_init', '#include <openssl/crypto.h>'):
   env.Append(CPPDEFINES=['SERF_HAVE_OPENSSL_MALLOC_INIT'])
