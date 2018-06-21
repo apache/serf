@@ -90,6 +90,10 @@ opts.AddVariables(
                "Path to apu-1-config, or to APR's install area",
                default_incdir,
                PathVariable.PathAccept),
+  PathVariable('EXPAT',
+               "Path to Expat's install area, used with APR_STATIC",
+               None,
+               PathVariable.PathIsDir),
   PathVariable('OPENSSL',
                "Path to OpenSSL's install area",
                default_incdir,
@@ -110,7 +114,7 @@ opts.AddVariables(
                "Enable debugging info and strict compile warnings",
                False),
   BoolVariable('APR_STATIC',
-               "Enable using a static compiled APR",
+               "Enable using a static compiled APR on Windows",
                False),
   BoolVariable('DISABLE_LOGGING',
                "Disable the logging framework at compile time",
@@ -207,6 +211,7 @@ if unknown:
 apr = str(env['APR'])
 apu = str(env['APU'])
 zlib = str(env['ZLIB'])
+expat = env.get('EXPAT', None)
 gssapi = env.get('GSSAPI', None)
 brotli = env.get('BROTLI', None)
 
@@ -345,15 +350,44 @@ if sys.platform == 'win32':
   if env.get('TARGET_ARCH', None) == 'x86_64':
     env.Append(CPPDEFINES=['WIN64'])
 
+  # Get the APR-Util version number to check if we need an external Expat
+  use_expat = False
+  apuversion = os.path.join(apu, 'include', 'apu_version.h')
+  if os.path.isfile(apuversion):
+    apu_major = 0
+    apu_minor = 0
+    with open(apuversion, 'r') as vfd:
+      major_rx = re.compile(r'^\s*#\s*define\s+APU_MAJOR_VERSION\s+(\d+)')
+      minor_rx = re.compile(r'^\s*#\s*define\s+APU_MINOR_VERSION\s+(\d+)')
+      for line in vfd:
+        m = major_rx.match(line)
+        if m:
+          apu_major = int(m.group(1))
+          continue
+        m = minor_rx.match(line)
+        if m:
+          apu_minor = int(m.group(1))
+    print('Found APR-Util version %d.%d' % (apu_major, apu_minor))
+    if apu_major >= 2 or apu_major == 1 and apu_minor >= 6:
+      use_expat = True
+  else:
+    print("Warning: Missing header " + apuversion)
+
   if aprstatic:
     apr_libs='apr-1.lib'
     apu_libs='aprutil-1.lib'
-    env.Append(LIBS=['shell32.lib', 'xml.lib'])
+    if use_expat or expat:
+      env.Append(LIBS=['expat.lib'])
+    else:
+      env.Append(LIBS=['shell32.lib', 'xml.lib'])
   else:
     apr_libs='libapr-1.lib'
     apu_libs='libaprutil-1.lib'
 
   env.Append(LIBS=[apr_libs, apu_libs])
+  if expat and aprstatic:
+    env.Append(LIBPATH=[expat])
+
   if not env.get('SOURCE_LAYOUT', None):
     env.Append(LIBPATH=['$APR/lib', '$APU/lib'],
                CPPPATH=['$APR/include', '$APU/include'])
