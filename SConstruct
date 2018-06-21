@@ -351,35 +351,35 @@ if sys.platform == 'win32':
     env.Append(CPPDEFINES=['WIN64'])
 
   # Get the APR-Util version number to check if we need an external Expat
-  use_expat = False
-  apuversion = os.path.join(apu, 'include', 'apu_version.h')
-  if os.path.isfile(apuversion):
-    apu_major = 0
-    apu_minor = 0
-    with open(apuversion, 'r') as vfd:
-      major_rx = re.compile(r'^\s*#\s*define\s+APU_MAJOR_VERSION\s+(\d+)')
-      minor_rx = re.compile(r'^\s*#\s*define\s+APU_MINOR_VERSION\s+(\d+)')
-      for line in vfd:
-        m = major_rx.match(line)
-        if m:
-          apu_major = int(m.group(1))
-          continue
-        m = minor_rx.match(line)
-        if m:
-          apu_minor = int(m.group(1))
-    print('Found APR-Util version %d.%d' % (apu_major, apu_minor))
-    if apu_major >= 2 or apu_major == 1 and apu_minor >= 6:
-      use_expat = True
-  else:
-    print("Warning: Missing header " + apuversion)
+  if expat:
+    expat_lib_name = 'expat.lib'
+  else:    
+    expat_lib_name = 'xml.lib'
+    apuversion = os.path.join(apu, 'include', 'apu_version.h')
+    if os.path.isfile(apuversion):
+      apu_major = 0
+      apu_minor = 0
+      with open(apuversion, 'r') as vfd:
+        major_rx = re.compile(r'^\s*#\s*define\s+APU_MAJOR_VERSION\s+(\d+)')
+        minor_rx = re.compile(r'^\s*#\s*define\s+APU_MINOR_VERSION\s+(\d+)')
+        for line in vfd:
+          m = major_rx.match(line)
+          if m:
+            apu_major = int(m.group(1))
+            continue
+          m = minor_rx.match(line)
+          if m:
+            apu_minor = int(m.group(1))
+      print('Found APR-Util version %d.%d' % (apu_major, apu_minor))
+      if apu_major >= 2 or apu_major == 1 and apu_minor >= 6:
+        expat_lib_name = 'expat.lib'
+    else:
+      print("Warning: Missing header " + apuversion)
 
   if aprstatic:
     apr_libs='apr-1.lib'
     apu_libs='aprutil-1.lib'
-    if use_expat or expat:
-      env.Append(LIBS=['expat.lib'])
-    else:
-      env.Append(LIBS=['shell32.lib', 'xml.lib'])
+    env.Append(LIBS=['shell32.lib', expat_lib_name])
   else:
     apr_libs='libapr-1.lib'
     apu_libs='libaprutil-1.lib'
@@ -498,6 +498,8 @@ else:
 # Check for OpenSSL functions which are only available in some of
 # the versions we support. Also handles forks like LibreSSL.
 conf = Configure(env)
+if conf.CheckCHeader('openssl/applink.c'):
+  env.Append(CPPDEFINES=['SERF_HAVE_OPENSSL_APPLINK_C'])
 if not conf.CheckFunc('BIO_set_init', '#include <openssl/crypto.h>'):
   env.Append(CPPDEFINES=['SERF_NO_SSL_BIO_WRAPPERS'])
 if not conf.CheckFunc('X509_STORE_get0_param', '#include <openssl/crypto.h>'):

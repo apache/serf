@@ -35,9 +35,9 @@
 #include <openssl/ocsp.h>
 #endif
 
-#if defined(WIN32) && defined(_DEBUG)
+#if defined(WIN32) && defined(_DEBUG) && defined(SERF_HAVE_OPENSSL_APPLINK_C)
 /* Include this file to allow running a Debug build of serf with a Release
-   build of OpenSSL. */
+   build of OpenSSL. Note: his file is not available on OpenSSL 1.1.x. */
 #if defined(_MSC_VER) && _MSC_VER >= 1400
 #pragma warning(push)
 #pragma warning(disable: 4152)
