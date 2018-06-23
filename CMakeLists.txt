@@ -20,8 +20,7 @@
 cmake_minimum_required(VERSION 3.0.2)
 
 set(CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/build")
-include(version)
-include(feature)
+include(SerfVersion)
 
 project("Serf" VERSION ${SERF_VERSION} LANGUAGES C)
 message(WARNING
@@ -44,12 +43,13 @@ else(WINDOWS)
 endif(WINDOWS)
 
 
-find_package(openssl)
-find_package(zlib)
-find_package(apr)
-find_package(apu)
+find_package(OpenSSL)
+find_package(ZLib)
+find_package(APR)
+find_package(APRUtil)
 
 # Feature tests
+include(SerfChecks)
 CheckNotFunction("BIO_set_init" "SERF_NO_SSL_BIO_WRAPPERS" ${OPENSSL_LIBRARIES})
 CheckNotFunction("X509_STORE_get0_param" "SERF_NO_SSL_X509_STORE_WRAPPERS" ${OPENSSL_LIBRARIES})
 CheckNotFunction("X509_get0_notBefore" "SERF_NO_SSL_X509_GET0_NOTBEFORE" ${OPENSSL_LIBRARIES})
@@ -64,23 +64,23 @@ CheckFunction("SSL_set_alpn_protos" "SERF_HAVE_OPENSSL_ALPN" ${OPENSSL_LIBRARIES
 CheckHeader("openssl/applink.c" "SERF_HAVE_OPENSSL_APPLINK_C" ${OPENSSL_INCLUDE_DIR})
 CheckType("OSSL_HANDSHAKE_STATE" "openssl/ssl.h" "SERF_HAVE_OSSL_HANDSHAKE_STATE" ${OPENSSL_INCLUDE_DIR})
 
-set(DEPENDENCY_INCLUDE_DIRS
+set(DEPENDENCY_INCLUDES
     ${OPENSSL_INCLUDE_DIR}
     ${ZLIB_INCLUDE_DIRS}
     ${APR_INCLUDES}
-    ${APU_INCLUDES}
+    ${APRUTIL_INCLUDES}
 )
-list(REMOVE_DUPLICATES DEPENDENCY_INCLUDE_DIRS)
+list(REMOVE_DUPLICATES DEPENDENCY_INCLUDES)
 
 set(DEPENDENCY_LIBRARIES
     ${OPENSSL_LIBRARIES}
     ${ZLIB_LIBRARIES}
-    ${APR_LIBS}
-    ${APU_LIBS}
+    ${APR_LIBRARIES}
+    ${APRUTIL_LIBRARIES}
 )
 list(REMOVE_DUPLICATES DEPENDENCY_LIBRARIES)
 
-include_directories(BEFORE SYSTEM ${DEPENDENCY_INCLUDE_DIRS})
+include_directories(BEFORE SYSTEM ${DEPENDENCY_INCLUDES})
 include_directories(${CMAKE_SOURCE_DIR})
 add_library(SerfStatic STATIC ${SOURCES})
 add_library(SerfShared SHARED ${SOURCES} ${SHARED_SOURCES})
