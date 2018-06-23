@@ -300,4 +300,7 @@ serf__spnego_init_sec_context(serf_connection_t *conn,
     }
 }
 
+#else  /* SERF_USE_SSPI */
+/* Prevent "object has no symbols" warnings from ranlib on macOS. */
+const long serf__fake__auth_spnego_sspi_c = 0xdeadbeef;
 #endif /* SERF_USE_SSPI */
