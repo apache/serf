@@ -676,4 +676,7 @@ const serf__authn_scheme_t serf__ntlm_authn_scheme = {
 };
 #endif /* #ifdef WIN32 */
 
+#else  /* SERF_HAVE_SPNEGO */
+/* Prevent "object has no symbols" warnings from ranlib on macOS. */
+const long serf__fake__auth_spnego_c = 0xdeadbeef;
 #endif /* SERF_HAVE_SPNEGO */

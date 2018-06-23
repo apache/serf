@@ -231,4 +231,7 @@ serf__spnego_init_sec_context(serf_connection_t *conn,
     }
 }
 
+#else  /* SERF_USE_GSSAPI */
+/* Prevent "object has no symbols" warnings from ranlib on macOS. */
+const long serf__fake__auth_spnego_gas_c = 0xdeadbeef;
 #endif /* SERF_USE_GSSAPI */
