@@ -34,8 +34,35 @@ set(TEST_ALL_SOURCES
     "MockHTTPinC/MockHTTP_server.c"
 )
 
+set(SIMPLE_TEST_TARGETS
+    "serf_get"
+    "serf_response"
+    "serf_request"
+    "serf_spider"
+    "serf_httpd"
+    "serf_bwtp"
+)
+
 add_definitions("-DMOCKHTTP_OPENSSL")
+
+foreach(TEST_TARGET ${SIMPLE_TEST_TARGETS})
+  add_executable(${TEST_TARGET} "${TEST_TARGET}.c")
+  add_dependencies(${TEST_TARGET} SerfStatic)
+  target_link_libraries(${TEST_TARGET} SerfStatic ${DEPENDENCY_LIBRARIES})
+endforeach()
+
 add_executable(test_all ${TEST_ALL_SOURCES})
 add_dependencies(test_all SerfStatic)
 target_link_libraries(test_all SerfStatic ${DEPENDENCY_LIBRARIES})
+
+file(GLOB RESPONSE_TEST_CASES "${CMAKE_CURRENT_SOURCE_DIR}/testcases/*.response")
+foreach(TEST_CASE ${RESPONSE_TEST_CASES})
+  get_filename_component(TEST_CASE_NAME ${TEST_CASE} NAME)
+  add_test(NAME "${TEST_CASE_NAME}" COMMAND serf_response "${TEST_CASE}")
+  list(APPEND RESPONS_TESTS "${TEST_CASE_NAME}")
+endforeach()
+
 add_test(NAME test_all COMMAND test_all)
+
+set_tests_properties(${RESPONS_TESTS} test_all PROPERTIES
+                     ENVIRONMENT srcdir=${SERF_SOURCE_DIR})
