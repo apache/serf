@@ -35,11 +35,58 @@ set(HEADERS
     "serf_bucket_util.h"
 )
 
-file(GLOB SOURCES "src/*.c" "auth/*.c" "buckets/*.c" "protocols/*.c")
+set(SOURCES
+    "src/config_store.c"
+    "src/context.c"
+    "src/deprecated.c"
+    "src/incoming.c"
+    "src/logging.c"
+    "src/outgoing.c"
+    "src/outgoing_request.c"
+    "src/pump.c"
+    "src/ssltunnel.c"
+    "auth/auth.c"
+    "auth/auth_basic.c"
+    "auth/auth_digest.c"
+    "auth/auth_spnego.c"
+    "auth/auth_spnego_gss.c"
+    "auth/auth_spnego_sspi.c"
+    "buckets/aggregate_buckets.c"
+    "buckets/allocator.c"
+    "buckets/barrier_buckets.c"
+    "buckets/brotli_buckets.c"
+    "buckets/buckets.c"
+    "buckets/bwtp_buckets.c"
+    "buckets/chunk_buckets.c"
+    "buckets/copy_buckets.c"
+    "buckets/dechunk_buckets.c"
+    "buckets/deflate_buckets.c"
+    "buckets/event_buckets.c"
+    "buckets/fcgi_buckets.c"
+    "buckets/file_buckets.c"
+    "buckets/headers_buckets.c"
+    "buckets/hpack_buckets.c"
+    "buckets/http2_frame_buckets.c"
+    "buckets/iovec_buckets.c"
+    "buckets/limit_buckets.c"
+    "buckets/log_wrapper_buckets.c"
+    "buckets/mmap_buckets.c"
+    "buckets/prefix_buckets.c"
+    "buckets/request_buckets.c"
+    "buckets/response_body_buckets.c"
+    "buckets/response_buckets.c"
+    "buckets/simple_buckets.c"
+    "buckets/socket_buckets.c"
+    "buckets/split_buckets.c"
+    "buckets/ssl_buckets.c"
+    "protocols/fcgi_protocol.c"
+    "protocols/fcgi_stream.c"
+    "protocols/http2_protocol.c"
+    "protocols/http2_stream.c"
+)
+
 if(WINDOWS)
   set(SHARED_SOURCES "serf.rc")
-else(WINDOWS)
-  set(SHARED_SOURCES)
 endif(WINDOWS)
 
 
@@ -90,3 +137,5 @@ set_target_properties(SerfStatic SerfShared
                       OUTPUT_NAME "serf-${SERF_MAJOR_VERSION}"
                       VERSION ${SERF_VERSION}
                       SOVERSION ${SERF_SOVERSION})
+
+add_subdirectory(test)
