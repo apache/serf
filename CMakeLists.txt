@@ -18,6 +18,7 @@
 # ===================================================================
 
 cmake_minimum_required(VERSION 3.0.2)
+enable_testing()
 
 set(CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/build")
 include(SerfVersion)
@@ -123,9 +124,13 @@ set(DEPENDENCY_LIBRARIES
     ${OPENSSL_LIBRARIES}
     ${ZLIB_LIBRARIES}
     ${APR_LIBRARIES}
+    ${APR_EXTRALIBS}
     ${APRUTIL_LIBRARIES}
+    ${APRUTIL_EXTRALIBS}
 )
 list(REMOVE_DUPLICATES DEPENDENCY_LIBRARIES)
+
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${APR_CFLAGS}")
 
 include_directories(BEFORE SYSTEM ${DEPENDENCY_INCLUDES})
 include_directories(${CMAKE_SOURCE_DIR})
@@ -138,4 +143,5 @@ set_target_properties(SerfStatic SerfShared
                       VERSION ${SERF_VERSION}
                       SOVERSION ${SERF_SOVERSION})
 
+set(SERF_SOURCE_DIR ${CMAKE_SOURCE_DIR})
 add_subdirectory(test)
