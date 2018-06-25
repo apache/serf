@@ -134,14 +134,16 @@ set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${APR_CFLAGS}")
 
 include_directories(BEFORE SYSTEM ${DEPENDENCY_INCLUDES})
 include_directories(${CMAKE_SOURCE_DIR})
-add_library(SerfStatic STATIC ${SOURCES})
-add_library(SerfShared SHARED ${SOURCES} ${SHARED_SOURCES})
-target_link_libraries(SerfShared ${DEPENDENCY_LIBRARIES})
-set_target_properties(SerfStatic SerfShared
+
+add_library(serf SHARED ${SOURCES} ${SHARED_SOURCES})
+target_link_libraries(serf ${DEPENDENCY_LIBRARIES})
+
+add_library(serf_static STATIC ${SOURCES})
+
+set_target_properties(serf serf_static
                       PROPERTIES
                       OUTPUT_NAME "serf-${SERF_MAJOR_VERSION}"
                       VERSION ${SERF_VERSION}
                       SOVERSION ${SERF_SOVERSION})
 
-set(SERF_SOURCE_DIR ${CMAKE_SOURCE_DIR})
 add_subdirectory(test)
