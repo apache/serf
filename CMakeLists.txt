@@ -1,4 +1,3 @@
-# ===================================================================
 #   Licensed to the Apache Software Foundation (ASF) under one
 #   or more contributor license agreements.  See the NOTICE file
 #   distributed with this work for additional information
@@ -135,7 +134,7 @@ endif()
 
 # Find dependencies
 find_package(OpenSSL)
-find_package(ZLib)
+find_package(ZLIB)
 find_package(APR)
 find_package(APRUtil)
 
