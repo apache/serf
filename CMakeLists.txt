@@ -193,24 +193,28 @@ if(LIBDIR)
   message(WARNING "option LIBDIR is not implemented yet")
 endif()
 
+if(DEBUG)
+  add_definitions("-DDEBUG" "-D_DEBUG")
+endif()
+
+if(DISABLE_LOGGING)
+  add_definitions("-DSERF_DISABLE_LOGGING")
+endif()
+
+if(ENABLE_SLOW_TESTS)
+  add_definitions("-DSERF_TEST_DEFLATE_4GBPLUS_BUCKETS")
+endif()
+
+
+# Set common compiler flags
 if(NOT MSVC)
   if(CC_LIKE_GNUC)
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall")
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wdeclaration-after-statement")
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wmissing-prototypes")
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -std=c89")
-  endif()
 
-  if(DEBUG)
-    add_definitions("-DDEBUG" "-D_DEBUG")
-    if(CC_LIKE_GNUC)
-      set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -O0 -g")
-    endif()
-  else()
-    add_definitions("-DNDEBUG")
-    if(CC_LIKE_GNUC)
-      set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -O2")
-    endif()
+    set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -O0")
   endif()
 else()
   # Warning level 4, no unused argument warnings
@@ -220,17 +224,19 @@ else()
   # Assignment within conditional expression
   set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} /wd4706")
 
-  set(CMAKE_C_FLAGS_Debug "/Od /MDd /DDEBUG /D_DEBUG")
-  set(CMAKE_C_FLAGS_Release "/O2 /MD /DNDEBUG")
-  set(CMAKE_SHARED_LINKER_FLAGS_Release "/RELEASE")
+  set(CMAKE_C_FLAGS_DEBUG "/Od /MDd")
+  set(CMAKE_C_FLAGS_RELEASE "/O2 /MD")
+  set(CMAKE_SHARED_LINKER_FLAGS_RELEASE "/RELEASE")
 endif(NOT MSVC)
 
-if(DISABLE_LOGGING)
-  add_definitions("-DSERF_DISABLE_LOGGING")
-endif()
 
-if(ENABLE_SLOW_TESTS)
-  add_definitions("-DSERF_TEST_DEFLATE_4GBPLUS_BUCKETS")
+# This must come *AFTER* all the compiler flags and definitioins are set.
+if(NOT CMAKE_BUILD_TYPE)
+  if(DEBUG)
+    set(CMAKE_BUILD_TYPE DEBUG)
+  else()
+    set(CMAKE_BUILD_TYPE RELEASE)
+  endif()
 endif()
 
 
