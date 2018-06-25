@@ -30,12 +30,28 @@ message(WARNING
         "has not been tested on many supported platforms.")
 
 
+# Build options
+option(PREFIX "Installation root directory" OFF)
+option(LIBDIR "Indstall directory for architecture-dependent libraries" OFF)
+option(APR "Path to APR's install area" OFF)
+option(APU "Path to APR-Util's install area" OFF)
+option(OPENSSL "Path to OpenSSL's install area" OFF)
+option(ZLIB "Path to zlib's install area" OFF)
+option(GSSAPI "Path to GSSAPI's install area" OFF)
+option(BROTLI "Path to Brotli's install area" OFF)
+option(DEBUG "Enable debugging info and strict compile warnings" OFF)
+option(DISABLE_LOGGING "Disable the logging framework at compile time" OFF)
+option(ENABLE_SLOW_TESTS "Enable long-running unit tests" OFF)
+
+
+# Public headers
 set(HEADERS
     "serf.h"
     "serf_bucket_types.h"
     "serf_bucket_util.h"
 )
 
+# Serf library source files
 set(SOURCES
     "src/config_store.c"
     "src/context.c"
@@ -91,26 +107,37 @@ if(WINDOWS)
 endif(WINDOWS)
 
 
+# Process build options for dependency search
+if(APR)
+  set(APR_ROOT ${APR})
+endif()
+
+if(APU)
+  set(APRUTIL_ROOT ${APU})
+endif()
+
+if(OPENSSL)
+  set(OPENSSL_ROOT_DIR ${OPENSSL})
+endif()
+
+if(ZLIB)
+  set(ZLIB_ROOT ${ZLIB})
+endif()
+
+if(GSSAPI)
+  message(WARNING "option GSSAPI is not implemented yet")
+endif()
+
+if(BROTLI)
+  message(WARNING "option BROTLI is not implemented yet")
+endif()
+
+
+# Find dependencies
 find_package(OpenSSL)
 find_package(ZLib)
 find_package(APR)
 find_package(APRUtil)
-
-# Feature tests
-include(SerfChecks)
-CheckNotFunction("BIO_set_init" "SERF_NO_SSL_BIO_WRAPPERS" ${OPENSSL_LIBRARIES})
-CheckNotFunction("X509_STORE_get0_param" "SERF_NO_SSL_X509_STORE_WRAPPERS" ${OPENSSL_LIBRARIES})
-CheckNotFunction("X509_get0_notBefore" "SERF_NO_SSL_X509_GET0_NOTBEFORE" ${OPENSSL_LIBRARIES})
-CheckNotFunction("X509_get0_notAfter" "SERF_NO_SSL_X509_GET0_NOTAFTER" ${OPENSSL_LIBRARIES})
-CheckNotFunction("X509_STORE_CTX_get0_chain" "SERF_NO_SSL_X509_GET0_CHAIN" ${OPENSSL_LIBRARIES})
-CheckNotFunction("ASN1_STRING_get0_data" "SERF_NO_SSL_ASN1_STRING_GET0_DATA" ${OPENSSL_LIBRARIES})
-CheckFunction("CRYPTO_set_locking_callback" "SERF_HAVE_SSL_LOCKING_CALLBACKS" ${OPENSSL_LIBRARIES})
-CheckFunction("OPENSSL_malloc_init" "SERF_HAVE_OPENSSL_MALLOC_INIT" ${OPENSSL_LIBRARIES})
-CheckFunction("SSL_library_init" "SERF_HAVE_OPENSSL_SSL_LIBRARY_INIT" ${OPENSSL_LIBRARIES})
-CheckFunction("OpenSSL_version_num" "SERF_HAVE_OPENSSL_VERSION_NUM" ${OPENSSL_LIBRARIES})
-CheckFunction("SSL_set_alpn_protos" "SERF_HAVE_OPENSSL_ALPN" ${OPENSSL_LIBRARIES})
-CheckHeader("openssl/applink.c" "SERF_HAVE_OPENSSL_APPLINK_C" ${OPENSSL_INCLUDE_DIR})
-CheckType("OSSL_HANDSHAKE_STATE" "openssl/ssl.h" "SERF_HAVE_OSSL_HANDSHAKE_STATE" ${OPENSSL_INCLUDE_DIR})
 
 set(DEPENDENCY_INCLUDES
     ${OPENSSL_INCLUDE_DIR}
@@ -134,6 +161,78 @@ set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${APR_CFLAGS}")
 
 include_directories(BEFORE SYSTEM ${DEPENDENCY_INCLUDES})
 include_directories(${CMAKE_SOURCE_DIR})
+
+
+# Feature tests
+include(SerfChecks)
+CheckNotFunction("BIO_set_init" "SERF_NO_SSL_BIO_WRAPPERS" ${OPENSSL_LIBRARIES})
+CheckNotFunction("X509_STORE_get0_param" "SERF_NO_SSL_X509_STORE_WRAPPERS" ${OPENSSL_LIBRARIES})
+CheckNotFunction("X509_get0_notBefore" "SERF_NO_SSL_X509_GET0_NOTBEFORE" ${OPENSSL_LIBRARIES})
+CheckNotFunction("X509_get0_notAfter" "SERF_NO_SSL_X509_GET0_NOTAFTER" ${OPENSSL_LIBRARIES})
+CheckNotFunction("X509_STORE_CTX_get0_chain" "SERF_NO_SSL_X509_GET0_CHAIN" ${OPENSSL_LIBRARIES})
+CheckNotFunction("ASN1_STRING_get0_data" "SERF_NO_SSL_ASN1_STRING_GET0_DATA" ${OPENSSL_LIBRARIES})
+CheckFunction("CRYPTO_set_locking_callback" "SERF_HAVE_SSL_LOCKING_CALLBACKS" ${OPENSSL_LIBRARIES})
+CheckFunction("OPENSSL_malloc_init" "SERF_HAVE_OPENSSL_MALLOC_INIT" ${OPENSSL_LIBRARIES})
+CheckFunction("SSL_library_init" "SERF_HAVE_OPENSSL_SSL_LIBRARY_INIT" ${OPENSSL_LIBRARIES})
+CheckFunction("OpenSSL_version_num" "SERF_HAVE_OPENSSL_VERSION_NUM" ${OPENSSL_LIBRARIES})
+CheckFunction("SSL_set_alpn_protos" "SERF_HAVE_OPENSSL_ALPN" ${OPENSSL_LIBRARIES})
+CheckHeader("openssl/applink.c" "SERF_HAVE_OPENSSL_APPLINK_C" ${OPENSSL_INCLUDE_DIR})
+CheckHeader("stdbool.h" "HAVE_STDBOOL_H=1")
+CheckType("OSSL_HANDSHAKE_STATE" "openssl/ssl.h" "SERF_HAVE_OSSL_HANDSHAKE_STATE" ${OPENSSL_INCLUDE_DIR})
+
+if(CMAKE_COMPILER_IS_GNUCC OR (CMAKE_C_COMPILER_ID MATCHES "Clang"))
+  set(CC_LIKE_GNUC TRUE)
+endif()
+
+# Process other build options
+if(PREFIX)
+  set(CMAKE_INSTALL_PREFIX ${PREFIX})
+endif()
+
+if(LIBDIR)
+  message(WARNING "option LIBDIR is not implemented yet")
+endif()
+
+if(NOT MSVC)
+  if(CC_LIKE_GNUC)
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall")
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wdeclaration-after-statement")
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wmissing-prototypes")
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -std=c89")
+  endif()
+
+  if(DEBUG)
+    add_definitions("-DDEBUG" "-D_DEBUG")
+    if(CC_LIKE_GNUC)
+      set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -O0 -g")
+    endif()
+  else()
+    add_definitions("-DNDEBUG")
+    if(CC_LIKE_GNUC)
+      set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -O2")
+    endif()
+  endif()
+else()
+  # Warning level 4, no unused argument warnings
+  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} /W4 /wd4100")
+  # Conditional expression is constant
+  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} /wd4127")
+  # Assignment within conditional expression
+  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} /wd4706")
+
+  set(CMAKE_C_FLAGS_Debug "/Od /MDd /DDEBUG /D_DEBUG")
+  set(CMAKE_C_FLAGS_Release "/O2 /MD /DNDEBUG")
+  set(CMAKE_SHARED_LINKER_FLAGS_Release "/RELEASE")
+endif(NOT MSVC)
+
+if(DISABLE_LOGGING)
+  add_definitions("-DSERF_DISABLE_LOGGING")
+endif()
+
+if(ENABLE_SLOW_TESTS)
+  add_definitions("-DSERF_TEST_DEFLATE_4GBPLUS_BUCKETS")
+endif()
+
 
 add_library(serf SHARED ${SOURCES} ${SHARED_SOURCES})
 target_link_libraries(serf ${DEPENDENCY_LIBRARIES})

@@ -43,6 +43,11 @@ set(SIMPLE_TEST_TARGETS
     "serf_bwtp"
 )
 
+if(CC_LIKE_GNUC)
+  # MockHTTP requires C99 standard, so use it for the test suite.
+  string(REPLACE "-std=c89" "-std=c99" CMAKE_C_FLAGS ${CMAKE_C_FLAGS})
+endif()
+
 add_definitions("-DMOCKHTTP_OPENSSL")
 
 foreach(TEST_TARGET ${SIMPLE_TEST_TARGETS})
