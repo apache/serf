@@ -44,7 +44,7 @@ endmacro(_apr_invoke)
 _apr_invoke(APR_CFLAGS    FALSE "(^| )-(g|O)[^ ]*" --cppflags --cflags)
 _apr_invoke(APR_INCLUDES  TRUE  "(^| )-I"          --includes)
 _apr_invoke(APR_LIBRARIES TRUE  ""                 --link-ld)
-_apr_invoke(APR_EXTRALIBS TRUE  "(^| )-l"          --libs)
+_apr_invoke(APR_EXTRALIBS TRUE  ""                 --libs)
 _apr_invoke(APR_VERSION   TRUE  ""                 --version)
 
 string(REGEX REPLACE "^([0-9]+)\\..*$" "\\1" _apr_major "${APR_VERSION}")

@@ -233,22 +233,8 @@ if(NOT CMAKE_BUILD_TYPE)
   endif()
 endif()
 
-if(NOT WINDOWS)
-  # Use a separate variable scope for the substitutions in serf.pc.in.
-  function(make_pkgconfig)
-    set(PREFIX ${CMAKE_INSTALL_PREFIX})
-    if(NOT LIBDIR)
-      set(LIBDIR "${PREIFX}/lib")
-    endif()
-    set(VERSION ${SERF_VERSION})
-    set(MAJOR ${SERF_MAJOR_VERSION})
-    set(INCLUDE_SUBDIR "serf-${SERF_MAJOR_VERSION}")
-    set(LIBS ${DEPENDENCY_LIBRARIES})
-    configure_file("build/serf.pc.in" "serf.pc" @ONLY)
-  endfunction()
-  make_pkgconfig()
-endif()
 
+# Define all targets
 add_library(serf SHARED ${SOURCES} ${SHARED_SOURCES})
 target_link_libraries(serf ${DEPENDENCY_LIBRARIES})
 
@@ -259,5 +245,38 @@ set_target_properties(serf serf_static
                       OUTPUT_NAME "serf-${SERF_MAJOR_VERSION}"
                       VERSION ${SERF_VERSION}
                       SOVERSION ${SERF_SOVERSION})
+
+install(TARGETS serf serf_static
+        ARCHIVE DESTINATION "lib"
+        LIBRARY DESTINATION "lib"
+        RUNTIME DESTINATION "bin")
+
+if(NOT WINDOWS)
+  set(INCLUDE_SUBDIR "serf-${SERF_MAJOR_VERSION}")
+endif()
+install(FILES ${HEADERS} DESTINATION "include/${INCLUDE_SUBDIR}")
+
+
+# Generate the pkg-config module file.
+if(NOT WINDOWS)
+  # Use a separate variable scope for the substitutions in serf.pc.in.
+  function(make_pkgconfig)
+    set(PREFIX ${CMAKE_INSTALL_PREFIX})
+    if(NOT LIBDIR)
+      set(LIBDIR "${PREIFX}/lib")
+    endif()
+    set(VERSION ${SERF_VERSION})
+    set(MAJOR ${SERF_MAJOR_VERSION})
+    unset(LIBS)
+    foreach(DEPLIB ${DEPENDENCY_LIBRARIES})
+      set(LIBS "${LIBS} ${DEPLIB}")
+    endforeach()
+    configure_file("build/serf.pc.in" "serf.pc" @ONLY)
+  endfunction()
+
+  make_pkgconfig()
+  install(FILES "${CMAKE_BINARY_DIR}/serf.pc" DESTINATION "share/pkgconfig")
+endif()
+
 
 add_subdirectory(test)
