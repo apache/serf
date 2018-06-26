@@ -30,7 +30,6 @@ message(WARNING
 
 
 # Build options
-option(PREFIX "Installation root directory" OFF)
 option(LIBDIR "Indstall directory for architecture-dependent libraries" OFF)
 option(APR "Path to APR's install area" OFF)
 option(APU "Path to APR-Util's install area" OFF)
@@ -184,16 +183,8 @@ if(CMAKE_COMPILER_IS_GNUCC OR (CMAKE_C_COMPILER_ID MATCHES "Clang"))
 endif()
 
 # Process other build options
-if(PREFIX)
-  set(CMAKE_INSTALL_PREFIX ${PREFIX})
-else()
-  set(PREFIX ${CMAKE_INSTALL_PREFIX})
-endif()
-
 if(LIBDIR)
   message(WARNING "option LIBDIR is not implemented yet")
-else()
-  set(LIBDIR "${PREFIX}/lib")
 endif()
 
 if(DEBUG)
@@ -245,6 +236,10 @@ endif()
 if(NOT WINDOWS)
   # Use a separate variable scope for the substitutions in serf.pc.in.
   function(make_pkgconfig)
+    set(PREFIX ${CMAKE_INSTALL_PREFIX})
+    if(NOT LIBDIR)
+      set(LIBDIR "${PREIFX}/lib")
+    endif()
     set(VERSION ${SERF_VERSION})
     set(MAJOR ${SERF_MAJOR_VERSION})
     set(INCLUDE_SUBDIR "serf-${SERF_MAJOR_VERSION}")
