@@ -46,3 +46,17 @@ function(_apru_config _program _varname _separate _regexp)
     set(${_varname} "${_apru_output}" PARENT_SCOPE)
   endif()
 endfunction(_apru_config)
+
+function(_apru_version _version_varname _major_varname _header _prefix)
+  file(STRINGS ${_header} _apru_major
+       REGEX "^ *# *define +${_prefix}_MAJOR_VERSION +[0-9]+.*$")
+  file(STRINGS ${_header} _apru_minor
+       REGEX "^ *# *define +${_prefix}_MINOR_VERSION +[0-9]+.*$")
+  file(STRINGS ${_header} _apru_patch
+       REGEX "^ *# *define +${_prefix}_PATCH_VERSION +[0-9]+.*$")
+  string(REGEX REPLACE "^[^0-9]+([0-9]+).*$" "\\1" _apru_major ${_apru_major})
+  string(REGEX REPLACE "^[^0-9]+([0-9]+).*$" "\\1" _apru_minor ${_apru_minor})
+  string(REGEX REPLACE "^[^0-9]+([0-9]+).*$" "\\1" _apru_patch ${_apru_patch})
+  set(${_version_varname} "${_apru_major}.${_apru_minor}.${_apru_patch}" PARENT_SCOPE)
+  set(${_major_varname} ${_apru_major} PARENT_SCOPE)
+endfunction()
