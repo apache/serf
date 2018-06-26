@@ -186,10 +186,14 @@ endif()
 # Process other build options
 if(PREFIX)
   set(CMAKE_INSTALL_PREFIX ${PREFIX})
+else()
+  set(PREFIX ${CMAKE_INSTALL_PREFIX})
 endif()
 
 if(LIBDIR)
   message(WARNING "option LIBDIR is not implemented yet")
+else()
+  set(LIBDIR "${PREFIX}/lib")
 endif()
 
 if(DEBUG)
@@ -238,6 +242,17 @@ if(NOT CMAKE_BUILD_TYPE)
   endif()
 endif()
 
+if(NOT WINDOWS)
+  # Use a separate variable scope for the substitutions in serf.pc.in.
+  function(make_pkgconfig)
+    set(VERSION ${SERF_VERSION})
+    set(MAJOR ${SERF_MAJOR_VERSION})
+    set(INCLUDE_SUBDIR "serf-${SERF_MAJOR_VERSION}")
+    set(LIBS ${DEPENDENCY_LIBRARIES})
+    configure_file("build/serf.pc.in" "serf.pc" @ONLY)
+  endfunction()
+  make_pkgconfig()
+endif()
 
 add_library(serf SHARED ${SOURCES} ${SHARED_SOURCES})
 target_link_libraries(serf ${DEPENDENCY_LIBRARIES})
