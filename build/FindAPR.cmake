@@ -17,45 +17,76 @@
 #   under the License.
 # ===================================================================
 
-# This module defines
+# This module defines:
+# APR_FOUND, set to TRUE if found, FALSE otherwise.
+# APR_VERSION, the version of APR that was found.
+# APR_CONTAINS_APRUTIL, set to TRUE if the APR major version is 2 or greater.
 # APR_INCLUDES, where to find apr.h, etc.
 # APR_LIBRARIES, linker switches to use with ld to link against APR
-# APR_EXTRALIBS, additional libraries to link against
-# APR_CFLAGS, the flags to use to compile
-# APR_FOUND, set to TRUE if found, FALSE otherwise
-# APR_VERSION, the version of APR that was found
-# APR_CONTAINS_APRUTIL, set to TRUE if the APR major version is 2 or greater.
+# APR_EXTRALIBS, additional libraries to link against.
+# APR_CFLAGS, the flags to use to compile.
+# APR_DLLS, on Windows: list of DLLs that will be loaded at runtime.
+# APR_STATICLIBS, on Windows: list of static libraries.
+
 
 set(APR_FOUND FALSE)
-
-if(DEFINED APR_ROOT)
-  find_program(APR_CONFIG_EXECUTABLE NAMES apr-2-config apr-1-config
-               PATHS "${APR_ROOT}/bin" NO_DEFAULT_PATH)
-else()
-  find_program(APR_CONFIG_EXECUTABLE NAMES apr-2-config apr-1-config)
-endif()
-mark_as_advanced(APR_CONFIG_EXECUTABLE)
-
 include(APRCommon)
-macro(_apr_invoke _varname _separate _regexp)
-  _apru_config("${APR_CONFIG_EXECUTABLE}" "${_varname}" "${_separate}" "${_regexp}" ${ARGN})
-endmacro(_apr_invoke)
 
-_apr_invoke(APR_CFLAGS    FALSE "(^| )-(g|O)[^ ]*" --cppflags --cflags)
-_apr_invoke(APR_INCLUDES  TRUE  "(^| )-I"          --includes)
-_apr_invoke(APR_LIBRARIES TRUE  ""                 --link-ld)
-_apr_invoke(APR_EXTRALIBS TRUE  ""                 --libs)
-_apr_invoke(APR_VERSION   TRUE  ""                 --version)
+if(${CMAKE_SYSTEM_NAME} MATCHES "Windows")
 
-string(REGEX REPLACE "^([0-9]+)\\..*$" "\\1" _apr_major "${APR_VERSION}")
+  if(NOT DEFINED APR_ROOT)
+    message(FATAL_ERROR "APR_ROOT must be defined on Windows")
+  endif()
+
+  include(CheckIncludeFile)
+
+  set(APR_INCLUDES "${APR_ROOT}/include")
+  if(NOT EXISTS "${APR_INCLUDES}/apr.h")
+    message(FATAL_ERROR "apr.h was not found in ${APR_INCLUDES}")
+  endif()
+  if(NOT EXISTS "${APR_INCLUDES}/apr_version.h")
+    message(FATAL_ERROR "apr_version.h was not found in ${APR_INCLUDES}")
+  endif()
+
+  _apru_version(APR_VERSION _apr_major "${APR_INCLUDES}/apr_version.h" "APR")
+
+  find_library(APR_LIBRARIES NAMES "libapr-${_apr_major}.lib"
+               PATHS ${APR_ROOT} NO_DEFAULT_PATH PATH_SUFFIXES "lib")
+  find_library(APR_STATICLIBS NAMES "apr-${_apr_major}.lib"
+               PATHS ${APR_ROOT} NO_DEFAULT_PATH PATH_SUFFIXES "lib")
+  find_library(APR_DLLS NAMES "libapr-${_apr_major}.dll"
+               PATHS ${APR_ROOT} NO_DEFAULT_PATH PATH_SUFFIXES "bin")
+
+else()    #NOT Windows
+
+  if(DEFINED APR_ROOT)
+    find_program(APR_CONFIG_EXECUTABLE NAMES apr-2-config apr-1-config
+                 PATHS "${APR_ROOT}/bin" NO_DEFAULT_PATH)
+  else()
+    find_program(APR_CONFIG_EXECUTABLE NAMES apr-2-config apr-1-config)
+  endif()
+  mark_as_advanced(APR_CONFIG_EXECUTABLE)
+
+  macro(_apr_invoke _varname _separate _regexp)
+    _apru_config("${APR_CONFIG_EXECUTABLE}" "${_varname}" "${_separate}" "${_regexp}" ${ARGN})
+  endmacro(_apr_invoke)
+
+  _apr_invoke(APR_CFLAGS    FALSE "(^| )-(g|O)[^ ]*" --cppflags --cflags)
+  _apr_invoke(APR_INCLUDES  TRUE  "(^| )-I"          --includes)
+  _apr_invoke(APR_LIBRARIES TRUE  ""                 --link-ld)
+  _apr_invoke(APR_EXTRALIBS TRUE  ""                 --libs)
+  _apr_invoke(APR_VERSION   TRUE  ""                 --version)
+  string(REGEX REPLACE "^([0-9]+)\\..*$" "\\1" _apr_major "${APR_VERSION}")
+
+endif()   # NOT Windows
+
 if(_apr_major GREATER 2)
   set(APR_CONTAINS_APRUTIL TRUE)
 else()
   set(APR_CONTAINS_APRUTIL FALSE)
 endif()
-unset(_apr_major)
 
-INCLUDE(FindPackageHandleStandardArgs)
-FIND_PACKAGE_HANDLE_STANDARD_ARGS(APR
+include(FindPackageHandleStandardArgs)
+find_package_handle_standard_args(APR
                                   REQUIRED_VARS APR_LIBRARIES APR_INCLUDES
                                   VERSION_VAR APR_VERSION)
