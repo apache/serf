@@ -55,7 +55,7 @@ else(APR_CONTAINS_APRUTIL)
   endmacro(_apu_invoke)
 
   _apu_invoke(APRUTIL_INCLUDES  TRUE  "(^| )-I" --includes)
-  _apu_invoke(APRUTIL_EXTRALIBS TRUE  "(^| )-l" --libs)
+  _apu_invoke(APRUTIL_EXTRALIBS TRUE  ""        --libs)
   _apu_invoke(APRUTIL_LIBRARIES TRUE  ""        --link-ld)
   _apu_invoke(APRUTIL_LDFLAGS   FALSE ""        --ldflags)
   _apu_invoke(APRUTIL_VERSION   TRUE  ""        --version)
