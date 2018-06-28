@@ -246,7 +246,7 @@ else()
     "/D_CRT_NONSTDC_NO_WARNINGS"
   )
   if(SERF_WIN64)
-    add_definitions("WIN64")
+    add_definitions("/DWIN64")
   endif()
 
   set(CMAKE_IMPORT_LIBRARY_PREFIX "lib")
