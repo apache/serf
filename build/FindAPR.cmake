@@ -25,8 +25,8 @@
 # APR_LIBRARIES, linker switches to use with ld to link against APR
 # APR_EXTRALIBS, additional libraries to link against.
 # APR_CFLAGS, the flags to use to compile.
-# APR_DLLS, on Windows: list of DLLs that will be loaded at runtime.
-# APR_STATICLIBS, on Windows: list of static libraries.
+# APR_STATIC_LIBS, on Windows: list of static libraries.
+# APR_RUNTIME_LIBS, on Windows: list of DLLs that will be loaded at runtime.
 
 
 set(APR_FOUND FALSE)
@@ -49,13 +49,13 @@ if(${CMAKE_SYSTEM_NAME} MATCHES "Windows")
   endif()
 
   _apru_version(APR_VERSION _apr_major "${APR_INCLUDES}/apr_version.h" "APR")
+  set(_apr_name "apr-${_apr_major}")
 
-  find_library(APR_LIBRARIES NAMES "libapr-${_apr_major}.lib"
+  find_library(APR_LIBRARIES NAMES "lib${_apr_name}.lib"
                PATHS ${APR_ROOT} NO_DEFAULT_PATH PATH_SUFFIXES "lib")
-  find_library(APR_STATICLIBS NAMES "apr-${_apr_major}.lib"
+  find_library(APR_STATIC_LIBS NAMES "${_apr_name}.lib"
                PATHS ${APR_ROOT} NO_DEFAULT_PATH PATH_SUFFIXES "lib")
-  find_library(APR_DLLS NAMES "libapr-${_apr_major}.dll"
-               PATHS ${APR_ROOT} NO_DEFAULT_PATH PATH_SUFFIXES "bin")
+  _apru_find_dll(APR_RUNTIME_LIBS "lib${_apr_name}.dll" ${APR_ROOT})
 
 else()    #NOT Windows
 

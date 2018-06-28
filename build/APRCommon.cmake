@@ -59,4 +59,10 @@ function(_apru_version _version_varname _major_varname _header _prefix)
   string(REGEX REPLACE "^[^0-9]+([0-9]+).*$" "\\1" _apru_patch ${_apru_patch})
   set(${_version_varname} "${_apru_major}.${_apru_minor}.${_apru_patch}" PARENT_SCOPE)
   set(${_major_varname} ${_apru_major} PARENT_SCOPE)
-endfunction()
+endfunction(_apru_version)
+
+function(_apru_find_dll _varname _dllname)
+  set(CMAKE_FIND_LIBRARY_SUFFIXES ".dll")
+  find_library(${_varname} NAMES ${_dllname}
+               PATHS ${ARGN} NO_DEFAULT_PATH PATH_SUFFIXES "bin" "lib")
+endfunction(_apru_find_dll)

@@ -26,8 +26,10 @@ message(WARNING
         "Serf's CMake build is considered EXPERIMENTAL. "
         "Some features are not supported and the build "
         "has not been tested on many supported platforms.")
-include(SerfPlatform)
 enable_testing()
+
+include(SerfPlatform)
+include(SerfWindowsToolkit)
 
 
 # Build options
@@ -147,6 +149,13 @@ find_package(OpenSSL)
 find_package(ZLIB)
 find_package(APR)
 find_package(APRUtil)
+
+if(SERF_WINDOWS)
+  # Find ZLIB and OpenSSL runtime libraries etc.
+  SerfWindowsProcessOpenSSL()
+  SerfWindowsProcessZLIB()
+endif()
+
 
 set(DEPENDENCY_INCLUDES
     ${OPENSSL_INCLUDE_DIR}

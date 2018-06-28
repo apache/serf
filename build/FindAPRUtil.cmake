@@ -23,8 +23,8 @@
 # APRUTIL_INCLUDES, where to find apr.h, etc.
 # APRUTIL_LIBRARIES, linker switches to use with ld to link against APR
 # APRUTIL_EXTRALIBS, additional libraries to link against.
-# APRUTIL_DLLS, on Windows: list of DLLs that will be loaded at runtime.
-# APRUTIL_STATICLIBS, on Windows: list of static libraries.
+# APRUTIL_STATIC_LIBS, on Windows: list of static libraries.
+# APRUTIL_RUNTIME_LIBS, on Windows: list of DLLs that will be loaded at runtime.
 
 
 if(NOT APR_FOUND)
@@ -35,6 +35,11 @@ if(APR_CONTAINS_APRUTIL)
 
   set(APRUTIL_FOUND TRUE)
   set(APRUTIL_VERSION ${APR_VERSION})
+
+  include(FindPackageHandleStandardArgs)
+  find_package_handle_standard_args(APRUTIL
+                                    REQUIRED_VARS APRUTIL_VERSION
+                                    VERSION_VAR APRUTIL_VERSION)
 
 else(APR_CONTAINS_APRUTIL)
 
@@ -58,13 +63,13 @@ else(APR_CONTAINS_APRUTIL)
     endif()
 
     _apru_version(APRUTIL_VERSION _apu_major "${APRUTIL_INCLUDES}/apu_version.h" "APU")
+    set(_apu_name "aprutil-${_apu_major}")
 
-    find_library(APRUTIL_LIBRARIES NAMES "libaprutil-${_apu_major}.lib"
+    find_library(APRUTIL_LIBRARIES NAMES "lib${_apu_name}.lib"
                  PATHS ${APRUTIL_ROOT} NO_DEFAULT_PATH PATH_SUFFIXES "lib")
-    find_library(APRUTIL_STATICLIBS NAMES "aprutil-${_apu_major}.lib"
+    find_library(APRUTIL_STATIC_LIBS NAMES "${_apu_name}.lib"
                  PATHS ${APRUTIL_ROOT} NO_DEFAULT_PATH PATH_SUFFIXES "lib")
-    find_library(APRUTIL_DLLS NAMES "libaprutil-${_apu_major}.dll"
-                 PATHS ${APRUTIL_ROOT} NO_DEFAULT_PATH PATH_SUFFIXES "bin")
+    _apru_find_dll(APRUTIL_RUNTIME_LIBS "lib${_apu_name}.dll" ${APRUTIL_ROOT})
 
   else()    # NOT Windows
 
