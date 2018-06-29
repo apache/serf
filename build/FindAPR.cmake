@@ -48,7 +48,7 @@ if(${CMAKE_SYSTEM_NAME} MATCHES "Windows")
     message(FATAL_ERROR "apr_version.h was not found in ${APR_INCLUDES}")
   endif()
 
-  _apru_version(APR_VERSION _apr_major "${APR_INCLUDES}/apr_version.h" "APR")
+  _apru_version(APR_VERSION _apr_major _apr_minor "${APR_INCLUDES}/apr_version.h" "APR")
   set(_apr_name "apr-${_apr_major}")
 
   find_library(APR_LIBRARIES NAMES "lib${_apr_name}.lib"

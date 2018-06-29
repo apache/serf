@@ -47,7 +47,7 @@ function(_apru_config _program _varname _separate _regexp)
   endif()
 endfunction(_apru_config)
 
-function(_apru_version _version_varname _major_varname _header _prefix)
+function(_apru_version _version_varname _major_varname _minor_varname _header _prefix)
   file(STRINGS ${_header} _apru_major
        REGEX "^ *# *define +${_prefix}_MAJOR_VERSION +[0-9]+.*$")
   file(STRINGS ${_header} _apru_minor
@@ -59,6 +59,7 @@ function(_apru_version _version_varname _major_varname _header _prefix)
   string(REGEX REPLACE "^[^0-9]+([0-9]+).*$" "\\1" _apru_patch ${_apru_patch})
   set(${_version_varname} "${_apru_major}.${_apru_minor}.${_apru_patch}" PARENT_SCOPE)
   set(${_major_varname} ${_apru_major} PARENT_SCOPE)
+  set(${_minor_varname} ${_apru_minor} PARENT_SCOPE)
 endfunction(_apru_version)
 
 function(_apru_find_dll _varname _dllname)

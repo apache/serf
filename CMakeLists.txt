@@ -43,6 +43,7 @@ option(BROTLI "Path to Brotli's install area" OFF)
 option(DEBUG "Enable debugging info and strict compile warnings" OFF)
 option(DISABLE_LOGGING "Disable the logging framework at compile time" OFF)
 option(ENABLE_SLOW_TESTS "Enable long-running unit tests" OFF)
+option(EXPAT "Windows: optional path to Expat's install area for APR_STATIC" OFF)
 option(APR_STATIC "Windows: Link with static APR/-Util libraries" OFF)
 option(OPENSSL_STATIC "Windows: Link with static OpenSSL libraries" OFF)
 
@@ -143,6 +144,10 @@ if(BROTLI)
   message(WARNING "option BROTLI is not implemented yet")
 endif()
 
+if(EXPAT)
+  set(PC_EXPAT_INCLUDE_DIRS "${EXPAT}/include")
+  set(PC_EXPAT_LIBRARY_DIRS "${EXPAT}/lib")
+endif()
 
 # Find dependencies
 find_package(OpenSSL)

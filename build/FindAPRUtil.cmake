@@ -62,14 +62,35 @@ else(APR_CONTAINS_APRUTIL)
       message(FATAL_ERROR "apu_version.h was not found in ${APRUTIL_INCLUDES}")
     endif()
 
-    _apru_version(APRUTIL_VERSION _apu_major "${APRUTIL_INCLUDES}/apu_version.h" "APU")
+    _apru_version(APRUTIL_VERSION _apu_major _apu_minor "${APRUTIL_INCLUDES}/apu_version.h" "APU")
     set(_apu_name "aprutil-${_apu_major}")
+    
+    if(${_apu_major} GREATER 1 OR (${_apu_major} EQUAL 1 AND ${_apu_minor} GREATER 5))
+      set(_apu_expat_name "expat.lib")
+    else()
+      set(_apu_expat_name "xml.lib")
+    endif()
 
     find_library(APRUTIL_LIBRARIES NAMES "lib${_apu_name}.lib"
                  PATHS ${APRUTIL_ROOT} NO_DEFAULT_PATH PATH_SUFFIXES "lib")
-    find_library(APRUTIL_STATIC_LIBS NAMES "${_apu_name}.lib"
+    find_library(_apu_static NAMES "${_apu_name}.lib"
+                 PATHS ${APRUTIL_ROOT} NO_DEFAULT_PATH PATH_SUFFIXES "lib")
+    find_library(_apu_expat NAMES ${_apu_expat_name}
                  PATHS ${APRUTIL_ROOT} NO_DEFAULT_PATH PATH_SUFFIXES "lib")
     _apru_find_dll(APRUTIL_RUNTIME_LIBS "lib${_apu_name}.dll" ${APRUTIL_ROOT})
+
+    if(NOT _apu_expat AND (_apu_expat_name MATCHES "expat"))
+      find_package(EXPAT QUIET)
+      if(EXPAT_FOUND)
+        set(_apu_expat ${EXPAT_LIBRARIES})
+      endif()
+    endif()
+    if(NOT _apu_expat)
+      message(WARNING "Could not find ${_apu_expat_name}"
+                      " for APR-Util static linking.")
+    endif()
+    set(APRUTIL_STATIC_LIBS ${_apu_static} ${_apu_expat}
+        CACHE STRING "APR-Util static libraies.")
 
   else()    # NOT Windows
 
