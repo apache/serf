@@ -28,6 +28,15 @@ message(WARNING
         "has not been tested on many supported platforms.")
 enable_testing()
 
+# Initialize the build type if it was not set on the command line.
+if(NOT CMAKE_BUILD_TYPE)
+  if(DEBUG)
+    set(CMAKE_BUILD_TYPE DEBUG CACHE STRING "Default to debug build.")
+  else()
+    set(CMAKE_BUILD_TYPE RELEASE CACHE STRING "Default to release build.")
+  endif()
+endif()
+
 include(SerfPlatform)
 include(SerfWindowsToolkit)
 
@@ -257,16 +266,6 @@ else()
   set(CMAKE_IMPORT_LIBRARY_PREFIX "lib")
   set(CMAKE_SHARED_LIBRARY_PREFIX "lib")
 endif(NOT MSVC)
-
-
-# This must come *AFTER* all the compiler flags and definitioins are set.
-if(NOT CMAKE_BUILD_TYPE)
-  if(DEBUG)
-    set(CMAKE_BUILD_TYPE DEBUG)
-  else()
-    set(CMAKE_BUILD_TYPE RELEASE)
-  endif()
-endif()
 
 
 # Define all targets
