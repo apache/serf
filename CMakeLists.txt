@@ -26,7 +26,6 @@ message(WARNING
         "Serf's CMake build is considered EXPERIMENTAL. "
         "Some features are not supported and the build "
         "has not been tested on many supported platforms.")
-enable_testing()
 
 # Initialize the build type if it was not set on the command line.
 if(NOT CMAKE_BUILD_TYPE)
@@ -50,10 +49,11 @@ option(OPENSSL "Path to OpenSSL's install area" OFF)
 option(ZLIB "Path to zlib's install area" OFF)
 option(GSSAPI "Path to GSSAPI's install area" OFF)
 option(BROTLI "Path to Brotli's install area" OFF)
-option(DISABLE_LOGGING "Disable the logging framework at compile time" OFF)
-option(ENABLE_SLOW_TESTS "Enable long-running unit tests" OFF)
 option(APR_STATIC "Windows: Link with static APR/-Util libraries" OFF)
 option(EXPAT "Windows: optional path to Expat's install area for APR_STATIC" OFF)
+option(DISABLE_LOGGING "Disable the logging framework at compile time" OFF)
+option(SKIP_TESTS "Disable building the unit tests and utilities" OFF)
+option(ENABLE_SLOW_TESTS "Enable long-running unit tests" OFF)
 
 
 # Public headers
@@ -323,5 +323,7 @@ if(NOT SERF_WINDOWS)
   install(FILES "${CMAKE_BINARY_DIR}/serf.pc" DESTINATION "share/pkgconfig")
 endif()
 
-
-add_subdirectory(test)
+if(NOT SKIP_TESTS)
+  enable_testing()
+  add_subdirectory(test)
+endif()
