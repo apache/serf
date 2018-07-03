@@ -42,6 +42,7 @@ include(SerfWindowsToolkit)
 
 
 # Build options
+option(DEBUG "Enable debugging info and strict compile warnings" OFF)
 option(LIBDIR "Indstall directory for architecture-dependent libraries" OFF)
 option(APR "Path to APR's install area" OFF)
 option(APU "Path to APR-Util's install area" OFF)
@@ -49,12 +50,10 @@ option(OPENSSL "Path to OpenSSL's install area" OFF)
 option(ZLIB "Path to zlib's install area" OFF)
 option(GSSAPI "Path to GSSAPI's install area" OFF)
 option(BROTLI "Path to Brotli's install area" OFF)
-option(DEBUG "Enable debugging info and strict compile warnings" OFF)
 option(DISABLE_LOGGING "Disable the logging framework at compile time" OFF)
 option(ENABLE_SLOW_TESTS "Enable long-running unit tests" OFF)
-option(EXPAT "Windows: optional path to Expat's install area for APR_STATIC" OFF)
 option(APR_STATIC "Windows: Link with static APR/-Util libraries" OFF)
-option(OPENSSL_STATIC "Windows: Link with static OpenSSL libraries" OFF)
+option(EXPAT "Windows: optional path to Expat's install area for APR_STATIC" OFF)
 
 
 # Public headers
@@ -118,13 +117,15 @@ set(SOURCES
 if(SERF_WINDOWS)
   set(SHARED_SOURCES "serf.rc")
 
-  if(OPENSSL_STATIC)
-    set(SERF_OPENSSL_EXTRALIBS
-        "ws2_32.lib"
-        "crypt32.lib"
-#        "secur32.lib"
-    )
-  endif()
+  # Static OpenSSL, APR and APR-Util need additional libraries that are not
+  # linked by default by CMake. These will be ignored by the linker if they're
+  # not actually used.
+  set(SERF_STANDARD_LIBRARIES
+      "crypt32.lib"
+      "mswsock.lib"
+      "secur32.lib"
+      "ws2_32.lib"
+  )
 endif(SERF_WINDOWS)
 
 
@@ -146,11 +147,15 @@ if(ZLIB)
 endif()
 
 if(GSSAPI)
-  message(WARNING "option GSSAPI is not implemented yet")
+  message(WARNING "option GSSAPI is not implemented")
 endif()
 
 if(BROTLI)
-  message(WARNING "option BROTLI is not implemented yet")
+  message(WARNING "option BROTLI is not implemented")
+endif()
+
+if(APR_STATIC)
+  message(WARNING "option APR_STATIC is not implemented")
 endif()
 
 if(EXPAT)
@@ -181,12 +186,12 @@ list(REMOVE_DUPLICATES DEPENDENCY_INCLUDES)
 
 set(DEPENDENCY_LIBRARIES
     ${OPENSSL_LIBRARIES}
-    ${SERF_OPENSSL_EXTRALIBS}
     ${ZLIB_LIBRARIES}
     ${APR_LIBRARIES}
     ${APR_EXTRALIBS}
     ${APRUTIL_LIBRARIES}
     ${APRUTIL_EXTRALIBS}
+    ${SERF_STANDARD_LIBRARIES}
 )
 list(REMOVE_DUPLICATES DEPENDENCY_LIBRARIES)
 
@@ -198,17 +203,17 @@ include_directories(${CMAKE_SOURCE_DIR})
 
 # Feature tests
 include(SerfChecks)
-CheckNotFunction("BIO_set_init" "SERF_NO_SSL_BIO_WRAPPERS" ${OPENSSL_LIBRARIES} ${SERF_OPENSSL_EXTRALIBS})
-CheckNotFunction("X509_STORE_get0_param" "SERF_NO_SSL_X509_STORE_WRAPPERS" ${OPENSSL_LIBRARIES} ${SERF_OPENSSL_EXTRALIBS})
-CheckNotFunction("X509_get0_notBefore" "SERF_NO_SSL_X509_GET0_NOTBEFORE" ${OPENSSL_LIBRARIES} ${SERF_OPENSSL_EXTRALIBS})
-CheckNotFunction("X509_get0_notAfter" "SERF_NO_SSL_X509_GET0_NOTAFTER" ${OPENSSL_LIBRARIES} ${SERF_OPENSSL_EXTRALIBS})
-CheckNotFunction("X509_STORE_CTX_get0_chain" "SERF_NO_SSL_X509_GET0_CHAIN" ${OPENSSL_LIBRARIES} ${SERF_OPENSSL_EXTRALIBS})
-CheckNotFunction("ASN1_STRING_get0_data" "SERF_NO_SSL_ASN1_STRING_GET0_DATA" ${OPENSSL_LIBRARIES} ${SERF_OPENSSL_EXTRALIBS})
-CheckFunction("CRYPTO_set_locking_callback" "SERF_HAVE_SSL_LOCKING_CALLBACKS" ${OPENSSL_LIBRARIES} ${SERF_OPENSSL_EXTRALIBS})
-CheckFunction("OPENSSL_malloc_init" "SERF_HAVE_OPENSSL_MALLOC_INIT" ${OPENSSL_LIBRARIES} ${SERF_OPENSSL_EXTRALIBS})
-CheckFunction("SSL_library_init" "SERF_HAVE_OPENSSL_SSL_LIBRARY_INIT" ${OPENSSL_LIBRARIES} ${SERF_OPENSSL_EXTRALIBS})
-CheckFunction("OpenSSL_version_num" "SERF_HAVE_OPENSSL_VERSION_NUM" ${OPENSSL_LIBRARIES} ${SERF_OPENSSL_EXTRALIBS})
-CheckFunction("SSL_set_alpn_protos" "SERF_HAVE_OPENSSL_ALPN" ${OPENSSL_LIBRARIES} ${SERF_OPENSSL_EXTRALIBS})
+CheckNotFunction("BIO_set_init" "SERF_NO_SSL_BIO_WRAPPERS" ${OPENSSL_LIBRARIES} ${SERF_STANDARD_LIBRARIES})
+CheckNotFunction("X509_STORE_get0_param" "SERF_NO_SSL_X509_STORE_WRAPPERS" ${OPENSSL_LIBRARIES} ${SERF_STANDARD_LIBRARIES})
+CheckNotFunction("X509_get0_notBefore" "SERF_NO_SSL_X509_GET0_NOTBEFORE" ${OPENSSL_LIBRARIES} ${SERF_STANDARD_LIBRARIES})
+CheckNotFunction("X509_get0_notAfter" "SERF_NO_SSL_X509_GET0_NOTAFTER" ${OPENSSL_LIBRARIES} ${SERF_STANDARD_LIBRARIES})
+CheckNotFunction("X509_STORE_CTX_get0_chain" "SERF_NO_SSL_X509_GET0_CHAIN" ${OPENSSL_LIBRARIES} ${SERF_STANDARD_LIBRARIES})
+CheckNotFunction("ASN1_STRING_get0_data" "SERF_NO_SSL_ASN1_STRING_GET0_DATA" ${OPENSSL_LIBRARIES} ${SERF_STANDARD_LIBRARIES})
+CheckFunction("CRYPTO_set_locking_callback" "SERF_HAVE_SSL_LOCKING_CALLBACKS" ${OPENSSL_LIBRARIES} ${SERF_STANDARD_LIBRARIES})
+CheckFunction("OPENSSL_malloc_init" "SERF_HAVE_OPENSSL_MALLOC_INIT" ${OPENSSL_LIBRARIES} ${SERF_STANDARD_LIBRARIES})
+CheckFunction("SSL_library_init" "SERF_HAVE_OPENSSL_SSL_LIBRARY_INIT" ${OPENSSL_LIBRARIES} ${SERF_STANDARD_LIBRARIES})
+CheckFunction("OpenSSL_version_num" "SERF_HAVE_OPENSSL_VERSION_NUM" ${OPENSSL_LIBRARIES} ${SERF_STANDARD_LIBRARIES})
+CheckFunction("SSL_set_alpn_protos" "SERF_HAVE_OPENSSL_ALPN" ${OPENSSL_LIBRARIES} ${SERF_STANDARD_LIBRARIES})
 CheckHeader("openssl/applink.c" "SERF_HAVE_OPENSSL_APPLINK_C" ${OPENSSL_INCLUDE_DIR})
 CheckHeader("stdbool.h" "HAVE_STDBOOL_H=1")
 CheckType("OSSL_HANDSHAKE_STATE" "openssl/ssl.h" "SERF_HAVE_OSSL_HANDSHAKE_STATE" ${OPENSSL_INCLUDE_DIR})
@@ -290,9 +295,9 @@ if(SERF_WINDOWS)
 endif()
 
 if(NOT SERF_WINDOWS)
-  set(INCLUDE_SUBDIR "serf-${SERF_MAJOR_VERSION}")
+  set(SERF_INCLUDE_SUBDIR "serf-${SERF_MAJOR_VERSION}")
 endif()
-install(FILES ${HEADERS} DESTINATION "include/${INCLUDE_SUBDIR}")
+install(FILES ${HEADERS} DESTINATION "include/${SERF_INCLUDE_SUBDIR}")
 
 
 # Generate the pkg-config module file.
