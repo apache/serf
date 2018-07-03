@@ -115,7 +115,14 @@ set(SOURCES
 )
 
 if(SERF_WINDOWS)
-  set(SHARED_SOURCES "serf.rc")
+  list(APPEND EXPORTS_BLACKLIST
+       "serf_connection_switch_protocol"
+       "serf_http_protocol_create"
+       "serf_https_protocol_create"
+       "serf_http_request_queue"
+  )
+  SerfWindowsGenDef("${EXPORTS_BLACKLIST}" "${CMAKE_BINARY_DIR}/serf.def" ${HEADERS})
+  set(SHARED_SOURCES "serf.rc" "${CMAKE_BINARY_DIR}/serf.def")
 
   # Static OpenSSL, APR and APR-Util need additional libraries that are not
   # linked by default by CMake. These will be ignored by the linker if they're
