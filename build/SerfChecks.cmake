@@ -19,6 +19,7 @@
 
 include(CheckFunctionExists)
 include(CheckIncludeFile)
+include(CheckSymbolExists)
 include(CheckTypeSize)
 
 function(_CheckFunction var_ name_ libraries_)
@@ -29,7 +30,7 @@ function(_CheckFunction var_ name_ libraries_)
   endif()
 
   check_function_exists("${name_}" "serf_foundit_${name_}_")
-  if(${serf_foundit_${name_}_})
+  if(serf_foundit_${name_}_)
     set("${var_}" TRUE PARENT_SCOPE)
   else()
     set("${var_}" FALSE PARENT_SCOPE)
@@ -50,6 +51,35 @@ macro(CheckNotFunction name_ symbol_)
     add_definitions("-D${symbol_}")
   endif()
 endmacro(CheckNotFunction)
+
+
+function(_CheckSymbol var_ name_ header_ includes_)
+  if(includes_)
+    set(CMAKE_REQUIRED_INCLUDES "${includes_}")
+  else()
+    unset(CMAKE_REQUIRED_INCLUDES)
+  endif()
+
+  check_symbol_exists("${name_}" "${header_}" "serf_foundit_symbol_${name_}_")
+  if(serf_foundit_symbol_${name_}_)
+    set("${var_}" TRUE PARENT_SCOPE)
+  else()
+    set("${var_}" FALSE PARENT_SCOPE)
+  endif()
+  unset(CMAKE_REQUIRED_INCLUDES)
+endfunction(_CheckSymbol)
+
+macro(CheckFunctionMacro name_ symbol_ header_ includes_)
+  _CheckFunction("serf_feature_CheckFunctionMacro_${name}_" "${name_}" "${ARGN}")
+  if("${serf_feature_CheckFunctionMacro_${name}_}")
+    add_definitions("-D${symbol_}")
+  else()
+    _CheckSymbol("serf_feature_CheckFunctionMacro_${name}_" "${name_}" "${header_}" "${includes_}")
+    if("${serf_feature_CheckFunctionMacro_${name}_}")
+      add_definitions("-D${symbol_}")
+    endif()
+  endif()
+endmacro(CheckFunctionMacro)
 
 
 function(_CheckHeader var_ name_ includes_)
