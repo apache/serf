@@ -18,7 +18,7 @@
 
 cmake_minimum_required(VERSION 3.0.2)
 
-list(INSERT CMAKE_MODULE_PATH 0 "${CMAKE_SOURCE_DIR}/build")
+list(INSERT CMAKE_MODULE_PATH 0 "${CMAKE_CURRENT_SOURCE_DIR}/build")
 include(SerfVersion)
 
 project("Serf" VERSION ${SERF_VERSION} LANGUAGES C)
@@ -57,14 +57,22 @@ option(ENABLE_SLOW_TESTS "Enable long-running unit tests" OFF)
 
 
 # Public headers
-set(HEADERS
+list(APPEND HEADERS
     "serf.h"
     "serf_bucket_types.h"
     "serf_bucket_util.h"
 )
 
+# List of symbols that should not be exported from the shared library.
+list(APPEND EXPORTS_BLACKLIST
+     "serf_connection_switch_protocol"
+     "serf_http_protocol_create"
+     "serf_https_protocol_create"
+     "serf_http_request_queue"
+)
+
 # Serf library source files
-set(SOURCES
+list(APPEND SOURCES
     "src/config_store.c"
     "src/context.c"
     "src/deprecated.c"
@@ -115,14 +123,21 @@ set(SOURCES
 )
 
 if(SERF_WINDOWS)
-  list(APPEND EXPORTS_BLACKLIST
-       "serf_connection_switch_protocol"
-       "serf_http_protocol_create"
-       "serf_https_protocol_create"
-       "serf_http_request_queue"
+  # Generate the .def file for the Windows DLL import library.
+  set(SERF_DEF_FILE "${CMAKE_CURRENT_BINARY_DIR}/serf.def")
+  add_custom_command(
+    OUTPUT "${SERF_DEF_FILE}"
+    DEPENDS ${HEADERS}
+    COMMAND ${CMAKE_COMMAND}
+            -DCMAKE_SYSTEM_NAME="${CMAKE_SYSTEM_NAME}"
+            -DCMAKE_MODULE_PATH="${CMAKE_MODULE_PATH}"
+            -DSERF_DEF_BLACKLIST="${EXPORTS_BLACKLIST}"
+            -DSERF_DEF_HEADERS="${HEADERS}"
+            -DSERF_DEF_FILE="${SERF_DEF_FILE}"
+            -P "build/SerfWindowsGenDef.cmake"
+    WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
   )
-  SerfWindowsGenDef("${EXPORTS_BLACKLIST}" "${CMAKE_BINARY_DIR}/serf.def" ${HEADERS})
-  set(SHARED_SOURCES "serf.rc" "${CMAKE_BINARY_DIR}/serf.def")
+  set(SHARED_SOURCES "serf.rc" "${SERF_DEF_FILE}")
 
   # Static OpenSSL, APR and APR-Util need additional libraries that are not
   # linked by default by CMake. These will be ignored by the linker if they're
@@ -205,7 +220,7 @@ list(REMOVE_DUPLICATES DEPENDENCY_LIBRARIES)
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${APR_CFLAGS}")
 
 include_directories(BEFORE SYSTEM ${DEPENDENCY_INCLUDES})
-include_directories(${CMAKE_SOURCE_DIR})
+include_directories(${CMAKE_CURRENT_SOURCE_DIR})
 
 
 # Feature tests
