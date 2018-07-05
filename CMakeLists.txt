@@ -199,15 +199,19 @@ if(SERF_WINDOWS)
 endif()
 
 
-set(DEPENDENCY_INCLUDES
+set(SERF_DEPENDENCY_INCLUDES
     ${OPENSSL_INCLUDE_DIR}
     ${ZLIB_INCLUDE_DIRS}
+)
+list(REMOVE_DUPLICATES SERF_DEPENDENCY_INCLUDES)
+
+set(SERF_INTERFACE_INCLUDES
     ${APR_INCLUDES}
     ${APRUTIL_INCLUDES}
 )
-list(REMOVE_DUPLICATES DEPENDENCY_INCLUDES)
+list(REMOVE_DUPLICATES SERF_INTERFACE_INCLUDES)
 
-set(DEPENDENCY_LIBRARIES
+set(SERF_DEPENDENCY_LIBRARIES
     ${OPENSSL_LIBRARIES}
     ${ZLIB_LIBRARIES}
     ${APR_LIBRARIES}
@@ -216,12 +220,7 @@ set(DEPENDENCY_LIBRARIES
     ${APRUTIL_EXTRALIBS}
     ${SERF_STANDARD_LIBRARIES}
 )
-list(REMOVE_DUPLICATES DEPENDENCY_LIBRARIES)
-
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${APR_CFLAGS}")
-
-include_directories(BEFORE SYSTEM ${DEPENDENCY_INCLUDES})
-include_directories(${SERF_SOURCE_DIR})
+list(REMOVE_DUPLICATES SERF_DEPENDENCY_LIBRARIES)
 
 
 # Feature tests
@@ -299,30 +298,43 @@ endif(NOT MSVC)
 
 
 # Define all targets
-add_library(serf SHARED ${SOURCES} ${SHARED_SOURCES})
-target_link_libraries(serf ${DEPENDENCY_LIBRARIES})
-
-add_library(serf_static STATIC ${SOURCES})
-
-set_target_properties(serf serf_static
+add_library(serf_shared SHARED ${SOURCES} ${SHARED_SOURCES})
+target_compile_options(serf_shared PUBLIC ${APR_CFLAGS})
+target_include_directories(serf_shared SYSTEM BEFORE
+                           PRIVATE ${SERF_DEPENDENCY_INCLUDES}
+                           PUBLIC ${SERF_INTERFACE_INCLUDES})
+target_include_directories(serf_shared PUBLIC ${SERF_SOURCE_DIR})
+target_link_libraries(serf_shared PRIVATE ${SERF_DEPENDENCY_LIBRARIES})
+set_target_properties(serf_shared
                       PROPERTIES
-                      OUTPUT_NAME "serf-${SERF_MAJOR_VERSION}"
                       VERSION ${SERF_VERSION}
                       SOVERSION ${SERF_SOVERSION})
 
-install(TARGETS serf serf_static
+add_library(serf_static STATIC ${SOURCES})
+target_compile_options(serf_static PUBLIC ${APR_CFLAGS})
+target_include_directories(serf_static SYSTEM BEFORE
+                           PRIVATE ${SERF_DEPENDENCY_INCLUDES}
+                           PUBLIC ${SERF_INTERFACE_INCLUDES})
+target_include_directories(serf_static PUBLIC ${SERF_SOURCE_DIR})
+target_link_libraries(serf_static INTERFACE ${SERF_DEPENDENCY_LIBRARIES})
+
+set_target_properties(serf_shared serf_static
+                      PROPERTIES
+                      OUTPUT_NAME "serf-${SERF_MAJOR_VERSION}")
+
+install(TARGETS serf_shared serf_static
         ARCHIVE DESTINATION "lib"
         LIBRARY DESTINATION "lib"
         RUNTIME DESTINATION "bin")
 
 if(SERF_WINDOWS)
-  install(FILES $<TARGET_PDB_FILE:serf> DESTINATION "bin")
+  install(FILES $<TARGET_PDB_FILE:serf_shared> DESTINATION "bin")
 endif()
 
 if(NOT SERF_WINDOWS)
-  set(SERF_INCLUDE_SUBDIR "serf-${SERF_MAJOR_VERSION}")
+  set(SERF_INCLUDE_SUBDIR "/serf-${SERF_MAJOR_VERSION}")
 endif()
-install(FILES ${HEADERS} DESTINATION "include/${SERF_INCLUDE_SUBDIR}")
+install(FILES ${HEADERS} DESTINATION "include${SERF_INCLUDE_SUBDIR}")
 
 
 # Generate the pkg-config module file.
