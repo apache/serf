@@ -70,4 +70,4 @@ endforeach()
 add_test(NAME test_all COMMAND test_all)
 
 set_tests_properties(${RESPONSE_TESTS} test_all PROPERTIES
-                     ENVIRONMENT srcdir=${CMAKE_SOURCE_DIR})
+                     ENVIRONMENT srcdir=${SERF_SOURCE_DIR})

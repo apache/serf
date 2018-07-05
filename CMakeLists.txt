@@ -18,7 +18,8 @@
 
 cmake_minimum_required(VERSION 3.0.2)
 
-list(INSERT CMAKE_MODULE_PATH 0 "${CMAKE_CURRENT_SOURCE_DIR}/build")
+set(SERF_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
+set(CMAKE_MODULE_PATH "${SERF_SOURCE_DIR}/build")
 include(SerfVersion)
 
 project("Serf" VERSION ${SERF_VERSION} LANGUAGES C)
@@ -135,7 +136,7 @@ if(SERF_WINDOWS)
             -DSERF_DEF_HEADERS="${HEADERS}"
             -DSERF_DEF_FILE="${SERF_DEF_FILE}"
             -P "build/SerfWindowsGenDef.cmake"
-    WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+    WORKING_DIRECTORY "${SERF_SOURCE_DIR}"
   )
   set(SHARED_SOURCES "serf.rc" "${SERF_DEF_FILE}")
 
@@ -220,7 +221,7 @@ list(REMOVE_DUPLICATES DEPENDENCY_LIBRARIES)
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${APR_CFLAGS}")
 
 include_directories(BEFORE SYSTEM ${DEPENDENCY_INCLUDES})
-include_directories(${CMAKE_CURRENT_SOURCE_DIR})
+include_directories(${SERF_SOURCE_DIR})
 
 
 # Feature tests
