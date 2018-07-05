@@ -44,6 +44,8 @@ include(SerfWindowsToolkit)
 
 # Build options
 option(DEBUG "Enable debugging info and strict compile warnings" OFF)
+option(SKIP_SHARED "Disable building shared Serf libraries" OFF)
+option(SKIP_STATIC "Disable building static Serf libraries" OFF)
 option(LIBDIR "Indstall directory for architecture-dependent libraries" OFF)
 option(APR "Path to APR's install area" OFF)
 option(APU "Path to APR-Util's install area" OFF)
@@ -57,6 +59,9 @@ option(DISABLE_LOGGING "Disable the logging framework at compile time" OFF)
 option(SKIP_TESTS "Disable building the unit tests and utilities" OFF)
 option(ENABLE_SLOW_TESTS "Enable long-running unit tests" OFF)
 
+if(SKIP_SHARED AND SKIP_STATIC)
+  message(FATAL_ERROR "You have disabled both shared and static library builds.")
+endif()
 
 # Public headers
 list(APPEND HEADERS
@@ -299,38 +304,44 @@ endif(NOT MSVC)
 
 
 # Define all targets
-add_library(serf_shared SHARED ${SOURCES} ${SHARED_SOURCES})
-target_compile_options(serf_shared PUBLIC ${APR_CFLAGS})
-target_include_directories(serf_shared SYSTEM BEFORE
-                           PRIVATE ${SERF_DEPENDENCY_INCLUDES}
-                           PUBLIC ${SERF_INTERFACE_INCLUDES})
-target_include_directories(serf_shared PUBLIC ${SERF_SOURCE_DIR})
-target_link_libraries(serf_shared PRIVATE ${SERF_DEPENDENCY_LIBRARIES})
-set_target_properties(serf_shared
-                      PROPERTIES
-                      VERSION ${SERF_VERSION}
-                      SOVERSION ${SERF_SOVERSION})
+if(NOT SKIP_SHARED)
+  add_library(serf_shared SHARED ${SOURCES} ${SHARED_SOURCES})
+  target_compile_options(serf_shared PUBLIC ${APR_CFLAGS})
+  target_include_directories(serf_shared SYSTEM BEFORE
+                             PRIVATE ${SERF_DEPENDENCY_INCLUDES}
+                             PUBLIC ${SERF_INTERFACE_INCLUDES})
+  target_include_directories(serf_shared PUBLIC ${SERF_SOURCE_DIR})
+  target_link_libraries(serf_shared PRIVATE ${SERF_DEPENDENCY_LIBRARIES})
+  set_target_properties(serf_shared
+                        PROPERTIES
+                        VERSION ${SERF_VERSION}
+                        SOVERSION ${SERF_SOVERSION})
+  set(SERF_TARGETS "serf_shared")
 
-add_library(serf_static STATIC ${SOURCES})
-target_compile_options(serf_static PUBLIC ${APR_CFLAGS})
-target_include_directories(serf_static SYSTEM BEFORE
-                           PRIVATE ${SERF_DEPENDENCY_INCLUDES}
-                           PUBLIC ${SERF_INTERFACE_INCLUDES})
-target_include_directories(serf_static PUBLIC ${SERF_SOURCE_DIR})
-target_link_libraries(serf_static INTERFACE ${SERF_DEPENDENCY_LIBRARIES})
+  if(SERF_WINDOWS)
+    install(FILES $<TARGET_PDB_FILE:serf_shared> DESTINATION "bin")
+  endif()
+endif()
 
-set_target_properties(serf_shared serf_static
+if(NOT SKIP_STATIC)
+  add_library(serf_static STATIC ${SOURCES})
+  target_compile_options(serf_static PUBLIC ${APR_CFLAGS})
+  target_include_directories(serf_static SYSTEM BEFORE
+                             PRIVATE ${SERF_DEPENDENCY_INCLUDES}
+                             PUBLIC ${SERF_INTERFACE_INCLUDES})
+  target_include_directories(serf_static PUBLIC ${SERF_SOURCE_DIR})
+  target_link_libraries(serf_static INTERFACE ${SERF_DEPENDENCY_LIBRARIES})
+  list(APPEND SERF_TARGETS "serf_static")
+endif()
+
+set_target_properties(${SERF_TARGETS}
                       PROPERTIES
                       OUTPUT_NAME "serf-${SERF_MAJOR_VERSION}")
 
-install(TARGETS serf_shared serf_static
+install(TARGETS ${SERF_TARGETS}
         ARCHIVE DESTINATION "lib"
         LIBRARY DESTINATION "lib"
         RUNTIME DESTINATION "bin")
-
-if(SERF_WINDOWS)
-  install(FILES $<TARGET_PDB_FILE:serf_shared> DESTINATION "bin")
-endif()
 
 if(NOT SERF_WINDOWS)
   set(SERF_INCLUDE_SUBDIR "/serf-${SERF_MAJOR_VERSION}")
@@ -360,6 +371,12 @@ if(NOT SERF_WINDOWS)
 endif()
 
 if(NOT SKIP_TESTS)
-  enable_testing()
-  add_subdirectory(test)
+  if(SKIP_STATIC)
+    message(WARNING "The tests depend on the Serf static library")
+    message(STATUS "Skipping tests; to silence this message, either remove")
+    message(STATUS "the SKIP_STATIC option or add the SKIP_TESTS option.")
+  else()
+    enable_testing()
+    add_subdirectory(test)
+  endif()
 endif()
