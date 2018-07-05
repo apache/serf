@@ -48,17 +48,17 @@ if(CC_LIKE_GNUC)
   string(REPLACE "-std=c89" "-std=c99" CMAKE_C_FLAGS ${CMAKE_C_FLAGS})
 endif()
 
-add_definitions("-DMOCKHTTP_OPENSSL")
-
 foreach(TEST_TARGET ${SIMPLE_TEST_TARGETS})
   add_executable(${TEST_TARGET} "${TEST_TARGET}.c")
   add_dependencies(${TEST_TARGET} serf_static)
-  target_link_libraries(${TEST_TARGET} serf_static ${DEPENDENCY_LIBRARIES})
+  target_link_libraries(${TEST_TARGET} serf_static)
 endforeach()
 
 add_executable(test_all ${TEST_ALL_SOURCES})
 add_dependencies(test_all serf_static)
-target_link_libraries(test_all serf_static ${DEPENDENCY_LIBRARIES})
+target_compile_definitions(test_all PRIVATE "-DMOCKHTTP_OPENSSL")
+target_include_directories(test_all SYSTEM BEFORE PRIVATE ${SERF_DEPENDENCY_INCLUDES})
+target_link_libraries(test_all serf_static)
 
 file(GLOB RESPONSE_TEST_CASES "${CMAKE_CURRENT_SOURCE_DIR}/testcases/*.response")
 foreach(TEST_CASE ${RESPONSE_TEST_CASES})
