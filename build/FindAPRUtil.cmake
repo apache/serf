@@ -64,7 +64,7 @@ else(APR_CONTAINS_APRUTIL)
 
     _apru_version(APRUTIL_VERSION _apu_major _apu_minor "${APRUTIL_INCLUDES}/apu_version.h" "APU")
     set(_apu_name "aprutil-${_apu_major}")
-    
+
     if(${_apu_major} GREATER 1 OR (${_apu_major} EQUAL 1 AND ${_apu_minor} GREATER 5))
       set(_apu_expat_name "expat.lib")
     else()
@@ -102,15 +102,15 @@ else(APR_CONTAINS_APRUTIL)
     endif()
     mark_as_advanced(APRUTIL_CONFIG_EXECUTABLE)
 
-    macro(_apu_invoke _varname _separate _regexp)
-      _apru_config("${APRUTIL_CONFIG_EXECUTABLE}" "${_varname}" "${_separate}" "${_regexp}" ${ARGN})
+    macro(_apu_invoke _varname _regexp)
+      _apru_config(${APRUTIL_CONFIG_EXECUTABLE} ${_varname} "${_regexp}" "${ARGN}")
     endmacro(_apu_invoke)
 
-    _apu_invoke(APRUTIL_INCLUDES  TRUE  "(^| )-I" --includes)
-    _apu_invoke(APRUTIL_EXTRALIBS TRUE  ""        --libs)
-    _apu_invoke(APRUTIL_LIBRARIES TRUE  ""        --link-ld)
-    _apu_invoke(APRUTIL_LDFLAGS   FALSE ""        --ldflags)
-    _apu_invoke(APRUTIL_VERSION   TRUE  ""        --version)
+    _apu_invoke(APRUTIL_INCLUDES  "(^| )-I" --includes)
+    _apu_invoke(APRUTIL_EXTRALIBS ""        --libs)
+    _apu_invoke(APRUTIL_LIBRARIES ""        --link-ld)
+    _apu_invoke(APRUTIL_LDFLAGS   ""        --ldflags)
+    _apu_invoke(APRUTIL_VERSION   ""        --version)
 
   endif()   # NOT Windows
 

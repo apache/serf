@@ -17,7 +17,7 @@
 #   under the License.
 # ===================================================================
 
-function(_apru_config _program _varname _separate _regexp)
+function(_apru_config _program _varname _regexp)
   execute_process(COMMAND ${_program} ${ARGN}
                   OUTPUT_VARIABLE _apru_output
                   RESULT_VARIABLE _apru_failed)
@@ -38,12 +38,8 @@ function(_apru_config _program _varname _separate _regexp)
     string(REGEX REPLACE "^ +"          ""  _apru_output "${_apru_output}")
     string(REGEX REPLACE " +$"          ""  _apru_output "${_apru_output}")
 
-    # Optionally split the result into an argument list
-    if(${_separate})
-      separate_arguments(_apru_output)
-    endif()
-
-    set(${_varname} "${_apru_output}" PARENT_SCOPE)
+    separate_arguments(_apru_output)
+    set(${_varname} ${_apru_output} PARENT_SCOPE)
   endif()
 endfunction(_apru_config)
 

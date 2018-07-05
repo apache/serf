@@ -46,15 +46,15 @@ include(SerfWindowsToolkit)
 option(DEBUG "Enable debugging info and strict compile warnings" OFF)
 option(SKIP_SHARED "Disable building shared Serf libraries" OFF)
 option(SKIP_STATIC "Disable building static Serf libraries" OFF)
-option(LIBDIR "Indstall directory for architecture-dependent libraries" OFF)
-option(APR "Path to APR's install area" OFF)
-option(APU "Path to APR-Util's install area" OFF)
-option(OPENSSL "Path to OpenSSL's install area" OFF)
-option(ZLIB "Path to zlib's install area" OFF)
-option(GSSAPI "Path to GSSAPI's install area" OFF)
-option(BROTLI "Path to Brotli's install area" OFF)
+option(LIBDIR "Indstall directory for architecture-dependent libraries" "")
+option(APR "Path to APR's install area" "")
+option(APU "Path to APR-Util's install area" "")
+option(OPENSSL "Path to OpenSSL's install area" "")
+option(ZLIB "Path to zlib's install area" "")
+option(GSSAPI "Path to GSSAPI's install area" "")
+option(BROTLI "Path to Brotli's install area" "")
 option(APR_STATIC "Windows: Link with static APR/-Util libraries" OFF)
-option(EXPAT "Windows: optional path to Expat's install area for APR_STATIC" OFF)
+option(EXPAT "Windows: optional path to Expat's install area for APR_STATIC" "")
 option(DISABLE_LOGGING "Disable the logging framework at compile time" OFF)
 option(SKIP_TESTS "Disable building the unit tests and utilities" OFF)
 option(ENABLE_SLOW_TESTS "Enable long-running unit tests" OFF)
@@ -220,13 +220,17 @@ list(REMOVE_DUPLICATES SERF_INTERFACE_INCLUDES)
 set(SERF_DEPENDENCY_LIBRARIES
     ${OPENSSL_LIBRARIES}
     ${ZLIB_LIBRARIES}
+    ${SERF_STANDARD_LIBRARIES}
+)
+list(REMOVE_DUPLICATES SERF_DEPENDENCY_LIBRARIES)
+
+set(SERF_INTERFACE_LIBRARIES
     ${APR_LIBRARIES}
     ${APR_EXTRALIBS}
     ${APRUTIL_LIBRARIES}
     ${APRUTIL_EXTRALIBS}
-    ${SERF_STANDARD_LIBRARIES}
 )
-list(REMOVE_DUPLICATES SERF_DEPENDENCY_LIBRARIES)
+list(REMOVE_DUPLICATES SERF_INTERFACE_LIBRARIES)
 
 
 # Feature tests
@@ -311,7 +315,9 @@ if(NOT SKIP_SHARED)
                              PRIVATE ${SERF_DEPENDENCY_INCLUDES}
                              PUBLIC ${SERF_INTERFACE_INCLUDES})
   target_include_directories(serf_shared PUBLIC ${SERF_SOURCE_DIR})
-  target_link_libraries(serf_shared PRIVATE ${SERF_DEPENDENCY_LIBRARIES})
+  target_link_libraries(serf_shared
+                        PRIVATE ${SERF_DEPENDENCY_LIBRARIES}
+                        PUBLIC ${SERF_INTERFACE_LIBRARIES})
   set_target_properties(serf_shared
                         PROPERTIES
                         VERSION ${SERF_VERSION}
@@ -330,7 +336,9 @@ if(NOT SKIP_STATIC)
                              PRIVATE ${SERF_DEPENDENCY_INCLUDES}
                              PUBLIC ${SERF_INTERFACE_INCLUDES})
   target_include_directories(serf_static PUBLIC ${SERF_SOURCE_DIR})
-  target_link_libraries(serf_static INTERFACE ${SERF_DEPENDENCY_LIBRARIES})
+  target_link_libraries(serf_static
+                        INTERFACE ${SERF_DEPENDENCY_LIBRARIES}
+                                  ${SERF_INTERFACE_LIBRARIES})
   list(APPEND SERF_TARGETS "serf_static")
 endif()
 
