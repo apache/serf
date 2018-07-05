@@ -19,7 +19,7 @@
 
 # Find the version number in serf.h so that we don't keep it in two places.
 
-set(SERF_HEADER "${CMAKE_SOURCE_DIR}/serf.h")
+set(SERF_HEADER "${SERF_SOURCE_DIR}/serf.h")
 
 unset(SERF_VERSION)
 unset(SERF_SOVERSION)

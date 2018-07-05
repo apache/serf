@@ -67,15 +67,15 @@ else()    #NOT Windows
   endif()
   mark_as_advanced(APR_CONFIG_EXECUTABLE)
 
-  macro(_apr_invoke _varname _separate _regexp)
-    _apru_config("${APR_CONFIG_EXECUTABLE}" "${_varname}" "${_separate}" "${_regexp}" ${ARGN})
+  macro(_apr_invoke _varname _regexp)
+    _apru_config(${APR_CONFIG_EXECUTABLE} ${_varname} "${_regexp}" "${ARGN}")
   endmacro(_apr_invoke)
 
-  _apr_invoke(APR_CFLAGS    FALSE "(^| )-(g|O)[^ ]*" --cppflags --cflags)
-  _apr_invoke(APR_INCLUDES  TRUE  "(^| )-I"          --includes)
-  _apr_invoke(APR_LIBRARIES TRUE  ""                 --link-ld)
-  _apr_invoke(APR_EXTRALIBS TRUE  ""                 --libs)
-  _apr_invoke(APR_VERSION   TRUE  ""                 --version)
+  _apr_invoke(APR_CFLAGS     "(^| )-(g|O)[^ ]*" --cppflags --cflags)
+  _apr_invoke(APR_INCLUDES   "(^| )-I"          --includes)
+  _apr_invoke(APR_LIBRARIES  ""                 --link-ld)
+  _apr_invoke(APR_EXTRALIBS  ""                 --libs)
+  _apr_invoke(APR_VERSION    ""                 --version)
   string(REGEX REPLACE "^([0-9]+)\\..*$" "\\1" _apr_major "${APR_VERSION}")
 
 endif()   # NOT Windows
