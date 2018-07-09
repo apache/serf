@@ -17,18 +17,22 @@
 #   under the License.
 # ===================================================================
 
+cmake_minimum_required(VERSION 3.0)
+
+# This module uses:
+#   APRUTIL_ROOT, the (optional) root of the APR-Util install area.
 # This module defines:
-# APRUTIL_FOUND, set to TRUE if found, FALSE otherwise.
-# APRUTIL_VERSION, the version of APR that was found.
-# APRUTIL_INCLUDES, where to find apr.h, etc.
-# APRUTIL_LIBRARIES, linker switches to use with ld to link against APR
-# APRUTIL_EXTRALIBS, additional libraries to link against.
-# APRUTIL_STATIC_LIBS, on Windows: list of static libraries.
-# APRUTIL_RUNTIME_LIBS, on Windows: list of DLLs that will be loaded at runtime.
+#   APRUTIL_FOUND, set to TRUE if found, FALSE otherwise.
+#   APRUTIL_VERSION, the version of APR that was found.
+#   APRUTIL_INCLUDES, where to find apr.h, etc.
+#   APRUTIL_LIBRARIES, linker switches to use with ld to link against APR
+#   APRUTIL_EXTRALIBS, additional libraries to link against.
+#   APRUTIL_STATIC_LIBS, on Windows: list of static libraries.
+#   APRUTIL_RUNTIME_LIBS, on Windows: list of DLLs that will be loaded at runtime.
 
 
-if(NOT APR_FOUND)
-  find_package(APR)
+if(NOT APR_FOUND) # FIXME: should become: if(NOT TARGET APR::APR)
+  find_package(APR REQUIRED)
 endif()
 
 if(APR_CONTAINS_APRUTIL)
@@ -43,8 +47,11 @@ if(APR_CONTAINS_APRUTIL)
 
 else(APR_CONTAINS_APRUTIL)
 
+  set(_apru_include_only_utilities TRUE)
+  include(${CMAKE_CURRENT_LIST_DIR}/FindAPR.cmake)
+  unset(_apru_include_only_utilities)
+
   set(APRUTIL_FOUND FALSE)
-  include(APRCommon)
 
   if(${CMAKE_SYSTEM_NAME} MATCHES "Windows")
 
