@@ -19,36 +19,35 @@
 
 # Find the version number in serf.h so that we don't keep it in two places.
 
-set(SERF_HEADER "${SERF_SOURCE_DIR}/serf.h")
+function(serf_parse_version_number_from_header)
+  set(header_ "${SERF_SOURCE_DIR}/serf.h")
+  file(STRINGS "${header_}" version_parts_
+       REGEX "^ *# *define +SERF_[A-Z]+_VERSION +[0-9]+ *$")
+
+  foreach(STR ${version_parts_})
+    if(STR MATCHES "SERF_MAJOR_VERSION")
+      string(REGEX REPLACE "^[^0-9]+([0-9])+ *$" "\\1" major_ ${STR})
+    elseif(STR MATCHES "SERF_MINOR_VERSION")
+      string(REGEX REPLACE "^[^0-9]+([0-9])+ *$" "\\1" minor_ ${STR})
+    elseif(STR MATCHES "SERF_PATCH_VERSION")
+      string(REGEX REPLACE "^[^0-9]+([0-9])+ *$" "\\1" patch_ ${STR})
+    endif()
+  endforeach()
+
+  if(NOT DEFINED major_ OR NOT DEFINED minor_ OR NOT DEFINED patch_)
+    message(FATAL_ERROR "Could not find the version number in '${header_}'")
+  endif()
+
+  set(SERF_VERSION "${major_}.${minor_}.${patch_}" PARENT_SCOPE)
+  set(SERF_SOVERSION "${major_}.${minor_}.0" PARENT_SCOPE)
+  set(SERF_MAJOR_VERSION "${major_}" PARENT_SCOPE)
+  set(SERF_MINOR_VERSION "${minor_}" PARENT_SCOPE)
+  set(SERF_PATCH_VERSION "${patch_}" PARENT_SCOPE)
+endfunction()
 
 unset(SERF_VERSION)
 unset(SERF_SOVERSION)
 unset(SERF_MAJOR_VERSION)
 unset(SERF_MINOR_VERSION)
 unset(SERF_PATCH_VERSION)
-
-file(STRINGS "${SERF_HEADER}" SERF_VERSION_BITS
-     REGEX "^ *# *define +SERF_[A-Z]*_VERSION +[0-9]+ *$")
-foreach(STR ${SERF_VERSION_BITS})
-  if(STR MATCHES "^ *# *define +SERF_MAJOR_VERSION +([0-9])+ *$")
-    string(REGEX REPLACE "^ *# *define +SERF_MAJOR_VERSION +([0-9])+ *$"
-           "\\1" SERF_MAJOR_VERSION ${STR})
-  endif()
-  if(STR MATCHES "^ *# *define +SERF_MINOR_VERSION +([0-9])+ *$")
-    string(REGEX REPLACE "^ *# *define +SERF_MINOR_VERSION +([0-9])+ *$"
-           "\\1" SERF_MINOR_VERSION ${STR})
-  endif()
-  if(STR MATCHES "^ *# *define +SERF_PATCH_VERSION +([0-9])+ *$")
-    string(REGEX REPLACE "^ *# *define +SERF_PATCH_VERSION +([0-9])+ *$"
-           "\\1" SERF_PATCH_VERSION ${STR})
-  endif()
-endforeach()
-
-if(NOT DEFINED SERF_MAJOR_VERSION
-   OR NOT DEFINED SERF_MINOR_VERSION
-   OR NOT DEFINED SERF_PATCH_VERSION)
-  message(FATAL_ERROR "Could not find the version number in '${SERF_HEADER}'")
-endif()
-
-set(SERF_VERSION "${SERF_MAJOR_VERSION}.${SERF_MINOR_VERSION}.${SERF_PATCH_VERSION}")
-set(SERF_SOVERSION "${SERF_MAJOR_VERSION}.${SERF_MINOR_VERSION}.0")
+serf_parse_version_number_from_header()
