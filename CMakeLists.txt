@@ -205,24 +205,11 @@ if(SERF_WINDOWS)
 endif()
 
 
-set(SERF_DEPENDENCY_INCLUDES
-    ${OPENSSL_INCLUDE_DIR}
-    ${ZLIB_INCLUDE_DIRS}
-)
-list(REMOVE_DUPLICATES SERF_DEPENDENCY_INCLUDES)
-
 set(SERF_INTERFACE_INCLUDES
     ${APR_INCLUDES}
     ${APRUTIL_INCLUDES}
 )
 list(REMOVE_DUPLICATES SERF_INTERFACE_INCLUDES)
-
-set(SERF_DEPENDENCY_LIBRARIES
-    ${OPENSSL_LIBRARIES}
-    ${ZLIB_LIBRARIES}
-    ${SERF_STANDARD_LIBRARIES}
-)
-list(REMOVE_DUPLICATES SERF_DEPENDENCY_LIBRARIES)
 
 set(SERF_INTERFACE_LIBRARIES
     ${APR_LIBRARIES}
@@ -306,17 +293,16 @@ else()
   set(CMAKE_SHARED_LIBRARY_PREFIX "lib")
 endif(NOT MSVC)
 
-
 # Define all targets
 if(NOT SKIP_SHARED)
   add_library(serf_shared SHARED ${SOURCES} ${SHARED_SOURCES})
   target_compile_options(serf_shared PUBLIC ${APR_CFLAGS})
   target_include_directories(serf_shared SYSTEM BEFORE
-                             PRIVATE ${SERF_DEPENDENCY_INCLUDES}
                              PUBLIC ${SERF_INTERFACE_INCLUDES})
   target_include_directories(serf_shared PUBLIC ${SERF_SOURCE_DIR})
   target_link_libraries(serf_shared
-                        PRIVATE ${SERF_DEPENDENCY_LIBRARIES}
+                        PRIVATE OpenSSL::Crypto OpenSSL::SSL ZLIB::ZLIB
+                                ${SERF_STANDARD_LIBRARIES}
                         PUBLIC ${SERF_INTERFACE_LIBRARIES})
   set_target_properties(serf_shared
                         PROPERTIES
@@ -333,12 +319,12 @@ if(NOT SKIP_STATIC)
   add_library(serf_static STATIC ${SOURCES})
   target_compile_options(serf_static PUBLIC ${APR_CFLAGS})
   target_include_directories(serf_static SYSTEM BEFORE
-                             PRIVATE ${SERF_DEPENDENCY_INCLUDES}
                              PUBLIC ${SERF_INTERFACE_INCLUDES})
   target_include_directories(serf_static PUBLIC ${SERF_SOURCE_DIR})
   target_link_libraries(serf_static
-                        INTERFACE ${SERF_DEPENDENCY_LIBRARIES}
-                                  ${SERF_INTERFACE_LIBRARIES})
+                        OpenSSL::Crypto OpenSSL::SSL ZLIB::ZLIB
+                        ${SERF_INTERFACE_LIBRARIES}
+                        ${SERF_STANDARD_LIBRARIES})
   list(APPEND SERF_TARGETS "serf_static")
 endif()
 
