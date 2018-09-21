@@ -20,7 +20,7 @@
 cmake_minimum_required(VERSION 3.0)
 
 # This module uses:
-#   APRUTIL_ROOT, the (optional) root of the APR-Util install area.
+#   APRUtil_ROOT, the (optional) root of the APR-Util install area.
 # This module defines:
 #   APRUTIL_FOUND, set to TRUE if found, FALSE otherwise.
 #   APRUTIL_VERSION, the version of APR that was found.
@@ -55,13 +55,13 @@ else(APR_CONTAINS_APRUTIL)
 
   if(${CMAKE_SYSTEM_NAME} MATCHES "Windows")
 
-    if(NOT DEFINED APRUTIL_ROOT)
-      message(FATAL_ERROR "APRUTIL_ROOT must be defined on Windows")
+    if(NOT DEFINED APRUtil_ROOT)
+      message(FATAL_ERROR "APRUtil_ROOT must be defined on Windows")
     endif()
 
     include(CheckIncludeFile)
 
-    set(APRUTIL_INCLUDES "${APRUTIL_ROOT}/include")
+    set(APRUTIL_INCLUDES "${APRUtil_ROOT}/include")
     if(NOT EXISTS "${APRUTIL_INCLUDES}/apu.h")
       message(FATAL_ERROR "apu.h was not found in ${APRUTIL_INCLUDES}")
     endif()
@@ -79,12 +79,12 @@ else(APR_CONTAINS_APRUTIL)
     endif()
 
     find_library(APRUTIL_LIBRARIES NAMES "lib${_apu_name}.lib"
-                 PATHS ${APRUTIL_ROOT} NO_DEFAULT_PATH PATH_SUFFIXES "lib")
+                 PATHS ${APRUtil_ROOT} NO_DEFAULT_PATH PATH_SUFFIXES "lib")
     find_library(_apu_static NAMES "${_apu_name}.lib"
-                 PATHS ${APRUTIL_ROOT} NO_DEFAULT_PATH PATH_SUFFIXES "lib")
+                 PATHS ${APRUtil_ROOT} NO_DEFAULT_PATH PATH_SUFFIXES "lib")
     find_library(_apu_expat NAMES ${_apu_expat_name}
-                 PATHS ${APRUTIL_ROOT} NO_DEFAULT_PATH PATH_SUFFIXES "lib")
-    _apru_find_dll(APRUTIL_RUNTIME_LIBS "lib${_apu_name}.dll" ${APRUTIL_ROOT})
+                 PATHS ${APRUtil_ROOT} NO_DEFAULT_PATH PATH_SUFFIXES "lib")
+    _apru_find_dll(APRUTIL_RUNTIME_LIBS "lib${_apu_name}.dll" ${APRUtil_ROOT})
 
     if(NOT _apu_expat AND (_apu_expat_name MATCHES "expat"))
       find_package(EXPAT QUIET)
@@ -101,9 +101,9 @@ else(APR_CONTAINS_APRUTIL)
 
   else()    # NOT Windows
 
-    if(DEFINED APRUTIL_ROOT)
+    if(DEFINED APRUtil_ROOT)
       find_program(APRUTIL_CONFIG_EXECUTABLE apu-1-config
-                   PATHS "${APRUTIL_ROOT}/bin" NO_DEFAULT_PATH)
+                   PATHS "${APRUtil_ROOT}/bin" NO_DEFAULT_PATH)
     else()
       find_program(APRUTIL_CONFIG_EXECUTABLE apu-1-config)
     endif()

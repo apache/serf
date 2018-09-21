@@ -17,7 +17,23 @@
 #   under the License.
 # ===================================================================
 
-cmake_minimum_required(VERSION 3.0.2)
+# ===================================================================
+# The following variables can be set to locate dependencies that
+# are not installed in standard paths.  These variables are used
+# by the find_package() modules.
+#
+# APR_ROOT          - Path to APR's install area
+# APRUtil_ROOT      - Path to APR-Util's install area
+# OPENSSL_ROOT_DIR  - Path to OpenSSL's install area
+# ZLIB_ROOT         - Path to zlib's install area
+# ===================================================================
+
+cmake_minimum_required(VERSION 3.0)
+
+# Silence warnings about ${<PackageName>_ROOT} in CMake 3.12+
+if((${CMAKE_MAJOR_VERSION} GREATER 3) OR (${CMAKE_MINOR_VERSION} GREATER 11))
+  cmake_policy(SET CMP0074 NEW)
+endif()
 
 set(SERF_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
 set(CMAKE_MODULE_PATH "${SERF_SOURCE_DIR}/build")
@@ -47,10 +63,6 @@ option(DEBUG "Enable debugging info and strict compile warnings" OFF)
 option(SKIP_SHARED "Disable building shared Serf libraries" OFF)
 option(SKIP_STATIC "Disable building static Serf libraries" OFF)
 option(LIBDIR "Install directory for architecture-dependent libraries" "")
-option(APR "Path to APR's install area" "")
-option(APU "Path to APR-Util's install area" "")
-option(OPENSSL "Path to OpenSSL's install area" "")
-option(ZLIB "Path to zlib's install area" "")
 option(GSSAPI "Path to GSSAPI's install area" "")
 option(BROTLI "Path to Brotli's install area" "")
 option(APR_STATIC "Windows: Link with static APR/-Util libraries" OFF)
@@ -159,22 +171,6 @@ endif(SERF_WINDOWS)
 
 
 # Process build options for dependency search
-if(APR)
-  set(APR_ROOT ${APR})
-endif()
-
-if(APU)
-  set(APRUTIL_ROOT ${APU})
-endif()
-
-if(OPENSSL)
-  set(OPENSSL_ROOT_DIR ${OPENSSL})
-endif()
-
-if(ZLIB)
-  set(ZLIB_ROOT ${ZLIB})
-endif()
-
 if(GSSAPI)
   message(WARNING "option GSSAPI is not implemented")
 endif()
