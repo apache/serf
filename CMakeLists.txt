@@ -164,6 +164,7 @@ if(SERF_WINDOWS)
   set(SERF_STANDARD_LIBRARIES
       "crypt32.lib"
       "mswsock.lib"
+      "rpcrt4.lib"
       "secur32.lib"
       "ws2_32.lib"
   )
@@ -179,14 +180,16 @@ if(BROTLI)
   message(WARNING "option BROTLI is not implemented")
 endif()
 
-if(APR_STATIC)
-  message(WARNING "option APR_STATIC is not implemented")
-endif()
-
-if(EXPAT)
-  set(PC_EXPAT_INCLUDE_DIRS "${EXPAT}/include")
-  set(PC_EXPAT_LIBRARY_DIRS "${EXPAT}/lib")
-endif()
+if(SERF_WINDOWS)
+  if(EXPAT)
+    set(PC_EXPAT_INCLUDE_DIRS "${EXPAT}/include")
+    set(PC_EXPAT_LIBRARY_DIRS "${EXPAT}/lib")
+  endif(EXPAT)
+else(SERF_WINDOWS)
+  if(EXPAT)
+    message(WARNING "option EXPAT is not implemented on this platform")
+  endif(EXPAT)
+endif(SERF_WINDOWS)
 
 # Find dependencies
 find_package(OpenSSL)
@@ -198,23 +201,27 @@ if(SERF_WINDOWS)
   # Find ZLIB and OpenSSL runtime libraries etc.
   SerfWindowsProcessOpenSSL()
   SerfWindowsProcessZLIB()
-endif()
+endif(SERF_WINDOWS)
 
+# Calculate the set of private and public targets
+set(SERF_PRIVATE_TARGETS OpenSSL::Crypto OpenSSL::SSL ZLIB::ZLIB)
 
-set(SERF_INTERFACE_INCLUDES
-    ${APR_INCLUDES}
-    ${APRUTIL_INCLUDES}
-)
-list(REMOVE_DUPLICATES SERF_INTERFACE_INCLUDES)
-
-set(SERF_INTERFACE_LIBRARIES
-    ${APR_LIBRARIES}
-    ${APR_EXTRALIBS}
-    ${APRUTIL_LIBRARIES}
-    ${APRUTIL_EXTRALIBS}
-)
-list(REMOVE_DUPLICATES SERF_INTERFACE_LIBRARIES)
-
+if(APR_STATIC)
+  if(SERF_WINDOWS)
+    list(APPEND SERF_PUBLIC_TARGETS APR::APR_static)
+    if(NOT APR_CONTAINS_APRUTIL)
+      list(APPEND SERF_PUBLIC_TARGETS APR::APRUTIL_static)
+    endif()
+    add_definitions("/DAPR_DECLARE_STATIC" "/DAPU_DECLARE_STATIC")
+  else(SERF_WINDOWS)
+    message(WARNING "option APR_STATIC is not implemented on this platform")
+  endif(SERF_WINDOWS)
+else(APR_STATIC)
+  list(APPEND SERF_PUBLIC_TARGETS APR::APR)
+  if(NOT APR_CONTAINS_APRUTIL)
+    list(APPEND SERF_PUBLIC_TARGETS APR::APRUTIL)
+  endif()
+endif(APR_STATIC)
 
 # Feature tests
 include(SerfChecks)
@@ -293,13 +300,11 @@ endif(NOT MSVC)
 if(NOT SKIP_SHARED)
   add_library(serf_shared SHARED ${SOURCES} ${SHARED_SOURCES})
   target_compile_options(serf_shared PUBLIC ${APR_CFLAGS})
-  target_include_directories(serf_shared SYSTEM BEFORE
-                             PUBLIC ${SERF_INTERFACE_INCLUDES})
   target_include_directories(serf_shared PUBLIC ${SERF_SOURCE_DIR})
   target_link_libraries(serf_shared
-                        PRIVATE OpenSSL::Crypto OpenSSL::SSL ZLIB::ZLIB
+                        PRIVATE ${SERF_PRIVATE_TARGETS}
                                 ${SERF_STANDARD_LIBRARIES}
-                        PUBLIC ${SERF_INTERFACE_LIBRARIES})
+                        PUBLIC ${SERF_PUBLIC_TARGETS})
   set_target_properties(serf_shared
                         PROPERTIES
                         VERSION ${SERF_VERSION}
@@ -314,12 +319,10 @@ endif()
 if(NOT SKIP_STATIC)
   add_library(serf_static STATIC ${SOURCES})
   target_compile_options(serf_static PUBLIC ${APR_CFLAGS})
-  target_include_directories(serf_static SYSTEM BEFORE
-                             PUBLIC ${SERF_INTERFACE_INCLUDES})
   target_include_directories(serf_static PUBLIC ${SERF_SOURCE_DIR})
   target_link_libraries(serf_static
-                        OpenSSL::Crypto OpenSSL::SSL ZLIB::ZLIB
-                        ${SERF_INTERFACE_LIBRARIES}
+                        ${SERF_PRIVATE_TARGETS}
+                        ${SERF_PUBLIC_TARGETS}
                         ${SERF_STANDARD_LIBRARIES})
   list(APPEND SERF_TARGETS "serf_static")
 endif()
@@ -350,9 +353,16 @@ if(NOT SERF_WINDOWS)
     set(INCLUDE_SUBDIR ${SERF_INCLUDE_SUBDIR})
     set(VERSION ${SERF_VERSION})
     set(MAJOR ${SERF_MAJOR_VERSION})
+    set(SERF_INTERFACE_LIBS
+      ${APR_LIBRARIES}
+      ${APR_EXTRALIBS}
+      ${APRUTIL_LIBRARIES}
+      ${APRUTIL_EXTRALIBS}
+      )
+    list(REMOVE_DUPLICATES SERF_INTERFACE_LIBS)
     unset(LIBS)
-    foreach(DEPLIB ${SERF_DEPENDENCY_LIBRARIES} ${SERF_INTERFACE_LIBRARIES})
-      set(LIBS "${LIBS} ${DEPLIB}")
+    foreach(DEPLIB ${SERF_INTERFACE_LIBS})
+      string(APPEND LIBS " ${DEPLIB}")
     endforeach()
     configure_file("build/serf.pc.in" "serf.pc" @ONLY)
   endfunction()
@@ -361,6 +371,7 @@ if(NOT SERF_WINDOWS)
   install(FILES "${CMAKE_CURRENT_BINARY_DIR}/serf.pc"
           DESTINATION "share/pkgconfig")
 endif()
+
 
 if(NOT SKIP_TESTS)
   if(SKIP_STATIC)
