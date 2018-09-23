@@ -19,24 +19,51 @@
 
 cmake_minimum_required(VERSION 3.0)
 
-# This module uses:
-#   APR_ROOT, the (optional) root of the APR install area.
-# This module defines:
-#   APR_FOUND, set to TRUE if found, FALSE otherwise.
-#   APR_VERSION, the version of APR that was found.
-#   APR_CONTAINS_APRUTIL, set to TRUE if the APR major version is 2 or greater.
-#   APR_INCLUDES, where to find apr.h, etc.
-#   APR_LIBRARIES, linker switches to use with ld to link against APR
-#   APR_EXTRALIBS, additional libraries to link against.
-#   APR_CFLAGS, the flags to use to compile.
-#   APR_STATIC_LIBS, on Windows: list of static libraries.
-#   APR_RUNTIME_LIBS, on Windows: list of DLLs that will be loaded at runtime.
+#.rst:
+# FindAPR
+# --------
+#
+# Find the native Apache Portable Runtime includes and library.
+#
+# IMPORTED Targets
+# ^^^^^^^^^^^^^^^^
+#
+# This module defines :prop_tgt:`IMPORTED` target ``APR::APR``, if
+# APR has been found. On Windows, it may define the :prop_tgt:`IMPORTED`
+# target ``APR::APR_static`` if the static libraries are found.
+#
+# Result Variables
+# ^^^^^^^^^^^^^^^^
+#
+# This module defines the following variables:
+#
+# ::
+#
+#   APR_FOUND          - True if APR was found.
+#   APR_VERSION        - The version of APR found (x.y.z)
+#   APR_CONTAINS_APRUTIL - True if the APR major version is 2 or greater.
+#   APR_INCLUDES       - Where to find apr.h, etc.
+#   APR_LIBRARIES      - Linker switches to use with ld to link against APR
+#
+# ::
+#
+#   APR_EXTRALIBS      - Additional libraries to link against
+#   APR_CFLAGS         - The flags to use to compile.
+#   APR_STATIC_LIBS    - On Windows: list of APR static libraries
+#   APR_RUNTIME_LIBS   - On Windows: list of APR runtime DLLs
+#
+# Hints
+# ^^^^^
+#
+# A user may set ``APR_ROOT`` to an APR installation root to tell this
+# module where to look. This variable must be defined on Windows.
 
 
 # -------------------------------------------------------------------
 # Common utility functions for FindAPR.cmaks and FindAPRtil.cmake
 # -------------------------------------------------------------------
 
+# Run the APR/Util configuration program
 function(_apru_config _program _varname _regexp)
   execute_process(COMMAND ${_program} ${ARGN}
                   OUTPUT_VARIABLE _apru_output
@@ -62,6 +89,7 @@ function(_apru_config _program _varname _regexp)
   endif()
 endfunction(_apru_config)
 
+# Parse the APR/Util version number from the header
 function(_apru_version _version_varname _major_varname _minor_varname _header _prefix)
   file(STRINGS ${_header} _apru_major
        REGEX "^ *# *define +${_prefix}_MAJOR_VERSION +[0-9]+.*$")
@@ -77,11 +105,63 @@ function(_apru_version _version_varname _major_varname _minor_varname _header _p
   set(${_minor_varname} ${_apru_minor} PARENT_SCOPE)
 endfunction(_apru_version)
 
+# Windows: Find the DLL (runtime) library
 function(_apru_find_dll _varname _dllname)
   set(CMAKE_FIND_LIBRARY_SUFFIXES ".dll")
   find_library(${_varname} NAMES ${_dllname}
                PATHS ${ARGN} NO_DEFAULT_PATH PATH_SUFFIXES "bin" "lib")
 endfunction(_apru_find_dll)
+
+# Extract the main and extra static libraries
+function(_apru_extras _static_var _extra_var)
+  # The first element in the list of static libraries will be the the main
+  # APR/Util static library, anything else will be additional interface
+  # libraries.
+  set(_extra "${ARGN}")
+  list(GET _extra 0 _static)
+  list(REMOVE_AT _extra 0)
+  set(${_static_var} ${_static} PARENT_SCOPE)
+  set(${_extra_var} ${_extra} PARENT_SCOPE)
+endfunction(_apru_extras)
+
+# From the list of link libraries, extract the imported location
+function(_apru_location _location_var _extralibs_var)
+  foreach(_part ${ARGN})
+    string(SUBSTRING "${_part}" 0 2 _flag)
+    if(_flag STREQUAL "-L")
+      if(NOT _dir AND NOT _lib)
+        string(SUBSTRING "${_part}" 2 -1 _rest)
+        set(_dir "${_rest}")
+      else()
+        list(APPEND _extra "${_part}")
+      endif()
+    elseif(_flag STREQUAL "-l")
+      if(NOT _lib)
+        string(SUBSTRING "${_part}" 2 -1 _rest)
+        set(_lib "${_rest}")
+      else()
+        list(APPEND _extra " ${_part}")
+      endif()
+    else()
+      if(NOT _lib)
+        set(_lib "${_rest}")
+      else()
+        list(APPEND _extra " ${_part}")
+      endif()
+    endif()
+  endforeach()
+
+  if(NOT _lib)
+    message(FATAL_ERROR "did not find any libraries in '${ARGN}'")
+  endif()
+
+  if(NOT _dir)
+    find_library(${_location_var} NAMES "${_lib}")
+  else()
+    find_library(${_location_var} NAMES "${_lib}" PATHS "${_dir}" NO_DEFAULT_PATH)
+  endif()
+  set(${_extralibs_var} ${_extra} PARENT_SCOPE)
+endfunction(_apru_location)
 
 # -------------------------------------------------------------------
 
@@ -91,7 +171,9 @@ if(NOT _apru_include_only_utilities)
 
   if(${CMAKE_SYSTEM_NAME} MATCHES "Windows")
 
-    if(NOT DEFINED APR_ROOT)
+    if(DEFINED APR_ROOT)
+      get_filename_component(APR_ROOT "${APR_ROOT}" REALPATH)
+    else()
       message(FATAL_ERROR "APR_ROOT must be defined on Windows")
     endif()
 
@@ -114,9 +196,10 @@ if(NOT _apru_include_only_utilities)
                  PATHS ${APR_ROOT} NO_DEFAULT_PATH PATH_SUFFIXES "lib")
     _apru_find_dll(APR_RUNTIME_LIBS "lib${_apr_name}.dll" ${APR_ROOT})
 
-  else()    #NOT Windows
+  else()    # NOT Windows
 
     if(DEFINED APR_ROOT)
+      get_filename_component(APR_ROOT "${APR_ROOT}" REALPATH)
       find_program(APR_CONFIG_EXECUTABLE NAMES apr-2-config apr-1-config
                    PATHS "${APR_ROOT}/bin" NO_DEFAULT_PATH)
     else()
@@ -137,7 +220,7 @@ if(NOT _apru_include_only_utilities)
 
   endif()   # NOT Windows
 
-  if(_apr_major GREATER 2)
+  if(${_apr_major} GREATER 1)
     set(APR_CONTAINS_APRUTIL TRUE)
   else()
     set(APR_CONTAINS_APRUTIL FALSE)
@@ -147,5 +230,37 @@ if(NOT _apru_include_only_utilities)
   find_package_handle_standard_args(APR
                                     REQUIRED_VARS APR_LIBRARIES APR_INCLUDES
                                     VERSION_VAR APR_VERSION)
+
+  if(APR_FOUND)
+    if(${CMAKE_SYSTEM_NAME} MATCHES "Windows")
+
+      if(APR_LIBRARIES AND APR_RUNTIME_LIBS)
+        add_library(APR::APR SHARED IMPORTED)
+        set_target_properties(APR::APR PROPERTIES
+          INTERFACE_INCLUDE_DIRECTORIES "${APR_INCLUDES}"
+          IMPORTED_LOCATION "${APR_RUNTIME_LIBS}"
+          IMPORTED_IMPLIB "${APR_LIBRARIES}")
+      endif()
+
+      if(APR_STATIC_LIBS)
+        _apru_extras(_apr_static _apr_extra ${APR_STATIC_LIBS})
+        add_library(APR::APR_static STATIC IMPORTED)
+        set_target_properties(APR::APR_static PROPERTIES
+          INTERFACE_INCLUDE_DIRECTORIES "${APR_INCLUDES}"
+          IMPORTED_INTERFACE_LINK_LIBRARIES "${_apr_extra}"
+          IMPORTED_LOCATION "${_apr_static}")
+      endif()
+
+    else()    # NOT Windows
+
+      _apru_location(_apr_library _apr_extra "${APR_LIBRARIES}")
+      add_library(APR::APR UNKNOWN IMPORTED)
+      set_target_properties(APR::APR PROPERTIES
+        INTERFACE_INCLUDE_DIRECTORIES "${APR_INCLUDES}"
+        INTERFACE_LINK_LIBRARIES "${APR_EXTRALIBS};${_apr_extra}"
+        IMPORTED_LOCATION "${_apr_library}")
+
+    endif()   # NOT Windows
+  endif(APR_FOUND)
 
 endif(NOT _apru_include_only_utilities)
