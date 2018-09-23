@@ -17,24 +17,6 @@
 #   under the License.
 # ===================================================================
 
-# This function defines:
-# SERF_OPENSSL_STATIC, if we're linking with a static libraries.
-# SERF_OPENSSL_EXTRA_LIBS, if we need additional libraries to link.
-# SERF_OPENSSL_RUNTIME_LIBS, when it finds OpenSSL DLL libraries.
-function(SerfWindowsProcessOpenSSL)
-  if(${CMAKE_SYSTEM_NAME} MATCHES "Windows")
-  endif()
-endfunction(SerfWindowsProcessOpenSSL)
-
-# This function defines:
-# SERF_ZLIB_STATIC, if we're linking with a static libraries.
-# SERF_ZLIB_EXTRA_LIBS, if we need additional libraries to link.
-# SERF_ZLIB_RUNTIME_LIBS, when it finds OpenSSL DLL libraries.
-function(SerfWindowsProcessZLIB)
-  if(${CMAKE_SYSTEM_NAME} MATCHES "Windows")
-  endif()
-endfunction(SerfWindowsProcessZLIB)
-
 # Generate a Windows DLL .def file from a list of headers.
 function(SerfWindowsGenDef blacklist_ target_)
   if(${CMAKE_SYSTEM_NAME} MATCHES "Windows")
