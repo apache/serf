@@ -197,12 +197,6 @@ find_package(ZLIB)
 find_package(APR)
 find_package(APRUtil)
 
-if(SERF_WINDOWS)
-  # Find ZLIB and OpenSSL runtime libraries etc.
-  SerfWindowsProcessOpenSSL()
-  SerfWindowsProcessZLIB()
-endif(SERF_WINDOWS)
-
 # Calculate the set of private and public targets
 set(SERF_PRIVATE_TARGETS OpenSSL::Crypto OpenSSL::SSL ZLIB::ZLIB)
 
