@@ -19,6 +19,7 @@
 
 if(${CMAKE_SYSTEM_NAME} MATCHES  "Darwin")
   set(SERF_DARWIN TRUE)
+  set(CMAKE_MACOSX_RPATH FALSE)
   message(STATUS "Target platform is Darwin (macOS)")
 elseif(${CMAKE_SYSTEM_NAME} MATCHES "Linux")
   set(SERF_LINUX TRUE)
