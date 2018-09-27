@@ -302,7 +302,8 @@ if(NOT SKIP_SHARED)
   set_target_properties(serf_shared
                         PROPERTIES
                         VERSION ${SERF_VERSION}
-                        SOVERSION ${SERF_SOVERSION})
+                        SOVERSION ${SERF_SOVERSION}
+                        INSTALL_NAME_DIR "${CMAKE_INSTALL_PREFIX}/lib")
   set(SERF_TARGETS "serf_shared")
 
   if(SERF_WINDOWS)
