@@ -3,7 +3,8 @@ Apache Serf 1.4.0 [2018-10-xx, from /tags/1.4.0, r18xxxx]
   Features
   --------
   Support for OCSP reqest generation and validation (r1830823)
-  Support for HTTP/2 (r1709274 et al.)
+  Support for FCGI protocol (r1714736 et al.)
+  Support for HTTP/2 protocol (r1709274 et al.)
   Add CRL support for OpenSSL (r1699867)
   Add flag DISABLE_LOGGING to scons to disable logging at compile time (r1699761)
   Logging that can be configured at runtime (r1699757)
