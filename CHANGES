@@ -1,16 +1,28 @@
-Serf 1.4.0 [2014-xx-xx, from /tags/1.4.0, rxxxx]
+Apache Serf 1.4.0 [2018-10-xx, from /tags/1.4.0, r18xxxx]
 
   Features
   --------
-  Logging that can be configured at runtime (r2220)
-  Add flag DISABLE_LOGGING to scons to disable logging at compile time (r2224)
-  Add CRL support for OpenSSL (r2333)
-  New error code SERF_ERROR_SSL_SETUP_FAILED (r2301)
-  New error code SERF_ERROR_CONNECTION_TIMEDOUT (r2184)
-  New error codes SERF_ERROR_LINE_TOO_LONG,
-    SERF_ERROR_STATUS_LINE_TOO_LONG, SERF_ERROR_RESPONSE_HEADER_TOO_LONG (r2136)
-  New error code SERF_ERROR_AUTHN_CREDENTIALS_REJECTED (r2119)
-  Implement serf_mmap_peek (r2148)
+  Support for OCSP reqest generation and validation (r1830823)
+  Support for HTTP/2 (r1709274 et al.)
+  Add CRL support for OpenSSL (r1699867)
+  Add flag DISABLE_LOGGING to scons to disable logging at compile time (r1699761)
+  Logging that can be configured at runtime (r1699757)
+  Implement serf_mmap_peek (r1699685)
+
+  New error codes:
+   - SERF_ERROR_SSL_SETUP_FAILED (r1699836)
+   - SERF_ERROR_CONNECTION_TIMEDOUT (r1699721)
+   - SERF_ERROR_LINE_TOO_LONG,
+     SERF_ERROR_STATUS_LINE_TOO_LONG,
+     SERF_ERROR_RESPONSE_HEADER_TOO_LONG (r1699673)
+   - SERF_ERROR_EMPTY_READ (r1716346)
+   - SERF_ERROR_EMPTY_STREAM (r1714969)
+   - SERF_ERROR_TRUNCATED_STREAM (r1714246)
+   - SERF_ERROR_AUTHN_CREDENTIALS_REJECTED (r1699656)
+   - SERF_ERROR_SSL_NEGOTIATE_IN_PROGRESS (r1699951)
+   - SERF_ERROR_SSL_OCSP_RESPONSE_CERT_REVOKED,
+     SERF_ERROR_SSL_OCSP_RESPONSE_CERT_UNKNOWN,
+     SERF_ERROR_SSL_OCSP_RESPONSE_INVALID (r1830823)
 
   Fixes
   -----
@@ -34,6 +46,7 @@ Serf 1.4.0 [2014-xx-xx, from /tags/1.4.0, rxxxx]
 
   Build improvements
   ------------------
+  Add experimental CMake build (r1834217 et al.)
   Make unix build work with APR-2 (r1699809)
   Add a version resource to libserf-N.dll on Windows (r1699689)
 
