@@ -45,6 +45,27 @@ message(WARNING
         "Some features are not supported and the build "
         "has not been tested on many supported platforms.")
 
+
+# Build options
+option(DEBUG "Enable debugging info and strict compile warnings" OFF)
+option(SKIP_SHARED "Disable building shared Serf libraries" OFF)
+option(SKIP_STATIC "Disable building static Serf libraries" OFF)
+option(LIBDIR "Install directory for architecture-dependent libraries" "")
+option(GSSAPI "Path to GSSAPI's install area" "")
+option(BROTLI "Path to Brotli's install area" "")
+option(DISABLE_LOGGING "Disable the logging framework at compile time" OFF)
+option(SKIP_TESTS "Disable building the unit tests and utilities" OFF)
+option(ENABLE_SLOW_TESTS "Enable long-running unit tests" OFF)
+
+# Platform-specific build options
+option(APR_STATIC "Windows: Link with static APR/-Util libraries" OFF)
+option(EXPAT "Windows: optional path to Expat's install area for APR_STATIC" "")
+option(RELATIVE_RPATH "macOS: Use @rpath in installed shared library" OFF)
+
+if(SKIP_SHARED AND SKIP_STATIC)
+  message(FATAL_ERROR "You have disabled both shared and static library builds.")
+endif()
+
 # Initialize the build type if it was not set on the command line.
 if(NOT CMAKE_BUILD_TYPE)
   if(DEBUG)
@@ -57,23 +78,6 @@ endif()
 include(SerfPlatform)
 include(SerfWindowsToolkit)
 
-
-# Build options
-option(DEBUG "Enable debugging info and strict compile warnings" OFF)
-option(SKIP_SHARED "Disable building shared Serf libraries" OFF)
-option(SKIP_STATIC "Disable building static Serf libraries" OFF)
-option(LIBDIR "Install directory for architecture-dependent libraries" "")
-option(GSSAPI "Path to GSSAPI's install area" "")
-option(BROTLI "Path to Brotli's install area" "")
-option(APR_STATIC "Windows: Link with static APR/-Util libraries" OFF)
-option(EXPAT "Windows: optional path to Expat's install area for APR_STATIC" "")
-option(DISABLE_LOGGING "Disable the logging framework at compile time" OFF)
-option(SKIP_TESTS "Disable building the unit tests and utilities" OFF)
-option(ENABLE_SLOW_TESTS "Enable long-running unit tests" OFF)
-
-if(SKIP_SHARED AND SKIP_STATIC)
-  message(FATAL_ERROR "You have disabled both shared and static library builds.")
-endif()
 
 # Public headers
 list(APPEND HEADERS
@@ -299,11 +303,13 @@ if(NOT SKIP_SHARED)
                         PRIVATE ${SERF_PRIVATE_TARGETS}
                                 ${SERF_STANDARD_LIBRARIES}
                         PUBLIC ${SERF_PUBLIC_TARGETS})
-  set_target_properties(serf_shared
-                        PROPERTIES
+  set_target_properties(serf_shared PROPERTIES
                         VERSION ${SERF_VERSION}
-                        SOVERSION ${SERF_SOVERSION}
-                        INSTALL_NAME_DIR "${CMAKE_INSTALL_PREFIX}/lib")
+                        SOVERSION ${SERF_SOVERSION})
+  if(SERF_DARWIN AND NOT RELATIVE_RPATH)
+    set_target_properties(serf_shared PROPERTIES
+                          INSTALL_NAME_DIR "${CMAKE_INSTALL_PREFIX}/lib")
+  endif()
   set(SERF_TARGETS "serf_shared")
 
   if(SERF_WINDOWS)
