@@ -395,6 +395,8 @@ typedef void (*serf_connection_closed_t)(
 
 /**
  * Like serf_connection_closed_t, but applies to incoming connections.
+ *
+ * @since New in 1.4.
  */
 typedef apr_status_t (*serf_incoming_closed_t)(
     serf_incoming_t *incoming,
@@ -523,6 +525,8 @@ apr_status_t serf_connection_create2(
  *
  * @note the connection is not made immediately. It will be opened on
  * the next call to @see serf_context_run.
+ *
+ * @since New in 1.4.
  */
 apr_status_t serf_connection_create3(
     serf_connection_t **conn,
@@ -628,8 +632,11 @@ apr_status_t serf_incoming_create2(
     apr_pool_t *client_pool);
 
 /* Allows creating a response before the request is completely
-   read. Will call the response create function if it hasn't
-   been called yet. */
+ * read. Will call the response create function if it hasn't
+ * been called yet.
+ *
+ * @since New in 1.4.
+ */
 apr_status_t serf_incoming_response_create(
     serf_incoming_request_t *request);
 
@@ -757,7 +764,11 @@ serf_request_t *serf_connection_priority_request_create(
     serf_request_setup_t setup,
     void *setup_baton);
 
-/** The default request priority */
+/**
+ * The default request priority
+ *
+ * @since New in 1.4.
+ */
 #define SERF_REQUEST_PRIORITY_DEFAULT 0x1000
 
 /**
@@ -791,13 +802,16 @@ void serf_connection_request_prioritize(serf_request_t *request,
                                         apr_uint16_t priority,
                                         int exclusive);
 
-/** Returns detected network latency for the @a conn connection. Negative
- *  value means that latency is unknwon.
+/**
+ * Returns detected network latency for the @a conn connection. Negative
+ * value means that latency is unknwon.
  */
 apr_interval_time_t serf_connection_get_latency(serf_connection_t *conn);
 
 /**
  * Returns the number of requests waiting to be sent over connection CONN.
+ *
+ * @since New in 1.4.
  */
 unsigned int serf_connection_queued_requests(serf_connection_t *conn);
 
@@ -806,10 +820,13 @@ unsigned int serf_connection_queued_requests(serf_connection_t *conn);
  * received yet on connection CONN. This includes requests:
  * - that are queued but not sent.
  * - that have been sent but no response has been completely received yet.
+ *
+ * @since New in 1.4.
  */
 unsigned int serf_connection_pending_requests(serf_connection_t *conn);
 
-/** Check if a @a request has been completely written.
+/**
+ * Check if a @a request has been completely written.
  *
  * Returns APR_SUCCESS if the request was written completely on the connection.
  * Returns APR_EBUSY if the request is not yet or partially written.
@@ -967,8 +984,11 @@ serf_bucket_t *serf_request_bucket_request_create(
  */
 #define SERF_NEWLINE_CRLF_SPLIT 0x0010
 
-/** Used to indicate that length of remaining data in bucket is unknown. See
+/**
+ * Used to indicate that length of remaining data in bucket is unknown. See
  * serf_bucket_type_t->get_remaining().
+ *
+ * @since New in 1.4.
  */
 #define SERF_LENGTH_UNKNOWN ((apr_uint64_t) -1)
 
@@ -1302,10 +1322,10 @@ typedef struct serf_linebuf_t {
 
     /* The line is read into this buffer, minus CR/LF.
      *
-     * NOTE: Before serf 2.0 buffer IS NOT NUL terminated
+     * NOTE: Before serf 1.4 buffer IS NOT NUL terminated
      * and @a used should be used to find line length.
      *
-     * Since serf 2.0 buffer is always NUL terminated.
+     * Since serf 1.4 buffer is always NUL terminated.
      **/
     char line[SERF_LINEBUF_LIMIT];
 
@@ -1365,42 +1385,52 @@ typedef enum serf_config_categories_t {
    Host         authn        apr_hash_t * (not implemented)
 */
 
-/* Set a value of type const char * for configuration item CATEGORY+KEY.
-   @since New in 1.4.
+/**
+ * Set a value of type const char * for configuration item CATEGORY+KEY.
+ *
+ * @since New in 1.4.
  */
 apr_status_t serf_config_set_string(serf_config_t *config,
                                     serf_config_key_t key,
                                     const char *value);
-/* Copy a value of type const char * and set it for configuration item
-   CATEGORY+KEY.
-   @since New in 1.4.
+/**
+ * Copy a value of type const char * and set it for configuration item
+ * CATEGORY+KEY.
+ *
+ * @since New in 1.4.
  */
 apr_status_t serf_config_set_stringc(serf_config_t *config,
                                      serf_config_key_t key,
                                      const char *value);
 
-/* Set a value of generic type for configuration item CATEGORY+KEY.
-   See @a serf_set_config_string for COPY_FLAGS description.
-   @since New in 1.4.
+/**
+ * Set a value of generic type for configuration item CATEGORY+KEY.
+ * See @a serf_set_config_string for COPY_FLAGS description.
+ *
+ * @since New in 1.4.
  */
 apr_status_t serf_config_set_stringf(serf_config_t *config,
                                      serf_config_key_t key,
                                      apr_pool_t *scratch_pool,
                                      const char *fmt, ...);
 
-/* Set a value of generic type for configuration item CATEGORY+KEY.
-   See @a serf_set_config_string for COPY_FLAGS description.
-   @since New in 1.4.
+/**
+ * Set a value of generic type for configuration item CATEGORY+KEY.
+ * See @a serf_set_config_string for COPY_FLAGS description.
+ *
+ * @since New in 1.4.
  */
 apr_status_t serf_config_set_object(serf_config_t *config,
                                     serf_config_key_t key,
                                     void *value);
 
-/* Get the value for configuration item CATEGORY+KEY. The value's type will
-   be fixed, see the above table.
-   Returns APR_EINVAL when getting a key from a category that this config
-   object doesn't contain, APR_SUCCESS otherwise.
-   @since New in 1.4.
+/**
+ * Get the value for configuration item CATEGORY+KEY. The value's type will
+ * be fixed, see the above table.
+ * Returns APR_EINVAL when getting a key from a category that this config
+ * object doesn't contain, APR_SUCCESS otherwise.
+ *
+ * @since New in 1.4.
  */
 apr_status_t serf_config_get_string(serf_config_t *config,
                                     serf_config_key_t key,
@@ -1410,9 +1440,11 @@ apr_status_t serf_config_get_object(serf_config_t *config,
                                     serf_config_key_t key,
                                     void **value);
 
-/* Remove the value for configuration item CATEGORY+KEY from the configuration
-   store.
-   @since New in 1.4.
+/**
+ * Remove the value for configuration item CATEGORY+KEY from the configuration
+ * store.
+ *
+ * @since New in 1.4.
  */
 apr_status_t serf_config_remove_value(serf_config_t *config,
                                       serf_config_key_t key);
@@ -1453,11 +1485,15 @@ typedef struct serf_log_layout_t serf_log_layout_t;
 
 /* TODO: it's not yet possible to define custom layouts */
 
-/* Create a stream output for log info. This can be used with one of the
-   standard streams stderr or stdout.
-   LAYOUT should be SERF_LOG_DEFAULT_LAYOUT (there's no alternative for now).
-   The lifetime of POOL should be atleast the same as that of CTX, but it can
-   be used by multiple contexts. */
+/**
+ * Create a stream output for log info. This can be used with one of the
+ * standard streams stderr or stdout.
+ * LAYOUT should be SERF_LOG_DEFAULT_LAYOUT (there's no alternative for now).
+ * The lifetime of POOL should be atleast the same as that of CTX, but it can
+ * be used by multiple contexts.
+ *
+ * @since New in 1.4.
+ */
 apr_status_t serf_logging_create_stream_output(serf_log_output_t **output,
                                                serf_context_t *ctx,
                                                apr_uint32_t level,
@@ -1466,9 +1502,13 @@ apr_status_t serf_logging_create_stream_output(serf_log_output_t **output,
                                                FILE *fp,
                                                apr_pool_t *pool);
 
-/* Define an output handler for a log level and a (set of) log component(s).
-   OUTPUT is the object returned by one of the serf_logging_create_XXX_output
-   factory functions. */
+/**
+ * Define an output handler for a log level and a (set of) log component(s).
+ * OUTPUT is the object returned by one of the serf_logging_create_XXX_output
+ * factory functions.
+ *
+ * @since New in 1.4.
+ */
 apr_status_t serf_logging_add_output(serf_context_t *ctx,
                                      const serf_log_output_t *output);
 
@@ -1495,6 +1535,8 @@ typedef struct serf_queue_item_t serf_queue_item_t;
  *
  * Note: @a request may be NULL if this response is server-pushed rather than
  *       specifically requested.
+ *
+ * @since New in 1.4.
  */
 typedef apr_status_t (*serf_begin_response_t)(
     /* ### args not settled  */
@@ -1561,6 +1603,8 @@ struct serf_protocol_type_t {
  * Activate an HTTP request when it reaches the front of the queue.
  *
  * ### more docco
+ *
+ * @since New in 1.4.
  */
 typedef apr_status_t (*serf_http_activate_t)(
     serf_bucket_t **body_bkt,
@@ -1597,6 +1641,8 @@ typedef apr_status_t (*serf_http_activate_t)(
  *
  * The connection and protocol paresr will be allocated in @a result_pool.
  * This function will use @a scratch_pool for temporary allocations.
+ *
+ * @since New in 1.4.
  */
 apr_status_t serf_http_protocol_create(
     serf_protocol_t **proto,

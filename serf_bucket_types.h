@@ -61,10 +61,12 @@ void serf_bucket_request_set_CL(
 serf_bucket_t *serf_bucket_request_get_headers(
     serf_bucket_t *request);
 
-/** Transform @a bucket in-place into a request bucket.
+/**
+ * Transform @a bucket in-place into a request bucket.
  *
  * It is callers responsibility to free resources held by the original
- * bucket */
+ * bucket.
+ */
 void serf_bucket_request_become(
     serf_bucket_t *bucket,
     const char *method,
@@ -596,8 +598,10 @@ typedef apr_status_t (*serf_ssl_need_cert_password_t)(
     const char *cert_path,
     const char **password);
 
-/* Callback type for server certificate status info and OCSP responses.
-   Note that CERT can be NULL in case its called from the OCSP callback. */
+/**
+ * Callback type for server certificate status info and OCSP responses.
+ * Note that CERT can be NULL in case its called from the OCSP callback.
+ */
 typedef apr_status_t (*serf_ssl_need_server_cert_t)(
     void *data,
     int failures,
@@ -722,6 +726,8 @@ const char *serf_ssl_cert_export(
  * The returned string is allocated in @a result_pool.
  * Uses @a scratch_pool for temporary allocations.
  * Returns NULL on failure.
+ *
+ * @since New in 1.4.
  */
 const char *serf_ssl_cert_export2(
     const serf_ssl_certificate_t *cert,
@@ -733,6 +739,8 @@ const char *serf_ssl_cert_export2(
  * The returned certificate is allocated in @a result_pool.
  * Uses @a scratch_pool for temporary allocations.
  * Returns NULL on failure.
+ *
+ * @since New in 1.4.
  */
 serf_ssl_certificate_t *serf_ssl_cert_import(
     const char *encoded_cert,
@@ -760,6 +768,8 @@ apr_status_t serf_ssl_trust_cert(
 
 /**
  * Load a CRL .pem file from @a file_path and enable CRL checking.
+ *
+ * @since New in 1.4.
  */
 apr_status_t serf_ssl_add_crl_from_file(serf_ssl_context_t *ssl_ctx,
                                         const char *file_path,
@@ -769,6 +779,8 @@ apr_status_t serf_ssl_add_crl_from_file(serf_ssl_context_t *ssl_ctx,
  * Enable or disable CRL checking of all server certificates.
  * @a enabled = 1 to enable CRL checking, 0 to disable CRL checking.
  * Default = disabled.
+ *
+ * @since New in 1.4.
  */
 apr_status_t serf_ssl_check_crl(serf_ssl_context_t *ssl_ctx,
                                 int enabled);
@@ -778,6 +790,8 @@ apr_status_t serf_ssl_check_crl(serf_ssl_context_t *ssl_ctx,
  * server certificates.
  * @a enabled = 1 to enable checking, 0 to disable checking.
  * Default = disabled.
+ *
+ * @since New in 1.4.
  */
 apr_status_t
 serf_ssl_check_cert_status_request(serf_ssl_context_t *ssl_ctx, int enabled);
@@ -803,6 +817,8 @@ serf_ssl_context_t *serf_bucket_ssl_encrypt_context_get(
 
 /**
  * Internal representation of an OCSP request.
+ *
+ * @since New in 1.4.
  */
 typedef struct serf_ssl_ocsp_request_t serf_ssl_ocsp_request_t;
 
@@ -817,6 +833,8 @@ typedef struct serf_ssl_ocsp_request_t serf_ssl_ocsp_request_t;
  *
  * Returns @c NULL on failure, e.g., if @a issuer_cert is not the
  * issuer certificate of @a server_cert.
+ *
+ * @since New in 1.4.
  */
 serf_ssl_ocsp_request_t *serf_ssl_ocsp_request_create(
     const serf_ssl_certificate_t *server_cert,
@@ -834,6 +852,8 @@ serf_ssl_ocsp_request_t *serf_ssl_ocsp_request_create(
  * request; see RFC 2560, section A.1.1.
  *
  * @see serf_ssl_ocsp_request_body_size()
+ *
+ * @since New in 1.4.
  */
 const void *serf_ssl_ocsp_request_body(
     const serf_ssl_ocsp_request_t *ocsp_request);
@@ -841,6 +861,8 @@ const void *serf_ssl_ocsp_request_body(
 /**
  * Returns the size of the DER-encoded OCSP request body.
  * @see serf_ssl_ocsp_request_body().
+ *
+ * @since New in 1.4.
  */
 apr_size_t serf_ssl_ocsp_request_body_size(
     const serf_ssl_ocsp_request_t *ocsp_request);
@@ -852,6 +874,8 @@ apr_size_t serf_ssl_ocsp_request_body_size(
  * Use @a scratch_pool for temporary allocations.
  *
  * Returns @c NULL on failure.
+ *
+ * @since New in 1.4.
  */
 const char *serf_ssl_ocsp_request_export(
     const serf_ssl_ocsp_request_t *ocsp_request,
@@ -866,6 +890,8 @@ const char *serf_ssl_ocsp_request_export(
  * Use @a scratch_pool for temporary allocations.
  *
  * Returns @c NULL on failure.
+ *
+ * @since New in 1.4.
  */
 serf_ssl_ocsp_request_t *serf_ssl_ocsp_request_import(
     const char *encoded_ocsp_request,
@@ -874,6 +900,8 @@ serf_ssl_ocsp_request_t *serf_ssl_ocsp_request_import(
 
 /**
  * Internal representation of an OCSP response.
+ *
+ * @since New in 1.4.
  */
 typedef struct serf_ssl_ocsp_response_t serf_ssl_ocsp_response_t;
 
@@ -888,6 +916,8 @@ typedef struct serf_ssl_ocsp_response_t serf_ssl_ocsp_response_t;
  * Use @a scratch_pool for temporary allocations.
  *
  * Returns @c NULL on failure.
+ *
+ * @since New in 1.4.
  */
 serf_ssl_ocsp_response_t *serf_ssl_ocsp_response_parse(
     const void *ocsp_response,
@@ -923,6 +953,8 @@ serf_ssl_ocsp_response_t *serf_ssl_ocsp_response_parse(
  * epoch, i.e., @c APR_TIME_C(0).
  *
  * Uses @a scratch_pool for temporary allocations.
+ *
+ * @since New in 1.4.
  */
 apr_status_t serf_ssl_ocsp_response_verify(
     serf_ssl_context_t *ssl_ctx,
@@ -1007,20 +1039,23 @@ serf_bucket_t *serf_bucket_prefix_create(
 
 /* ==================================================================== */
 
-/* Creates two buckets, *HEAD and *TAIL, which together contain the output
-   of STREAM. If there is enough data in STREAM, HEAD will be a bucket of at
-   least MIN_CHUNK_SIZE and will never be larget than MAX_CHUNK_SIZE.
-
-   If STREAM is at EOF before MIN_CHUNK_SIZE, HEAD will contain the data,
-   while TAIL is immediately at EOF.
-
-   HEAD and TAIL will make sure that data read from TAIL will not break the
-   data availability promises on HEAD. Passing an existing tail of this
-   function as new stream may be handled specificaly, but the read promises
-   on all nodes ahead of stream will still hold.
-
-   HEAD and TAIL are allocated in STREAM->allocator. STREAM will be
-   destroyed when no longer referenced or after EOF.
+/**
+ * Creates two buckets, *HEAD and *TAIL, which together contain the output
+ * of STREAM. If there is enough data in STREAM, HEAD will be a bucket of at
+ * least MIN_CHUNK_SIZE and will never be larget than MAX_CHUNK_SIZE.
+ *
+ * If STREAM is at EOF before MIN_CHUNK_SIZE, HEAD will contain the data,
+ * while TAIL is immediately at EOF.
+ *
+ * HEAD and TAIL will make sure that data read from TAIL will not break the
+ * data availability promises on HEAD. Passing an existing tail of this
+ * function as new stream may be handled specificaly, but the read promises
+ * on all nodes ahead of stream will still hold.
+ *
+ * HEAD and TAIL are allocated in STREAM->allocator. STREAM will be
+ * destroyed when no longer referenced or after EOF.
+ *
+ * @since New in 1.4.
  */
 void serf_bucket_split_create(serf_bucket_t **head,
                               serf_bucket_t **tail,
