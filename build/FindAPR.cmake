@@ -126,6 +126,9 @@ endfunction(_apru_extras)
 
 # From the list of link libraries, extract the imported location
 function(_apru_location _location_var _extralibs_var)
+  unset(_dir)
+  unset(_lib)
+  unset(_extra)
   foreach(_part ${ARGN})
     string(SUBSTRING "${_part}" 0 2 _flag)
     if(_flag STREQUAL "-L")
