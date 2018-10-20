@@ -11,6 +11,11 @@ Status of 1.4.0:
 Candidate changes:
 ==================
 
+ * r1844404
+   Fix CMake's FindAPR(Util) for embedded builds.
+   Votes:
+     +1: brane
+
 Veto-blocked changes:
 =====================
 
