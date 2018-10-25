@@ -11,7 +11,7 @@ Status of 1.4.0:
 Candidate changes:
 ==================
 
- * r1844834
+ * r1844834, r1844840
    Remove testing code from the logging implementation before the release.
    Justification:
      It's testing code and should not be released.
