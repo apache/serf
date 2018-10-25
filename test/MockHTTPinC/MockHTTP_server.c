@@ -2696,6 +2696,10 @@ static apr_status_t initSSLCtx(_mhClientCtx_t *cctx)
         if (! (cctx->protocols & mhProtoTLSv12))
             SSL_CTX_set_options(ssl_ctx->ctx, SSL_OP_NO_TLSv1_2);
 #endif
+#ifdef SSL_OP_NO_TLSv1_3
+        if (! (cctx->protocols & mhProtoTLSv13))
+            SSL_CTX_set_options(ssl_ctx->ctx, SSL_OP_NO_TLSv1_3);
+#endif
 
 #if OPENSSL_VERSION_NUMBER >= 0x10002000L /* >= 1.0.2 */
 #  ifndef OPENSSL_NO_TLSEXT
@@ -3044,11 +3048,6 @@ static apr_status_t sslHandshake(_mhClientCtx_t *cctx)
                            there */
                         return APR_EAGAIN;
                     }
-
-                    /* XXX This is magic that makes the tests pass on macOS
-                           with OpenSSL 1.0.2n and later. Please don't ask
-                           for explanations; see above, re: "magic". */
-                    fprintf(stderr, "\n");
 
                     _mhLog(MH_VERBOSE, cctx->skt,
                            "SSL Error %d: Library=%d, Function=%d, Reason=%d",

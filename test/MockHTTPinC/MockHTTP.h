@@ -71,6 +71,7 @@ typedef enum mhSSLProtocol_t {
     mhProtoTLSv1  = 0x04,
     mhProtoTLSv11 = 0x08,
     mhProtoTLSv12 = 0x10,
+    mhProtoTLSv13 = 0x20,
 } mhSSLProtocol_t;
 
 typedef enum mhThreading_t {
