@@ -60,7 +60,6 @@ const char * loglvl_labels[] = {
 apr_status_t serf__log_init(serf_context_t *ctx)
 {
     log_baton_t *log_baton;
-    serf_config_t *config = ctx->config;
 
     log_baton = apr_palloc(ctx->pool, sizeof(log_baton_t));
     log_baton->output_list = apr_array_make(ctx->pool, 1,
