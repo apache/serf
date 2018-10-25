@@ -11,6 +11,20 @@ Status of 1.4.0:
 Candidate changes:
 ==================
 
+ * r1844834
+   Remove testing code from the logging implementation before the release.
+   Justification:
+     It's testing code and should not be released.
+   Votes:
+     +1: brane
+
+ * r1844837
+   Handle (optional) TLSv1.3 support in the MockHTTPinC server.
+   Justification:
+     Fixes tests with OpenSSL 1.1 and later.
+   Votes:
+     +1: brane
+
 Veto-blocked changes:
 =====================
 
