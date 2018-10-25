@@ -66,29 +66,6 @@ apr_status_t serf__log_init(serf_context_t *ctx)
     log_baton->output_list = apr_array_make(ctx->pool, 1,
                                             sizeof(serf_log_output_t *));
 
-    /* TODO: remove before next serf release, FOR TESTING ONLY */
-    {
-        serf_log_output_t *output;
-        apr_status_t status;
-
-        status = serf_logging_create_stream_output(&output, ctx,
-                                                   ACTIVE_LOGLEVEL,
-                                                   ACTIVE_LOGCOMPS,
-                                                   SERF_LOG_DEFAULT_LAYOUT,
-                                                   stderr, ctx->pool);
-        if (status)
-            return status;
-
-        status = serf_config_set_object(config, SERF_CONFIG_CTX_LOGBATON,
-                                        log_baton);
-        if (status)
-            return status;
-
-        status = serf_logging_add_output(ctx, output);
-        if (status)
-            return status;
-    }
-
     return APR_SUCCESS;
 }
 
