@@ -16,14 +16,14 @@ Candidate changes:
    Justification:
      It's testing code and should not be released.
    Votes:
-     +1: brane
+     +1: brane, rhuijben
 
  * r1844837
    Handle (optional) TLSv1.3 support in the MockHTTPinC server.
    Justification:
      Fixes tests with OpenSSL 1.1 and later.
    Votes:
-     +1: brane
+     +1: brane, rhuijben
 
 Veto-blocked changes:
 =====================
