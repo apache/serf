@@ -11,20 +11,6 @@ Status of 1.4.0:
 Candidate changes:
 ==================
 
- * r1844834, r1844840
-   Remove testing code from the logging implementation before the release.
-   Justification:
-     It's testing code and should not be released.
-   Votes:
-     +1: brane, rhuijben
-
- * r1844837
-   Handle (optional) TLSv1.3 support in the MockHTTPinC server.
-   Justification:
-     Fixes tests with OpenSSL 1.1 and later.
-   Votes:
-     +1: brane, rhuijben
-
  * r1845542
    Support newest versions of PyOpenSSL for creating test certificates.
    Justification:
@@ -37,4 +23,18 @@ Veto-blocked changes:
 
 Approved changes:
 =================
+
+ * r1844834, r1844840
+   Remove testing code from the logging implementation before the release.
+   Justification:
+     It's testing code and should not be released.
+   Votes:
+     +1: brane, rhuijben, lgo
+
+ * r1844837
+   Handle (optional) TLSv1.3 support in the MockHTTPinC server.
+   Justification:
+     Fixes tests with OpenSSL 1.1 and later.
+   Votes:
+     +1: brane, rhuijben, lgo
 
