@@ -25,6 +25,13 @@ Candidate changes:
    Votes:
      +1: brane, rhuijben
 
+ * r1845542
+   Support newest versions of PyOpenSSL for creating test certificates.
+   Justification:
+     Scripts should work with the newest versions of dependencies installed.
+   Votes:
+     +1: brane
+
 Veto-blocked changes:
 =====================
 
