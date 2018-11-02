@@ -78,7 +78,13 @@ def create_crl(revokedcert, cakey, cacert, crlfile, next_crl_days=VALID_DAYS):
     revoked.set_rev_date(now_str)   # revoked as of now
 
     crl.add_revoked(revoked)
-    open(crlfile, "wt").write(crl.export(cacert, cakey, days=next_crl_days))
+    try:
+        exported = crl.export(cacert, cakey, days=next_crl_days, digest=b"md5")
+    except TypeError:
+        # Some very old versions of pyopenssl (such as the one on macOS)
+        # do not support the 'digest' keyword argument.
+        exported = crl.export(cacert, cakey, days=next_crl_days)
+    open(crlfile, "wt").write(exported)
 
 # subjectAltName
 def create_cert(subjectkey, certfile, issuer=None, issuerkey=None, country='', 
