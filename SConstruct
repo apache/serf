@@ -154,7 +154,7 @@ if sys.platform == 'win32':
     EnumVariable('MSVC_VERSION',
                  "Visual C++ to use for building",
                  None,
-                 allowed_values=('15.0', '14.1', '14.0', '12.0',
+                 allowed_values=('14.2', '14.1', '14.0', '12.0',
                                  '11.0', '10.0', '9.0', '8.0', '6.0'),
                  map={'2005' :  '8.0',
                       '2008' :  '9.0',
