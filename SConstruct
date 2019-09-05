@@ -357,7 +357,7 @@ if sys.platform == 'win32':
     expat_lib_name = 'xml.lib'
     apuversion = os.path.join(apu, 'include', 'apu_version.h')
     if not os.path.isfile(apuversion):
-      apuversion = os.path.join(apu, 'include', 'apu-1','apu_version.h')
+      apuversion = os.path.join(apu, 'include', 'apr-1', 'apu_version.h')
       
     if os.path.isfile(apuversion):
       apu_major = 0
@@ -394,7 +394,7 @@ if sys.platform == 'win32':
   if not env.get('SOURCE_LAYOUT', None):
     env.Append(LIBPATH=['$APR/lib', '$APU/lib'],
                CPPPATH=['$APR/include', '$APR/include/apr-1',
-                        '$APU/include', '$APU/include/apu-1'])
+                        '$APU/include', '$APU/include/apr-1'])
   elif aprstatic:
     env.Append(LIBPATH=['$APR/LibR','$APU/LibR'],
                CPPPATH=['$APR/include', '$APU/include'])
