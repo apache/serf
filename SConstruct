@@ -390,7 +390,8 @@ if sys.platform == 'win32':
 
   if not env.get('SOURCE_LAYOUT', None):
     env.Append(LIBPATH=['$APR/lib', '$APU/lib'],
-               CPPPATH=['$APR/include', '$APU/include'])
+               CPPPATH=['$APR/include', '$APR/include/apr-1',
+                        '$APU/include', '$APU/include/apr-1'])
   elif aprstatic:
     env.Append(LIBPATH=['$APR/LibR','$APU/LibR'],
                CPPPATH=['$APR/include', '$APU/include'])
