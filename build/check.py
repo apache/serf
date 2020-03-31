@@ -52,16 +52,16 @@ if __name__ == '__main__':
 
   # Find test responses and run them one by one
   for case in glob.glob(testdir + "/testcases/*.response"):
-    print "== Testing %s ==" % (case)
+    print("== Testing %s ==" % (case))
     try:
       subprocess.check_call([SERF_RESPONSE_EXE, case])
     except subprocess.CalledProcessError:
-      print "ERROR: test case %s failed" % (case)
+      print("ERROR: test case %s failed" % (case))
       sys.exit(1)
 
-  print "== Running the unit tests =="
+  print("== Running the unit tests ==")
   try:
     subprocess.check_call(TEST_ALL_EXE)
   except subprocess.CalledProcessError:
-    print "ERROR: test(s) failed in test_all"
+    print("ERROR: test(s) failed in test_all")
     sys.exit(1)

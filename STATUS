@@ -24,11 +24,6 @@ Candidate changes:
    Votes:
      +1: rhuijben, astieger
 
- * r1811083
-   Make the SCons script compatible with SCons 3.0.0.
-   Votes:
-     +1: rhuijben, astieger
-
  * r1814714
    Support building against OpenSSL 1.1.0 on Windows
    Justification:
@@ -37,11 +32,6 @@ Candidate changes:
      ^/serf/branches/1.3.x-r1814714
    Votes:
      +1: rhuijben, astieger
-
-  * r1814604
-    Make SCons script work with scons 3.0.0 when built with Python 3
-    Votes:
-      +1: astieger, rhuijben
 
 Veto-blocked changes:
 =====================
