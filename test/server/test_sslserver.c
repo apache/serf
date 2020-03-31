@@ -424,6 +424,15 @@ ssl_socket_read(serv_ctx_t *serv_ctx, char *data,
                 *len = 0;
                 return APR_EAGAIN;
             case SSL_ERROR_SSL:
+#ifdef SSL_R_UNEXPECTED_EOF_WHILE_READING
+                /* OpenSSL 1.1.1e+ returns an error on EOF now. */
+                if (ERR_GET_REASON(ERR_peek_error()) == 
+                       SSL_R_UNEXPECTED_EOF_WHILE_READING) {
+                    *len = 0;
+                    return APR_EOF;                
+                }
+                /* Fallthrough */
+#endif
             default:
                 *len = 0;
                 serf__log(TEST_VERBOSE, __FILE__,
