@@ -188,11 +188,11 @@ static void test_ssl_cert_certificate(CuTest *tc)
     kv = serf_ssl_cert_certificate(cert, tb->pool);
     CuAssertPtrNotNull(tc, kv);
 
-    CuAssertStrEquals(tc, "A8:73:BA:89:C5:2C:54:84:1A:2C:E8:04:87:EE:C1:04:48:83:86:F3",
+    CuAssertStrEquals(tc, "A1:E1:41:81:30:B5:D0:7F:13:BC:AB:FD:48:0C:48:FF:F9:D1:F5:63",
                       apr_hash_get(kv, "sha1", APR_HASH_KEY_STRING));
-    CuAssertStrEquals(tc, "Apr 29 08:50:37 2018 GMT",
+    CuAssertStrEquals(tc, "Oct  4 22:44:52 2021 GMT",
                       apr_hash_get(kv, "notBefore", APR_HASH_KEY_STRING));
-    CuAssertStrEquals(tc, "Apr 26 08:50:37 2031 GMT",
+    CuAssertStrEquals(tc, "Sep 10 22:44:52 2121 GMT",
                       apr_hash_get(kv, "notAfter", APR_HASH_KEY_STRING));
 
     san_arr = apr_hash_get(kv, "subjectAltName", APR_HASH_KEY_STRING);

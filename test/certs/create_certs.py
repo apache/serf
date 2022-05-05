@@ -41,7 +41,7 @@ KEY_ALGO=crypto.TYPE_RSA
 KEY_SIZE=2048
 KEY_CIPHER='DES3'
 SIGN_ALGO='SHA256'
-VALID_DAYS=365 * 3
+VALID_DAYS=365 * 100
 
 def create_key(keyfile='', passphrase=None):
     key = crypto.PKey()
@@ -206,8 +206,7 @@ if __name__ == '__main__':
                               org='In Serf we trust, Inc.', 
                               ou='Test Suite Server', cn='localhost', 
                               email='serfserver@example.com',
-                              valid_before=10*365,
-                              days_valid=13*365)
+                              valid_before=10*365)
 
     # server certificate with SubjectAltName and empty CN
     san_nocncert = create_cert(subjectkey=serverkey,
@@ -218,7 +217,6 @@ if __name__ == '__main__':
                                ou='Test Suite Server',
                                cn=None,
                                email='serfserver@example.com',
-                               days_valid=13*365,
                                subjectAltName=['DNS:localhost'])
 
     # server certificate with OCSP responder URL
@@ -230,7 +228,6 @@ if __name__ == '__main__':
                            ou='Test Suite Server',
                            cn='localhost',
                            email='serfserver@example.com',
-                           days_valid=13*365,
                            subjectAltName=['DNS:localhost'],
                            ocsp_responder_url='http://localhost:17080')
 
@@ -243,7 +240,6 @@ if __name__ == '__main__':
                               ou='Test Suite Server',
                               cn='localhost',
                               email='serfserver@example.com',
-                              days_valid=13*365,
                               ocsp_signer=True)
 
     # client key pair and certificate
