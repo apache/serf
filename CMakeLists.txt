@@ -172,6 +172,7 @@ if(SERF_WINDOWS)
       "secur32.lib"
       "ws2_32.lib"
   )
+  add_definitions("-DSERF_HAVE_SSPI")
 endif(SERF_WINDOWS)
 
 
