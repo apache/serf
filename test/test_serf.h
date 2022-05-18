@@ -159,7 +159,6 @@ typedef struct handler_baton_t {
 #define TEST_RESULT_CLIENT_CERTPWCB_CALLED   0x0008
 #define TEST_RESULT_AUTHNCB_CALLED           0x0010
 #define TEST_RESULT_HANDLE_RESPONSECB_CALLED 0x0020
-#define TEST_RESULT_OCSP_CHECK_SUCCESSFUL    0x0040
 
 serf_bucket_t* accept_response(serf_request_t *request,
                                serf_bucket_t *stream,

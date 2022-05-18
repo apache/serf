@@ -456,34 +456,116 @@ static apr_status_t validate_rootcacert(const serf_ssl_certificate_t *cert,
     return APR_SUCCESS;
 }
 
-static apr_status_t
-ssl_server_cert_cb_expect_failures(void *baton, int failures,
-                                   const serf_ssl_certificate_t *cert)
+static const char *format_cert_failures(int failures, apr_pool_t *pool)
 {
-    test_baton_t *tb = baton;
-    int expected_failures = *(int *)tb->user_baton;
+    const char *str = "";
 
-    tb->result_flags |= TEST_RESULT_SERVERCERTCB_CALLED;
+    if (failures & SERF_SSL_CERT_NOTYETVALID) {
+        str = apr_pstrcat(pool, str, *str ? "|" : "", "CERT_NOTYETVALID", NULL);
+        failures &= ~SERF_SSL_CERT_NOTYETVALID;
+    }
 
-    /* We expect an error from the certificate validation function. */
-    if (failures & expected_failures)
-        return APR_SUCCESS;
+    if (failures & SERF_SSL_CERT_EXPIRED) {
+        str = apr_pstrcat(pool, str, *str ? "|" : "", "CERT_EXPIRED", NULL);
+        failures &= ~SERF_SSL_CERT_EXPIRED;
+    }
+
+    if (failures & SERF_SSL_CERT_UNKNOWNCA) {
+        str = apr_pstrcat(pool, str, *str ? "|" : "", "CERT_UNKNOWNCA", NULL);
+        failures &= ~SERF_SSL_CERT_UNKNOWNCA;
+    }
+
+    if (failures & SERF_SSL_CERT_SELF_SIGNED) {
+        str = apr_pstrcat(pool, str, *str ? "|" : "", "CERT_SELF_SIGNED", NULL);
+        failures &= ~SERF_SSL_CERT_SELF_SIGNED;
+    }
+
+    if (failures & SERF_SSL_CERT_UNKNOWN_FAILURE) {
+        str = apr_pstrcat(pool, str, *str ? "|" : "", "CERT_UNKNOWN_FAILURE", NULL);
+        failures &= ~SERF_SSL_CERT_UNKNOWN_FAILURE;
+    }
+
+    if (failures & SERF_SSL_CERT_REVOKED) {
+        str = apr_pstrcat(pool, str, *str ? "|" : "", "CERT_REVOKED", NULL);
+        failures &= ~SERF_SSL_CERT_REVOKED;
+    }
+
+    if (failures & SERF_SSL_CERT_UNABLE_TO_GET_CRL) {
+        str = apr_pstrcat(pool, str, *str ? "|" : "", "CERT_UNABLE_TO_GET_CRL", NULL);
+        failures &= ~SERF_SSL_CERT_UNABLE_TO_GET_CRL;
+    }
+
+    if (failures & SERF_SSL_CERT_INVALID_HOST) {
+        str = apr_pstrcat(pool, str, *str ? "|" : "", "CERT_INVALID_HOST", NULL);
+        failures &= ~SERF_SSL_CERT_INVALID_HOST;
+    }
+
+    if (failures & SERF_SSL_OCSP_RESPONDER_TRYLATER) {
+        str = apr_pstrcat(pool, str, *str ? "|" : "", "OCSP_RESPONDER_TRYLATER", NULL);
+        failures &= ~SERF_SSL_OCSP_RESPONDER_TRYLATER;
+    }
+
+    if (failures & SERF_SSL_OCSP_RESPONDER_ERROR) {
+        str = apr_pstrcat(pool, str, *str ? "|" : "", "OCSP_RESPONDER_ERROR", NULL);
+        failures &= ~SERF_SSL_OCSP_RESPONDER_ERROR;
+    }
+
+    if (failures & SERF_SSL_OCSP_RESPONDER_UNKNOWN_FAILURE) {
+        str = apr_pstrcat(pool, str, *str ? "|" : "", "OCSP_RESPONDER_UNKNOWN_FAILURE", NULL);
+        failures &= ~SERF_SSL_OCSP_RESPONDER_UNKNOWN_FAILURE;
+    }
+
+    if (failures) {
+        /* Unexpected or unknown cert failure. */
+        REPORT_TEST_SUITE_ERROR();
+        abort();
+    }
+
+    if (*str)
+        return str;
     else
-        return REPORT_TEST_SUITE_ERROR();
+        return "NONE";
 }
 
-static apr_status_t
-ssl_server_cert_cb_expect_allok(void *baton, int failures,
-                                const serf_ssl_certificate_t *cert)
+/* Logs failures in tb->user_baton, for later validation. */
+static apr_status_t ssl_server_cert_cb_log(void *baton, int failures,
+                                           const serf_ssl_certificate_t *cert)
 {
     test_baton_t *tb = baton;
+    const char *cert_str;
+
     tb->result_flags |= TEST_RESULT_SERVERCERTCB_CALLED;
 
-    /* No error expected, certificate is valid. */
-    if (failures)
-        return REPORT_TEST_SUITE_ERROR();
-    else
-        return APR_SUCCESS;
+    if (cert) {
+        apr_hash_t *subject;
+        const char *common_name;
+        int depth;
+
+        subject = serf_ssl_cert_subject(cert, tb->pool);
+        if (!subject)
+            return REPORT_TEST_SUITE_ERROR();
+
+        common_name = apr_hash_get(subject, "CN", APR_HASH_KEY_STRING);
+        depth = serf_ssl_cert_depth(cert);
+
+        cert_str = apr_psprintf(tb->pool, "(CN=%s, depth=%d)", common_name, depth);
+    } else {
+        cert_str = "(null)";
+    }
+
+    if (!tb->user_baton)
+        tb->user_baton = "";
+
+    tb->user_baton = apr_pstrcat(
+        tb->pool,
+        tb->user_baton,
+        "cert_cb: "
+        "failures = ", format_cert_failures(failures, tb->pool),
+        ", cert = ", cert_str,
+        "\n",
+        NULL);
+
+    return APR_SUCCESS;
 }
 
 static apr_status_t
@@ -503,7 +585,6 @@ static void test_ssl_handshake(CuTest *tc)
     test_baton_t *tb = tc->testBaton;
     handler_baton_t handler_ctx[1];
     const int num_requests = sizeof(handler_ctx)/sizeof(handler_ctx[0]);
-    int expected_failures;
     apr_status_t status;
     static const char *server_cert[] = { "serfservercert.pem",
         NULL };
@@ -514,15 +595,9 @@ static void test_ssl_handshake(CuTest *tc)
                                  server_cert,
                                  test_clientcert_none);
     status = setup_test_client_https_context(tb, NULL,
-                                             ssl_server_cert_cb_expect_failures,
+                                             ssl_server_cert_cb_log,
                                              tb->pool);
     CuAssertIntEquals(tc, APR_SUCCESS, status);
-
-    /* This unknown failures is X509_V_ERR_UNABLE_TO_VERIFY_LEAF_SIGNATURE,
-       meaning the chain has only the server cert. A good candidate for its
-       own failure code. */
-    expected_failures = SERF_SSL_CERT_UNKNOWNCA;
-    tb->user_baton = &expected_failures;
 
     Given(tb->mh)
       GETRequest(URLEqualTo("/"), ChunkedBodyEqualTo("1"),
@@ -534,6 +609,26 @@ static void test_ssl_handshake(CuTest *tc)
 
     run_client_and_mock_servers_loops_expect_ok(tc, tb, num_requests,
                                                 handler_ctx, tb->pool);
+
+    /* OpenSSL 1.1.1i allows to continue verification for certificates with an
+       unknown CA. See https://github.com/openssl/openssl/issues/11297.
+
+       These unknown failures are X509_V_ERR_UNABLE_TO_GET_ISSUER_CERT_LOCALLY
+       and X509_V_ERR_UNABLE_TO_VERIFY_LEAF_SIGNATURE. The second one means that
+       the chain has only the server cert. A good candidate for its own failure
+       code. */
+#if OPENSSL_VERSION_NUMBER >= 0x1010109fL /* >= 1.1.1i */
+    CuAssertStrEquals(tc,
+        "cert_cb: failures = CERT_UNKNOWNCA, cert = (CN=localhost, depth=0)\n"
+        "cert_cb: failures = CERT_UNKNOWNCA, cert = (CN=localhost, depth=0)\n"
+        "cert_cb: failures = NONE, cert = (CN=localhost, depth=0)\n",
+        tb->user_baton);
+#else
+    CuAssertStrEquals(tc,
+        "cert_cb: failures = CERT_UNKNOWNCA, cert = (CN=localhost, depth=0)\n"
+        "cert_cb: failures = CERT_UNKNOWNCA, cert = (CN=localhost, depth=0)\n",
+        tb->user_baton);
+#endif
 }
 
 /* Validate that connecting to a SSLv2 only server fails. */
@@ -542,7 +637,6 @@ static void test_ssl_handshake_nosslv2(CuTest *tc)
     test_baton_t *tb = tc->testBaton;
     handler_baton_t handler_ctx[1];
     const int num_requests = sizeof(handler_ctx)/sizeof(handler_ctx[0]);
-    int expected_failures;
     apr_status_t status;
     static const char *server_cert[] = { "serfservercert.pem",
         NULL };
@@ -566,15 +660,9 @@ static void test_ssl_handshake_nosslv2(CuTest *tc)
     tb->serv_url = apr_psprintf(tb->pool, "https://%s", tb->serv_host);
 
     status = setup_test_client_https_context(tb, NULL,
-                                             ssl_server_cert_cb_expect_failures,
+                                             ssl_server_cert_cb_log,
                                              tb->pool);
     CuAssertIntEquals(tc, APR_SUCCESS, status);
-
-    /* This unknown failures is X509_V_ERR_UNABLE_TO_VERIFY_LEAF_SIGNATURE,
-       meaning the chain has only the server cert. A good candidate for its
-       own failure code. */
-    expected_failures = SERF_SSL_CERT_UNKNOWNCA;
-    tb->user_baton = &expected_failures;
 
     Given(tb->mh)
       GETRequest(URLEqualTo("/"), ChunkedBodyEqualTo("1"),
@@ -588,6 +676,9 @@ static void test_ssl_handshake_nosslv2(CuTest *tc)
                                                handler_ctx, tb->pool);
     CuAssert(tc, "Serf does not disable SSLv2, but it should!",
              status != APR_SUCCESS);
+
+    /* There are no ssl_server_cert_cb_log calls. */
+    CuAssertStrEquals(tc, NULL, tb->user_baton);
 }
 
 /* Set up the ssl context with the CA and root CA certificates needed for
@@ -636,7 +727,7 @@ static void test_ssl_trust_rootca(CuTest *tc)
                                  test_clientcert_none);
     status = setup_test_client_https_context(tb,
                                              https_set_root_ca_conn_setup,
-                                             ssl_server_cert_cb_expect_allok,
+                                             ssl_server_cert_cb_log,
                                              tb->pool);
     CuAssertIntEquals(tc, APR_SUCCESS, status);
 
@@ -650,7 +741,9 @@ static void test_ssl_trust_rootca(CuTest *tc)
 
     run_client_and_mock_servers_loops_expect_ok(tc, tb, num_requests,
                                                 handler_ctx, tb->pool);
-    CuAssertTrue(tc, tb->result_flags & TEST_RESULT_SERVERCERTCB_CALLED);
+    CuAssertStrEquals(tc,
+        "cert_cb: failures = NONE, cert = (CN=localhost, depth=0)\n",
+        tb->user_baton);
 }
 
 /* Validate that when the application rejects the cert, the context loop
@@ -740,7 +833,7 @@ chain_rootca_callback_conn_setup(apr_socket_t *skt,
         return status;
 
     serf_ssl_server_cert_chain_callback_set(tb->ssl_context,
-                                            ssl_server_cert_cb_expect_allok,
+                                            ssl_server_cert_cb_log,
                                             cert_chain_cb,
                                             tb);
 
@@ -763,7 +856,7 @@ static void test_ssl_certificate_chain_with_anchor(CuTest *tc)
                                  test_clientcert_none);
     status = setup_test_client_https_context(tb,
                                              chain_rootca_callback_conn_setup,
-                                             ssl_server_cert_cb_expect_allok,
+                                             ssl_server_cert_cb_log,
                                              tb->pool);
     CuAssertIntEquals(tc, APR_SUCCESS, status);
 
@@ -777,7 +870,9 @@ static void test_ssl_certificate_chain_with_anchor(CuTest *tc)
 
     run_client_and_mock_servers_loops_expect_ok(tc, tb, num_requests,
                                                 handler_ctx, tb->pool);
-    CuAssertTrue(tc, tb->result_flags & TEST_RESULT_SERVERCERTCB_CALLED);
+    CuAssertStrEquals(tc,
+        "cert_cb: failures = NONE, cert = (CN=localhost, depth=0)\n",
+        tb->user_baton);
     CuAssertTrue(tc, tb->result_flags & TEST_RESULT_SERVERCERTCHAINCB_CALLED);
 }
 
@@ -810,7 +905,7 @@ chain_callback_conn_setup(apr_socket_t *skt,
         return status;
 
     serf_ssl_server_cert_chain_callback_set(tb->ssl_context,
-                                            ssl_server_cert_cb_expect_allok,
+                                            ssl_server_cert_cb_log,
                                             cert_chain_all_certs_cb,
                                             tb);
 
@@ -832,7 +927,7 @@ static void test_ssl_certificate_chain_all_from_server(CuTest *tc)
                                  test_clientcert_none);
     status = setup_test_client_https_context(tb,
                                              chain_callback_conn_setup,
-                                             ssl_server_cert_cb_expect_allok,
+                                             ssl_server_cert_cb_log,
                                              tb->pool);
     CuAssertIntEquals(tc, APR_SUCCESS, status);
 
@@ -847,7 +942,10 @@ static void test_ssl_certificate_chain_all_from_server(CuTest *tc)
     run_client_and_mock_servers_loops_expect_ok(tc, tb, num_requests,
                                                 handler_ctx, tb->pool);
 
-    CuAssertTrue(tc, tb->result_flags & TEST_RESULT_SERVERCERTCB_CALLED);
+    CuAssertStrEquals(tc,
+        "cert_cb: failures = CERT_SELF_SIGNED, cert = (CN=Serf Root CA, depth=2)\n"
+        "cert_cb: failures = NONE, cert = (CN=localhost, depth=0)\n",
+        tb->user_baton);
     CuAssertTrue(tc, tb->result_flags & TEST_RESULT_SERVERCERTCHAINCB_CALLED);
 }
 
@@ -1090,7 +1188,6 @@ static void test_ssl_expired_server_cert(CuTest *tc)
     test_baton_t *tb = tc->testBaton;
     handler_baton_t handler_ctx[1];
     const int num_requests = sizeof(handler_ctx)/sizeof(handler_ctx[0]);
-    int expected_failures;
     apr_status_t status;
 
     static const char *expired_server_certs[] = {
@@ -1105,13 +1202,9 @@ static void test_ssl_expired_server_cert(CuTest *tc)
                                  test_clientcert_none);
     status = setup_test_client_https_context(tb,
                                              NULL, /* default conn setup */
-                                             ssl_server_cert_cb_expect_failures,
+                                             ssl_server_cert_cb_log,
                                              tb->pool);
     CuAssertIntEquals(tc, APR_SUCCESS, status);
-
-    expected_failures = SERF_SSL_CERT_SELF_SIGNED |
-                        SERF_SSL_CERT_EXPIRED;
-    tb->user_baton = &expected_failures;
 
     Given(tb->mh)
       GETRequest(URLEqualTo("/"), ChunkedBodyEqualTo("1"),
@@ -1123,8 +1216,11 @@ static void test_ssl_expired_server_cert(CuTest *tc)
 
     run_client_and_mock_servers_loops_expect_ok(tc, tb, num_requests,
                                                 handler_ctx, tb->pool);
-    CuAssertTrue(tc, tb->result_flags & TEST_RESULT_SERVERCERTCB_CALLED);
-
+    CuAssertStrEquals(tc,
+        "cert_cb: failures = CERT_SELF_SIGNED, cert = (CN=Serf Root CA, depth=2)\n"
+        "cert_cb: failures = CERT_EXPIRED, cert = (CN=localhost, depth=0)\n"
+        "cert_cb: failures = CERT_EXPIRED, cert = (CN=localhost, depth=0)\n",
+        tb->user_baton);
 }
 
 /* Validate that the expired certificate is reported as failure in the
@@ -1134,7 +1230,6 @@ static void test_ssl_future_server_cert(CuTest *tc)
     test_baton_t *tb = tc->testBaton;
     handler_baton_t handler_ctx[1];
     const int num_requests = sizeof(handler_ctx)/sizeof(handler_ctx[0]);
-    int expected_failures;
     apr_status_t status;
 
     static const char *future_server_certs[] = {
@@ -1149,13 +1244,9 @@ static void test_ssl_future_server_cert(CuTest *tc)
                                  test_clientcert_none);
     status = setup_test_client_https_context(tb,
                                              NULL, /* default conn setup */
-                                             ssl_server_cert_cb_expect_failures,
+                                             ssl_server_cert_cb_log,
                                              tb->pool);
     CuAssertIntEquals(tc, APR_SUCCESS, status);
-
-    expected_failures = SERF_SSL_CERT_SELF_SIGNED |
-                        SERF_SSL_CERT_NOTYETVALID;
-    tb->user_baton = &expected_failures;
 
     Given(tb->mh)
       GETRequest(URLEqualTo("/"), ChunkedBodyEqualTo("1"),
@@ -1167,7 +1258,11 @@ static void test_ssl_future_server_cert(CuTest *tc)
 
     run_client_and_mock_servers_loops_expect_ok(tc, tb, num_requests,
                                                 handler_ctx, tb->pool);
-    CuAssertTrue(tc, tb->result_flags & TEST_RESULT_SERVERCERTCB_CALLED);
+    CuAssertStrEquals(tc,
+        "cert_cb: failures = CERT_SELF_SIGNED, cert = (CN=Serf Root CA, depth=2)\n"
+        "cert_cb: failures = CERT_NOTYETVALID, cert = (CN=localhost, depth=0)\n"
+        "cert_cb: failures = CERT_NOTYETVALID, cert = (CN=localhost, depth=0)\n",
+        tb->user_baton);
 }
 
 
@@ -1197,42 +1292,12 @@ https_load_crl_conn_setup(apr_socket_t *skt,
     return status;
 }
 
-/* Logs failures for each depth in tb->user_baton, for later validation. */
-/* TODO: use this in place of ssl_server_cert_cb_expect_failures */
-static apr_status_t
-ssl_server_cert_cb_log_failures(void *baton, int failures,
-                                const serf_ssl_certificate_t *cert)
-{
-    test_baton_t *tb = baton;
-    apr_array_header_t *failure_list = (apr_array_header_t *)tb->user_baton;
-    int depth = serf_ssl_cert_depth(cert);
-    int *failures_for_depth;
-
-    if (!tb->user_baton) {
-        /* make the array big enough to not have to worry about resizing */
-        tb->user_baton = apr_array_make(tb->pool, 10, sizeof(int));
-    }
-    failure_list = tb->user_baton;
-
-    if (depth + 1 > failure_list->nalloc) {
-        return REPORT_TEST_SUITE_ERROR();
-    }
-
-    failures_for_depth = &APR_ARRAY_IDX(failure_list, depth, int);
-    *failures_for_depth |= failures;
-
-    tb->result_flags |= TEST_RESULT_SERVERCERTCB_CALLED;
-
-    return APR_SUCCESS;
-}
-
 /* Validate that a CRL file can be loaded and revocation actually works. */
 static void test_ssl_revoked_server_cert(CuTest *tc)
 {
     test_baton_t *tb = tc->testBaton;
     handler_baton_t handler_ctx[1];
     const int num_requests = sizeof(handler_ctx)/sizeof(handler_ctx[0]);
-    int depth;
     apr_status_t status;
 
     static const char *future_server_certs[] = {
@@ -1241,28 +1306,14 @@ static void test_ssl_revoked_server_cert(CuTest *tc)
         "serfrootcacert.pem",
         NULL };
 
-    static int expected_failures[] = {
-        SERF_SSL_CERT_REVOKED,
-        SERF_SSL_CERT_UNABLE_TO_GET_CRL,
-        SERF_SSL_CERT_UNABLE_TO_GET_CRL
-    };
-
     /* Set up a test context and a https server */
     setup_test_mock_https_server(tb, server_key,
                                  future_server_certs,
                                  test_clientcert_none);
 
-    /* OpenSSL first checks the revocation status before verifying the rest of
-       certificate. OpenSSL may call the application multiple times per depth,
-       e.g. once to tell that the cert is revoked, and a second time to tell
-       that the certificate itself is valid.
-       We'll have to combine the results of these multiple calls to the callback
-       to get a complete view of the certificate. That's why we use
-       ssl_server_cert_cb_log_failures here, and then later check expected
-       failures for each depth. */
     status = setup_test_client_https_context(tb,
                                              https_load_crl_conn_setup,
-                                             ssl_server_cert_cb_log_failures,
+                                             ssl_server_cert_cb_log,
                                              tb->pool);
     CuAssertIntEquals(tc, APR_SUCCESS, status);
 
@@ -1276,14 +1327,16 @@ static void test_ssl_revoked_server_cert(CuTest *tc)
 
     run_client_and_mock_servers_loops_expect_ok(tc, tb, num_requests,
                                                 handler_ctx, tb->pool);
-    CuAssertTrue(tc, tb->result_flags & TEST_RESULT_SERVERCERTCB_CALLED);
-    for (depth = 0; depth < 3; depth++) {
-        apr_array_header_t *ary = tb->user_baton;
-
-        CuAssertIntEquals(tc, expected_failures[depth],
-                          APR_ARRAY_IDX(ary, depth, int));
-
-    }
+    /* OpenSSL first checks the revocation status before verifying the rest of
+       certificate. OpenSSL may call the application multiple times per depth,
+       e.g. once to tell that the cert is revoked, and a second time to tell
+       that the certificate itself is valid. */
+    CuAssertStrEquals(tc,
+        "cert_cb: failures = CERT_REVOKED, cert = (CN=localhost, depth=0)\n"
+        "cert_cb: failures = CERT_UNABLE_TO_GET_CRL, cert = (CN=Serf CA, depth=1)\n"
+        "cert_cb: failures = CERT_UNABLE_TO_GET_CRL, cert = (CN=Serf Root CA, depth=2)\n"
+        "cert_cb: failures = NONE, cert = (CN=localhost, depth=0)\n",
+        tb->user_baton);
 }
 
 /* Test if serf is sets up an SSL tunnel to the proxy and doesn't contact the
@@ -1304,7 +1357,7 @@ static void test_setup_ssltunnel(CuTest *tc)
     CuAssertIntEquals(tc, APR_SUCCESS, setup_test_mock_proxy(tb));
     CuAssertIntEquals(tc, APR_SUCCESS,
             setup_serf_https_context_with_proxy(tb, chain_callback_conn_setup,
-                                                ssl_server_cert_cb_expect_allok,
+                                                ssl_server_cert_cb_log,
                                                 tb->pool));
 
     Given(tb->mh)
@@ -1329,6 +1382,11 @@ static void test_setup_ssltunnel(CuTest *tc)
         int req_nr = APR_ARRAY_IDX(tb->handled_requests, i, int);
         CuAssertIntEquals(tc, i + 1, req_nr);
     }
+
+    CuAssertStrEquals(tc,
+        "cert_cb: failures = CERT_SELF_SIGNED, cert = (CN=Serf Root CA, depth=2)\n"
+        "cert_cb: failures = NONE, cert = (CN=localhost, depth=0)\n",
+        tb->user_baton);
 }
 
 /* Test error if no creds callback */
@@ -1854,7 +1912,7 @@ static void test_ssl_renegotiate(CuTest *tc)
                                  test_clientcert_none);
     status = setup_test_client_https_context(tb,
                                              https_set_root_ca_conn_setup,
-                                             ssl_server_cert_cb_expect_allok,
+                                             ssl_server_cert_cb_log,
                                              tb->pool);
     CuAssertIntEquals(tc, APR_SUCCESS, status);
 
@@ -1879,6 +1937,20 @@ static void test_ssl_renegotiate(CuTest *tc)
     status = run_client_and_mock_servers_loops(tb, num_requests, handler_ctx,
                                                tb->pool);
     CuAssertIntEquals(tc, APR_SUCCESS, status);
+
+    /* There is some historical difference in certificate verification behavior
+       between OpenSSL 1.0.2 and OpenSSL 1.1.0. Unfortunately, the true reasons
+       for the difference are unknown. */
+#if OPENSSL_VERSION_NUMBER >= 0x10100000L /* >= 1.1.0 */
+    CuAssertStrEquals(tc,
+        "cert_cb: failures = NONE, cert = (CN=localhost, depth=0)\n",
+        tb->user_baton);
+#else
+    CuAssertStrEquals(tc,
+        "cert_cb: failures = NONE, cert = (CN=localhost, depth=0)\n"
+        "cert_cb: failures = NONE, cert = (CN=localhost, depth=0)\n",
+        tb->user_baton);
+#endif
 
     /* Check that the requests were sent and reveived by the server */
     /* Note: the test server will have received the first request twice, so
@@ -1989,31 +2061,6 @@ static void test_connect_to_non_http_server(CuTest *tc)
     CuAssertTrue(tc, tb->result_flags & TEST_RESULT_HANDLE_RESPONSECB_CALLED);
 }
 
-static apr_status_t
-ocsp_response_cb_expect_failures(void *baton, int failures,
-                                     const serf_ssl_certificate_t *cert)
-{
-    test_baton_t *tb = baton;
-    int expected_failures = tb->user_baton_l;
-
-    /* Root CA cert is selfsigned, ignore this 'failure'. */
-    failures &= ~SERF_SSL_CERT_SELF_SIGNED;
-
-    /* This callback gets called with both the server certificate and the ocsp
-       response status */
-    tb->result_flags |= TEST_RESULT_SERVERCERTCB_CALLED;
-
-    /* We expect an error from the certificate validation function. */
-    if (!failures)
-        return APR_SUCCESS;
-    if (failures & expected_failures) {
-        tb->result_flags |= TEST_RESULT_OCSP_CHECK_SUCCESSFUL;
-        return APR_SUCCESS;
-    }
-
-    return REPORT_TEST_SUITE_ERROR();
-}
-
 static void test_ssl_ocsp_response_error_and_override(CuTest *tc)
 {
     test_baton_t *tb = tc->testBaton;
@@ -2027,7 +2074,7 @@ static void test_ssl_ocsp_response_error_and_override(CuTest *tc)
                                  test_clientcert_none);
     status = setup_test_client_https_context(tb,
                                              default_https_conn_setup,
-                                             ocsp_response_cb_expect_failures,
+                                             ssl_server_cert_cb_log,
                                              tb->pool);
     CuAssertIntEquals(tc, APR_SUCCESS, status);
     tb->enable_ocsp_stapling = 1;
@@ -2043,17 +2090,23 @@ static void test_ssl_ocsp_response_error_and_override(CuTest *tc)
                  HeaderEqualTo("Host", tb->serv_host))
         Respond(WithCode(200), WithChunkedBody(""))
     EndGiven
-    /* Expect this error */
-    tb->user_baton_l = SERF_SSL_OCSP_RESPONDER_ERROR;
 
     create_new_request(tb, &handler_ctx[0], "GET", "/", 1);
 
     run_client_and_mock_servers_loops_expect_ok(tc, tb, num_requests,
                                                 handler_ctx, tb->pool);
 
-    CuAssertTrue(tc, tb->result_flags & TEST_RESULT_SERVERCERTCB_CALLED);
 #if !defined(OPENSSL_NO_TLSEXT) && !defined(OPENSSL_NO_OCSP)
-    CuAssertTrue(tc, tb->result_flags & TEST_RESULT_OCSP_CHECK_SUCCESSFUL);
+    CuAssertStrEquals(tc,
+        "cert_cb: failures = CERT_SELF_SIGNED, cert = (CN=Serf Root CA, depth=2)\n"
+        "cert_cb: failures = NONE, cert = (CN=localhost, depth=0)\n"
+        "cert_cb: failures = OCSP_RESPONDER_ERROR, cert = (null)\n",
+        tb->user_baton);
+#else
+    CuAssertStrEquals(tc,
+        "cert_cb: failures = CERT_SELF_SIGNED, cert = (CN=Serf Root CA, depth=2)\n"
+        "cert_cb: failures = NONE, cert = (CN=localhost, depth=0)\n",
+        tb->user_baton);
 #endif
 }
 
@@ -2064,7 +2117,6 @@ static void test_ssl_server_cert_with_cn_nul_byte(CuTest *tc)
     test_baton_t *tb = tc->testBaton;
     handler_baton_t handler_ctx[1];
     const int num_requests = sizeof(handler_ctx)/sizeof(handler_ctx[0]);
-    int expected_failures;
     apr_status_t status;
 
     static const char *nul_byte_server_certs[] = {
@@ -2079,13 +2131,9 @@ static void test_ssl_server_cert_with_cn_nul_byte(CuTest *tc)
                                  test_clientcert_none);
     status = setup_test_client_https_context(tb,
                                              NULL, /* default conn setup */
-                                             ssl_server_cert_cb_expect_failures,
+                                             ssl_server_cert_cb_log,
                                              tb->pool);
     CuAssertIntEquals(tc, APR_SUCCESS, status);
-
-    expected_failures = SERF_SSL_CERT_SELF_SIGNED |
-                        SERF_SSL_CERT_INVALID_HOST; /* NUL byte error */
-    tb->user_baton = &expected_failures;
 
     Given(tb->mh)
       GETRequest(URLEqualTo("/"), ChunkedBodyEqualTo("1"),
@@ -2097,7 +2145,10 @@ static void test_ssl_server_cert_with_cn_nul_byte(CuTest *tc)
 
     run_client_and_mock_servers_loops_expect_ok(tc, tb, num_requests,
                                                 handler_ctx, tb->pool);
-    CuAssertTrue(tc, tb->result_flags & TEST_RESULT_SERVERCERTCB_CALLED);
+    CuAssertStrEquals(tc,
+        "cert_cb: failures = CERT_SELF_SIGNED, cert = (CN=(null), depth=1)\n"
+        "cert_cb: failures = CERT_INVALID_HOST, cert = (CN=www.example.net\\00.example.com, depth=0)\n",
+        tb->user_baton);
 }
 
 /* Validate that the subject's SAN containing a '\0' byte is reported as failure
@@ -2107,7 +2158,6 @@ static void test_ssl_server_cert_with_san_nul_byte(CuTest *tc)
     test_baton_t *tb = tc->testBaton;
     handler_baton_t handler_ctx[1];
     const int num_requests = sizeof(handler_ctx)/sizeof(handler_ctx[0]);
-    int expected_failures;
     apr_status_t status;
 
     static const char *nul_byte_server_certs[] = {
@@ -2122,13 +2172,9 @@ static void test_ssl_server_cert_with_san_nul_byte(CuTest *tc)
                                  test_clientcert_none);
     status = setup_test_client_https_context(tb,
                                              NULL, /* default conn setup */
-                                             ssl_server_cert_cb_expect_failures,
+                                             ssl_server_cert_cb_log,
                                              tb->pool);
     CuAssertIntEquals(tc, APR_SUCCESS, status);
-
-    expected_failures = SERF_SSL_CERT_SELF_SIGNED |
-                        SERF_SSL_CERT_INVALID_HOST; /* NUL byte error */
-    tb->user_baton = &expected_failures;
 
     Given(tb->mh)
       GETRequest(URLEqualTo("/"), ChunkedBodyEqualTo("1"),
@@ -2140,7 +2186,10 @@ static void test_ssl_server_cert_with_san_nul_byte(CuTest *tc)
 
     run_client_and_mock_servers_loops_expect_ok(tc, tb, num_requests,
                                                 handler_ctx, tb->pool);
-    CuAssertTrue(tc, tb->result_flags & TEST_RESULT_SERVERCERTCB_CALLED);
+    CuAssertStrEquals(tc,
+        "cert_cb: failures = CERT_SELF_SIGNED, cert = (CN=(null), depth=1)\n"
+        "cert_cb: failures = CERT_INVALID_HOST, cert = (CN=www.example.com, depth=0)\n",
+        tb->user_baton);
 }
 
 /* Validate that the subject's CN and SAN containing a '\0' byte is reported
@@ -2150,7 +2199,6 @@ static void test_ssl_server_cert_with_cnsan_nul_byte(CuTest *tc)
     test_baton_t *tb = tc->testBaton;
     handler_baton_t handler_ctx[1];
     const int num_requests = sizeof(handler_ctx)/sizeof(handler_ctx[0]);
-    int expected_failures;
     apr_status_t status;
 
     static const char *nul_byte_server_certs[] = {
@@ -2165,13 +2213,9 @@ static void test_ssl_server_cert_with_cnsan_nul_byte(CuTest *tc)
                                  test_clientcert_none);
     status = setup_test_client_https_context(tb,
                                              NULL, /* default conn setup */
-                                             ssl_server_cert_cb_expect_failures,
+                                             ssl_server_cert_cb_log,
                                              tb->pool);
     CuAssertIntEquals(tc, APR_SUCCESS, status);
-
-    expected_failures = SERF_SSL_CERT_SELF_SIGNED |
-                        SERF_SSL_CERT_INVALID_HOST; /* NUL byte error */
-    tb->user_baton = &expected_failures;
 
     Given(tb->mh)
       GETRequest(URLEqualTo("/"), ChunkedBodyEqualTo("1"),
@@ -2183,7 +2227,10 @@ static void test_ssl_server_cert_with_cnsan_nul_byte(CuTest *tc)
 
     run_client_and_mock_servers_loops_expect_ok(tc, tb, num_requests,
                                                 handler_ctx, tb->pool);
-    CuAssertTrue(tc, tb->result_flags & TEST_RESULT_SERVERCERTCB_CALLED);
+    CuAssertStrEquals(tc,
+        "cert_cb: failures = CERT_SELF_SIGNED, cert = (CN=(null), depth=1)\n"
+        "cert_cb: failures = CERT_INVALID_HOST, cert = (CN=www.example.net\\00.example.com, depth=0)\n",
+        tb->user_baton);
 }
 
 /* Validate a certificate with subjectAltName a DNS entry, but no CN. */
@@ -2205,7 +2252,7 @@ static void test_ssl_server_cert_with_san_and_empty_cb(CuTest *tc)
                                  test_clientcert_none);
     status = setup_test_client_https_context(tb,
                                              https_set_root_ca_conn_setup,
-                                             ssl_server_cert_cb_expect_allok,
+                                             ssl_server_cert_cb_log,
                                              tb->pool);
     CuAssertIntEquals(tc, APR_SUCCESS, status);
 
@@ -2219,7 +2266,9 @@ static void test_ssl_server_cert_with_san_and_empty_cb(CuTest *tc)
 
     run_client_and_mock_servers_loops_expect_ok(tc, tb, num_requests,
                                                 handler_ctx, tb->pool);
-    CuAssertTrue(tc, tb->result_flags & TEST_RESULT_SERVERCERTCB_CALLED);
+    CuAssertStrEquals(tc,
+        "cert_cb: failures = NONE, cert = (CN=(null), depth=0)\n",
+        tb->user_baton);
 }
 
 #ifndef OPENSSL_NO_TLSEXT
@@ -2271,7 +2320,6 @@ static void test_ssl_alpn_negotiate(CuTest *tc)
     test_baton_t *tb = tc->testBaton;
     handler_baton_t handler_ctx[1];
     const int num_requests = sizeof(handler_ctx)/sizeof(handler_ctx[0]);
-    int expected_failures;
     apr_status_t status;
     static const char *server_cert[] = { "serfservercert.pem",
                                          NULL };
@@ -2295,12 +2343,9 @@ static void test_ssl_alpn_negotiate(CuTest *tc)
 
     status = setup_test_client_https_context(tb,
                                              http11_alpn_setup,
-                                             ssl_server_cert_cb_expect_failures,
+                                             ssl_server_cert_cb_log,
                                              tb->pool);
     CuAssertIntEquals(tc, APR_SUCCESS, status);
-
-    expected_failures = SERF_SSL_CERT_UNKNOWNCA;
-    tb->user_baton = &expected_failures;
 
     Given(tb->mh)
       GETRequest(URLEqualTo("/"), ChunkedBodyEqualTo("1"),
@@ -2312,6 +2357,25 @@ static void test_ssl_alpn_negotiate(CuTest *tc)
 
     run_client_and_mock_servers_loops_expect_ok(tc, tb, num_requests,
                                                 handler_ctx, tb->pool);
+    /* OpenSSL 1.1.1i allows to continue verification for certificates with an
+       unknown CA. See https://github.com/openssl/openssl/issues/11297.
+
+       These unknown failures are X509_V_ERR_UNABLE_TO_GET_ISSUER_CERT_LOCALLY
+       and X509_V_ERR_UNABLE_TO_VERIFY_LEAF_SIGNATURE. The second one means that
+       the chain has only the server cert. A good candidate for its own failure
+       code. */
+#if OPENSSL_VERSION_NUMBER >= 0x1010109fL /* >= 1.1.1i */
+    CuAssertStrEquals(tc,
+        "cert_cb: failures = CERT_UNKNOWNCA, cert = (CN=localhost, depth=0)\n"
+        "cert_cb: failures = CERT_UNKNOWNCA, cert = (CN=localhost, depth=0)\n"
+        "cert_cb: failures = NONE, cert = (CN=localhost, depth=0)\n",
+        tb->user_baton);
+#else
+    CuAssertStrEquals(tc,
+        "cert_cb: failures = CERT_UNKNOWNCA, cert = (CN=localhost, depth=0)\n"
+        "cert_cb: failures = CERT_UNKNOWNCA, cert = (CN=localhost, depth=0)\n",
+        tb->user_baton);
+#endif
 #endif /* OPENSSL_NO_TLSEXT */
 }
 
