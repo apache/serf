@@ -1027,7 +1027,6 @@ static apr_status_t status_from_ssl_error(serf_ssl_context_t *ctx,
             } else {
                 /*unsigned long l = ERR_peek_error();
                 int lib = ERR_GET_LIB(l);
-                int func = ERR_GET_FUNC(l);
                 int reason = ERR_GET_REASON(l);*/
 
                 /* ### Detect more specific errors?
@@ -1654,8 +1653,7 @@ static int ssl_need_client_cert(SSL *ssl, X509 **cert, EVP_PKEY **pkey)
             }
             else {
                 serf__log(LOGLVL_ERROR, LOGCOMP_SSL, __FILE__, ctx->config,
-                          "OpenSSL cert error: %d %d %d\n", ERR_GET_LIB(err),
-                          ERR_GET_FUNC(err),
+                          "OpenSSL cert error: %d %d\n", ERR_GET_LIB(err),
                           ERR_GET_REASON(err));
                 PKCS12_free(p12);
                 bio_meth_free(biom);

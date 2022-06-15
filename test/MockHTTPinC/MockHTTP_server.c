@@ -3036,7 +3036,6 @@ static apr_status_t sslHandshake(_mhClientCtx_t *cctx)
             default:
                 {
                     int lib = ERR_GET_LIB(l);
-                    int func = ERR_GET_FUNC(l);
                     int reason = ERR_GET_REASON(l);
 
                     if (lib == ERR_LIB_SSL
@@ -3050,8 +3049,8 @@ static apr_status_t sslHandshake(_mhClientCtx_t *cctx)
                     }
 
                     _mhLog(MH_VERBOSE, cctx->skt,
-                           "SSL Error %d: Library=%d, Function=%d, Reason=%d",
-                           ssl_err, lib, func, reason);
+                           "SSL Error %d: Library=%d, Reason=%d",
+                           ssl_err, lib, reason);
 #if MH_VERBOSE
                     ERR_print_errors_fp(stderr);
 #endif
