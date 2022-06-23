@@ -2336,10 +2336,7 @@ static long bio_apr_socket_ctrl(BIO *bio, int cmd, long num, void *ptr)
         case BIO_CTRL_POP:
             return 0;
         case BIO_CTRL_EOF:
-            if (ssl_ctx->hit_eof == YES)
-                return 1;
-            else
-                return 0;
+            return ssl_ctx->hit_eof;
         default:
             /* abort(); */
             return 1;
