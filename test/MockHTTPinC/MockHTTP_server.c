@@ -2242,6 +2242,7 @@ mhSetServerEnableOCSP(mhServCtx_t *ctx)
 struct sslCtx_t {
     bool handshake_done;
     bool renegotiate;
+    bool hit_eof;
     apr_status_t bio_status;
 
     SSL_CTX* ctx;
@@ -2324,21 +2325,25 @@ static int bio_apr_socket_destroy(BIO *bio)
  */
 static long bio_apr_socket_ctrl(BIO *bio, int cmd, long num, void *ptr)
 {
-    long ret = 1;
+    _mhClientCtx_t *cctx = bio_get_data(bio);
+    sslCtx_t *ssl_ctx = cctx->ssl_ctx;
 
     switch (cmd) {
-        default:
-            /* abort(); */
-            break;
         case BIO_CTRL_FLUSH:
             /* At this point we can't force a flush. */
-            break;
+            return 1;
         case BIO_CTRL_PUSH:
         case BIO_CTRL_POP:
-            ret = 0;
-            break;
+            return 0;
+        case BIO_CTRL_EOF:
+            if (ssl_ctx->hit_eof == YES)
+                return 1;
+            else
+                return 0;
+        default:
+            /* abort(); */
+            return 1;
     }
-    return ret;
 }
 
 /**
@@ -2360,7 +2365,9 @@ static int bio_apr_socket_read(BIO *bio, char *in, int inlen)
         _mhLog(MH_VERBOSE, cctx->skt, "Read %d bytes from ssl socket with "
                "status %d.\n", len, status);
 
-    if (APR_STATUS_IS_EAGAIN(status)) {
+    if (APR_STATUS_IS_EOF(status)) {
+        ssl_ctx->hit_eof = YES;
+    } else if (APR_STATUS_IS_EAGAIN(status)) {
         BIO_set_retry_read(bio);
     }
 
@@ -2661,6 +2668,7 @@ static apr_status_t initSSLCtx(_mhClientCtx_t *cctx)
 {
     sslCtx_t *ssl_ctx = apr_pcalloc(cctx->pool, sizeof(*ssl_ctx));
     cctx->ssl_ctx = ssl_ctx;
+    ssl_ctx->hit_eof = NO;
     ssl_ctx->bio_status = APR_SUCCESS;
 
     _mhLog(MH_VERBOSE, cctx->skt, "Initializing SSL context.\n");
