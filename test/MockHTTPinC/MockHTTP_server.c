@@ -2339,7 +2339,7 @@ static long bio_apr_socket_ctrl(BIO *bio, int cmd, long num, void *ptr)
             return ssl_ctx->hit_eof;
         default:
             /* abort(); */
-            return 1;
+            return 0;
     }
 }
 

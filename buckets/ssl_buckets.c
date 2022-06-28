@@ -524,7 +524,7 @@ static long bio_bucket_ctrl(BIO *bio, int cmd, long num, void *ptr)
         return ctx->hit_eof;
     default:
         /* abort(); */
-        return 1;
+        return 0;
     }
 }
 
@@ -546,7 +546,7 @@ static long bio_file_ctrl(BIO *bio, int cmd, long num, void *ptr)
             return 0;
     default:
         /* abort(); */
-        return 1;
+        return 0;
     }
 }
 
