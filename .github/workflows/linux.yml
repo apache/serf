@@ -15,8 +15,10 @@ jobs:
 
     steps:
       - name: Install prerequisites
-        run: sudo apt-get install scons libapr1 libapr1-dev libaprutil1 libaprutil1-dev zlib1g zlib1g-dev libssl-dev
-  
+        run: |
+          sudo apt-get update
+          sudo apt-get install scons libapr1 libapr1-dev libaprutil1 libaprutil1-dev zlib1g zlib1g-dev libssl-dev
+
       - uses: actions/checkout@v3
 
       - name: Build
