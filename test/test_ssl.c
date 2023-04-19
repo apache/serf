@@ -2571,10 +2571,10 @@ static apr_status_t verify_ocsp_response(CuTest *tc,
             ? get_srcdir_file(tb->pool, "test/certs/private/serfrootcakey.pem")
             : get_srcdir_file(tb->pool, "test/certs/private/serfserverkey.pem"));
 
-        FILE * pkey_file = fopen(fname, "rb");
-        if (pkey_file) {
-            pkey = PEM_read_PrivateKey(pkey_file, NULL, pkey_password_cb, NULL);
-            fclose(pkey_file);
+        BIO * pkey_bio = BIO_new_file(fname, "rb");
+        if (pkey_bio) {
+            pkey = PEM_read_bio_PrivateKey(pkey_bio, NULL, pkey_password_cb, NULL);
+            BIO_free(pkey_bio);
         }
         if (!pkey)
             return APR_EGENERAL;

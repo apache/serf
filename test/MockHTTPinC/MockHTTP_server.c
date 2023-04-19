@@ -2748,12 +2748,12 @@ static apr_status_t initSSLCtx(_mhClientCtx_t *cctx)
 
         store = SSL_CTX_get_cert_store(ssl_ctx->ctx);
         for (i = 1; i < cctx->certFiles->nelts; i++) {
-            FILE *fp;
+            BIO *bio;
             certfile = APR_ARRAY_IDX(cctx->certFiles, i, const char *);
-            fp = fopen(certfile, "r");
-            if (fp) {
-                X509 *ssl_cert = PEM_read_X509(fp, NULL, NULL, NULL);
-                fclose(fp);
+            bio = BIO_new_file(certfile, "r");
+            if (bio) {
+                X509 *ssl_cert = PEM_read_bio_X509(bio, NULL, NULL, NULL);
+                BIO_free(bio);
 
                 X509_STORE_add_cert(store, ssl_cert);
                 SSL_CTX_add_extra_chain_cert(ssl_ctx->ctx, ssl_cert);
