@@ -1325,8 +1325,7 @@ static int ssl_need_client_cert(SSL *ssl, X509 **cert, EVP_PKEY **pkey)
                 return 0;
             }
             else {
-                printf("OpenSSL cert error: %d %d %d\n", ERR_GET_LIB(err),
-                       ERR_GET_FUNC(err),
+                printf("OpenSSL cert error: %d %d\n", ERR_GET_LIB(err),
                        ERR_GET_REASON(err));
                 PKCS12_free(p12);
                 bio_meth_free(biom);
