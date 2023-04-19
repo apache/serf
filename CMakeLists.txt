@@ -35,6 +35,12 @@ if((${CMAKE_MAJOR_VERSION} GREATER 3) OR (${CMAKE_MINOR_VERSION} GREATER 11))
   cmake_policy(SET CMP0074 NEW)
 endif()
 
+# Enable CMP0092 if supported: MSVC warning flags are not in
+# CMAKE_<LANG>_FLAGS by default.
+if(POLICY CMP0092)
+  cmake_policy(SET CMP0092 NEW)
+endif()
+
 set(SERF_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
 set(CMAKE_MODULE_PATH "${SERF_SOURCE_DIR}/build")
 include(SerfVersion)
