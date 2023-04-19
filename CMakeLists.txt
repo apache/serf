@@ -287,6 +287,9 @@ else()
   # Assignment within conditional expression
   set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} /wd4706")
 
+  # 'function' undefined; assuming extern returning int
+  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} /we4013")
+
   add_definitions(
     "/DWIN32" "/DWIN32_LEAN_AND_MEAN"
     "/DNOUSER" "/DNOGDI" "/DNONLS" "/DNOCRYPT"
