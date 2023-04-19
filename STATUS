@@ -32,6 +32,12 @@ Candidate changes:
    Votes:
      +1: rhuijben, astieger
 
+Veto-blocked changes:
+=====================
+
+Approved changes:
+=================
+
  * r1814714
    Support building against OpenSSL 1.1.0 on Windows
    Justification:
@@ -39,11 +45,4 @@ Candidate changes:
    Branch:
      ^/serf/branches/1.3.x-r1814714
    Votes:
-     +1: rhuijben, astieger
-
-Veto-blocked changes:
-=====================
-
-Approved changes:
-=================
-
+     +1: rhuijben, astieger, ivan
