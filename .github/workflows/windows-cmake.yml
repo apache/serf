@@ -1,0 +1,47 @@
+name: Windows (CMake)
+
+on:
+  push:
+    branches: [ "*" ]
+  pull_request:
+    branches: [ "trunk" ]
+
+  # Allows you to run this workflow manually from the Actions tab
+  workflow_dispatch:
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        os: [windows-latest]
+        build-type: [Debug, Release]
+        generator: [ "Ninja" ]
+        arch: [ "Win32", "x64" ]
+      fail-fast: false
+
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Get apr
+        run: vcpkg install apr
+
+      - name: Get apr-util
+        run: vcpkg install apr-util
+
+      - uses: actions/checkout@v3
+
+      - name: Configure CMake
+        run: cmake \
+            -B ${{github.workspace}}/build \
+            -DCMAKE_BUILD_TYPE=${{ matrix.build-type }} \
+            -G "${{ matrix.generator }}" \
+            -A ${{ matrix.arch }} \
+            -DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake
+
+      - name: Build
+        run: cmake --build ${{github.workspace}}/build --config ${{ matrix.build-type }}
+
+      - name: Test
+        working-directory: ${{github.workspace}}/build
+        # Execute tests defined by the CMake configuration.
+        # See https://cmake.org/cmake/help/latest/manual/ctest.1.html for more detail
+        run: ctest -C ${{ matrix.build-type }} --output-on-failure
