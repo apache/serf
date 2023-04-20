@@ -1164,7 +1164,7 @@ static const char *format_cert_failures(int failures, apr_pool_t *pool)
     }
 
     if (failures) {
-        printf("Unexpected or unknown cert failure\n");
+        serf__log(TEST_VERBOSE, __FILE__, "Unexpected or unknown cert failure\n");
         abort();
     }
 
