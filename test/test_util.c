@@ -369,6 +369,8 @@ test_https_server_proxy_setup(test_baton_t **tb_p,
                             keyfile, certfiles, client_cn,
                             pool);
     status = start_test_server(tb->serv_ctx);
+    if (status != APR_SUCCESS)
+        return status;
 
     /* Prepare the proxy. */
     setup_test_server(&tb->proxy_ctx, tb->proxy_addr,
