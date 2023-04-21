@@ -633,6 +633,7 @@ apr_status_t start_test_server(serv_ctx_t *servctx)
 {
     apr_status_t status;
     apr_socket_t *serv_sock;
+    apr_time_t retry_end;
 
     /* create server socket */
 #if APR_VERSION_AT_LEAST(1, 0, 0)
@@ -651,9 +652,44 @@ apr_status_t start_test_server(serv_ctx_t *servctx)
     apr_socket_opt_set(serv_sock, APR_SO_NONBLOCK, 1);
     apr_socket_timeout_set(serv_sock, 0);
 
-    status = apr_socket_bind(serv_sock, servctx->serv_addr);
-    if (status != APR_SUCCESS)
-        return status;
+    retry_end = apr_time_now() + apr_time_from_sec(120);
+    while (1) {
+        status = apr_socket_bind(serv_sock, servctx->serv_addr);
+
+        /* Some of the tests, such as the ones testing the SSL tunnels, can
+           leave the source port we use for tests blocked due to a TIME_WAIT:
+
+             tcp  0  0  localhost:12345  localhost:37920  TIME_WAIT
+
+           Trying to bind a socket in such a state will result in EADDRINUSE.
+           On trunk, this issue is solved by making the test server try other
+           ports starting from the current one.  But we cannot really do that
+           on the 1.3.x branch, as that would require altering most of the tests
+           that currently hardcode the port number.  And we also cannot use
+           APR_SO_REUSEADDR due to the problems listed in r1711233.
+
+           So we use a retry loop, making some of the test runs longer -- but
+           also solving the issue without having to change the tests on the
+           stable branch.
+         */
+#ifdef WIN32
+        if (status == APR_FROM_OS_ERROR(WSAEADDRINUSE))
+#else
+        if (status == EADDRINUSE)
+#endif
+        {
+            if (apr_time_now() > retry_end)
+                return status;
+            else
+                apr_sleep(apr_time_from_sec(1));
+        }
+        else if (status != APR_SUCCESS) {
+            return status;
+        }
+        else {
+            break;
+        }
+    }
 
     /* listen for clients */
     status = apr_socket_listen(serv_sock, SOMAXCONN);
