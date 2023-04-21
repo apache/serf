@@ -27,10 +27,12 @@ Candidate changes:
    Votes:
      +1: stsp, astieger
 
- * r1712131,1807594,1811088
-   Add support for building with VS2017, assuming a new enough scons.
+ * r1712131, r1807594, r1811088, r1861036, r1909315, r1909316
+   Add support for building with VS2017-VS2022, assuming a new enough scons.
    Votes:
-     +1: rhuijben, astieger
+     +1: kotkov
+     +1: rhuijben (without r1861036, r1909315, r1909316)
+     +1: astieger (without r1861036, r1909315, r1909316)
 
 Veto-blocked changes:
 =====================
