@@ -154,7 +154,7 @@ if sys.platform == 'win32':
     EnumVariable('MSVC_VERSION',
                  "Visual C++ to use for building",
                  None,
-                 allowed_values=('14.2', '14.1', '14.0', '12.0',
+                 allowed_values=('14.3', '14.2', '14.1', '14.0', '12.0',
                                  '11.0', '10.0', '9.0', '8.0', '6.0'),
                  map={'2005' :  '8.0',
                       '2008' :  '9.0',
@@ -164,6 +164,7 @@ if sys.platform == 'win32':
                       '2015' : '14.0',
                       '2017' : '14.1',
                       '2019' : '14.2',
+                      '2022' : '14.3',
                      }),
 
     # We always documented that we handle an install layout, but in fact we
