@@ -163,6 +163,7 @@ if sys.platform == 'win32':
                       '2013' : '12.0',
                       '2015' : '14.0',
                       '2017' : '14.1',
+                      '2019' : '14.2',
                      }),
 
     # We always documented that we handle an install layout, but in fact we
