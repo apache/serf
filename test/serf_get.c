@@ -420,7 +420,6 @@ int main(int argc, const char **argv)
     serf_bucket_alloc_t *bkt_alloc;
     serf_context_t *context;
     serf_connection_t *connection;
-    serf_request_t *request;
     app_baton_t app_ctx;
     handler_baton_t handler_ctx;
     serf_bucket_t *req_hdrs = NULL;
@@ -652,8 +651,9 @@ int main(int argc, const char **argv)
     serf_connection_set_max_outstanding_requests(connection, inflight);
 
     for (i = 0; i < count; i++) {
-        request = serf_connection_request_create(connection, setup_request,
-                                                 &handler_ctx);
+        /* We don't need the returned request here. */
+        serf_connection_request_create(connection, setup_request,
+                                       &handler_ctx);
     }
 
     while (1) {
