@@ -268,6 +268,8 @@ if(ENABLE_SLOW_TESTS)
   add_definitions("-DSERF_TEST_DEFLATE_4GBPLUS_BUCKETS")
 endif()
 
+# Define OPENSSL_NO_STDIO to prevent using _fp() API.
+add_definitions("-DOPENSSL_NO_STDIO")
 
 # Set common compiler flags
 if(NOT MSVC)

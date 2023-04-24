@@ -336,6 +336,9 @@ SOURCES = Glob('src/*.c') + Glob('buckets/*.c') + Glob('auth/*.c') + \
 lib_static = env.StaticLibrary(LIBNAME, SOURCES)
 lib_shared = env.SharedLibrary(SHLIBNAME, SOURCES + SHARED_SOURCES)
 
+# Define OPENSSL_NO_STDIO to prevent using _fp() API.
+env.Append(CPPDEFINES=['OPENSSL_NO_STDIO'])
+
 if aprstatic:
   env.Append(CPPDEFINES=['APR_DECLARE_STATIC', 'APU_DECLARE_STATIC'])
 
