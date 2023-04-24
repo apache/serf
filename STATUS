@@ -34,6 +34,14 @@ Candidate changes:
      +1: rhuijben (without r1861036, r1909315, r1909316)
      +1: astieger (without r1861036, r1909315, r1909316)
 
+* r1901040
+  Fix test_ssl_handshake() failure with OpenSSL 1.1.1i+.
+  Justification:
+    Serf should test cleanly against upstreams.
+  Branch: ^/serf/branches/1.3.x-r1901040
+  Votes:
+    +1: kotkov
+
 Veto-blocked changes:
 =====================
 
