@@ -64,7 +64,7 @@ Candidate changes:
   Votes:
     +1: kotkov
 
-* r1909252, r1909385, r1909406
+* r1909252, r1909385, r1909406, r1909413
   Do not use OpenSSL functions that operate with FILE to avoid potential CRT
   versions mismatch. Use BIO based functions instead.
   Justification:
