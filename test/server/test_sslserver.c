@@ -35,6 +35,7 @@ static int init_done = 0;
 
 typedef struct ssl_context_t {
     int handshake_done;
+    int hit_eof;
 
     SSL_CTX* ctx;
     SSL* ssl;
@@ -96,21 +97,22 @@ static int bio_apr_socket_destroy(BIO *bio)
 
 static long bio_apr_socket_ctrl(BIO *bio, int cmd, long num, void *ptr)
 {
-    long ret = 1;
+    serv_ctx_t *serv_ctx = bio_get_data(bio);
+    ssl_context_t *ssl_ctx = serv_ctx->ssl_ctx;
 
     switch (cmd) {
-        default:
-            /* abort(); */
-            break;
         case BIO_CTRL_FLUSH:
             /* At this point we can't force a flush. */
-            break;
+            return 1;
         case BIO_CTRL_PUSH:
         case BIO_CTRL_POP:
-            ret = 0;
-            break;
+            return 0;
+        case BIO_CTRL_EOF:
+            return ssl_ctx->hit_eof;
+        default:
+            /* abort(); */
+            return 0;
     }
-    return ret;
 }
 
 /* Returns the amount read. */
@@ -126,6 +128,10 @@ static int bio_apr_socket_read(BIO *bio, char *in, int inlen)
     serv_ctx->bio_read_status = status;
     serf__log_skt(TEST_VERBOSE, __FILE__, serv_ctx->client_sock,
                   "Read %d bytes from socket with status %d.\n", len, status);
+
+    if (APR_STATUS_IS_EOF(status)) {
+        serv_ctx->hit_eof = 1;
+    }
 
     if (status == APR_EAGAIN) {
         BIO_set_retry_read(bio);
@@ -305,6 +311,7 @@ static apr_status_t ssl_reset(serv_ctx_t *serv_ctx)
     serf__log(TEST_VERBOSE, __FILE__, "Reset ssl context.\n");
 
     ssl_ctx->handshake_done = 0;
+    ssl_ctx->hit_eof = 0;
     if (ssl_ctx)
         SSL_clear(ssl_ctx->ssl);
     init_ssl(serv_ctx);
