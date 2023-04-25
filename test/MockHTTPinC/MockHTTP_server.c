@@ -2255,6 +2255,16 @@ struct sslCtx_t {
 
 static int init_done = 0;
 
+#if MH_VERBOSE
+/**
+ * OpenSSL callback for ERR_print_errors_cb().
+ */
+static int err_file_print_cb(const char *str, size_t len, void *bp)
+{
+    return fwrite(str, 1, len, bp);
+}
+#endif
+
 /**
  * OpenSSL callback, returns the passphrase used to decrypt the private key.
  */
@@ -2843,7 +2853,7 @@ sslSocketWrite(_mhClientCtx_t *cctx, const char *data, apr_size_t *len)
         _mhLog(MH_VERBOSE, cctx->skt,
                "sslSocketWrite SSL Error %d: ", ssl_err);
 #if MH_VERBOSE
-        ERR_print_errors_fp(stderr);
+        ERR_print_errors_cb(err_file_print_cb, stderr);
 #endif
         return APR_EGENERAL;
     }
@@ -2903,7 +2913,7 @@ sslSocketRead(apr_socket_t *skt, void *baton, char *data, apr_size_t *len)
                 _mhLog(MH_VERBOSE, skt,
                           "sslSocketRead SSL Error %d: ", ssl_err);
 #if MH_VERBOSE
-                ERR_print_errors_fp(stderr);
+                ERR_print_errors_cb(err_file_print_cb, stderr);
 #endif
                 return APR_EGENERAL;
         }
@@ -2929,7 +2939,7 @@ static void appendSSLErrMessage(const MockHTTP *mh, long result)
     apr_size_t startpos = strlen(mh->errmsg);
     ERR_error_string(result, mh->errmsg + startpos);
 #if MH_VERBOSE
-    ERR_print_errors_fp(stderr);
+    ERR_print_errors_cb(err_file_print_cb, stderr);
 #endif
 }
 
@@ -3057,7 +3067,7 @@ static apr_status_t sslHandshake(_mhClientCtx_t *cctx)
                            "SSL Error %d: Library=%d, Reason=%d",
                            ssl_err, lib, reason);
 #if MH_VERBOSE
-                    ERR_print_errors_fp(stderr);
+                    ERR_print_errors_cb(err_file_print_cb, stderr);
 #endif
                 }
                 return APR_EGENERAL;
