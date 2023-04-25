@@ -13,6 +13,7 @@ Candidate changes:
 
  * r1875937
    Fix test case against OpenSSL 1.1.1e+.
+   [ NOTE: Superceded by the r1902208 fix. ]
    Justification:
      Serf should test cleanly against upstreams.
    Branch: ^/serf/branches/1.3.x-ssltest
@@ -47,6 +48,19 @@ Candidate changes:
   Justification:
     Serf should work with OpenSSL 3.
   Branch: ^/serf/branches/1.3.x-r1901937
+  Votes:
+    +1: kotkov
+
+* r1902208, r1902304
+  Rework BIO control handlers to support BIO_CTRL_EOF and to properly respond
+  to unknown control values.
+  Justification:
+    - Fixes "unexpected eof while reading" errors with OpenSSL 3, also observed
+      in the test suite.
+    - Fixes a user-reported issue with OpenSSL 3 where serf BIOs are incorrectly
+      assumed to support KTLS:
+      https://bugs.freebsd.org/bugzilla/show_bug.cgi?id=253135
+  Branch: ^/serf/branches/1.3.x-r1902208+r1902304
   Votes:
     +1: kotkov
 
