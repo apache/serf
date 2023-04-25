@@ -507,8 +507,6 @@ else:
 # Check for OpenSSL functions which are only available in some of
 # the versions we support. Also handles forks like LibreSSL.
 conf = Configure(env)
-if conf.CheckCHeader('openssl/applink.c'):
-  env.Append(CPPDEFINES=['SERF_HAVE_OPENSSL_APPLINK_C'])
 if not conf.CheckFunc('BIO_set_init', '#include <openssl/crypto.h>'):
   env.Append(CPPDEFINES=['SERF_NO_SSL_BIO_WRAPPERS'])
 if not conf.CheckFunc('X509_STORE_get0_param', '#include <openssl/crypto.h>'):
