@@ -1521,11 +1521,11 @@ apr_status_t serf_ssl_load_cert_file(
     const char *file_path,
     apr_pool_t *pool)
 {
-    FILE *fp = fopen(file_path, "r");
+    BIO *bio = BIO_new_file(file_path, "r");
 
-    if (fp) {
-        X509 *ssl_cert = PEM_read_X509(fp, NULL, NULL, NULL);
-        fclose(fp);
+    if (bio) {
+        X509 *ssl_cert = PEM_read_bio_X509(bio, NULL, NULL, NULL);
+        BIO_free(bio);
 
         if (ssl_cert) {
             *cert = apr_palloc(pool, sizeof(serf_ssl_certificate_t));

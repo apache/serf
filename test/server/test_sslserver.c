@@ -269,10 +269,10 @@ init_ssl_context(serv_ctx_t *serv_ctx,
         store = SSL_CTX_get_cert_store(ssl_ctx->ctx);
 
         while(certfile) {
-            FILE *fp = fopen(certfile, "r");
-            if (fp) {
-                X509 *ssl_cert = PEM_read_X509(fp, NULL, NULL, NULL);
-                fclose(fp);
+            BIO *bio = BIO_new_file(certfile, "r");
+            if (bio) {
+                X509 *ssl_cert = PEM_read_bio_X509(bio, NULL, NULL, NULL);
+                BIO_free(bio);
 
                 SSL_CTX_add_extra_chain_cert(ssl_ctx->ctx, ssl_cert);
 
