@@ -41,7 +41,7 @@ Candidate changes:
     Serf should test cleanly against upstreams.
   Branch: ^/serf/branches/1.3.x-r1901040
   Votes:
-    +1: kotkov
+    +1: kotkov, ivan
 
 * r1901937
   Remove the use of ERR_GET_FUNC() to allow building against OpenSSL 3.
@@ -49,7 +49,7 @@ Candidate changes:
     Serf should work with OpenSSL 3.
   Branch: ^/serf/branches/1.3.x-r1901937
   Votes:
-    +1: kotkov
+    +1: kotkov, ivan
 
 * r1902208, r1902304
   Rework BIO control handlers to support BIO_CTRL_EOF and to properly respond
@@ -62,7 +62,7 @@ Candidate changes:
       https://bugs.freebsd.org/bugzilla/show_bug.cgi?id=253135
   Branch: ^/serf/branches/1.3.x-r1902208+r1902304
   Votes:
-    +1: kotkov
+    +1: kotkov, ivan
 
 * r1909252, r1909385, r1909406, r1909413, r1909433
   Do not use OpenSSL functions that operate with FILE to avoid potential CRT
@@ -72,7 +72,7 @@ Candidate changes:
     on openssl/applink.c.
   Branch: ^/serf/branches/1.3.x-r1909252-group
   Votes:
-    +1: kotkov
+    +1: kotkov, ivan
 
 Veto-blocked changes:
 =====================
