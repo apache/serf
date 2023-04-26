@@ -268,7 +268,10 @@ if sys.platform != 'win32':
     env.Append(PLATFORM='posix')
 else:
   # Warning level 4, no unused argument warnings
-  env.Append(CCFLAGS=['/W4', '/wd4100'])
+  env.Append(CCFLAGS=['/W4',
+                      '/wd4100', # Unused argument
+                      '/we4013', # 'function' undefined; assuming extern returning int
+                     ])
 
   # Choose runtime and optimization
   if debug:
