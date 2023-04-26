@@ -309,6 +309,7 @@ else:
                       '/wd4100', # Unused argument
                       '/wd4127', # Conditional expression is constant
                       '/wd4706', # Assignment within conditional expression
+                      '/we4013', # 'function' undefined; assuming extern returning int
                      ])
 
   # Choose runtime and optimization
