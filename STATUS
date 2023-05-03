@@ -41,6 +41,8 @@ Candidate changes:
      +1: kotkov, ivan
      +1: rhuijben (without r1861036, r1909315, r1909316)
      +1: astieger (without r1861036, r1909315, r1909316)
+     +1 (non-binding): dsahlberg (only tested r1909316 on VS 2022 but the 
+         rest seems fine and are anyhow obsolete by now)
 
  * r1901040
    Fix test_ssl_handshake() failure with OpenSSL 1.1.1i+.
