@@ -28,12 +28,6 @@
 
 #include "test_serf.h"
 
-#if defined(WIN32) && defined(_DEBUG)
-/* Include this file to allow running a Debug build of serf with a Release
-   build of OpenSSL. */
-#include <openssl/applink.c>
-#endif
-
 /* Test setting up the openssl library. */
 static void test_ssl_init(CuTest *tc)
 {

@@ -44,6 +44,11 @@ typedef struct ssl_context_t {
 
 } ssl_context_t;
 
+static int err_file_print_cb(const char *str, size_t len, void *bp)
+{
+    return fwrite(str, 1, len, bp);
+}
+
 static int pem_passwd_cb(char *buf, int size, int rwflag, void *userdata)
 {
     strncpy(buf, "serftest", size);
@@ -275,10 +280,10 @@ init_ssl_context(serv_ctx_t *serv_ctx,
         store = SSL_CTX_get_cert_store(ssl_ctx->ctx);
 
         while(certfile) {
-            FILE *fp = fopen(certfile, "r");
-            if (fp) {
-                X509 *ssl_cert = PEM_read_X509(fp, NULL, NULL, NULL);
-                fclose(fp);
+            BIO *bio = BIO_new_file(certfile, "r");
+            if (bio) {
+                X509 *ssl_cert = PEM_read_bio_X509(bio, NULL, NULL, NULL);
+                BIO_free(bio);
 
                 SSL_CTX_add_extra_chain_cert(ssl_ctx->ctx, ssl_cert);
 
@@ -379,7 +384,7 @@ static apr_status_t ssl_handshake(serv_ctx_t *serv_ctx)
                 return serv_ctx->bio_read_status; /* Usually APR_EAGAIN */
             default:
                 serf__log(TEST_VERBOSE, __FILE__, "SSL Error %d: ", ssl_err);
-                ERR_print_errors_fp(stderr);
+                ERR_print_errors_cb(err_file_print_cb, stderr);
                 serf__log_nopref(TEST_VERBOSE, "\n");
                 return SERF_ERROR_ISSUE_IN_TESTSUITE;
         }
@@ -435,7 +440,7 @@ ssl_socket_read(serv_ctx_t *serv_ctx, char *data,
                 *len = 0;
                 serf__log(TEST_VERBOSE, __FILE__,
                           "ssl_socket_read SSL Error %d: ", ssl_err);
-                ERR_print_errors_fp(stderr);
+                ERR_print_errors_cb(err_file_print_cb, stderr);
                 serf__log_nopref(TEST_VERBOSE, "\n");
                 return SERF_ERROR_ISSUE_IN_TESTSUITE;
         }

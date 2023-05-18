@@ -277,7 +277,10 @@ if sys.platform != 'win32':
     env.Append(PLATFORM='posix')
 else:
   # Warning level 4, no unused argument warnings
-  env.Append(CCFLAGS=['/W4', '/wd4100'])
+  env.Append(CCFLAGS=['/W4',
+                      '/wd4100', # Unused argument
+                      '/we4013', # 'function' undefined; assuming extern returning int
+                     ])
 
   # Choose runtime and optimization
   if debug:
@@ -300,6 +303,9 @@ SOURCES = Glob('*.c') + Glob('buckets/*.c') + Glob('auth/*.c')
 
 lib_static = env.StaticLibrary(LIBNAMESTATIC, SOURCES)
 lib_shared = env.SharedLibrary(LIBNAME, SOURCES + SHARED_SOURCES)
+
+# Define OPENSSL_NO_STDIO to prevent using _fp() API.
+env.Append(CPPDEFINES=['OPENSSL_NO_STDIO'])
 
 if aprstatic:
   env.Append(CPPDEFINES=['APR_DECLARE_STATIC', 'APU_DECLARE_STATIC'])

@@ -35,16 +35,6 @@ Candidate changes:
            this point for the 1.3.x branch
          - Seems to only be required for LibreSSL, not OpenSSL)
 
- * r1909252, r1909385, r1909406, r1909413, r1909433
-   Do not use OpenSSL functions that operate with FILE to avoid potential CRT
-   versions mismatch. Use BIO based functions instead.
-   Justification:
-     Avoids a potential source of CRT versions mismatch. Removes a dependency
-     on openssl/applink.c.
-   Branch: ^/serf/branches/1.3.x-r1909252-group
-   Votes:
-     +1: kotkov, ivan
-
 Veto-blocked changes:
 =====================
 
