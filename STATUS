@@ -35,14 +35,6 @@ Candidate changes:
            this point for the 1.3.x branch
          - Seems to only be required for LibreSSL, not OpenSSL)
 
- * r1901040
-   Fix test_ssl_handshake() failure with OpenSSL 1.1.1i+.
-   Justification:
-     Serf should test cleanly against upstreams.
-   Branch: ^/serf/branches/1.3.x-r1901040
-   Votes:
-     +1: kotkov, ivan
-
  * r1901937
    Remove the use of ERR_GET_FUNC() to allow building against OpenSSL 3.
    Justification:
