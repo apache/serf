@@ -35,15 +35,6 @@ Candidate changes:
            this point for the 1.3.x branch
          - Seems to only be required for LibreSSL, not OpenSSL)
 
- * r1712131, r1807594, r1811088, r1861036, r1909315, r1909316
-   Add support for building with VS2017-VS2022, assuming a new enough scons.
-   Votes:
-     +1: kotkov, ivan
-     +1: rhuijben (without r1861036, r1909315, r1909316)
-     +1: astieger (without r1861036, r1909315, r1909316)
-     +1 (non-binding): dsahlberg (only tested r1909316 on VS 2022 but the 
-         rest seems fine and are anyhow obsolete by now)
-
  * r1901040
    Fix test_ssl_handshake() failure with OpenSSL 1.1.1i+.
    Justification:
