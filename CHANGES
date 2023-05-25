@@ -65,8 +65,8 @@ Apache Serf 1.3.9 [2016-09-01, from tags/1.3.9, r1758195]
   Fix issue #153: avoid SSPI handle leak
   Fix issue #167: Explicitly use the ANSI version of SSPI
   Fix issue #170: Allow building with Microsoft Visual Studio 2015
-  Fix build of 'check' target when using VPATH-style builds (r1699858, ...)
-    (builddir != srcdir).
+  Fix build of 'check' target when using VPATH-style builds where
+    builddir != srcdir (r1699858, ...)
   Resolve a bucket (aka "memory") leak when a request bucket is
     destroyed before it is morphed into an aggregate bucket (r1699791)
   Reset state variables when resetting connection (r1708849)
