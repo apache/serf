@@ -65,7 +65,7 @@ Apache Serf 1.3.10 [2023-xx-xx, from tags/1.3.10, rxxxxxxx]
   Fix issue #194: Win32: Linking error when building against OpenSSL 1.1+
   Fix issue #198: OpenSSL BIO control method incorrectly handles unknown requests
   Fix issue #202: SSL tests are not passing with OpenSSL 3
-  Fix error handling when reading the outgoing request's body (r1804534, ...)
+  Fix error handling when reading the outgoing request body (r1804534, ...)
   Fix handling of invalid chunk lengths in the dechunk bucket (r1804005, ...)
   Fix an endless loop in the deflate bucket with truncated input (r1805301)
   Fix BIO control handlers to support BIO_CTRL_EOF (r1902208)
