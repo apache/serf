@@ -53,7 +53,6 @@ static void test_authentication_disabled(CuTest *tc)
             "Transfer-Encoding: chunked" CRLF
             "WWW-Authenticate: Basic realm=""Test Suite""" CRLF
             CRLF
-            "1" CRLF CRLF
             "0" CRLF CRLF},
     };
     apr_status_t status;
@@ -96,7 +95,6 @@ static void test_unsupported_authentication(CuTest *tc)
             "Transfer-Encoding: chunked" CRLF
             "WWW-Authenticate: NotExistent realm=""Test Suite""" CRLF
             CRLF
-            "1" CRLF CRLF
             "0" CRLF CRLF},
     };
     apr_status_t status;
@@ -195,7 +193,6 @@ static void basic_authentication(CuTest *tc, const char *resp_hdrs)
         "www-Authenticate: bAsIc realm=""Test Suite""" CRLF
         "%s"
         CRLF
-        "1" CRLF CRLF
         "0" CRLF CRLF, resp_hdrs);
     action_list[1].kind = SERVER_RESPOND;
     action_list[1].text = CHUNKED_EMPTY_RESPONSE;
@@ -315,7 +312,6 @@ static void digest_authentication(CuTest *tc, const char *resp_hdrs)
         "algorithm=\"MD5\",qop-options=\"auth\"" CRLF
         "%s"
         CRLF
-        "1" CRLF CRLF
         "0" CRLF CRLF, resp_hdrs);
     /* If the resp_hdrs includes "Connection: close", serf will automatically
        reset the connection from the client side, no need to use 
@@ -457,7 +453,6 @@ static void authentication_switch_realms(CuTest *tc,
         "Transfer-Encoding: chunked" CRLF
         "WWW-Authenticate: %s realm=""Test Suite""%s" CRLF
         CRLF
-        "1" CRLF CRLF
         "0" CRLF CRLF, scheme, authn_attr);
     action_list[1].kind = SERVER_RESPOND;
     action_list[1].text = CHUNKED_EMPTY_RESPONSE;
@@ -469,7 +464,6 @@ static void authentication_switch_realms(CuTest *tc,
         "Transfer-Encoding: chunked" CRLF
         "WWW-Authenticate: %s realm=""New Realm""%s" CRLF
         CRLF
-        "1" CRLF CRLF
         "0" CRLF CRLF, scheme, authn_attr);
     action_list[4].kind = SERVER_RESPOND;
     action_list[4].text = CHUNKED_EMPTY_RESPONSE;

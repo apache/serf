@@ -85,6 +85,7 @@ static apr_status_t serf_dechunk_read(serf_bucket_t *bucket,
 
             /* if a line was read, then parse it. */
             if (ctx->linebuf.state == SERF_LINEBUF_READY) {
+                char *end;
                 /* NUL-terminate the line. if it filled the entire buffer,
                    then just assume the thing is too large. */
                 if (ctx->linebuf.used == sizeof(ctx->linebuf.line))
@@ -92,9 +93,13 @@ static apr_status_t serf_dechunk_read(serf_bucket_t *bucket,
                 ctx->linebuf.line[ctx->linebuf.used] = '\0';
 
                 /* convert from HEX digits. */
-                ctx->body_left = apr_strtoi64(ctx->linebuf.line, NULL, 16);
+                ctx->body_left = apr_strtoi64(ctx->linebuf.line, &end, 16);
                 if (errno == ERANGE) {
                     return APR_FROM_OS_ERROR(ERANGE);
+                }
+                else if (ctx->linebuf.line == end) {
+                    /* Invalid chunk length, bail out. */
+                    return SERF_ERROR_BAD_HTTP_RESPONSE;
                 }
 
                 if (ctx->body_left == 0) {

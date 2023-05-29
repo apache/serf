@@ -115,6 +115,7 @@ struct serv_ctx_t {
     void *ssl_ctx;
     const char *client_cn;
     apr_status_t bio_read_status;
+    int hit_eof;
 };
 
 void setup_test_server(serv_ctx_t **servctx_p,

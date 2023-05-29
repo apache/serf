@@ -176,6 +176,10 @@ struct serf_ssl_context_t {
     /* Status of a fatal error, returned on subsequent encrypt or decrypt
        requests. */
     apr_status_t fatal_err;
+
+    /* OpenSSL 1.1.1e introduced BIO_FLAGS_IN_EOF, but we implement
+       our own hit eof to support versions < 1.1.1e. */
+    int hit_eof;
 };
 
 typedef struct {
@@ -283,6 +287,10 @@ static int bio_bucket_read(BIO *bio, char *in, int inlen)
 
     serf__log(SSL_VERBOSE, __FILE__, "bio_bucket_read received %d bytes (%d)\n",
               len, status);
+
+    if (APR_STATUS_IS_EOF(status)) {
+        ctx->hit_eof = 1;
+    }
 
     if (!SERF_BUCKET_READ_ERROR(status)) {
         /* Oh suck. */
@@ -407,21 +415,43 @@ static int bio_bucket_destroy(BIO *bio)
 
 static long bio_bucket_ctrl(BIO *bio, int cmd, long num, void *ptr)
 {
-    long ret = 1;
+    serf_ssl_context_t *ctx = bio_get_data(bio);
 
     switch (cmd) {
-    default:
-        /* abort(); */
-        break;
     case BIO_CTRL_FLUSH:
         /* At this point we can't force a flush. */
-        break;
+        return 1;
     case BIO_CTRL_PUSH:
     case BIO_CTRL_POP:
-        ret = 0;
-        break;
+        return 0;
+    case BIO_CTRL_EOF:
+        return ctx->hit_eof;
+    default:
+        /* abort(); */
+        return 0;
     }
-    return ret;
+}
+
+static long bio_file_ctrl(BIO *bio, int cmd, long num, void *ptr)
+{
+    apr_file_t *file = bio_get_data(bio);
+
+    switch (cmd) {
+    case BIO_CTRL_FLUSH:
+        /* At this point we can't force a flush. */
+        return 1;
+    case BIO_CTRL_PUSH:
+    case BIO_CTRL_POP:
+        return 0;
+    case BIO_CTRL_EOF:
+        if (apr_file_eof(file) == APR_EOF)
+            return 1;
+        else
+            return 0;
+    default:
+        /* abort(); */
+        return 0;
+    }
 }
 
 #ifdef SERF_NO_SSL_BIO_WRAPPERS
@@ -447,7 +477,7 @@ static BIO_METHOD bio_file_method = {
     bio_file_read,
     NULL,                        /* Is this called? */
     bio_file_gets,               /* Is this called? */
-    bio_bucket_ctrl,
+    bio_file_ctrl,
     bio_bucket_create,
     bio_bucket_destroy,
 #ifdef OPENSSL_VERSION_NUMBER
@@ -487,7 +517,7 @@ static BIO_METHOD *bio_meth_file_new(void)
         BIO_meth_set_write(biom, bio_file_write);
         BIO_meth_set_read(biom, bio_file_read);
         BIO_meth_set_gets(biom, bio_file_gets);
-        BIO_meth_set_ctrl(biom, bio_bucket_ctrl);
+        BIO_meth_set_ctrl(biom, bio_file_ctrl);
         BIO_meth_set_create(biom, bio_bucket_create);
         BIO_meth_set_destroy(biom, bio_bucket_destroy);
     }
@@ -1326,8 +1356,7 @@ static int ssl_need_client_cert(SSL *ssl, X509 **cert, EVP_PKEY **pkey)
                 return 0;
             }
             else {
-                printf("OpenSSL cert error: %d %d %d\n", ERR_GET_LIB(err),
-                       ERR_GET_FUNC(err),
+                printf("OpenSSL cert error: %d %d\n", ERR_GET_LIB(err),
                        ERR_GET_REASON(err));
                 PKCS12_free(p12);
                 bio_meth_free(biom);
@@ -1412,6 +1441,7 @@ static serf_ssl_context_t *ssl_init_context(serf_bucket_alloc_t *allocator)
     ssl_ctx->cached_cert_pw = 0;
     ssl_ctx->pending_err = APR_SUCCESS;
     ssl_ctx->fatal_err = APR_SUCCESS;
+    ssl_ctx->hit_eof = 0;
 
     ssl_ctx->cert_callback = NULL;
     ssl_ctx->cert_pw_callback = NULL;
@@ -1522,11 +1552,11 @@ apr_status_t serf_ssl_load_cert_file(
     const char *file_path,
     apr_pool_t *pool)
 {
-    FILE *fp = fopen(file_path, "r");
+    BIO *bio = BIO_new_file(file_path, "r");
 
-    if (fp) {
-        X509 *ssl_cert = PEM_read_X509(fp, NULL, NULL, NULL);
-        fclose(fp);
+    if (bio) {
+        X509 *ssl_cert = PEM_read_bio_X509(bio, NULL, NULL, NULL);
+        BIO_free(bio);
 
         if (ssl_cert) {
             *cert = apr_palloc(pool, sizeof(serf_ssl_certificate_t));

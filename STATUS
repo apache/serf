@@ -11,9 +11,32 @@ Status of 1.3.10:
 Candidate changes:
 ==================
 
+ * r1875937
+   Fix test case against OpenSSL 1.1.1e+.
+   [ NOTE: Superceded by the r1902208 fix. ]
+   Justification:
+     Serf should test cleanly against upstreams.
+   Branch: ^/serf/branches/1.3.x-ssltest
+   Votes:
+     +1: jerenkrantz
+
+ * r1775239-1781240
+   Fix build with current LibreSSL and OpenSSL versions.
+   Justification:
+     Serf should compile out of the box.
+   Branch: ^/serf/branches/1.3.x-sslbuild
+   Votes:
+     +1: stsp, astieger
+     -0: kotkov (
+         - A later change, r1833227, seems to further extend CheckFunc() calls,
+           so maybe this nomination in its current state won't work in some
+           cases on Windows
+         - A signficant change of the build approach, maybe not worth it at
+           this point for the 1.3.x branch
+         - Seems to only be required for LibreSSL, not OpenSSL)
+
 Veto-blocked changes:
 =====================
 
 Approved changes:
 =================
-

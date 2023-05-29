@@ -369,6 +369,8 @@ test_https_server_proxy_setup(test_baton_t **tb_p,
                             keyfile, certfiles, client_cn,
                             pool);
     status = start_test_server(tb->serv_ctx);
+    if (status != APR_SUCCESS)
+        return status;
 
     /* Prepare the proxy. */
     setup_test_server(&tb->proxy_ctx, tb->proxy_addr,
@@ -498,8 +500,13 @@ apr_status_t setup_request(serf_request_t *request,
 {
     handler_baton_t *ctx = setup_baton;
     serf_bucket_t *body_bkt;
+    apr_status_t status = APR_SUCCESS;
 
-    if (ctx->request)
+    if (ctx->request_setup)
+    {
+        status = ctx->request_setup(request, setup_baton, req_bkt, pool);
+    }
+    else if (ctx->request)
     {
         /* Create a raw request bucket. */
         *req_bkt = serf_bucket_simple_create(ctx->request, strlen(ctx->request),
@@ -533,7 +540,7 @@ apr_status_t setup_request(serf_request_t *request,
     *handler = ctx->handler;
     *handler_baton = ctx;
 
-    return APR_SUCCESS;
+    return status;
 }
 
 apr_status_t handle_response(serf_request_t *request,
@@ -577,6 +584,7 @@ apr_status_t handle_response(serf_request_t *request,
 void setup_handler(test_baton_t *tb, handler_baton_t *handler_ctx,
                    const char *method, const char *path,
                    int req_id,
+                   test_request_setup_t req_setup,
                    serf_response_handler_t handler)
 {
     handler_ctx->method = method;
@@ -592,6 +600,7 @@ void setup_handler(test_baton_t *tb, handler_baton_t *handler_ctx,
     handler_ctx->handled_requests = tb->handled_requests;
     handler_ctx->tb = tb;
     handler_ctx->request = NULL;
+    handler_ctx->request_setup = req_setup;
 }
 
 void create_new_prio_request(test_baton_t *tb,
@@ -599,7 +608,7 @@ void create_new_prio_request(test_baton_t *tb,
                              const char *method, const char *path,
                              int req_id)
 {
-    setup_handler(tb, handler_ctx, method, path, req_id, NULL);
+    setup_handler(tb, handler_ctx, method, path, req_id, NULL, NULL);
     serf_connection_priority_request_create(tb->connection,
                                             setup_request,
                                             handler_ctx);
@@ -610,20 +619,21 @@ void create_new_request(test_baton_t *tb,
                         const char *method, const char *path,
                         int req_id)
 {
-    setup_handler(tb, handler_ctx, method, path, req_id, NULL);
+    setup_handler(tb, handler_ctx, method, path, req_id, NULL, NULL);
     serf_connection_request_create(tb->connection,
                                    setup_request,
                                    handler_ctx);
 }
 
 void
-create_new_request_with_resp_hdlr(test_baton_t *tb,
-                                  handler_baton_t *handler_ctx,
-                                  const char *method, const char *path,
-                                  int req_id,
-                                  serf_response_handler_t handler)
+create_new_request_ex(test_baton_t *tb,
+                      handler_baton_t *handler_ctx,
+                      const char *method, const char *path,
+                      int req_id,
+                      test_request_setup_t req_setup,
+                      serf_response_handler_t handler)
 {
-    setup_handler(tb, handler_ctx, method, path, req_id, handler);
+    setup_handler(tb, handler_ctx, method, path, req_id, req_setup, handler);
     serf_connection_request_create(tb->connection,
                                    setup_request,
                                    handler_ctx);

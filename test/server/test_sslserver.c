@@ -31,6 +31,7 @@ static int init_done = 0;
 
 typedef struct ssl_context_t {
     int handshake_done;
+    int hit_eof;
 
     SSL_CTX* ctx;
     SSL* ssl;
@@ -38,6 +39,11 @@ typedef struct ssl_context_t {
     BIO_METHOD *biom;
 
 } ssl_context_t;
+
+static int err_file_print_cb(const char *str, size_t len, void *bp)
+{
+    return fwrite(str, 1, len, bp);
+}
 
 static int pem_passwd_cb(char *buf, int size, int rwflag, void *userdata)
 {
@@ -92,21 +98,22 @@ static int bio_apr_socket_destroy(BIO *bio)
 
 static long bio_apr_socket_ctrl(BIO *bio, int cmd, long num, void *ptr)
 {
-    long ret = 1;
+    serv_ctx_t *serv_ctx = bio_get_data(bio);
+    ssl_context_t *ssl_ctx = serv_ctx->ssl_ctx;
 
     switch (cmd) {
-        default:
-            /* abort(); */
-            break;
         case BIO_CTRL_FLUSH:
             /* At this point we can't force a flush. */
-            break;
+            return 1;
         case BIO_CTRL_PUSH:
         case BIO_CTRL_POP:
-            ret = 0;
-            break;
+            return 0;
+        case BIO_CTRL_EOF:
+            return ssl_ctx->hit_eof;
+        default:
+            /* abort(); */
+            return 0;
     }
-    return ret;
 }
 
 /* Returns the amount read. */
@@ -122,6 +129,10 @@ static int bio_apr_socket_read(BIO *bio, char *in, int inlen)
     serv_ctx->bio_read_status = status;
     serf__log_skt(TEST_VERBOSE, __FILE__, serv_ctx->client_sock,
                   "Read %d bytes from socket with status %d.\n", len, status);
+
+    if (APR_STATUS_IS_EOF(status)) {
+        serv_ctx->hit_eof = 1;
+    }
 
     if (status == APR_EAGAIN) {
         BIO_set_retry_read(bio);
@@ -265,10 +276,10 @@ init_ssl_context(serv_ctx_t *serv_ctx,
         store = SSL_CTX_get_cert_store(ssl_ctx->ctx);
 
         while(certfile) {
-            FILE *fp = fopen(certfile, "r");
-            if (fp) {
-                X509 *ssl_cert = PEM_read_X509(fp, NULL, NULL, NULL);
-                fclose(fp);
+            BIO *bio = BIO_new_file(certfile, "r");
+            if (bio) {
+                X509 *ssl_cert = PEM_read_bio_X509(bio, NULL, NULL, NULL);
+                BIO_free(bio);
 
                 SSL_CTX_add_extra_chain_cert(ssl_ctx->ctx, ssl_cert);
 
@@ -301,6 +312,7 @@ static apr_status_t ssl_reset(serv_ctx_t *serv_ctx)
     serf__log(TEST_VERBOSE, __FILE__, "Reset ssl context.\n");
 
     ssl_ctx->handshake_done = 0;
+    ssl_ctx->hit_eof = 0;
     if (ssl_ctx)
         SSL_clear(ssl_ctx->ssl);
     init_ssl(serv_ctx);
@@ -368,7 +380,7 @@ static apr_status_t ssl_handshake(serv_ctx_t *serv_ctx)
                 return serv_ctx->bio_read_status; /* Usually APR_EAGAIN */
             default:
                 serf__log(TEST_VERBOSE, __FILE__, "SSL Error %d: ", ssl_err);
-                ERR_print_errors_fp(stderr);
+                ERR_print_errors_cb(err_file_print_cb, stderr);
                 serf__log_nopref(TEST_VERBOSE, "\n");
                 return SERF_ERROR_ISSUE_IN_TESTSUITE;
         }
@@ -424,7 +436,7 @@ ssl_socket_read(serv_ctx_t *serv_ctx, char *data,
                 *len = 0;
                 serf__log(TEST_VERBOSE, __FILE__,
                           "ssl_socket_read SSL Error %d: ", ssl_err);
-                ERR_print_errors_fp(stderr);
+                ERR_print_errors_cb(err_file_print_cb, stderr);
                 serf__log_nopref(TEST_VERBOSE, "\n");
                 return SERF_ERROR_ISSUE_IN_TESTSUITE;
         }

@@ -127,7 +127,7 @@ if sys.platform == 'win32':
     # Note that Scons 1.3 only supports this on Windows and only when
     # constructing Environment(). Later changes to TARGET_ARCH are ignored
     EnumVariable('TARGET_ARCH',
-                 "Platform to build for (x86|x64|win32|x86_64)",
+                 "Platform to build for",
                  'x86',
                  allowed_values=('x86', 'x86_64', 'ia64'),
                  map={'X86'  : 'x86',
@@ -138,11 +138,20 @@ if sys.platform == 'win32':
                      }),
 
     EnumVariable('MSVC_VERSION',
-                 "Visual C++ to use for building (E.g. 11.0, 9.0)",
+                 "Visual C++ to use for building",
                  None,
-                 allowed_values=('14.0', '12.0',
-                                 '11.0', '10.0', '9.0', '8.0', '6.0')
-                ),
+                 allowed_values=('14.3', '14.2', '14.1', '14.0', '12.0',
+                                 '11.0', '10.0', '9.0', '8.0', '6.0'),
+                 map={'2005' :  '8.0',
+                      '2008' :  '9.0',
+                      '2010' : '10.0',
+                      '2012' : '11.0',
+                      '2013' : '12.0',
+                      '2015' : '14.0',
+                      '2017' : '14.1',
+                      '2019' : '14.2',
+                      '2022' : '14.3',
+                     }),
 
     # We always documented that we handle an install layout, but in fact we
     # hardcoded source layouts. Allow disabling this behavior.
@@ -166,7 +175,7 @@ env.Append(BUILDERS = {
 match = re.search('SERF_MAJOR_VERSION ([0-9]+).*'
                   'SERF_MINOR_VERSION ([0-9]+).*'
                   'SERF_PATCH_VERSION ([0-9]+)',
-                  env.File('serf.h').get_contents(),
+                  env.File('serf.h').get_contents().decode('utf-8'),
                   re.DOTALL)
 MAJOR, MINOR, PATCH = [int(x) for x in match.groups()]
 env.Append(MAJOR=str(MAJOR))
@@ -183,7 +192,7 @@ CALLOUT_OKAY = not (env.GetOption('clean') or env.GetOption('help'))
 
 unknown = opts.UnknownVariables()
 if unknown:
-  print 'Warning: Used unknown variables:', ', '.join(unknown.keys())
+  print('Warning: Used unknown variables:', ', '.join(unknown.keys()))
 
 apr = str(env['APR'])
 apu = str(env['APU'])
@@ -268,7 +277,10 @@ if sys.platform != 'win32':
     env.Append(PLATFORM='posix')
 else:
   # Warning level 4, no unused argument warnings
-  env.Append(CCFLAGS=['/W4', '/wd4100'])
+  env.Append(CCFLAGS=['/W4',
+                      '/wd4100', # Unused argument
+                      '/we4013', # 'function' undefined; assuming extern returning int
+                     ])
 
   # Choose runtime and optimization
   if debug:
@@ -291,6 +303,9 @@ SOURCES = Glob('*.c') + Glob('buckets/*.c') + Glob('auth/*.c')
 
 lib_static = env.StaticLibrary(LIBNAMESTATIC, SOURCES)
 lib_shared = env.SharedLibrary(LIBNAME, SOURCES + SHARED_SOURCES)
+
+# Define OPENSSL_NO_STDIO to prevent using _fp() API.
+env.Append(CPPDEFINES=['OPENSSL_NO_STDIO'])
 
 if aprstatic:
   env.Append(CPPDEFINES=['APR_DECLARE_STATIC', 'APU_DECLARE_STATIC'])
@@ -335,7 +350,6 @@ if sys.platform == 'win32':
                LIBPATH=['$ZLIB'])
 
   # openssl
-  env.Append(LIBS=['libeay32.lib', 'ssleay32.lib'])
   if not env.get('SOURCE_LAYOUT', None):
     env.Append(CPPPATH=['$OPENSSL/include/openssl'],
                LIBPATH=['$OPENSSL/lib'])
@@ -345,6 +359,14 @@ if sys.platform == 'win32':
   else:
     env.Append(CPPPATH=['$OPENSSL/inc32'],
                LIBPATH=['$OPENSSL/out32dll'])
+  conf = Configure(env)
+  if conf.CheckLib('libcrypto'):
+    # OpenSSL 1.1.0+
+    env.Append(LIBS=['libcrypto.lib', 'libssl.lib'])
+  else:
+    # Legacy OpenSSL
+    env.Append(LIBS=['libeay32.lib', 'ssleay32.lib'])
+  conf.Finish()
 else:
   if os.path.isdir(apr):
     apr = os.path.join(apr, 'bin', 'apr-1-config')

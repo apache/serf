@@ -833,6 +833,74 @@ static void test_response_body_chunked_gzip_small(CuTest *tc)
     }
 }
 
+/* Test for issue: the server aborts the connection and also sends
+   a bogus CRLF in place of the expected chunk size. Test that we get
+   a decent error code from the response bucket instead of APR_EOF. */
+static void test_response_body_chunked_bogus_crlf(CuTest *tc)
+{
+    test_baton_t *tb = tc->testBaton;
+    serf_bucket_t *bkt, *tmp;
+    serf_bucket_alloc_t *alloc = serf_bucket_allocator_create(tb->pool, NULL,
+                                                              NULL);
+
+    tmp = SERF_BUCKET_SIMPLE_STRING("HTTP/1.1 200 OK" CRLF
+                                    "Content-Type: text/plain" CRLF
+                                    "Transfer-Encoding: chunked" CRLF
+                                    CRLF
+                                    "2" CRLF
+                                    "AB" CRLF
+                                    CRLF,
+                                    alloc);
+
+    bkt = serf_bucket_response_create(tmp, alloc);
+
+    {
+        char buf[1024];
+        apr_size_t len;
+        apr_status_t status;
+
+        status = read_all(bkt, buf, sizeof(buf), &len);
+
+        CuAssertIntEquals(tc, SERF_ERROR_BAD_HTTP_RESPONSE, status);
+    }
+
+    /* This will also destroy response stream bucket. */
+    serf_bucket_destroy(bkt);
+}
+
+static void test_response_body_chunked_invalid_len(CuTest *tc)
+{
+    test_baton_t *tb = tc->testBaton;
+    serf_bucket_t *bkt, *tmp;
+    serf_bucket_alloc_t *alloc = serf_bucket_allocator_create(tb->pool, NULL,
+                                                              NULL);
+
+    tmp = SERF_BUCKET_SIMPLE_STRING("HTTP/1.1 200 OK" CRLF
+                                    "Content-Type: text/plain" CRLF
+                                    "Transfer-Encoding: chunked" CRLF
+                                    CRLF
+                                    "2" CRLF
+                                    "AB" CRLF
+                                    "invalid" CRLF
+                                    CRLF,
+                                    alloc);
+
+    bkt = serf_bucket_response_create(tmp, alloc);
+
+    {
+        char buf[1024];
+        apr_size_t len;
+        apr_status_t status;
+
+        status = read_all(bkt, buf, sizeof(buf), &len);
+
+        CuAssertIntEquals(tc, SERF_ERROR_BAD_HTTP_RESPONSE, status);
+    }
+
+    /* This will also destroy response stream bucket. */
+    serf_bucket_destroy(bkt);
+}
+
 static void test_response_bucket_peek_at_headers(CuTest *tc)
 {
     apr_pool_t *test_pool = tc->testBaton;
@@ -959,7 +1027,7 @@ static void test_linebuf_crlf_split(CuTest *tc)
              CRLF, APR_SUCCESS },
         { 1, "6" CR, APR_SUCCESS },
         { 1, "", APR_EAGAIN },
-        { 1,  LF "blabla" CRLF CRLF, APR_SUCCESS }, };
+        { 1,  LF "blabla" CRLF "0" CRLF CRLF, APR_SUCCESS }, };
     apr_status_t status;
 
     const char *expected = "blabla";
@@ -1110,12 +1178,14 @@ static void test_random_eagain_in_response(CuTest *tc)
                      !SERF_BUCKET_READ_ERROR(status));
             errmsg = apr_psprintf(iter_pool,
                                   "Read more data than expected, EAGAIN"
-                                  " inserted at pos: %d, remainder: \"%s\"",
+                                  " inserted at pos: %" APR_SIZE_T_FMT
+                                  ", remainder: \"%s\"",
                                   cut, fullmsg + cut);
             CuAssert(tc, errmsg, strlen(ptr) >= len);
             errmsg = apr_psprintf(iter_pool,
                                   "Read data is not equal to expected, EAGAIN"
-                                  " inserted at pos: %d, remainder: \"%s\"",
+                                  " inserted at pos: %" APR_SIZE_T_FMT
+                                  ", remainder: \"%s\"",
                                   cut, fullmsg + cut);
             CuAssertStrnEquals_Msg(tc, errmsg, ptr, len, data);
 
@@ -1599,6 +1669,35 @@ static void test_deflate_4GBplus_buckets(CuTest *tc)
 #undef BUFSIZE
 }
 
+static void test_deflate_bucket_truncated_data(CuTest *tc)
+{
+    test_baton_t *tb = tc->testBaton;
+    serf_bucket_t *input;
+    serf_bucket_t *bkt;
+    serf_bucket_t *chunk;
+    serf_bucket_alloc_t *alloc = serf_bucket_allocator_create(tb->pool, NULL,
+                                                              NULL);
+
+    /* This is a valid, but truncated gzip data (in two chunks). */
+    input = serf_bucket_aggregate_create(alloc);
+    chunk = SERF_BUCKET_SIMPLE_STRING_LEN("\x1F\x8B\x08\x00\x00", 5, alloc);
+    serf_bucket_aggregate_append(input, chunk);
+    chunk = SERF_BUCKET_SIMPLE_STRING_LEN("\x00\x00\x00\x00\x03", 5, alloc);
+    serf_bucket_aggregate_append(input, chunk);
+
+    bkt = serf_bucket_deflate_create(input, alloc, SERF_DEFLATE_GZIP);
+    {
+        char buf[1024];
+        apr_size_t len;
+        apr_status_t status;
+
+        status = read_all(bkt, buf, sizeof(buf), &len);
+        CuAssertIntEquals(tc, SERF_ERROR_DECOMPRESSION_FAILED, status);
+    }
+
+    serf_bucket_destroy(bkt);
+}
+
 CuSuite *test_buckets(void)
 {
     CuSuite *suite = CuSuiteNew();
@@ -1614,6 +1713,8 @@ CuSuite *test_buckets(void)
     SUITE_ADD_TEST(suite, test_response_body_chunked_no_crlf);
     SUITE_ADD_TEST(suite, test_response_body_chunked_incomplete_crlf);
     SUITE_ADD_TEST(suite, test_response_body_chunked_gzip_small);
+    SUITE_ADD_TEST(suite, test_response_body_chunked_bogus_crlf);
+    SUITE_ADD_TEST(suite, test_response_body_chunked_invalid_len);
     SUITE_ADD_TEST(suite, test_response_bucket_peek_at_headers);
     SUITE_ADD_TEST(suite, test_response_bucket_no_reason);
     SUITE_ADD_TEST(suite, test_bucket_header_set);
@@ -1631,6 +1732,7 @@ CuSuite *test_buckets(void)
        data so it's disabled by default. */
     SUITE_ADD_TEST(suite, test_deflate_4GBplus_buckets);
 #endif
+    SUITE_ADD_TEST(suite, test_deflate_bucket_truncated_data);
 
 #if 0
     SUITE_ADD_TEST(suite, test_serf_default_read_iovec);
