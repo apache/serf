@@ -59,7 +59,7 @@ Apache Serf 1.4.0 [2018-10-xx, from /tags/1.4.0, r18xxxx]
   Fix issue #157: Segmentation fault in test_ssl_init
 
 
-Apache Serf 1.3.10 [2023-xx-xx, from tags/1.3.10, rxxxxxxx]
+Apache Serf 1.3.10 [2023-05-31, from tags/1.3.10, r1910048]
   Support for OpenSSL 3 (r1901937, ...)
   Fix issue #171: Win32: Running tests fails with "no OPENSSL_Applink" error
   Fix issue #194: Win32: Linking error when building against OpenSSL 1.1+
