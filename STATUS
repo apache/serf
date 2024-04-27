@@ -18,6 +18,11 @@ Candidate changes:
    Votes:
      +1: brane
 
+ * r1917386
+   Helps the TortoiseSVN project build system.
+   Votes:
+     +1: dsahlberg
+
 Veto-blocked changes:
 =====================
 
