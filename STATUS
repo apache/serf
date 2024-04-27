@@ -35,6 +35,12 @@ Candidate changes:
            this point for the 1.3.x branch
          - Seems to only be required for LibreSSL, not OpenSSL)
 
+ * r1917386
+   Helps the TortoiseSVN project build system.
+   Votes:
+     +1: dsahlberg
+     
+
 Veto-blocked changes:
 =====================
 
