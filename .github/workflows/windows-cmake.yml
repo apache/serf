@@ -40,7 +40,7 @@ jobs:
       - uses: actions/checkout@v3
 
       - name: Configure CMake
-        run: cmake -B ${{github.workspace}}/build -DCMAKE_BUILD_TYPE=${{ matrix.build-type }} -G "${{ matrix.generator }}" -DCMAKE_INSTALL_PREFIX=C:/vcpkg/installed
+        run: cmake -B ${{github.workspace}}/build -DCMAKE_BUILD_TYPE=${{ matrix.build-type }} -G "${{ matrix.generator }}" -DCMAKE_INSTALL_PREFIX=C:/vcpkg/installed/${{ matrix.triplet }}
 
       - name: Build
         run: cmake --build ${{github.workspace}}/build --config ${{ matrix.build-type }}
