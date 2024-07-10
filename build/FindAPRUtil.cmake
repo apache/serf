@@ -163,8 +163,8 @@ else(APR_CONTAINS_APRUTIL)
           IMPORTED_LOCATION "${APRUTIL_RUNTIME_LIBS}"
           IMPORTED_IMPLIB "${APRUTIL_LIBRARIES}")
         if(TARGET APR::APR)
-          set_target_properties(APR::APRUTIL PROPERTIES
-            INTERFACE_LINK_LIBRARIES APR::APR)
+          target_link_libraries(APR::APRUTIL
+            INTERFACE APR::APR)
         endif()
       endif()
 
@@ -176,8 +176,9 @@ else(APR_CONTAINS_APRUTIL)
         add_library(APR::APRUTIL_static STATIC IMPORTED)
         set_target_properties(APR::APRUTIL_static PROPERTIES
           INTERFACE_INCLUDE_DIRECTORIES "${APRUTIL_INCLUDES}"
-          INTERFACE_LINK_LIBRARIES "${_apu_extra}"
           IMPORTED_LOCATION "${_apu_static}")
+        target_link_libraries(APR::APRUTIL_static
+          INTERFACE ${_apu_extra})
       endif()
 
     else()    # NOT Windows
@@ -186,9 +187,9 @@ else(APR_CONTAINS_APRUTIL)
       add_library(APR::APRUTIL UNKNOWN IMPORTED)
       set_target_properties(APR::APRUTIL PROPERTIES
         INTERFACE_INCLUDE_DIRECTORIES "${APRUTIL_INCLUDES}"
-        INTERFACE_LINK_LIBRARIES "${APRUTIL_EXTRALIBS};${_apu_extra}"
         IMPORTED_LOCATION "${_apu_library}")
-
+      target_link_libraries(APR::APRUTIL
+          INTERFACE ${APRUTIL_EXTRALIBS};${_apu_extra})
     endif()   # NOT Windows
   endif(APRUTIL_FOUND)
 
