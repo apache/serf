@@ -67,7 +67,7 @@ if(APR_CONTAINS_APRUTIL)
 
   set(APRUTIL_VERSION ${APR_VERSION})
   include(FindPackageHandleStandardArgs)
-  find_package_handle_standard_args(APRUTIL
+  find_package_handle_standard_args(APRUtil
                                     REQUIRED_VARS APRUTIL_VERSION
                                     VERSION_VAR APRUTIL_VERSION)
 
@@ -149,7 +149,7 @@ else(APR_CONTAINS_APRUTIL)
   endif()   # NOT Windows
 
   include(FindPackageHandleStandardArgs)
-  find_package_handle_standard_args(APRUTIL
+  find_package_handle_standard_args(APRUtil
                                     REQUIRED_VARS APRUTIL_LIBRARIES APRUTIL_INCLUDES
                                     VERSION_VAR APRUTIL_VERSION)
 
