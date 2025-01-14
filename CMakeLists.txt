@@ -28,12 +28,7 @@
 # ZLIB_ROOT         - Path to zlib's install area
 # ===================================================================
 
-cmake_minimum_required(VERSION 3.0)
-
-# Silence warnings about ${<PackageName>_ROOT} in CMake 3.12+
-if((${CMAKE_MAJOR_VERSION} GREATER 3) OR (${CMAKE_MINOR_VERSION} GREATER 11))
-  cmake_policy(SET CMP0074 NEW)
-endif()
+cmake_minimum_required(VERSION 3.12)
 
 # Enable CMP0092 if supported: MSVC warning flags are not in
 # CMAKE_<LANG>_FLAGS by default.

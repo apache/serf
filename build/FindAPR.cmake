@@ -17,7 +17,7 @@
 #   under the License.
 # ===================================================================
 
-cmake_minimum_required(VERSION 3.0)
+cmake_minimum_required(VERSION 3.12)
 
 #.rst:
 # FindAPR
