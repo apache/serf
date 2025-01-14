@@ -23,6 +23,14 @@ Candidate changes:
    Votes:
      +1: dsahlberg
 
+ * r1923121, r1923122
+   Update the CMake build system: Bump required version to 3.12, consistently
+   use APRUtil as package name.
+   Justification:
+     Improvements to the CMake build system.
+   Votes:
+     +1: dsahlberg
+
 Veto-blocked changes:
 =====================
 
