@@ -21,6 +21,7 @@
 #
 
 import sys
+import io
 import os
 import re
 
@@ -359,12 +360,12 @@ if sys.platform == 'win32':
   # Get the APR-Util version number to check if we need an external Expat
   if expat:
     expat_lib_name = 'expat.lib'
-  else:    
+  else:
     expat_lib_name = 'xml.lib'
     apuversion = os.path.join(apu, 'include', 'apu_version.h')
     if not os.path.isfile(apuversion):
       apuversion = os.path.join(apu, 'include', 'apr-1', 'apu_version.h')
-      
+
     if os.path.isfile(apuversion):
       apu_major = 0
       apu_minor = 0
@@ -507,30 +508,39 @@ else:
 
 # Check for OpenSSL functions which are only available in some of
 # the versions we support. Also handles forks like LibreSSL.
+with io.StringIO(env.File('buckets/ssl_buckets.c')
+                 .rfile().get_text_contents()) as stream:
+  ssl_include_rx = re.compile(r'^\s*#\s*include\s+<openssl/[^>]+>')
+  ssl_include_list = []
+  for line in stream.readlines():
+    if ssl_include_rx.match(line):
+      ssl_include_list.append(line.rstrip())
+ssl_includes = '\n'.join(ssl_include_list)
+
 conf = Configure(env)
-if not conf.CheckFunc('BIO_set_init', '#include <openssl/crypto.h>'):
+if not conf.CheckFunc('BIO_set_init', ssl_includes, 'C', 'NULL, 0'):
   env.Append(CPPDEFINES=['SERF_NO_SSL_BIO_WRAPPERS'])
-if not conf.CheckFunc('X509_STORE_get0_param', '#include <openssl/crypto.h>'):
+if not conf.CheckFunc('X509_STORE_get0_param', ssl_includes, 'C', 'NULL'):
   env.Append(CPPDEFINES=['SERF_NO_SSL_X509_STORE_WRAPPERS'])
-if not conf.CheckFunc('X509_get0_notBefore', '#include <openssl/crypto.h>'):
+if not conf.CheckFunc('X509_get0_notBefore', ssl_includes, 'C', 'NULL'):
   env.Append(CPPDEFINES=['SERF_NO_SSL_X509_GET0_NOTBEFORE'])
-if not conf.CheckFunc('X509_get0_notAfter', '#include <openssl/crypto.h>'):
+if not conf.CheckFunc('X509_get0_notAfter', ssl_includes, 'C', 'NULL'):
   env.Append(CPPDEFINES=['SERF_NO_SSL_X509_GET0_NOTAFTER'])
-if not conf.CheckFunc('X509_STORE_CTX_get0_chain', '#include <openssl/crypto.h>'):
+if not conf.CheckFunc('X509_STORE_CTX_get0_chain', ssl_includes, 'C', 'NULL'):
   env.Append(CPPDEFINES=['SERF_NO_SSL_X509_GET0_CHAIN'])
-if not conf.CheckFunc('ASN1_STRING_get0_data', '#include <openssl/crypto.h>'):
+if not conf.CheckFunc('ASN1_STRING_get0_data', ssl_includes, 'C', 'NULL'):
   env.Append(CPPDEFINES=['SERF_NO_SSL_ASN1_STRING_GET0_DATA'])
-if conf.CheckFunc('CRYPTO_set_locking_callback', '#include <openssl/crypto.h>'):
+if conf.CheckFunc('CRYPTO_set_locking_callback', ssl_includes, 'C', 'NULL'):
   env.Append(CPPDEFINES=['SERF_HAVE_SSL_LOCKING_CALLBACKS'])
-if conf.CheckFunc('OPENSSL_malloc_init', '#include <openssl/crypto.h>'):
+if conf.CheckFunc('OPENSSL_malloc_init', ssl_includes):
   env.Append(CPPDEFINES=['SERF_HAVE_OPENSSL_MALLOC_INIT'])
-if conf.CheckFunc('SSL_library_init', '#include <openssl/crypto.h>'):
+if conf.CheckFunc('SSL_library_init', ssl_includes):
   env.Append(CPPDEFINES=['SERF_HAVE_OPENSSL_SSL_LIBRARY_INIT'])
-if conf.CheckFunc('OpenSSL_version_num', '#include <openssl/crypto.h>'):
+if conf.CheckFunc('OpenSSL_version_num', ssl_includes):
   env.Append(CPPDEFINES=['SERF_HAVE_OPENSSL_VERSION_NUM'])
-if conf.CheckFunc('SSL_set_alpn_protos'):
+if conf.CheckFunc('SSL_set_alpn_protos', ssl_includes, 'C', 'NULL, NULL, 0'):
   env.Append(CPPDEFINES=['SERF_HAVE_OPENSSL_ALPN'])
-if conf.CheckType('OSSL_HANDSHAKE_STATE', '#include <openssl/ssl.h>'):
+if conf.CheckType('OSSL_HANDSHAKE_STATE', ssl_includes):
   env.Append(CPPDEFINES=['SERF_HAVE_OSSL_HANDSHAKE_STATE'])
 env = conf.Finish()
 
@@ -548,7 +558,9 @@ if sys.platform == 'win32':
 if brotli and CALLOUT_OKAY:
   conf = Configure(env)
   if conf.CheckCHeader('brotli/decode.h') and \
-     conf.CheckFunc('BrotliDecoderTakeOutput'):
+     conf.CheckFunc('BrotliDecoderTakeOutput',
+                    '#include <brotli/decode.h>',
+                    'C', 'NULL, NULL'):
     env.Append(CPPDEFINES=['SERF_HAVE_BROTLI'])
   else:
     print("Cannot find Brotli library >= 1.0.0 in '%s'." % env.get('BROTLI'))
