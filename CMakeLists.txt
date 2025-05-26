@@ -82,11 +82,11 @@ if(USE_HOMEBREW AND USE_MACPORTS)
 endif()
 
 # Initialize the build type if it was not set on the command line.
-if(NOT CMAKE_BUILD_TYPE)
+if("${CMAKE_BUILD_TYPE}" STREQUAL "")
   if(DEBUG)
-    set(CMAKE_BUILD_TYPE DEBUG CACHE STRING "Default to debug build.")
+    set(CMAKE_BUILD_TYPE DEBUG CACHE STRING "Default to debug build." FORCE)
   else()
-    set(CMAKE_BUILD_TYPE RELEASE CACHE STRING "Default to release build.")
+    set(CMAKE_BUILD_TYPE RELEASE CACHE STRING "Default to release build." FORCE)
   endif()
 endif()
 
@@ -389,8 +389,10 @@ if(NOT SERF_WINDOWS)
     set(VERSION ${SERF_VERSION})
     set(MAJOR ${SERF_MAJOR_VERSION})
     set(SERF_INTERFACE_LIBS
+      ${APR_LDFLAGS}
       ${APR_LIBRARIES}
       ${APR_EXTRALIBS}
+      ${APRUTIL_LDFLAGS}
       ${APRUTIL_LIBRARIES}
       ${APRUTIL_EXTRALIBS}
       )
