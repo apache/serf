@@ -216,6 +216,7 @@ if(NOT _apru_include_only_utilities)
 
     _apr_invoke(APR_CFLAGS     "(^| )-(g|O)[^ ]*" --cppflags --cflags)
     _apr_invoke(APR_INCLUDES   "(^| )-I"          --includes)
+    _apr_invoke(APR_LDFLAGS    ""                 --ldflags)
     _apr_invoke(APR_LIBRARIES  ""                 --link-ld)
     _apr_invoke(APR_EXTRALIBS  ""                 --libs)
     _apr_invoke(APR_VERSION    ""                 --version)
@@ -260,7 +261,7 @@ if(NOT _apru_include_only_utilities)
       add_library(APR::APR UNKNOWN IMPORTED)
       set_target_properties(APR::APR PROPERTIES
         INTERFACE_INCLUDE_DIRECTORIES "${APR_INCLUDES}"
-        INTERFACE_LINK_LIBRARIES "${APR_EXTRALIBS};${_apr_extra}"
+        INTERFACE_LINK_LIBRARIES "${APR_LDFLAGS};${APR_EXTRALIBS};${_apr_extra}"
         IMPORTED_LOCATION "${_apr_library}")
 
     endif()   # NOT Windows

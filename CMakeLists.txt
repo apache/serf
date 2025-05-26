@@ -26,6 +26,8 @@
 # APRUtil_ROOT      - Path to APR-Util's install area
 # OPENSSL_ROOT_DIR  - Path to OpenSSL's install area
 # ZLIB_ROOT         - Path to zlib's install area
+# BROTLI_ROOT       - Path to Brotli's install area
+# GSSAPI_ROOT       - Path to GSSAPI's install area
 # ===================================================================
 
 cmake_minimum_required(VERSION 3.12)
@@ -47,13 +49,19 @@ message(WARNING
         "has not been tested on many supported platforms.")
 
 
+# Build dependencies
+option(APR_ROOT:PATH "Path to APR's install area" "")
+option(APRUtil_ROOT:PATH "Path to APR-Util's install area" "")
+option(OPENSSL_ROOT_DIR:PATH "Path to OpenSSL's install area" "")
+option(ZLIB_ROOT:PATH "Path to zlib's install area" "")
+option(BROTLI_ROOT:PATH "Path to GSSAPI's install area" "")
+option(GSSAPI_ROOT:PATH "Path to GSSAPI's install area" "")
+
 # Build options
 option(DEBUG "Enable debugging info and strict compile warnings" OFF)
 option(SKIP_SHARED "Disable building shared Serf libraries" OFF)
 option(SKIP_STATIC "Disable building static Serf libraries" OFF)
 option(LIBDIR "Install directory for architecture-dependent libraries" "")
-option(GSSAPI "Path to GSSAPI's install area" "")
-option(BROTLI "Path to Brotli's install area" "")
 option(DISABLE_LOGGING "Disable the logging framework at compile time" OFF)
 option(SKIP_TESTS "Disable building the unit tests and utilities" OFF)
 option(ENABLE_SLOW_TESTS "Enable long-running unit tests" OFF)
@@ -62,9 +70,15 @@ option(ENABLE_SLOW_TESTS "Enable long-running unit tests" OFF)
 option(APR_STATIC "Windows: Link with static APR/-Util libraries" OFF)
 option(EXPAT "Windows: optional path to Expat's install area for APR_STATIC" "")
 option(RELATIVE_RPATH "macOS: Use @rpath in installed shared library" OFF)
+option(USE_HOMEBREW "macOS: Use dependencies from Homebrew" OFF)
+option(USE_MACPORTS "macOS: Use dependencies from MacPorts" OFF)
 
 if(SKIP_SHARED AND SKIP_STATIC)
   message(FATAL_ERROR "You have disabled both shared and static library builds.")
+endif()
+
+if(USE_HOMEBREW AND USE_MACPORTS)
+  message(FATAL_ERROR "You requested both Homebrew and McPorts dependencies.")
 endif()
 
 # Initialize the build type if it was not set on the command line.
@@ -79,6 +93,20 @@ endif()
 include(SerfPlatform)
 include(SerfWindowsToolkit)
 
+# On the Mac: Use dependencies from Homebrew or MacPorts
+if(USE_HOMEBREW OR USE_MACPORTS)
+  if(SERF_DARWIN)
+    include(SerfMacOS)
+    serf_macos_find_packages()
+  else()
+    if(USE_HOMEBREW)
+      message(WARNING "option USE_HOMEBREW is not implemented on this platform")
+    endif()
+    if(USE_MACPORTS)
+      message(WARNING "option USE_MACPORTS is not implemented on this platform")
+    endif()
+  endif(SERF_DARWIN)
+endif(USE_HOMEBREW OR USE_MACPORTS)
 
 # Public headers
 list(APPEND HEADERS
@@ -178,12 +206,12 @@ endif(SERF_WINDOWS)
 
 
 # Process build options for dependency search
-if(GSSAPI)
-  message(WARNING "option GSSAPI is not implemented")
+if(BROTLI_ROOT)
+  message(WARNING "option BROTLI_ROOT is not implemented")
 endif()
 
-if(BROTLI)
-  message(WARNING "option BROTLI is not implemented")
+if(GSSAPI_ROOT)
+  message(WARNING "option GSSAPI_ROOT is not implemented")
 endif()
 
 if(SERF_WINDOWS)

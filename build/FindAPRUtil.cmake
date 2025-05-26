@@ -189,7 +189,7 @@ else(APR_CONTAINS_APRUTIL)
         INTERFACE_INCLUDE_DIRECTORIES "${APRUTIL_INCLUDES}"
         IMPORTED_LOCATION "${_apu_library}")
       target_link_libraries(APR::APRUTIL
-          INTERFACE ${APRUTIL_EXTRALIBS};${_apu_extra})
+          INTERFACE ${APRUTIL_LDFLAGS};${APRUTIL_EXTRALIBS};${_apu_extra})
     endif()   # NOT Windows
   endif(APRUTIL_FOUND)
 
