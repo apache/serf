@@ -226,10 +226,10 @@ else(SERF_WINDOWS)
 endif(SERF_WINDOWS)
 
 # Find dependencies
-find_package(OpenSSL)
-find_package(ZLIB)
-find_package(APR)
-find_package(APRUtil)
+find_package(OpenSSL REQUIRED)
+find_package(ZLIB REQUIRED)
+find_package(APR REQUIRED)
+find_package(APRUtil REQUIRED)
 
 # Calculate the set of private and public targets
 set(SERF_PRIVATE_TARGETS OpenSSL::Crypto OpenSSL::SSL ZLIB::ZLIB)
@@ -401,12 +401,12 @@ if(NOT SERF_WINDOWS)
     foreach(DEPLIB ${SERF_INTERFACE_LIBS})
       string(APPEND LIBS " ${DEPLIB}")
     endforeach()
-    configure_file("build/serf.pc.in" "serf.pc" @ONLY)
+    configure_file("build/serf.pc.in" "serf-${SERF_MAJOR_VERSION}.pc" @ONLY)
   endfunction()
 
   make_pkgconfig()
-  install(FILES "${CMAKE_CURRENT_BINARY_DIR}/serf.pc"
-          DESTINATION "share/pkgconfig")
+  install(FILES "${CMAKE_CURRENT_BINARY_DIR}/serf-${SERF_MAJOR_VERSION}.pc"
+          DESTINATION "lib/pkgconfig")
 endif()
 
 

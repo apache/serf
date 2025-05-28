@@ -182,10 +182,14 @@ if(NOT _apru_include_only_utilities)
 
     include(CheckIncludeFile)
 
-    set(APR_INCLUDES "${APR_ROOT}/include")
-    if(NOT EXISTS "${APR_INCLUDES}/apr.h")
-      message(FATAL_ERROR "apr.h was not found in ${APR_INCLUDES}")
+    find_path(APR_INCLUDES "apr.h"
+              PATHS "${APR_ROOT}/include"
+              PATH_SUFFIXES "apr-2" "apr-1"
+              NO_DEFAULT_PATH)
+    if(NOT APR_INCLUDES)
+      message(FATAL_ERROR "apr.h was not found in ${APR_ROOT}")
     endif()
+
     if(NOT EXISTS "${APR_INCLUDES}/apr_version.h")
       message(FATAL_ERROR "apr_version.h was not found in ${APR_INCLUDES}")
     endif()
@@ -250,6 +254,7 @@ if(NOT _apru_include_only_utilities)
         _apru_extras(_apr_static _apr_extra ${APR_STATIC_LIBS})
         add_library(APR::APR_static STATIC IMPORTED)
         set_target_properties(APR::APR_static PROPERTIES
+          INTERFACE_COMPILE_DEFINITIONS "APR_DECLARE_STATIC"
           INTERFACE_INCLUDE_DIRECTORIES "${APR_INCLUDES}"
           IMPORTED_INTERFACE_LINK_LIBRARIES "${_apr_extra}"
           IMPORTED_LOCATION "${_apr_static}")

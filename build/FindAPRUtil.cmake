@@ -87,10 +87,14 @@ else(APR_CONTAINS_APRUTIL)
 
     include(CheckIncludeFile)
 
-    set(APRUTIL_INCLUDES "${APRUtil_ROOT}/include")
-    if(NOT EXISTS "${APRUTIL_INCLUDES}/apu.h")
-      message(FATAL_ERROR "apu.h was not found in ${APRUTIL_INCLUDES}")
+    find_path(APRUTIL_INCLUDES "apu.h"
+              PATHS "${APRUtil_ROOT}/include"
+              PATH_SUFFIXES "apr-1"
+              NO_DEFAULT_PATH)
+    if(NOT APRUTIL_INCLUDES)
+      message(FATAL_ERROR "apu.h was not found in ${APRUtil_ROOT}")
     endif()
+
     if(NOT EXISTS "${APRUTIL_INCLUDES}/apu_version.h")
       message(FATAL_ERROR "apu_version.h was not found in ${APRUTIL_INCLUDES}")
     endif()
@@ -175,6 +179,7 @@ else(APR_CONTAINS_APRUTIL)
         endif()
         add_library(APR::APRUTIL_static STATIC IMPORTED)
         set_target_properties(APR::APRUTIL_static PROPERTIES
+          INTERFACE_COMPILE_DEFINITIONS "APU_DECLARE_STATIC"
           INTERFACE_INCLUDE_DIRECTORIES "${APRUTIL_INCLUDES}"
           IMPORTED_LOCATION "${_apu_static}")
         target_link_libraries(APR::APRUTIL_static
