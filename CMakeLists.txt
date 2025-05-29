@@ -54,7 +54,7 @@ option(APR_ROOT:PATH "Path to APR's install area" "")
 option(APRUtil_ROOT:PATH "Path to APR-Util's install area" "")
 option(OPENSSL_ROOT_DIR:PATH "Path to OpenSSL's install area" "")
 option(ZLIB_ROOT:PATH "Path to zlib's install area" "")
-option(BROTLI_ROOT:PATH "Path to GSSAPI's install area" "")
+option(BROTLI_ROOT:PATH "Path to Brotli's install area" "")
 option(GSSAPI_ROOT:PATH "Path to GSSAPI's install area" "")
 
 # Build options
@@ -210,10 +210,6 @@ if(BROTLI_ROOT)
   message(WARNING "option BROTLI_ROOT is not implemented")
 endif()
 
-if(GSSAPI_ROOT)
-  message(WARNING "option GSSAPI_ROOT is not implemented")
-endif()
-
 if(SERF_WINDOWS)
   if(EXPAT)
     set(PC_EXPAT_INCLUDE_DIRS "${EXPAT}/include")
@@ -225,14 +221,23 @@ else(SERF_WINDOWS)
   endif(EXPAT)
 endif(SERF_WINDOWS)
 
-# Find dependencies
+# Find required dependencies
 find_package(OpenSSL REQUIRED)
 find_package(ZLIB REQUIRED)
 find_package(APR REQUIRED)
 find_package(APRUtil REQUIRED)
 
+# Find optional dependencies
+find_package(GSSAPI)
+if(GSSAPI_FOUND)
+  add_definitions("-DSERF_HAVE_GSSAPI")
+endif()
+
 # Calculate the set of private and public targets
 set(SERF_PRIVATE_TARGETS OpenSSL::Crypto OpenSSL::SSL ZLIB::ZLIB)
+if(GSSAPI_FOUND)
+  list(APPEND SERF_PRIVATE_TARGETS KRB5::GSSAPI)
+endif()
 
 if(APR_STATIC)
   if(SERF_WINDOWS)
@@ -395,6 +400,8 @@ if(NOT SERF_WINDOWS)
       ${APRUTIL_LDFLAGS}
       ${APRUTIL_LIBRARIES}
       ${APRUTIL_EXTRALIBS}
+      ${GSSAPI_LIBRARIES}
+      ${ZLIB_LIBRARIES}
       )
     list(REMOVE_DUPLICATES SERF_INTERFACE_LIBS)
     unset(LIBS)
