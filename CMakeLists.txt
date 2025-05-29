@@ -411,8 +411,9 @@ if(NOT SERF_WINDOWS)
   endfunction()
 
   make_pkgconfig()
+  include(GNUInstallDirs)
   install(FILES "${CMAKE_CURRENT_BINARY_DIR}/serf-${SERF_MAJOR_VERSION}.pc"
-          DESTINATION "lib/pkgconfig")
+          DESTINATION "${CMAKE_INSTALL_LIBDIR}/pkgconfig")
 endif()
 
 
