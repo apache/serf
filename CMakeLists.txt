@@ -351,7 +351,10 @@ if(NOT SKIP_SHARED)
   set(SERF_TARGETS "serf_shared")
 
   if(SERF_WINDOWS)
-    install(FILES $<TARGET_PDB_FILE:serf_shared> DESTINATION "bin")
+    string(TOLOWER "${CMAKE_BUILD_TYPE}" config)
+    if(NOT "${config}" STREQUAL "release")
+      install(FILES $<TARGET_PDB_FILE:serf_shared> DESTINATION "bin")
+    endif()
   endif()
 endif()
 
