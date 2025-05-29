@@ -61,7 +61,6 @@ option(GSSAPI_ROOT:PATH "Path to GSSAPI's install area" "")
 option(DEBUG "Enable debugging info and strict compile warnings" OFF)
 option(SKIP_SHARED "Disable building shared Serf libraries" OFF)
 option(SKIP_STATIC "Disable building static Serf libraries" OFF)
-option(LIBDIR "Install directory for architecture-dependent libraries" "")
 option(DISABLE_LOGGING "Disable the logging framework at compile time" OFF)
 option(SKIP_TESTS "Disable building the unit tests and utilities" OFF)
 option(ENABLE_SLOW_TESTS "Enable long-running unit tests" OFF)
@@ -90,6 +89,7 @@ if("${CMAKE_BUILD_TYPE}" STREQUAL "")
   endif()
 endif()
 
+include(GNUInstallDirs)
 include(SerfPlatform)
 include(SerfWindowsToolkit)
 
@@ -278,10 +278,6 @@ if(CMAKE_COMPILER_IS_GNUCC OR (CMAKE_C_COMPILER_ID MATCHES "Clang"))
 endif()
 
 # Process other build options
-if(LIBDIR)
-  message(WARNING "option LIBDIR is not implemented yet")
-endif()
-
 if(DEBUG)
   add_definitions("-DDEBUG" "-D_DEBUG")
 endif()
@@ -328,8 +324,8 @@ else()
     add_definitions("/DWIN64")
   endif()
 
-  set(CMAKE_IMPORT_LIBRARY_PREFIX "lib")
-  set(CMAKE_SHARED_LIBRARY_PREFIX "lib")
+  set(CMAKE_IMPORT_LIBRARY_PREFIX "${CMAKE_INSTALL_LIBDIR}")
+  set(CMAKE_SHARED_LIBRARY_PREFIX "${CMAKE_INSTALL_LIBDIR}")
 endif(NOT MSVC)
 
 # Define all targets
@@ -346,14 +342,15 @@ if(NOT SKIP_SHARED)
                         SOVERSION ${SERF_SOVERSION})
   if(SERF_DARWIN AND NOT RELATIVE_RPATH)
     set_target_properties(serf_shared PROPERTIES
-                          INSTALL_NAME_DIR "${CMAKE_INSTALL_PREFIX}/lib")
+      INSTALL_NAME_DIR "${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_LIBDIR}")
   endif()
   set(SERF_TARGETS "serf_shared")
 
   if(SERF_WINDOWS)
     string(TOLOWER "${CMAKE_BUILD_TYPE}" config)
     if(NOT "${config}" STREQUAL "release")
-      install(FILES $<TARGET_PDB_FILE:serf_shared> DESTINATION "bin")
+      install(FILES $<TARGET_PDB_FILE:serf_shared>
+              DESTINATION "${CMAKE_INSTALL_BINDIR}")
     endif()
   endif()
 endif()
@@ -374,24 +371,21 @@ set_target_properties(${SERF_TARGETS}
                       OUTPUT_NAME "serf-${SERF_MAJOR_VERSION}")
 
 install(TARGETS ${SERF_TARGETS}
-        ARCHIVE DESTINATION "lib"
-        LIBRARY DESTINATION "lib"
-        RUNTIME DESTINATION "bin")
+        ARCHIVE DESTINATION "${CMAKE_INSTALL_LIBDIR}"
+        LIBRARY DESTINATION "${CMAKE_INSTALL_LIBDIR}"
+        RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}")
 
 if(NOT SERF_WINDOWS)
   set(SERF_INCLUDE_SUBDIR "serf-${SERF_MAJOR_VERSION}")
 endif()
-install(FILES ${HEADERS} DESTINATION "include/${SERF_INCLUDE_SUBDIR}")
-
+install(FILES ${HEADERS}
+        DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/${SERF_INCLUDE_SUBDIR}")
 
 # Generate the pkg-config module file.
 if(NOT SERF_WINDOWS)
   # Use a separate variable scope for the substitutions in serf.pc.in.
   function(make_pkgconfig)
     set(PREFIX ${CMAKE_INSTALL_PREFIX})
-    if(NOT LIBDIR)
-      set(LIBDIR "\${prefix}/lib")
-    endif()
     set(INCLUDE_SUBDIR ${SERF_INCLUDE_SUBDIR})
     set(VERSION ${SERF_VERSION})
     set(MAJOR ${SERF_MAJOR_VERSION})
@@ -414,7 +408,6 @@ if(NOT SERF_WINDOWS)
   endfunction()
 
   make_pkgconfig()
-  include(GNUInstallDirs)
   install(FILES "${CMAKE_CURRENT_BINARY_DIR}/serf-${SERF_MAJOR_VERSION}.pc"
           DESTINATION "${CMAKE_INSTALL_LIBDIR}/pkgconfig")
 endif()
