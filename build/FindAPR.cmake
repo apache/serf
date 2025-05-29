@@ -81,9 +81,7 @@ function(_apru_config _program _varname _regexp)
     endif()
 
     # Remove leading and trailing spaces
-    string(REGEX REPLACE "^ +"          ""  _apru_output "${_apru_output}")
-    string(REGEX REPLACE " +$"          ""  _apru_output "${_apru_output}")
-
+    string(STRIP "${_apru_output}" _apru_output)
     separate_arguments(_apru_output)
     set(${_varname} ${_apru_output} PARENT_SCOPE)
   endif()
