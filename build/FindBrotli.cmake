@@ -46,6 +46,8 @@ function(_get_brotli_version)
      string(STRIP "${output}" output)
      set(BROTLI_VERSION "${output}" PARENT_SCOPE)
    endif()
+ else()
+   set(BROTLI_VERSION "unknown" PARENT_SCOPE)
  endif()
 endfunction(_get_brotli_version)
 
