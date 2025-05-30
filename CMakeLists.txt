@@ -206,10 +206,6 @@ endif(SERF_WINDOWS)
 
 
 # Process build options for dependency search
-if(BROTLI_ROOT)
-  message(WARNING "option BROTLI_ROOT is not implemented")
-endif()
-
 if(SERF_WINDOWS)
   if(EXPAT)
     set(PC_EXPAT_INCLUDE_DIRS "${EXPAT}/include")
@@ -228,14 +224,16 @@ find_package(APR REQUIRED)
 find_package(APRUtil REQUIRED)
 
 # Find optional dependencies
+find_package(BROTLI)
 find_package(GSSAPI)
-if(GSSAPI_FOUND)
-  add_definitions("-DSERF_HAVE_GSSAPI")
-endif()
 
 # Calculate the set of private and public targets
 set(SERF_PRIVATE_TARGETS OpenSSL::Crypto OpenSSL::SSL ZLIB::ZLIB)
+if(BROTLI_FOUND)
+  list(APPEND SERF_PRIVATE_TARGETS BROTLI::DECODE)
+endif()
 if(GSSAPI_FOUND)
+  add_definitions("-DSERF_HAVE_GSSAPI")
   list(APPEND SERF_PRIVATE_TARGETS KRB5::GSSAPI)
 endif()
 
@@ -272,6 +270,10 @@ CheckFunctionMacro("SSL_library_init" "SERF_HAVE_OPENSSL_SSL_LIBRARY_INIT" "open
                    "${OPENSSL_INCLUDE_DIR}" ${OPENSSL_LIBRARIES} ${SERF_STANDARD_LIBRARIES})
 CheckHeader("stdbool.h" "HAVE_STDBOOL_H=1")
 CheckType("OSSL_HANDSHAKE_STATE" "openssl/ssl.h" "SERF_HAVE_OSSL_HANDSHAKE_STATE" ${OPENSSL_INCLUDE_DIR})
+if(BROTLI_FOUND)
+  CheckType("BrotliDecoderResult" "brotli/decode.h" "SERF_HAVE_BROTLI_DECODE_H" ${BROTLI_INCLUDES})
+  CheckFunction("BrotliDecoderTakeOutput" "SERF_HAVE_BROTLI" BROTLI::DECODE ${SERF_STANDARD_LIBRARIES})
+endif()
 
 if(CMAKE_COMPILER_IS_GNUCC OR (CMAKE_C_COMPILER_ID MATCHES "Clang"))
   set(CC_LIKE_GNUC TRUE)
