@@ -212,7 +212,7 @@ if(SERF_WINDOWS)
       "secur32.lib"
       "ws2_32.lib"
   )
-  add_definitions("-DSERF_HAVE_SSPI")
+  add_compile_definitions("SERF_HAVE_SSPI")
 endif(SERF_WINDOWS)
 
 # Process build options for dependency search
@@ -243,7 +243,7 @@ if(BROTLI_FOUND)
   list(APPEND SERF_PRIVATE_TARGETS BROTLI::DECODE)
 endif()
 if(GSSAPI_FOUND)
-  add_definitions("-DSERF_HAVE_GSSAPI")
+  add_compile_definitions("SERF_HAVE_GSSAPI")
   list(APPEND SERF_PRIVATE_TARGETS KRB5::GSSAPI)
 endif()
 
@@ -281,8 +281,12 @@ CheckFunctionMacro("SSL_library_init" "SERF_HAVE_OPENSSL_SSL_LIBRARY_INIT" "open
 CheckHeader("stdbool.h" "HAVE_STDBOOL_H=1")
 CheckType("OSSL_HANDSHAKE_STATE" "openssl/ssl.h" "SERF_HAVE_OSSL_HANDSHAKE_STATE" ${OPENSSL_INCLUDE_DIR})
 if(BROTLI_FOUND)
-  CheckType("BrotliDecoderResult" "brotli/decode.h" "SERF_HAVE_BROTLI_DECODE_H" ${BROTLI_INCLUDES})
-  CheckFunction("BrotliDecoderTakeOutput" "SERF_HAVE_BROTLI" BROTLI::DECODE ${SERF_STANDARD_LIBRARIES})
+  CheckType("BrotliDecoderResult" "brotli/decode.h" "SERF_HAVE_BROTLI_DECODER_RESULT" ${BROTLI_INCLUDES})
+  # Check for the function only if the type check succeeded.
+  get_directory_property(_cdef COMPILE_DEFINITIONS)
+  if("SERF_HAVE_BROTLI_DECODER_RESULT" IN_LIST _cdef)
+    CheckFunction("BrotliDecoderTakeOutput" "SERF_HAVE_BROTLI" BROTLI::DECODE ${SERF_STANDARD_LIBRARIES})
+  endif()
 endif()
 
 if(CMAKE_COMPILER_IS_GNUCC OR (CMAKE_C_COMPILER_ID MATCHES "Clang"))
@@ -291,19 +295,19 @@ endif()
 
 # Process other build options
 if(DEBUG)
-  add_definitions("-DDEBUG" "-D_DEBUG")
+  add_compile_definitions("DEBUG" "_DEBUG")
 endif()
 
 if(DISABLE_LOGGING)
-  add_definitions("-DSERF_DISABLE_LOGGING")
+  add_compile_definitions("SERF_DISABLE_LOGGING")
 endif()
 
 if(ENABLE_SLOW_TESTS)
-  add_definitions("-DSERF_TEST_DEFLATE_4GBPLUS_BUCKETS")
+  add_compile_definitions("SERF_TEST_DEFLATE_4GBPLUS_BUCKETS")
 endif()
 
 # Define OPENSSL_NO_STDIO to prevent using _fp() API.
-add_definitions("-DOPENSSL_NO_STDIO")
+add_compile_definitions("OPENSSL_NO_STDIO")
 
 # Set common compiler flags
 if(NOT MSVC)
@@ -322,18 +326,17 @@ else()
   set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} /wd4127")
   # Assignment within conditional expression
   set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} /wd4706")
-
   # 'function' undefined; assuming extern returning int
   set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} /we4013")
 
-  add_definitions(
-    "/DWIN32" "/DWIN32_LEAN_AND_MEAN"
-    "/DNOUSER" "/DNOGDI" "/DNONLS" "/DNOCRYPT"
-    "/D_CRT_SECURE_NO_WARNINGS"
-    "/D_CRT_NONSTDC_NO_WARNINGS"
+  add_compile_definitions(
+    "WIN32" "WIN32_LEAN_AND_MEAN"
+    "NOUSER" "NOGDI" "NONLS" "NOCRYPT"
+    "_CRT_SECURE_NO_WARNINGS"
+    "_CRT_NONSTDC_NO_WARNINGS"
   )
   if(SERF_WIN64)
-    add_definitions("/DWIN64")
+    add_compile_definitions("WIN64")
   endif()
 
   set(CMAKE_IMPORT_LIBRARY_PREFIX "${SERF_INSTALL_LIBRARIES}")
@@ -435,27 +438,33 @@ endif()
 
 
 # Summary
-macro(_onoff _var _value _negate)
-  if(${_negate})
-    if(NOT ${_value})
-      set(${_var} ON)
-    else()
-      set(${_var} OFF)
-    endif()
-  else()
-    if(${_value})
-      set(${_var} ON)
-    else()
-      set(${_var} OFF)
-    endif()
-  endif()
-endmacro(_onoff)
-_onoff(_build_shared SKIP_SHARED  TRUE)
-_onoff(_build_static SKIP_STATIC  TRUE)
-_onoff(_build_tests  SKIP_TESTS   TRUE)
-_onoff(_have_brotli  BROTLI_FOUND FALSE)
-_onoff(_have_gssapi  GSSAPI_FOUND FALSE)
-_onoff(_have_sspi    SERF_WINDOWS FALSE)
+set(_build_shared OFF)
+set(_build_static OFF)
+set(_build_tests OFF)
+set(_have_brotli OFF)
+set(_have_gssapi OFF)
+set(_have_sspi OFF)
+
+if(NOT SKIP_SHARED)
+  set(_build_shared ON)
+endif()
+if(NOT SKIP_STATIC)
+  set(_build_static ON)
+endif()
+if(NOT SKIP_TESTS)
+  set(_build_tests ON)
+endif()
+
+get_directory_property(_cdef COMPILE_DEFINITIONS)
+if("SERF_HAVE_BROTLI" IN_LIST _cdef)
+  set(_have_brotli ON)
+endif()
+if("SERF_HAVE_GSSAPI" IN_LIST _cdef)
+  set(_have_gssapi ON)
+endif()
+if("SERF_HAVE_SSPI" IN_LIST _cdef)
+  set(_have_sspi ON)
+endif()
 
 message(STATUS "Summary:")
 message(STATUS "  Version ................... : ${SERF_VERSION}")
