@@ -761,11 +761,11 @@ http2_handle_ping_ack(void *baton,
                       const char *data,
                       apr_size_t len)
 {
-    serf_http2_protocol_t *h2 = baton;
+    /* serf_http2_protocol_t *h2 = baton; */
     if (len != HTTP2_PING_DATA_SIZE)
         return SERF_ERROR_HTTP2_FRAME_SIZE_ERROR;
 
-    SERF_H2_assert(h2 != NULL);
+    SERF_H2_assert(baton != NULL);
 
     /* Did we send a ping? */
 

@@ -273,6 +273,7 @@ do_auth(const serf__authn_scheme_t *scheme,
     } else {
         authn_info = &ctx->proxy_authn_info;
     }
+    /* FIXME: authn_info's value is never used. */
 
     /* Is this a response from a host/proxy? auth_hdr should always be set. */
     if (code && auth_hdr) {

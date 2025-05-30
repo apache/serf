@@ -449,6 +449,7 @@ int main(int argc, const char **argv)
     }
 
     root_dir = argv[opt->ind];
+    /* FIXME: root_dir's value is never used. */
 
     /* Setup debug logging */
     if (verbose) {

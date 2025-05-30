@@ -60,10 +60,7 @@ struct serf_fcgi_protocol_t
 
 static apr_status_t fcgi_cleanup(void *baton)
 {
-    serf_fcgi_protocol_t *fcgi = baton;
-
-    fcgi = fcgi;
-
+    /* serf_fcgi_protocol_t *fcgi = baton; */
     return APR_SUCCESS;
 }
 
@@ -563,4 +560,3 @@ void serf__fcgi_protocol_init_server(serf_incoming_t *client)
     client->perform_teardown = fcgi_server_teardown;
     client->protocol_baton = fcgi;
 }
-

@@ -23,6 +23,13 @@
 
 #include "auth_spnego.h"
 
+#ifdef _DEBUG
+#include <assert.h>
+#define SERF_AUTH_assert(x) assert(x)
+#else
+#define SERF_AUTH_assert(x) ((void)0)
+#endif
+
 #ifdef __cplusplus
 extern "C" {
 #endif
