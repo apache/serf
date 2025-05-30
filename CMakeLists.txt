@@ -108,6 +108,17 @@ if(USE_HOMEBREW OR USE_MACPORTS)
   endif(SERF_DARWIN)
 endif(USE_HOMEBREW OR USE_MACPORTS)
 
+# Install directories
+if(NOT SERF_WINDOWS)
+  set(SERF_INCLUDE_SUBDIR  "serf-${SERF_MAJOR_VERSION}")
+  set(SERF_INSTALL_HEADERS "${CMAKE_INSTALL_INCLUDEDIR}/${SERF_INCLUDE_SUBDIR}")
+else()
+  set(SERF_INSTALL_HEADERS "${CMAKE_INSTALL_INCLUDEDIR}")
+endif()
+set(SERF_INSTALL_LIBRARIES "${CMAKE_INSTALL_LIBDIR}")
+set(SERF_INSTALL_RUNTIME   "${CMAKE_INSTALL_BINDIR}")
+set(SERF_INSTALL_PKGCONFIG "${CMAKE_INSTALL_LIBDIR}/pkgconfig")
+
 # Public headers
 list(APPEND HEADERS
     "serf.h"
@@ -203,7 +214,6 @@ if(SERF_WINDOWS)
   )
   add_definitions("-DSERF_HAVE_SSPI")
 endif(SERF_WINDOWS)
-
 
 # Process build options for dependency search
 if(SERF_WINDOWS)
@@ -326,8 +336,8 @@ else()
     add_definitions("/DWIN64")
   endif()
 
-  set(CMAKE_IMPORT_LIBRARY_PREFIX "${CMAKE_INSTALL_LIBDIR}")
-  set(CMAKE_SHARED_LIBRARY_PREFIX "${CMAKE_INSTALL_LIBDIR}")
+  set(CMAKE_IMPORT_LIBRARY_PREFIX "${SERF_INSTALL_LIBRARIES}")
+  set(CMAKE_SHARED_LIBRARY_PREFIX "${SERF_INSTALL_LIBRARIES}")
 endif(NOT MSVC)
 
 # Define all targets
@@ -344,7 +354,7 @@ if(NOT SKIP_SHARED)
                         SOVERSION ${SERF_SOVERSION})
   if(SERF_DARWIN AND NOT RELATIVE_RPATH)
     set_target_properties(serf_shared PROPERTIES
-      INSTALL_NAME_DIR "${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_LIBDIR}")
+      INSTALL_NAME_DIR "${CMAKE_INSTALL_PREFIX}/${SERF_INSTALL_LIBRARIES}")
   endif()
   set(SERF_TARGETS "serf_shared")
 
@@ -352,7 +362,7 @@ if(NOT SKIP_SHARED)
     string(TOLOWER "${CMAKE_BUILD_TYPE}" config)
     if(NOT "${config}" STREQUAL "release")
       install(FILES $<TARGET_PDB_FILE:serf_shared>
-              DESTINATION "${CMAKE_INSTALL_BINDIR}")
+              DESTINATION "${SERF_INSTALL_RUNTIME}")
     endif()
   endif()
 endif()
@@ -372,16 +382,13 @@ set_target_properties(${SERF_TARGETS}
                       PROPERTIES
                       OUTPUT_NAME "serf-${SERF_MAJOR_VERSION}")
 
+# Install targets
 install(TARGETS ${SERF_TARGETS}
-        ARCHIVE DESTINATION "${CMAKE_INSTALL_LIBDIR}"
-        LIBRARY DESTINATION "${CMAKE_INSTALL_LIBDIR}"
-        RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}")
+        ARCHIVE DESTINATION "${SERF_INSTALL_LIBS}"
+        LIBRARY DESTINATION "${SERF_INSTALL_LIBS}"
+        RUNTIME DESTINATION "${SERF_INSTALL_RUNTIME}")
 
-if(NOT SERF_WINDOWS)
-  set(SERF_INCLUDE_SUBDIR "serf-${SERF_MAJOR_VERSION}")
-endif()
-install(FILES ${HEADERS}
-        DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/${SERF_INCLUDE_SUBDIR}")
+install(FILES ${HEADERS} DESTINATION "${SERF_INSTALL_HEADERS}")
 
 # Generate the pkg-config module file.
 if(NOT SERF_WINDOWS)
@@ -411,7 +418,7 @@ if(NOT SERF_WINDOWS)
 
   make_pkgconfig()
   install(FILES "${CMAKE_CURRENT_BINARY_DIR}/serf-${SERF_MAJOR_VERSION}.pc"
-          DESTINATION "${CMAKE_INSTALL_LIBDIR}/pkgconfig")
+          DESTINATION "${SERF_INSTALL_PKGCONFIG}")
 endif()
 
 
@@ -424,4 +431,52 @@ if(NOT SKIP_TESTS)
     enable_testing()
     add_subdirectory(test)
   endif()
+endif()
+
+
+# Summary
+macro(_onoff _var _value _negate)
+  if(${_negate})
+    if(NOT ${_value})
+      set(${_var} ON)
+    else()
+      set(${_var} OFF)
+    endif()
+  else()
+    if(${_value})
+      set(${_var} ON)
+    else()
+      set(${_var} OFF)
+    endif()
+  endif()
+endmacro(_onoff)
+_onoff(_build_shared SKIP_SHARED  TRUE)
+_onoff(_build_static SKIP_STATIC  TRUE)
+_onoff(_build_tests  SKIP_TESTS   TRUE)
+_onoff(_have_brotli  BROTLI_FOUND FALSE)
+_onoff(_have_gssapi  GSSAPI_FOUND FALSE)
+_onoff(_have_sspi    SERF_WINDOWS FALSE)
+
+message(STATUS "Summary:")
+message(STATUS "  Version ................... : ${SERF_VERSION}")
+message(STATUS "  Build:")
+message(STATUS "    platform: ............... : ${SERF_PLATFORM}")
+message(STATUS "    target: ................. : ${SERF_TARGET}")
+message(STATUS "    generator: .............. : ${CMAKE_GENERATOR}")
+message(STATUS "    build type .............. : ${CMAKE_BUILD_TYPE}")
+message(STATUS "    shared libraries .... ... : ${_build_shared}")
+message(STATUS "    static libraries ........ : ${_build_static}")
+message(STATUS "    tests ................... : ${_build_tests}")
+message(STATUS "  Options:")
+message(STATUS "    Brotli .................. : ${_have_brotli}")
+message(STATUS "    GSSAPI .................. : ${_have_gssapi}")
+message(STATUS "    SSPI .................... : ${_have_sspi}")
+message(STATUS "  Install:")
+message(STATUS "    prefix: ................. : ${CMAKE_INSTALL_PREFIX}")
+message(STATUS "    headers: ................ : ${SERF_INSTALL_HEADERS}")
+message(STATUS "    libraries: .............. : ${SERF_INSTALL_LIBRARIES}")
+if(SERF_WINDOWS)
+message(STATUS "    dynamic libraries: ...... : ${SERF_INSTALL_RUNTIME}")
+else()
+message(STATUS "    pkg-config file: ........ : ${SERF_INSTALL_PKGCONFIG}")
 endif()
