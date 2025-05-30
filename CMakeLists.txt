@@ -235,7 +235,15 @@ find_package(APRUtil REQUIRED)
 
 # Find optional dependencies
 find_package(BROTLI)
-find_package(GSSAPI)
+if(NOT SERF_WINDOWS)
+  find_package(GSSAPI)
+else()
+  # We use SSPI on Windows and there's no Kerberos/GSSAPI port there.
+  set(GSSAPI_FOUND FALSE)
+  if(DEFINED GSSAPI_ROOT)
+    message(WARNING "option GSSAPI_ROOT is not implemented on this platform")
+  endif()
+endif()
 
 # Calculate the set of private and public targets
 set(SERF_PRIVATE_TARGETS OpenSSL::Crypto OpenSSL::SSL ZLIB::ZLIB)
