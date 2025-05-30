@@ -45,7 +45,7 @@ struct serf_log_output_t {
     void *baton;
 };
 
-const char * loglvl_labels[] = {
+static const char *const loglvl_labels[] = {
     "",
     "ERROR", /* 0x0001 */
     "WARN ", /* 0x0002 */

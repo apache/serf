@@ -78,7 +78,7 @@ log_error(int verbose_flag, serf_config_t *config,
 
         serf__log(verbose_flag, LOGCOMP_AUTHN, __FILE__, config,
                   "%s (%x,%d): %s\n", msg,
-                  err_maj_stat, err_min_stat, stat_buff.value);
+                  err_maj_stat, err_min_stat, (const char *)stat_buff.value);
         gss_release_buffer(&min_stat, &stat_buff);
     }
 }
@@ -175,7 +175,7 @@ serf__spnego_init_sec_context(serf_connection_t *conn,
     bufdesc.value = apr_pstrcat(scratch_pool, service, "@", hostname, NULL);
     bufdesc.length = strlen(bufdesc.value);
     serf__log(LOGLVL_DEBUG, LOGCOMP_AUTHN, __FILE__, conn->config,
-              "Get principal for %s\n", bufdesc.value);
+              "Get principal for %s\n", (const char *)bufdesc.value);
     gss_maj_stat = gss_import_name (&gss_min_stat, &bufdesc,
                                     GSS_C_NT_HOSTBASED_SERVICE,
                                     &host_gss_name);
@@ -233,5 +233,6 @@ serf__spnego_init_sec_context(serf_connection_t *conn,
 
 #else  /* SERF_USE_GSSAPI */
 /* Prevent "object has no symbols" warnings from ranlib on macOS. */
+extern const long serf__fake__auth_spnego_gas_c;
 const long serf__fake__auth_spnego_gas_c = 0xdeadbeef;
 #endif /* SERF_USE_GSSAPI */

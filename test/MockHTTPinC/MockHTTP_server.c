@@ -519,7 +519,7 @@ static apr_status_t buffSktPeek(bucket_t *bkt, apr_size_t *len)
     return status;
 }
 
-const _mhBucketType_t BufferedSocketBucketType = {
+static const _mhBucketType_t BufferedSocketBucketType = {
     "BUFFSOCKET",
     buffSktRead,
     buffSktReadLine,
@@ -3081,4 +3081,3 @@ static apr_status_t sslHandshake(_mhClientCtx_t *cctx)
 #else /* TODO: OpenSSL not available => empty implementations */
 
 #endif
-

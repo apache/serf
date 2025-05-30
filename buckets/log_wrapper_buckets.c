@@ -92,8 +92,8 @@ serf_log_wrapped_read_iovec(serf_bucket_t *bucket,
               "--- %"APR_SIZE_T_FMT" bytes. --\n", len);
 
     for (i = 0; i < *vecs_used; i++) {
-        serf__log_nopref(LOGLVL_DEBUG, LOGCOMP_RAWMSG, ctx->config,
-                         "%.*s", (int)vecs[i].iov_len, vecs[i].iov_base);
+        serf__log_nopref(LOGLVL_DEBUG, LOGCOMP_RAWMSG, ctx->config, "%.*s",
+                         (int)vecs[i].iov_len, (const char*)vecs[i].iov_base);
     }
     serf__log_nopref(LOGLVL_DEBUG, LOGCOMP_RAWMSG, ctx->config, "\n");
 

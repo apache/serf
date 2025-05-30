@@ -583,7 +583,7 @@ get_auth_header(serf_bucket_t *hdrs,
  * authentication handshake. This specific response includes authentication
  * data which should be validated by the client (mutual authentication).
  */
-apr_status_t
+static apr_status_t
 serf__validate_response_spnego_auth(const serf__authn_scheme_t *scheme,
                                     peer_t peer,
                                     int code,
