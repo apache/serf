@@ -32,6 +32,7 @@
 #include "test_serf.h"
 
 /* These test cases have access to internal functions. */
+#define SERF__TEST_INTERNAL     /* Disable SERF__CONV_assert() */
 #include "serf_private.h"
 #include "serf_bucket_util.h"
 
@@ -419,6 +420,51 @@ static void test_runtime_versions(CuTest *tc)
 #endif
 }
 
+static void test_narrowing_conversions(CuTest *tc)
+{
+    int val;
+
+    SERF__POSITIVE_TO_INT(val, apr_uint64_t, 0);
+    CuAssertIntEquals(tc, 0, val);
+    SERF__SIGNED_TO_INT(val, apr_int64_t, 0);
+    CuAssertIntEquals(tc, 0, val);
+
+    SERF__POSITIVE_TO_INT(val, apr_uint64_t, 1);
+    CuAssertIntEquals(tc, 1, val);
+    SERF__SIGNED_TO_INT(val, apr_int64_t, 1);
+    CuAssertIntEquals(tc, 1, val);
+
+    SERF__POSITIVE_TO_INT(val, apr_uint64_t, -1);
+    CuAssertIntEquals(tc, INT_MAX, val);
+    SERF__SIGNED_TO_INT(val, apr_int64_t, -1);
+    CuAssertIntEquals(tc, -1, val);
+
+    SERF__POSITIVE_TO_INT(val, apr_uint64_t, INT_MAX);
+    CuAssertIntEquals(tc, INT_MAX, val);
+    SERF__SIGNED_TO_INT(val, apr_int64_t, INT_MAX);
+    CuAssertIntEquals(tc, INT_MAX, val);
+
+    SERF__POSITIVE_TO_INT(val, apr_uint64_t, INT_MIN);
+    CuAssertIntEquals(tc, 0, val);
+    SERF__SIGNED_TO_INT(val, apr_int64_t, INT_MIN);
+    CuAssertIntEquals(tc, INT_MIN, val);
+
+    SERF__POSITIVE_TO_INT(val, apr_uint64_t, APR_INT64_MAX);
+    CuAssertIntEquals(tc, INT_MAX, val);
+    SERF__SIGNED_TO_INT(val, apr_int64_t, APR_INT64_MAX);
+    CuAssertIntEquals(tc, -1, val);
+
+    SERF__POSITIVE_TO_INT(val, apr_uint64_t, APR_INT64_MIN);
+    CuAssertIntEquals(tc, 0, val);
+    SERF__SIGNED_TO_INT(val, apr_int64_t, APR_INT64_MIN);
+    CuAssertIntEquals(tc, 0, val);
+
+    SERF__POSITIVE_TO_INT(val, apr_uint64_t, APR_UINT64_MAX);
+    CuAssertIntEquals(tc, INT_MAX, val);
+    SERF__SIGNED_TO_INT(val, apr_int64_t, APR_UINT64_MAX);
+    CuAssertIntEquals(tc, -1, val);
+}
+
 CuSuite *test_internal(void)
 {
     CuSuite *suite = CuSuiteNew();
@@ -432,6 +478,7 @@ CuSuite *test_internal(void)
     SUITE_ADD_TEST(suite, test_config_store_remove_objects);
     SUITE_ADD_TEST(suite, test_header_buckets_remove);
     SUITE_ADD_TEST(suite, test_runtime_versions);
+    SUITE_ADD_TEST(suite, test_narrowing_conversions);
 
     return suite;
 }

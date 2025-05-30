@@ -517,7 +517,7 @@ int main(int argc, const char **argv)
 
         switch (opt_c) {
         case 'a':
-            srclen = strlen(opt_arg);
+            srclen = (int)strlen(opt_arg);
             enclen = apr_base64_encode_len(srclen);
             authn = apr_palloc(pool, enclen + 6);
             strcpy(authn, "Basic ");
@@ -538,7 +538,7 @@ int main(int argc, const char **argv)
             break;
         case 'n':
             errno = 0;
-            app_ctx.count = apr_strtoi64(opt_arg, NULL, 10);
+            app_ctx.count = (int)apr_strtoi64(opt_arg, NULL, 10);
             if (errno) {
                 printf("Problem converting number of times to fetch URL (%d)\n",
                        errno);

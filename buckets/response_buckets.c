@@ -188,7 +188,9 @@ static apr_status_t parse_status_line(response_context_t *ctx,
 
     ctx->sl.version = SERF_HTTP_VERSION(ctx->linebuf.line[5] - '0',
                                         ctx->linebuf.line[7] - '0');
-    ctx->sl.code = apr_strtoi64(ctx->linebuf.line + 8, &reason, 10);
+    /* HTTP status codes are positive, so use the unsigned conversion. */
+    SERF__POSITIVE_TO_INT(ctx->sl.code, apr_int64_t,
+                          apr_strtoi64(ctx->linebuf.line + 8, &reason, 10));
     if (errno == ERANGE || reason == ctx->linebuf.line + 8)
         return SERF_ERROR_BAD_HTTP_RESPONSE;
 

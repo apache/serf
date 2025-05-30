@@ -389,14 +389,11 @@ void serf__encode_auth_header(const char **header,
                               apr_pool_t *pool)
 {
     apr_size_t encoded_len, scheme_len;
+    int int_data_len;
     char *ptr;
 
-    /* The apr_base64 functions take an integer length, not a size_t.
-       NOTE: There's no ""loss of integer precision"" when converting
-       (foo & INT_MAX) to an int, this should silence the compiler
-       without the need for an explicit cast. */
-    const int int_data_len = data_len & INT_MAX;
-    SERF_AUTH_assert(int_data_len == data_len);
+
+    SERF__POSITIVE_TO_INT(int_data_len, apr_size_t, data_len);
 
     encoded_len = apr_base64_encode_len(int_data_len);
     scheme_len = strlen(scheme);

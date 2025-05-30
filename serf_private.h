@@ -89,6 +89,41 @@ typedef int serf__bool_t; /* Not _Bool */
 #define SERF_IO_CONN (2)
 #define SERF_IO_LISTENER (3)
 
+/*** Narrowing conversions ***/
+
+#if defined(_DEBUG) && !defined(SERF__TEST_INTERNAL)
+#include <assert.h>
+#define SERF__CONV_assert(x) assert(x)
+#else
+#define SERF__CONV_assert(x) ((void)0)
+#endif
+
+#include <limits.h>
+/* Convert an wider value to an int. A type cast is not good enough,
+   because it can produce a negative value where the original was
+   positive. using (original_ & INT_MAX) solves that, along with
+   letting the compiler know that the result can be safely truncated
+   to a signed int, thus avoiding narrowing warnings. */
+#define SERF__POSITIVE_TO_INT(result, type, value)       \
+    do {                                                 \
+        const type original_ = (value);                  \
+        const int integer_ = original_ & INT_MAX;        \
+        SERF__CONV_assert(original_ >= 0);               \
+        SERF__CONV_assert(integer_ == original_);        \
+        (result) = integer_;                             \
+    } while(0)
+
+/* For signed conversions, on the other hand, a type cast
+   is exactly what we need. The sign of the narrowed value
+   may change, but the assertion will catch that.*/
+#define SERF__SIGNED_TO_INT(result, type, value)         \
+    do {                                                 \
+        const type original_ = (value);                  \
+        const int integer_ = (int)original_;             \
+        SERF__CONV_assert(integer_ == original_);        \
+        (result) = integer_;                             \
+    } while(0)
+
 /*** Logging facilities ***/
 
 /* Check for the SERF_DISABLE_LOGGING define, as set by scons. */

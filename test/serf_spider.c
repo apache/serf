@@ -448,7 +448,7 @@ static apr_status_t create_request(const char *hostinfo,
     return APR_SUCCESS;
 }
 
-static apr_status_t put_req(const char *c, const char *orig_path,
+static apr_status_t put_req(const char *found_url, const char *orig_path,
                             parser_baton_t *ctx, apr_pool_t *pool)
 {
     apr_status_t status;
@@ -456,10 +456,10 @@ static apr_status_t put_req(const char *c, const char *orig_path,
 
     /* Build url */
 #ifdef SERF_VERBOSE
-    printf("Url discovered: %s\n", c);
+    printf("Url discovered: %s\n", found_url);
 #endif
 
-    status = apr_uri_parse(pool, c, &url);
+    status = apr_uri_parse(pool, found_url, &url);
 
     /* We got something that was minimally useful. */
     if (status == 0 && url.path) {
@@ -660,7 +660,7 @@ int main(int argc, const char **argv)
 
         switch (opt_c) {
         case 'a':
-            srclen = strlen(opt_arg);
+            srclen = (int)strlen(opt_arg);
             enclen = apr_base64_encode_len(srclen);
             authn = apr_palloc(pool, enclen + 6);
             strcpy(authn, "Basic ");
