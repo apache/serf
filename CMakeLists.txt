@@ -326,6 +326,17 @@ if(NOT MSVC)
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -std=c89")
 
     set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -O0")
+
+    if(SERF_MAINTAINER_MODE)
+      # Additional warning flags for more pedantic checks
+      set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wimplicit-function-declaration")
+      set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wmissing-variable-declarations")
+      set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wunreachable-code")
+      set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wshorten-64-to-32")
+      set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wno-system-headers")
+      set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wextra-tokens")
+      set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wnewline-eof")
+    endif()
   endif()
 else()
   # Warning level 4, no unused argument warnings
