@@ -217,7 +217,7 @@ static void test_simple_bucket_readline(CuTest *tc)
 
     CuAssertIntEquals(tc, APR_SUCCESS, status);
     CuAssertIntEquals(tc, SERF_NEWLINE_CRLF, found);
-    CuAssertIntEquals(tc, 7, len);
+    CuAssertUIntEquals(tc, 7, len);
     CuAssert(tc, data, strncmp("line1" CRLF, data, len) == 0);
 
     /* Initialize parameters to check that they will be initialized. */
@@ -227,7 +227,7 @@ static void test_simple_bucket_readline(CuTest *tc)
 
     CuAssertIntEquals(tc, APR_EOF, status);
     CuAssertIntEquals(tc, SERF_NEWLINE_NONE, found);
-    CuAssertIntEquals(tc, 5, len);
+    CuAssertUIntEquals(tc, 5, len);
     CuAssert(tc, data, strncmp("line2", data, len) == 0);
     serf_bucket_destroy(bkt);
 
@@ -324,7 +324,7 @@ static void test_response_bucket_read(CuTest *tc)
     status = serf_bucket_readline(bkt, SERF_NEWLINE_ANY,
                                   &found, &data, &len);
     CuAssertIntEquals(tc, APR_EOF, status);
-    CuAssertIntEquals(tc, 7, len);
+    CuAssertUIntEquals(tc, 7, len);
     CuAssertStrnEquals(tc, "abc1234", len, data);
     serf_bucket_destroy(bkt);
 
@@ -527,13 +527,13 @@ static void test_iovec_buckets(CuTest *tc)
     /* Check available data */
     status = serf_bucket_peek(iobkt, &data, &len);
     CuAssertIntEquals(tc, APR_EOF, status);
-    CuAssertIntEquals(tc, strlen("line1" CRLF "line2"), len);
+    CuAssertUIntEquals(tc, strlen("line1" CRLF "line2"), len);
 
     /* Try to read only a few bytes (less than what's in the first buffer). */
     status = serf_bucket_read_iovec(iobkt, 3, 32, tgt_vecs, &vecs_used);
     CuAssertIntEquals(tc, APR_SUCCESS, status);
     CuAssertIntEquals(tc, 1, vecs_used);
-    CuAssertIntEquals(tc, 3, tgt_vecs[0].iov_len);
+    CuAssertUIntEquals(tc, 3, tgt_vecs[0].iov_len);
     CuAssert(tc, tgt_vecs[0].iov_base,
              strncmp("lin", tgt_vecs[0].iov_base, tgt_vecs[0].iov_len) == 0);
 
@@ -549,7 +549,7 @@ static void test_iovec_buckets(CuTest *tc)
                                     &vecs_used);
     CuAssertIntEquals(tc, APR_EOF, status);
     CuAssertIntEquals(tc, 1, vecs_used);
-    CuAssertIntEquals(tc, strlen("e1" CRLF "line2"), tgt_vecs[0].iov_len);
+    CuAssertUIntEquals(tc, strlen("e1" CRLF "line2"), tgt_vecs[0].iov_len);
     CuAssert(tc, tgt_vecs[0].iov_base,
              strncmp("e1" CRLF "line2", tgt_vecs[0].iov_base, tgt_vecs[0].iov_len - 3) == 0);
 
@@ -559,7 +559,7 @@ static void test_iovec_buckets(CuTest *tc)
     /* Bucket should now be empty */
     status = serf_bucket_peek(iobkt, &data, &len);
     CuAssertIntEquals(tc, APR_EOF, status);
-    CuAssertIntEquals(tc, 0, len);
+    CuAssertUIntEquals(tc, 0, len);
 
     /* Test 2: Read multiple character bufs in an iovec, then read them back
        in bursts. */
@@ -623,14 +623,14 @@ static void test_iovec_buckets(CuTest *tc)
 
     status = serf_bucket_read(iobkt, 10, &data, &len);
     CuAssertIntEquals(tc, APR_SUCCESS, status);
-    CuAssertIntEquals(tc, 10, len);
+    CuAssertUIntEquals(tc, 10, len);
     CuAssert(tc, data,
              strncmp("DATA 00 90", data, len) == 0);
     CuAssertIntEquals(tc, 630, (int)serf_bucket_get_remaining(iobkt));
 
     status = serf_bucket_read(iobkt, 10, &data, &len);
     CuAssertIntEquals(tc, APR_SUCCESS, status);
-    CuAssertIntEquals(tc, 10, len);
+    CuAssertUIntEquals(tc, 10, len);
     CuAssert(tc, tgt_vecs[0].iov_base,
              strncmp("1234567890", data, len) == 0);
     CuAssertIntEquals(tc, 620, (int)serf_bucket_get_remaining(iobkt));
@@ -639,7 +639,7 @@ static void test_iovec_buckets(CuTest *tc)
         const char *exp = apr_psprintf(tb->pool, "DATA %02d 901234567890", i);
         status = serf_bucket_read(iobkt, SERF_READ_ALL_AVAIL, &data, &len);
         CuAssertIntEquals(tc, APR_SUCCESS, status);
-        CuAssertIntEquals(tc, 20, len);
+        CuAssertUIntEquals(tc, 20, len);
         CuAssert(tc, data,
                  strncmp(exp, data, len) == 0);
 
@@ -649,7 +649,7 @@ static void test_iovec_buckets(CuTest *tc)
 
     status = serf_bucket_read(iobkt, 20, &data, &len);
     CuAssertIntEquals(tc, APR_EOF, status);
-    CuAssertIntEquals(tc, 20, len);
+    CuAssertUIntEquals(tc, 20, len);
     CuAssert(tc, data,
              strncmp("DATA 31 901234567890", data, len) == 0);
     CuAssertIntEquals(tc, 0, (int)serf_bucket_get_remaining(iobkt));
@@ -666,7 +666,7 @@ static void test_iovec_buckets(CuTest *tc)
 
     status = serf_bucket_read(iobkt, SERF_READ_ALL_AVAIL, &data, &len);
     CuAssertIntEquals(tc, APR_EOF, status);
-    CuAssertIntEquals(tc, 0, len);
+    CuAssertUIntEquals(tc, 0, len);
     CuAssertIntEquals(tc, 0, (int)serf_bucket_get_remaining(iobkt));
 
     serf_bucket_destroy(iobkt);
@@ -773,7 +773,7 @@ static void test_aggregate_buckets(CuTest *tc)
     if (status == APR_SUCCESS)
         CuAssertTrue(tc, len > 0 && len < strlen(BODY));
     else if (status == APR_EOF)
-        CuAssertIntEquals(tc, strlen(BODY), len);
+        CuAssertUIntEquals(tc, strlen(BODY), len);
     else
         CuAssertIntEquals(tc, APR_SUCCESS, status);
 
@@ -856,10 +856,10 @@ static void test_aggregate_buckets(CuTest *tc)
                       serf_bucket_read_iovec(aggbkt, SERF_READ_ALL_AVAIL,
                                              32, tgt_vecs, &vecs_used));
     CuAssertIntEquals(tc, 4, vecs_used);
-    CuAssertIntEquals(tc, 15, tgt_vecs[0].iov_len);
-    CuAssertIntEquals(tc, 5, tgt_vecs[1].iov_len);
-    CuAssertIntEquals(tc, 5, tgt_vecs[2].iov_len);
-    CuAssertIntEquals(tc, 5, tgt_vecs[3].iov_len);
+    CuAssertUIntEquals(tc, 15, tgt_vecs[0].iov_len);
+    CuAssertUIntEquals(tc, 5, tgt_vecs[1].iov_len);
+    CuAssertUIntEquals(tc, 5, tgt_vecs[2].iov_len);
+    CuAssertUIntEquals(tc, 5, tgt_vecs[3].iov_len);
 
     serf_bucket_destroy(aggbkt);
 
@@ -1318,15 +1318,13 @@ static void test_copy_bucket(CuTest *tc)
     bkt = SERF_BUCKET_SIMPLE_STRING_LEN(BODY+40, strlen(BODY)-40, alloc);
     serf_bucket_aggregate_append(aggbkt, bkt);
 
-    CuAssertIntEquals(tc, strlen(BODY),
-                      (int)serf_bucket_get_remaining(aggbkt));
-    CuAssertIntEquals(tc, strlen(BODY),
-                      (int)serf_bucket_get_remaining(copybkt));
+    CuAssertUIntEquals(tc, strlen(BODY), serf_bucket_get_remaining(aggbkt));
+    CuAssertUIntEquals(tc, strlen(BODY), serf_bucket_get_remaining(copybkt));
 
     /* When < min_size, everything should be read in one go */
     status = serf_bucket_read(copybkt, SERF_READ_ALL_AVAIL, &data, &len);
     CuAssertIntEquals(tc, APR_EOF, status);
-    CuAssertIntEquals(tc, strlen(BODY), len);
+    CuAssertUIntEquals(tc, strlen(BODY), len);
 
     serf_bucket_destroy(copybkt);
 
@@ -1340,18 +1338,17 @@ static void test_copy_bucket(CuTest *tc)
     bkt = SERF_BUCKET_SIMPLE_STRING_LEN(BODY + 40, strlen(BODY) - 40, alloc);
     serf_bucket_aggregate_append(aggbkt, bkt);
 
-    CuAssertIntEquals(tc, strlen(BODY),
-                      (int)serf_bucket_get_remaining(copybkt));
+    CuAssertUIntEquals(tc, strlen(BODY), serf_bucket_get_remaining(copybkt));
 
     /* When, requesting more than min_size, but more than in the first chunk
        we will get min_size */
     status = serf_bucket_read(copybkt, SERF_READ_ALL_AVAIL, &data, &len);
     CuAssertIntEquals(tc, APR_SUCCESS, status);
-    CuAssertIntEquals(tc, 35, len);
+    CuAssertUIntEquals(tc, 35, len);
 
     /* We can read the rest */
     CuAssertIntEquals(tc, APR_EOF, discard_data(copybkt, &len));
-    CuAssertIntEquals(tc, strlen(BODY) - 35, len);
+    CuAssertUIntEquals(tc, strlen(BODY) - 35, len);
 
     serf_bucket_destroy(copybkt);
 
@@ -1365,7 +1362,7 @@ static void test_copy_bucket(CuTest *tc)
     bkt = SERF_BUCKET_SIMPLE_STRING_LEN(BODY + 40, strlen(BODY) - 40, alloc);
     serf_bucket_aggregate_append(aggbkt, bkt);
 
-    CuAssertIntEquals(tc, strlen(BODY),
+    CuAssertUIntEquals(tc, strlen(BODY),
                       (int)serf_bucket_get_remaining(copybkt));
 
     /* Now test if we can read everything as two vecs */
@@ -1375,7 +1372,7 @@ static void test_copy_bucket(CuTest *tc)
     CuAssertIntEquals(tc, APR_EOF, status);
     for (i = 0; i < vecs_used; i++)
         actual_len += tgt_vecs[i].iov_len;
-    CuAssertIntEquals(tc, strlen(BODY), actual_len);
+    CuAssertUIntEquals(tc, strlen(BODY), actual_len);
 
     serf_bucket_destroy(copybkt);
 }
@@ -1484,7 +1481,7 @@ static void test_response_no_body_expected(CuTest *tc)
     status = read_all(bkt, buf, sizeof(buf), &len);
 
     CuAssertIntEquals(tc, APR_EOF, status);
-    CuAssertIntEquals(tc, 0, len);
+    CuAssertUIntEquals(tc, 0, len);
 
     DRAIN_BUCKET(tmp);
     serf_bucket_destroy(bkt);
@@ -1504,7 +1501,7 @@ static void test_response_no_body_expected(CuTest *tc)
         }
         else {
             CuAssertIntEquals(tc, APR_EOF, status);
-            CuAssertIntEquals(tc, 0, len);
+            CuAssertUIntEquals(tc, 0, len);
 
             read_and_check_bucket(tc, tmp, "blablablablabla" CRLF);
         }
@@ -1963,9 +1960,9 @@ static void read_bucket_and_check_pattern(CuTest *tc, serf_bucket_t *bkt,
         }
     } while(!APR_STATUS_IS_EOF(status));
 
-    CuAssertIntEquals_Msg(tc, "Read less data than expected.", 0, exp_rem);
-    CuAssertIntEquals_Msg(tc, "Read less/more data than expected.", actual_len,
-                          expected_len);
+    CuAssertUIntEquals_Msg(tc, "Read less data than expected.", 0, exp_rem);
+    CuAssertUIntEquals_Msg(tc, "Read less/more data than expected.",
+                           actual_len, expected_len);
 }
 
 static void deflate_buckets(CuTest *tc, int nr_of_loops)
@@ -2222,7 +2219,7 @@ static void test_linebuf_fetch_crlf(CuTest *tc)
 
     serf_linebuf_init(&linebuf);
     CuAssertStrEquals(tc, "", linebuf.line);
-    CuAssertIntEquals(tc, 0, linebuf.used);
+    CuAssertUIntEquals(tc, 0, linebuf.used);
     CuAssertIntEquals(tc, SERF_LINEBUF_EMPTY, linebuf.state);
 
     CuAssertIntEquals(tc, APR_SUCCESS,
@@ -2230,7 +2227,7 @@ static void test_linebuf_fetch_crlf(CuTest *tc)
     /* We got first line in one call. */
     CuAssertIntEquals(tc, SERF_LINEBUF_READY, linebuf.state);
     CuAssertStrEquals(tc, "line1", linebuf.line);
-    CuAssertIntEquals(tc, 5, linebuf.used);
+    CuAssertUIntEquals(tc, 5, linebuf.used);
 
     /* The second line CR and LF splitted across packets. */
     CuAssertIntEquals(tc, APR_EAGAIN,
@@ -2241,7 +2238,7 @@ static void test_linebuf_fetch_crlf(CuTest *tc)
                       serf_linebuf_fetch(&linebuf, bkt, SERF_NEWLINE_CRLF));
 
     CuAssertIntEquals(tc, SERF_LINEBUF_READY, linebuf.state);
-    CuAssertIntEquals(tc, 5, linebuf.used);
+    CuAssertUIntEquals(tc, 5, linebuf.used);
     CuAssertStrnEquals(tc, "line2", 0, linebuf.line);
 
     /* Last line is empty. */
@@ -2249,7 +2246,7 @@ static void test_linebuf_fetch_crlf(CuTest *tc)
                       serf_linebuf_fetch(&linebuf, bkt, SERF_NEWLINE_CRLF));
     CuAssertIntEquals(tc, SERF_LINEBUF_READY, linebuf.state);
     CuAssertStrEquals(tc, "", linebuf.line);
-    CuAssertIntEquals(tc, 0, linebuf.used);
+    CuAssertUIntEquals(tc, 0, linebuf.used);
 
     serf_bucket_destroy(bkt);
 
@@ -2263,7 +2260,7 @@ static void test_linebuf_fetch_crlf(CuTest *tc)
 
     serf_linebuf_init(&linebuf);
     CuAssertStrEquals(tc, "", linebuf.line);
-    CuAssertIntEquals(tc, 0, linebuf.used);
+    CuAssertUIntEquals(tc, 0, linebuf.used);
     CuAssertIntEquals(tc, SERF_LINEBUF_EMPTY, linebuf.state);
 
     CuAssertIntEquals(tc, APR_SUCCESS,
@@ -2271,7 +2268,7 @@ static void test_linebuf_fetch_crlf(CuTest *tc)
     /* We got first line in one call. */
     CuAssertIntEquals(tc, SERF_LINEBUF_READY, linebuf.state);
     CuAssertStrEquals(tc, "line1", linebuf.line);
-    CuAssertIntEquals(tc, 5, linebuf.used);
+    CuAssertUIntEquals(tc, 5, linebuf.used);
 
     /* The second line CR and LF splitted across packets. */
     CuAssertIntEquals(tc, APR_EAGAIN,
@@ -2347,7 +2344,7 @@ static void test_prefix_buckets(CuTest *tc)
 
     pb.data = NULL;
     read_and_check_bucket(tc, prefix, "6789012345678901234567890");
-    CuAssertIntEquals(tc, 15, pb.len);
+    CuAssertUIntEquals(tc, 15, pb.len);
     CuAssertStrEquals(tc, "123456789012345", pb.data);
 
     serf_bucket_mem_free(alloc, pb.data);
@@ -2365,7 +2362,7 @@ static void test_prefix_buckets(CuTest *tc)
 
     pb.data = NULL;
     read_and_check_bucket(tc, prefix, "678901234567890");
-    CuAssertIntEquals(tc, 25, pb.len);
+    CuAssertUIntEquals(tc, 25, pb.len);
     CuAssertStrEquals(tc, "1234567890123456789012345", pb.data);
 
     serf_bucket_mem_free(alloc, pb.data);
@@ -2382,8 +2379,8 @@ static void test_prefix_buckets(CuTest *tc)
     CuAssertIntEquals(tc, APR_EOF,
                       serf_bucket_read(prefix, SERF_READ_ALL_AVAIL,
                                        &data, &len));
-    CuAssertIntEquals(tc, 0, len);
-    CuAssertIntEquals(tc, 20, pb.len);
+    CuAssertUIntEquals(tc, 0, len);
+    CuAssertUIntEquals(tc, 20, pb.len);
     CuAssertStrEquals(tc, "12345678901234567890", pb.data);
 
     serf_bucket_mem_free(alloc, pb.data);
@@ -2426,7 +2423,7 @@ static void test_limit_buckets(CuTest *tc)
                       serf_bucket_readline(limit, SERF_NEWLINE_ANY, &found,
                                            &data, &len));
     CuAssertIntEquals(tc, SERF_NEWLINE_NONE, found);
-    CuAssertIntEquals(tc, len, 5); /* > 5 is over limit -> bug */
+    CuAssertUIntEquals(tc, len, 5); /* > 5 is over limit -> bug */
     DRAIN_BUCKET(raw);
     serf_bucket_destroy(limit);
   }
@@ -2471,7 +2468,7 @@ static void test_split_buckets(CuTest *tc)
 
   status = read_all(head, buffer, sizeof(buffer), &len);
   CuAssertIntEquals(tc, APR_EOF, status);
-  CuAssertIntEquals(tc, len, 5);
+  CuAssertUIntEquals(tc, len, 5);
   serf_bucket_destroy(head);
   serf_bucket_destroy(tail);
 
@@ -2496,7 +2493,7 @@ static void test_split_buckets(CuTest *tc)
 
     serf__copy_iovec(buffer, &len, vecs, vecs_read);
 
-    CuAssertIntEquals(tc, 5, len);
+    CuAssertUIntEquals(tc, 5, len);
 
     CuAssertIntEquals(tc, APR_EOF,
                       serf_bucket_read_iovec(agg, SERF_READ_ALL_AVAIL,
@@ -2516,7 +2513,7 @@ static void test_split_buckets(CuTest *tc)
                       serf_bucket_readline(head, SERF_NEWLINE_ANY, &found,
                                            &data, &len));
     CuAssertIntEquals(tc, SERF_NEWLINE_NONE, found);
-    CuAssertIntEquals(tc, len, 5); /* > 5 is over limit -> bug */
+    CuAssertUIntEquals(tc, len, 5); /* > 5 is over limit -> bug */
     DRAIN_BUCKET(head);
     DRAIN_BUCKET(tail);
     serf_bucket_destroy(head);
@@ -2569,7 +2566,7 @@ static void test_split_buckets(CuTest *tc)
     serf_bucket_destroy(tail);
 
     CuAssertTrue(tc, min_r < 10); /* There should be much smaller buckets */
-    CuAssertIntEquals(tc, 17, max_r); /* First call should hit 17 */
+    CuAssertUIntEquals(tc, 17, max_r); /* First call should hit 17 */
     CuAssertIntEquals(tc, (173 * 53), (int)total1);
     CuAssertIntEquals(tc, (173 * 53), (int)total2);
   }
@@ -2635,7 +2632,7 @@ static void test_http2_unframe_buckets(CuTest *tc)
 
   status = read_all(unframe, result1, sizeof(result1), &read_len);
   CuAssertIntEquals(tc, APR_EOF, status);
-  CuAssertIntEquals(tc, sizeof(result1), read_len);
+  CuAssertUIntEquals(tc, sizeof(result1), read_len);
 
   CuAssertIntEquals(tc, 0, memcmp(result1, "\x00\x01\x00\x00\x00\x00"
                                   "\x00\x02\x00\x00\x00\x00", read_len));
@@ -2665,7 +2662,7 @@ static void test_http2_unframe_buckets(CuTest *tc)
 
   status = read_all(unframe, result2, sizeof(result2), &read_len);
   CuAssertIntEquals(tc, APR_EOF, status);
-  CuAssertIntEquals(tc, sizeof(result2), read_len);
+  CuAssertUIntEquals(tc, sizeof(result2), read_len);
 
   CuAssertIntEquals(tc, 0, memcmp(result2, "\x00\x01\x00\x00\x00\x00",
                                   read_len));
@@ -2754,7 +2751,7 @@ static void test_http2_unpad_buckets(CuTest *tc)
 
   status = read_all(unpad, result1, sizeof(result1), &read_len);
   CuAssertIntEquals(tc, APR_EOF, status);
-  CuAssertIntEquals(tc, sizeof(result1), read_len);
+  CuAssertUIntEquals(tc, sizeof(result1), read_len);
 
   read_and_check_bucket(tc, raw, "Extra");
 
@@ -2815,80 +2812,80 @@ static void test_hpack_huffman_decode(CuTest *tc)
                                                       sizeof(result), result,
                                                       &len));
   CuAssertStrEquals(tc, "www.example.com", result);
-  CuAssertIntEquals(tc, strlen(result), len);
+  CuAssertUIntEquals(tc, strlen(result), len);
 
   CuAssertIntEquals(tc, 0, serf__hpack_huffman_decode(pre2, sizeof(pre2) - 1,
                                                       sizeof(result), result,
                                                       &len));
   CuAssertStrEquals(tc, "no-cache", result);
-  CuAssertIntEquals(tc, strlen(result), len);
+  CuAssertUIntEquals(tc, strlen(result), len);
 
   CuAssertIntEquals(tc, 0, serf__hpack_huffman_decode(pre3, sizeof(pre3) - 1,
                                                       sizeof(result), result,
                                                       &len));
   CuAssertStrEquals(tc, "custom-key", result);
-  CuAssertIntEquals(tc, strlen(result), len);
+  CuAssertUIntEquals(tc, strlen(result), len);
 
   CuAssertIntEquals(tc, 0, serf__hpack_huffman_decode(pre4, sizeof(pre4) - 1,
                                                       sizeof(result), result,
                                                       &len));
   CuAssertStrEquals(tc, "custom-value", result);
-  CuAssertIntEquals(tc, strlen(result), len);
+  CuAssertUIntEquals(tc, strlen(result), len);
 
   CuAssertIntEquals(tc, 0, serf__hpack_huffman_decode(pre5, sizeof(pre5) - 1,
                                                       sizeof(result), result,
                                                       &len));
   CuAssertStrEquals(tc, "302", result);
-  CuAssertIntEquals(tc, strlen(result), len);
+  CuAssertUIntEquals(tc, strlen(result), len);
 
   CuAssertIntEquals(tc, 0, serf__hpack_huffman_decode(pre6, sizeof(pre6) - 1,
                                                       sizeof(result), result,
                                                       &len));
   CuAssertStrEquals(tc, "private", result);
-  CuAssertIntEquals(tc, strlen(result), len);
+  CuAssertUIntEquals(tc, strlen(result), len);
 
   CuAssertIntEquals(tc, 0, serf__hpack_huffman_decode(pre7, sizeof(pre7) - 1,
                                                       sizeof(result), result,
                                                       &len));
   CuAssertStrEquals(tc, "Mon, 21 Oct 2013 20:13:21 GMT", result);
-  CuAssertIntEquals(tc, strlen(result), len);
+  CuAssertUIntEquals(tc, strlen(result), len);
 
   CuAssertIntEquals(tc, 0, serf__hpack_huffman_decode(pre8, sizeof(pre8) - 1,
                                                       sizeof(result), result,
                                                       &len));
   CuAssertStrEquals(tc, "https://www.example.com", result);
-  CuAssertIntEquals(tc, strlen(result), len);
+  CuAssertUIntEquals(tc, strlen(result), len);
 
   CuAssertIntEquals(tc, 0, serf__hpack_huffman_decode(pre9, sizeof(pre9) - 1,
                                                       sizeof(result), result,
                                                       &len));
   CuAssertStrEquals(tc, "307", result);
-  CuAssertIntEquals(tc, strlen(result), len);
+  CuAssertUIntEquals(tc, strlen(result), len);
 
   CuAssertIntEquals(tc, 0, serf__hpack_huffman_decode(preA, sizeof(preA) - 1,
                                                       sizeof(result), result,
                                                       &len));
   CuAssertStrEquals(tc, "Mon, 21 Oct 2013 20:13:22 GMT", result);
-  CuAssertIntEquals(tc, strlen(result), len);
+  CuAssertUIntEquals(tc, strlen(result), len);
 
   CuAssertIntEquals(tc, 0, serf__hpack_huffman_decode(preB, sizeof(preB) - 1,
                                                       sizeof(result), result,
                                                       &len));
   CuAssertStrEquals(tc, "gzip", result);
-  CuAssertIntEquals(tc, strlen(result), len);
+  CuAssertUIntEquals(tc, strlen(result), len);
 
   CuAssertIntEquals(tc, 0, serf__hpack_huffman_decode(preC, sizeof(preC) - 1,
                                                       sizeof(result), result,
                                                       &len));
   CuAssertStrEquals(tc, "foo=ASDJKHQKBZXOQWEOPIUAXQWEOIU; max-age=3600; "
                         "version=1", result);
-  CuAssertIntEquals(tc, strlen(result), len);
+  CuAssertUIntEquals(tc, strlen(result), len);
 
   CuAssertIntEquals(tc, 0, serf__hpack_huffman_decode(preD, sizeof(preD) - 1,
                                                       sizeof(result), result,
                                                       &len));
   CuAssertStrEquals(tc, "00000000", result);
-  CuAssertIntEquals(tc, strlen(result), len);
+  CuAssertUIntEquals(tc, strlen(result), len);
 
   /* And now check some corner cases as specified in the RFC:
 
@@ -2898,7 +2895,7 @@ static void test_hpack_huffman_decode(CuTest *tc)
                                                sizeof(result), result,
                                                &len));
   CuAssertStrEquals(tc, "0", result);
-  CuAssertIntEquals(tc, 1, len);
+  CuAssertUIntEquals(tc, 1, len);
 
   CuAssertIntEquals(tc, APR_EINVAL,
                     serf__hpack_huffman_decode((const unsigned char*)"\x06", 1,
@@ -2928,13 +2925,13 @@ static void test_hpack_huffman_decode(CuTest *tc)
      CuAssertIntEquals(tc, 0,                                              \
                        serf__hpack_huffman_encode(v, strlen(v),            \
                                                   0, NULL, &sz2));         \
-     CuAssertIntEquals(tc, encoded_len, sz2);                              \
+     CuAssertUIntEquals(tc, encoded_len, sz2);                             \
      CuAssertIntEquals(tc, 0,                                              \
                        serf__hpack_huffman_decode(encoded, encoded_len,    \
                                                   sizeof(text), text,      \
                                                   &text_len));             \
      CuAssertStrEquals(tc, v, text);                                       \
-     CuAssertIntEquals(tc, strlen(v), text_len);                           \
+     CuAssertUIntEquals(tc, strlen(v), text_len);                          \
    }                                                                       \
   while(0)
 
@@ -2960,13 +2957,13 @@ static void test_hpack_huffman_encode(CuTest *tc)
                                                  sizeof(encoded),
                                                  encoded, &encoded_len));
     /* Nice.. need 583 bytes to encode these 256 bytes :-) */
-    CuAssertIntEquals(tc, 583, encoded_len);
+    CuAssertUIntEquals(tc, 583, encoded_len);
     text[256] = 0xFE;
     CuAssertIntEquals(tc, 0,
                       serf__hpack_huffman_decode(encoded, encoded_len,
                                                  sizeof(text), text,
                                                  &text_len));
-    CuAssertIntEquals(tc, 256, text_len);
+    CuAssertUIntEquals(tc, 256, text_len);
     CuAssertIntEquals(tc, 0, memcmp(from, text, sizeof(from)));
     /* If there is space in the buffer serf__hpack_huffman_decode will add
        a final '\0' after the buffer */
@@ -2980,13 +2977,13 @@ static void test_hpack_huffman_encode(CuTest *tc)
                                                  sizeof(encoded),
                                                  encoded, &encoded_len));
     /* Ok, 160 to encode 256. Maybe there is some use case */
-    CuAssertIntEquals(tc, 160, encoded_len);
+    CuAssertUIntEquals(tc, 160, encoded_len);
     text[256] = 0xEF;
     CuAssertIntEquals(tc, 0,
                       serf__hpack_huffman_decode(encoded, encoded_len,
                                                  sizeof(text), text,
                                                  &text_len));
-    CuAssertIntEquals(tc, 256, text_len);
+    CuAssertUIntEquals(tc, 256, text_len);
     CuAssertIntEquals(tc, 0, memcmp(from, text, sizeof(from)));
     /* If there is space in the buffer serf__hpack_huffman_decode will add
     a final '\0' after the buffer */
@@ -3064,7 +3061,7 @@ static void test_http2_frame_bucket_basic(CuTest *tc)
     CuAssertIntEquals(tc, APR_EOF,
                       serf_bucket_read(frame_in, SERF_READ_ALL_AVAIL,
                                        &buffer, &sz));
-    CuAssertIntEquals(tc, 0, sz);
+    CuAssertUIntEquals(tc, 0, sz);
   }
 
   /* http2 unframe bucket uses non-standard semantic and doesn't

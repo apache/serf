@@ -2662,9 +2662,9 @@ static void test_ssl_ocsp_request_export_import(CuTest *tc)
     impreq = serf_ssl_ocsp_request_import(expreq, tb->pool, tb->pool);
     CuAssertPtrNotNull(tc, impreq);
 
-    CuAssertIntEquals(tc,
-                      serf_ssl_ocsp_request_body_size(req),
-                      serf_ssl_ocsp_request_body_size(impreq));
+    CuAssertUIntEquals(tc,
+                       serf_ssl_ocsp_request_body_size(req),
+                       serf_ssl_ocsp_request_body_size(impreq));
     CuAssertTrue(tc,
                  0 == memcmp(serf_ssl_ocsp_request_body(req),
                              serf_ssl_ocsp_request_body(impreq),

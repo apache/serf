@@ -39,6 +39,8 @@
 #include <setjmp.h>
 #include <stdarg.h>
 
+#include <apr.h>  /* for apr_int64_t, apr_uint64_t */
+
 /* CuString */
 
 char* CuStrAlloc(int size);
@@ -106,6 +108,9 @@ void CuAssertStrnEquals_LineMsg(CuTest* tc,
 void CuAssertIntEquals_LineMsg(CuTest* tc,
     const char* file, int line, const char* message,
     int expected, int actual);
+void CuAssertUIntEquals_LineMsg(CuTest* tc,
+    const char* file, int line, const char* message,
+    apr_uint64_t expected, apr_uint64_t actual);
 void CuAssertDblEquals_LineMsg(CuTest* tc,
     const char* file, int line, const char* message,
     double expected, double actual, double delta);
@@ -125,6 +130,8 @@ void CuAssertPtrEquals_LineMsg(CuTest* tc,
 #define CuAssertStrnEquals_Msg(tc,ms,ex,exlen,ac) CuAssertStrnEquals_LineMsg((tc),__FILE__,__LINE__,(ms),(ex),(exlen),(ac))
 #define CuAssertIntEquals(tc,ex,ac)           CuAssertIntEquals_LineMsg((tc),__FILE__,__LINE__,NULL,(ex),(ac))
 #define CuAssertIntEquals_Msg(tc,ms,ex,ac)    CuAssertIntEquals_LineMsg((tc),__FILE__,__LINE__,(ms),(ex),(ac))
+#define CuAssertUIntEquals(tc,ex,ac)          CuAssertUIntEquals_LineMsg((tc),__FILE__,__LINE__,NULL,(ex),(ac))
+#define CuAssertUIntEquals_Msg(tc,ms,ex,ac)   CuAssertUIntEquals_LineMsg((tc),__FILE__,__LINE__,(ms),(ex),(ac))
 #define CuAssertDblEquals(tc,ex,ac,dl)        CuAssertDblEquals_LineMsg((tc),__FILE__,__LINE__,NULL,(ex),(ac),(dl))
 #define CuAssertDblEquals_Msg(tc,ms,ex,ac,dl) CuAssertDblEquals_LineMsg((tc),__FILE__,__LINE__,(ms),(ex),(ac),(dl))
 #define CuAssertPtrEquals(tc,ex,ac)           CuAssertPtrEquals_LineMsg((tc),__FILE__,__LINE__,NULL,(ex),(ac))
