@@ -404,6 +404,9 @@ set_target_properties(${SERF_TARGETS}
                       PROPERTIES
                       OUTPUT_NAME "serf-${SERF_MAJOR_VERSION}")
 
+# Generate the .clangd file
+include(SerfGenClangd)
+
 # Install targets
 install(TARGETS ${SERF_TARGETS}
         ARCHIVE DESTINATION "${SERF_INSTALL_LIBS}"
