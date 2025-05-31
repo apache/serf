@@ -42,10 +42,16 @@ function(SerfGenClangd)
   endfunction(write_defines)
 
   function(write_flags)
-    write_clangd(TRUE "" ${ARGN})
+    write_clangd(FALSE "" ${ARGN})
   endfunction(write_flags)
 
-  file(WRITE ${target} "---\nCompileFlags:\n  Add:\n")
+  file(WRITE ${target}
+    "---\n"
+    "If:\n"
+    "  PathMatch: .*\\.[ch]\n"
+    "\n"
+    "CompileFlags:\n"
+    "  Add:\n")
   write_flags("--language=c")
   write_includes("${CMAKE_SOURCE_DIR}")
   write_includes("${APR_INCLUDES}")
