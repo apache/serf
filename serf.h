@@ -631,7 +631,8 @@ apr_status_t serf_incoming_create2(
     void *req_setup_baton,
     apr_pool_t *client_pool);
 
-/* Allows creating a response before the request is completely
+/**
+ * Allows creating a response before the request is completely
  * read. Will call the response create function if it hasn't
  * been called yet.
  *
@@ -893,16 +894,10 @@ void serf_config_proxy(
     serf_context_t *ctx,
     apr_sockaddr_t *address);
 
-/* Supported authentication types. */
-#define SERF_AUTHN_NONE      0x00
-#define SERF_AUTHN_BASIC     0x01
-#define SERF_AUTHN_DIGEST    0x02
-#define SERF_AUTHN_NTLM      0x04
-#define SERF_AUTHN_NEGOTIATE 0x08
-#define SERF_AUTHN_ALL       0xFF
-
 /**
  * Define the authentication handlers that serf will try on incoming requests.
+ *
+ * @see @c SERF_AUTHN_ALL etc.
  */
 void serf_config_authn_types(
     serf_context_t *ctx,
@@ -948,6 +943,39 @@ serf_bucket_t *serf_request_bucket_request_create(
 
 /** @} */
 
+/**
+ * @defgroup serf authentication
+ * @ingroup serf
+ * @{
+ */
+
+/* Supported authentication types. */
+#define SERF_AUTHN_NONE      0x00 /**< Authentication type: None */
+#define SERF_AUTHN_BASIC     0x01 /**< Authentication type: Basic */
+#define SERF_AUTHN_DIGEST    0x02 /**< Authentication type: Digest */
+#define SERF_AUTHN_NTLM      0x04 /**< Authentication type: NTLM */
+#define SERF_AUTHN_NEGOTIATE 0x08 /**< Authentication type: Negotiate */
+#define SERF_AUTHN_ALL      ~0x00 /**< All authentication types */
+
+/**
+ * Register an autehtication scheme.
+ *
+ * The @a name is the name of the authentication scheme as it appears in the
+ * authorization headers. It must be a valid token as defined in RFC-9110
+ * (see reference, below).
+ *
+ * Internal structures related to this provider will be allocated from @a pool,
+ * take care that its lifetime is long enough.
+ *
+ * @see https://www.rfc-editor.org/rfc/rfc9110#section-11.1
+ * @since New in 1.4
+ */
+
+apr_status_t serf_authn_register_scheme(const char *name,
+                                        void *baton,
+                                        apr_pool_t *pool);
+
+/** @} */
 
 /**
  * @defgroup serf buckets

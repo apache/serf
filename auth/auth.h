@@ -27,6 +27,10 @@
 extern "C" {
 #endif
 
+/* User-defined authentication types */
+#define SERF__AUTHN_USER_FIRST 0x10000u /* Won't work with 16-bit ints... */
+#define SERF__AUTHN_USER_LAST  ~(~0u >> 1u)
+
 /**
  * For each authentication scheme we need a handler function of type
  * serf__auth_handler_func_t. This function will be called when an
@@ -95,7 +99,7 @@ struct serf__authn_scheme_t {
     const char *key;
 
     /* Internal code used for this authn type. */
-    int type;
+    unsigned int type;
 
     /* The connection initialization function if any; otherwise, NULL */
     serf__init_conn_func_t init_conn_func;
@@ -138,6 +142,61 @@ extern const serf__authn_scheme_t serf__ntlm_authn_scheme;
 #endif /* #ifdef WIN32 */
 
 #endif /* SERF_HAVE_SPNEGO */
+
+/** User-defined authentication scheme handlers */
+
+/* This struct extends serf__authn_scheme_t with info needed for
+   the user-defined scheme implementation. It's essentially a subclass;
+   per C semantics, the address of the struct is also the address of
+   its first member, so we can safely put a pointer to this struct
+   into serf_authn_schemes. */
+typedef struct serf__user_authn_scheme_t serf__user_authn_scheme_t;
+struct serf__user_authn_scheme_t {
+    serf__authn_scheme_t authn_scheme;
+
+    /* The magic number that helps identify this struct. */
+    apr_uint64_t magic;
+
+    /* The baton used by the callbacks.  */
+    void *baton;
+};
+
+
+apr_status_t
+serf__authn_user__init_conn(const serf__authn_scheme_t *scheme,
+                            int code,
+                            serf_connection_t *conn,
+                            apr_pool_t *pool);
+
+apr_status_t
+serf__authn_user__handler(const serf__authn_scheme_t *scheme,
+                          int code,
+                          serf_request_t *request,
+                          serf_bucket_t *response,
+                          const char *auth_hdr,
+                          const char *auth_attr,
+                          apr_pool_t *pool);
+
+apr_status_t
+serf__authn_user__setup_request(const serf__authn_scheme_t *scheme,
+                                peer_t peer,
+                                int code,
+                                serf_connection_t *conn,
+                                serf_request_t *request,
+                                const char *method,
+                                const char *uri,
+                                serf_bucket_t *hdrs_bkt);
+
+apr_status_t
+serf__authn_user__validate_response(const serf__authn_scheme_t *scheme,
+                                    peer_t peer,
+                                    int code,
+                                    serf_connection_t *conn,
+                                    serf_request_t *request,
+                                    serf_bucket_t *response,
+                                    apr_pool_t *pool);
+
+extern const apr_uint64_t serf__authn_user__magic;
 
 #ifdef __cplusplus
 }

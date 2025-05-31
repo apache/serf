@@ -24,8 +24,17 @@
 
 #include <apr.h>
 #include <apr_base64.h>
+#include <apr_errno.h>
 #include <apr_strings.h>
 #include <apr_lib.h>
+#if APR_HAS_THREADS
+#  include <stdlib.h>
+#  include <apr_atomic.h>
+#  include <apr_time.h>
+#  include <apr_thread_mutex.h>
+#endif
+
+#include <limits.h>
 
 /* These authentication schemes are in order of decreasing security, the topmost
    scheme will be used first when the server supports it.
@@ -34,8 +43,12 @@
    authentication.
 
    Use lower case for the scheme names to enable case insensitive matching.
+
+   The size of the array is the number of bits in serf__authn_scheme_t::type,
+   plus one slot for the NULL sentinel.
  */
-static const serf__authn_scheme_t *serf_authn_schemes[] = {
+#define AUTHN_SCHEMES_SIZE (sizeof(unsigned int) * CHAR_BIT + 1)
+static const serf__authn_scheme_t *serf_authn_schemes[AUTHN_SCHEMES_SIZE] = {
 #ifdef SERF_HAVE_SPNEGO
     &serf__spnego_authn_scheme,
 #ifdef WIN32
@@ -48,7 +61,54 @@ static const serf__authn_scheme_t *serf_authn_schemes[] = {
 
     /* sentinel */
     NULL
+
+    /* The rest of the array will be automagically zero-initialized. */
 };
+
+#if APR_HAS_THREADS
+/* Guard access to serf_authn_schemes and user_authn_scheme_type. */
+static apr_thread_mutex_t *authn_schemes_guard;
+static apr_pool_t *authn_schemes_guard_pool;
+static apr_status_t init_authn_schemes_guard();
+#endif
+
+static apr_status_t lock_autn_schemes(serf_config_t *config)
+{
+#if APR_HAS_THREADS
+    apr_status_t status = init_authn_schemes_guard();
+    if (status == APR_SUCCESS) {
+        status = apr_thread_mutex_lock(authn_schemes_guard);
+        if (status) {
+            char buffer[256];
+            serf__log(LOGLVL_ERROR, LOGCOMP_AUTHN, __FILE__, config,
+                      "Lock authn schemes: %s\n",
+                      apr_strerror(status, buffer, sizeof(buffer)));
+        }
+    }
+    return status;
+#else
+    return APR_SUCCESS;
+#endif
+}
+
+static apr_status_t unlock_autn_schemes(serf_config_t *config)
+{
+#if APR_HAS_THREADS
+    apr_status_t status = init_authn_schemes_guard();
+    if (status == APR_SUCCESS) {
+        status = apr_thread_mutex_unlock(authn_schemes_guard);
+        if (status) {
+            char buffer[256];
+            serf__log(LOGLVL_ERROR, LOGCOMP_AUTHN, __FILE__, config,
+                      "Unlock authn schemes: %s\n",
+                      apr_strerror(status, buffer, sizeof(buffer)));
+        }
+    }
+    return status;
+#else
+    return APR_SUCCESS;
+#endif
+}
 
 
 /* Reads and discards all bytes in the response body. */
@@ -85,7 +145,11 @@ static int handle_auth_headers(int code,
     int scheme_idx;
     serf_connection_t *conn = request->conn;
     serf_context_t *ctx = conn->ctx;
-    apr_status_t status;
+    apr_status_t status, lock_status;
+
+    lock_status = lock_autn_schemes(conn->config);
+    if (lock_status)
+        return lock_status;
 
     status = SERF_ERROR_AUTHN_NOT_SUPPORTED;
 
@@ -165,6 +229,10 @@ static int handle_auth_headers(int code,
         /* Remember failed auth types to skip it in future. */
         authn_info->failed_authn_types |= scheme->type;
     }
+
+    lock_status = unlock_autn_schemes(conn->config);
+    if (lock_status)
+        return lock_status;
 
     return status;
 }
@@ -504,3 +572,164 @@ apr_status_t serf__auth_setup_request(peer_t peer,
 
     return APR_SUCCESS;
 }
+
+/* User-defined authentication providers. */
+
+/* The magic number in the scheme struct.      serfauthnschemes */
+const apr_uint64_t serf__authn_user__magic = 0x5e6fa02895c8e3e5;
+
+/* The next scheme type for user-defined schemes. */
+static unsigned int user_authn_scheme_type = SERF__AUTHN_USER_FIRST;
+
+apr_status_t serf_authn_register_scheme(const char *name,
+                                        void *baton,
+                                        apr_pool_t *pool)
+{
+    serf__user_authn_scheme_t *user_scheme;
+    apr_status_t lock_status;
+    apr_status_t status;
+    char *key, *cp;
+    int index;
+
+    if (0 == user_authn_scheme_type)
+        return APR_ENOSPC;
+
+    user_scheme = apr_palloc(pool, sizeof(*user_scheme));
+    user_scheme->magic = serf__authn_user__magic;
+    user_scheme->baton = baton;
+
+    /* Generate a lower-case key for the scheme. */
+    cp = key = apr_pstrdup(pool, name);
+    while (*cp) {
+        *cp = apr_tolower(*cp);
+        ++cp;
+    }
+    user_scheme->authn_scheme.name = apr_pstrdup(pool, name);
+    user_scheme->authn_scheme.key = key;
+    user_scheme->authn_scheme.type = user_authn_scheme_type;
+    user_scheme->authn_scheme.init_conn_func = serf__authn_user__init_conn;
+    user_scheme->authn_scheme.handle_func = serf__authn_user__handler;
+    user_scheme->authn_scheme.setup_request_func = serf__authn_user__setup_request;
+    user_scheme->authn_scheme.validate_response_func = serf__authn_user__validate_response;
+
+    lock_status = lock_autn_schemes(NULL /* TODO: whence cometh config? */);
+    if (lock_status)
+        return lock_status;
+
+    status = APR_SUCCESS;
+
+    /* Scan the array for a free slot and also check that this
+       scheme type hasn't been used yet. */
+    for (index = 0; index < AUTHN_SCHEMES_SIZE - 1; ++index)
+    {
+        const serf__authn_scheme_t **const slot = &serf_authn_schemes[index];
+        if (*slot == NULL)
+            break;
+
+        if ((*slot)->type & user_authn_scheme_type
+            || 0 == strcmp((*slot)->key, key)) {
+            /* We somehow managed to register the same thing twice. */
+            status = APR_EEXIST;
+            goto cleanup;
+        }
+    }
+    if (index >= AUTHN_SCHEMES_SIZE - 1) {
+        /* No more space in the table. Not very likely. */
+        status = APR_ENOSPC;
+        goto cleanup;
+    }
+
+    /* Insert into the slot, and add the sentinel. */
+    serf_authn_schemes[index] = &user_scheme->authn_scheme;
+    serf_authn_schemes[index + 1] = NULL;
+
+    /* Prepare the next scheme type. Will become zero on overflow. */
+    user_authn_scheme_type <<= 1;
+
+  cleanup:
+    lock_status = unlock_autn_schemes(NULL /* TODO: whence cometh config? */);
+    if (lock_status)
+        return lock_status;
+    return status;
+}
+
+
+#if APR_HAS_THREADS
+/* Unfortunately APR does not provide a statically-initialized mutex type, so we
+   use a simple spinlock to make sure that authn_schemes_guard is initialized
+   exaclty once. This includes creating a detached global pool where the mutex
+   will be allocated ...
+
+   ... yuck. */
+static apr_status_t init_authn_schemes_guard()
+{
+    static volatile apr_uint32_t global_state = 0; /* uninitialized */
+    static const apr_uint32_t uninitialized = 0;
+    static const apr_uint32_t init_starting = 1;
+    static const apr_uint32_t init_failed   = 2;
+    static const apr_uint32_t initialized   = 3;
+
+    static apr_status_t init_failed_status = APR_EGENERAL;
+
+    apr_allocator_t *allocator;
+    apr_status_t status;
+    apr_uint32_t current_state = apr_atomic_cas32(&global_state,
+                                                  init_starting,
+                                                  uninitialized);
+    for (;;)
+    {
+        if (current_state == initialized)
+            return APR_SUCCESS;
+
+        if (current_state == uninitialized)
+            /* We're the single initializer, run the init code. */
+            break;
+
+        if (current_state == init_starting)
+        {
+            /* Spin while the initializer is working. */
+            apr_sleep(APR_USEC_PER_SEC / 100);
+            current_state = apr_atomic_cas32(&global_state,
+                                             uninitialized,
+                                             uninitialized);
+            continue;
+        }
+
+        if (current_state == init_failed)
+            return init_failed_status;
+
+        /* Not reached, can't happen. */
+        return APR_EGENERAL;    /* FIXME: Just abort()? */
+    }
+
+    /* Create a self-contained root pool for the mutex. */
+    status = apr_allocator_create(&allocator);
+    if (status || !allocator)
+        goto error_return;
+
+    status = apr_pool_create_ex(&authn_schemes_guard_pool,
+                                NULL, NULL, allocator);
+    if (status || !authn_schemes_guard_pool)
+        goto error_return;
+#if APR_POOL_DEBUG
+    apr_pool_tag(authn_schemes_guard_pool, "serf-authn-guard");
+#endif
+
+    status = apr_thread_mutex_create(&authn_schemes_guard,
+                                     APR_THREAD_MUTEX_DEFAULT,
+                                     authn_schemes_guard_pool);
+    if (status || !authn_schemes_guard)
+        goto error_return;
+
+    apr_atomic_cas32(&global_state, initialized, init_starting);
+    return APR_SUCCESS;
+
+  error_return:
+    /* We only reach here if something went wrong during initialization. */
+    if (status == APR_SUCCESS)  /* Not likely, but don't return "OK". */
+        status = APR_ENOMEM;    /* Probable failures are allocations. */
+    init_failed_status = status;
+    apr_atomic_cas32(&global_state, init_failed, init_starting);
+    return status;
+}
+#endif  /* APR_HAS_THREADS */

@@ -151,6 +151,7 @@ list(APPEND SOURCES
     "auth/auth_spnego.c"
     "auth/auth_spnego_gss.c"
     "auth/auth_spnego_sspi.c"
+    "auth/auth_user_defined.c"
     "buckets/aggregate_buckets.c"
     "buckets/allocator.c"
     "buckets/barrier_buckets.c"
