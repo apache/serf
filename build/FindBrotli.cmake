@@ -20,15 +20,15 @@
 cmake_minimum_required(VERSION 3.12)
 
 include(GNUInstallDirs)
-set(BROTLI_FOUND FALSE)
+set(Brotli_FOUND FALSE)
 
 function(_get_brotli_version)
-  if(DEFINED BROTLI_ROOT)
-    get_filename_component(BROTLI_ROOT "${BROTLI_ROOT}" REALPATH)
+  if(DEFINED Brotli_ROOT)
+    get_filename_component(Brotli_ROOT "${Brotli_ROOT}" REALPATH)
     find_program(brotli NAMES "brotli"
                  PATHS
-                 "${BROTLI_ROOT}/bin"
-                 "${BROTLI_ROOT}/${CMAKE_INSTALL_BINDIR}"
+                 "${Brotli_ROOT}/bin"
+                 "${Brotli_ROOT}/${CMAKE_INSTALL_BINDIR}"
                  NO_DEFAULT_PATH)
   else()
     find_program(brotli NAMES "brotli")
@@ -49,24 +49,24 @@ function(_get_brotli_version)
 endfunction(_get_brotli_version)
 
 function(_get_brotli_includes_libs)
-  if(DEFINED BROTLI_ROOT)
+  if(DEFINED Brotli_ROOT)
     find_path(includes "decode.h"
-              PATHS "${BROTLI_ROOT}"
+              PATHS "${Brotli_ROOT}"
               PATH_SUFFIXES
               "include/brotli"
               "${CMAKE_INSTALL_INCLUDEDIR}/brotli}"
               NO_DEFAULT_PATH)
     get_filename_component(includes "${includes}" DIRECTORY)
     find_library(common_lib "brotlicommon"
-                 PATHS "${BROTLI_ROOT}"
+                 PATHS "${Brotli_ROOT}"
                  PATH_SUFFIXES "lib" "${CMAKE_INSTALL_LIBDIR}"
                  NO_DEFAULT_PATH)
     find_library(decode_lib "brotlidec"
-                 PATHS "${BROTLI_ROOT}"
+                 PATHS "${Brotli_ROOT}"
                  PATH_SUFFIXES "lib" "${CMAKE_INSTALL_LIBDIR}"
                  NO_DEFAULT_PATH)
     find_library(encode_lib "brotlienc"
-                 PATHS "${BROTLI_ROOT}"
+                 PATHS "${Brotli_ROOT}"
                  PATH_SUFFIXES "lib" "${CMAKE_INSTALL_LIBDIR}"
                  NO_DEFAULT_PATH)
   else()
@@ -93,28 +93,28 @@ if(NOT EXISTS "${BROTLI_INCLUDES}/brotli/decode.h"
   message(STATUS "Could NOT find Brotli (missing headers)")
 else()
   include(FindPackageHandleStandardArgs)
-  find_package_handle_standard_args(BROTLI
+  find_package_handle_standard_args(Brotli
     REQUIRED_VARS BROTLI_COMMON_LIBRARY
                   BROTLI_DECODE_LIBRARY
                   BROTLI_ENCODE_LIBRARY
                   BROTLI_INCLUDES
     VERSION_VAR BROTLI_VERSION)
-  if(BROTLI_FOUND)
-    add_library(BROTLI::COMMON UNKNOWN IMPORTED)
-    set_target_properties(BROTLI::COMMON PROPERTIES
+  if(Brotli_FOUND)
+    add_library(Brotli::Common UNKNOWN IMPORTED)
+    set_target_properties(Brotli::Common PROPERTIES
       INTERFACE_INCLUDE_DIRECTORIES "${BROTLI_INCLUDES}"
       IMPORTED_LOCATION "${BROTLI_COMMON_LIBRARY}")
 
-    add_library(BROTLI::DECODE UNKNOWN IMPORTED)
-    set_target_properties(BROTLI::DECODE PROPERTIES
+    add_library(Brotli::Decode UNKNOWN IMPORTED)
+    set_target_properties(Brotli::Decode PROPERTIES
       INTERFACE_INCLUDE_DIRECTORIES "${BROTLI_INCLUDES}"
-      INTERFACE_LINK_LIBRARIES BROTLI::COMMON
+      INTERFACE_LINK_LIBRARIES Brotli::Common
       IMPORTED_LOCATION "${BROTLI_DECODE_LIBRARY}")
 
-    add_library(BROTLI::ENCODE UNKNOWN IMPORTED)
-    set_target_properties(BROTLI::ENCODE PROPERTIES
+    add_library(Brotli::Encode UNKNOWN IMPORTED)
+    set_target_properties(Brotli::Encode PROPERTIES
       INTERFACE_INCLUDE_DIRECTORIES "${BROTLI_INCLUDES}"
-      INTERFACE_LINK_LIBRARIES BROTLI::COMMON
+      INTERFACE_LINK_LIBRARIES Brotli::Common
       IMPORTED_LOCATION "${BROTLI_ENCODE_LIBRARY}")
   endif()
 endif()
