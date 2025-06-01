@@ -38,11 +38,5 @@ Candidate changes:
 Veto-blocked changes:
 =====================
 
- * r1917386
-   Helps the TortoiseSVN project build system.
-   Votes:
-     +1: dsahlberg
-     -1: brane (r1917386 was a spamassassin commit)
-
 Approved changes:
 =================
