@@ -65,7 +65,8 @@ apr_status_t serf__log_init(serf_context_t *ctx)
     log_baton->output_list = apr_array_make(ctx->pool, 1,
                                             sizeof(serf_log_output_t *));
 
-    return APR_SUCCESS;
+    return serf_config_set_object(ctx->config, SERF_CONFIG_CTX_LOGBATON,
+                                  log_baton);
 }
 
 static void log_time(FILE *logfp)
