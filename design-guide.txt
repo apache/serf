@@ -45,7 +45,7 @@ objects to be used from multiple threads.
 
 For general information on the proper use of pools, please see:
 
-  http://cvs.apache.org/viewcvs/*checkout*/apr/docs/pool-design.html
+  https://svn.apache.org/repos/asf/apr/apr/trunk/docs/pool-design.html
 
 Within serf itself, the buckets introduce a significant issue related
 to pools. Since it is very possible to end up creating *many* buckets
