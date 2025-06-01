@@ -18,21 +18,29 @@ Candidate changes:
    Votes:
      +1: brane
 
- * r1917386
-   Helps the TortoiseSVN project build system.
-   Votes:
-     +1: dsahlberg
-
  * r1923121, r1923122
    Update the CMake build system: Bump required version to 3.12, consistently
    use APRUtil as package name.
    Justification:
      Improvements to the CMake build system.
    Votes:
-     +1: dsahlberg
+     +1: dsahlberg, brane
+
+ * r1926030
+   Enable logging after removing too much testing code in r1844834, r1844840.
+   Justification:
+     Logging should actually work; not all of that was testing code.
+   Votes:
+     +1: brane
 
 Veto-blocked changes:
 =====================
+
+ * r1917386
+   Helps the TortoiseSVN project build system.
+   Votes:
+     +1: dsahlberg
+     -1: brane (r1917386 was a spamassassin commit)
 
 Approved changes:
 =================
@@ -50,4 +58,3 @@ Approved changes:
      Fixes tests with OpenSSL 1.1 and later.
    Votes:
      +1: brane, rhuijben, lgo
-
