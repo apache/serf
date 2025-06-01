@@ -29,13 +29,14 @@ EnsureSConsVersion(2,3,0)
 
 # SCons 4.7 introduced the arugment list parameter to CheckFunc.
 # Of course, GetSConsVersion() was added in 4.8, it's more fun that way.
+have_check_func = False
 try:
   if GetSConsVersion() >= (4, 7):
     def CheckFunc(conf, name, code, lang='C', args=''):
       return conf.CheckFunc(name, code, lang, args)
-  have_check_func = True
+    have_check_func = True
 except NameError:
-  have_check_func = False
+  pass
 if not have_check_func:
   def CheckFunc(conf, name, code, lang='C', _=''):
     return conf.CheckFunc(name, code, lang)
