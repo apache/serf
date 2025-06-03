@@ -59,6 +59,7 @@ option(GSSAPI_ROOT:PATH "Path to GSSAPI's install area" "")
 
 # Build options
 option(DEBUG "Enable debugging info and strict compile warnings" OFF)
+option(DOT_CLANGD "Generate a .clangd file at the root of the source tree" OFF)
 option(SKIP_SHARED "Disable building shared Serf libraries" OFF)
 option(SKIP_STATIC "Disable building static Serf libraries" OFF)
 option(DISABLE_LOGGING "Disable the logging framework at compile time" OFF)
@@ -405,7 +406,9 @@ set_target_properties(${SERF_TARGETS}
                       OUTPUT_NAME "serf-${SERF_MAJOR_VERSION}")
 
 # Generate the .clangd file
-include(SerfGenClangd)
+if(DOT_CLANGD)
+  include(SerfGenClangd)
+endif()
 
 # Install targets
 install(TARGETS ${SERF_TARGETS}
@@ -463,6 +466,7 @@ endif()
 set(_build_shared OFF)
 set(_build_static OFF)
 set(_build_tests OFF)
+set(_gen_dot_clangd OFF)
 set(_have_brotli OFF)
 set(_have_gssapi OFF)
 set(_have_sspi OFF)
@@ -475,6 +479,9 @@ if(NOT SKIP_STATIC)
 endif()
 if(NOT SKIP_TESTS)
   set(_build_tests ON)
+endif()
+if(DOT_CLANGD)
+  set(_gen_dot_clangd ON)
 endif()
 
 get_directory_property(_cdef COMPILE_DEFINITIONS)
@@ -498,6 +505,7 @@ message(STATUS "    build type .............. : ${CMAKE_BUILD_TYPE}")
 message(STATUS "    shared libraries .... ... : ${_build_shared}")
 message(STATUS "    static libraries ........ : ${_build_static}")
 message(STATUS "    tests ................... : ${_build_tests}")
+message(STATUS "    generate .clangd ........ : ${_gen_dot_clangd}")
 message(STATUS "  Options:")
 message(STATUS "    Brotli .................. : ${_have_brotli}")
 message(STATUS "    GSSAPI .................. : ${_have_gssapi}")
