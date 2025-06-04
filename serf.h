@@ -960,12 +960,17 @@ serf_bucket_t *serf_request_bucket_request_create(
 /**
  * Register an autehtication scheme.
  *
+ * The number returned in @a type can be used as a bit mask in
+ * serf_config_authn_types(). If an error occurs during registration,
+ * @a type will be set to @c SERF_AUTHN_NONE.
+ *
  * The @a name is the name of the authentication scheme as it appears in the
  * authorization headers. It must be a valid token as defined in RFC-9110
  * (see reference, below).
  *
- * Internal structures related to this provider will be allocated from @a pool,
- * take care that its lifetime is long enough.
+ * Internal structures related to this provider will be allocated from
+ * @a result_pool, so take care that it lives as long as the autehtication
+ * scheme is registered.
  *
  * @see https://www.rfc-editor.org/rfc/rfc9110#section-11.1
  * @since New in 1.4
@@ -973,7 +978,31 @@ serf_bucket_t *serf_request_bucket_request_create(
 
 apr_status_t serf_authn_register_scheme(const char *name,
                                         void *baton,
-                                        apr_pool_t *pool);
+                                        apr_pool_t *result_pool,
+                                        int *type);
+
+#ifdef SERF__AUTHN__HAVE_UNREGISTER
+/* FIXME: Think some more about whether unregistering schemes makes sense. */
+/**
+ * Unregister an uthentication scheme.
+ *
+ * Removes the scheme, identified by @a type that was returned from and
+ * @a name that was supplied to serf_authn_register_scheme(), from the
+ * list of supported authentication schemes. Uses @a scratch_pool for
+ * temporary allocations; this pool can be destroyed afterthe function
+ * returns.
+ *
+ * Unregistering a scheme should be avoided while requests that might
+ * use the scheme are in flight.
+ *
+ * So in short, don't use this function at all...?
+ *
+ * @since New in 1.4
+ */
+apr_status_t serf_authn_unregister_scheme(int type,
+                                          const char *name,
+                                          apr_pool_t *scratch_pool);
+#endif  /* SERF__AUTHN__HAVE_UNREGISTER */
 
 /** @} */
 

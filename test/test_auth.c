@@ -511,6 +511,92 @@ static void test_auth_on_HEAD(CuTest *tc)
     CuAssertTrue(tc, tb->result_flags & TEST_RESULT_AUTHNCB_CALLED);
 }
 
+
+#ifndef SERF__AUTHN__HAVE_UNREGISTER
+/* FIXME: Temporary implementation of unregister function. */
+apr_status_t serf__authn__unregister_scheme(int type,
+                                            const char *name,
+                                            apr_pool_t *scratch_pool);
+static apr_status_t serf_authn_unregister_scheme(int type, const char *name,
+                                                 apr_pool_t *pool)
+{
+    return serf__authn__unregister_scheme(type, name, pool);
+}
+#endif
+
+static void test_authn_register_one(CuTest *tc)
+{
+    test_baton_t *tb = tc->testBaton;
+    void *const baton = (void *)0xdeadbeef;
+    apr_status_t status;
+    int type;
+
+    /* Register an authentication scheme */
+    status = serf_authn_register_scheme("Fizzle", baton, tb->pool, &type);
+    CuAssertIntEquals(tc, APR_SUCCESS, status);
+    CuAssertTrue(tc, type != SERF_AUTHN_NONE);
+
+    /* Unregister the scheme */
+    status =serf_authn_unregister_scheme(type, "fiZzlE", tb->pool);
+    CuAssertIntEquals(tc, APR_SUCCESS, status);
+}
+
+static void test_authn_register_two(CuTest *tc)
+{
+    test_baton_t *tb = tc->testBaton;
+    void *const baton1 = (void *)0xdeadbeef;
+    void *const baton2 = (void *)0xbadf00d;
+    apr_status_t status;
+    int type1, type2;
+
+    /* Register the schemes */
+    status = serf_authn_register_scheme("Tweedledee", baton1, tb->pool, &type1);
+    CuAssertIntEquals(tc, APR_SUCCESS, status);
+    CuAssertTrue(tc, type1 != SERF_AUTHN_NONE);
+
+    status = serf_authn_register_scheme("Tweedledum", baton2, tb->pool, &type2);
+    CuAssertIntEquals(tc, APR_SUCCESS, status);
+    CuAssertTrue(tc, type2 != SERF_AUTHN_NONE);
+    CuAssertTrue(tc, type2 != type1);
+
+    /* Unregister the schemes */
+    status =serf_authn_unregister_scheme(type1, "tweedleDee", tb->pool);
+    CuAssertIntEquals(tc, APR_SUCCESS, status);
+    status =serf_authn_unregister_scheme(type2, "tweedleDum", tb->pool);
+    CuAssertIntEquals(tc, APR_SUCCESS, status);
+}
+
+static void test_authn_register_twice(CuTest *tc)
+{
+    test_baton_t *tb = tc->testBaton;
+    void *const baton = (void *)0xdeadbeef;
+    apr_status_t status;
+    int type, epyt;
+
+    /* Register an authentication scheme */
+    status = serf_authn_register_scheme("Tweens", baton, tb->pool, &type);
+    CuAssertIntEquals(tc, APR_SUCCESS, status);
+    CuAssertTrue(tc, type != SERF_AUTHN_NONE);
+
+    status = serf_authn_register_scheme("Tweens", baton, tb->pool, &epyt);
+    CuAssertIntEquals(tc, APR_EEXIST, status);
+    CuAssertTrue(tc, epyt == SERF_AUTHN_NONE);
+
+    /* Unregister the scheme */
+    status =serf_authn_unregister_scheme(type, "Tweens", tb->pool);
+    CuAssertIntEquals(tc, APR_SUCCESS, status);
+}
+
+static void test_authn_unregister_unknown(CuTest *tc)
+{
+    test_baton_t *tb = tc->testBaton;
+    apr_status_t status;
+
+    /* Unregister the scheme */
+    status = serf_authn_unregister_scheme(1 << 15, "Neverland", tb->pool);
+    CuAssertIntEquals(tc, APR_ENOENT, status);
+}
+
 /*****************************************************************************/
 CuSuite *test_auth(void)
 {
@@ -527,6 +613,9 @@ CuSuite *test_auth(void)
     SUITE_ADD_TEST(suite, test_basic_switch_realms);
     SUITE_ADD_TEST(suite, test_digest_switch_realms);
     SUITE_ADD_TEST(suite, test_auth_on_HEAD);
-
+    SUITE_ADD_TEST(suite, test_authn_register_one);
+    SUITE_ADD_TEST(suite, test_authn_register_two);
+    SUITE_ADD_TEST(suite, test_authn_register_twice);
+    SUITE_ADD_TEST(suite, test_authn_unregister_unknown);
     return suite;
 }

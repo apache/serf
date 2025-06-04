@@ -27,10 +27,6 @@
 extern "C" {
 #endif
 
-/* User-defined authentication types */
-#define SERF__AUTHN_USER_FIRST 0x10000u /* Won't work with 16-bit ints... */
-#define SERF__AUTHN_USER_LAST  ~(~0u >> 1u)
-
 /**
  * For each authentication scheme we need a handler function of type
  * serf__auth_handler_func_t. This function will be called when an
@@ -161,6 +157,12 @@ struct serf__user_authn_scheme_t {
     void *baton;
 };
 
+#ifndef SERF__AUTHN__HAVE_UNREGISTER
+/* Declare the prototype for the internal unregister implementation */
+apr_status_t serf__authn__unregister_scheme(int type,
+                                            const char *name,
+                                            apr_pool_t *scratch_pool);
+#endif
 
 apr_status_t
 serf__authn_user__init_conn(const serf__authn_scheme_t *scheme,
@@ -197,6 +199,7 @@ serf__authn_user__validate_response(const serf__authn_scheme_t *scheme,
                                     apr_pool_t *pool);
 
 extern const apr_uint64_t serf__authn_user__magic;
+extern const unsigned int *const serf__authn_user__type_mask;
 
 #ifdef __cplusplus
 }

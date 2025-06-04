@@ -29,7 +29,7 @@ static const serf__user_authn_scheme_t *
 safe_cast_scheme(const serf__authn_scheme_t *scheme)
 {
     const serf__user_authn_scheme_t *const user_scheme = (const void *)scheme;
-    if (scheme->type >= SERF__AUTHN_USER_FIRST
+    if (scheme->type & *serf__authn_user__type_mask
         && user_scheme->magic == serf__authn_user__magic)
         return user_scheme;
     return NULL;
