@@ -72,7 +72,7 @@ function(_apru_config _program _varname _regexp)
   if(_apru_failed)
     message(FATAL_ERROR "${_program} ${ARGN} failed")
   else()
-    # Join multi-line outupt
+    # Join multi-line output
     string(REGEX REPLACE "[\r\n]"       ""  _apru_output "${_apru_output}")
 
     # Optionally apply the regular expression filter
