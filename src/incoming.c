@@ -96,7 +96,7 @@ static apr_status_t response_finished(void *baton,
     return APR_SUCCESS;
 }
 
-static apr_status_t http1_enqueue_reponse(serf_incoming_request_t *request,
+static apr_status_t http1_enqueue_response(serf_incoming_request_t *request,
                                           void *enqueue_baton,
                                           serf_bucket_t *bucket)
 {
@@ -242,7 +242,7 @@ serf_incoming_request_t *serf__incoming_request_create(serf_incoming_t *client)
     apr_pool_create(&rq->pool, client->pool);
     rq->incoming = client;
 
-    rq->enqueue_response = http1_enqueue_reponse;
+    rq->enqueue_response = http1_enqueue_response;
     rq->enqueue_baton = rq;
 
     return rq;
