@@ -614,8 +614,12 @@ static unsigned int find_next_user_scheme_type(void)
     const unsigned int avail = user_authn_type_mask & ~user_authn_registered;
 
     /* For the source of this horrible hack, see:
-       https://graphics.stanford.edu/~seander/bithacks.html#CountBitsSetKernighan*/
-    return avail & ~(avail & (avail - 1));
+       https://graphics.stanford.edu/~seander/bithacks.html#CountBitsSetKernighan
+
+      return avail & ~(avail & (avail - 1));
+
+      Along comes clang and optimizes the above to just two instructions... */
+    return avail & -avail;
 }
 
 apr_status_t serf_authn_register_scheme(const char *name,
