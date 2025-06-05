@@ -27,7 +27,7 @@ import re
 
 EnsureSConsVersion(2,3,0)
 
-# SCons 4.7 introduced the arugment list parameter to CheckFunc.
+# SCons 4.7 introduced the argument list parameter to CheckFunc.
 # Of course, GetSConsVersion() was added in 4.8, it's more fun that way.
 have_check_func = False
 try:
@@ -479,7 +479,7 @@ else:
       apu = os.path.join(apu, 'bin', 'apu-1-config')
       env['APU'] = apu
 
-    ### we should use --cc, but that is giving some scons error about an implict
+    ### we should use --cc, but that is giving some scons error about an implicit
     ### dependency upon gcc. probably ParseConfig doesn't know what to do with
     ### the apr-1-config output
     env.ParseConfig('$APR --cflags --cppflags --ldflags --includes'
