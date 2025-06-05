@@ -185,22 +185,37 @@ list(APPEND SOURCES
     "protocols/http2_stream.c"
 )
 
+# Generate lists of symbols to export from shared libraries.
 if(SERF_WINDOWS)
-  # Generate the .def file for the Windows DLL import library.
-  set(SERF_DEF_FILE "${CMAKE_CURRENT_BINARY_DIR}/libserf-${SERF_MAJOR_VERSION}.def")
+  set(export_symbols_ext_ "def")
+  set(export_symbols_gen_ SerfWindowsGenDef)
+elseif(SERF_DARWIN)
+  set(export_symbols_ext_ "exp")
+  set(export_symbols_gen_ SerfMachGenExp)
+elseif(SERF_ELF_TARGET)
+  set(export_symbols_ext_ "map")
+  set(export_symbols_gen_ SerfElfGenMap)
+endif()
+
+if(DEFINED export_symbols_gen_)
+  set(SERF_EXPORT_SYMBOLS "${CMAKE_CURRENT_BINARY_DIR}/libserf-${SERF_MAJOR_VERSION}.${export_symbols_ext_}")
   add_custom_command(
-    OUTPUT "${SERF_DEF_FILE}"
+    OUTPUT "${SERF_EXPORT_SYMBOLS}"
     DEPENDS ${HEADERS}
     COMMAND ${CMAKE_COMMAND}
             -DCMAKE_SYSTEM_NAME="${CMAKE_SYSTEM_NAME}"
             -DCMAKE_MODULE_PATH="${CMAKE_MODULE_PATH}"
             -DSERF_EXPORT_BLACKLIST="${EXPORTS_BLACKLIST}"
             -DSERF_EXPORT_HEADERS="${HEADERS}"
-            -DSERF_DEF_FILE="${SERF_DEF_FILE}"
-            -P "build/SerfWindowsGenDef.cmake"
+            -DSERF_EXPORT_SYMBOLS="${SERF_EXPORT_SYMBOLS}"
+            -P "build/${export_symbols_gen_}.cmake"
     WORKING_DIRECTORY "${SERF_SOURCE_DIR}"
   )
-  set(SHARED_SOURCES "serf.rc" "${SERF_DEF_FILE}")
+  add_custom_target(serf_export_symbols DEPENDS "${SERF_EXPORT_SYMBOLS}")
+endif()
+
+if(SERF_WINDOWS)
+  set(SHARED_SOURCES "serf.rc" "${SERF_EXPORT_SYMBOLS}")
 
   # Static OpenSSL, APR and APR-Util need additional libraries that are not
   # linked by default by CMake. These will be ignored by the linker if they're
@@ -213,41 +228,7 @@ if(SERF_WINDOWS)
       "ws2_32.lib"
   )
   add_compile_definitions("SERF_HAVE_SSPI")
-endif(SERF_WINDOWS)
-
-if(SERF_DARWIN)
-  set(SERF_EXP_FILE "${CMAKE_CURRENT_BINARY_DIR}/libserf-${SERF_MAJOR_VERSION}.exp")
-  add_custom_command(
-    OUTPUT "${SERF_EXP_FILE}"
-    DEPENDS ${HEADERS}
-    COMMAND ${CMAKE_COMMAND}
-            -DCMAKE_SYSTEM_NAME="${CMAKE_SYSTEM_NAME}"
-            -DCMAKE_MODULE_PATH="${CMAKE_MODULE_PATH}"
-            -DSERF_EXPORT_BLACKLIST="${EXPORTS_BLACKLIST}"
-            -DSERF_EXPORT_HEADERS="${HEADERS}"
-            -DSERF_EXP_FILE="${SERF_EXP_FILE}"
-            -P "build/SerfMachGenExp.cmake"
-    WORKING_DIRECTORY "${SERF_SOURCE_DIR}"
-  )
-  set(SHARED_SOURCES "${SERF_EXP_FILE}")
-endif(SERF_DARWIN)
-
-if(SERF_ELF_TARGET)
-  set(SERF_MAP_FILE "${CMAKE_CURRENT_BINARY_DIR}/libserf-${SERF_MAJOR_VERSION}.map")
-  add_custom_command(
-    OUTPUT "${SERF_MAP_FILE}"
-    DEPENDS ${HEADERS}
-    COMMAND ${CMAKE_COMMAND}
-            -DCMAKE_SYSTEM_NAME="${CMAKE_SYSTEM_NAME}"
-            -DCMAKE_MODULE_PATH="${CMAKE_MODULE_PATH}"
-            -DSERF_EXPORT_BLACKLIST="${EXPORTS_BLACKLIST}"
-            -DSERF_EXPORT_HEADERS="${HEADERS}"
-            -DSERF_MAP_FILE="${SERF_MAP_FILE}"
-            -P "build/SerfElfGenMap.cmake"
-    WORKING_DIRECTORY "${SERF_SOURCE_DIR}"
-  )
-  set(SHARED_SOURCES "${SERF_MAP_FILE}")
-endif(SERF_ELF_TARGET)
+endif()
 
 # Process build options for dependency search
 if(SERF_WINDOWS)
@@ -408,19 +389,21 @@ if(NOT SKIP_SHARED)
   set_target_properties(serf_shared PROPERTIES
                         VERSION ${SERF_VERSION}
                         SOVERSION ${SERF_SOVERSION})
+  if(DEFINED SERF_EXPORT_SYMBOLS)
+    add_dependencies(serf_shared serf_export_symbols)
+    if(SERF_DARWIN)
+      set_target_properties(serf_shared PROPERTIES
+        LINK_FLAGS "-Wl,-exported_symbols_list,${SERF_EXPORT_SYMBOLS}")
+    elseif(SERF_ELF_TARGET)
+      set_target_properties(serf_shared PROPERTIES
+        LINK_FLAGS "-Wl,--version-script,${SERF_EXPORT_SYMBOLS}")
+    endif()
+  endif()
   if(SERF_DARWIN AND NOT RELATIVE_RPATH)
     set_target_properties(serf_shared PROPERTIES
       INSTALL_NAME_DIR "${CMAKE_INSTALL_PREFIX}/${SERF_INSTALL_LIBRARIES}")
   endif()
-  if(SERF_DARWIN)
-    set_target_properties(serf_shared PROPERTIES
-      LINK_FLAGS "-Wl,-exported_symbols_list,${SERF_EXP_FILE}")
-  endif()
-  if(SERF_ELF_TARGET)
-    set_target_properties(serf_shared PROPERTIES
-      LINK_FLAGS "-Wl,--version-script,${SERF_MAP_FILE}")
-  endif()
-  set(SERF_TARGETS "serf_shared")
+  list(APPEND SERF_TARGETS serf_shared)
 
   if(SERF_WINDOWS)
     string(TOLOWER "${CMAKE_BUILD_TYPE}" config)
@@ -439,7 +422,7 @@ if(NOT SKIP_STATIC)
                         ${SERF_PRIVATE_TARGETS}
                         ${SERF_PUBLIC_TARGETS}
                         ${SERF_STANDARD_LIBRARIES})
-  list(APPEND SERF_TARGETS "serf_static")
+  list(APPEND SERF_TARGETS serf_static)
 endif()
 
 set_target_properties(${SERF_TARGETS}
