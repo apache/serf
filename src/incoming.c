@@ -716,14 +716,14 @@ apr_status_t serf__incoming_update_pollset(serf_incoming_t *client)
 
     if (!client->skt) {
         int cid;
-        /* We are in the proces of being cleaned up. As we are not
+        /* We are in the process of being cleaned up. As we are not
            in the event loop and already notified the close callback
            we can now clear our pool and remove us from the context */
 
         if (client->config)
             serf__config_store_remove_client(ctx->config_store, client);
 
-        /* And from the incommings list */
+        /* And from the incomings list */
         for (cid = 0; cid < ctx->incomings->nelts; cid++) {
             if (GET_INCOMING(ctx, cid) == client) {
                 GET_INCOMING(ctx, cid) =

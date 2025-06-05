@@ -118,7 +118,7 @@ static apr_status_t stream_send_headers(serf_http2_stream_t *stream,
 
     /* And now schedule the packet for writing. Note that it is required
     by the HTTP/2 spec to send HEADERS and CONTINUATION directly after
-    each other, without other frames inbetween. */
+    each other, without other frames in between. */
     while (hpack != NULL)
     {
         serf_bucket_t *next;

@@ -201,7 +201,7 @@ static apr_status_t serf_request_read_iovec(serf_bucket_t *bucket,
 static serf_bucket_t * serf_request_read_bucket(serf_bucket_t *bucket,
                                                 const serf_bucket_type_t *type)
 {
-    /* Luckily we don't have to be affraid for bucket_v2 tests here */
+    /* Luckily we don't have to be afraid for bucket_v2 tests here */
     serialize_data(bucket);
 
     return serf_bucket_read_bucket(bucket, type);

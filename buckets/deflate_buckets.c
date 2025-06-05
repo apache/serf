@@ -261,7 +261,7 @@ static apr_status_t serf_deflate_refill(serf_bucket_t *bucket)
         if (APR_STATUS_IS_EOF(ctx->stream_status))
             flush_v = Z_FINISH;
 
-        /* Make valgrind happy and explictly initialize next_in to specific
+        /* Make valgrind happy and explicitly initialize next_in to specific
           * value for empty buffer. */
         if (private_len) {
             ctx->zstream.next_in = (unsigned char*)private_data;

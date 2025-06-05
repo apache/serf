@@ -690,7 +690,7 @@ static void test_connection_userinfo_in_url(CuTest *tc)
 }
 
 /*****************************************************************************
- * Issue #91: test that serf correctly handle an incoming 4xx reponse while
+ * Issue #91: test that serf correctly handle an incoming 4xx response while
  * the outgoing request wasn't written completely yet.
  *****************************************************************************/
 

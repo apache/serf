@@ -112,7 +112,7 @@ apr_status_t serf_default_peek(
 /**
  * Default implementation of the @see destroy functionality.
  *
- * This function will return the @a bucket to its allcoator.
+ * This function will return the @a bucket to its allocator.
  */
 void serf_default_destroy(
     serf_bucket_t *bucket);

@@ -2708,7 +2708,7 @@ static void test_ssl_ocsp_verify_response_no_signer(CuTest *tc)
 {
 #ifndef OPENSSL_NO_OCSP
     apr_status_t status = verify_ocsp_response(tc, 1, 0, 0, 0);
-    /* OCSP responses MUST be signed, we can't even cteate one
+    /* OCSP responses MUST be signed, we can't even create one
        without a signature. This error doesn't come from response
        validation but because OCSP_response_create() fails. */
     CuAssertIntEquals(tc, APR_EGENERAL, status);

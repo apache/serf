@@ -91,7 +91,7 @@ void serf_pump__done(serf_pump_t *pump)
     pump->pool = NULL;
 }
 
-/* Safely check if there is still data pending on the connection, carefull
+/* Safely check if there is still data pending on the connection, careful
    to not accidentally make it invalid. */
 bool serf_pump__data_pending(serf_pump_t *pump)
 {

@@ -360,7 +360,7 @@ apr_status_t serf__handle_auth_response(bool *consumed_response,
 
         if (resp_status) {
             /* If there was an error in the final step of the authentication,
-               consider the reponse body as invalid and discard it. */
+               consider the response body as invalid and discard it. */
             status = discard_body(response);
             *consumed_response = true;
 

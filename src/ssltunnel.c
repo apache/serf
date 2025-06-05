@@ -27,7 +27,7 @@
 #include "serf_private.h"
 
 
-/* Structure passed around as baton for the CONNECT request and respone. */
+/* Structure passed around as baton for the CONNECT request and response. */
 typedef struct req_ctx_t {
     apr_pool_t *pool;
     const char *uri;
@@ -139,7 +139,7 @@ static apr_status_t handle_response(serf_request_t *request,
         val = serf_bucket_headers_get(hdrs, "Connection");
         if (val && strcasecmp("close", val) == 0) {
             serf__log(LOGLVL_DEBUG, LOGCOMP_CONN, __FILE__, conn->config,
-                      "Ignore Connection: close header on this reponse, don't "
+                      "Ignore Connection: close header on this response, don't "
                       "close the connection now that the tunnel is set up.\n");
             serf__bucket_headers_remove(hdrs, "Connection");
         }
