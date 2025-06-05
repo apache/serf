@@ -80,7 +80,7 @@ specified on the install command line:
 
 $ scons PREFIX=/some/path install
 
-Distribution package maintainers regulary install to a buildroot, and
+Distribution package maintainers regularly install to a buildroot, and
 would normally use something like below in their build systems, with
 placeholders for the specific paths:
 
