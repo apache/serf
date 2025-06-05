@@ -17,7 +17,7 @@
 #   under the License.
 # ===================================================================
 
-# Generate Serf's .def file for Windows DLLs.
+# Generate Serf's .map file for Elf shared libraries.
 
 include(SerfFindExports)
 
@@ -25,7 +25,13 @@ separate_arguments(SERF_EXPORT_BLACKLIST)
 separate_arguments(SERF_EXPORT_HEADERS)
 
 SerfFindExports("${SERF_EXPORT_BLACKLIST}" exports_ ${SERF_EXPORT_HEADERS})
-file(WRITE "${SERF_DEF_FILE}" "EXPORTS\n")
+file(WRITE "${SERF_MAP_FILE}"
+     "{\n"
+     "  global:\n")
 foreach(symbol_ ${exports_})
-  file(APPEND "${SERF_DEF_FILE}" "${symbol_}\n")
+  file(APPEND "${SERF_MAP_FILE}" "    ${symbol_};\n")
 endforeach()
+file(APPEND "${SERF_MAP_FILE}"
+     "  local:\n"
+     "    *;\n"
+     "};\n")

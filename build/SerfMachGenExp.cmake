@@ -17,7 +17,7 @@
 #   under the License.
 # ===================================================================
 
-# Generate Serf's .def file for Windows DLLs.
+# Generate Serf's .exp file for Mach-O shared libraries.
 
 include(SerfFindExports)
 
@@ -25,7 +25,7 @@ separate_arguments(SERF_EXPORT_BLACKLIST)
 separate_arguments(SERF_EXPORT_HEADERS)
 
 SerfFindExports("${SERF_EXPORT_BLACKLIST}" exports_ ${SERF_EXPORT_HEADERS})
-file(WRITE "${SERF_DEF_FILE}" "EXPORTS\n")
+file(WRITE "${SERF_EXP_FILE}" "# Exported symbols\n")
 foreach(symbol_ ${exports_})
-  file(APPEND "${SERF_DEF_FILE}" "${symbol_}\n")
+  file(APPEND "${SERF_EXP_FILE}" "_${symbol_}\n")
 endforeach()

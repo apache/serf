@@ -92,7 +92,6 @@ endif()
 
 include(GNUInstallDirs)
 include(SerfPlatform)
-include(SerfWindowsToolkit)
 
 # On the Mac: Use dependencies from Homebrew or MacPorts
 if(USE_HOMEBREW OR USE_MACPORTS)
@@ -133,6 +132,7 @@ list(APPEND EXPORTS_BLACKLIST
      "serf_http_protocol_create"
      "serf_https_protocol_create"
      "serf_http_request_queue"
+     "serf_authn_unregister_scheme"
 )
 
 # Serf library source files
@@ -189,15 +189,15 @@ list(APPEND SOURCES
 
 if(SERF_WINDOWS)
   # Generate the .def file for the Windows DLL import library.
-  set(SERF_DEF_FILE "${CMAKE_CURRENT_BINARY_DIR}/serf.def")
+  set(SERF_DEF_FILE "${CMAKE_CURRENT_BINARY_DIR}/libserf-${SERF_MAJOR_VERSION}.def")
   add_custom_command(
     OUTPUT "${SERF_DEF_FILE}"
     DEPENDS ${HEADERS}
     COMMAND ${CMAKE_COMMAND}
             -DCMAKE_SYSTEM_NAME="${CMAKE_SYSTEM_NAME}"
             -DCMAKE_MODULE_PATH="${CMAKE_MODULE_PATH}"
-            -DSERF_DEF_BLACKLIST="${EXPORTS_BLACKLIST}"
-            -DSERF_DEF_HEADERS="${HEADERS}"
+            -DSERF_EXPORT_BLACKLIST="${EXPORTS_BLACKLIST}"
+            -DSERF_EXPORT_HEADERS="${HEADERS}"
             -DSERF_DEF_FILE="${SERF_DEF_FILE}"
             -P "build/SerfWindowsGenDef.cmake"
     WORKING_DIRECTORY "${SERF_SOURCE_DIR}"
@@ -216,6 +216,40 @@ if(SERF_WINDOWS)
   )
   add_compile_definitions("SERF_HAVE_SSPI")
 endif(SERF_WINDOWS)
+
+if(SERF_DARWIN)
+  set(SERF_EXP_FILE "${CMAKE_CURRENT_BINARY_DIR}/libserf-${SERF_MAJOR_VERSION}.exp")
+  add_custom_command(
+    OUTPUT "${SERF_EXP_FILE}"
+    DEPENDS ${HEADERS}
+    COMMAND ${CMAKE_COMMAND}
+            -DCMAKE_SYSTEM_NAME="${CMAKE_SYSTEM_NAME}"
+            -DCMAKE_MODULE_PATH="${CMAKE_MODULE_PATH}"
+            -DSERF_EXPORT_BLACKLIST="${EXPORTS_BLACKLIST}"
+            -DSERF_EXPORT_HEADERS="${HEADERS}"
+            -DSERF_EXP_FILE="${SERF_EXP_FILE}"
+            -P "build/SerfMachGenExp.cmake"
+    WORKING_DIRECTORY "${SERF_SOURCE_DIR}"
+  )
+  set(SHARED_SOURCES "${SERF_EXP_FILE}")
+endif(SERF_DARWIN)
+
+if(SERF_ELF_TARGET)
+  set(SERF_MAP_FILE "${CMAKE_CURRENT_BINARY_DIR}/libserf-${SERF_MAJOR_VERSION}.map")
+  add_custom_command(
+    OUTPUT "${SERF_MAP_FILE}"
+    DEPENDS ${HEADERS}
+    COMMAND ${CMAKE_COMMAND}
+            -DCMAKE_SYSTEM_NAME="${CMAKE_SYSTEM_NAME}"
+            -DCMAKE_MODULE_PATH="${CMAKE_MODULE_PATH}"
+            -DSERF_EXPORT_BLACKLIST="${EXPORTS_BLACKLIST}"
+            -DSERF_EXPORT_HEADERS="${HEADERS}"
+            -DSERF_MAP_FILE="${SERF_MAP_FILE}"
+            -P "build/SerfElfGenMap.cmake"
+    WORKING_DIRECTORY "${SERF_SOURCE_DIR}"
+  )
+  set(SHARED_SOURCES "${SERF_MAP_FILE}")
+endif(SERF_ELF_TARGET)
 
 # Process build options for dependency search
 if(SERF_WINDOWS)
@@ -379,6 +413,14 @@ if(NOT SKIP_SHARED)
   if(SERF_DARWIN AND NOT RELATIVE_RPATH)
     set_target_properties(serf_shared PROPERTIES
       INSTALL_NAME_DIR "${CMAKE_INSTALL_PREFIX}/${SERF_INSTALL_LIBRARIES}")
+  endif()
+  if(SERF_DARWIN)
+    set_target_properties(serf_shared PROPERTIES
+      LINK_FLAGS "-Wl,-exported_symbols_list,${SERF_EXP_FILE}")
+  endif()
+  if(SERF_ELF_TARGET)
+    set_target_properties(serf_shared PROPERTIES
+      LINK_FLAGS "-Wl,--version-script,${SERF_MAP_FILE}")
   endif()
   set(SERF_TARGETS "serf_shared")
 
