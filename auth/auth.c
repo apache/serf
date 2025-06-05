@@ -588,7 +588,7 @@ apr_status_t serf__auth_setup_request(peer_t peer,
 const apr_uint64_t serf__authn_user__magic = 0x5e6fa02895c8e3e5;
 
 /* The available user-defined scheme types. This is a bit mask based on the
-   first scheme, later modified to account for any overlfow from the built-in
+   first scheme, later modified to account for any overflow from the built-in
    schemes list (not likely, but safey). Should be const, but it's modified
    during one-time initialization.
 
@@ -774,7 +774,7 @@ apr_status_t serf__authn__unregister_scheme(int type,
 #if APR_HAS_THREADS
 /* Unfortunately APR does not provide a statically-initialized mutex type, so we
    use a simple spinlock to make sure that authn_schemes_guard is initialized
-   exaclty once. This includes creating a detached global pool where the mutex
+   exactly once. This includes creating a detached global pool where the mutex
    will be allocated ...
 
    ... yuck. */
