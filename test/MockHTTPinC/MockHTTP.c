@@ -1100,7 +1100,7 @@ resp_set_repeat_pattern(const mhResponseBldr_t *rb, mhResponse_t *resp)
     apr_pool_t *tmppool;
     struct iovec *vecs;
 
-    /* TODO: the whole reponse body should be converted to buckets so that
+    /* TODO: the whole response body should be converted to buckets so that
        we can generate the body on the fly. */
     apr_pool_create(&tmppool, resp->pool);
     vecs = apr_pcalloc(tmppool, sizeof(struct iovec) * n);

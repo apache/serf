@@ -50,7 +50,7 @@ function(serf_macos_find_packages)
     #       The user can always override that on the command line.
     _serf_macos__find_package("zlib" ZLIB_ROOT "Path to zlib's install area")
   endif()
-  _serf_macos__find_package("brotli" BROTLI_ROOT "Path to Brotli's install area")
+  _serf_macos__find_package("brotli" Brotli_ROOT "Path to Brotli's install area")
   _serf_macos__find_package("gssapi" GSSAPI_ROOT "Path to GSSAPI's install area")
 endfunction()
 

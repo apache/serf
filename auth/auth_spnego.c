@@ -117,7 +117,7 @@ typedef enum gss_api_auth_state {
      To keep things simple, keep the connection in one by one mode.
      (otherwise we'd have to keep a queue of gssapi context objects to match
       the Negotiate header of the response with the session initiated by the
-      mathing request).
+      matching request).
      This state is an final state.
    STATEFUL: alright, we have authenticated the connection and for the server
      that is enough. Don't add an Authorization header to new requests.

@@ -225,7 +225,7 @@ static apr_status_t setupTCPServer(mhServCtx_t *ctx)
         STATUSERR(apr_socket_opt_set(ctx->skt, APR_SO_NONBLOCK, 1));
         STATUSERR(apr_socket_timeout_set(ctx->skt, 0));
         /* We used to call apr_socket_opt_set(ctx->skt, APR_SO_REUSEADDR, 1),
-           but that is severly broken when we run multiple tests in parallel,
+           but that is severely broken when we run multiple tests in parallel,
            as that may just listen on a port where another process is
            listening too.
 
@@ -249,7 +249,7 @@ static apr_status_t setupTCPServer(mhServCtx_t *ctx)
         break;
     };
 
-    /* Create a new pollset, avoid broken WSAPoll implemenation on Windows. */
+    /* Create a new pollset, avoid broken WSAPoll implementation on Windows. */
 #ifdef BROKEN_WSAPOLL
     STATUSERR(apr_pollset_create_ex(&ctx->pollset, 32, pool, 0,
                                     APR_POLLSET_SELECT));
@@ -1030,7 +1030,7 @@ static char *respToString(apr_pool_t *pool, mhResponse_t *resp)
                                (const char *)vec.iov_base);
         }
     } else {
-        bool emptyChunk = NO; /* empty response should atleast have 0-chunk */
+        bool emptyChunk = NO; /* empty response should at least have 0-chunk */
         for (i = 0 ; i < resp->chunks->nelts; i++) {
             struct iovec vec;
 
@@ -1144,7 +1144,7 @@ void mhPushRequest(MockHTTP *mh, mhServCtx_t *ctx, mhRequestMatcher_t *rm)
  *         YES + *RESP + *ACTION if the request was matched successfully.
  */
 
-/* TOOD:
+/* TODO:
    This function is the main bottleneck for performance. Possible fixes:
    - if a test is setup to continuously add new request matchers while sending
      requests, evaluation the matchers from last to first drastically
@@ -2559,7 +2559,7 @@ static apr_status_t status_from_ssl(sslCtx_t *ssl_ctx, int ret_code)
 
 /**
  * Action: renegotiates a SSL session on client socket CCTX.
- * Returns APR_SUCCESS if the renegotiation handshake was successfull
+ * Returns APR_SUCCESS if the renegotiation handshake was successful
  *         error if not.
  */
 static apr_status_t renegotiateSSLSession(_mhClientCtx_t *cctx)

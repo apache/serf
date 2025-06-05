@@ -300,7 +300,7 @@ struct serf_hpack_table_t
     apr_size_t rl_sys_table_size;
 };
 
-/* The staticly defined list of pre-encoded entries. All numbers above
+/* The statically defined list of pre-encoded entries. All numbers above
    this list are dynamically defined, so some new standard is needed to
    extend this list */
 static const serf_hpack_entry_t hpack_static_table[] =

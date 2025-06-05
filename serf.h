@@ -601,7 +601,7 @@ apr_status_t serf_incoming_create(
  * Creates a new client associated with @a ctx for socket @a insock. The client
  * takes responsibility for @a client_pool and will destroy it after the
  * connection is closed. Typically this would be the same pool as where the
- * incomming socket @a insock is allocated in.
+ * incoming socket @a insock is allocated in.
  *
  * This non-standard behavior is needed to support listeners inside the same
  * @a ctx instance without leaking memory for each used connections. Callers
@@ -805,7 +805,7 @@ void serf_connection_request_prioritize(serf_request_t *request,
 
 /**
  * Returns detected network latency for the @a conn connection. Negative
- * value means that latency is unknwon.
+ * value means that latency is unknown.
  */
 apr_interval_time_t serf_connection_get_latency(serf_connection_t *conn);
 
@@ -1546,7 +1546,7 @@ typedef struct serf_log_layout_t serf_log_layout_t;
  * Create a stream output for log info. This can be used with one of the
  * standard streams stderr or stdout.
  * LAYOUT should be SERF_LOG_DEFAULT_LAYOUT (there's no alternative for now).
- * The lifetime of POOL should be atleast the same as that of CTX, but it can
+ * The lifetime of POOL should be at least the same as that of CTX, but it can
  * be used by multiple contexts.
  *
  * @since New in 1.4.
@@ -1852,7 +1852,7 @@ void serf_debug__bucket_alloc_check(
  * Values are returned in @a major, @a minor, and @a patch.
  *
  * Applications will want to use this function to verify compatibility,
- * expecially while serf has not reached a 1.0 milestone. APIs and
+ * especially while serf has not reached a 1.0 milestone. APIs and
  * semantics may change drastically until the library hits 1.0.
  */
 void serf_lib_version(

@@ -514,7 +514,7 @@ struct serf_incoming_t {
     serf_incoming_request_t *current_request; /* For HTTP/1 */
 };
 
-/* States for the different stages in the lifecyle of a connection. */
+/* States for the different stages in the lifecycle of a connection. */
 typedef enum {
     SERF_CONN_INIT,             /* no socket created yet */
     SERF_CONN_SETUP_SSLTUNNEL,  /* ssl tunnel being setup, no requests sent */
@@ -591,10 +591,10 @@ struct serf_connection_t {
        only. */
     int pipelining;
 
-    /* Host url, path ommitted, syntax: https://svn.apache.org . */
+    /* Host url, path omitted, syntax: https://svn.apache.org . */
     const char *host_url;
 
-    /* Exploded host url, path ommitted. Only scheme, hostinfo, hostname &
+    /* Exploded host url, path omitted. Only scheme, hostinfo, hostname &
        port values are filled in. */
     apr_uri_t host_info;
 
@@ -717,11 +717,11 @@ apr_status_t serf__handle_auth_response(bool *consumed_response,
    when this is the first connection to the server.
    TODO: The serf__authn_info_t objects are allocated in the context pool, so
    a context that's used to connect to many different servers using Basic or
-   Digest authencation will hold on to many objects indefinitely. We should be
+   Digest authentication will hold on to many objects indefinitely. We should be
    able to cleanup stale objects from time to time. */
 serf__authn_info_t *serf__get_authn_info_for_server(serf_connection_t *conn);
 
-/* fromt context.c */
+/* from context.c */
 void serf__context_progress_delta(void *progress_baton, apr_off_t read,
                                   apr_off_t written);
 

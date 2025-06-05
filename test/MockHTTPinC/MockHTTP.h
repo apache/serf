@@ -590,7 +590,7 @@ apr_port_t mhServerByIDPortNr(const MockHTTP *mh, const char *serverID);
  * Semi-public API                                                            *
  * ---------------                                                            *
  * These are the functions that are used by the public API macro's.           *
- * While they're tecnically part of the API (they have to be because we use   *
+ * While they're technically part of the API (they have to be because we use  *
  * macro's), we've made no effort to make them easy to use.                   *
  ******************************************************************************/
 

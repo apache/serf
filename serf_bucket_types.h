@@ -671,7 +671,7 @@ typedef apr_status_t (*serf_ssl_protocol_result_cb_t)(
  *
  * Returns APR_ENOTIMPL when the ssl library doesn't implement ALPN.
  *
- * If successfull CALLBACK will be called as soon as the protocol is negotiated
+ * If successful CALLBACK will be called as soon as the protocol is negotiated
  * or directly after the secured stream is connected.
  *
  * @since New in 1.4.
@@ -1042,14 +1042,14 @@ serf_bucket_t *serf_bucket_prefix_create(
 /**
  * Creates two buckets, *HEAD and *TAIL, which together contain the output
  * of STREAM. If there is enough data in STREAM, HEAD will be a bucket of at
- * least MIN_CHUNK_SIZE and will never be larget than MAX_CHUNK_SIZE.
+ * least MIN_CHUNK_SIZE and will never be larger than MAX_CHUNK_SIZE.
  *
  * If STREAM is at EOF before MIN_CHUNK_SIZE, HEAD will contain the data,
  * while TAIL is immediately at EOF.
  *
  * HEAD and TAIL will make sure that data read from TAIL will not break the
  * data availability promises on HEAD. Passing an existing tail of this
- * function as new stream may be handled specificaly, but the read promises
+ * function as new stream may be handled specifically, but the read promises
  * on all nodes ahead of stream will still hold.
  *
  * HEAD and TAIL are allocated in STREAM->allocator. STREAM will be

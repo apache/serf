@@ -39,7 +39,7 @@ struct serf__spnego_context_t
 {
     CredHandle sspi_credentials;
     CtxtHandle sspi_context;
-    BOOL initalized;
+    BOOL initialized;
     apr_pool_t *pool;
 
     /* Service Principal Name (SPN) used for authentication. */
@@ -130,7 +130,7 @@ serf__spnego_create_sec_context(serf__spnego_context_t **ctx_p,
 
     SecInvalidateHandle(&ctx->sspi_context);
     SecInvalidateHandle(&ctx->sspi_credentials);
-    ctx->initalized = FALSE;
+    ctx->initialized = FALSE;
     ctx->pool = result_pool;
     ctx->target_name = NULL;
     ctx->authn_type = scheme->type;
@@ -192,7 +192,7 @@ serf__spnego_reset_sec_context(serf__spnego_context_t *ctx)
         SecInvalidateHandle(&ctx->sspi_context);
     }
 
-    ctx->initalized = FALSE;
+    ctx->initialized = FALSE;
 
     return APR_SUCCESS;
 }
@@ -217,7 +217,7 @@ serf__spnego_init_sec_context(serf_connection_t *conn,
     apr_status_t apr_status;
     const char *canonname;
 
-    if (!ctx->initalized && ctx->authn_type == SERF_AUTHN_NEGOTIATE) {
+    if (!ctx->initialized && ctx->authn_type == SERF_AUTHN_NEGOTIATE) {
         apr_status = get_canonical_hostname(&canonname, hostname, scratch_pool);
         if (apr_status) {
             return apr_status;
@@ -255,7 +255,7 @@ serf__spnego_init_sec_context(serf_connection_t *conn,
 
     status = InitializeSecurityContextA(
         &ctx->sspi_credentials,
-        ctx->initalized ? &ctx->sspi_context : NULL,
+        ctx->initialized ? &ctx->sspi_context : NULL,
         ctx->target_name,
         ISC_REQ_ALLOCATE_MEMORY
         | ISC_REQ_MUTUAL_AUTH,
@@ -274,7 +274,7 @@ serf__spnego_init_sec_context(serf_connection_t *conn,
                                   apr_pool_cleanup_null);
     }
 
-    ctx->initalized = TRUE;
+    ctx->initialized = TRUE;
 
     /* Finish authentication if SSPI requires so. */
     if (status == SEC_I_COMPLETE_NEEDED

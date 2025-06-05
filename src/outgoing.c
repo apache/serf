@@ -93,7 +93,7 @@ request_pending(serf_request_t **next_req, serf_connection_t *conn)
 
 /* Check if there is data waiting to be sent over the socket. This can happen
    in two situations:
-   - The connection queue has atleast one request with unwritten data.
+   - The connection queue has at least one request with unwritten data.
    - All requests are written and the ssl layer wrote some data while reading
      the response. This can happen when the server triggers a renegotiation,
      e.g. after the first and only request on that connection was received.

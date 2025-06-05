@@ -26,7 +26,7 @@
 # APRUtil_ROOT      - Path to APR-Util's install area
 # OPENSSL_ROOT_DIR  - Path to OpenSSL's install area
 # ZLIB_ROOT         - Path to zlib's install area
-# BROTLI_ROOT       - Path to Brotli's install area
+# Brotli_ROOT       - Path to Brotli's install area
 # GSSAPI_ROOT       - Path to GSSAPI's install area
 # ===================================================================
 
@@ -54,11 +54,12 @@ option(APR_ROOT:PATH "Path to APR's install area" "")
 option(APRUtil_ROOT:PATH "Path to APR-Util's install area" "")
 option(OPENSSL_ROOT_DIR:PATH "Path to OpenSSL's install area" "")
 option(ZLIB_ROOT:PATH "Path to zlib's install area" "")
-option(BROTLI_ROOT:PATH "Path to Brotli's install area" "")
+option(Brotli_ROOT:PATH "Path to Brotli's install area" "")
 option(GSSAPI_ROOT:PATH "Path to GSSAPI's install area" "")
 
 # Build options
 option(DEBUG "Enable debugging info and strict compile warnings" OFF)
+option(DOT_CLANGD "Generate a .clangd file at the root of the source tree" OFF)
 option(SKIP_SHARED "Disable building shared Serf libraries" OFF)
 option(SKIP_STATIC "Disable building static Serf libraries" OFF)
 option(DISABLE_LOGGING "Disable the logging framework at compile time" OFF)
@@ -235,7 +236,7 @@ find_package(APR REQUIRED)
 find_package(APRUtil REQUIRED)
 
 # Find optional dependencies
-find_package(BROTLI)
+find_package(Brotli)
 if(NOT SERF_WINDOWS)
   find_package(GSSAPI)
 else()
@@ -248,8 +249,8 @@ endif()
 
 # Calculate the set of private and public targets
 set(SERF_PRIVATE_TARGETS OpenSSL::Crypto OpenSSL::SSL ZLIB::ZLIB)
-if(BROTLI_FOUND)
-  list(APPEND SERF_PRIVATE_TARGETS BROTLI::DECODE)
+if(Brotli_FOUND)
+  list(APPEND SERF_PRIVATE_TARGETS Brotli::Decode)
 endif()
 if(GSSAPI_FOUND)
   add_compile_definitions("SERF_HAVE_GSSAPI")
@@ -289,12 +290,12 @@ CheckFunctionMacro("SSL_library_init" "SERF_HAVE_OPENSSL_SSL_LIBRARY_INIT" "open
                    "${OPENSSL_INCLUDE_DIR}" ${OPENSSL_LIBRARIES} ${SERF_STANDARD_LIBRARIES})
 CheckHeader("stdbool.h" "HAVE_STDBOOL_H=1")
 CheckType("OSSL_HANDSHAKE_STATE" "openssl/ssl.h" "SERF_HAVE_OSSL_HANDSHAKE_STATE" ${OPENSSL_INCLUDE_DIR})
-if(BROTLI_FOUND)
+if(Brotli_FOUND)
   CheckType("BrotliDecoderResult" "brotli/decode.h" "SERF_HAVE_BROTLI_DECODER_RESULT" ${BROTLI_INCLUDES})
   # Check for the function only if the type check succeeded.
   get_directory_property(_cdef COMPILE_DEFINITIONS)
   if("SERF_HAVE_BROTLI_DECODER_RESULT" IN_LIST _cdef)
-    CheckFunction("BrotliDecoderTakeOutput" "SERF_HAVE_BROTLI" BROTLI::DECODE ${SERF_STANDARD_LIBRARIES})
+    CheckFunction("BrotliDecoderTakeOutput" "SERF_HAVE_BROTLI" Brotli::Decode ${SERF_STANDARD_LIBRARIES})
   endif()
 endif()
 
@@ -406,7 +407,9 @@ set_target_properties(${SERF_TARGETS}
                       OUTPUT_NAME "serf-${SERF_MAJOR_VERSION}")
 
 # Generate the .clangd file
-include(SerfGenClangd)
+if(DOT_CLANGD)
+  include(SerfGenClangd)
+endif()
 
 # Install targets
 install(TARGETS ${SERF_TARGETS}
@@ -464,6 +467,7 @@ endif()
 set(_build_shared OFF)
 set(_build_static OFF)
 set(_build_tests OFF)
+set(_gen_dot_clangd OFF)
 set(_have_brotli OFF)
 set(_have_gssapi OFF)
 set(_have_sspi OFF)
@@ -476,6 +480,9 @@ if(NOT SKIP_STATIC)
 endif()
 if(NOT SKIP_TESTS)
   set(_build_tests ON)
+endif()
+if(DOT_CLANGD)
+  set(_gen_dot_clangd ON)
 endif()
 
 get_directory_property(_cdef COMPILE_DEFINITIONS)
@@ -499,6 +506,7 @@ message(STATUS "    build type .............. : ${CMAKE_BUILD_TYPE}")
 message(STATUS "    shared libraries .... ... : ${_build_shared}")
 message(STATUS "    static libraries ........ : ${_build_static}")
 message(STATUS "    tests ................... : ${_build_tests}")
+message(STATUS "    generate .clangd ........ : ${_gen_dot_clangd}")
 message(STATUS "  Options:")
 message(STATUS "    Brotli .................. : ${_have_brotli}")
 message(STATUS "    GSSAPI .................. : ${_have_gssapi}")

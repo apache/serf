@@ -27,6 +27,21 @@ import re
 
 EnsureSConsVersion(2,3,0)
 
+# SCons 4.7 introduced the argument list parameter to CheckFunc.
+# Of course, GetSConsVersion() was added in 4.8, it's more fun that way.
+have_check_func = False
+try:
+  if GetSConsVersion() >= (4, 7):
+    def CheckFunc(conf, name, code, lang='C', args=''):
+      return conf.CheckFunc(name, code, lang, args)
+    have_check_func = True
+except NameError:
+  pass
+if not have_check_func:
+  def CheckFunc(conf, name, code, lang='C', _=''):
+    return conf.CheckFunc(name, code, lang)
+
+
 HEADER_FILES = ['serf.h',
                 'serf_bucket_types.h',
                 'serf_bucket_util.h',
@@ -464,7 +479,7 @@ else:
       apu = os.path.join(apu, 'bin', 'apu-1-config')
       env['APU'] = apu
 
-    ### we should use --cc, but that is giving some scons error about an implict
+    ### we should use --cc, but that is giving some scons error about an implicit
     ### dependency upon gcc. probably ParseConfig doesn't know what to do with
     ### the apr-1-config output
     env.ParseConfig('$APR --cflags --cppflags --ldflags --includes'
@@ -517,28 +532,29 @@ with io.StringIO(env.File('buckets/ssl_buckets.c')
       ssl_include_list.append(line.rstrip())
 ssl_includes = '\n'.join(ssl_include_list)
 
+
 conf = Configure(env)
-if not conf.CheckFunc('BIO_set_init', ssl_includes, 'C', 'NULL, 0'):
+if not CheckFunc(conf, 'BIO_set_init', ssl_includes, 'C', 'NULL, 0'):
   env.Append(CPPDEFINES=['SERF_NO_SSL_BIO_WRAPPERS'])
-if not conf.CheckFunc('X509_STORE_get0_param', ssl_includes, 'C', 'NULL'):
+if not CheckFunc(conf, 'X509_STORE_get0_param', ssl_includes, 'C', 'NULL'):
   env.Append(CPPDEFINES=['SERF_NO_SSL_X509_STORE_WRAPPERS'])
-if not conf.CheckFunc('X509_get0_notBefore', ssl_includes, 'C', 'NULL'):
+if not CheckFunc(conf, 'X509_get0_notBefore', ssl_includes, 'C', 'NULL'):
   env.Append(CPPDEFINES=['SERF_NO_SSL_X509_GET0_NOTBEFORE'])
-if not conf.CheckFunc('X509_get0_notAfter', ssl_includes, 'C', 'NULL'):
+if not CheckFunc(conf, 'X509_get0_notAfter', ssl_includes, 'C', 'NULL'):
   env.Append(CPPDEFINES=['SERF_NO_SSL_X509_GET0_NOTAFTER'])
-if not conf.CheckFunc('X509_STORE_CTX_get0_chain', ssl_includes, 'C', 'NULL'):
+if not CheckFunc(conf, 'X509_STORE_CTX_get0_chain', ssl_includes, 'C', 'NULL'):
   env.Append(CPPDEFINES=['SERF_NO_SSL_X509_GET0_CHAIN'])
-if not conf.CheckFunc('ASN1_STRING_get0_data', ssl_includes, 'C', 'NULL'):
+if not CheckFunc(conf, 'ASN1_STRING_get0_data', ssl_includes, 'C', 'NULL'):
   env.Append(CPPDEFINES=['SERF_NO_SSL_ASN1_STRING_GET0_DATA'])
-if conf.CheckFunc('CRYPTO_set_locking_callback', ssl_includes, 'C', 'NULL'):
+if CheckFunc(conf, 'CRYPTO_set_locking_callback', ssl_includes, 'C', 'NULL'):
   env.Append(CPPDEFINES=['SERF_HAVE_SSL_LOCKING_CALLBACKS'])
-if conf.CheckFunc('OPENSSL_malloc_init', ssl_includes):
+if CheckFunc(conf, 'OPENSSL_malloc_init', ssl_includes):
   env.Append(CPPDEFINES=['SERF_HAVE_OPENSSL_MALLOC_INIT'])
-if conf.CheckFunc('SSL_library_init', ssl_includes):
+if CheckFunc(conf, 'SSL_library_init', ssl_includes):
   env.Append(CPPDEFINES=['SERF_HAVE_OPENSSL_SSL_LIBRARY_INIT'])
-if conf.CheckFunc('OpenSSL_version_num', ssl_includes):
+if CheckFunc(conf, 'OpenSSL_version_num', ssl_includes):
   env.Append(CPPDEFINES=['SERF_HAVE_OPENSSL_VERSION_NUM'])
-if conf.CheckFunc('SSL_set_alpn_protos', ssl_includes, 'C', 'NULL, NULL, 0'):
+if CheckFunc(conf, 'SSL_set_alpn_protos', ssl_includes, 'C', 'NULL, NULL, 0'):
   env.Append(CPPDEFINES=['SERF_HAVE_OPENSSL_ALPN'])
 if conf.CheckType('OSSL_HANDSHAKE_STATE', ssl_includes):
   env.Append(CPPDEFINES=['SERF_HAVE_OSSL_HANDSHAKE_STATE'])
@@ -558,9 +574,9 @@ if sys.platform == 'win32':
 if brotli and CALLOUT_OKAY:
   conf = Configure(env)
   if conf.CheckCHeader('brotli/decode.h') and \
-     conf.CheckFunc('BrotliDecoderTakeOutput',
-                    '#include <brotli/decode.h>',
-                    'C', 'NULL, NULL'):
+     CheckFunc(conf, 'BrotliDecoderTakeOutput',
+               '#include <brotli/decode.h>',
+               'C', 'NULL, NULL'):
     env.Append(CPPDEFINES=['SERF_HAVE_BROTLI'])
   else:
     print("Cannot find Brotli library >= 1.0.0 in '%s'." % env.get('BROTLI'))

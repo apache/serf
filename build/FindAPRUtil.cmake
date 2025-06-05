@@ -127,7 +127,7 @@ else(APR_CONTAINS_APRUTIL)
                       " for APR-Util static linking.")
     endif()
     set(APRUTIL_STATIC_LIBS ${_apu_static} ${_apu_expat}
-        CACHE STRING "APR-Util static libraies.")
+        CACHE STRING "APR-Util static libraries.")
 
   else()    # NOT Windows
 

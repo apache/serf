@@ -329,7 +329,7 @@ static void test_header_buckets_remove(CuTest *tc)
     /* empty bucket, delete header */
     serf__bucket_headers_remove(hdrs, "Content-Length");
 
-    /* bucket with one header, delete a non-existant header */
+    /* bucket with one header, delete a non-existent header */
     serf_bucket_headers_set(hdrs, "Content-Type", "text/plain");
     serf__bucket_headers_remove(hdrs, "Content-Length");
     cur = "Content-Type: text/plain" CRLF CRLF;
