@@ -15,23 +15,11 @@ jobs:
       matrix:
         include:
         - os: windows-latest
-          build-type: Debug
           triplet: x64-windows
           generator-platform: x64
           generator: Visual Studio 17 2022
         - os: windows-latest
-          build-type: Release
-          triplet: x64-windows
-          generator-platform: x64
-          generator: Visual Studio 17 2022
-        - os: windows-latest
-          build-type: Debug
           triplet: x86-windows
-          generator-platform: Win32
-          generator: Visual Studio 17 2022
-        - os: windows-latest
-          triplet: x86-windows
-          build-type: Release
           generator-platform: Win32
           generator: Visual Studio 17 2022
 
@@ -58,11 +46,20 @@ jobs:
       - name: Configure CMake
         run: cmake -B ${{github.workspace}}/build -G "${{ matrix.generator }}" -DCMAKE_GENERATOR_PLATFORM=${{ matrix.generator-platform }} -DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake -DAPR_ROOT=C:/vcpkg/installed/${{ matrix.triplet }} -DAPRUtil_ROOT=C:/vcpkg/installed/${{ matrix.triplet }} -DOPENSSL_ROOT_DIR=C:/vcpkg/installed/${{ matrix.triplet }} -DZLIB_ROOT=C:/vcpkg/installed/${{ matrix.triplet }} -DBrotli_ROOT=C:/vcpkg/installed/${{ matrix.triplet }}
 
-      - name: Build
-        run: cmake --build ${{github.workspace}}/build --config ${{ matrix.build-type }}
+      - name: Build (Debug)
+        run: cmake --build ${{github.workspace}}/build --config Debug
 
-      - name: Test
+      - name: Test (Debug)
         working-directory: ${{github.workspace}}/build
         # Execute tests defined by the CMake configuration.
         # See https://cmake.org/cmake/help/latest/manual/ctest.1.html for more detail
-        run: ctest -C ${{ matrix.build-type }} --output-on-failure
+        run: ctest -C Debug --output-on-failure
+
+      - name: Build (Release)
+        run: cmake --build ${{github.workspace}}/build --config Release
+
+      - name: Test (Release)
+        working-directory: ${{github.workspace}}/build
+        # Execute tests defined by the CMake configuration.
+        # See https://cmake.org/cmake/help/latest/manual/ctest.1.html for more detail
+        run: ctest -C Release --output-on-failure
