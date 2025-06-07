@@ -48,15 +48,6 @@ message(WARNING
         "Some features are not supported and the build "
         "has not been tested on many supported platforms.")
 
-
-# Build dependencies
-option(APR_ROOT:PATH "Path to APR's install area" "")
-option(APRUtil_ROOT:PATH "Path to APR-Util's install area" "")
-option(OPENSSL_ROOT_DIR:PATH "Path to OpenSSL's install area" "")
-option(ZLIB_ROOT:PATH "Path to zlib's install area" "")
-option(Brotli_ROOT:PATH "Path to Brotli's install area" "")
-option(GSSAPI_ROOT:PATH "Path to GSSAPI's install area" "")
-
 # Build options
 option(DEBUG "Enable debugging info and strict compile warnings" OFF)
 option(DOT_CLANGD "Generate a .clangd file at the root of the source tree" OFF)
@@ -82,11 +73,11 @@ if(USE_HOMEBREW AND USE_MACPORTS)
 endif()
 
 # Initialize the build type if it was not set on the command line.
-if("${CMAKE_BUILD_TYPE}" STREQUAL "")
+if(NOT CMAKE_BUILD_TYPE)
   if(DEBUG)
-    set(CMAKE_BUILD_TYPE DEBUG CACHE STRING "Default to debug build." FORCE)
+    set(CMAKE_BUILD_TYPE Debug CACHE STRING "Default to debug build." FORCE)
   else()
-    set(CMAKE_BUILD_TYPE RELEASE CACHE STRING "Default to release build." FORCE)
+    set(CMAKE_BUILD_TYPE Release CACHE STRING "Default to release build." FORCE)
   endif()
 endif()
 
@@ -231,16 +222,14 @@ if(SERF_WINDOWS)
 endif()
 
 # Process build options for dependency search
-if(SERF_WINDOWS)
-  if(EXPAT)
+if(EXPAT)
+  if(SERF_WINDOWS)
     set(PC_EXPAT_INCLUDE_DIRS "${EXPAT}/include")
     set(PC_EXPAT_LIBRARY_DIRS "${EXPAT}/lib")
-  endif(EXPAT)
-else(SERF_WINDOWS)
-  if(EXPAT)
+  else(SERF_WINDOWS)
     message(WARNING "option EXPAT is not implemented on this platform")
-  endif(EXPAT)
-endif(SERF_WINDOWS)
+  endif(SERF_WINDOWS)
+endif(EXPAT)
 
 # Find required dependencies
 find_package(OpenSSL REQUIRED)
