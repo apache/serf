@@ -83,7 +83,7 @@ endfunction(_serf_macos__check_homebrew)
 
 function(_serf_macos__find_homebrew_package package variable docstring)
   # Don't override user's provided values.
-  if("${${variable}}" STREQUAL "" AND ${SERF_MACOS__HAS_HOMEBREW})
+  if(${SERF_MACOS__HAS_HOMEBREW} AND NOT ${variable})
     set(package_alias "${package}")
     if("${package_alias}" STREQUAL "gssapi")
       # The Homebrew package is called 'krb5'
@@ -140,7 +140,7 @@ endfunction(_serf_macos__check_macports)
 
 function(_serf_macos__find_macports_package package variable docstring)
   # Don't override user's provided values.
-  if("${${variable}}" STREQUAL "" AND ${SERF_MACOS__HAS_MACPORTS})
+  if(${SERF_MACOS__HAS_MACPORTS} AND NOT ${variable})
     set(package_alias "${package}")
     if("${package_alias}" STREQUAL "gssapi")
       # The MacPorts package is called 'kerberos5'

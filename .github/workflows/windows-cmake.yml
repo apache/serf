@@ -34,13 +34,27 @@ jobs:
               core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
               core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
 
+      - name: Set build environment for x86
+        uses: actions/github-script@v7
+        with:
+          script: |
+              core.exportVariable('SERF_WIN_PLATFORM', 'Win32');
+        if: startsWith(matrix.triplet, 'x86-')
+
+      - name: Set build environment for x64
+        uses: actions/github-script@v7
+        with:
+          script: |
+              core.exportVariable('SERF_WIN_PLATFORM', 'x64');
+        if: startsWith(matrix.triplet, 'x64-')
+
       - name: Install dependencies
         run: vcpkg install --triplet ${{ matrix.triplet }} apr apr-util zlib openssl brotli
 
       - uses: actions/checkout@v3
 
       - name: Configure CMake
-        run: cmake -B ${{github.workspace}}/build -DCMAKE_BUILD_TYPE=${{ matrix.build-type }} -G "${{ matrix.generator }}" -DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake -DAPR_ROOT=C:/vcpkg/installed/${{ matrix.triplet }} -DAPRUtil_ROOT=C:/vcpkg/installed/${{ matrix.triplet }} -DOPENSSL_ROOT_DIR=C:/vcpkg/installed/${{ matrix.triplet }} -DZLIB_ROOT=C:/vcpkg/installed/${{ matrix.triplet }} -DBrotli_ROOT=C:/vcpkg/installed/${{ matrix.triplet }}
+        run: cmake -B ${{github.workspace}}/build -G "${{ matrix.generator }}" -DCMAKE_GENERATOR_PLATFORM=${{ env.SERF_WIN_PLATFORM }} -DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake -DAPR_ROOT=C:/vcpkg/installed/${{ matrix.triplet }} -DAPRUtil_ROOT=C:/vcpkg/installed/${{ matrix.triplet }} -DOPENSSL_ROOT_DIR=C:/vcpkg/installed/${{ matrix.triplet }} -DZLIB_ROOT=C:/vcpkg/installed/${{ matrix.triplet }} -DBrotli_ROOT=C:/vcpkg/installed/${{ matrix.triplet }}
 
       - name: Build
         run: cmake --build ${{github.workspace}}/build --config ${{ matrix.build-type }}

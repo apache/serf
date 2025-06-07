@@ -25,13 +25,13 @@ separate_arguments(SERF_EXPORT_BLACKLIST)
 separate_arguments(SERF_EXPORT_HEADERS)
 
 SerfFindExports("${SERF_EXPORT_BLACKLIST}" exports_ ${SERF_EXPORT_HEADERS})
-file(WRITE "${SERF_MAP_FILE}"
+file(WRITE "${SERF_EXPORT_SYMBOLS}"
      "{\n"
      "  global:\n")
 foreach(symbol_ ${exports_})
-  file(APPEND "${SERF_MAP_FILE}" "    ${symbol_};\n")
+  file(APPEND "${SERF_EXPORT_SYMBOLS}" "    ${symbol_};\n")
 endforeach()
-file(APPEND "${SERF_MAP_FILE}"
+file(APPEND "${SERF_EXPORT_SYMBOLS}"
      "  local:\n"
      "    *;\n"
      "};\n")
