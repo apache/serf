@@ -13,12 +13,24 @@ jobs:
   build:
     strategy:
       matrix:
-        os: [windows-latest]
-        build-type: [Debug, Release]
-        triplet:
-        - x64-windows
-        - x86-windows
-        generator: [ "Visual Studio 17 2022" ]
+        include:
+        - os: windows-latest
+          build-type: Debug
+          triplet: x64-windows
+          generator: Visual Studio 17 2022
+        - os: windows-latest
+          build-type: Release
+          triplet: x64-windows
+          generator: Visual Studio 17 2022
+        - os: windows-latest
+          build-type: Debug
+          triplet: x86-windows
+          generator: Visual Studio 17 2022
+        - os: windows-latest
+          triplet: x86-windows
+          build-type: Release
+          generator: Visual Studio 17 2022
+
       fail-fast: false
 
     runs-on: ${{ matrix.os }}
