@@ -49,14 +49,10 @@ jobs:
             cmake
             -B ${{github.workspace}}/build
             -G "${{ matrix.generator }}"
-            -DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake
-            -DCMAKE_INSTALL_PREFIX=${{github.workspace}}/install
             -DCMAKE_GENERATOR_PLATFORM=${{ matrix.platform }}
-            -DAPR_ROOT=C:/vcpkg/installed/${{ matrix.triplet }}
-            -DAPRUtil_ROOT=C:/vcpkg/installed/${{ matrix.triplet }}
-            -DOPENSSL_ROOT_DIR=C:/vcpkg/installed/${{ matrix.triplet }}
-            -DZLIB_ROOT=C:/vcpkg/installed/${{ matrix.triplet }}
-            -DBrotli_ROOT=C:/vcpkg/installed/${{ matrix.triplet }}
+            -DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake
+            -DCMAKE_PREFIX_PATH=C:/vcpkg/installed/${{ matrix.triplet }}
+            -DCMAKE_INSTALL_PREFIX=${{github.workspace}}/install
 
       - name: Build (Release)
         run: cmake --build ${{github.workspace}}/build --config Release -j
