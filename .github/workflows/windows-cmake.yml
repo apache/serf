@@ -12,14 +12,15 @@ on:
 jobs:
   build:
     strategy:
-      matrix:
-        os: [windows-latest]
-        build-type: [Debug, Release]
-        triplet:
-        - x64-windows
-        - x86-windows
-        generator: [ "Visual Studio 17 2022" ]
       fail-fast: false
+      matrix:
+        os: windows-latest
+        generator: Visual Studio 17 2022
+        include:
+          - triplet: x64-windows
+            platform: x64
+          - triplet: x86-windows
+            platform: Win32
 
     runs-on: ${{ matrix.os }}
 
@@ -34,33 +35,34 @@ jobs:
               core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
               core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
 
-      - name: Set build environment for x86
-        uses: actions/github-script@v7
-        with:
-          script: |
-              core.exportVariable('SERF_WIN_PLATFORM', 'Win32');
-        if: startsWith(matrix.triplet, 'x86-')
-
-      - name: Set build environment for x64
-        uses: actions/github-script@v7
-        with:
-          script: |
-              core.exportVariable('SERF_WIN_PLATFORM', 'x64');
-        if: startsWith(matrix.triplet, 'x64-')
-
       - name: Install dependencies
         run: vcpkg install --triplet ${{ matrix.triplet }} apr apr-util zlib openssl brotli
 
       - uses: actions/checkout@v3
 
       - name: Configure CMake
-        run: cmake -B ${{github.workspace}}/build -G "${{ matrix.generator }}" -DCMAKE_GENERATOR_PLATFORM=${{ env.SERF_WIN_PLATFORM }} -DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake -DAPR_ROOT=C:/vcpkg/installed/${{ matrix.triplet }} -DAPRUtil_ROOT=C:/vcpkg/installed/${{ matrix.triplet }} -DOPENSSL_ROOT_DIR=C:/vcpkg/installed/${{ matrix.triplet }} -DZLIB_ROOT=C:/vcpkg/installed/${{ matrix.triplet }} -DBrotli_ROOT=C:/vcpkg/installed/${{ matrix.triplet }}
+        run: >
+            cmake -B ${{github.workspace}}/build
+                  -G "${{ matrix.generator }}"
+                  --toolchain C:/vcpkg/scripts/buildsystems/vcpkg.cmake
+                  --install-prefix ${{github.workspace}}/install
+                  -DCMAKE_GENERATOR_PLATFORM=${{ matrix.platform }}
+                  -DAPR_ROOT=C:/vcpkg/installed/${{ matrix.triplet }}
+                  -DAPRUtil_ROOT=C:/vcpkg/installed/${{ matrix.triplet }}
+                  -DOPENSSL_ROOT_DIR=C:/vcpkg/installed/${{ matrix.triplet }}
+                  -DZLIB_ROOT=C:/vcpkg/installed/${{ matrix.triplet }}
+                  -DBrotli_ROOT=C:/vcpkg/installed/${{ matrix.triplet }}
 
-      - name: Build
-        run: cmake --build ${{github.workspace}}/build --config ${{ matrix.build-type }}
+      - name: Build (Release)
+        run: cmake --build ${{github.workspace}}/build --config Release -j
 
-      - name: Test
+      - name: Build (Debug)
+        run: cmake --build ${{github.workspace}}/build --config Debug -j
+
+      - name: Test (Release)
         working-directory: ${{github.workspace}}/build
-        # Execute tests defined by the CMake configuration.
-        # See https://cmake.org/cmake/help/latest/manual/ctest.1.html for more detail
-        run: ctest -C ${{ matrix.build-type }} --output-on-failure
+        run: ctest -C Release --output-on-failure
+
+      - name: Test (Debug)
+        working-directory: ${{github.workspace}}/build
+        run: ctest -C Debug --output-on-failure
