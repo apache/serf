@@ -17,69 +17,67 @@
 #   under the License.
 # ===================================================================
 
-include(CheckFunctionExists)
+include(CheckCSourceCompiles)
 include(CheckIncludeFile)
-include(CheckSymbolExists)
 include(CheckTypeSize)
 
-function(_CheckFunction var_ name_ libraries_)
+function(_CheckFunction var_ name_ args_ header_ includes_ libraries_)
   if(libraries_)
     set(CMAKE_REQUIRED_LIBRARIES "${libraries_}")
   else()
     unset(CMAKE_REQUIRED_LIBRARIES)
   endif()
 
-  check_function_exists("${name_}" "serf_foundit_${name_}_")
-  if(serf_foundit_${name_}_)
-    set("${var_}" TRUE PARENT_SCOPE)
-  else()
-    set("${var_}" FALSE PARENT_SCOPE)
-  endif()
-  unset(CMAKE_REQUIRED_LIBRARIES)
-endfunction(_CheckFunction)
-
-macro(CheckFunction name_ symbol_)
-  _CheckFunction("serf_feature_CheckFunction_${name_}_" "${name_}" "${ARGN}")
-  if("${serf_feature_CheckFunction_${name_}_}")
-    add_compile_definitions("${symbol_}")
-  endif()
-endmacro(CheckFunction)
-
-macro(CheckNotFunction name_ symbol_)
-  _CheckFunction("serf_feature_CheckNotFunction_${name_}_" "${name_}" "${ARGN}")
-  if(NOT "${serf_feature_CheckNotFunction_${name_}_}")
-    add_compile_definitions("${symbol_}")
-  endif()
-endmacro(CheckNotFunction)
-
-
-function(_CheckSymbol var_ name_ header_ includes_)
   if(includes_)
     set(CMAKE_REQUIRED_INCLUDES "${includes_}")
   else()
     unset(CMAKE_REQUIRED_INCLUDES)
   endif()
 
-  check_symbol_exists("${name_}" "${header_}" "serf_foundit_symbol_${name_}_")
-  if(serf_foundit_symbol_${name_}_)
+  set(source_
+      "#include <${header_}>"
+      ""
+      "#if _MSC_VER && !__INTEL_COMPILER"
+      "  #pragma function(${name_})"
+      "#endif"
+      ""
+      "int main(void) {"
+      "#if defined (__stub_${name_}) || defined (__stub___${name_})"
+      "  #error \"${name_} has a GNU stub, cannot check\""
+      "#else"
+      "  ${name_}(${args_})\\;"
+      "#endif"
+      "  return 0\\;"
+      "}"
+      "")
+  list(JOIN source_ "\n" source_)
+
+  check_c_source_compiles("${source_}" "check_function_${name_}")
+  if(${check_function_${name_}})
     set("${var_}" TRUE PARENT_SCOPE)
   else()
     set("${var_}" FALSE PARENT_SCOPE)
   endif()
-  unset(CMAKE_REQUIRED_INCLUDES)
-endfunction(_CheckSymbol)
 
-macro(CheckFunctionMacro name_ symbol_ header_ includes_)
-  _CheckFunction("serf_feature_CheckFunctionMacro_${name_}_" "${name_}" "${ARGN}")
-  if("${serf_feature_CheckFunctionMacro_${name_}_}")
+  unset(CMAKE_REQUIRED_INCLUDES)
+  unset(CMAKE_REQUIRED_LIBRARIES)
+endfunction(_CheckFunction)
+
+macro(CheckFunction name_ args_ symbol_ header_ includes_)
+  _CheckFunction("serf_feature_CheckFunction_${name_}_"
+                 "${name_}" "${args_}" "${header_}" "${includes_}" "${ARGN}")
+  if("${serf_feature_CheckFunction_${name_}_}")
     add_compile_definitions("${symbol_}")
-  else()
-    _CheckSymbol("serf_feature_CheckFunctionMacro_${name_}_" "${name_}" "${header_}" "${includes_}")
-    if("${serf_feature_CheckFunctionMacro_${name_}_}")
-      add_compile_definitions("${symbol_}")
-    endif()
   endif()
-endmacro(CheckFunctionMacro)
+endmacro(CheckFunction)
+
+macro(CheckNotFunction name_ args_ symbol_ header_ includes_)
+  _CheckFunction("serf_feature_CheckNotFunction_${name_}_"
+                 "${name_}" "${args_}" "${header_}" "${includes_}" "${ARGN}")
+  if(NOT "${serf_feature_CheckNotFunction_${name_}_}")
+    add_compile_definitions("${symbol_}")
+  endif()
+endmacro(CheckNotFunction)
 
 
 function(_CheckHeader var_ name_ includes_)
@@ -89,8 +87,8 @@ function(_CheckHeader var_ name_ includes_)
     unset(CMAKE_REQUIRED_INCLUDES)
   endif()
 
-  check_include_file("${name_}" "serf_foundit_${name_}_")
-  if(${serf_foundit_${name_}_})
+  check_include_file("${name_}" "check_symbol_${name_}")
+  if(${check_symbol_${name_}})
     set("${var_}" TRUE PARENT_SCOPE)
   else()
     set("${var_}" FALSE PARENT_SCOPE)
@@ -119,8 +117,8 @@ function(_CheckType var_ name_ header_ includes_)
     unset(CMAKE_EXTRA_INCLUDE_FILES)
   endif()
 
-  check_type_size("${name_}" "serf_foundit_${name_}_")
-  if(${HAVE_serf_foundit_${name_}_})
+  check_type_size("${name_}" "check_type_${name_}")
+  if(${HAVE_check_type_${name_}})
     set("${var_}" TRUE PARENT_SCOPE)
   else()
     set("${var_}" FALSE PARENT_SCOPE)

@@ -265,7 +265,7 @@ if(APR_STATIC)
   if(SERF_WINDOWS)
     list(APPEND SERF_PUBLIC_TARGETS APR::APR_static)
     if(NOT APR_CONTAINS_APRUTIL)
-      list(APPEND SERF_PUBLIC_TARGETS APR::APRUTIL_static)
+      list(APPEND SERF_PUBLIC_TARGETS APR::APRUtil_static)
     endif()
   else(SERF_WINDOWS)
     message(WARNING "option APR_STATIC is not implemented on this platform")
@@ -273,25 +273,45 @@ if(APR_STATIC)
 else(APR_STATIC)
   list(APPEND SERF_PUBLIC_TARGETS APR::APR)
   if(NOT APR_CONTAINS_APRUTIL)
-    list(APPEND SERF_PUBLIC_TARGETS APR::APRUTIL)
+    list(APPEND SERF_PUBLIC_TARGETS APR::APRUtil)
   endif()
 endif(APR_STATIC)
 
 # Feature tests
 include(SerfChecks)
-CheckNotFunction("BIO_set_init" "SERF_NO_SSL_BIO_WRAPPERS" ${OPENSSL_LIBRARIES} ${SERF_STANDARD_LIBRARIES})
-CheckNotFunction("X509_STORE_get0_param" "SERF_NO_SSL_X509_STORE_WRAPPERS" ${OPENSSL_LIBRARIES} ${SERF_STANDARD_LIBRARIES})
-CheckNotFunction("X509_get0_notBefore" "SERF_NO_SSL_X509_GET0_NOTBEFORE" ${OPENSSL_LIBRARIES} ${SERF_STANDARD_LIBRARIES})
-CheckNotFunction("X509_get0_notAfter" "SERF_NO_SSL_X509_GET0_NOTAFTER" ${OPENSSL_LIBRARIES} ${SERF_STANDARD_LIBRARIES})
-CheckNotFunction("X509_STORE_CTX_get0_chain" "SERF_NO_SSL_X509_GET0_CHAIN" ${OPENSSL_LIBRARIES} ${SERF_STANDARD_LIBRARIES})
-CheckNotFunction("ASN1_STRING_get0_data" "SERF_NO_SSL_ASN1_STRING_GET0_DATA" ${OPENSSL_LIBRARIES} ${SERF_STANDARD_LIBRARIES})
-CheckFunction("CRYPTO_set_locking_callback" "SERF_HAVE_SSL_LOCKING_CALLBACKS" ${OPENSSL_LIBRARIES} ${SERF_STANDARD_LIBRARIES})
-CheckFunction("OpenSSL_version_num" "SERF_HAVE_OPENSSL_VERSION_NUM" ${OPENSSL_LIBRARIES} ${SERF_STANDARD_LIBRARIES})
-CheckFunction("SSL_set_alpn_protos" "SERF_HAVE_OPENSSL_ALPN" ${OPENSSL_LIBRARIES} ${SERF_STANDARD_LIBRARIES})
-CheckFunctionMacro("OPENSSL_malloc_init" "SERF_HAVE_OPENSSL_MALLOC_INIT" "openssl/crypto.h"
-                   "${OPENSSL_INCLUDE_DIR}" ${OPENSSL_LIBRARIES} ${SERF_STANDARD_LIBRARIES})
-CheckFunctionMacro("SSL_library_init" "SERF_HAVE_OPENSSL_SSL_LIBRARY_INIT" "openssl/ssl.h"
-                   "${OPENSSL_INCLUDE_DIR}" ${OPENSSL_LIBRARIES} ${SERF_STANDARD_LIBRARIES})
+CheckNotFunction("BIO_set_init" "NULL, 0" "SERF_NO_SSL_BIO_WRAPPERS"
+                 "openssl/bio.h" "${OPENSSL_INCLUDE_DIR}"
+                 ${OPENSSL_LIBRARIES} ${SERF_STANDARD_LIBRARIES})
+CheckNotFunction("X509_STORE_get0_param" "NULL" "SERF_NO_SSL_X509_STORE_WRAPPERS"
+                 "openssl/x509.h" "${OPENSSL_INCLUDE_DIR}"
+                 ${OPENSSL_LIBRARIES} ${SERF_STANDARD_LIBRARIES})
+CheckNotFunction("X509_get0_notBefore" "NULL" "SERF_NO_SSL_X509_GET0_NOTBEFORE"
+                 "openssl/x509.h" "${OPENSSL_INCLUDE_DIR}"
+                 ${OPENSSL_LIBRARIES} ${SERF_STANDARD_LIBRARIES})
+CheckNotFunction("X509_get0_notAfter" "NULL" "SERF_NO_SSL_X509_GET0_NOTAFTER"
+                 "openssl/x509.h" "${OPENSSL_INCLUDE_DIR}"
+                 ${OPENSSL_LIBRARIES} ${SERF_STANDARD_LIBRARIES})
+CheckNotFunction("X509_STORE_CTX_get0_chain" "NULL" "SERF_NO_SSL_X509_GET0_CHAIN"
+                 "openssl/x509.h" "${OPENSSL_INCLUDE_DIR}"
+                 ${OPENSSL_LIBRARIES} ${SERF_STANDARD_LIBRARIES})
+CheckNotFunction("ASN1_STRING_get0_data" "NULL" "SERF_NO_SSL_ASN1_STRING_GET0_DATA"
+                 "openssl/asn1.h" "${OPENSSL_INCLUDE_DIR}"
+                 ${OPENSSL_LIBRARIES} ${SERF_STANDARD_LIBRARIES})
+CheckFunction("CRYPTO_set_locking_callback" "NULL" "SERF_HAVE_SSL_LOCKING_CALLBACKS"
+              "openssl/crypto.h" "${OPENSSL_INCLUDE_DIR}"
+              ${OPENSSL_LIBRARIES} ${SERF_STANDARD_LIBRARIES})
+CheckFunction("SSL_set_alpn_protos" "NULL, NULL, 0" "SERF_HAVE_OPENSSL_ALPN"
+              "openssl/ssl.h" "${OPENSSL_INCLUDE_DIR}"
+              ${OPENSSL_LIBRARIES} ${SERF_STANDARD_LIBRARIES})
+CheckFunction("OpenSSL_version_num" "" "SERF_HAVE_OPENSSL_VERSION_NUM"
+              "openssl/ssl.h" "${OPENSSL_INCLUDE_DIR}"
+              ${OPENSSL_LIBRARIES} ${SERF_STANDARD_LIBRARIES})
+CheckFunction("OPENSSL_malloc_init" "" "SERF_HAVE_OPENSSL_MALLOC_INIT"
+              "openssl/ssl.h" "${OPENSSL_INCLUDE_DIR}"
+              ${OPENSSL_LIBRARIES} ${SERF_STANDARD_LIBRARIES})
+CheckFunction("SSL_library_init" "" "SERF_HAVE_OPENSSL_SSL_LIBRARY_INIT"
+              "openssl/ssl.h" "${OPENSSL_INCLUDE_DIR}"
+              ${OPENSSL_LIBRARIES} ${SERF_STANDARD_LIBRARIES})
 CheckHeader("stdbool.h" "HAVE_STDBOOL_H=1")
 CheckType("OSSL_HANDSHAKE_STATE" "openssl/ssl.h" "SERF_HAVE_OSSL_HANDSHAKE_STATE" ${OPENSSL_INCLUDE_DIR})
 if(Brotli_FOUND)
@@ -299,7 +319,9 @@ if(Brotli_FOUND)
   # Check for the function only if the type check succeeded.
   get_directory_property(_cdef COMPILE_DEFINITIONS)
   if("SERF_HAVE_BROTLI_DECODER_RESULT" IN_LIST _cdef)
-    CheckFunction("BrotliDecoderTakeOutput" "SERF_HAVE_BROTLI" Brotli::Decode ${SERF_STANDARD_LIBRARIES})
+    CheckFunction("BrotliDecoderTakeOutput" "NULL, NULL" "SERF_HAVE_BROTLI"
+                  "brotli/decode.h" ${BROTLI_INCLUDES}
+                  Brotli::Decode ${SERF_STANDARD_LIBRARIES})
   endif()
 endif()
 

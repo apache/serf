@@ -23,18 +23,10 @@ include(GNUInstallDirs)
 set(Brotli_FOUND FALSE)
 
 function(_get_brotli_version)
-  if(DEFINED Brotli_ROOT)
-    get_filename_component(Brotli_ROOT "${Brotli_ROOT}" REALPATH)
-    find_program(brotli NAMES "brotli"
-                 PATHS
-                 "${Brotli_ROOT}/bin"
-                 "${Brotli_ROOT}/${CMAKE_INSTALL_BINDIR}"
-                 NO_DEFAULT_PATH)
-  else()
-    find_program(brotli NAMES "brotli")
-  endif()
+  find_program(brotli NAMES "brotli"
+               PATH_SUFFIXES "bin" "${CMAKE_INSTALL_BINDIR}")
 
-  if(NOT "${brotli}" STREQUAL "brotli-NOTFOUND")
+  if(NOT "${brotli}" MATCHES "-NOTFOUND")
     execute_process(COMMAND "${brotli}" "--version"
                     OUTPUT_VARIABLE output
                     RESULT_VARIABLE failed)
@@ -49,41 +41,27 @@ function(_get_brotli_version)
 endfunction(_get_brotli_version)
 
 function(_get_brotli_includes_libs)
-  if(DEFINED Brotli_ROOT)
-    find_path(includes "decode.h"
-              PATHS "${Brotli_ROOT}"
-              PATH_SUFFIXES
-              "include/brotli"
-              "${CMAKE_INSTALL_INCLUDEDIR}/brotli}"
-              NO_DEFAULT_PATH)
-    get_filename_component(includes "${includes}" DIRECTORY)
-    find_library(common_lib "brotlicommon"
-                 PATHS "${Brotli_ROOT}"
-                 PATH_SUFFIXES "lib" "${CMAKE_INSTALL_LIBDIR}"
-                 NO_DEFAULT_PATH)
-    find_library(decode_lib "brotlidec"
-                 PATHS "${Brotli_ROOT}"
-                 PATH_SUFFIXES "lib" "${CMAKE_INSTALL_LIBDIR}"
-                 NO_DEFAULT_PATH)
-    find_library(encode_lib "brotlienc"
-                 PATHS "${Brotli_ROOT}"
-                 PATH_SUFFIXES "lib" "${CMAKE_INSTALL_LIBDIR}"
-                 NO_DEFAULT_PATH)
-  else()
-    find_path(includes "decode.h"
-              PATH_SUFFIXES
-              "include/brotli"
-              "${CMAKE_INSTALL_INCLUDEDIR}/brotli}")
-    get_filename_component(includes "${includes}" DIRECTORY)
-    find_library(common_lib "brotlicommon")
-    find_library(decode_lib "brotlidec")
-    find_library(encode_lib "brotlienc")
-  endif()
+  find_path(includes "decode.h"
+            PATH_SUFFIXES
+            "include/brotli"
+            "${CMAKE_INSTALL_INCLUDEDIR}/brotli}")
+  get_filename_component(includes "${includes}" DIRECTORY)
+  find_library(common_lib NAMES "brotlicommon"
+               PATH_SUFFIXES "lib" "${CMAKE_INSTALL_LIBDIR}")
+  find_library(decode_lib NAMES "brotlidec"
+               PATH_SUFFIXES "lib" "${CMAKE_INSTALL_LIBDIR}")
+  find_library(encode_lib NAMES "brotlienc"
+               PATH_SUFFIXES "lib" "${CMAKE_INSTALL_LIBDIR}")
+
   set(BROTLI_INCLUDES "${includes}" PARENT_SCOPE)
   set(BROTLI_COMMON_LIBRARY "${common_lib}" PARENT_SCOPE)
   set(BROTLI_DECODE_LIBRARY "${decode_lib}" PARENT_SCOPE)
   set(BROTLI_ENCODE_LIBRARY "${encode_lib}" PARENT_SCOPE)
 endfunction(_get_brotli_includes_libs)
+
+if(DEFINED Brotli_ROOT)
+  get_filename_component(Brotli_ROOT "${Brotli_ROOT}" REALPATH)
+endif()
 
 _get_brotli_version()
 _get_brotli_includes_libs()
