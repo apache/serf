@@ -34,6 +34,15 @@ set(TEST_ALL_SOURCES
     "MockHTTPinC/MockHTTP_server.c"
 )
 
+set(TEST_ALL_SUITES
+    "auth"
+    "buckets"
+    "context"
+    "server"
+    "ssl"
+    "internal"
+)
+
 set(SIMPLE_TEST_TARGETS
     "serf_get"
     "serf_response"
@@ -64,10 +73,13 @@ file(GLOB RESPONSE_TEST_CASES "${CMAKE_CURRENT_SOURCE_DIR}/testcases/*.response"
 foreach(TEST_CASE ${RESPONSE_TEST_CASES})
   get_filename_component(TEST_CASE_NAME ${TEST_CASE} NAME)
   add_test(NAME "${TEST_CASE_NAME}" COMMAND serf_response "${TEST_CASE}")
-  list(APPEND RESPONSE_TESTS "${TEST_CASE_NAME}")
+  list(APPEND ALL_TESTS "${TEST_CASE_NAME}")
 endforeach()
 
-add_test(NAME test_all COMMAND test_all)
+foreach(TEST_CASE ${TEST_ALL_SUITES})
+  add_test(NAME test_${TEST_CASE} COMMAND test_all ${TEST_CASE})
+  list(APPEND ALL_TESTS test_${TEST_CASE})
+endforeach()
 
-set_tests_properties(${RESPONSE_TESTS} test_all PROPERTIES
+set_tests_properties(${ALL_TESTS} PROPERTIES
                      ENVIRONMENT srcdir=${SERF_SOURCE_DIR})

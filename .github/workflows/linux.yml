@@ -21,12 +21,12 @@ jobs:
       - name: Install prerequisites
         run: |
           sudo apt-get update
-          sudo apt-get install scons libapr1 libapr1-dev libaprutil1 libaprutil1-dev zlib1g zlib1g-dev libssl-dev
+          sudo apt-get -y install scons libapr1-dev libaprutil1-dev zlib1g-dev libssl-dev libbrotli-dev libkrb5-dev
 
       - uses: actions/checkout@v3
 
       - name: Build
-        run: scons
+        run: scons BROTLI=/usr GSSAPI=/usr
 
       - name: Check
         run: scons check

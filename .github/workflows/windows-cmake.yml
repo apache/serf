@@ -12,18 +12,19 @@ on:
 jobs:
   build:
     strategy:
+      fail-fast: false
       matrix:
         include:
-        - os: windows-latest
-          triplet: x64-windows
-          arch: x64
-          generator: Ninja Multi-Config
-        - os: windows-latest
-          triplet: x86-windows
-          arch: x86
-          generator: Ninja Multi-Config
-
-      fail-fast: false
+          - name: Windows x64
+            os: windows-latest
+            platform: x64
+            triplet: x64-windows
+            generator: "Ninja Multi-Config"
+          - name: Windows x86
+            os: windows-latest
+            platform: Win32
+            triplet: x86-windows
+            generator: "Ninja Multi-Config"
 
     runs-on: ${{ matrix.os }}
 
@@ -52,23 +53,28 @@ jobs:
 
           ls env: | foreach { "$($_.Name)=$($_.Value)" >> $env:GITHUB_ENV }
 
-      - name: Configure CMake
-        run: cmake -B ${{github.workspace}}/build -G "${{ matrix.generator }}" -DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake -DAPR_ROOT=C:/vcpkg/installed/${{ matrix.triplet }} -DAPRUtil_ROOT=C:/vcpkg/installed/${{ matrix.triplet }} -DOPENSSL_ROOT_DIR=C:/vcpkg/installed/${{ matrix.triplet }} -DZLIB_ROOT=C:/vcpkg/installed/${{ matrix.triplet }} -DBrotli_ROOT=C:/vcpkg/installed/${{ matrix.triplet }}
-
-      - name: Build (Debug)
-        run: cmake --build ${{github.workspace}}/build --config Debug
-
-      - name: Test (Debug)
-        working-directory: ${{github.workspace}}/build
-        # Execute tests defined by the CMake configuration.
-        # See https://cmake.org/cmake/help/latest/manual/ctest.1.html for more detail
-        run: ctest -C Debug --output-on-failure
+        run: >
+            cmake
+            -B ${{github.workspace}}/build
+            -G "${{ matrix.generator }}"
+            -DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake
+            -DCMAKE_INSTALL_PREFIX=${{github.workspace}}/install
+            -DAPR_ROOT=C:/vcpkg/installed/${{ matrix.triplet }}
+            -DAPRUtil_ROOT=C:/vcpkg/installed/${{ matrix.triplet }}
+            -DOPENSSL_ROOT_DIR=C:/vcpkg/installed/${{ matrix.triplet }}
+            -DZLIB_ROOT=C:/vcpkg/installed/${{ matrix.triplet }}
+            -DBrotli_ROOT=C:/vcpkg/installed/${{ matrix.triplet }}
 
       - name: Build (Release)
-        run: cmake --build ${{github.workspace}}/build --config Release
+        run: cmake --build ${{github.workspace}}/build --config Release -j
+
+      - name: Build (Debug)
+        run: cmake --build ${{github.workspace}}/build --config Debug -j
 
       - name: Test (Release)
         working-directory: ${{github.workspace}}/build
-        # Execute tests defined by the CMake configuration.
-        # See https://cmake.org/cmake/help/latest/manual/ctest.1.html for more detail
         run: ctest -C Release --output-on-failure
+
+      - name: Test (Debug)
+        working-directory: ${{github.workspace}}/build
+        run: ctest -C Debug --output-on-failure
