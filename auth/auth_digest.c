@@ -566,4 +566,6 @@ const serf__authn_scheme_t serf__digest_authn_scheme = {
     serf__handle_digest_auth,
     serf__setup_request_digest_auth,
     serf__validate_response_digest_auth,
+
+    0                           /* user-defined scheme magic */
 };

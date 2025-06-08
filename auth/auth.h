@@ -108,6 +108,16 @@ struct serf__authn_scheme_t {
 
     /* Function to validate the authentication header of a response */
     serf__validate_response_func_t validate_response_func;
+
+    /*
+     * Additional data for user-defined authentication schemes.
+     */
+
+    /* The magic number that helps verify the user-defined scheme data. */
+    apr_uint64_t magic;
+
+    /* The baton used by the callbacks.  */
+    void *baton;
 };
 
 
@@ -140,22 +150,6 @@ extern const serf__authn_scheme_t serf__ntlm_authn_scheme;
 #endif /* SERF_HAVE_SPNEGO */
 
 /** User-defined authentication scheme handlers */
-
-/* This struct extends serf__authn_scheme_t with info needed for
-   the user-defined scheme implementation. It's essentially a subclass;
-   per C semantics, the address of the struct is also the address of
-   its first member, so we can safely put a pointer to this struct
-   into serf_authn_schemes. */
-typedef struct serf__user_authn_scheme_t serf__user_authn_scheme_t;
-struct serf__user_authn_scheme_t {
-    serf__authn_scheme_t authn_scheme;
-
-    /* The magic number that helps identify this struct. */
-    apr_uint64_t magic;
-
-    /* The baton used by the callbacks.  */
-    void *baton;
-};
 
 #ifndef SERF__AUTHN__HAVE_UNREGISTER
 /* Declare the prototype for the internal unregister implementation */

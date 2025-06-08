@@ -627,7 +627,7 @@ apr_status_t serf_authn_register_scheme(const char *name,
                                         apr_pool_t *result_pool,
                                         int *type)
 {
-    serf__user_authn_scheme_t *user_scheme;
+    serf__authn_scheme_t *authn_scheme;
     apr_status_t lock_status;
     apr_status_t status;
     unsigned int scheme_type;
@@ -636,9 +636,7 @@ apr_status_t serf_authn_register_scheme(const char *name,
     int index;
 
     *type = SERF_AUTHN_NONE;
-    user_scheme = apr_palloc(result_pool, sizeof(*user_scheme));
-    user_scheme->magic = serf__authn_user__magic;
-    user_scheme->baton = baton;
+    authn_scheme = apr_palloc(result_pool, sizeof(*authn_scheme));
 
     /* Generate a lower-case key for the scheme. */
     key = cp = apr_pstrdup(result_pool, name);
@@ -646,13 +644,17 @@ apr_status_t serf_authn_register_scheme(const char *name,
         *cp = apr_tolower(*cp);
         ++cp;
     }
-    user_scheme->authn_scheme.name = apr_pstrdup(result_pool, name);
-    user_scheme->authn_scheme.key = key;
-    /* user_scheme->authn_scheme.type = ?; Will be updated later, under lock. */
-    user_scheme->authn_scheme.init_conn_func = serf__authn_user__init_conn;
-    user_scheme->authn_scheme.handle_func = serf__authn_user__handler;
-    user_scheme->authn_scheme.setup_request_func = serf__authn_user__setup_request;
-    user_scheme->authn_scheme.validate_response_func = serf__authn_user__validate_response;
+    authn_scheme->name = apr_pstrdup(result_pool, name);
+    authn_scheme->key = key;
+    /* user_scheme->type = ?; Will be updated later, under lock. */
+    authn_scheme->init_conn_func = serf__authn_user__init_conn;
+    authn_scheme->handle_func = serf__authn_user__handler;
+    authn_scheme->setup_request_func = serf__authn_user__setup_request;
+    authn_scheme->validate_response_func = serf__authn_user__validate_response;
+
+    /* User-defined scheme data. */
+    authn_scheme->magic = serf__authn_user__magic;
+    authn_scheme->baton = baton;
 
     lock_status = lock_autn_schemes(NULL /* TODO: whence cometh config? */);
     if (lock_status)
@@ -687,8 +689,8 @@ apr_status_t serf_authn_register_scheme(const char *name,
     }
 
     /* Insert into the slot, and add the sentinel. */
-    user_scheme->authn_scheme.type = scheme_type;
-    serf_authn_schemes[index] = &user_scheme->authn_scheme;
+    authn_scheme->type = scheme_type;
+    serf_authn_schemes[index] = authn_scheme;
     serf_authn_schemes[index + 1] = NULL;
     *type = scheme_type;
 

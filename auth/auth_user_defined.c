@@ -25,14 +25,11 @@
 #include "auth.h"
 
 
-static const serf__user_authn_scheme_t *
-safe_cast_scheme(const serf__authn_scheme_t *scheme)
+static const bool
+validate_user_authn(const serf__authn_scheme_t *scheme)
 {
-    const serf__user_authn_scheme_t *const user_scheme = (const void *)scheme;
-    if (scheme->type & *serf__authn_user__type_mask
-        && user_scheme->magic == serf__authn_user__magic)
-        return user_scheme;
-    return NULL;
+    return (scheme->type & *serf__authn_user__type_mask
+            && scheme->magic == serf__authn_user__magic);
 }
 
 apr_status_t
@@ -41,7 +38,7 @@ serf__authn_user__init_conn(const serf__authn_scheme_t *scheme,
                             serf_connection_t *conn,
                             apr_pool_t *pool)
 {
-    if (!safe_cast_scheme(scheme))
+    if (!validate_user_authn(scheme))
         return APR_EINVAL;
 
     return APR_ENOTIMPL;
@@ -56,7 +53,7 @@ serf__authn_user__handler(const serf__authn_scheme_t *scheme,
                           const char *auth_attr,
                           apr_pool_t *pool)
 {
-    if (!safe_cast_scheme(scheme))
+    if (!validate_user_authn(scheme))
         return APR_EINVAL;
 
     return APR_ENOTIMPL;
@@ -72,7 +69,7 @@ serf__authn_user__setup_request(const serf__authn_scheme_t *scheme,
                                 const char *uri,
                                 serf_bucket_t *hdrs_bkt)
 {
-    if (!safe_cast_scheme(scheme))
+    if (!validate_user_authn(scheme))
         return APR_EINVAL;
 
     return APR_ENOTIMPL;
@@ -87,7 +84,7 @@ serf__authn_user__validate_response(const serf__authn_scheme_t *scheme,
                                     serf_bucket_t *response,
                                     apr_pool_t *pool)
 {
-    if (!safe_cast_scheme(scheme))
+    if (!validate_user_authn(scheme))
         return APR_EINVAL;
 
     return APR_ENOTIMPL;

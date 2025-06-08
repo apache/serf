@@ -198,4 +198,6 @@ const serf__authn_scheme_t serf__basic_authn_scheme = {
     serf__handle_basic_auth,
     serf__setup_request_basic_auth,
     validate_response_func,
+
+    0                           /* user-defined scheme magic */
 };

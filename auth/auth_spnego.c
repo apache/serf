@@ -663,6 +663,8 @@ const serf__authn_scheme_t serf__spnego_authn_scheme = {
     serf__handle_spnego_auth,
     serf__setup_request_spnego_auth,
     serf__validate_response_spnego_auth,
+
+    0                           /* user-defined scheme magic */
 };
 
 #ifdef WIN32
@@ -674,6 +676,8 @@ const serf__authn_scheme_t serf__ntlm_authn_scheme = {
     serf__handle_spnego_auth,
     serf__setup_request_spnego_auth,
     serf__validate_response_spnego_auth,
+
+    0                           /* user-defined scheme magic */
 };
 #endif /* #ifdef WIN32 */
 
