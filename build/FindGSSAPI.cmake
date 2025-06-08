@@ -23,14 +23,13 @@ set(GSSAPI_FOUND FALSE)
 
 if(DEFINED GSSAPI_ROOT)
   get_filename_component(GSSAPI_ROOT "${GSSAPI_ROOT}" REALPATH)
-  find_program(KRB5_CONFIG_EXECUTABLE NAMES "krb5-config"
-               PATHS "${GSSAPI_ROOT}/bin" NO_DEFAULT_PATH)
-else()
-  find_program(KRB5_CONFIG_EXECUTABLE NAMES "krb5-config")
 endif()
+
+find_program(KRB5_CONFIG_EXECUTABLE NAMES "krb5-config"
+             PATH_SUFFIXES "bin" "${CMAKE_INSTALL_BINDIR}")
 mark_as_advanced(KRB5_CONFIG_EXECUTABLE)
 
-if("${KRB5_CONFIG_EXECUTABLE}" STREQUAL "KRB5_CONFIG_EXECUTABLE-NOTFOUND")
+if("${KRB5_CONFIG_EXECUTABLE}" MATCHES "-NOTFOUND")
   message(STATUS "Could NOT find GSSAPI (missing: krb5-config)")
 else()
   function(_krb5_config _varname _dedup)
