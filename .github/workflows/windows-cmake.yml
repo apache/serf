@@ -14,13 +14,15 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [windows-latest]
-        generator: ["Visual Studio 17 2022"]
         include:
-          - triplet: x64-windows
+          - os: windows-latest
             platform: x64
-          - triplet: x86-windows
+            triplet: x64-windows
+            generator: "Visual Studio 17 2022"
+          - os: windows-latest
             platform: Win32
+            triplet: x86-windows
+            generator: "Visual Studio 17 2022"
 
     runs-on: ${{ matrix.os }}
 
@@ -42,16 +44,17 @@ jobs:
 
       - name: Configure CMake
         run: >
-            cmake -B ${{github.workspace}}/build
-                  -G "${{ matrix.generator }}"
-                  --toolchain C:/vcpkg/scripts/buildsystems/vcpkg.cmake
-                  --install-prefix ${{github.workspace}}/install
-                  -DCMAKE_GENERATOR_PLATFORM=${{ matrix.platform }}
-                  -DAPR_ROOT=C:/vcpkg/installed/${{ matrix.triplet }}
-                  -DAPRUtil_ROOT=C:/vcpkg/installed/${{ matrix.triplet }}
-                  -DOPENSSL_ROOT_DIR=C:/vcpkg/installed/${{ matrix.triplet }}
-                  -DZLIB_ROOT=C:/vcpkg/installed/${{ matrix.triplet }}
-                  -DBrotli_ROOT=C:/vcpkg/installed/${{ matrix.triplet }}
+            cmake
+            -B ${{github.workspace}}/build
+            -G "${{ matrix.generator }}"
+            -DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake
+            -DCMAKE_INSTALL_PREFIX=${{github.workspace}}/install
+            -DCMAKE_GENERATOR_PLATFORM=${{ matrix.platform }}
+            -DAPR_ROOT=C:/vcpkg/installed/${{ matrix.triplet }}
+            -DAPRUtil_ROOT=C:/vcpkg/installed/${{ matrix.triplet }}
+            -DOPENSSL_ROOT_DIR=C:/vcpkg/installed/${{ matrix.triplet }}
+            -DZLIB_ROOT=C:/vcpkg/installed/${{ matrix.triplet }}
+            -DBrotli_ROOT=C:/vcpkg/installed/${{ matrix.triplet }}
 
       - name: Build (Release)
         run: cmake --build ${{github.workspace}}/build --config Release -j
