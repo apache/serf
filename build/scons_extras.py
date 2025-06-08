@@ -1,5 +1,3 @@
-#!/usr/bin/env python
-#
 # scons_extras.py :  SCons extensions and compatibility functinos.
 #
 # ===================================================================
@@ -86,7 +84,7 @@ char %s(void);''' % function_name
 
   lang, suffix, msg = _lang2suffix(language)
   if msg:
-    context.Display('Cannot check for %s(): %s\\n' % (function_name, msg))
+    context.Display('Cannot check for %s(): %s\n' % (function_name, msg))
     return msg
 
   text = '''
