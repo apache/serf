@@ -21,25 +21,41 @@
 #
 
 import sys
-import io
 import os
 import re
 
 EnsureSConsVersion(2,3,0)
 
-# SCons 4.7 introduced the argument list parameter to CheckFunc.
-# Of course, GetSConsVersion() was added in 4.8, it's more fun that way.
-have_check_func = False
+
+# Compatibility with old versions of SCons
 try:
-  if GetSConsVersion() >= (4, 7):
-    def CheckFunc(conf, name, code, lang='C', args=''):
-      return conf.CheckFunc(name, code, lang, args)
-    have_check_func = True
-except NameError:
+  # Python 2 / SCons 2.3.0 etc.
+  from cStringIO import StringIO
+  print("warning: replaced StringIO() for Python version < 3.")
+except ImportError:
+  # Python 3
+  from io import StringIO
+
+# Set up our additional config tests.
+src_dir = File('SConstruct').rfile().get_dir().abspath
+sys.path.insert(0, src_dir)
+import build.scons_extras
+
+custom_tests = {'CheckGnuCC': build.scons_extras.CheckGnuCC}
+
+# SCons 4.7 introduced the function argument list parameter to CheckFunc.
+try:
+  import SCons.Conftest as _conftest
+  _conftest.CheckFunc(None, 'clock', '#include <time.h>', 'C', '')
+except AttributeError:
+  # This comes from the 'None' context argument, above. It's fine, we just
+  # proved that CheckFunc has the funcargs parameter, so we don't have to
+  # replace it with our own implementation.
   pass
-if not have_check_func:
-  def CheckFunc(conf, name, code, lang='C', _=''):
-    return conf.CheckFunc(name, code, lang)
+except TypeError:
+  # We have version < 4.7 without funcargs, use our replacement CheckFunc.
+  custom_tests['CheckFunc'] = build.scons_extras.CheckFunc
+  print('warning: replaced Conftest.CheckFunc() for SCons version < 4.7.')
 
 
 HEADER_FILES = ['serf.h',
@@ -292,7 +308,7 @@ if sys.platform != 'win32':
     context.Result(result)
     return result
 
-  conf = Configure(env, custom_tests = dict(CheckGnuCC=CheckGnuCC))
+  conf = Configure(env, custom_tests=custom_tests)
   have_gcc = conf.CheckGnuCC()
   env = conf.Finish()
 
@@ -440,7 +456,7 @@ if sys.platform == 'win32':
   else:
     env.Append(CPPPATH=['$OPENSSL/inc32'],
                LIBPATH=['$OPENSSL/out32dll'])
-  conf = Configure(env)
+  conf = Configure(env, custom_tests=custom_tests)
   if conf.CheckLib('libcrypto'):
     # OpenSSL 1.1.0+
     env.Append(LIBS=['libcrypto.lib', 'libssl.lib'])
@@ -523,38 +539,38 @@ else:
 
 # Check for OpenSSL functions which are only available in some of
 # the versions we support. Also handles forks like LibreSSL.
-with io.StringIO(env.File('buckets/ssl_buckets.c')
-                 .rfile().get_text_contents()) as stream:
-  ssl_include_rx = re.compile(r'^\s*#\s*include\s+<openssl/[^>]+>')
-  ssl_include_list = []
-  for line in stream.readlines():
-    if ssl_include_rx.match(line):
-      ssl_include_list.append(line.rstrip())
+ssl_include_rx = re.compile(r'^\s*#\s*include\s+<openssl/[^>]+>')
+ssl_include_list = []
+stream = StringIO(env.File('buckets/ssl_buckets.c')
+                  .rfile().get_text_contents())
+for line in stream.readlines():
+  if ssl_include_rx.match(line):
+    ssl_include_list.append(line.rstrip())
 ssl_includes = '\n'.join(ssl_include_list)
 
 
-conf = Configure(env)
-if not CheckFunc(conf, 'BIO_set_init', ssl_includes, 'C', 'NULL, 0'):
+conf = Configure(env, custom_tests=custom_tests)
+if not conf.CheckFunc('BIO_set_init', ssl_includes, 'C', 'NULL, 0'):
   env.Append(CPPDEFINES=['SERF_NO_SSL_BIO_WRAPPERS'])
-if not CheckFunc(conf, 'X509_STORE_get0_param', ssl_includes, 'C', 'NULL'):
+if not conf.CheckFunc('X509_STORE_get0_param', ssl_includes, 'C', 'NULL'):
   env.Append(CPPDEFINES=['SERF_NO_SSL_X509_STORE_WRAPPERS'])
-if not CheckFunc(conf, 'X509_get0_notBefore', ssl_includes, 'C', 'NULL'):
+if not conf.CheckFunc('X509_get0_notBefore', ssl_includes, 'C', 'NULL'):
   env.Append(CPPDEFINES=['SERF_NO_SSL_X509_GET0_NOTBEFORE'])
-if not CheckFunc(conf, 'X509_get0_notAfter', ssl_includes, 'C', 'NULL'):
+if not conf.CheckFunc('X509_get0_notAfter', ssl_includes, 'C', 'NULL'):
   env.Append(CPPDEFINES=['SERF_NO_SSL_X509_GET0_NOTAFTER'])
-if not CheckFunc(conf, 'X509_STORE_CTX_get0_chain', ssl_includes, 'C', 'NULL'):
+if not conf.CheckFunc('X509_STORE_CTX_get0_chain', ssl_includes, 'C', 'NULL'):
   env.Append(CPPDEFINES=['SERF_NO_SSL_X509_GET0_CHAIN'])
-if not CheckFunc(conf, 'ASN1_STRING_get0_data', ssl_includes, 'C', 'NULL'):
+if not conf.CheckFunc('ASN1_STRING_get0_data', ssl_includes, 'C', 'NULL'):
   env.Append(CPPDEFINES=['SERF_NO_SSL_ASN1_STRING_GET0_DATA'])
-if CheckFunc(conf, 'CRYPTO_set_locking_callback', ssl_includes, 'C', 'NULL'):
+if conf.CheckFunc('CRYPTO_set_locking_callback', ssl_includes, 'C', 'NULL'):
   env.Append(CPPDEFINES=['SERF_HAVE_SSL_LOCKING_CALLBACKS'])
-if CheckFunc(conf, 'OPENSSL_malloc_init', ssl_includes):
+if conf.CheckFunc('OPENSSL_malloc_init', ssl_includes):
   env.Append(CPPDEFINES=['SERF_HAVE_OPENSSL_MALLOC_INIT'])
-if CheckFunc(conf, 'SSL_library_init', ssl_includes):
+if conf.CheckFunc('SSL_library_init', ssl_includes):
   env.Append(CPPDEFINES=['SERF_HAVE_OPENSSL_SSL_LIBRARY_INIT'])
-if CheckFunc(conf, 'OpenSSL_version_num', ssl_includes):
+if conf.CheckFunc('OpenSSL_version_num', ssl_includes):
   env.Append(CPPDEFINES=['SERF_HAVE_OPENSSL_VERSION_NUM'])
-if CheckFunc(conf, 'SSL_set_alpn_protos', ssl_includes, 'C', 'NULL, NULL, 0'):
+if conf.CheckFunc('SSL_set_alpn_protos', ssl_includes, 'C', 'NULL, NULL, 0'):
   env.Append(CPPDEFINES=['SERF_HAVE_OPENSSL_ALPN'])
 if conf.CheckType('OSSL_HANDSHAKE_STATE', ssl_includes):
   env.Append(CPPDEFINES=['SERF_HAVE_OSSL_HANDSHAKE_STATE'])
@@ -572,11 +588,11 @@ if sys.platform == 'win32':
   env.Append(CPPDEFINES=['SERF_HAVE_SSPI'])
 
 if brotli and CALLOUT_OKAY:
-  conf = Configure(env)
+  conf = Configure(env, custom_tests=custom_tests)
   if conf.CheckCHeader('brotli/decode.h') and \
-     CheckFunc(conf, 'BrotliDecoderTakeOutput',
-               '#include <brotli/decode.h>',
-               'C', 'NULL, NULL'):
+     conf.CheckFunc('BrotliDecoderTakeOutput',
+                    '#include <brotli/decode.h>',
+                    'C', 'NULL, NULL'):
     env.Append(CPPDEFINES=['SERF_HAVE_BROTLI'])
   else:
     print("Cannot find Brotli library >= 1.0.0 in '%s'." % env.get('BROTLI'))
@@ -610,7 +626,7 @@ pkgconfig = env.Textfile('serf-%d.pc' % (MAJOR,),
 env.Default(lib_static, lib_shared, pkgconfig)
 
 if CALLOUT_OKAY:
-  conf = Configure(env)
+  conf = Configure(env, custom_tests=custom_tests)
 
   ### some configuration stuffs
   if conf.CheckCHeader('stdbool.h'):
@@ -672,7 +688,6 @@ else:
 
 check_script = env.File('build/check.py').rstr()
 test_dir = env.File('test/test_all.c').rfile().get_dir()
-src_dir = env.File('serf.h').rfile().get_dir()
 test_app = ("%s %s %s %s") % (sys.executable, check_script, test_dir, 'test')
 
 # Set the library search path for the test programs
