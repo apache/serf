@@ -15,11 +15,13 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: windows-latest
+          - name: Windows x64
+            os: windows-latest
             platform: x64
             triplet: x64-windows
             generator: "Visual Studio 17 2022"
-          - os: windows-latest
+          - name: Windows x86
+            os: windows-latest
             platform: Win32
             triplet: x86-windows
             generator: "Visual Studio 17 2022"
