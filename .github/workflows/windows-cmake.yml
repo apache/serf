@@ -14,8 +14,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: windows-latest
-        generator: Visual Studio 17 2022
+        os: [windows-latest]
+        generator: ["Visual Studio 17 2022"]
         include:
           - triplet: x64-windows
             platform: x64
