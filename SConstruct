@@ -175,12 +175,13 @@ if sys.platform == 'win32':
     EnumVariable('TARGET_ARCH',
                  "Platform to build for",
                  'x86',
-                 allowed_values=('x86', 'x86_64', 'ia64'),
+                 allowed_values=('x86', 'x86_64', 'arm64', 'ia64'),
                  map={'X86'  : 'x86',
                       'win32': 'x86',
                       'Win32': 'x86',
                       'x64'  : 'x86_64',
-                      'X64'  : 'x86_64'
+                      'X64'  : 'x86_64',
+                      'ARM64': 'arm64'
                      }),
 
     EnumVariable('MSVC_VERSION',
@@ -385,7 +386,7 @@ if sys.platform == 'win32':
                          '_CRT_SECURE_NO_WARNINGS',
                          '_CRT_NONSTDC_NO_WARNINGS'])
 
-  if env.get('TARGET_ARCH', None) == 'x86_64':
+  if env.get('TARGET_ARCH', None) in ('x86_64', 'arm64', 'ia64'):
     env.Append(CPPDEFINES=['WIN64'])
 
   # Get the APR-Util version number to check if we need an external Expat
