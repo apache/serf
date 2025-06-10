@@ -40,6 +40,7 @@ except ImportError:
 src_dir = File('SConstruct').rfile().get_dir().abspath
 sys.path.insert(0, src_dir)
 import build.scons_extras
+import build.exports
 
 custom_tests = {'CheckGnuCC': build.scons_extras.CheckGnuCC}
 
@@ -213,12 +214,29 @@ env = Environment(variables=opts,
                   CPPPATH=['.', ],
                   )
 
+# "Legacy" .def file builder
 gen_def_script = env.File('build/gen_def.py').rstr()
-
 env.Append(BUILDERS = {
     'GenDef' :
       Builder(action = '"%s" "%s" $SOURCES > $TARGET' % (sys.executable, gen_def_script,),
               suffix='.def', src_suffix='.h')
+  })
+
+# Export symbol generator (for Windows DLL, Mach-O and ELF)
+export_generator = build.exports.ExportGenerator()
+if export_generator.target is None:
+  # Nothing to do on this platform
+  export_generator = None
+else:
+  def generate_exports(target, source, env):
+    for target_path in (str(t) for t in target):
+      stream = open(target_path, 'wt')
+      export_generator.generate(stream, *(str(s) for s in source))
+      stream.close()
+  env.Append(BUILDERS = {
+    'GenExports': Builder(action=generate_exports,
+                          suffix=export_generator.target.ext,
+                          src_suffix='.h')
   })
 
 match = re.search('SERF_MAJOR_VERSION ([0-9]+).*'
@@ -294,6 +312,11 @@ elif env['SHLIBPREFIX'] == '$LIBPREFIX':
 else:
   SHLIBNAME = '%sserf-%d' % (env['SHLIBPREFIX'], MAJOR)
 
+if export_generator is None:
+  export_filter = None
+else:
+  export_filter = '%s%s' % (SHLIBNAME, export_generator.target.ext)
+
 env.Append(RPATH=[libdir],
            PDB='${TARGET.filebase}.pdb')
 
@@ -359,16 +382,21 @@ else:
 # PLAN THE BUILD
 SHARED_SOURCES = []
 if sys.platform == 'win32':
-  env.GenDef(['serf.h','serf_bucket_types.h', 'serf_bucket_util.h'])
-  SHARED_SOURCES.append(['serf.def'])
+  env.GenDef(target=[export_filter], source=HEADER_FILES)
+  SHARED_SOURCES.append([export_filter])
   dll_res = env.RES(['serf.rc'])
   SHARED_SOURCES.append(dll_res)
+  # TODO: Use GenExports instead.
+  export_filter = None
 
 SOURCES = Glob('src/*.c') + Glob('buckets/*.c') + Glob('auth/*.c') + \
           Glob('protocols/*.c')
 
 lib_static = env.StaticLibrary(LIBNAME, SOURCES)
 lib_shared = env.SharedLibrary(SHLIBNAME, SOURCES + SHARED_SOURCES)
+if export_filter is not None:
+  env.GenExports(target=export_filter, source=HEADER_FILES)
+  env.Depends(lib_shared, export_filter)
 
 # Define OPENSSL_NO_STDIO to prevent using _fp() API.
 env.Append(CPPDEFINES=['OPENSSL_NO_STDIO'])
@@ -600,6 +628,20 @@ if brotli and CALLOUT_OKAY:
     Exit(1)
   env = conf.Finish()
 
+if CALLOUT_OKAY:
+  conf = Configure(env, custom_tests=custom_tests)
+
+  ### some configuration stuffs
+  if conf.CheckCHeader('stdbool.h'):
+    env.Append(CPPDEFINES=['HAVE_STDBOOL_H'])
+
+  env = conf.Finish()
+
+# Tweak the link flags for selecting exported symbols. Must come after the
+# config checks, because the symbols file doesn't exist yet.
+if export_filter is not None:
+  env.Append(LINKFLAGS=[export_generator.target.link_flag % export_filter])
+
 # Set preprocessor define to disable the logging framework
 if disablelogging:
     env.Append(CPPDEFINES=['SERF_DISABLE_LOGGING'])
@@ -625,16 +667,6 @@ pkgconfig = env.Textfile('serf-%d.pc' % (MAJOR,),
                            })
 
 env.Default(lib_static, lib_shared, pkgconfig)
-
-if CALLOUT_OKAY:
-  conf = Configure(env, custom_tests=custom_tests)
-
-  ### some configuration stuffs
-  if conf.CheckCHeader('stdbool.h'):
-    env.Append(CPPDEFINES=['HAVE_STDBOOL_H'])
-
-  env = conf.Finish()
-
 
 # INSTALLATION STUFF
 
