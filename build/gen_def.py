@@ -26,56 +26,10 @@
 #    C:\PATH> python build/gen_def.py serf.h serf_bucket_types.h serf_bucket_util.h > build/serf.def
 #
 
-import re
 import sys
-
-# This regex parses function declarations that look like:
-#
-#    return_type serf_func1(...
-#    return_type *serf_func2(...
-#
-# Where return_type is a combination of words and "*" each separated by a
-# SINGLE space. If the function returns a pointer type (like serf_func2),
-# then a space may exist between the "*" and the function name. Thus,
-# a more complicated example might be:
-#    const type * const * serf_func3(...
-#
-_funcs = re.compile(r'^(?:(?:\w+|\*) )+\*?(serf_[a-z][a-zA-Z_0-9]*)\(',
-                    re.MULTILINE)
-
-# This regex parses the bucket type definitions which look like:
-#
-#    extern const serf_bucket_type_t serf_bucket_type_FOO;
-#
-_types = re.compile(r'^extern const serf_bucket_type_t (serf_[a-z_]*);',
-                    re.MULTILINE)
-
-
-def extract_exports(fname):
-  content = open(fname).read()
-  exports = set()
-  for name in _funcs.findall(content):
-    exports.add(name)
-  for name in _types.findall(content):
-    exports.add(name)
-  return exports
-
-
-# Blacklist the serf v2 API for now
-BLACKLIST = set(['serf_connection_switch_protocol',
-                 'serf_http_protocol_create',
-                 'serf_https_protocol_create',
-                 'serf_http_request_queue',
-                 "serf_authn_unregister_scheme",
-                 ])
-
+import exports
 
 if __name__ == '__main__':
-  # run the extraction over each file mentioned
-  import sys
-  print("EXPORTS")
-
-  for fname in sys.argv[1:]:
-    funclist = extract_exports(fname) - BLACKLIST
-    for func in funclist:
-      print(func)
+  gen = exports.ExportGenerator(exports.TARGET_WINDLL)
+  if not gen.generate(sys.stdout, *sys.argv[1:]):
+    sys.exit(1)
