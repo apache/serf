@@ -981,7 +981,6 @@ apr_status_t serf_authn_register_scheme(const char *name,
                                         apr_pool_t *result_pool,
                                         int *type);
 
-#ifdef SERF__AUTHN__HAVE_UNREGISTER
 /* FIXME: Think some more about whether unregistering schemes makes sense. */
 /**
  * Unregister an uthentication scheme.
@@ -999,10 +998,9 @@ apr_status_t serf_authn_register_scheme(const char *name,
  *
  * @since New in 1.4
  */
-apr_status_t serf_authn_unregister_scheme(int type,
-                                          const char *name,
-                                          apr_pool_t *scratch_pool);
-#endif  /* SERF__AUTHN__HAVE_UNREGISTER */
+/* apr_status_t serf_authn_unregister_scheme(int type, */
+/*                                           const char *name, */
+/*                                           apr_pool_t *scratch_pool); */
 
 /** @} */
 

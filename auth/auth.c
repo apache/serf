@@ -704,11 +704,9 @@ apr_status_t serf_authn_register_scheme(const char *name,
     return status;
 }
 
-#ifdef SERF__AUTHN__HAVE_UNREGISTER
-apr_status_t serf_authn_unregister_scheme(int type,
-                                          const char *name,
-                                          apr_pool_t *scratch_pool)
-#else
+/* apr_status_t serf_authn_unregister_scheme(int type, */
+/*                                           const char *name, */
+/*                                           apr_pool_t *scratch_pool) */
 apr_status_t serf__authn__unregister_scheme(int type,
                                             const char *name,
                                             apr_pool_t *scratch_pool)
@@ -770,7 +768,6 @@ apr_status_t serf__authn__unregister_scheme(int type,
         return lock_status;
     return status;
 }
-#endif  /* SERF__AUTHN__HAVE_UNREGISTER */
 
 
 #if APR_HAS_THREADS

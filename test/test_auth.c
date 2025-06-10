@@ -512,17 +512,12 @@ static void test_auth_on_HEAD(CuTest *tc)
 }
 
 
-#ifndef SERF__AUTHN__HAVE_UNREGISTER
-/* FIXME: Temporary implementation of unregister function. */
+/* FIXME: Temporary rename of the unregister function. */
+#define serf_authn_unregister_scheme(type, name, scratch_pool) \
+    serf__authn__unregister_scheme((type), (name), (scratch_pool))
 apr_status_t serf__authn__unregister_scheme(int type,
                                             const char *name,
                                             apr_pool_t *scratch_pool);
-static apr_status_t serf_authn_unregister_scheme(int type, const char *name,
-                                                 apr_pool_t *pool)
-{
-    return serf__authn__unregister_scheme(type, name, pool);
-}
-#endif
 
 static void test_authn_register_one(CuTest *tc)
 {
@@ -537,7 +532,7 @@ static void test_authn_register_one(CuTest *tc)
     CuAssertTrue(tc, type != SERF_AUTHN_NONE);
 
     /* Unregister the scheme */
-    status =serf_authn_unregister_scheme(type, "fiZzlE", tb->pool);
+    status = serf_authn_unregister_scheme(type, "fiZzlE", tb->pool);
     CuAssertIntEquals(tc, APR_SUCCESS, status);
 }
 

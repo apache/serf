@@ -123,7 +123,6 @@ list(APPEND EXPORTS_BLACKLIST
      "serf_http_protocol_create"
      "serf_https_protocol_create"
      "serf_http_request_queue"
-     "serf_authn_unregister_scheme"
 )
 
 # Serf library source files
