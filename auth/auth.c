@@ -72,7 +72,7 @@ static apr_pool_t *authn_schemes_guard_pool;
 static apr_status_t init_authn_schemes_guard();
 #endif
 
-static apr_status_t lock_autn_schemes(serf_config_t *config)
+static apr_status_t lock_authn_schemes(serf_config_t *config)
 {
 #if APR_HAS_THREADS
     apr_status_t status = init_authn_schemes_guard();
@@ -91,7 +91,7 @@ static apr_status_t lock_autn_schemes(serf_config_t *config)
 #endif
 }
 
-static apr_status_t unlock_autn_schemes(serf_config_t *config)
+static apr_status_t unlock_authn_schemes(serf_config_t *config)
 {
 #if APR_HAS_THREADS
     apr_status_t status = init_authn_schemes_guard();
@@ -147,7 +147,7 @@ static int handle_auth_headers(int code,
     serf_context_t *ctx = conn->ctx;
     apr_status_t status, lock_status;
 
-    lock_status = lock_autn_schemes(conn->config);
+    lock_status = lock_authn_schemes(conn->config);
     if (lock_status)
         return lock_status;
 
@@ -230,7 +230,7 @@ static int handle_auth_headers(int code,
         authn_info->failed_authn_types |= scheme->type;
     }
 
-    lock_status = unlock_autn_schemes(conn->config);
+    lock_status = unlock_authn_schemes(conn->config);
     if (lock_status)
         return lock_status;
 
@@ -623,7 +623,8 @@ static unsigned int find_next_user_scheme_type(void)
     return avail & -avail;
 }
 
-apr_status_t serf_authn_register_scheme(const char *name,
+apr_status_t serf_authn_register_scheme(serf_context_t *ctx,
+                                        const char *name,
                                         void *baton,
                                         apr_pool_t *result_pool,
                                         int *type)
@@ -649,7 +650,7 @@ apr_status_t serf_authn_register_scheme(const char *name,
     authn_scheme->key = key;
     /* user_scheme->type = ?; Will be updated later, under lock. */
     authn_scheme->init_conn_func = serf__authn_user__init_conn;
-    authn_scheme->handle_func = serf__authn_user__handler;
+    authn_scheme->handle_func = serf__authn_user__handle;
     authn_scheme->setup_request_func = serf__authn_user__setup_request;
     authn_scheme->validate_response_func = serf__authn_user__validate_response;
 
@@ -657,7 +658,7 @@ apr_status_t serf_authn_register_scheme(const char *name,
     authn_scheme->magic = serf__authn_user__magic;
     authn_scheme->baton = baton;
 
-    lock_status = lock_autn_schemes(NULL /* TODO: whence cometh config? */);
+    lock_status = lock_authn_schemes(ctx->config);
     if (lock_status)
         return lock_status;
 
@@ -699,16 +700,18 @@ apr_status_t serf_authn_register_scheme(const char *name,
     user_authn_registered |= scheme_type;
 
   cleanup:
-    lock_status = unlock_autn_schemes(NULL /* TODO: whence cometh config? */);
+    lock_status = unlock_authn_schemes(ctx->config);
     if (lock_status)
         return lock_status;
     return status;
 }
 
-/* apr_status_t serf_authn_unregister_scheme(int type, */
+/* apr_status_t serf_authn_unregister_scheme(serf_context_t *ctx, */
+/*                                           int type, */
 /*                                           const char *name, */
-/*                                           apr_pool_t *scratch_pool) */
-apr_status_t serf__authn__unregister_scheme(int type,
+/*                                           apr_pool_t *scratch_pool); */
+apr_status_t serf__authn__unregister_scheme(serf_context_t *ctx,
+                                            int type,
                                             const char *name,
                                             apr_pool_t *scratch_pool)
 {
@@ -726,7 +729,7 @@ apr_status_t serf__authn__unregister_scheme(int type,
         ++cp;
     }
 
-    lock_status = lock_autn_schemes(NULL /* TODO: whence cometh config? */);
+    lock_status = lock_authn_schemes(ctx->config);
     if (lock_status)
         return lock_status;
 
@@ -764,7 +767,7 @@ apr_status_t serf__authn__unregister_scheme(int type,
     user_authn_registered &= ~scheme_type;
 
   cleanup:
-    lock_status = unlock_autn_schemes(NULL /* TODO: whence cometh config? */);
+    lock_status = unlock_authn_schemes(ctx->config);
     if (lock_status)
         return lock_status;
     return status;

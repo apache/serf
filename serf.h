@@ -977,6 +977,8 @@ serf_bucket_t *serf_request_bucket_request_create(
  * authorization headers. It must be a valid token as defined in RFC-9110
  * (see reference, below).
  *
+ * The context in @a ctx is used for logging.
+ *
  * Internal structures related to this provider will be allocated from
  * @a result_pool, so take care that it lives as long as the autehtication
  * scheme is registered.
@@ -984,8 +986,8 @@ serf_bucket_t *serf_request_bucket_request_create(
  * @see https://www.rfc-editor.org/rfc/rfc9110#section-11.1
  * @since New in 1.4
  */
-
-apr_status_t serf_authn_register_scheme(const char *name,
+apr_status_t serf_authn_register_scheme(serf_context_t *ctx,
+                                        const char *name,
                                         void *baton,
                                         apr_pool_t *result_pool,
                                         int *type);
@@ -1000,6 +1002,8 @@ apr_status_t serf_authn_register_scheme(const char *name,
  * temporary allocations; this pool can be destroyed afterthe function
  * returns.
  *
+ * The context in @a ctx is used for logging.
+ *
  * Unregistering a scheme should be avoided while requests that might
  * use the scheme are in flight.
  *
@@ -1007,7 +1011,8 @@ apr_status_t serf_authn_register_scheme(const char *name,
  *
  * @since New in 1.4
  */
-/* apr_status_t serf_authn_unregister_scheme(int type, */
+/* apr_status_t serf_authn_unregister_scheme(serf_context_t *ctx, */
+/*                                           int type, */
 /*                                           const char *name, */
 /*                                           apr_pool_t *scratch_pool); */
 

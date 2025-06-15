@@ -45,13 +45,13 @@ serf__authn_user__init_conn(const serf__authn_scheme_t *scheme,
 }
 
 apr_status_t
-serf__authn_user__handler(const serf__authn_scheme_t *scheme,
-                          int code,
-                          serf_request_t *request,
-                          serf_bucket_t *response,
-                          const char *auth_hdr,
-                          const char *auth_attr,
-                          apr_pool_t *pool)
+serf__authn_user__handle(const serf__authn_scheme_t *scheme,
+                         int code,
+                         serf_request_t *request,
+                         serf_bucket_t *response,
+                         const char *auth_hdr,
+                         const char *auth_attr,
+                         apr_pool_t *pool)
 {
     if (!validate_user_authn(scheme))
         return APR_EINVAL;
