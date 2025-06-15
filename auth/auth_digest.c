@@ -264,7 +264,7 @@ serf__handle_digest_auth(const serf__authn_scheme_t *scheme,
         return SERF_ERROR_AUTHN_FAILED;
     }
 
-    if (code == 401) {
+    if (code == SERF_AUTHN_CODE_HOST) {
         authn_info = serf__get_authn_info_for_server(conn);
     } else {
         authn_info = &ctx->proxy_authn_info;
@@ -318,7 +318,7 @@ serf__handle_digest_auth(const serf__authn_scheme_t *scheme,
         return SERF_ERROR_AUTHN_MISSING_ATTRIBUTE;
     }
 
-    realm = serf__construct_realm(code == 401 ? HOST : PROXY,
+    realm = serf__construct_realm(SERF__PEER_FROM_CODE(code),
                                   conn, realm_name,
                                   pool);
 
@@ -334,8 +334,7 @@ serf__handle_digest_auth(const serf__authn_scheme_t *scheme,
         return status;
     }
 
-    digest_info->header = (code == 401) ? "Authorization" :
-                                          "Proxy-Authorization";
+    digest_info->header = SERF__HEADER_FROM_CODE(code);
 
     /* Store the digest authentication parameters in the context cached for
        this server in the serf context, so we can use it to create the
@@ -375,7 +374,7 @@ serf__init_digest_connection(const serf__authn_scheme_t *scheme,
     serf_context_t *ctx = conn->ctx;
     serf__authn_info_t *authn_info;
 
-    if (code == 401) {
+    if (code == SERF_AUTHN_CODE_HOST) {
         authn_info = serf__get_authn_info_for_server(conn);
     } else {
         authn_info = &ctx->proxy_authn_info;
@@ -437,8 +436,7 @@ serf__setup_request_digest_auth(const serf__authn_scheme_t *scheme,
         }
 
         /* Build a new Authorization header. */
-        digest_info->header = (peer == HOST) ? "Authorization" :
-            "Proxy-Authorization";
+        digest_info->header = SERF__HEADER_FROM_PEER(peer);
         status = build_auth_header(&value, digest_info, path, method,
                                    conn->pool);
         if (status)

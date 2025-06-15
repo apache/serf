@@ -149,6 +149,19 @@ extern const serf__authn_scheme_t serf__ntlm_authn_scheme;
 
 #endif /* SERF_HAVE_SPNEGO */
 
+/** Helper macros for code <-> peer <-> header conversion */
+#define SERF__PEER_FROM_CODE(code) \
+    (((code) == SERF_AUTHN_CODE_HOST) ? HOST : PROXY)
+
+#define SERF__CODE_FROM_PEER(peer) \
+    (((peer) == HOST) ? SERF_AUTHN_CODE_HOST : SERF_AUTHN_CODE_PROXY)
+
+#define SERF__HEADER_FROM_CODE(code) \
+    SERF__HEADER_FROM_PEER(SERF__PEER_FROM_CODE((code)))
+
+#define SERF__HEADER_FROM_PEER(peer) \
+    (((peer) == HOST) ? "Authorization" : "Proxy-Authorization")
+
 /** User-defined authentication scheme handlers */
 
 /* FIXME: Declare the prototype for the internal unregister implementation */

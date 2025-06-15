@@ -443,7 +443,11 @@ typedef apr_status_t (*serf_response_handler_t)(
  * can handle server and proxy authentication.
  * code = 401 (server) or 407 (proxy).
  * baton = the baton passed to serf_context_run.
- * authn_type = one of "Basic", "Digest".
+ * authn_type = one of "Basic", "Digest", or the name of a user-defined
+ *              authentication scheme if it uses this callback.
+ *
+ * @see SERF_AUTHN_CODE_HOST
+ * @see SERF_AUTHN_CODE_PROXY
  */
 typedef apr_status_t (*serf_credentials_callback_t)(
     char **username,
@@ -956,6 +960,11 @@ serf_bucket_t *serf_request_bucket_request_create(
 #define SERF_AUTHN_NTLM      0x04 /**< Authentication type: NTLM */
 #define SERF_AUTHN_NEGOTIATE 0x08 /**< Authentication type: Negotiate */
 #define SERF_AUTHN_ALL      ~0x00 /**< All authentication types */
+
+/* For user-defined authentication callbacks: these the sources of an
+   authentication callback. */
+#define SERF_AUTHN_CODE_HOST  401 /**< Authentication request from a host */
+#define SERF_AUTHN_CODE_PROXY 407 /**< Authentication requset from a proxy */
 
 /**
  * Register an autehtication scheme.

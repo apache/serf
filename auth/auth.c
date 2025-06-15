@@ -173,7 +173,7 @@ static int handle_auth_headers(int code,
         if (!auth_hdr)
             continue;
 
-        if (code == 401) {
+        if (code == SERF_AUTHN_CODE_HOST) {
             authn_info = serf__get_authn_info_for_server(conn);
         } else {
             authn_info = &ctx->proxy_authn_info;
@@ -284,14 +284,14 @@ static apr_status_t dispatch_auth(int code,
                                   serf_bucket_t *response,
                                   apr_pool_t *pool)
 {
-    if (code == 401 || code == 407) {
+    if (code == SERF_AUTHN_CODE_HOST || code == SERF_AUTHN_CODE_PROXY) {
         serf_bucket_t *hdrs;
         auth_baton_t ab = { 0 };
 
         ab.hdrs = apr_hash_make(pool);
         ab.pool = pool;
 
-        if (code == 401)
+        if (code == SERF_AUTHN_CODE_HOST)
             ab.header = "WWW-Authenticate";
         else
             ab.header = "Proxy-Authenticate";
@@ -314,7 +314,8 @@ static apr_status_t dispatch_auth(int code,
                 serf__log(LOGLVL_DEBUG, LOGCOMP_AUTHN, __FILE__,
                           request->conn->config,
                           "%s authz required. Response header(s): %s\n",
-                          code == 401 ? "Server" : "Proxy", auth_hdr);
+                          code == SERF_AUTHN_CODE_HOST ? "Server" : "Proxy",
+                          auth_hdr);
             }
         }
 #endif /* SERF_LOGGING_ENABLED */
@@ -379,7 +380,7 @@ apr_status_t serf__handle_auth_response(bool *consumed_response,
         return APR_SUCCESS;
     }
 
-    if (sl.code == 401 || sl.code == 407) {
+    if (sl.code == SERF_AUTHN_CODE_HOST || sl.code == SERF_AUTHN_CODE_PROXY) {
         /* Authentication requested. */
 
         /* Don't bother handling the authentication request if the response
@@ -526,16 +527,16 @@ apr_status_t serf__auth_setup_connection(peer_t peer,
         authn_info = &ctx->proxy_authn_info;
         if (authn_info->scheme) {
             status = authn_info->scheme->init_conn_func(authn_info->scheme,
-                                                        407, conn,
-                                                        conn->pool);
+                                                        SERF_AUTHN_CODE_PROXY,
+                                                        conn, conn->pool);
         }
     }
     else {
         authn_info = serf__get_authn_info_for_server(conn);
         if (authn_info->scheme) {
             status = authn_info->scheme->init_conn_func(authn_info->scheme,
-                                                        401, conn,
-                                                        conn->pool);
+                                                        SERF_AUTHN_CODE_HOST,
+                                                        conn, conn->pool);
         }
     }
 

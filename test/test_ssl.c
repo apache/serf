@@ -1399,7 +1399,7 @@ static void test_ssltunnel_no_creds_cb(CuTest *tc)
       RequestsReceivedByProxy
         HTTPRequest(MethodEqualTo("CONNECT"),
                     URLEqualTo(tb->serv_host))
-          Respond(WithCode(407), WithChunkedBody(""),
+          Respond(WithCode(SERF_AUTHN_CODE_PROXY), WithChunkedBody(""),
                   WithHeader("Proxy-Authentication",
                              "Basic realm=\"Test Suite Proxy\""))
           SetupSSLTunnel
@@ -1430,7 +1430,7 @@ ssltunnel_basic_authn_callback(char **username,
     if (strcmp("Basic", authn_type) != 0)
         return REPORT_TEST_SUITE_ERROR();
 
-    if (code == 401) {
+    if (code == SERF_AUTHN_CODE_HOST) {
         if (strcmp(apr_psprintf(pool, "<%s> Test Suite", tb->serv_url),
                    realm) != 0)
             return REPORT_TEST_SUITE_ERROR();
@@ -1438,7 +1438,7 @@ ssltunnel_basic_authn_callback(char **username,
         *username = "serf";
         *password = "serftest";
     }
-    else if (code == 407) {
+    else if (code == SERF_AUTHN_CODE_PROXY) {
         if (strcmp(apr_psprintf(pool, "<http://localhost:%u> Test Suite Proxy",
                                 tb->proxy_port), realm) != 0)
             return REPORT_TEST_SUITE_ERROR();
@@ -1482,7 +1482,7 @@ static void ssltunnel_basic_auth(CuTest *tc, int serv_close_conn,
     Given(tb->mh)
       RequestsReceivedByServer
         GETRequest(URLEqualTo("/"), HeaderNotSet("Authorization"))
-          Respond(WithCode(401),WithChunkedBody("1"),
+          Respond(WithCode(SERF_AUTHN_CODE_HOST),WithChunkedBody("1"),
                   WithHeader("www-Authenticate", "bAsIc realm=\"Test Suite\""),
                   OnConditionThat(serv_close_conn, WithConnectionCloseHeader))
         GETRequest(URLEqualTo("/"),
@@ -1492,7 +1492,7 @@ static void ssltunnel_basic_auth(CuTest *tc, int serv_close_conn,
         HTTPRequest(MethodEqualTo("CONNECT"),
                     URLEqualTo(tb->serv_host),
                     HeaderNotSet("Proxy-Authorization"))
-          Respond(WithCode(407), WithChunkedBody(""),
+          Respond(WithCode(SERF_AUTHN_CODE_PROXY), WithChunkedBody(""),
                   WithHeader("Proxy-Authenticate",
                              "Basic realm=\"Test Suite Proxy\""),
                   OnConditionThat(proxy407_close_conn, WithConnectionCloseHeader))
@@ -1573,7 +1573,7 @@ basic_authn_callback_2ndtry(char **username,
     if (strcmp("Basic", authn_type) != 0)
         return REPORT_TEST_SUITE_ERROR();
 
-    if (code == 401) {
+    if (code == SERF_AUTHN_CODE_HOST) {
         if (strcmp(apr_psprintf(pool, "<%s> Test Suite", tb->serv_url),
                    realm) != 0)
             return REPORT_TEST_SUITE_ERROR();
@@ -1581,7 +1581,7 @@ basic_authn_callback_2ndtry(char **username,
         *username = "serf";
         *password = secondtry ? "serftest" : "wrongpwd";
     }
-    else if (code == 407) {
+    else if (code == SERF_AUTHN_CODE_PROXY) {
         if (strcmp(apr_psprintf(pool, "<http://localhost:%u> Test Suite Proxy",
                                 tb->proxy_port), realm) != 0)
             return REPORT_TEST_SUITE_ERROR();
@@ -1640,7 +1640,7 @@ static void test_ssltunnel_basic_auth_2ndtry(CuTest *tc)
         HTTPRequest(MethodEqualTo("CONNECT"),
                     URLEqualTo(tb->serv_host),
                     HeaderNotSet("Proxy-Authorization"))
-            Respond(WithCode(407), WithChunkedBody(""),
+            Respond(WithCode(SERF_AUTHN_CODE_PROXY), WithChunkedBody(""),
                     WithHeader("Proxy-Authenticate",
                                "Basic realm=\"Test Suite Proxy\""))
         /* serfproxy:wrongpwd fails, close connection. */
@@ -1648,7 +1648,7 @@ static void test_ssltunnel_basic_auth_2ndtry(CuTest *tc)
                     URLEqualTo(tb->serv_host),
                     HeaderNotEqualTo("Proxy-Authorization",
                                      "Basic c2VyZnByb3h5OnNlcmZ0ZXN0"))
-            Respond(WithCode(407), WithChunkedBody(""),
+            Respond(WithCode(SERF_AUTHN_CODE_PROXY), WithChunkedBody(""),
                     WithHeader("Proxy-Authenticate",
                                "Basic realm=\"Test Suite Proxy\""))
             CloseConnection
@@ -1697,7 +1697,7 @@ proxy_digest_authn_callback(char **username,
 
     tb->result_flags |= TEST_RESULT_AUTHNCB_CALLED;
 
-    if (code != 407)
+    if (code != SERF_AUTHN_CODE_PROXY)
         return REPORT_TEST_SUITE_ERROR();
     if (strcmp("Digest", authn_type) != 0)
         return REPORT_TEST_SUITE_ERROR();
@@ -1790,7 +1790,7 @@ static void test_ssltunnel_digest_auth(CuTest *tc)
         HTTPRequest(MethodEqualTo("CONNECT"),
                     URLEqualTo(tb->serv_host),
                     HeaderNotSet("Proxy-Authorization"))
-          Respond(WithCode(407), WithChunkedBody("1"),
+          Respond(WithCode(SERF_AUTHN_CODE_PROXY), WithChunkedBody("1"),
                   WithHeader("Proxy-Authenticate",
                              "Basic realm=\"Test Suite Proxy\""),
                   WithHeader("Proxy-Authenticate", "NonExistent blablablabla"),
@@ -1839,7 +1839,7 @@ static void test_ssltunnel_spnego_authn(CuTest *tc)
         HTTPRequest(MethodEqualTo("CONNECT"),
                     URLEqualTo(tb->serv_host),
                     HeaderEqualTo("Host", tb->serv_host))
-          Respond(WithCode(407),
+          Respond(WithCode(SERF_AUTHN_CODE_PROXY),
                   WithHeader("Proxy-Authenticate", "Negotiate"),
                   WithHeader("Proxy-Authenticate", "Kerberos"),
                   WithHeader("Proxy-Authenticate", "NTLM"),
@@ -1873,7 +1873,7 @@ static void test_server_spnego_authn(CuTest *tc)
     Given(tb->mh)
       GETRequest(URLEqualTo("/"),
                  HeaderEqualTo("Host", tb->serv_host))
-        Respond(WithCode(401),
+        Respond(WithCode(SERF_AUTHN_CODE_HOST),
                 WithHeader("WWW-Authenticate", "Negotiate"),
                 WithHeader("Content-Type", "text/html"),
                 WithBody("<html><body>Authn required</body></html>"))

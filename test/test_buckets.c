@@ -1532,7 +1532,7 @@ static void test_response_bucket_iis_status_code(CuTest *tc)
 
     serf_bucket_response_status(bkt, &sline);
     CuAssertTrue(tc, sline.version == SERF_HTTP_11);
-    CuAssertIntEquals(tc, 401, sline.code);
+    CuAssertIntEquals(tc, SERF_AUTHN_CODE_HOST, sline.code);
 
     /* Probably better to have just "Logon failed" as reason. But current
        behavior is also acceptable.*/
@@ -1563,7 +1563,7 @@ static void test_response_bucket_no_reason(CuTest *tc)
 
     serf_bucket_response_status(bkt, &sline);
     CuAssertTrue(tc, sline.version == SERF_HTTP_11);
-    CuAssertIntEquals(tc, 401, sline.code);
+    CuAssertIntEquals(tc, SERF_AUTHN_CODE_HOST, sline.code);
 
     /* Probably better to have just "Logon failed" as reason. But current
        behavior is also acceptable.*/

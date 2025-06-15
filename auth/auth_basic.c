@@ -62,7 +62,7 @@ serf__handle_basic_auth(const serf__authn_scheme_t *scheme,
         return SERF_ERROR_AUTHN_FAILED;
     }
 
-    if (code == 401) {
+    if (code == SERF_AUTHN_CODE_HOST) {
         authn_info = serf__get_authn_info_for_server(conn);
     } else {
         authn_info = &ctx->proxy_authn_info;
@@ -88,7 +88,7 @@ serf__handle_basic_auth(const serf__authn_scheme_t *scheme,
             return SERF_ERROR_AUTHN_MISSING_ATTRIBUTE;
         }
 
-        realm = serf__construct_realm(code == 401 ? HOST : PROXY,
+        realm = serf__construct_realm(SERF__PEER_FROM_CODE(code),
                                       conn, realm_name,
                                       pool);
     }
@@ -112,7 +112,7 @@ serf__handle_basic_auth(const serf__authn_scheme_t *scheme,
     serf__encode_auth_header(&basic_info->value,
                              scheme->name,
                              tmp, tmp_len, pool);
-    basic_info->header = (code == 401) ? "Authorization" : "Proxy-Authorization";
+    basic_info->header = SERF__HEADER_FROM_CODE(code);
 
     return APR_SUCCESS;
 }
@@ -133,7 +133,7 @@ serf__init_basic_connection(const serf__authn_scheme_t *scheme,
     serf_context_t *ctx = conn->ctx;
     serf__authn_info_t *authn_info;
 
-    if (code == 401) {
+    if (code == SERF_AUTHN_CODE_HOST) {
         authn_info = serf__get_authn_info_for_server(conn);
     } else {
         authn_info = &ctx->proxy_authn_info;
