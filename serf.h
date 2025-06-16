@@ -966,18 +966,73 @@ serf_bucket_t *serf_request_bucket_request_create(
 #define SERF_AUTHN_CODE_HOST  401 /**< Authentication request from a host */
 #define SERF_AUTHN_CODE_PROXY 407 /**< Authentication requset from a proxy */
 
+/* Flags returned from the init-connection callback. */
+#define SERF_AUTHN_FLAG_NONE  0x00 /**< Authn flags: None */
+#define SERF_AUTHN_FLAG_PIPE  0x01 /**< Authn flags: Allow pipelining */
+#define SERF_AUTHN_FLAG_CREDS 0x02 /**< Authn flags: Require credentials */
+
+/** TODO:  */
+typedef apr_status_t
+(*serf_authn_init_conn_func_t)(void *baton, int code,
+                               apr_pool_t *result_pool,
+                               apr_pool_t *scratch_pool,
+                               void **authn_baton);
+
+/** TODO:  */
+typedef apr_status_t
+(*serf_authn_handle_func_t)(void *baton,
+                            int code,
+                            serf_request_t *request,
+                            serf_bucket_t *response,
+                            const char *auth_hdr,
+                            const char *auth_attr,
+                            apr_pool_t *result_pool,
+                            apr_pool_t *scratch_pool);
+
+/** TODO:  */
+typedef apr_status_t
+(*serf_authn_setup_request_func_t)(void *baton,
+                                   int peer,
+                                   int code,
+                                   serf_connection_t *conn,
+                                   serf_request_t *request,
+                                   const char *method,
+                                   const char *uri,
+                                   serf_bucket_t *headers,
+                                   apr_pool_t *scratch_pool);
+
+/** TODO:  */
+typedef apr_status_t
+(*serf_authn_validate_response_func_t)(void *baton,
+                                       int peer,
+                                       int code,
+                                       serf_connection_t *conn,
+                                       serf_request_t *request,
+                                       serf_bucket_t *response,
+                                       apr_pool_t *scratch_pool);
+
 /**
  * Register an autehtication scheme.
  *
- * The number returned in @a type can be used as a bit mask in
- * serf_config_authn_types(). If an error occurs during registration,
- * @a type will be set to @c SERF_AUTHN_NONE.
+ * The context in @a ctx is used for logging.
  *
  * The @a name is the name of the authentication scheme as it appears in the
  * authorization headers. It must be a valid token as defined in RFC-9110
  * (see reference, below).
  *
- * The context in @a ctx is used for logging.
+ * @a baton will be passed unchanged to the callbacks.
+ *
+ * @a flags is a bitmask of @c APR_AUTHN_FLAG_* constants that define the
+ * scheme's requirements; e.g., whether the credentials callback should be
+ * invoked, or whether pipelining should be disabled while the authentication
+ * handshake is in progress.
+ *
+ * @a init_conn, @a handle, @a setup_request and @a validate_response are the
+ * callbacks that implement the authentication handshake for this scheme.
+ *
+ * The number returned in @a type can be used as a bit mask in
+ * serf_config_authn_types(). If an error occurs during registration,
+ * @a type will be set to @c SERF_AUTHN_NONE.
  *
  * Internal structures related to this provider will be allocated from
  * @a result_pool, so take care that it lives as long as the autehtication
@@ -986,11 +1041,14 @@ serf_bucket_t *serf_request_bucket_request_create(
  * @see https://www.rfc-editor.org/rfc/rfc9110#section-11.1
  * @since New in 1.4
  */
-apr_status_t serf_authn_register_scheme(serf_context_t *ctx,
-                                        const char *name,
-                                        void *baton,
-                                        apr_pool_t *result_pool,
-                                        int *type);
+apr_status_t serf_authn_register_scheme(
+    serf_context_t *ctx, const char *name, void *baton, int flags,
+    serf_authn_init_conn_func_t init_conn,
+    serf_authn_handle_func_t handle,
+    serf_authn_setup_request_func_t setup_request,
+    serf_authn_validate_response_func_t validate_response,
+    apr_pool_t *result_pool,
+    int *type);
 
 /* FIXME: Think some more about whether unregistering schemes makes sense. */
 /**
@@ -999,8 +1057,8 @@ apr_status_t serf_authn_register_scheme(serf_context_t *ctx,
  * Removes the scheme, identified by @a type that was returned from and
  * @a name that was supplied to serf_authn_register_scheme(), from the
  * list of supported authentication schemes. Uses @a scratch_pool for
- * temporary allocations; this pool can be destroyed afterthe function
- * returns.
+ * temporary allocations; this pool can be destroyed after the function
+ * has returned.
  *
  * The context in @a ctx is used for logging.
  *

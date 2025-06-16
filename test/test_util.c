@@ -427,17 +427,18 @@ setup_test_context(test_baton_t *tb, apr_pool_t *pool)
     serf_log_output_t *output;
     apr_status_t status = APR_SUCCESS;
 
-    if (!tb->context)
+    if (!tb->context) {
         tb->context = serf_context_create(pool);
 
-    if (TEST_VERBOSE) {
-        status = serf_logging_create_stream_output(&output, tb->context,
-                                                   SERF_LOG_DEBUG,
-                                                   SERF_LOGCOMP_ALL,
-                                                   SERF_LOG_DEFAULT_LAYOUT,
-                                                   stderr, pool);
-        if (status == APR_SUCCESS)
-            status = serf_logging_add_output(tb->context, output);
+        if (TEST_VERBOSE) {
+            status = serf_logging_create_stream_output(&output, tb->context,
+                                                       SERF_LOG_DEBUG,
+                                                       SERF_LOGCOMP_ALL,
+                                                       SERF_LOG_DEFAULT_LAYOUT,
+                                                       stderr, pool);
+            if (status == APR_SUCCESS)
+                status = serf_logging_add_output(tb->context, output);
+        }
     }
 
     return status;

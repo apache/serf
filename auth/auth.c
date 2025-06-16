@@ -623,11 +623,14 @@ static unsigned int find_next_user_scheme_type(void)
     return avail & -avail;
 }
 
-apr_status_t serf_authn_register_scheme(serf_context_t *ctx,
-                                        const char *name,
-                                        void *baton,
-                                        apr_pool_t *result_pool,
-                                        int *type)
+apr_status_t serf_authn_register_scheme(
+    serf_context_t *ctx, const char *name, void *baton, int flags,
+    serf_authn_init_conn_func_t init_conn,
+    serf_authn_handle_func_t handle,
+    serf_authn_setup_request_func_t setup_request,
+    serf_authn_validate_response_func_t validate_response,
+    apr_pool_t *result_pool,
+    int *type)
 {
     serf__authn_scheme_t *authn_scheme;
     apr_status_t lock_status;
@@ -655,8 +658,13 @@ apr_status_t serf_authn_register_scheme(serf_context_t *ctx,
     authn_scheme->validate_response_func = serf__authn_user__validate_response;
 
     /* User-defined scheme data. */
-    authn_scheme->magic = serf__authn_user__magic;
-    authn_scheme->baton = baton;
+    authn_scheme->user_magic = serf__authn_user__magic;
+    authn_scheme->user_baton = baton;
+    authn_scheme->user_flags = flags;
+    authn_scheme->user_init_conn_func = init_conn;
+    authn_scheme->user_handle_func = handle;
+    authn_scheme->user_setup_request_func = setup_request;
+    authn_scheme->user_validate_response_func = validate_response;
 
     lock_status = lock_authn_schemes(ctx->config);
     if (lock_status)

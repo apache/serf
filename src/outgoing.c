@@ -1460,9 +1460,11 @@ void serf_connection_set_max_outstanding_requests(
    HTTP pipelining can achieve this by calling:
      serf_connection_set_max_outstanding_requests(conn, 1) .
  */
-void serf__connection_set_pipelining(serf_connection_t *conn, int enabled)
+int serf__connection_set_pipelining(serf_connection_t *conn, int enabled)
 {
+    int pipelining = conn->pipelining;
     conn->pipelining = enabled;
+    return pipelining;
 }
 
 void serf_connection_set_async_responses(

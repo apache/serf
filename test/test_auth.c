@@ -531,8 +531,10 @@ static void test_authn_register_one(CuTest *tc)
     CuAssertIntEquals(tc, APR_SUCCESS, status);
 
     /* Register an authentication scheme */
-    status = serf_authn_register_scheme(tb->context,
-                                        "Fizzle", baton, tb->pool, &type);
+    status = serf_authn_register_scheme(tb->context, "Fizzle", baton,
+                                        SERF_AUTHN_FLAG_NONE,
+                                        NULL, NULL, NULL, NULL,
+                                        tb->pool, &type);
     CuAssertIntEquals(tc, APR_SUCCESS, status);
     CuAssertTrue(tc, type != SERF_AUTHN_NONE);
 
@@ -554,13 +556,17 @@ static void test_authn_register_two(CuTest *tc)
     CuAssertIntEquals(tc, APR_SUCCESS, status);
 
     /* Register the schemes */
-    status = serf_authn_register_scheme(tb->context,
-                                        "Tweedledee", baton1, tb->pool, &type1);
+    status = serf_authn_register_scheme(tb->context, "Tweedledee", baton1,
+                                        SERF_AUTHN_FLAG_NONE,
+                                        NULL, NULL, NULL, NULL,
+                                        tb->pool, &type1);
     CuAssertIntEquals(tc, APR_SUCCESS, status);
     CuAssertTrue(tc, type1 != SERF_AUTHN_NONE);
 
-    status = serf_authn_register_scheme(tb->context,
-                                        "Tweedledum", baton2, tb->pool, &type2);
+    status = serf_authn_register_scheme(tb->context, "Tweedledum", baton2,
+                                        SERF_AUTHN_FLAG_NONE,
+                                        NULL, NULL, NULL, NULL,
+                                        tb->pool, &type2);
     CuAssertIntEquals(tc, APR_SUCCESS, status);
     CuAssertTrue(tc, type2 != SERF_AUTHN_NONE);
     CuAssertTrue(tc, type2 != type1);
@@ -585,13 +591,17 @@ static void test_authn_register_twice(CuTest *tc)
     CuAssertIntEquals(tc, APR_SUCCESS, status);
 
     /* Register an authentication scheme */
-    status = serf_authn_register_scheme(tb->context,
-                                        "Tweens", baton, tb->pool, &type);
+    status = serf_authn_register_scheme(tb->context, "Tweens", baton,
+                                        SERF_AUTHN_FLAG_NONE,
+                                        NULL, NULL, NULL, NULL,
+                                        tb->pool, &type);
     CuAssertIntEquals(tc, APR_SUCCESS, status);
     CuAssertTrue(tc, type != SERF_AUTHN_NONE);
 
-    status = serf_authn_register_scheme(tb->context,
-                                        "Tweens", baton, tb->pool, &epyt);
+    status = serf_authn_register_scheme(tb->context, "Tweens", baton,
+                                        SERF_AUTHN_FLAG_NONE,
+                                        NULL, NULL, NULL, NULL,
+                                        tb->pool, &epyt);
     CuAssertIntEquals(tc, APR_EEXIST, status);
     CuAssertTrue(tc, epyt == SERF_AUTHN_NONE);
 
@@ -615,6 +625,213 @@ static void test_authn_unregister_unknown(CuTest *tc)
     CuAssertIntEquals(tc, APR_ENOENT, status);
 }
 
+
+typedef struct user_authn_baton user_authn_t;
+struct user_authn_baton {
+    const char *name;
+    int all_count;
+    int init_conn_count;
+    int handle_count;
+    int setup_request_count;
+    int validate_response_count;
+};
+
+#define USER_AUTHN_COUNT(baton, callback)  \
+    user_authn_t *const b = (baton);       \
+    do {                                   \
+        ++b->callback##_count;             \
+        ++b->all_count;                    \
+    } while(0)
+
+static user_authn_t *user_authn_make_baton(const char* name, apr_pool_t *pool)
+{
+    user_authn_t *baton = apr_pcalloc(pool, sizeof(*baton));
+    baton->name = apr_pstrdup(pool, name);
+    return baton;
+}
+
+typedef struct user_authn_cache user_authn_baton_t;
+struct user_authn_cache {
+    const char *header;
+    const char *value;
+};
+
+static const char *const user_authn_prefix = "Tweedle";
+
+static apr_status_t user_authn_init_conn(void *baton, int code,
+                                         apr_pool_t *result_pool,
+                                         apr_pool_t *scratch_pool,
+                                         void **authn_baton)
+{
+    USER_AUTHN_COUNT(baton, init_conn);
+
+    if (strncmp(user_authn_prefix, b->name, strlen(user_authn_prefix)) != 0)
+        return SERF_ERROR_AUTHN_INITALIZATION_FAILED;
+
+    *authn_baton = apr_pcalloc(result_pool, sizeof(user_authn_baton_t));
+    return APR_SUCCESS;
+}
+
+static apr_status_t user_authn_handle(void *baton,
+                                      int code,
+                                      serf_request_t *request,
+                                      serf_bucket_t *response,
+                                      const char *auth_hdr,
+                                      const char *auth_attr,
+                                      apr_pool_t *result_pool,
+                                      apr_pool_t *scratch_pool)
+{
+    USER_AUTHN_COUNT(baton, handle);
+    return APR_SUCCESS;
+}
+
+static apr_status_t user_authn_setup_request(void *baton,
+                                             int peer,
+                                             int code,
+                                             serf_connection_t *conn,
+                                             serf_request_t *request,
+                                             const char *method,
+                                             const char *uri,
+                                             serf_bucket_t *headers,
+                                             apr_pool_t *scratch_pool)
+{
+    USER_AUTHN_COUNT(baton, setup_request);
+    return APR_SUCCESS;
+}
+
+static apr_status_t user_authn_validate_response(void *baton,
+                                                 int peer,
+                                                 int code,
+                                                 serf_connection_t *conn,
+                                                 serf_request_t *request,
+                                                 serf_bucket_t *response,
+                                                 apr_pool_t *scratch_pool)
+{
+    USER_AUTHN_COUNT(baton, validate_response);
+    return APR_SUCCESS;
+}
+#undef USER_AUTHN_COUNT
+
+static apr_status_t
+user_authn_credentials_callback(char **username,
+                    char **password,
+                    serf_request_t *request, void *baton,
+                    int code, const char *authn_type,
+                    const char *scope,
+                    apr_pool_t *pool)
+{
+    handler_baton_t *handler_ctx = baton;
+    test_baton_t *tb = handler_ctx->tb;
+
+    tb->result_flags |= TEST_RESULT_AUTHNCB_CALLED;
+
+    if (code != SERF_AUTHN_CODE_HOST)
+        return REPORT_TEST_SUITE_ERROR();
+    if (strncmp(user_authn_prefix, authn_type, strlen(user_authn_prefix)) != 0)
+        return REPORT_TEST_SUITE_ERROR();
+    if (strcmp("Alice", scope) != 0)
+        return REPORT_TEST_SUITE_ERROR();
+
+    *username = NULL;
+    *password = apr_pstrdup(pool, authn_type);
+
+    return APR_SUCCESS;
+}
+
+static void user_authentication(CuTest *tc, int close_conn)
+{
+    test_baton_t *tb = tc->testBaton;
+    handler_baton_t handler_ctx[2];
+    int num_requests_sent;
+    apr_status_t status;
+    int typedee, typedum;
+    user_authn_t *const tdee = user_authn_make_baton("TweedleDee", tb->pool);
+    user_authn_t *const tdum = user_authn_make_baton("TweedleDum", tb->pool);
+
+    status = setup_test_context(tb, tb->pool);
+    CuAssertIntEquals(tc, APR_SUCCESS, status);
+
+    status = serf_authn_register_scheme(tb->context, tdee->name, tdee,
+                                        SERF_AUTHN_FLAG_CREDS
+                                        | SERF_AUTHN_FLAG_PIPE,
+                                        user_authn_init_conn,
+                                        user_authn_handle,
+                                        user_authn_setup_request,
+                                        user_authn_validate_response,
+                                        tb->pool, &typedee);
+    CuAssertIntEquals(tc, APR_SUCCESS, status);
+    CuAssertTrue(tc, typedee != SERF_AUTHN_NONE);
+
+    status = serf_authn_register_scheme(tb->context, tdum->name, tdum,
+                                        SERF_AUTHN_FLAG_CREDS
+                                        | SERF_AUTHN_FLAG_PIPE,
+                                        user_authn_init_conn,
+                                        user_authn_handle,
+                                        user_authn_setup_request,
+                                        user_authn_validate_response,
+                                        tb->pool, &typedum);
+    CuAssertIntEquals(tc, APR_SUCCESS, status);
+    CuAssertTrue(tc, typedum != SERF_AUTHN_NONE);
+    CuAssertTrue(tc, typedum != typedee);
+
+    /* Test that a request is retried and authentication
+       headers are set correctly. */
+    num_requests_sent = 1;
+
+    /* Set up a test context with a server */
+    setup_test_mock_server(tb);
+    status = setup_test_client_context(tb, NULL, tb->pool);
+    CuAssertIntEquals(tc, APR_SUCCESS, status);
+
+    serf_config_authn_types(tb->context, typedee | typedum);
+    serf_config_credentials_callback(tb->context, user_authn_credentials_callback);
+
+    /* Use non-standard case WWW-Authenticate header and scheme name to test
+       for case insensitive comparisons. */
+    Given(tb->mh)
+      GETRequest(URLEqualTo("/"), HeaderNotSet("Authorization"))
+        Respond(WithCode(SERF_AUTHN_CODE_HOST),WithChunkedBody("1"),
+                WithHeader("www-Authenticate", "tweeDlEdee scope=Alice"),
+                OnConditionThat(close_conn, WithConnectionCloseHeader))
+      GETRequest(URLEqualTo("/"),
+                 HeaderEqualTo("Authorization", "TweedleDee TweedleDee"))
+        Respond(WithCode(200),WithChunkedBody(""))
+    Expect
+      AllRequestsReceivedInOrder
+    EndGiven
+
+    create_new_request(tb, &handler_ctx[0], "GET", "/", 1);
+    status = run_client_and_mock_servers_loops(tb, num_requests_sent,
+                                               handler_ctx, tb->pool);
+    CuAssertIntEquals(tc, APR_SUCCESS, status);
+    CuAssertTrue(tc, tb->result_flags & TEST_RESULT_AUTHNCB_CALLED);
+    Verify(tb->mh)
+      CuAssertTrue(tc, VerifyAllExpectationsOk);
+    EndVerify
+
+    CuAssertIntEquals(tc, 4, tdee->all_count);
+    CuAssertIntEquals(tc, 0, tdum->all_count);
+
+    status = serf_authn_unregister_scheme(tb->context,
+                                          typedum, tdum->name, tb->pool);
+    CuAssertIntEquals(tc, APR_SUCCESS, status);
+    status = serf_authn_unregister_scheme(tb->context,
+                                          typedee, tdee->name, tb->pool);
+    CuAssertIntEquals(tc, APR_SUCCESS, status);
+}
+
+static void test_user_authentication(CuTest *tc)
+{
+    user_authentication(tc, 0 /* don't close connection */);
+}
+
+static void test_user_authentication_keepalive_off(CuTest *tc)
+{
+    user_authentication(tc, 1);
+}
+
+
+
 /*****************************************************************************/
 CuSuite *test_auth(void)
 {
@@ -635,5 +852,8 @@ CuSuite *test_auth(void)
     SUITE_ADD_TEST(suite, test_authn_register_two);
     SUITE_ADD_TEST(suite, test_authn_register_twice);
     SUITE_ADD_TEST(suite, test_authn_unregister_unknown);
+    SUITE_ADD_TEST(suite, test_user_authentication);
+    /* SUITE_ADD_TEST(suite, test_user_authentication_keepalive_off); */
+
     return suite;
 }

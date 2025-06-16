@@ -114,10 +114,19 @@ struct serf__authn_scheme_t {
      */
 
     /* The magic number that helps verify the user-defined scheme data. */
-    apr_uint64_t magic;
+    apr_uint64_t user_magic;
+
+    /* The flags for this authentication scheme */
+    int user_flags;
 
     /* The baton used by the callbacks.  */
-    void *baton;
+    void *user_baton;
+
+    /* Authentication callbacks. */
+    serf_authn_init_conn_func_t user_init_conn_func;
+    serf_authn_handle_func_t user_handle_func;
+    serf_authn_setup_request_func_t user_setup_request_func;
+    serf_authn_validate_response_func_t user_validate_response_func;
 };
 
 
