@@ -662,6 +662,7 @@ static apr_status_t cleanup_user_scheme(void* data)
 apr_status_t serf_authn_register_scheme(
     serf_context_t *ctx, const char *name, void *baton, int flags,
     serf_authn_init_conn_func_t init_conn,
+    serf_authn_get_realm_func_t get_realm,
     serf_authn_handle_func_t handle,
     serf_authn_setup_request_func_t setup_request,
     serf_authn_validate_response_func_t validate_response,
@@ -702,6 +703,7 @@ apr_status_t serf_authn_register_scheme(
     authn_scheme->user_flags = flags;
     authn_scheme->user_baton = baton;
     authn_scheme->user_init_conn_func = init_conn;
+    authn_scheme->user_get_realm_func = get_realm;
     authn_scheme->user_handle_func = handle;
     authn_scheme->user_setup_request_func = setup_request;
     authn_scheme->user_validate_response_func = validate_response;

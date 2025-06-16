@@ -128,6 +128,7 @@ struct serf__authn_scheme_t {
 
     /* Authentication callbacks. */
     serf_authn_init_conn_func_t user_init_conn_func;
+    serf_authn_get_realm_func_t user_get_realm_func;
     serf_authn_handle_func_t user_handle_func;
     serf_authn_setup_request_func_t user_setup_request_func;
     serf_authn_validate_response_func_t user_validate_response_func;

@@ -980,19 +980,33 @@ typedef apr_status_t
 
 /** TODO:  */
 typedef apr_status_t
+(*serf_authn_get_realm_func_t)(void *baton,
+                               void *authn_baton,
+                               const char *authn_header,
+                               const char *authn_attributes,
+                               apr_pool_t *result_pool,
+                               apr_pool_t *scratch_pool,
+                               const char **realm_name);
+
+/** TODO:  */
+typedef apr_status_t
 (*serf_authn_handle_func_t)(void *baton,
+                            void *authn_baton,
                             int code,
+                            const char *authn_header,
+                            const char *authn_attributes,
+                            const char *response_header,
+                            const char *username,
+                            const char *password,
                             serf_request_t *request,
                             serf_bucket_t *response,
-                            const char *auth_hdr,
-                            const char *auth_attr,
                             apr_pool_t *result_pool,
                             apr_pool_t *scratch_pool);
 
 /** TODO:  */
 typedef apr_status_t
 (*serf_authn_setup_request_func_t)(void *baton,
-                                   int peer,
+                                   void *authn_baton,
                                    int code,
                                    serf_connection_t *conn,
                                    serf_request_t *request,
@@ -1004,12 +1018,13 @@ typedef apr_status_t
 /** TODO:  */
 typedef apr_status_t
 (*serf_authn_validate_response_func_t)(void *baton,
-                                       int peer,
+                                       void *authn_baton,
                                        int code,
                                        serf_connection_t *conn,
                                        serf_request_t *request,
                                        serf_bucket_t *response,
-                                       apr_pool_t *scratch_pool);
+                                       apr_pool_t *scratch_pool,
+                                       int *reset_pipelining);
 
 /**
  * Register an autehtication scheme.
@@ -1044,6 +1059,7 @@ typedef apr_status_t
 apr_status_t serf_authn_register_scheme(
     serf_context_t *ctx, const char *name, void *baton, int flags,
     serf_authn_init_conn_func_t init_conn,
+    serf_authn_get_realm_func_t get_realm,
     serf_authn_handle_func_t handle,
     serf_authn_setup_request_func_t setup_request,
     serf_authn_validate_response_func_t validate_response,
