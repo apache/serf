@@ -677,7 +677,7 @@ apr_status_t serf_authn_register_scheme(
     int index;
 
     serf__log(LOGLVL_INFO, LOGCOMP_AUTHN, __FILE__, ctx->config,
-              "Registering user-defined scheme: %s\n", name);
+              "Registering user-defined scheme %s", name);
 
     *type = SERF_AUTHN_NONE;
     authn_scheme = apr_palloc(result_pool, sizeof(*authn_scheme));
@@ -707,8 +707,11 @@ apr_status_t serf_authn_register_scheme(
     authn_scheme->user_validate_response_func = validate_response;
 
     lock_status = lock_authn_schemes(ctx->config);
-    if (lock_status)
+    if (lock_status) {
+        serf__log_nopref(LOGLVL_INFO, LOGCOMP_AUTHN, ctx->config,
+                         ", lock failed %d\n", lock_status);
         return lock_status;
+    }
 
     scheme_type = find_next_user_scheme_type();
     if (!scheme_type) {
@@ -751,8 +754,15 @@ apr_status_t serf_authn_register_scheme(
 
   cleanup:
     lock_status = unlock_authn_schemes(ctx->config);
-    if (lock_status)
+    if (lock_status) {
+        serf__log_nopref(LOGLVL_INFO, LOGCOMP_AUTHN, ctx->config,
+                         ", unlock failed %d, status %d\n",
+                         lock_status, status);
         return lock_status;
+    }
+
+    serf__log_nopref(LOGLVL_INFO, LOGCOMP_AUTHN, ctx->config,
+                     ", status %d\n", status);
     return status;
 }
 
@@ -774,7 +784,7 @@ apr_status_t serf__authn__unregister_scheme(serf_context_t *ctx,
     int index;
 
     serf__log(LOGLVL_INFO, LOGCOMP_AUTHN, __FILE__, ctx->config,
-              "Unregistering user-defined scheme: %s\n", name);
+              "Unregistering user-defined scheme %s", name);
 
     /* Generate a lower-case key for the scheme. */
     key = cp = apr_pstrdup(scratch_pool, name);
@@ -784,8 +794,11 @@ apr_status_t serf__authn__unregister_scheme(serf_context_t *ctx,
     }
 
     lock_status = lock_authn_schemes(ctx->config);
-    if (lock_status)
+    if (lock_status) {
+        serf__log_nopref(LOGLVL_INFO, LOGCOMP_AUTHN, ctx->config,
+                         ", lock failed %d\n", lock_status);
         return lock_status;
+    }
 
     status = APR_SUCCESS;
 
@@ -826,8 +839,15 @@ apr_status_t serf__authn__unregister_scheme(serf_context_t *ctx,
 
   cleanup:
     lock_status = unlock_authn_schemes(ctx->config);
-    if (lock_status)
+    if (lock_status) {
+        serf__log_nopref(LOGLVL_INFO, LOGCOMP_AUTHN, ctx->config,
+                         ", unlock failed %d, status %d\n",
+                         lock_status, status);
         return lock_status;
+    }
+
+    serf__log_nopref(LOGLVL_INFO, LOGCOMP_AUTHN, ctx->config,
+                     ", status %d\n", status);
     return status;
 }
 
@@ -911,6 +931,7 @@ static apr_status_t init_authn_schemes_guard(serf_config_t *config)
     user_authn_type_mask &= ~builtin_types;
 
     /* Release the spinlock. */
+    serf__log_nopref(LOGLVL_DEBUG, LOGCOMP_AUTHN, config, ", status 0\n");
     apr_atomic_cas32(&global_state, initialized, init_starting);
     return APR_SUCCESS;
 
@@ -919,6 +940,9 @@ static apr_status_t init_authn_schemes_guard(serf_config_t *config)
     if (status == APR_SUCCESS)  /* Not likely, but don't return "OK". */
         status = APR_ENOMEM;    /* Probable failures are allocations. */
     init_failed_status = status;
+
+    serf__log_nopref(LOGLVL_DEBUG, LOGCOMP_AUTHN, config,
+                     ", status %d\n", status);
     apr_atomic_cas32(&global_state, init_failed, init_starting);
     return status;
 }
