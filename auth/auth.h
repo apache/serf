@@ -116,6 +116,10 @@ struct serf__authn_scheme_t {
     /* The magic number that helps verify the user-defined scheme data. */
     apr_uint64_t user_magic;
 
+    /* The pool that this scheme was allocated from; NULL for static objects.
+       This pull is used for pool cleanup handling. */
+    apr_pool_t *user_pool;
+
     /* The flags for this authentication scheme */
     int user_flags;
 

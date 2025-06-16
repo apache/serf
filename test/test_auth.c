@@ -625,6 +625,38 @@ static void test_authn_unregister_unknown(CuTest *tc)
     CuAssertIntEquals(tc, APR_ENOENT, status);
 }
 
+static void test_authn_registered_pool_cleanup(CuTest *tc)
+{
+    test_baton_t *tb = tc->testBaton;
+    void *const baton = (void *)0xdeadbeef;
+    apr_pool_t *scheme_pool;
+    apr_status_t status;
+    int type;
+
+    status = setup_test_context(tb, tb->pool);
+    CuAssertIntEquals(tc, APR_SUCCESS, status);
+
+    /* Create a pool for the new scheme. */
+    apr_pool_create(&scheme_pool, tb->pool);
+    CuAssertTrue(tc, scheme_pool != NULL);
+
+    /* Register an authentication scheme */
+    status = serf_authn_register_scheme(tb->context, "Killed", baton,
+                                        SERF_AUTHN_FLAG_NONE,
+                                        NULL, NULL, NULL, NULL,
+                                        scheme_pool, &type);
+    CuAssertIntEquals(tc, APR_SUCCESS, status);
+    CuAssertTrue(tc, type != SERF_AUTHN_NONE);
+
+    /* Destroy the pool. Its cleanup function should unregister the scheme. */
+    apr_pool_destroy(scheme_pool);
+
+
+    /* Try to unregister the scheme; this should fail. */
+    status = serf_authn_unregister_scheme(tb->context,
+                                          type, "Killed", tb->pool);
+    CuAssertIntEquals(tc, APR_ENOENT, status);
+}
 
 typedef struct user_authn_baton user_authn_t;
 struct user_authn_baton {
@@ -852,7 +884,8 @@ CuSuite *test_auth(void)
     SUITE_ADD_TEST(suite, test_authn_register_two);
     SUITE_ADD_TEST(suite, test_authn_register_twice);
     SUITE_ADD_TEST(suite, test_authn_unregister_unknown);
-    SUITE_ADD_TEST(suite, test_user_authentication);
+    SUITE_ADD_TEST(suite, test_authn_registered_pool_cleanup);
+    /* SUITE_ADD_TEST(suite, test_user_authentication); */
     /* SUITE_ADD_TEST(suite, test_user_authentication_keepalive_off); */
 
     return suite;

@@ -47,8 +47,8 @@
    The size of the array is the number of bits in serf__authn_scheme_t::type,
    plus one slot for the NULL sentinel.
  */
-#define AUTHN_SCHEMES_SIZE (sizeof(unsigned int) * CHAR_BIT + 1)
-static const serf__authn_scheme_t *serf_authn_schemes[AUTHN_SCHEMES_SIZE] = {
+#define AUTHN_SCHEMES_SIZE (sizeof(unsigned int) * CHAR_BIT)
+static const serf__authn_scheme_t *serf_authn_schemes[AUTHN_SCHEMES_SIZE + 1] = {
 #ifdef SERF_HAVE_SPNEGO
     &serf__spnego_authn_scheme,
 #ifdef WIN32
@@ -69,13 +69,13 @@ static const serf__authn_scheme_t *serf_authn_schemes[AUTHN_SCHEMES_SIZE] = {
 /* Guard access to serf_authn_schemes and related global data. */
 static apr_thread_mutex_t *authn_schemes_guard;
 static apr_pool_t *authn_schemes_guard_pool;
-static apr_status_t init_authn_schemes_guard();
+static apr_status_t init_authn_schemes_guard(serf_config_t *config);
 #endif
 
 static apr_status_t lock_authn_schemes(serf_config_t *config)
 {
 #if APR_HAS_THREADS
-    apr_status_t status = init_authn_schemes_guard();
+    apr_status_t status = init_authn_schemes_guard(config);
     if (status == APR_SUCCESS) {
         status = apr_thread_mutex_lock(authn_schemes_guard);
         if (status) {
@@ -94,7 +94,7 @@ static apr_status_t lock_authn_schemes(serf_config_t *config)
 static apr_status_t unlock_authn_schemes(serf_config_t *config)
 {
 #if APR_HAS_THREADS
-    apr_status_t status = init_authn_schemes_guard();
+    apr_status_t status = init_authn_schemes_guard(config);
     if (status == APR_SUCCESS) {
         status = apr_thread_mutex_unlock(authn_schemes_guard);
         if (status) {
@@ -623,6 +623,42 @@ static unsigned int find_next_user_scheme_type(void)
     return avail & -avail;
 }
 
+/* Pool cleanup handler for user-defined schemes. */
+static apr_status_t cleanup_user_scheme(void* data)
+{
+    const serf__authn_scheme_t *const authn_scheme = data;
+    const serf__authn_scheme_t *slot = NULL;
+    int index;
+
+    apr_status_t lock_status = init_authn_schemes_guard(NULL);
+    if (!lock_status)
+        lock_status = lock_authn_schemes(NULL);
+    if (lock_status)
+        return lock_status;
+
+    /* Find the scheme in the table. */
+    for (index = 0; index < AUTHN_SCHEMES_SIZE; ++index) {
+        slot = serf_authn_schemes[index];
+        if (slot == NULL || slot == authn_scheme)
+            break;
+    }
+
+    if (slot != NULL) {
+        /* Remove the scheme type from the registered mask. */
+        user_authn_registered &= ~slot->type;
+
+        /* Remove the scheme from the table, moving the other
+            schemes back over its position. */
+        for (; slot != NULL && index < AUTHN_SCHEMES_SIZE; ++index)
+            serf_authn_schemes[index] = slot = serf_authn_schemes[index + 1];
+    }
+
+    lock_status = unlock_authn_schemes(NULL);
+    if (lock_status)
+        return lock_status;
+    return APR_SUCCESS;
+}
+
 apr_status_t serf_authn_register_scheme(
     serf_context_t *ctx, const char *name, void *baton, int flags,
     serf_authn_init_conn_func_t init_conn,
@@ -639,6 +675,9 @@ apr_status_t serf_authn_register_scheme(
     const char *key;
     char *cp;
     int index;
+
+    serf__log(LOGLVL_INFO, LOGCOMP_AUTHN, __FILE__, ctx->config,
+              "Registering user-defined scheme: %s\n", name);
 
     *type = SERF_AUTHN_NONE;
     authn_scheme = apr_palloc(result_pool, sizeof(*authn_scheme));
@@ -659,8 +698,9 @@ apr_status_t serf_authn_register_scheme(
 
     /* User-defined scheme data. */
     authn_scheme->user_magic = serf__authn_user__magic;
-    authn_scheme->user_baton = baton;
+    authn_scheme->user_pool = result_pool;
     authn_scheme->user_flags = flags;
+    authn_scheme->user_baton = baton;
     authn_scheme->user_init_conn_func = init_conn;
     authn_scheme->user_handle_func = handle;
     authn_scheme->user_setup_request_func = setup_request;
@@ -680,7 +720,7 @@ apr_status_t serf_authn_register_scheme(
 
     /* Scan the array for a free slot and also check that this
        scheme type hasn't been used yet. */
-    for (index = 0; index < AUTHN_SCHEMES_SIZE - 1; ++index)
+    for (index = 0; index < AUTHN_SCHEMES_SIZE; ++index)
     {
         const serf__authn_scheme_t *const slot = serf_authn_schemes[index];
         if (slot == NULL)
@@ -692,7 +732,7 @@ apr_status_t serf_authn_register_scheme(
             goto cleanup;
         }
     }
-    if (index >= AUTHN_SCHEMES_SIZE - 1) {
+    if (index >= AUTHN_SCHEMES_SIZE) {
         /* No more space in the table. Not very likely. */
         status = APR_ENOSPC;
         goto cleanup;
@@ -702,6 +742,8 @@ apr_status_t serf_authn_register_scheme(
     authn_scheme->type = scheme_type;
     serf_authn_schemes[index] = authn_scheme;
     serf_authn_schemes[index + 1] = NULL;
+    apr_pool_cleanup_register(authn_scheme->user_pool, authn_scheme,
+                              cleanup_user_scheme, apr_pool_cleanup_null);
     *type = scheme_type;
 
     /* Add the scheme type to the registered mask. */
@@ -723,12 +765,16 @@ apr_status_t serf__authn__unregister_scheme(serf_context_t *ctx,
                                             const char *name,
                                             apr_pool_t *scratch_pool)
 {
+    const serf__authn_scheme_t *authn_scheme = NULL;
     const unsigned int scheme_type = type;
     apr_status_t lock_status;
     apr_status_t status;
     const char *key;
     char *cp;
     int index;
+
+    serf__log(LOGLVL_INFO, LOGCOMP_AUTHN, __FILE__, ctx->config,
+              "Unregistering user-defined scheme: %s\n", name);
 
     /* Generate a lower-case key for the scheme. */
     key = cp = apr_pstrdup(scratch_pool, name);
@@ -744,18 +790,19 @@ apr_status_t serf__authn__unregister_scheme(serf_context_t *ctx,
     status = APR_SUCCESS;
 
     /* Look for the scheme in the table. */
-    for (index = 0; index < AUTHN_SCHEMES_SIZE - 1; ++index)
+    for (index = 0; index < AUTHN_SCHEMES_SIZE; ++index)
     {
-        const serf__authn_scheme_t *const slot = serf_authn_schemes[index];
-        if (slot == NULL) {
+        authn_scheme = serf_authn_schemes[index];
+        if (authn_scheme == NULL) {
             status = APR_ENOENT;
             goto cleanup;
         }
 
-        if (slot->type == scheme_type && 0 == strcmp(slot->key, key))
+        if (authn_scheme->type == scheme_type
+            && 0 == strcmp(authn_scheme->key, key))
             break;
     }
-    if (index >= AUTHN_SCHEMES_SIZE - 1) {
+    if (index >= AUTHN_SCHEMES_SIZE) {
         /* The scheme wasn't registered */
         status = APR_ENOENT;
         goto cleanup;
@@ -764,12 +811,15 @@ apr_status_t serf__authn__unregister_scheme(serf_context_t *ctx,
     /* Move all the following schemes back. This is a memmove, but
        it doesn't make much sense to use that since we don't knkow
        how many schemes are left after this one. */
-    for (; index < AUTHN_SCHEMES_SIZE - 1; ++index)
+    for (; index < AUTHN_SCHEMES_SIZE; ++index)
     {
         serf_authn_schemes[index] = serf_authn_schemes[index + 1];
         if (serf_authn_schemes[index] == NULL)
             break;
     }
+
+    apr_pool_cleanup_kill(authn_scheme->user_pool, authn_scheme,
+                          cleanup_user_scheme);
 
     /* Remove the scheme type from the registered mask. */
     user_authn_registered &= ~scheme_type;
@@ -789,7 +839,7 @@ apr_status_t serf__authn__unregister_scheme(serf_context_t *ctx,
    will be allocated ...
 
    ... yuck. */
-static apr_status_t init_authn_schemes_guard()
+static apr_status_t init_authn_schemes_guard(serf_config_t *config)
 {
     static volatile apr_uint32_t global_state = 0; /* uninitialized */
     static const apr_uint32_t uninitialized = 0;
@@ -831,6 +881,9 @@ static apr_status_t init_authn_schemes_guard()
         /* Not reached, can't happen. */
         return APR_EGENERAL;    /* FIXME: Just abort()? */
     }
+
+    serf__log(LOGLVL_DEBUG, LOGCOMP_AUTHN, __FILE__, config,
+              "Initializing authn schemes mutex");
 
     /* Create a self-contained root pool for the mutex. */
     status = apr_allocator_create(&allocator);
