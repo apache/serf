@@ -601,6 +601,8 @@ if conf.CheckFunc('OpenSSL_version_num', ssl_includes):
   env.Append(CPPDEFINES=['SERF_HAVE_OPENSSL_VERSION_NUM'])
 if conf.CheckFunc('SSL_set_alpn_protos', ssl_includes, 'C', 'NULL, NULL, 0'):
   env.Append(CPPDEFINES=['SERF_HAVE_OPENSSL_ALPN'])
+if conf.CheckFunc('OSSL_STORE_open_ex', ssl_includes, 'C', 'NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL'):
+  env.Append(CPPDEFINES=['SERF_HAVE_OSSL_STORE_OPEN_EX'])
 if conf.CheckType('OSSL_HANDSHAKE_STATE', ssl_includes):
   env.Append(CPPDEFINES=['SERF_HAVE_OSSL_HANDSHAKE_STATE'])
 env = conf.Finish()
