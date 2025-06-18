@@ -583,6 +583,8 @@ serf_bucket_t *serf_bucket_limit_create(
 #define SERF_SSL_OCSP_RESPONDER_ERROR           0x0200
 #define SERF_SSL_OCSP_RESPONDER_UNKNOWN_FAILURE 0x0400
 
+#define SERF_SSL_SIGNATURE_FAILURE  0x0800
+
 extern const serf_bucket_type_t serf_bucket_type_ssl_encrypt;
 #define SERF_BUCKET_IS_SSL_ENCRYPT(b) SERF_BUCKET_CHECK((b), ssl_encrypt)
 

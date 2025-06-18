@@ -175,11 +175,11 @@ static void test_ssl_cert_certificate(CuTest *tc)
     kv = serf_ssl_cert_certificate(cert, tb->pool);
     CuAssertPtrNotNull(tc, kv);
 
-    CuAssertStrEquals(tc, "A1:E1:41:81:30:B5:D0:7F:13:BC:AB:FD:48:0C:48:FF:F9:D1:F5:63",
+    CuAssertStrEquals(tc, "11:07:27:BA:82:70:08:38:76:4D:F7:17:94:99:61:F0:46:04:F3:6D",
                       apr_hash_get(kv, "sha1", APR_HASH_KEY_STRING));
-    CuAssertStrEquals(tc, "Oct  4 22:44:52 2021 GMT",
+    CuAssertStrEquals(tc, "Jun 18 10:39:14 2025 GMT",
                       apr_hash_get(kv, "notBefore", APR_HASH_KEY_STRING));
-    CuAssertStrEquals(tc, "Sep 10 22:44:52 2121 GMT",
+    CuAssertStrEquals(tc, "May 25 10:39:14 2125 GMT",
                       apr_hash_get(kv, "notAfter", APR_HASH_KEY_STRING));
 
     san_arr = apr_hash_get(kv, "subjectAltName", APR_HASH_KEY_STRING);
@@ -500,6 +500,11 @@ static const char *format_cert_failures(int failures, apr_pool_t *pool)
     if (failures & SERF_SSL_OCSP_RESPONDER_UNKNOWN_FAILURE) {
         str = apr_pstrcat(pool, str, *str ? "|" : "", "OCSP_RESPONDER_UNKNOWN_FAILURE", NULL);
         failures &= ~SERF_SSL_OCSP_RESPONDER_UNKNOWN_FAILURE;
+    }
+
+    if (failures & SERF_SSL_SIGNATURE_FAILURE) {
+        str = apr_pstrcat(pool, str, *str ? "|" : "", "SIGNATURE_FAILURE", NULL);
+        failures &= ~SERF_SSL_SIGNATURE_FAILURE;
     }
 
     if (failures) {
