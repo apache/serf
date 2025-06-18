@@ -1572,6 +1572,8 @@ static void init_ssl_libraries(void)
     }
 }
 
+#if defined(SERF_HAVE_OSSL_STORE_OPEN_EX)
+
 static int ssl_pass_cb(UI *ui, UI_STRING *uis)
 {
     serf_ssl_context_t *ctx = UI_get0_user_data(ui);
@@ -1599,6 +1601,8 @@ static int ssl_pass_cb(UI *ui, UI_STRING *uis)
 
     return 1;
 }
+
+#endif
 
 static int ssl_need_client_cert(SSL *ssl, X509 **cert, EVP_PKEY **pkey)
 {
