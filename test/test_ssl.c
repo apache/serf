@@ -1198,6 +1198,7 @@ client_cert_uri_conn_setup(apr_socket_t *skt,
 
 static void test_ssl_client_certificate_uri(CuTest *tc)
 {
+#if defined(SERF_HAVE_OSSL_STORE_OPEN_EX)
     test_baton_t *tb = tc->testBaton;
     handler_baton_t handler_ctx[1];
     const int num_requests = sizeof(handler_ctx)/sizeof(handler_ctx[0]);
@@ -1234,6 +1235,7 @@ static void test_ssl_client_certificate_uri(CuTest *tc)
     Verify(tb->mh)
       CuAssert(tc, ErrorMessage, VerifyConnectionSetupOk);
     EndVerify
+#endif
 }
 
 /* Validate that the expired certificate is reported as failure in the
