@@ -598,6 +598,10 @@ typedef apr_status_t (*serf_ssl_need_cert_password_t)(
     const char *cert_path,
     const char **password);
 
+typedef apr_status_t (*serf_ssl_need_cert_uri_t)(
+    void *data,
+    const char **cert_uri);
+
 /**
  * Callback type for server certificate status info and OCSP responses.
  * Note that CERT can be NULL in case its called from the OCSP callback.
@@ -614,15 +618,50 @@ typedef apr_status_t (*serf_ssl_server_cert_chain_cb_t)(
     const serf_ssl_certificate_t * const * certs,
     apr_size_t certs_len);
 
+/**
+ * Set a callback to provide a filesystem path to a PKCS12 file.
+ *
+ * This has been replaced by serf_ssl_cert_uri_set(). On Unix
+ * platforms the same path from serf_ssl_client_cert_provider_set()
+ * can be passed to serf_ssl_cert_uri_set(). On Windows the drive
+ * letter will be interpreted by serf_ssl_cert_uri_set() as a scheme,
+ * so the same path will not work, and will need to be escaped as
+ * a file URL instead.
+ */
 void serf_ssl_client_cert_provider_set(
     serf_ssl_context_t *context,
     serf_ssl_need_client_cert_t callback,
     void *data,
     void *cache_pool);
 
+/**
+ * Set a callback to provide the password corresponding to the URL of
+ * the client certificate store.
+ *
+ * If the serf_ssl_client_cert_provider_set callback is set, this
+ * password will also be used to decode the PKCS12 file.
+ */
 void serf_ssl_client_cert_password_set(
     serf_ssl_context_t *context,
     serf_ssl_need_cert_password_t callback,
+    void *data,
+    void *cache_pool);
+
+/**
+ * Set a callback to provide the URL of the client certificate store.
+ *
+ * In the absence of a scheme the default scheme is file:, and the file
+ * can point to PKCS12, PEM or other supported certificates and keys.
+ *
+ * With the correct OpenSSL provider configured, URLs can be provided
+ * for pkcs11, tpm2, and other certificate stores.
+ *
+ * On Windows, file paths must be escaped as file: URLs to prevent the
+ * drive letter being intepreted as a scheme.
+ */
+void serf_ssl_cert_uri_set(
+    serf_ssl_context_t *context,
+    serf_ssl_need_cert_uri_t callback,
     void *data,
     void *cache_pool);
 

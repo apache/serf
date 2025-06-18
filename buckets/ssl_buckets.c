@@ -44,6 +44,15 @@
 #ifndef OPENSSL_NO_OCSP /* requires openssl 0.9.7 or later */
 #include <openssl/ocsp.h>
 #endif
+#if defined(SERF_HAVE_OSSL_STORE_OPEN_EX)
+#include <openssl/store.h>
+#include <openssl/evp.h>
+#include <openssl/safestack.h>
+#include <openssl/ui.h>
+#ifndef sk_EVP_PKEY_new_null
+DEFINE_STACK_OF(EVP_PKEY)
+#endif
+#endif
 
 #ifndef APR_ARRAY_PUSH
 #define APR_ARRAY_PUSH(ary,type) (*((type *)apr_array_push(ary)))
@@ -117,6 +126,8 @@
  *
  */
 
+static int ssl_x509_ex_data_idx = -1;
+
 typedef struct bucket_list {
     serf_bucket_t *bucket;
     struct bucket_list *next;
@@ -177,12 +188,20 @@ struct serf_ssl_context_t {
     apr_pool_t *cert_pw_cache_pool;
     const char *cert_pw_success;
 
+    /* Cert uri callbacks */
+    serf_ssl_need_cert_uri_t cert_uri_callback;
+    void *cert_uri_userdata;
+    apr_pool_t *cert_uri_cache_pool;
+    const char *cert_uri_success;
+
     /* Server cert callbacks */
     serf_ssl_need_server_cert_t server_cert_callback;
     serf_ssl_server_cert_chain_cb_t server_cert_chain_callback;
     void *server_cert_userdata;
 
     const char *cert_path;
+    const char *cert_uri;
+    const char *cert_pw;
 
     X509 *cached_cert;
     EVP_PKEY *cached_cert_pw;
@@ -1553,10 +1572,46 @@ static void init_ssl_libraries(void)
     }
 }
 
+static int ssl_pass_cb(UI *ui, UI_STRING *uis)
+{
+    serf_ssl_context_t *ctx = UI_get0_user_data(ui);
+
+    const char *password;
+    apr_status_t status;
+
+    if (ctx->cert_pw_success) {
+        status = APR_SUCCESS;
+        password = ctx->cert_pw_success;
+        ctx->cert_pw_success = NULL;
+    }
+    else if (ctx->cert_pw_callback) {
+        status = ctx->cert_pw_callback(ctx->cert_pw_userdata,
+                                       ctx->cert_uri,
+                                       &password);
+    }
+    else {
+        return 0;
+    }
+
+    UI_set_result(ui, uis, password);
+
+    ctx->cert_pw = apr_pstrdup(ctx->pool, password);
+
+    return 1;
+}
+
 static int ssl_need_client_cert(SSL *ssl, X509 **cert, EVP_PKEY **pkey)
 {
     serf_ssl_context_t *ctx = SSL_get_app_data(ssl);
+#if defined(SERF_HAVE_OSSL_STORE_OPEN_EX)
+    STACK_OF(X509) *leaves;
+    STACK_OF(X509) *intermediates;
+    STACK_OF(EVP_PKEY) *keys;
+    X509_STORE *requests;
+    UI_METHOD *ui_method;
+#endif
     apr_status_t status;
+    int retrying_success = 0;
 
     serf__log(LOGLVL_DEBUG, LOGCOMP_SSL, __FILE__, ctx->config,
               "Server requests a client certificate.\n");
@@ -1567,6 +1622,206 @@ static int ssl_need_client_cert(SSL *ssl, X509 **cert, EVP_PKEY **pkey)
         return 1;
     }
 
+#if defined(SERF_HAVE_OSSL_STORE_OPEN_EX)
+
+    if (ssl_x509_ex_data_idx < 0) {
+        ssl_x509_ex_data_idx = X509_get_ex_new_index(0, NULL, NULL, NULL, NULL);
+    }
+
+    /* until further notice */
+    *cert = NULL;
+    *pkey = NULL;
+
+    leaves = sk_X509_new_null();
+    intermediates = sk_X509_new_null();
+    keys = sk_EVP_PKEY_new_null();
+    requests = X509_STORE_new();
+
+    ui_method = UI_create_method("passphrase");
+    UI_method_set_reader(ui_method, ssl_pass_cb);
+
+    while (ctx->cert_uri_callback) {
+        const char *cert_uri = NULL;
+        OSSL_STORE_CTX *store = NULL;
+        OSSL_STORE_INFO *info;
+        X509 *c;
+        STACK_OF(X509_NAME) *requested;
+        int type;
+
+        retrying_success = 0;
+
+        if (ctx->cert_uri_success) {
+            status = APR_SUCCESS;
+            cert_uri = ctx->cert_uri_success;
+            ctx->cert_uri_success = NULL;
+            retrying_success = 1;
+        } else {
+            status = ctx->cert_uri_callback(ctx->cert_uri_userdata, &cert_uri);
+        }
+
+        if (status || !cert_uri) {
+            break;
+        }
+
+        ctx->cert_uri = cert_uri;
+
+        /* server side request some certs? this list may be empty */
+        requested = SSL_get_client_CA_list(ssl);
+
+        store = OSSL_STORE_open_ex(cert_uri, NULL, NULL, ui_method, ctx, NULL, NULL, NULL);
+        if (!store) {
+            int err = ERR_get_error();
+            serf__log(LOGLVL_ERROR, LOGCOMP_SSL, __FILE__, ctx->config,
+                      "OpenSSL store error (%s): %d %d\n", cert_uri, ERR_GET_LIB(err),
+                      ERR_GET_REASON(err));
+            break;
+        }
+
+        /* walk the store, what are we working with */
+
+        while (!OSSL_STORE_eof(store)) {
+            info = OSSL_STORE_load(store);
+
+            if (!info) {
+                break;
+            }
+
+            type = OSSL_STORE_INFO_get_type(info);
+            if (type == OSSL_STORE_INFO_CERT) {
+                X509 *c = OSSL_STORE_INFO_get1_CERT(info);
+
+                int n, i;
+
+                int is_ca = X509_check_ca(c);
+
+                /* split into leaves and intermediate certs */
+                if (is_ca) {
+                    sk_X509_push(intermediates, c);
+                }
+                else {
+                    sk_X509_push(leaves, c);
+                }
+
+                /* any cert with an issuer matching our requested CAs is also added to the requests list */
+                n = sk_X509_NAME_num(requested);
+                for (i = 0; i < n; ++i) {
+                    X509_NAME *name = sk_X509_NAME_value(requested, i);
+                    if (X509_NAME_cmp(name, X509_get_issuer_name(c)) == 0) {
+                        if (is_ca) {
+                            X509_STORE_add_cert(requests, c);
+                        }
+                        else {
+                            X509_set_ex_data(c, ssl_x509_ex_data_idx, (void *)1);
+                        }
+                    }
+                }
+
+            } else if (type == OSSL_STORE_INFO_PKEY) {
+                EVP_PKEY *k = OSSL_STORE_INFO_get1_PKEY(info);
+
+                sk_EVP_PKEY_push(keys, k);
+            }
+
+            OSSL_STORE_INFO_free(info);
+        }
+
+        /* FIXME: openssl error checking goes here */
+
+        OSSL_STORE_close(store);
+
+        /* walk the leaf certificates, choose the best one */
+
+        while ((c = sk_X509_pop(leaves))) {
+
+            EVP_PKEY *k = NULL;
+            int i, n, found = 0;
+
+            /* no key, skip */
+            n = sk_EVP_PKEY_num(keys);
+            for (i = 0; i < n; ++i) {
+                k = sk_EVP_PKEY_value(keys, i);
+                if (X509_check_private_key(c, k)) {
+                    found = 1;
+                    break;
+                }
+            }
+            if (!found) {
+                continue;
+            }
+
+            /* CAs requested? if so, skip non matches, if not, accept all */
+            if (sk_X509_NAME_num(requested) && !X509_get_ex_data(c, ssl_x509_ex_data_idx)) {
+                STACK_OF(X509) *chain;
+
+                chain = X509_build_chain(c, intermediates, requests, 0, NULL, NULL);
+
+                if (!chain) {
+                    continue;
+                }
+
+                sk_X509_pop_free(chain, X509_free);
+            }
+
+            /* no best candidate yet? we're in first place */
+            if (!*cert) {
+                *cert = c; /* don't dup, we're returning this */
+                *pkey = EVP_PKEY_dup(k);
+                continue;
+            }
+
+            /* were we issued after the previous best? */
+            if (ASN1_TIME_compare(X509_get0_notBefore(*cert), X509_get0_notBefore(c)) < 0) {
+                X509_free(*cert);
+                EVP_PKEY_free(*pkey);
+                *cert = c; /* don't dup, we're returning this */
+                *pkey = EVP_PKEY_dup(k);
+                continue;
+            }
+
+            X509_free(c);
+        }
+
+        break;
+    }
+
+    sk_X509_pop_free(leaves, X509_free);
+    sk_X509_pop_free(intermediates, X509_free);
+    sk_EVP_PKEY_pop_free(keys, EVP_PKEY_free);
+    X509_STORE_free(requests);
+    UI_destroy_method(ui_method);
+
+    /* we settled on a cert and key, cache it for later */
+
+    if (*cert && *pkey) {
+
+        ctx->cached_cert = *cert;
+        ctx->cached_cert_pw = *pkey;
+        if (!retrying_success && ctx->cert_cache_pool) {
+            const char *c;
+
+            c = apr_pstrdup(ctx->cert_cache_pool, ctx->cert_uri);
+
+            apr_pool_userdata_setn(c, "serf:ssl:cert",
+                                   apr_pool_cleanup_null,
+                                   ctx->cert_cache_pool);
+        }
+
+        if (!retrying_success && ctx->cert_pw_cache_pool && ctx->cert_pw) {
+            const char *pw;
+
+            pw = apr_pstrdup(ctx->cert_pw_cache_pool,
+                             ctx->cert_pw);
+
+            apr_pool_userdata_setn(pw, "serf:ssl:certpw",
+                                   apr_pool_cleanup_null,
+                                   ctx->cert_pw_cache_pool);
+        }
+
+        return 1;
+    }
+
+#endif
+
     while (ctx->cert_callback) {
         const char *cert_path;
         apr_file_t *cert_file;
@@ -1574,7 +1829,7 @@ static int ssl_need_client_cert(SSL *ssl, X509 **cert, EVP_PKEY **pkey)
         BIO_METHOD *biom;
         PKCS12 *p12;
         int i;
-        int retrying_success = 0;
+        retrying_success = 0;
 
         if (ctx->cert_file_success) {
             status = APR_SUCCESS;
@@ -1724,6 +1979,22 @@ void serf_ssl_client_cert_password_set(
 }
 
 
+void serf_ssl_cert_uri_set(
+    serf_ssl_context_t *context,
+    serf_ssl_need_cert_uri_t callback,
+    void *data,
+    void *cache_pool)
+{
+    context->cert_uri_callback = callback;
+    context->cert_uri_userdata = data;
+    context->cert_cache_pool = cache_pool;
+    if (context->cert_cache_pool) {
+        apr_pool_userdata_get((void**)&context->cert_uri_success,
+                              "serf:ssl:certuri", cache_pool);
+    }
+}
+
+
 void serf_ssl_server_cert_callback_set(
     serf_ssl_context_t *context,
     serf_ssl_need_server_cert_t callback,
@@ -1799,6 +2070,7 @@ static serf_ssl_context_t *ssl_init_context(serf_bucket_alloc_t *allocator)
 
     ssl_ctx->cert_callback = NULL;
     ssl_ctx->cert_pw_callback = NULL;
+    ssl_ctx->cert_uri_callback = NULL;
     ssl_ctx->server_cert_callback = NULL;
     ssl_ctx->server_cert_chain_callback = NULL;
 

@@ -1168,6 +1168,74 @@ static void test_ssl_client_certificate(CuTest *tc)
     EndVerify
 }
 
+static apr_status_t
+client_cert_uri_conn_setup(apr_socket_t *skt,
+                           serf_bucket_t **input_bkt,
+                           serf_bucket_t **output_bkt,
+                           void *setup_baton,
+                           apr_pool_t *pool)
+{
+    test_baton_t *tb = setup_baton;
+    apr_status_t status;
+
+    status = https_set_root_ca_conn_setup(skt, input_bkt, output_bkt,
+                                          setup_baton, pool);
+    if (status)
+        return status;
+
+    serf_ssl_cert_uri_set(tb->ssl_context,
+                          client_cert_cb,
+                          tb,
+                          pool);
+
+    serf_ssl_client_cert_password_set(tb->ssl_context,
+                                      client_cert_pw_cb,
+                                      tb,
+                                      pool);
+
+    return APR_SUCCESS;
+}
+
+static void test_ssl_client_certificate_uri(CuTest *tc)
+{
+    test_baton_t *tb = tc->testBaton;
+    handler_baton_t handler_ctx[1];
+    const int num_requests = sizeof(handler_ctx)/sizeof(handler_ctx[0]);
+    apr_status_t status;
+
+
+    /* Set up a test context and a https server */
+    /* The SSL server uses the complete certificate chain to validate the client
+       certificate. */
+    setup_test_mock_https_server(tb, server_key,
+                                 all_server_certs,
+                                 test_clientcert_optional);
+    status = setup_test_client_https_context(tb,
+                                             client_cert_uri_conn_setup,
+                                             NULL, /* No server cert callback */
+                                             tb->pool);
+    CuAssertIntEquals(tc, APR_SUCCESS, status);
+
+    Given(tb->mh)
+      ConnectionSetup(ClientCertificateIsValid,
+                      ClientCertificateCNEqualTo("Serf Client"))
+
+      GETRequest(URLEqualTo("/"), ChunkedBodyEqualTo("1"),
+                 HeaderEqualTo("Host", tb->serv_host))
+        Respond(WithCode(200), WithChunkedBody(""))
+    EndGiven
+
+    create_new_request(tb, &handler_ctx[0], "GET", "/", 1);
+
+    status = run_client_and_mock_servers_loops(tb, num_requests, handler_ctx,
+                                               tb->pool);
+    CuAssertTrue(tc, tb->result_flags & TEST_RESULT_CLIENT_CERTCB_CALLED);
+    CuAssertTrue(tc, tb->result_flags & TEST_RESULT_CLIENT_CERTPWCB_CALLED);
+    Verify(tb->mh)
+      CuAssert(tc, ErrorMessage, VerifyConnectionSetupOk);
+    EndVerify
+}
+
 /* Validate that the expired certificate is reported as failure in the
    callback. */
 static void test_ssl_expired_server_cert(CuTest *tc)
@@ -2747,6 +2815,7 @@ CuSuite *test_ssl(void)
     SUITE_ADD_TEST(suite, test_ssl_large_response);
     SUITE_ADD_TEST(suite, test_ssl_large_request);
     SUITE_ADD_TEST(suite, test_ssl_client_certificate);
+    SUITE_ADD_TEST(suite, test_ssl_client_certificate_uri);
     SUITE_ADD_TEST(suite, test_ssl_expired_server_cert);
     SUITE_ADD_TEST(suite, test_ssl_future_server_cert);
     SUITE_ADD_TEST(suite, test_ssl_revoked_server_cert);
