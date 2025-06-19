@@ -99,7 +99,7 @@
 typedef enum gss_api_auth_state {
     gss_api_auth_not_started,
     gss_api_auth_in_progress,
-    gss_api_auth_completed,
+    gss_api_auth_completed
 } gss_api_auth_state;
 
 /**
@@ -159,7 +159,7 @@ typedef enum authn_persistence_state_t {
     pstate_init,
     pstate_undecided,
     pstate_stateless,
-    pstate_stateful,
+    pstate_stateful
 } authn_persistence_state_t;
 
 

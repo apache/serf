@@ -1505,7 +1505,7 @@ typedef const apr_uint32_t serf_config_key_t;
 typedef enum serf_config_categories_t {
     SERF_CONFIG_PER_CONTEXT    = 0x10000000,
     SERF_CONFIG_PER_HOST       = 0x20000000,
-    SERF_CONFIG_PER_CONNECTION = 0x40000000,
+    SERF_CONFIG_PER_CONNECTION = 0x40000000
 } serf_config_categories_t;
 
 #define SERF_CONFIG_HOST_NAME       (SERF_CONFIG_PER_HOST | 0x000001)
