@@ -232,7 +232,7 @@ typedef enum serf_request_writing_t {
     SERF_WRITING_NONE,          /* Nothing written */
     SERF_WRITING_STARTED,       /* Data in write bucket(s) */
     SERF_WRITING_DONE,          /* Everything written */
-    SERF_WRITING_FINISHED,      /* Safe to destroy */
+    SERF_WRITING_FINISHED       /* Safe to destroy */
 } serf_request_writing_t;
 
 /* Holds all the information corresponding to a request/response pair. */
@@ -518,7 +518,7 @@ struct serf_incoming_t {
 typedef enum {
     SERF_CONN_INIT,             /* no socket created yet */
     SERF_CONN_SETUP_SSLTUNNEL,  /* ssl tunnel being setup, no requests sent */
-    SERF_CONN_CONNECTED,        /* conn is ready to send requests */
+    SERF_CONN_CONNECTED         /* conn is ready to send requests */
 } serf__connection_state_t;
 
 struct serf_connection_t {

@@ -56,7 +56,7 @@ typedef struct deflate_context_t {
         /* When handling things the other way around */
         STATE_WRITING_HEADER,   /* produces a gzip header */
         STATE_COMPRESS_INIT,    /* initializes zlib for compression */
-        STATE_COMPRESS_FINISH,  /* clean up after producing body */
+        STATE_COMPRESS_FINISH   /* clean up after producing body */
     } state;
 
     z_stream zstream;
