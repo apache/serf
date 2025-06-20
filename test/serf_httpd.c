@@ -383,6 +383,7 @@ int main(int argc, const char **argv)
     int verbose = 0;
     const char *opt_arg;
     const char *root_dir;
+    apr_finfo_t root_info;
 
     apr_initialize();
     atexit(apr_terminate);
@@ -448,8 +449,14 @@ int main(int argc, const char **argv)
         exit(-1);
     }
 
+    /* FIXME: root_dir is never used. */
     root_dir = argv[opt->ind];
-    /* FIXME: root_dir's value is never used. */
+    status = apr_stat(&root_info, root_dir, APR_FINFO_TYPE, scratch_pool);
+    printf("Ignoring root directory %s%s", root_dir,
+           (status == APR_SUCCESS
+            ? (root_info.filetype == APR_DIR ? "\n"
+               : " (which isn't a directory)\n")
+            : " (which doesn't even exist)\n"));
 
     /* Setup debug logging */
     if (verbose) {
