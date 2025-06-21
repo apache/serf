@@ -1,0 +1,68 @@
+name: Linux (SCons 2.3.0)
+
+on:
+  push:
+    branches: [ "trunk" ]
+
+  # Allows you to run this workflow manually from the Actions tab
+  workflow_dispatch:
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+
+    runs-on: "ubuntu-24.04"
+
+    env:
+      XPYTHON_VER: "2.7.18"
+
+      XPYENV_VER: "2.6.3"
+      XPYENV_URI: "https://github.com/pyenv/pyenv/archive/refs/tags"
+      PYENV_ROOT: "${{ github.workspace }}/__pyenv/pyenv-${{ env.XPYENV_VER }}"
+      XPYENV_BIN: "${{ env.PYENV_ROOT }}/bin"
+
+      XSCONS_VER: "2.3.0"
+      XSCONS_URI: "https://sourceforge.net/projects/scons/files/scons/${{ env.XSCONS_VER }}"
+      XSCONS_BIN: "${{ github.workspace }}/__scons/scons-${{ env.XSCONS_VER }}/build/scripts"
+
+    steps:
+      - name: Install prerequisites
+        # Note: we don't instal Tcl/TK, we don't need Pythons UI
+        # toolkit to build or test Serf.
+        run: |
+          sudo apt-get update
+          sudo apt-get --yes install \
+               build-essential wget curl llvm unzip xz-utils \
+               libapr1-dev libaprutil1-dev zlib1g-dev libssl-dev \
+               libbrotli-dev libkrb5-dev libbz2-dev libreadline-dev \
+               libsqlite3-dev liblzma-dev libncurses5-dev libncursesw5-dev
+
+      - name: Install pyenv
+        run: |
+            mkdir __pyenv
+            cd __pyenv
+            curl -LO "${{ env.XPYENV_URI }}/v${{ env.XPYENV_VER }}.tar.gz"
+            tar zxf pyenv-${{ env.XPYENV_VER }}.tar.gz
+
+      - name: Install Python ${{ env.XPYTHON_VER }}
+        run: |
+            "${{ env.XPYENV_BIN }}/pyenv" install ${{ env.XPYTHON_VER }}
+            "${{ env.XPYENV_BIN }}/pyenv" global ${{ env.XPYTHON_VER }}
+
+      - name: Install SCons ${{ env.XSCONS_VER }}
+        run: |
+          mkdir __scons
+          cd __scons
+          curl -LO "${{ env.XSCONS_URI/scons-${{ env.XSCONS_VER }}.tar.gz"
+          tar zxf scons-${{ env.XSCONS_VER }}.tar.gz
+          cd scons-${{ env.XSCONS_VER }}
+          "${{ env.XPYENV_BIN }}/pyenv" exec python setup.py build
+
+      - uses: actions/checkout@v3
+
+      - name: Build
+        run: "${{ env.XSCONS_BIN }}/scons" BROTLI=/usr GSSAPI=/usr
+
+      - name: Test
+        run: "${{ env.XSCONS_BIN }}/scons" check
