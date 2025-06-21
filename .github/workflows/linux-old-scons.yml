@@ -54,7 +54,7 @@ jobs:
         run: |
           mkdir __scons
           cd __scons
-          curl -LO "${{ env.XSCONS_URI/scons-${{ env.XSCONS_VER }}.tar.gz"
+          curl -LO "${{ env.XSCONS_URI }}/scons-${{ env.XSCONS_VER }}.tar.gz"
           tar zxf scons-${{ env.XSCONS_VER }}.tar.gz
           cd scons-${{ env.XSCONS_VER }}
           "${{ env.XPYENV_BIN }}/pyenv" exec python setup.py build
@@ -62,7 +62,9 @@ jobs:
       - uses: actions/checkout@v3
 
       - name: Build
-        run: "${{ env.XSCONS_BIN }}/scons" BROTLI=/usr GSSAPI=/usr
+        run: |
+            "${{ env.XSCONS_BIN }}/scons" BROTLI=/usr GSSAPI=/usr
 
       - name: Test
-        run: "${{ env.XSCONS_BIN }}/scons" check
+        run: |
+            "${{ env.XSCONS_BIN }}/scons" check
