@@ -53,6 +53,7 @@ jobs:
 
           ls env: | foreach { "$($_.Name)=$($_.Value)" >> $env:GITHUB_ENV }
 
+      - name: Configure CMake
         run: >
             cmake
             -B ${{github.workspace}}/build
