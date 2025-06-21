@@ -1534,6 +1534,12 @@ static void init_ssl_libraries(void)
         OpenSSL_add_all_algorithms();
 #endif
 
+#if defined(SERF_HAVE_OSSL_STORE_OPEN_EX)
+        if (ssl_x509_ex_data_idx < 0) {
+            ssl_x509_ex_data_idx = X509_get_ex_new_index(0, NULL, NULL, NULL, NULL);
+        }
+#endif
+
 #if APR_HAS_THREADS && defined(SERF_HAVE_SSL_LOCKING_CALLBACKS)
         numlocks = CRYPTO_num_locks();
         apr_pool_create(&ssl_pool, NULL);
@@ -1628,10 +1634,6 @@ static int ssl_need_client_cert(SSL *ssl, X509 **cert, EVP_PKEY **pkey)
 
 #if defined(SERF_HAVE_OSSL_STORE_OPEN_EX)
 
-    if (ssl_x509_ex_data_idx < 0) {
-        ssl_x509_ex_data_idx = X509_get_ex_new_index(0, NULL, NULL, NULL, NULL);
-    }
-
     /* until further notice */
     *cert = NULL;
     *pkey = NULL;
@@ -1672,12 +1674,13 @@ static int ssl_need_client_cert(SSL *ssl, X509 **cert, EVP_PKEY **pkey)
         /* server side request some certs? this list may be empty */
         requested = SSL_get_client_CA_list(ssl);
 
-        store = OSSL_STORE_open_ex(cert_uri, NULL, NULL, ui_method, ctx, NULL, NULL, NULL);
+        store = OSSL_STORE_open_ex(cert_uri, NULL, NULL, ui_method, ctx, NULL,
+                                   NULL, NULL);
         if (!store) {
             int err = ERR_get_error();
             serf__log(LOGLVL_ERROR, LOGCOMP_SSL, __FILE__, ctx->config,
-                      "OpenSSL store error (%s): %d %d\n", cert_uri, ERR_GET_LIB(err),
-                      ERR_GET_REASON(err));
+                      "OpenSSL store error (%s): %d %d\n", cert_uri,
+                      ERR_GET_LIB(err), ERR_GET_REASON(err));
             break;
         }
 
@@ -1706,7 +1709,10 @@ static int ssl_need_client_cert(SSL *ssl, X509 **cert, EVP_PKEY **pkey)
                     sk_X509_push(leaves, c);
                 }
 
-                /* any cert with an issuer matching our requested CAs is also added to the requests list */
+                /* any cert with an issuer matching our requested CAs is also
+                 * added to the requests list, except for leaf certs which are
+                 * marked as requested with a flag so we can skip the chain
+                 * check later. */
                 n = sk_X509_NAME_num(requested);
                 for (i = 0; i < n; ++i) {
                     X509_NAME *name = sk_X509_NAME_value(requested, i);
@@ -1715,7 +1721,8 @@ static int ssl_need_client_cert(SSL *ssl, X509 **cert, EVP_PKEY **pkey)
                             X509_STORE_add_cert(requests, c);
                         }
                         else {
-                            X509_set_ex_data(c, ssl_x509_ex_data_idx, (void *)1);
+                            X509_set_ex_data(c, ssl_x509_ex_data_idx,
+                                             (void *)1);
                         }
                     }
                 }
@@ -1754,10 +1761,12 @@ static int ssl_need_client_cert(SSL *ssl, X509 **cert, EVP_PKEY **pkey)
             }
 
             /* CAs requested? if so, skip non matches, if not, accept all */
-            if (sk_X509_NAME_num(requested) && !X509_get_ex_data(c, ssl_x509_ex_data_idx)) {
+            if (sk_X509_NAME_num(requested) &&
+                    !X509_get_ex_data(c, ssl_x509_ex_data_idx)) {
                 STACK_OF(X509) *chain;
 
-                chain = X509_build_chain(c, intermediates, requests, 0, NULL, NULL);
+                chain = X509_build_chain(c, intermediates, requests, 0, NULL,
+                                         NULL);
 
                 if (!chain) {
                     continue;
@@ -1774,7 +1783,8 @@ static int ssl_need_client_cert(SSL *ssl, X509 **cert, EVP_PKEY **pkey)
             }
 
             /* were we issued after the previous best? */
-            if (ASN1_TIME_compare(X509_get0_notBefore(*cert), X509_get0_notBefore(c)) < 0) {
+            if (ASN1_TIME_compare(X509_get0_notBefore(*cert),
+                    X509_get0_notBefore(c)) < 0) {
                 X509_free(*cert);
                 EVP_PKEY_free(*pkey);
                 *cert = c; /* don't dup, we're returning this */
