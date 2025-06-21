@@ -25,6 +25,7 @@ jobs:
       XSCONS_VER: "2.3.0"
       XSCONS_URI: "https://sourceforge.net/projects/scons/files/scons/2.3.0"
       XSCONS_BIN: "${{ github.workspace }}/__scons/scons-2.3.0/build/scripts"
+      PYTHONPATH: "${{ github.workspace }}/__scons/scons-2.3.0/build/lib"
 
     steps:
       - name: Install prerequisites
@@ -61,18 +62,6 @@ jobs:
           cd scons-${{ env.XSCONS_VER }}
           "${{ env.XPYENV_BIN }}/pyenv" exec python setup.py build
 
-      - name: Debug check environment
-        run: |
-            set -x
-            pwd
-            ls -la __pyenv || true
-            ls -la __pyenv/pyenv-${{ env.XPYENV_VER }} || true
-            ls -la __pyenv/pyenv-${{ env.XPYENV_VER }}/bin || true
-            ls -la __scons || true
-            ls -la __scons/scons-${{ env.XSCONS_VER }} || true
-            ls -la __scons/scons-${{ env.XSCONS_VER }}/build || true
-            ls -la __scons/scons-${{ env.XSCONS_VER }}/build/scripts || true
-
       - name: Build
         run: |
             mkdir __build
@@ -82,4 +71,4 @@ jobs:
       - name: Test
         run: |
             cd __build
-            "${{ env.XSCONS_BIN }}/scons" -Y .. check
+            "${{ env.XSCONS_BIN }}/scons" -Y .. BROTLI=/usr GSSAPI=/usr check
