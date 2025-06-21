@@ -58,7 +58,6 @@ jobs:
             cmake
             -B ${{github.workspace}}/build
             -G "${{ matrix.generator }}"
-            -DCMAKE_GENERATOR_PLATFORM=${{ matrix.platform }}
             -DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake
             -DCMAKE_PREFIX_PATH=C:/vcpkg/installed/${{ matrix.triplet }}
             -DCMAKE_INSTALL_PREFIX=${{github.workspace}}/install
