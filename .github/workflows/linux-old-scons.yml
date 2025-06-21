@@ -38,6 +38,8 @@ jobs:
                libbrotli-dev libkrb5-dev libbz2-dev libreadline-dev \
                libsqlite3-dev liblzma-dev libncurses5-dev libncursesw5-dev
 
+      - uses: actions/checkout@v3
+
       - name: Install pyenv
         run: |
             mkdir __pyenv
@@ -50,17 +52,6 @@ jobs:
             "${{ env.XPYENV_BIN }}/pyenv" install ${{ env.XPYTHON_VER }}
             "${{ env.XPYENV_BIN }}/pyenv" global ${{ env.XPYTHON_VER }}
 
-      - name: Debug check environment before checkout
-        run: |
-            pwd
-            ls -la __pyenv || true
-            ls -la __pyenv/pyenv-${{ env.XPYENV_VER }} || true
-            ls -la __pyenv/pyenv-${{ env.XPYENV_VER }}/bin || true
-            ls -la __scons || true
-            ls -la __scons/scons-${{ env.XSCONS_VER }} || true
-            ls -la __scons/scons-${{ env.XSCONS_VER }}/build || true
-            ls -la __scons/scons-${{ env.XSCONS_VER }}/build/scripts || true
-
       - name: Install SCons ${{ env.XSCONS_VER }}
         run: |
           mkdir __scons
@@ -70,10 +61,9 @@ jobs:
           cd scons-${{ env.XSCONS_VER }}
           "${{ env.XPYENV_BIN }}/pyenv" exec python setup.py build
 
-      - uses: actions/checkout@v3
-
-      - name: Debug check environment after checkout
+      - name: Debug check environment
         run: |
+            set -x
             pwd
             ls -la __pyenv || true
             ls -la __pyenv/pyenv-${{ env.XPYENV_VER }} || true
@@ -85,8 +75,11 @@ jobs:
 
       - name: Build
         run: |
-            "${{ env.XSCONS_BIN }}/scons" BROTLI=/usr GSSAPI=/usr
+            mkdir __build
+            cd __build
+            "${{ env.XSCONS_BIN }}/scons" -Y .. BROTLI=/usr GSSAPI=/usr
 
       - name: Test
         run: |
-            "${{ env.XSCONS_BIN }}/scons" check
+            cd __build
+            "${{ env.XSCONS_BIN }}/scons" -Y .. check
