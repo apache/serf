@@ -17,12 +17,12 @@ jobs:
         include:
           - name: Windows x64
             os: windows-latest
-            platform: x64
+            arch: x64
             triplet: x64-windows
             generator: "Ninja Multi-Config"
           - name: Windows x86
             os: windows-latest
-            platform: Win32
+            arch: x86
             triplet: x86-windows
             generator: "Ninja Multi-Config"
 
