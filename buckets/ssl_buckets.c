@@ -725,7 +725,7 @@ static int ocsp_callback(SSL *ssl, void *baton)
 
 typedef enum san_copy_t {
     EscapeNulAndCopy = 0,
-    ErrorOnNul = 1,
+    ErrorOnNul = 1
 } san_copy_t;
 
 

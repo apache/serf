@@ -1,0 +1,79 @@
+name: Linux (SCons 2.3.5)
+
+on:
+  push:
+    branches: [ "trunk" ]
+
+  # Allows you to run this workflow manually from the Actions tab
+  workflow_dispatch:
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+
+    runs-on: "ubuntu-24.04"
+
+    env:
+      XPYTHON_VER: "2.7.18"
+
+      XPYENV_VER: "2.6.3"
+      XPYENV_URI: "https://github.com/pyenv/pyenv/archive/refs/tags"
+      PYENV_ROOT: "${{ github.workspace }}/__pyenv/pyenv-2.6.3"
+      XPYENV_BIN: "${{ github.workspace }}/__pyenv/pyenv-2.6.3/bin"
+
+      # Our SConstruct requires scons-2.3.0, but 'krb5-config --cflags gssapi'
+      # on recent Ubuntu LTS returns '-isystem /usr/include/mit-krb5', and
+      # SCons only supports the -isystem flag since version 2.3.5. Yikes,
+      # that's more than two years newer, jumping from March 2013 all the
+      # way to June 2015. Oh the humanity!
+      XSCONS_VER: "2.3.5"
+      XSCONS_URI: "https://sourceforge.net/projects/scons/files/scons/2.3.5"
+      XSCONS_BIN: "${{ github.workspace }}/__scons/scons-2.3.5/build/scripts"
+      PYTHONPATH: "${{ github.workspace }}/__scons/scons-2.3.5/build/lib"
+
+    steps:
+      - name: Install prerequisites
+        # Note: we don't instal Tcl/TK, we don't need Pythons UI
+        # toolkit to build or test Serf.
+        run: |
+          sudo apt-get update
+          sudo apt-get --yes install \
+               build-essential wget curl llvm unzip xz-utils \
+               libapr1-dev libaprutil1-dev zlib1g-dev libssl-dev \
+               libbrotli-dev libkrb5-dev libbz2-dev libreadline-dev \
+               libsqlite3-dev liblzma-dev libncurses5-dev libncursesw5-dev
+
+      - uses: actions/checkout@v3
+
+      - name: Install pyenv
+        run: |
+            mkdir __pyenv
+            cd __pyenv
+            curl -LO "${{ env.XPYENV_URI }}/v${{ env.XPYENV_VER }}.tar.gz"
+            tar zxf v${{ env.XPYENV_VER }}.tar.gz
+
+      - name: Install Python ${{ env.XPYTHON_VER }}
+        run: |
+            "${{ env.XPYENV_BIN }}/pyenv" install ${{ env.XPYTHON_VER }}
+            "${{ env.XPYENV_BIN }}/pyenv" global ${{ env.XPYTHON_VER }}
+
+      - name: Install SCons ${{ env.XSCONS_VER }}
+        run: |
+          mkdir __scons
+          cd __scons
+          curl -LO "${{ env.XSCONS_URI }}/scons-${{ env.XSCONS_VER }}.tar.gz"
+          tar zxf scons-${{ env.XSCONS_VER }}.tar.gz
+          cd scons-${{ env.XSCONS_VER }}
+          "${{ env.XPYENV_BIN }}/pyenv" exec python setup.py build
+
+      - name: Build
+        run: |
+            mkdir __build
+            cd __build
+            "${{ env.XSCONS_BIN }}/scons" -Y .. BROTLI=/usr GSSAPI=/usr
+
+      - name: Test
+        run: |
+            cd __build
+            "${{ env.XSCONS_BIN }}/scons" -Y .. BROTLI=/usr GSSAPI=/usr check

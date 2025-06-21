@@ -60,8 +60,10 @@ cmake_minimum_required(VERSION 3.12)
 
 
 # -------------------------------------------------------------------
-# Common utility functions for FindAPR.cmaks and FindAPRtil.cmake
+# Common utility functions for FindAPR.cmake and FindAPRtil.cmake
 # -------------------------------------------------------------------
+
+include(GNUInstallDirs)
 
 # Run the APR/Util configuration program
 function(_apru_config _program _varname _regexp)
@@ -87,28 +89,58 @@ function(_apru_config _program _varname _regexp)
   endif()
 endfunction(_apru_config)
 
-# Parse the APR/Util version number from the header
-function(_apru_version _version_varname _major_varname _minor_varname _header _prefix)
-  file(STRINGS ${_header} _apru_major
+# Windows: Find the APR/Util include dir and version number.
+function(_apru_find_win_version _header_basename
+         _include_varname _version_varname _major_varname _minor_varname)
+  find_path(${_include_varname} "${_header_basename}.h"
+            PATH_SUFFIXES
+            "include"
+            "${CMAKE_INSTALL_INCLUDEDIR}"
+            "include/apr-2"
+            "${CMAKE_INSTALL_INCLUDEDIR}/apr-2"
+            "include/apr-1"
+            "${CMAKE_INSTALL_INCLUDEDIR}/apr-1")
+  mark_as_advanced(${_include_varname})
+
+  set(_header "${_header_basename}_version.h")
+  if(NOT EXISTS "${${_include_varname}}/${_header}")
+    message(FATAL_ERROR "${_header} was not found in ${${_include_varname}}")
+  endif()
+
+  string(TOUPPER "${_header_basename}" _prefix)
+  set(_header "${${_include_varname}}/${_header}")
+  file(STRINGS "${_header}" _apru_major
        REGEX "^ *# *define +${_prefix}_MAJOR_VERSION +[0-9]+.*$")
-  file(STRINGS ${_header} _apru_minor
+  file(STRINGS "${_header}" _apru_minor
        REGEX "^ *# *define +${_prefix}_MINOR_VERSION +[0-9]+.*$")
-  file(STRINGS ${_header} _apru_patch
+  file(STRINGS "${_header}" _apru_patch
        REGEX "^ *# *define +${_prefix}_PATCH_VERSION +[0-9]+.*$")
   string(REGEX REPLACE "^[^0-9]+([0-9]+).*$" "\\1" _apru_major ${_apru_major})
   string(REGEX REPLACE "^[^0-9]+([0-9]+).*$" "\\1" _apru_minor ${_apru_minor})
   string(REGEX REPLACE "^[^0-9]+([0-9]+).*$" "\\1" _apru_patch ${_apru_patch})
+
   set(${_version_varname} "${_apru_major}.${_apru_minor}.${_apru_patch}" PARENT_SCOPE)
   set(${_major_varname} ${_apru_major} PARENT_SCOPE)
   set(${_minor_varname} ${_apru_minor} PARENT_SCOPE)
-endfunction(_apru_version)
+endfunction(_apru_find_win_version)
 
 # Windows: Find the DLL (runtime) library
-function(_apru_find_dll _varname _dllname)
+function(_apru_find_win_dll _varname _dllname)
+  set(CMAKE_FIND_LIBRARY_PREFIXES "")
   set(CMAKE_FIND_LIBRARY_SUFFIXES ".dll")
-  find_library(${_varname} NAMES ${_dllname}
-               PATHS ${ARGN} NO_DEFAULT_PATH PATH_SUFFIXES "bin" "lib")
-endfunction(_apru_find_dll)
+  find_library(${_varname} NAMES "${_dllname}"
+               PATH_SUFFIXES
+               "bin" "${CMAKE_INSTALL_BINDIR}"
+               "lib" "${CMAKE_INSTALL_LIBDIR}")
+endfunction(_apru_find_win_dll)
+
+# Windows: Find static and import libraries
+function(_apru_find_win_lib _varname _libname)
+  set(CMAKE_FIND_LIBRARY_PREFIXES "")
+  set(CMAKE_FIND_LIBRARY_SUFFIXES ".lib")
+  find_library(${_varname} NAMES "${_libname}"
+               PATH_SUFFIXES "lib" "${CMAKE_INSTALL_LIBDIR}")
+endfunction(_apru_find_win_lib)
 
 # Extract the main and extra static libraries
 function(_apru_extras _static_var _extra_var)
@@ -159,57 +191,38 @@ function(_apru_location _location_var _extralibs_var)
   if(NOT _dir)
     find_library(${_location_var} NAMES "${_lib}")
   else()
-    find_library(${_location_var} NAMES "${_lib}" PATHS "${_dir}" NO_DEFAULT_PATH)
+    find_library(${_location_var} NAMES "${_lib}"
+                 PATHS "${_dir}" NO_DEFAULT_PATH)
   endif()
   set(${_extralibs_var} ${_extra} PARENT_SCOPE)
 endfunction(_apru_location)
 
+
+# -------------------------------------------------------------------
+# The actual FindAPR implementation
 # -------------------------------------------------------------------
 
 if(NOT _apru_include_only_utilities)
 
   set(APR_FOUND FALSE)
+  if(DEFINED APR_ROOT)
+    get_filename_component(APR_ROOT "${APR_ROOT}" REALPATH)
+  endif()
 
   if(${CMAKE_SYSTEM_NAME} MATCHES "Windows")
 
-    if(DEFINED APR_ROOT)
-      get_filename_component(APR_ROOT "${APR_ROOT}" REALPATH)
-    else()
-      message(FATAL_ERROR "APR_ROOT must be defined on Windows")
-    endif()
-
-    include(CheckIncludeFile)
-
-    find_path(APR_INCLUDES "apr.h"
-              PATHS "${APR_ROOT}/include"
-              PATH_SUFFIXES "apr-2" "apr-1"
-              NO_DEFAULT_PATH)
-    if(NOT APR_INCLUDES)
-      message(FATAL_ERROR "apr.h was not found in ${APR_ROOT}")
-    endif()
-
-    if(NOT EXISTS "${APR_INCLUDES}/apr_version.h")
-      message(FATAL_ERROR "apr_version.h was not found in ${APR_INCLUDES}")
-    endif()
-
-    _apru_version(APR_VERSION _apr_major _apr_minor "${APR_INCLUDES}/apr_version.h" "APR")
+    _apru_find_win_version("apr" APR_INCLUDES
+                           APR_VERSION _apr_major _apr_minor)
     set(_apr_name "apr-${_apr_major}")
 
-    find_library(APR_LIBRARIES NAMES "lib${_apr_name}.lib"
-                 PATHS ${APR_ROOT} NO_DEFAULT_PATH PATH_SUFFIXES "lib")
-    find_library(APR_STATIC_LIBS NAMES "${_apr_name}.lib"
-                 PATHS ${APR_ROOT} NO_DEFAULT_PATH PATH_SUFFIXES "lib")
-    _apru_find_dll(APR_RUNTIME_LIBS "lib${_apr_name}.dll" ${APR_ROOT})
+    _apru_find_win_lib(APR_LIBRARIES "lib${_apr_name}")
+    _apru_find_win_lib(APR_STATIC_LIBS "${_apr_name}")
+    _apru_find_win_dll(APR_RUNTIME_LIBS "lib${_apr_name}")
 
   else()    # NOT Windows
 
-    if(DEFINED APR_ROOT)
-      get_filename_component(APR_ROOT "${APR_ROOT}" REALPATH)
-      find_program(APR_CONFIG_EXECUTABLE NAMES apr-2-config apr-1-config
-                   PATHS "${APR_ROOT}/bin" NO_DEFAULT_PATH)
-    else()
-      find_program(APR_CONFIG_EXECUTABLE NAMES apr-2-config apr-1-config)
-    endif()
+    find_program(APR_CONFIG_EXECUTABLE NAMES apr-2-config apr-1-config
+                 PATH_SUFFIXES "bin" "${CMAKE_INSTALL_BINDIR}")
     mark_as_advanced(APR_CONFIG_EXECUTABLE)
 
     macro(_apr_invoke _varname _regexp)
@@ -233,9 +246,10 @@ if(NOT _apru_include_only_utilities)
   endif()
 
   include(FindPackageHandleStandardArgs)
-  find_package_handle_standard_args(APR
-                                    REQUIRED_VARS APR_LIBRARIES APR_INCLUDES
-                                    VERSION_VAR APR_VERSION)
+  find_package_handle_standard_args(
+    APR
+    REQUIRED_VARS APR_LIBRARIES APR_INCLUDES
+    VERSION_VAR APR_VERSION)
 
   if(APR_FOUND)
     if(${CMAKE_SYSTEM_NAME} MATCHES "Windows")

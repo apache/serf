@@ -39,7 +39,7 @@ cmake_minimum_required(VERSION 3.12)
 #
 # ::
 #
-#   APRUTIL_FOUND          - True if APR-Util was found
+#   APRUtil_FOUND          - True if APR-Util was found
 #   APRUTIL_VERSION        - The version of APR-Util found (x.y.z)
 #   APRUTIL_INCLUDES       - Where to find apr.h, etc.
 #   APRUTIL_LIBRARIES      - Linker switches to use with ld to link against APR
@@ -61,7 +61,7 @@ if(NOT APR_FOUND)
   find_package(APR REQUIRED)
 endif()
 
-set(APRUTIL_FOUND FALSE)
+set(APRUtil_FOUND FALSE)
 
 if(APR_CONTAINS_APRUTIL)
 
@@ -77,44 +77,27 @@ else(APR_CONTAINS_APRUTIL)
   include(${CMAKE_CURRENT_LIST_DIR}/FindAPR.cmake)
   unset(_apru_include_only_utilities)
 
+  if(DEFINED APRUtil_ROOT)
+    get_filename_component(APRUtil_ROOT "${APRUtil_ROOT}" REALPATH)
+  endif()
+
   if(${CMAKE_SYSTEM_NAME} MATCHES "Windows")
 
-    if(DEFINED APRUtil_ROOT)
-      get_filename_component(APRUtil_ROOT "${APRUtil_ROOT}" REALPATH)
-    else()
-      message(FATAL_ERROR "APRUtil_ROOT must be defined on Windows")
-    endif()
-
-    include(CheckIncludeFile)
-
-    find_path(APRUTIL_INCLUDES "apu.h"
-              PATHS "${APRUtil_ROOT}/include"
-              PATH_SUFFIXES "apr-1"
-              NO_DEFAULT_PATH)
-    if(NOT APRUTIL_INCLUDES)
-      message(FATAL_ERROR "apu.h was not found in ${APRUtil_ROOT}")
-    endif()
-
-    if(NOT EXISTS "${APRUTIL_INCLUDES}/apu_version.h")
-      message(FATAL_ERROR "apu_version.h was not found in ${APRUTIL_INCLUDES}")
-    endif()
-
-    _apru_version(APRUTIL_VERSION _apu_major _apu_minor "${APRUTIL_INCLUDES}/apu_version.h" "APU")
+    _apru_find_win_version("apu" APRUTIL_INCLUDES
+                           APRUTIL_VERSION _apu_major _apu_minor)
     set(_apu_name "aprutil-${_apu_major}")
 
-    if(${_apu_major} GREATER 1 OR (${_apu_major} EQUAL 1 AND ${_apu_minor} GREATER 5))
-      set(_apu_expat_name "expat.lib")
+    if(${_apu_major} GREATER 1
+       OR (${_apu_major} EQUAL 1 AND ${_apu_minor} GREATER 5))
+      set(_apu_expat_name "expat")
     else()
-      set(_apu_expat_name "xml.lib")
+      set(_apu_expat_name "xml")
     endif()
 
-    find_library(APRUTIL_LIBRARIES NAMES "lib${_apu_name}.lib"
-                 PATHS ${APRUtil_ROOT} NO_DEFAULT_PATH PATH_SUFFIXES "lib")
-    find_library(_apu_static NAMES "${_apu_name}.lib"
-                 PATHS ${APRUtil_ROOT} NO_DEFAULT_PATH PATH_SUFFIXES "lib")
-    find_library(_apu_expat NAMES ${_apu_expat_name}
-                 PATHS ${APRUtil_ROOT} NO_DEFAULT_PATH PATH_SUFFIXES "lib")
-    _apru_find_dll(APRUTIL_RUNTIME_LIBS "lib${_apu_name}.dll" ${APRUtil_ROOT})
+    _apru_find_win_lib(APRUTIL_LIBRARIES "lib${_apu_name}")
+    _apru_find_win_lib(_apu_static NAMES "${_apu_name}")
+    _apru_find_win_lib(_apu_expat NAMES ${_apu_expat_name})
+    _apru_find_win_dll(APRUTIL_RUNTIME_LIBS "lib${_apu_name}")
 
     if(NOT _apu_expat AND (_apu_expat_name MATCHES "expat"))
       find_package(EXPAT QUIET)
@@ -123,7 +106,7 @@ else(APR_CONTAINS_APRUTIL)
       endif()
     endif()
     if(NOT _apu_expat)
-      message(WARNING "Could not find ${_apu_expat_name}"
+      message(WARNING "Could not find ${_apu_expat_name}.lib"
                       " for APR-Util static linking.")
     endif()
     set(APRUTIL_STATIC_LIBS ${_apu_static} ${_apu_expat}
@@ -131,13 +114,8 @@ else(APR_CONTAINS_APRUTIL)
 
   else()    # NOT Windows
 
-    if(DEFINED APRUtil_ROOT)
-      get_filename_component(APRUtil_ROOT "${APRUtil_ROOT}" REALPATH)
-      find_program(APRUTIL_CONFIG_EXECUTABLE apu-1-config
-                   PATHS "${APRUtil_ROOT}/bin" NO_DEFAULT_PATH)
-    else()
-      find_program(APRUTIL_CONFIG_EXECUTABLE apu-1-config)
-    endif()
+    find_program(APRUTIL_CONFIG_EXECUTABLE NAMES apu-1-config
+                 PATH_SUFFIXES "bin" "${CMAKE_INSTALL_BINDIR}")
     mark_as_advanced(APRUTIL_CONFIG_EXECUTABLE)
 
     macro(_apu_invoke _varname _regexp)
@@ -153,21 +131,22 @@ else(APR_CONTAINS_APRUTIL)
   endif()   # NOT Windows
 
   include(FindPackageHandleStandardArgs)
-  find_package_handle_standard_args(APRUtil
-                                    REQUIRED_VARS APRUTIL_LIBRARIES APRUTIL_INCLUDES
-                                    VERSION_VAR APRUTIL_VERSION)
+  find_package_handle_standard_args(
+    APRUtil
+    REQUIRED_VARS APRUTIL_LIBRARIES APRUTIL_INCLUDES
+    VERSION_VAR APRUTIL_VERSION)
 
-  if(APRUTIL_FOUND)
+  if(APRUtil_FOUND)
     if(${CMAKE_SYSTEM_NAME} MATCHES "Windows")
 
       if(APRUTIL_LIBRARIES AND APRUTIL_RUNTIME_LIBS)
-        add_library(APR::APRUTIL SHARED IMPORTED)
-        set_target_properties(APR::APRUTIL PROPERTIES
+        add_library(APR::APRUtil SHARED IMPORTED)
+        set_target_properties(APR::APRUtil PROPERTIES
           INTERFACE_INCLUDE_DIRECTORIES "${APRUTIL_INCLUDES}"
           IMPORTED_LOCATION "${APRUTIL_RUNTIME_LIBS}"
           IMPORTED_IMPLIB "${APRUTIL_LIBRARIES}")
         if(TARGET APR::APR)
-          target_link_libraries(APR::APRUTIL
+          target_link_libraries(APR::APRUtil
             INTERFACE APR::APR)
         endif()
       endif()
@@ -177,25 +156,25 @@ else(APR_CONTAINS_APRUTIL)
         if(TARGET APR::APR_static)
           list(APPEND _apu_extra APR::APR_static)
         endif()
-        add_library(APR::APRUTIL_static STATIC IMPORTED)
-        set_target_properties(APR::APRUTIL_static PROPERTIES
+        add_library(APR::APRUtil_static STATIC IMPORTED)
+        set_target_properties(APR::APRUtil_static PROPERTIES
           INTERFACE_COMPILE_DEFINITIONS "APU_DECLARE_STATIC"
           INTERFACE_INCLUDE_DIRECTORIES "${APRUTIL_INCLUDES}"
           IMPORTED_LOCATION "${_apu_static}")
-        target_link_libraries(APR::APRUTIL_static
+        target_link_libraries(APR::APRUtil_static
           INTERFACE ${_apu_extra})
       endif()
 
     else()    # NOT Windows
 
       _apru_location(_apu_library _apu_extra "${APRUTIL_LIBRARIES}")
-      add_library(APR::APRUTIL UNKNOWN IMPORTED)
-      set_target_properties(APR::APRUTIL PROPERTIES
+      add_library(APR::APRUtil UNKNOWN IMPORTED)
+      set_target_properties(APR::APRUtil PROPERTIES
         INTERFACE_INCLUDE_DIRECTORIES "${APRUTIL_INCLUDES}"
         IMPORTED_LOCATION "${_apu_library}")
-      target_link_libraries(APR::APRUTIL
+      target_link_libraries(APR::APRUtil
           INTERFACE ${APRUTIL_LDFLAGS};${APRUTIL_EXTRALIBS};${_apu_extra})
     endif()   # NOT Windows
-  endif(APRUTIL_FOUND)
+  endif(APRUtil_FOUND)
 
 endif(APR_CONTAINS_APRUTIL)

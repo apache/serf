@@ -180,12 +180,15 @@ list(APPEND SOURCES
 if(SERF_WINDOWS)
   set(export_symbols_ext_ "def")
   set(export_symbols_gen_ SerfWindowsGenDef)
+  set(export_symbols_ldflag "${CMAKE_LINK_DEF_FILE_FLAG}")
 elseif(SERF_DARWIN)
   set(export_symbols_ext_ "exp")
   set(export_symbols_gen_ SerfMachGenExp)
+  set(export_symbols_ldflag "-Wl,-exported_symbols_list,")
 elseif(SERF_ELF_TARGET)
   set(export_symbols_ext_ "map")
   set(export_symbols_gen_ SerfElfGenMap)
+  set(export_symbols_ldflag "-Wl,--version-script,")
 endif()
 
 if(DEFINED export_symbols_gen_)
@@ -206,7 +209,7 @@ if(DEFINED export_symbols_gen_)
 endif()
 
 if(SERF_WINDOWS)
-  set(SHARED_SOURCES "serf.rc" "${SERF_EXPORT_SYMBOLS}")
+  set(SHARED_SOURCES "serf.rc")
 
   # Static OpenSSL, APR and APR-Util need additional libraries that are not
   # linked by default by CMake. These will be ignored by the linker if they're
@@ -263,7 +266,7 @@ if(APR_STATIC)
   if(SERF_WINDOWS)
     list(APPEND SERF_PUBLIC_TARGETS APR::APR_static)
     if(NOT APR_CONTAINS_APRUTIL)
-      list(APPEND SERF_PUBLIC_TARGETS APR::APRUTIL_static)
+      list(APPEND SERF_PUBLIC_TARGETS APR::APRUtil_static)
     endif()
   else(SERF_WINDOWS)
     message(WARNING "option APR_STATIC is not implemented on this platform")
@@ -271,7 +274,7 @@ if(APR_STATIC)
 else(APR_STATIC)
   list(APPEND SERF_PUBLIC_TARGETS APR::APR)
   if(NOT APR_CONTAINS_APRUTIL)
-    list(APPEND SERF_PUBLIC_TARGETS APR::APRUTIL)
+    list(APPEND SERF_PUBLIC_TARGETS APR::APRUtil)
   endif()
 endif(APR_STATIC)
 
@@ -402,13 +405,8 @@ if(NOT SKIP_SHARED)
                         SOVERSION ${SERF_SOVERSION})
   if(DEFINED SERF_EXPORT_SYMBOLS)
     add_dependencies(serf_shared serf_export_symbols)
-    if(SERF_DARWIN)
-      set_target_properties(serf_shared PROPERTIES
-        LINK_FLAGS "-Wl,-exported_symbols_list,${SERF_EXPORT_SYMBOLS}")
-    elseif(SERF_ELF_TARGET)
-      set_target_properties(serf_shared PROPERTIES
-        LINK_FLAGS "-Wl,--version-script,${SERF_EXPORT_SYMBOLS}")
-    endif()
+    set_target_properties(serf_shared PROPERTIES
+      LINK_FLAGS "${export_symbols_ldflag}${SERF_EXPORT_SYMBOLS}")
   endif()
   if(SERF_DARWIN AND NOT RELATIVE_RPATH)
     set_target_properties(serf_shared PROPERTIES
@@ -447,8 +445,8 @@ endif()
 
 # Install targets
 install(TARGETS ${SERF_TARGETS}
-        ARCHIVE DESTINATION "${SERF_INSTALL_LIBS}"
-        LIBRARY DESTINATION "${SERF_INSTALL_LIBS}"
+        ARCHIVE DESTINATION "${SERF_INSTALL_LIBRARIES}"
+        LIBRARY DESTINATION "${SERF_INSTALL_LIBRARIES}"
         RUNTIME DESTINATION "${SERF_INSTALL_RUNTIME}")
 
 install(FILES ${HEADERS} DESTINATION "${SERF_INSTALL_HEADERS}")
@@ -459,6 +457,7 @@ if(NOT SERF_WINDOWS)
   function(make_pkgconfig)
     set(PREFIX ${CMAKE_INSTALL_PREFIX})
     set(INCLUDE_SUBDIR ${SERF_INCLUDE_SUBDIR})
+    set(LIBDIR \${prefix}/${SERF_INSTALL_LIBRARIES})
     set(VERSION ${SERF_VERSION})
     set(MAJOR ${SERF_MAJOR_VERSION})
     set(SERF_INTERFACE_LIBS

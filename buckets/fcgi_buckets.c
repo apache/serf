@@ -282,7 +282,7 @@ typedef struct fcgi_params_decode_ctx_t
     {
         DS_SIZES = 0,
         DS_KEY,
-        DS_VALUE,
+        DS_VALUE
     } state;
 
     char size_buffer[8];
@@ -906,4 +906,3 @@ const serf_bucket_type_t serf_bucket_type__fcgi_frame =
     serf_fcgi_frame_get_remaining,
     serf_fcgi_frame_set_config
 };
-

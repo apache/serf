@@ -99,7 +99,7 @@
 typedef enum gss_api_auth_state {
     gss_api_auth_not_started,
     gss_api_auth_in_progress,
-    gss_api_auth_completed,
+    gss_api_auth_completed
 } gss_api_auth_state;
 
 /**
@@ -159,7 +159,7 @@ typedef enum authn_persistence_state_t {
     pstate_init,
     pstate_undecided,
     pstate_stateless,
-    pstate_stateful,
+    pstate_stateful
 } authn_persistence_state_t;
 
 
@@ -261,19 +261,10 @@ do_auth(const serf__authn_scheme_t *scheme,
         const char *auth_hdr,
         apr_pool_t *pool)
 {
-    serf_context_t *ctx = conn->ctx;
-    serf__authn_info_t *authn_info;
     const char *tmp = NULL;
     char *token = NULL;
     apr_size_t tmp_len = 0, token_len = 0;
     apr_status_t status;
-
-    if (peer == HOST) {
-        authn_info = serf__get_authn_info_for_server(conn);
-    } else {
-        authn_info = &ctx->proxy_authn_info;
-    }
-    /* FIXME: authn_info's value is never used. */
 
     /* Is this a response from a host/proxy? auth_hdr should always be set. */
     if (code && auth_hdr) {
