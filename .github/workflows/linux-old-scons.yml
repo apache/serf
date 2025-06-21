@@ -50,6 +50,17 @@ jobs:
             "${{ env.XPYENV_BIN }}/pyenv" install ${{ env.XPYTHON_VER }}
             "${{ env.XPYENV_BIN }}/pyenv" global ${{ env.XPYTHON_VER }}
 
+      - name: Debug check environment before checkout
+        run: |
+            pwd
+            ls -la __pyenv || true
+            ls -la __pyenv/pyenv-${{ env.XPYENV_VER }} || true
+            ls -la __pyenv/pyenv-${{ env.XPYENV_VER }}/bin || true
+            ls -la __scons || true
+            ls -la __scons/scons-${{ env.XSCONS_VER }} || true
+            ls -la __scons/scons-${{ env.XSCONS_VER }}/build || true
+            ls -la __scons/scons-${{ env.XSCONS_VER }}/build/scripts || true
+
       - name: Install SCons ${{ env.XSCONS_VER }}
         run: |
           mkdir __scons
@@ -60,6 +71,17 @@ jobs:
           "${{ env.XPYENV_BIN }}/pyenv" exec python setup.py build
 
       - uses: actions/checkout@v3
+
+      - name: Debug check environment after checkout
+        run: |
+            pwd
+            ls -la __pyenv || true
+            ls -la __pyenv/pyenv-${{ env.XPYENV_VER }} || true
+            ls -la __pyenv/pyenv-${{ env.XPYENV_VER }}/bin || true
+            ls -la __scons || true
+            ls -la __scons/scons-${{ env.XSCONS_VER }} || true
+            ls -la __scons/scons-${{ env.XSCONS_VER }}/build || true
+            ls -la __scons/scons-${{ env.XSCONS_VER }}/build/scripts || true
 
       - name: Build
         run: |
