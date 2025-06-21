@@ -43,7 +43,7 @@ jobs:
             mkdir __pyenv
             cd __pyenv
             curl -LO "${{ env.XPYENV_URI }}/v${{ env.XPYENV_VER }}.tar.gz"
-            tar zxf pyenv-${{ env.XPYENV_VER }}.tar.gz
+            tar zxf v${{ env.XPYENV_VER }}.tar.gz
 
       - name: Install Python ${{ env.XPYTHON_VER }}
         run: |
