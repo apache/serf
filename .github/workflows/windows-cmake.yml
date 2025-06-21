@@ -63,10 +63,10 @@ jobs:
             -DCMAKE_INSTALL_PREFIX=${{github.workspace}}/install
 
       - name: Build (Release)
-        run: cmake --build ${{github.workspace}}/build --config Release -j
+        run: cmake --build ${{github.workspace}}/build --config Release --parallel
 
       - name: Build (Debug)
-        run: cmake --build ${{github.workspace}}/build --config Debug -j
+        run: cmake --build ${{github.workspace}}/build --config Debug --parallel
 
       - name: Test (Release)
         working-directory: ${{github.workspace}}/build
