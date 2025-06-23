@@ -9,9 +9,9 @@
 #   to you under the Apache License, Version 2.0 (the
 #   "License"); you may not use this file except in compliance
 #   with the License.  You may obtain a copy of the License at
-# 
+#
 #     http://www.apache.org/licenses/LICENSE-2.0
-# 
+#
 #   Unless required by applicable law or agreed to in writing,
 #   software distributed under the License is distributed on an
 #   "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
@@ -21,9 +21,9 @@
 # ===================================================================
 #
 
-# This script creates the private keys and certificates required for 
+# This script creates the private keys and certificates required for
 # running the serf test suite.
-# 
+#
 # It should be run from the test/certs folder without arguments.
 # Certificates will be created in the test/certs folder, private keys in the
 # test/certs/private folder.
@@ -47,12 +47,12 @@ def create_key(keyfile='', passphrase=None):
     key = crypto.PKey()
     key.generate_key(KEY_ALGO, KEY_SIZE)
     if passphrase:
-        open(keyfile, "wt").write(crypto.dump_privatekey(crypto.FILETYPE_PEM, 
-                                                         key, KEY_CIPHER, 
-                                                         passphrase))
+        open(keyfile, "wt").write(crypto.dump_privatekey(crypto.FILETYPE_PEM,
+                                                         key, KEY_CIPHER,
+                                                         passphrase).decode('utf-8'))
     else:
-        open(keyfile, "wt").write(crypto.dump_privatekey(crypto.FILETYPE_PEM, 
-                                                         key))
+        open(keyfile, "wt").write(crypto.dump_privatekey(crypto.FILETYPE_PEM,
+                                                         key).decode('utf-8'))
 
     return key
 
@@ -62,7 +62,7 @@ def create_pkcs12(clientkey, clientcert, issuer, pkcs12file, passphrase=None):
     pkcs12.set_certificate(clientcert)
     pkcs12.set_privatekey(clientkey)
     pkcs12.set_ca_certificates([issuer])
-    open(pkcs12file, "wt").write(pkcs12.export(passphrase=passphrase, 
+    open(pkcs12file, "wb").write(pkcs12.export(passphrase=passphrase,
                                                iter=2048, maciter=2048))
 
 def create_crl(revokedcert, cakey, cacert, crlfile, next_crl_days=VALID_DAYS):
@@ -73,9 +73,9 @@ def create_crl(revokedcert, cakey, cacert, crlfile, next_crl_days=VALID_DAYS):
     now = datetime.utcnow()
     now_str = now.strftime('%Y%m%d%H%M%SZ')
 
-    revoked.set_serial(serial_number)
-    revoked.set_reason('unspecified')
-    revoked.set_rev_date(now_str)   # revoked as of now
+    revoked.set_serial(serial_number.encode('ascii'))
+    revoked.set_reason(b'unspecified')
+    revoked.set_rev_date(now_str.encode('ascii'))   # revoked as of now
 
     crl.add_revoked(revoked)
     try:
@@ -84,16 +84,16 @@ def create_crl(revokedcert, cakey, cacert, crlfile, next_crl_days=VALID_DAYS):
         # Some very old versions of pyopenssl (such as the one on macOS)
         # do not support the 'digest' keyword argument.
         exported = crl.export(cacert, cakey, days=next_crl_days)
-    open(crlfile, "wt").write(exported)
+    open(crlfile, "wb").write(exported)
 
 # subjectAltName
-def create_cert(subjectkey, certfile, issuer=None, issuerkey=None, country='', 
-                state='', city='', org='', ou='', cn='', email='', ca=False, 
+def create_cert(subjectkey, certfile, issuer=None, issuerkey=None, country='',
+                state='', city='', org='', ou='', cn='', email='', ca=False,
                 valid_before=0, days_valid=VALID_DAYS, subjectAltName=None,
                 ocsp_responder_url=None, ocsp_signer=False):
     '''
     Create a X509 signed certificate.
-    
+
     subjectAltName
         Array of fully qualified subject alternative names (use OpenSSL syntax):
         For a DNS entry, use: ['DNS:localhost']. Other options are 'email', 'URI', 'IP'.
@@ -103,15 +103,15 @@ def create_cert(subjectkey, certfile, issuer=None, issuerkey=None, country='',
     cert.set_version(3-1) # version 3, starts at 0
     cert.get_subject().C  = country
     cert.get_subject().ST = state
-    cert.get_subject().L  = city 
-    cert.get_subject().O  = org 
+    cert.get_subject().L  = city
+    cert.get_subject().O  = org
     cert.get_subject().OU = ou
     if cn:
         cert.get_subject().CN = cn
     cert.get_subject().emailAddress = email
     cert.set_serial_number(SERIAL_NUMBER)
     cert.set_pubkey(subjectkey)
-    
+
     cert.gmtime_adj_notBefore(valid_before * 24 * 3600)
     cert.gmtime_adj_notAfter(days_valid * 24 * 3600)
 
@@ -119,92 +119,92 @@ def create_cert(subjectkey, certfile, issuer=None, issuerkey=None, country='',
         issuer = cert # self signed
         issuerkey = subjectkey
     cert.set_issuer(issuer.get_subject())
-    
+
     if ca:
         cert.add_extensions([
-            crypto.X509Extension("basicConstraints", False,
-                                 "CA:TRUE"),
-            crypto.X509Extension("subjectKeyIdentifier", False, "hash",
+            crypto.X509Extension(b"basicConstraints", False,
+                                 b"CA:TRUE"),
+            crypto.X509Extension(b"subjectKeyIdentifier", False, b"hash",
                                  subject=cert)
             ])
         cert.add_extensions([
-            crypto.X509Extension("authorityKeyIdentifier", False, 
-                                 "keyid:always", issuer=issuer)
+            crypto.X509Extension(b"authorityKeyIdentifier", False,
+                                 b"keyid:always", issuer=issuer)
             ])
 
     if subjectAltName:
         critical = True if not cn else False
         cert.add_extensions([
-            crypto.X509Extension('subjectAltName', critical, ", ".join(subjectAltName))])
+            crypto.X509Extension(b'subjectAltName', critical, ", ".join(subjectAltName).encode('ascii'))])
 
     if ocsp_responder_url:
         cert.add_extensions([
-            crypto.X509Extension('authorityInfoAccess', False,
-                                 'OCSP;URI:' + ocsp_responder_url)])
+            crypto.X509Extension(b'authorityInfoAccess', False,
+                                 ('OCSP;URI:' + ocsp_responder_url).encode('ascii'))])
 
     if ocsp_signer:
         cert.add_extensions([
-            crypto.X509Extension('extendedKeyUsage', True, 'OCSPSigning')
+            crypto.X509Extension(b'extendedKeyUsage', True, b'OCSPSigning')
         ])
 
     cert.sign(issuerkey, SIGN_ALGO)
 
-    open(certfile, "wt").write(crypto.dump_certificate(crypto.FILETYPE_PEM, 
-                                                       cert))
+    open(certfile, "wt").write(crypto.dump_certificate(crypto.FILETYPE_PEM,
+                                                       cert).decode('utf-8'))
     return cert
 
 if __name__ == '__main__':
     # root CA key pair and certificate.
     # This key will be used to sign the intermediate CA certificate
-    rootcakey = create_key('private/serfrootcakey.pem', 'serftest')
+    rootcakey = create_key('private/serfrootcakey.pem', b'serftest')
 
-    rootcacert = create_cert(subjectkey=rootcakey, 
+    rootcacert = create_cert(subjectkey=rootcakey,
                              certfile='serfrootcacert.pem',
-                             country='BE', state='Antwerp', city='Mechelen', 
-                             org='In Serf we trust, Inc.', 
-                             ou='Test Suite Root CA', cn='Serf Root CA', 
+                             country='BE', state='Antwerp', city='Mechelen',
+                             org='In Serf we trust, Inc.',
+                             ou='Test Suite Root CA', cn='Serf Root CA',
                              email='serfrootca@example.com', ca=True)
 
     # intermediate CA key pair and certificate
     # This key will be used to sign all server certificates
-    cakey = create_key('private/serfcakey.pem', 'serftest')
+    cakey = create_key('private/serfcakey.pem', b'serftest')
 
     cacert = create_cert(subjectkey=cakey, certfile='serfcacert.pem',
                          issuer=rootcacert, issuerkey=rootcakey,
-                         country='BE', state='Antwerp', city='Mechelen', 
-                         org='In Serf we trust, Inc.', 
-                         ou='Test Suite CA', cn='Serf CA', 
+                         country='BE', state='Antwerp', city='Mechelen',
+                         org='In Serf we trust, Inc.',
+                         ou='Test Suite CA', cn='Serf CA',
                          email='serfca@example.com', ca=True)
 
     # server key pair
     # server certificate, no errors
-    serverkey = create_key('private/serfserverkey.pem', 'serftest')
+    serverkey = create_key('private/serfserverkey.pem', b'serftest')
 
-    servercert = create_cert(subjectkey=serverkey, 
+    servercert = create_cert(subjectkey=serverkey,
                              certfile='serfservercert.pem',
                              issuer=cacert, issuerkey=cakey,
-                             country='BE', state='Antwerp', city='Mechelen', 
-                             org='In Serf we trust, Inc.', 
-                             ou='Test Suite Server', cn='localhost', 
+                             country='BE', state='Antwerp', city='Mechelen',
+                             org='In Serf we trust, Inc.',
+                             ou='Test Suite Server', cn='localhost',
                              email='serfserver@example.com')
 
     # server certificate that expired a year ago
-    expiredcert = create_cert(subjectkey=serverkey, 
+    expiredcert = create_cert(subjectkey=serverkey,
                               certfile='serfserver_expired_cert.pem',
                               issuer=cacert, issuerkey=cakey,
-                              country='BE', state='Antwerp', city='Mechelen', 
-                              org='In Serf we trust, Inc.', 
-                              ou='Test Suite Server', cn='localhost', 
+                              country='BE', state='Antwerp', city='Mechelen',
+                              org='In Serf we trust, Inc.',
+                              ou='Test Suite Server', cn='localhost',
                               email='serfserver@example.com',
                               days_valid=-365)
 
     # server certificate that will be valid in 10 years
-    expiredcert = create_cert(subjectkey=serverkey, 
+    expiredcert = create_cert(subjectkey=serverkey,
                               certfile='serfserver_future_cert.pem',
                               issuer=cacert, issuerkey=cakey,
                               country='BE', state='Antwerp', city='Mechelen',
-                              org='In Serf we trust, Inc.', 
-                              ou='Test Suite Server', cn='localhost', 
+                              org='In Serf we trust, Inc.',
+                              ou='Test Suite Server', cn='localhost',
                               email='serfserver@example.com',
                               valid_before=10*365)
 
@@ -243,21 +243,21 @@ if __name__ == '__main__':
                               ocsp_signer=True)
 
     # client key pair and certificate
-    clientkey = create_key('private/serfclientkey.pem', 'serftest')
+    clientkey = create_key('private/serfclientkey.pem', b'serftest')
 
-    clientcert = create_cert(subjectkey=clientkey, 
+    clientcert = create_cert(subjectkey=clientkey,
                              certfile='serfclientcert.pem',
                              issuer=cacert, issuerkey=cakey,
-                             country='BE', state='Antwerp', city='Mechelen', 
-                             org='In Serf we trust, Inc.', 
-                             ou='Test Suite Client', cn='Serf Client', 
+                             country='BE', state='Antwerp', city='Mechelen',
+                             org='In Serf we trust, Inc.',
+                             ou='Test Suite Client', cn='Serf Client',
                              email='serfclient@example.com')
 
-    clientpkcs12 = create_pkcs12(clientkey, clientcert, cacert, 
-                                 'serfclientcert.p12', 'serftest')
+    clientpkcs12 = create_pkcs12(clientkey, clientcert, cacert,
+                                 'serfclientcert.p12', b'serftest')
 
-    # Note that this creates a v1 CRL file without extensions set, and with 
+    # Note that this creates a v1 CRL file without extensions set, and with
     # MD5 hash. Not ideal, but pyOpenSSL doesn't support more than this.
-    # 
+    #
     # crl
     crl = create_crl(servercert, cakey, cacert, 'serfservercrl.pem')
