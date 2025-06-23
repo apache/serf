@@ -167,6 +167,32 @@ typedef int serf__bool_t; /* Not _Bool */
 #endif
 #endif
 
+/*** One-time initialization. ***/
+
+/* Init-once context. */
+struct serf__init_once_context
+{
+    volatile apr_uint32_t state;
+    apr_status_t status;
+};
+
+#define SERF__INIT_ONCE_NONE 0
+#define SERF__DECLARE_STATIC_INIT_ONCE_CONTEXT(name)  \
+    static struct serf__init_once_context name = {    \
+        SERF__INIT_ONCE_NONE, APR_SUCCESS             \
+    }
+
+/* The init-once callback function. */
+typedef apr_status_t (*serf__init_once_func_t)(void *baton);
+
+/* The function that performs on-time initialization.
+   If APR_HAS_THREADS, will use a spinlock to serialize the call to
+   the initialization function. */
+apr_status_t serf__init_once(struct serf__init_once_context *init_ctx,
+                             serf__init_once_func_t init_func,
+                             void *init_baton);
+
+
 typedef struct serf__authn_scheme_t serf__authn_scheme_t;
 
 typedef struct serf_io_baton_t {

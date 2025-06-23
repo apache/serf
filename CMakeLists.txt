@@ -131,6 +131,7 @@ list(APPEND SOURCES
     "src/context.c"
     "src/deprecated.c"
     "src/incoming.c"
+    "src/init_once.c"
     "src/logging.c"
     "src/outgoing.c"
     "src/outgoing_request.c"

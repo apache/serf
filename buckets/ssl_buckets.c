@@ -1467,90 +1467,66 @@ static apr_status_t cleanup_ssl(void *data)
 
 #endif
 
-#if !APR_VERSION_AT_LEAST(1,0,0)
-#define apr_atomic_cas32(mem, with, cmp) apr_atomic_cas(mem, with, cmp)
-#endif
 
-enum ssl_init_e
+static apr_status_t do_init_libraries(void* baton)
 {
-   INIT_UNINITIALIZED = 0,
-   INIT_BUSY = 1,
-   INIT_DONE = 2
-};
-
-static volatile apr_uint32_t have_init_ssl = INIT_UNINITIALIZED;
-
-static void init_ssl_libraries(void)
-{
-    apr_uint32_t val;
-
-    val = apr_atomic_cas32(&have_init_ssl, INIT_BUSY, INIT_UNINITIALIZED);
-
-    if (!val) {
 #if APR_HAS_THREADS && defined(SERF_HAVE_SSL_LOCKING_CALLBACKS)
-        int i, numlocks;
+    int i, numlocks;
 #endif
 
 #ifdef SERF_LOGGING_ENABLED
-        /* Warn when compile-time and run-time version of OpenSSL differ in
-           major/minor version number. */
+    /* Warn when compile-time and run-time version of OpenSSL differ in
+       major/minor version number. */
 #ifdef SERF_HAVE_OPENSSL_VERSION_NUM
-        unsigned long libver = OpenSSL_version_num();
+    unsigned long libver = OpenSSL_version_num();
 #else
-        long libver = SSLeay();
+    long libver = SSLeay();
 #endif
 
-        if ((libver ^ OPENSSL_VERSION_NUMBER) & 0xFFF00000) {
-            serf__log(LOGLVL_WARNING, LOGCOMP_SSL, __FILE__, NULL,
-                      "Warning: OpenSSL library version mismatch, compile-"
-                      "time was %lx, runtime is %lx.\n",
-                      OPENSSL_VERSION_NUMBER, libver);
-        }
+    if ((libver ^ OPENSSL_VERSION_NUMBER) & 0xFFF00000) {
+        serf__log(LOGLVL_WARNING, LOGCOMP_SSL, __FILE__, NULL,
+                  "Warning: OpenSSL library version mismatch, compile-"
+                  "time was %lx, runtime is %lx.\n",
+                  OPENSSL_VERSION_NUMBER, libver);
+    }
 #endif
 
 #ifdef SERF_HAVE_OPENSSL_SSL_LIBRARY_INIT
-        ERR_load_crypto_strings();
-        SSL_load_error_strings();
-        SSL_library_init();
-        OpenSSL_add_all_algorithms();
+    ERR_load_crypto_strings();
+    SSL_load_error_strings();
+    SSL_library_init();
+    OpenSSL_add_all_algorithms();
 #endif
 
 #if APR_HAS_THREADS && defined(SERF_HAVE_SSL_LOCKING_CALLBACKS)
-        numlocks = CRYPTO_num_locks();
-        apr_pool_create(&ssl_pool, NULL);
-        ssl_locks = apr_palloc(ssl_pool, sizeof(apr_thread_mutex_t*)*numlocks);
-        for (i = 0; i < numlocks; i++) {
-            apr_status_t rv;
+    numlocks = CRYPTO_num_locks();
+    apr_pool_create(&ssl_pool, NULL);
+    ssl_locks = apr_palloc(ssl_pool, sizeof(apr_thread_mutex_t*)*numlocks);
+    for (i = 0; i < numlocks; i++) {
+        apr_status_t status;
 
-            /* Intraprocess locks don't /need/ a filename... */
-            rv = apr_thread_mutex_create(&ssl_locks[i],
+        /* Intraprocess locks don't /need/ a filename... */
+        status = apr_thread_mutex_create(&ssl_locks[i],
                                          APR_THREAD_MUTEX_DEFAULT, ssl_pool);
-            if (rv != APR_SUCCESS) {
-                /* FIXME: error out here */
-            }
-        }
-        CRYPTO_set_locking_callback(ssl_lock);
-        CRYPTO_set_id_callback(ssl_id);
-        CRYPTO_set_dynlock_create_callback(ssl_dyn_create);
-        CRYPTO_set_dynlock_lock_callback(ssl_dyn_lock);
-        CRYPTO_set_dynlock_destroy_callback(ssl_dyn_destroy);
+        if (status != APR_SUCCESS)
+            return status;
+    }
+    CRYPTO_set_locking_callback(ssl_lock);
+    CRYPTO_set_id_callback(ssl_id);
+    CRYPTO_set_dynlock_create_callback(ssl_dyn_create);
+    CRYPTO_set_dynlock_lock_callback(ssl_dyn_lock);
+    CRYPTO_set_dynlock_destroy_callback(ssl_dyn_destroy);
 
-        apr_pool_cleanup_register(ssl_pool, NULL, cleanup_ssl, cleanup_ssl);
+    apr_pool_cleanup_register(ssl_pool, NULL, cleanup_ssl, cleanup_ssl);
 #endif
-        apr_atomic_cas32(&have_init_ssl, INIT_DONE, INIT_BUSY);
-    }
-  else
-    {
-        /* Make sure we don't continue before the initialization in another
-           thread has completed */
-        while (val != INIT_DONE) {
-            apr_sleep(APR_USEC_PER_SEC / 1000);
 
-            val = apr_atomic_cas32(&have_init_ssl,
-                                   INIT_UNINITIALIZED,
-                                   INIT_UNINITIALIZED);
-        }
-    }
+    return APR_SUCCESS;
+}
+
+static apr_status_t init_ssl_libraries(void)
+{
+    SERF__DECLARE_STATIC_INIT_ONCE_CONTEXT(init_ctx);
+    return serf__init_once(&init_ctx, do_init_libraries, NULL);
 }
 
 static int ssl_need_client_cert(SSL *ssl, X509 **cert, EVP_PKEY **pkey)
@@ -1774,7 +1750,8 @@ static serf_ssl_context_t *ssl_init_context(serf_bucket_alloc_t *allocator)
 {
     serf_ssl_context_t *ssl_ctx;
 
-    init_ssl_libraries();
+    if (init_ssl_libraries())
+        return NULL;
 
     ssl_ctx = serf_bucket_mem_alloc(allocator, sizeof(*ssl_ctx));
 
@@ -2023,11 +2000,13 @@ apr_status_t serf_ssl_load_cert_file(
     status = apr_file_open(&cert_file, file_path, APR_READ, APR_OS_DEFAULT,
                            pool);
 
+    if (!status) {
+        status = init_ssl_libraries();
+    }
     if (status) {
         return status;
     }
 
-    init_ssl_libraries();
 
     biom = bio_meth_file_new();
     bio = BIO_new(biom);
