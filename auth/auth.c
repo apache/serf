@@ -18,9 +18,7 @@
  * ====================================================================
  */
 
-#include "serf.h"
-#include "serf_private.h"
-#include "auth.h"
+#include <limits.h>
 
 #include <apr.h>
 #include <apr_base64.h>
@@ -28,13 +26,12 @@
 #include <apr_strings.h>
 #include <apr_lib.h>
 #if APR_HAS_THREADS
-#  include <stdlib.h>
-#  include <apr_atomic.h>
-#  include <apr_time.h>
 #  include <apr_thread_mutex.h>
 #endif
 
-#include <limits.h>
+#include "serf.h"
+#include "serf_private.h"
+#include "auth.h"
 
 /* These authentication schemes are in order of decreasing security, the topmost
    scheme will be used first when the server supports it.
@@ -861,48 +858,13 @@ apr_status_t serf__authn__unregister_scheme(serf_context_t *ctx,
    will be allocated ...
 
    ... yuck. */
-static apr_status_t init_authn_schemes_guard(serf_config_t *config)
+static apr_status_t do_init_authn_schemes_guard(void *baton)
 {
-    static volatile apr_uint32_t global_state = 0; /* uninitialized */
-    static const apr_uint32_t uninitialized = 0;
-    static const apr_uint32_t init_starting = 1;
-    static const apr_uint32_t init_failed   = 2;
-    static const apr_uint32_t initialized   = 3;
-
-    static apr_status_t init_failed_status = APR_EGENERAL;
-
-    int scheme_idx;
+    serf_config_t *const config = baton;
     unsigned int builtin_types;
     apr_allocator_t *allocator;
     apr_status_t status;
-    apr_uint32_t current_state = apr_atomic_cas32(&global_state,
-                                                  init_starting,
-                                                  uninitialized);
-    for (;;)
-    {
-        if (current_state == initialized)
-            return APR_SUCCESS;
-
-        if (current_state == uninitialized)
-            /* We're the single initializer, run the init code. */
-            break;
-
-        if (current_state == init_starting)
-        {
-            /* Spin while the initializer is working. */
-            apr_sleep(APR_USEC_PER_SEC / 100);
-            current_state = apr_atomic_cas32(&global_state,
-                                             uninitialized,
-                                             uninitialized);
-            continue;
-        }
-
-        if (current_state == init_failed)
-            return init_failed_status;
-
-        /* Not reached, can't happen. */
-        return APR_EGENERAL;    /* FIXME: Just abort()? */
-    }
+    int index;
 
     serf__log(LOGLVL_DEBUG, LOGCOMP_AUTHN, __FILE__, config,
               "Initializing authn schemes mutex");
@@ -910,12 +872,12 @@ static apr_status_t init_authn_schemes_guard(serf_config_t *config)
     /* Create a self-contained root pool for the mutex. */
     status = apr_allocator_create(&allocator);
     if (status || !allocator)
-        goto error_return;
+        goto error;
 
     status = apr_pool_create_ex(&authn_schemes_guard_pool,
                                 NULL, NULL, allocator);
     if (status || !authn_schemes_guard_pool)
-        goto error_return;
+        goto error;
 #if APR_POOL_DEBUG
     apr_pool_tag(authn_schemes_guard_pool, "serf-authn-guard");
 #endif
@@ -924,28 +886,29 @@ static apr_status_t init_authn_schemes_guard(serf_config_t *config)
                                      APR_THREAD_MUTEX_DEFAULT,
                                      authn_schemes_guard_pool);
     if (status || !authn_schemes_guard)
-        goto error_return;
+        goto error;
 
     /* Adjust the mask of available user-defined schemes. */
     builtin_types = 0;
-    for (scheme_idx = 0; serf_authn_schemes[scheme_idx]; ++scheme_idx)
-        builtin_types |= serf_authn_schemes[scheme_idx]->type;
+    for (index = 0; serf_authn_schemes[index]; ++index)
+        builtin_types |= serf_authn_schemes[index]->type;
     user_authn_type_mask &= ~builtin_types;
+    goto finish;
 
-    /* Release the spinlock. */
-    serf__log_nopref(LOGLVL_DEBUG, LOGCOMP_AUTHN, config, ", status 0\n");
-    apr_atomic_cas32(&global_state, initialized, init_starting);
-    return APR_SUCCESS;
-
-  error_return:
+  error:
     /* We only reach here if something went wrong during initialization. */
     if (status == APR_SUCCESS)  /* Not likely, but don't return "OK". */
         status = APR_ENOMEM;    /* Probable failures are allocations. */
-    init_failed_status = status;
 
+  finish:
     serf__log_nopref(LOGLVL_DEBUG, LOGCOMP_AUTHN, config,
                      ", status %d\n", status);
-    apr_atomic_cas32(&global_state, init_failed, init_starting);
     return status;
+}
+
+static apr_status_t init_authn_schemes_guard(serf_config_t *config)
+{
+    SERF__DECLARE_STATIC_INIT_ONCE_CONTEXT(init_ctx);
+    return serf__init_once(&init_ctx, do_init_authn_schemes_guard, config);
 }
 #endif  /* APR_HAS_THREADS */
