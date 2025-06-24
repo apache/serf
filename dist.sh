@@ -27,6 +27,9 @@ echo "Preparing ${release} in ${short} ..."
 mkdir "${work}"
 cd "${work}"
 
+# SERF-181: Source tarball file mods are group- and world-writable
+umask 022
+
 echo "Exporting latest serf ..."
 svn export --quiet "${url}" "${release}" || exit 1
 echo "`find ${release} -type f | wc -l` files exported"
