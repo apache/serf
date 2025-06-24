@@ -88,7 +88,7 @@ echo "${short}/${release}.zip ready."
 echo "Saving ${release} as ${release}.win"
 mv "${release}" "${release}.win"
 
-cd ${work}
+cd "${work}"
 
 # allow checksum tool names to be overridden
 [ -n "$MD5SUM" ] || MD5SUM=md5sum
