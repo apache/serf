@@ -119,9 +119,9 @@ serf__authn_user__init_conn(const serf__authn_scheme_t *scheme,
 
         apr_pool_create(&scratch_pool, pool);
         authn_baton = apr_pcalloc(pool, sizeof(*authn_baton));
-        status = scheme->user_init_conn_func(scheme->user_baton, code,
-                                             pool, scratch_pool,
-                                             &authn_baton->user_authn_baton);
+        status = scheme->user_init_conn_func(&authn_baton->user_authn_baton,
+                                             scheme->user_baton, code,
+                                             pool, scratch_pool);
         apr_pool_destroy(scratch_pool);
 
         if (status == APR_SUCCESS)
@@ -200,11 +200,11 @@ serf__authn_user__handle(const serf__authn_scheme_t *scheme,
     status = APR_SUCCESS;
     if (scheme->user_flags & SERF_AUTHN_FLAG_CREDS) {
         const char *realm_name;
-        status = scheme->user_get_realm_func(scheme->user_baton,
+        status = scheme->user_get_realm_func(&realm_name,
+                                             scheme->user_baton,
                                              authn_baton->user_authn_baton,
                                              auth_hdr, auth_attr,
-                                             scratch_pool, scratch_pool,
-                                             &realm_name);
+                                             scratch_pool, scratch_pool);
         if (!status) {
             const char *const realm = serf__construct_realm(
                 SERF__PEER_FROM_CODE(code), conn, realm_name, scratch_pool);
@@ -237,7 +237,7 @@ serf__authn_user__handle(const serf__authn_scheme_t *scheme,
 apr_status_t
 serf__authn_user__setup_request(const serf__authn_scheme_t *scheme,
                                 peer_t peer,
-                                int code,
+                                int code, /* Ignored, always 0. */
                                 serf_connection_t *conn,
                                 serf_request_t *request,
                                 const char *method,
@@ -271,7 +271,7 @@ serf__authn_user__setup_request(const serf__authn_scheme_t *scheme,
     apr_pool_create(&scratch_pool, conn->pool);
     status = scheme->user_setup_request_func(scheme->user_baton,
                                              authn_baton->user_authn_baton,
-                                             code, conn, request,
+                                             conn, request,
                                              method, uri, hdrs_bkt,
                                              scratch_pool);
     apr_pool_destroy(scratch_pool);
@@ -315,11 +315,11 @@ serf__authn_user__validate_response(const serf__authn_scheme_t *scheme,
 
     authn_baton = authn_info->baton;
     apr_pool_create(&scratch_pool, conn->pool);
-    status = scheme->user_validate_response_func(scheme->user_baton,
+    status = scheme->user_validate_response_func(&reset_pipelining,
+                                                 scheme->user_baton,
                                                  authn_baton->user_authn_baton,
                                                  code, conn, request, response,
-                                                 scratch_pool,
-                                                 &reset_pipelining);
+                                                 scratch_pool);
 
     /* Reset pipelining if the scheme requires it. */
     if (status == APR_SUCCESS && reset_pipelining

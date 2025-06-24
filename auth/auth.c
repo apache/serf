@@ -657,15 +657,17 @@ static apr_status_t cleanup_user_scheme(void* data)
 }
 
 apr_status_t serf_authn_register_scheme(
-    serf_context_t *ctx, const char *name, void *baton, int flags,
+    int *type,
+    serf_context_t *ctx,
+    const char *name, void *baton, int flags,
     serf_authn_init_conn_func_t init_conn,
     serf_authn_get_realm_func_t get_realm,
     serf_authn_handle_func_t handle,
     serf_authn_setup_request_func_t setup_request,
     serf_authn_validate_response_func_t validate_response,
-    apr_pool_t *result_pool,
-    int *type)
+    apr_pool_t *result_pool)
 {
+    serf_config_t *const config = ctx->config;
     serf__authn_scheme_t *authn_scheme;
     apr_status_t lock_status;
     apr_status_t status;
@@ -674,7 +676,7 @@ apr_status_t serf_authn_register_scheme(
     char *cp;
     int index;
 
-    serf__log(LOGLVL_INFO, LOGCOMP_AUTHN, __FILE__, ctx->config,
+    serf__log(LOGLVL_INFO, LOGCOMP_AUTHN, __FILE__, config,
               "Registering user-defined scheme %s", name);
 
     *type = SERF_AUTHN_NONE;
@@ -705,9 +707,9 @@ apr_status_t serf_authn_register_scheme(
     authn_scheme->user_setup_request_func = setup_request;
     authn_scheme->user_validate_response_func = validate_response;
 
-    lock_status = lock_authn_schemes(ctx->config);
+    lock_status = lock_authn_schemes(config);
     if (lock_status) {
-        serf__log_nopref(LOGLVL_INFO, LOGCOMP_AUTHN, ctx->config,
+        serf__log_nopref(LOGLVL_INFO, LOGCOMP_AUTHN, config,
                          ", lock failed %d\n", lock_status);
         return lock_status;
     }
@@ -735,7 +737,9 @@ apr_status_t serf_authn_register_scheme(
         }
     }
     if (index >= AUTHN_SCHEMES_SIZE) {
-        /* No more space in the table. Not very likely. */
+        /* No more space in the table. Shouldn't be possible; if we got this
+           far, we have a valid scheme type, and as long as we have a scheme
+           type, there should be space for the scheme in the table. */
         status = APR_ENOSPC;
         goto cleanup;
     }
@@ -752,28 +756,25 @@ apr_status_t serf_authn_register_scheme(
     user_authn_registered |= scheme_type;
 
   cleanup:
-    lock_status = unlock_authn_schemes(ctx->config);
+    lock_status = unlock_authn_schemes(config);
     if (lock_status) {
-        serf__log_nopref(LOGLVL_INFO, LOGCOMP_AUTHN, ctx->config,
+        serf__log_nopref(LOGLVL_INFO, LOGCOMP_AUTHN, config,
                          ", unlock failed %d, status %d\n",
                          lock_status, status);
         return lock_status;
     }
 
-    serf__log_nopref(LOGLVL_INFO, LOGCOMP_AUTHN, ctx->config,
+    serf__log_nopref(LOGLVL_INFO, LOGCOMP_AUTHN, config,
                      ", status %d\n", status);
     return status;
 }
 
-/* apr_status_t serf_authn_unregister_scheme(serf_context_t *ctx, */
-/*                                           int type, */
-/*                                           const char *name, */
-/*                                           apr_pool_t *scratch_pool); */
-apr_status_t serf__authn__unregister_scheme(serf_context_t *ctx,
-                                            int type,
-                                            const char *name,
-                                            apr_pool_t *scratch_pool)
+apr_status_t serf_authn_unregister_scheme(serf_context_t *ctx,
+                                          int type,
+                                          const char *name,
+                                          apr_pool_t *scratch_pool)
 {
+    serf_config_t *const config = ctx->config;
     const serf__authn_scheme_t *authn_scheme = NULL;
     const unsigned int scheme_type = type;
     apr_status_t lock_status;
@@ -782,7 +783,7 @@ apr_status_t serf__authn__unregister_scheme(serf_context_t *ctx,
     char *cp;
     int index;
 
-    serf__log(LOGLVL_INFO, LOGCOMP_AUTHN, __FILE__, ctx->config,
+    serf__log(LOGLVL_INFO, LOGCOMP_AUTHN, __FILE__, config,
               "Unregistering user-defined scheme %s", name);
 
     /* Generate a lower-case key for the scheme. */
@@ -792,9 +793,9 @@ apr_status_t serf__authn__unregister_scheme(serf_context_t *ctx,
         ++cp;
     }
 
-    lock_status = lock_authn_schemes(ctx->config);
+    lock_status = lock_authn_schemes(config);
     if (lock_status) {
-        serf__log_nopref(LOGLVL_INFO, LOGCOMP_AUTHN, ctx->config,
+        serf__log_nopref(LOGLVL_INFO, LOGCOMP_AUTHN, config,
                          ", lock failed %d\n", lock_status);
         return lock_status;
     }
@@ -837,15 +838,15 @@ apr_status_t serf__authn__unregister_scheme(serf_context_t *ctx,
     user_authn_registered &= ~scheme_type;
 
   cleanup:
-    lock_status = unlock_authn_schemes(ctx->config);
+    lock_status = unlock_authn_schemes(config);
     if (lock_status) {
-        serf__log_nopref(LOGLVL_INFO, LOGCOMP_AUTHN, ctx->config,
+        serf__log_nopref(LOGLVL_INFO, LOGCOMP_AUTHN, config,
                          ", unlock failed %d, status %d\n",
                          lock_status, status);
         return lock_status;
     }
 
-    serf__log_nopref(LOGLVL_INFO, LOGCOMP_AUTHN, ctx->config,
+    serf__log_nopref(LOGLVL_INFO, LOGCOMP_AUTHN, config,
                      ", status %d\n", status);
     return status;
 }
@@ -871,13 +872,17 @@ static apr_status_t do_init_authn_schemes_guard(void *baton)
 
     /* Create a self-contained root pool for the mutex. */
     status = apr_allocator_create(&allocator);
-    if (status || !allocator)
-        goto error;
+    if (status || !allocator) {
+        status = status ? status : APR_ENOMEM;
+        goto finish;
+    }
 
     status = apr_pool_create_ex(&authn_schemes_guard_pool,
                                 NULL, NULL, allocator);
-    if (status || !authn_schemes_guard_pool)
-        goto error;
+    if (status || !authn_schemes_guard_pool) {
+        status = status ? status : APR_ENOMEM;
+        goto finish;
+    }
 #if APR_POOL_DEBUG
     apr_pool_tag(authn_schemes_guard_pool, "serf-authn-guard");
 #endif
@@ -885,20 +890,16 @@ static apr_status_t do_init_authn_schemes_guard(void *baton)
     status = apr_thread_mutex_create(&authn_schemes_guard,
                                      APR_THREAD_MUTEX_DEFAULT,
                                      authn_schemes_guard_pool);
-    if (status || !authn_schemes_guard)
-        goto error;
+    if (status || !authn_schemes_guard) {
+        status = status ? status : APR_ENOMEM;
+        goto finish;
+    }
 
     /* Adjust the mask of available user-defined schemes. */
     builtin_types = 0;
     for (index = 0; serf_authn_schemes[index]; ++index)
         builtin_types |= serf_authn_schemes[index]->type;
     user_authn_type_mask &= ~builtin_types;
-    goto finish;
-
-  error:
-    /* We only reach here if something went wrong during initialization. */
-    if (status == APR_SUCCESS)  /* Not likely, but don't return "OK". */
-        status = APR_ENOMEM;    /* Probable failures are allocations. */
 
   finish:
     serf__log_nopref(LOGLVL_DEBUG, LOGCOMP_AUTHN, config,

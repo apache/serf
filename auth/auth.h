@@ -178,12 +178,6 @@ extern const serf__authn_scheme_t serf__ntlm_authn_scheme;
 
 /** User-defined authentication scheme handlers */
 
-/* FIXME: Declare the prototype for the internal unregister implementation */
-apr_status_t serf__authn__unregister_scheme(serf_context_t *ctx,
-                                            int type,
-                                            const char *name,
-                                            apr_pool_t *scratch_pool);
-
 apr_status_t
 serf__authn_user__init_conn(const serf__authn_scheme_t *scheme,
                             int code,
