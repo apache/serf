@@ -890,6 +890,10 @@ validate_server_certificate(int cert_valid, X509_STORE_CTX *store_ctx)
             case X509_V_ERR_UNABLE_TO_GET_CRL:
                     failures |= SERF_SSL_CERT_UNABLE_TO_GET_CRL;
                     break;
+            case X509_V_ERR_CERT_SIGNATURE_FAILURE:
+            case X509_V_ERR_CRL_SIGNATURE_FAILURE:
+                    failures |= SERF_SSL_SIGNATURE_FAILURE;
+                    break;
             default:
                     serf__log(LOGLVL_WARNING, LOGCOMP_SSL, __FILE__,
                               ctx->config,

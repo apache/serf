@@ -502,6 +502,11 @@ static const char *format_cert_failures(int failures, apr_pool_t *pool)
         failures &= ~SERF_SSL_OCSP_RESPONDER_UNKNOWN_FAILURE;
     }
 
+    if (failures & SERF_SSL_SIGNATURE_FAILURE) {
+        str = apr_pstrcat(pool, str, *str ? "|" : "", "SIGNATURE_FAILURE", NULL);
+        failures &= ~SERF_SSL_SIGNATURE_FAILURE;
+    }
+
     if (failures) {
         /* Unexpected or unknown cert failure. */
         REPORT_TEST_SUITE_ERROR();
