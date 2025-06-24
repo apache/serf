@@ -321,17 +321,6 @@ env.Append(RPATH=[libdir],
            PDB='${TARGET.filebase}.pdb')
 
 if sys.platform != 'win32':
-  def CheckGnuCC(context):
-    src = '''
-    #ifndef __GNUC__
-    oh noes!
-    #endif
-    '''
-    context.Message('Checking for GNU-compatible C compiler...')
-    result = context.TryCompile(src, '.c')
-    context.Result(result)
-    return result
-
   conf = Configure(env, custom_tests=custom_tests)
   have_gcc = conf.CheckGnuCC()
   env = conf.Finish()
