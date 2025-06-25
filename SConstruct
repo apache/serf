@@ -42,6 +42,7 @@ sys.path.insert(0, src_dir)
 import build.scons_extras
 import build.exports
 
+build.scons_extras.AddEnvironmentMethods()
 custom_tests = {'CheckGnuCC': build.scons_extras.CheckGnuCC}
 
 # SCons 4.7 introduced the function argument list parameter to CheckFunc.
@@ -326,16 +327,19 @@ if sys.platform != 'win32':
   env = conf.Finish()
 
   if have_gcc:
-    env.Append(CFLAGS=['-std=c89'])
+    # env.Append(CFLAGS=['-std=c89'])
+    env.SerfAppendIf(['CFLAGS'], r'-(ansi|std=c\d+)', CFLAGS=['-std=c89'])
     env.Append(CCFLAGS=['-Wdeclaration-after-statement',
                         '-Wmissing-prototypes',
                         '-Wall'])
 
   if debug:
-    env.Append(CCFLAGS=['-g'])
+    # env.Append(CCFLAGS=['-g'])
+    env.SerfAppendIf(['CFLAGS', 'CCFLAGS'], r'-g\S*', CCFLAGS=['-g'])
     env.Append(CPPDEFINES=['DEBUG', '_DEBUG'])
   else:
-    env.Append(CCFLAGS=['-O2'])
+    # env.Append(CCFLAGS=['-O2'])
+    env.SerfAppendIf(['CFLAGS', 'CCFLAGS'], r'-O\S*', CCFLAGS=['-O2'])
     env.Append(CPPDEFINES=['NDEBUG'])
 
   ### works for Mac OS. probably needs to change
