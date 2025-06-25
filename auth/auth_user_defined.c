@@ -158,6 +158,7 @@ serf__authn_user__handle(const serf__authn_scheme_t *scheme,
     struct authn_baton_wrapper *authn_baton;
     char *username, *password;
     apr_pool_t *scratch_pool;
+    apr_hash_t *auth_param;
     apr_status_t status;
 
     status = validate_handler(conn->config, scheme, code, "handle-auth",
@@ -198,12 +199,13 @@ serf__authn_user__handle(const serf__authn_scheme_t *scheme,
     apr_pool_create(&scratch_pool, pool);
 
     status = APR_SUCCESS;
+    auth_param = serf__parse_authn_parameters(auth_attr, scratch_pool);
     if (scheme->user_flags & SERF_AUTHN_FLAG_CREDS) {
         const char *realm_name;
         status = scheme->user_get_realm_func(&realm_name,
                                              scheme->user_baton,
                                              authn_baton->user_authn_baton,
-                                             auth_hdr, auth_attr,
+                                             auth_hdr, auth_param,
                                              scratch_pool, scratch_pool);
         if (!status) {
             const char *const realm = serf__construct_realm(
@@ -222,7 +224,7 @@ serf__authn_user__handle(const serf__authn_scheme_t *scheme,
 
     status = scheme->user_handle_func(scheme->user_baton,
                                       authn_baton->user_authn_baton, code,
-                                      auth_hdr, auth_attr,
+                                      auth_hdr, auth_param,
                                       SERF__HEADER_FROM_CODE(code),
                                       username, password,
                                       request, response,

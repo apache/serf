@@ -30,6 +30,7 @@
 #include <apr_errno.h>
 #include <apr_allocator.h>
 #include <apr_pools.h>
+#include <apr_hash.h>
 #include <apr_network_io.h>
 #include <apr_time.h>
 #include <apr_poll.h>
@@ -1029,11 +1030,12 @@ typedef apr_status_t
  *
  * @a authn_baton is the pointer returned from the init-connection callback.
  *
- * @a authn_header and @a authn_attributes contain the value of the
- * authentication header (WWW-Authenticate or Proxy-Authenticate) recevied in
- * a server response. @a authn_header contains the scheme name, i.e., "scheme
- * <atributes>", whereas @a authn_attributes contains only the attributes
- * without the scheme name.
+ * @a authn_header and @a authn_parameters come from the authentication header
+ * (WWW-Authenticate or Proxy-Authenticate) recevied in a server response.
+ * @a authn_header is the header value, i.e., "scheme <parameters>";
+ * @a authn_parameters is a dictionary of the authentication parameters
+ * and their values, e.g., `realm="Wonderland"`. The keys are always folded
+ * to lower case.
  *
  * If the scheme flag @a SERF_AUTHN_FLAG_PIPE is *not* set, pipelining will be
  * disabled on the connection after this callback succeeds.
@@ -1047,7 +1049,7 @@ typedef apr_status_t
                                void *baton,
                                void *authn_baton,
                                const char *authn_header,
-                               const char *authn_attributes,
+                               apr_hash_t *authn_parameters,
                                apr_pool_t *result_pool,
                                apr_pool_t *scratch_pool);
 
@@ -1057,7 +1059,7 @@ typedef apr_status_t
  * Called after the init-conn function has succeeded to prepare (cache) the
  * credentials for this connection, usually in @a auth_baton.
  *
- * @a baton, @a authn_baton, @a authn_header and @a authn_attributers have the
+ * @a baton, @a authn_baton, @a authn_header and @a authn_parameters have the
  * same meaning as in the get-realm function; @a code is the same as in the
  * init-conn function.
  *
@@ -1080,7 +1082,7 @@ typedef apr_status_t
                             void *authn_baton,
                             int code,
                             const char *authn_header,
-                            const char *authn_attributes,
+                            apr_hash_t *authn_parameters,
                             const char *response_header,
                             const char *username,
                             const char *password,

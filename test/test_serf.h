@@ -33,7 +33,7 @@
 
 /* Test logging facilities, set flag to 1 to enable console logging for
    the test suite. */
-#define TEST_VERBOSE 0
+#define TEST_VERBOSE 01
 
 /* Preferred proxy port */
 #define PROXY_PORT 23456

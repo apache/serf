@@ -264,9 +264,7 @@ static int store_header_in_dict(void *baton,
         auth_name = apr_pstrmemdup(ab->pool, header, strlen(header));
 
     /* Convert scheme name to lower case to enable case insensitive matching. */
-    for (c = auth_name; *c != '\0'; c++)
-        *c = (char)apr_tolower(*c);
-
+    serf__tolower_inplace(auth_name);
     apr_hash_set(ab->hdrs, auth_name, APR_HASH_KEY_STRING,
                  apr_pstrdup(ab->pool, header));
 
@@ -673,7 +671,6 @@ apr_status_t serf_authn_register_scheme(
     apr_status_t status;
     unsigned int scheme_type;
     const char *key;
-    char *cp;
     int index;
 
     serf__log(LOGLVL_INFO, LOGCOMP_AUTHN, __FILE__, config,
@@ -683,11 +680,8 @@ apr_status_t serf_authn_register_scheme(
     authn_scheme = apr_palloc(result_pool, sizeof(*authn_scheme));
 
     /* Generate a lower-case key for the scheme. */
-    key = cp = apr_pstrdup(result_pool, name);
-    while (*cp) {
-        *cp = apr_tolower(*cp);
-        ++cp;
-    }
+    key = serf__tolower(name, result_pool);
+
     authn_scheme->name = apr_pstrdup(result_pool, name);
     authn_scheme->key = key;
     /* user_scheme->type = ?; Will be updated later, under lock. */
@@ -780,18 +774,13 @@ apr_status_t serf_authn_unregister_scheme(serf_context_t *ctx,
     apr_status_t lock_status;
     apr_status_t status;
     const char *key;
-    char *cp;
     int index;
 
     serf__log(LOGLVL_INFO, LOGCOMP_AUTHN, __FILE__, config,
               "Unregistering user-defined scheme %s", name);
 
     /* Generate a lower-case key for the scheme. */
-    key = cp = apr_pstrdup(scratch_pool, name);
-    while (*cp) {
-        *cp = apr_tolower(*cp);
-        ++cp;
-    }
+    key = serf__tolower(name, scratch_pool);
 
     lock_status = lock_authn_schemes(config);
     if (lock_status) {

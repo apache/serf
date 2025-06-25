@@ -137,6 +137,7 @@ list(APPEND SOURCES
     "src/outgoing_request.c"
     "src/pump.c"
     "src/ssltunnel.c"
+    "src/syntax.c"
     "auth/auth.c"
     "auth/auth_basic.c"
     "auth/auth_digest.c"

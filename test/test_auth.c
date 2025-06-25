@@ -707,33 +707,26 @@ static apr_status_t user_authn_get_realm(const char **realm_name,
                                          void *baton,
                                          void *authn_baton,
                                          const char *authn_header,
-                                         const char *authn_attributes,
+                                         apr_hash_t *authn_parameters,
                                          apr_pool_t *result_pool,
                                          apr_pool_t *scratch_pool)
 {
-    const char *end;
-    apr_size_t length;
+    const char *name;
     USER_AUTHN_COUNT(baton, get_realm);
 
     test__log(TEST_VERBOSE, __FILE__,
-              "user_authn_get_realm, header %s, attrs %s\n",
-              authn_header, authn_attributes);
+              "user_authn_get_realm, header %s\n", authn_header);
 
     if (strncasecmp(authn_header, "TweedleDee", 10)) {
         *realm_name = "Wonderland";
         return APR_SUCCESS;
     }
 
-    if (strncasecmp(authn_attributes, "scope=", 6))
+    name = apr_hash_get(authn_parameters, "scope", 5);
+    if (!name)
         return SERF_ERROR_AUTHN_MISSING_ATTRIBUTE;
 
-    authn_attributes += 6;
-    if ((end = strchr(authn_attributes, ' '))) {
-        length = end - authn_attributes;
-    } else {
-        length = strlen(authn_attributes);
-    }
-    *realm_name = apr_pstrndup(result_pool, authn_attributes, length);
+    *realm_name = apr_pstrdup(result_pool, name);
     return APR_SUCCESS;
 }
 
@@ -741,7 +734,7 @@ static apr_status_t user_authn_handle(void *baton,
                                       void *authn_baton,
                                       int code,
                                       const char *authn_header,
-                                      const char *authn_attributes,
+                                      apr_hash_t *authn_parameters,
                                       const char *response_header,
                                       const char *username,
                                       const char *password,
@@ -821,15 +814,17 @@ user_authn_credentials(char **username,
     if (strncmp(user_authn_prefix, authn_type, strlen(user_authn_prefix)) != 0)
         return REPORT_TEST_SUITE_ERROR();
 
-    realm_name = realm + strlen(realm) - strlen("Alice");
-    if (strcmp("Alice", realm_name) != 0)
+    realm_name = strrchr(realm, ' ');
+    if (!realm_name
+        || (strcmp(" Alice", realm_name)
+            && strcmp(" Cheshire", realm_name)))
         return REPORT_TEST_SUITE_ERROR();
 
     *username = NULL;
     *password = apr_pstrdup(pool, authn_type);
     test__log(TEST_VERBOSE, __FILE__,
               "user credentials, realm %s, password %s\n",
-              realm, *password);
+              realm_name + 1, *password);
 
     return APR_SUCCESS;
 }
@@ -837,7 +832,7 @@ user_authn_credentials(char **username,
 static void user_authentication(CuTest *tc,
                                 int close_conn,
                                 int use_pipelining,
-                                const char *tweak)
+                                const char *scope)
 {
     test_baton_t *tb = tc->testBaton;
     handler_baton_t handler_ctx;
@@ -889,9 +884,9 @@ static void user_authentication(CuTest *tc,
     serf_config_credentials_callback(tb->context, user_authn_credentials);
 
     /* Adjust the authentication header. */
-    if (tweak)
+    if (scope)
         hdr_value = apr_pstrcat(tb->pool, hdr_value,
-                                " tweak=", tweak, NULL);
+                                ", scope=", scope, NULL);
 
     /* Use non-standard case WWW-Authenticate header and scheme name to test
        for case insensitive comparisons. */
@@ -966,7 +961,7 @@ static void test_user_authentication(CuTest *tc)
     user_authentication(tc,
                         0 /* don't close connection */,
                         1 /* allow pipelining during authn */,
-                        0 /* no authn header tweaks */);
+                        0 /* no custom scope */);
 }
 
 static void test_user_authentication_tweaked(CuTest *tc)
@@ -982,7 +977,7 @@ static void test_user_authentication_keepalive_off(CuTest *tc)
     user_authentication(tc,
                         1 /* close connection */,
                         1 /* allow pipelining during authn */,
-                        0 /* no authn header tweaks */);
+                        0 /* no custom scope */);
 }
 
 static void test_user_authentication_pipelining_off(CuTest *tc)
@@ -990,7 +985,7 @@ static void test_user_authentication_pipelining_off(CuTest *tc)
     user_authentication(tc,
                         0 /* don't close connection */,
                         0 /* don't allow pipelining during authn */,
-                        0 /* no authn header tweaks */);
+                        0 /* no custom scope */);
 }
 
 
