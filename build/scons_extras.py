@@ -19,6 +19,11 @@
 #   under the License.
 # ===================================================================
 
+import re
+
+import SCons.Environment
+import SCons.Util
+
 
 def CheckGnuCC(context):
   '''Check if the compiler is compatible with gcc.'''
@@ -33,6 +38,33 @@ oh noes!
   result = context.TryCompile(src, '.c')
   context.Result(result)
   return result
+
+
+def __env_munge_if(env, method, variables, pattern, **kwargs):
+  '''Invoke `env`.`method`(**`kwargs`), unless `pattern` matches the
+   values in `variables` that are also in `env`.
+  '''
+
+  rx = re.compile(pattern)
+  for var in variables:
+    values = env.get(var, [])
+    for value in values:
+      if rx.search(value):
+        return
+  getattr(env, method)(**kwargs)
+
+
+def AddEnvironmentMethods():
+  SCons.Util.AddMethod(
+    SCons.Environment.Environment,
+    lambda env, variables, pattern, **kwargs:
+    __env_munge_if(env, 'Append', variables, pattern, **kwargs),
+    'SerfAppendIf')
+  SCons.Util.AddMethod(
+    SCons.Environment.Environment,
+    lambda env, variables, pattern, **kwargs:
+    __env_munge_if(env, 'Prepend', variables, pattern, **kwargs),
+    'SerfPrependIf')
 
 
 #

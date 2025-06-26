@@ -27,6 +27,9 @@ echo "Preparing ${release} in ${short} ..."
 mkdir "${work}"
 cd "${work}"
 
+# SERF-181: Source tarball file mods are group- and world-writable
+umask 022
+
 echo "Exporting latest serf ..."
 svn export --quiet "${url}" "${release}" || exit 1
 echo "`find ${release} -type f | wc -l` files exported"
@@ -85,11 +88,10 @@ echo "${short}/${release}.zip ready."
 echo "Saving ${release} as ${release}.win"
 mv "${release}" "${release}.win"
 
-cd ${work}
+cd "${work}"
 
 # allow checksum tool names to be overridden
-[ -n "$MD5SUM" ] || MD5SUM=md5sum
-[ -n "$SHA1SUM" ] || SHA1SUM=sha1sum
+[ -n "$SHA256SUM" ] || SHA256SUM=sha256sum
 [ -n "$SHA512SUM" ] || SHA512SUM=sha512sum
 
 echo ""
@@ -125,12 +127,15 @@ sign_file()
 ls -l "${release}.tar.bz2" "${release}.zip"
 sign_file ${release}.tar.bz2 ${release}.zip
 echo ""
-echo "md5sums:"
-$MD5SUM "${release}.tar.bz2" "${release}.zip"
-echo ""
-echo "sha1sums:"
-$SHA1SUM "${release}.tar.bz2" "${release}.zip"
+echo "sha256sums:"
+for i in "${release}.tar.bz2" "${release}.zip"
+do
+  $SHA256SUM "${i}" | tee "${i}.sha256"
+done
 echo ""
 echo "sha512sums:"
-$SHA512SUM "${release}.tar.bz2" "${release}.zip"
+for i in "${release}.tar.bz2" "${release}.zip"
+do
+  $SHA512SUM "${i}" | tee "${i}.sha512"
+done
 echo ""
