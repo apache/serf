@@ -52,9 +52,10 @@ serf__handle_basic_auth(const serf__authn_scheme_t *scheme,
     serf__authn_info_t *authn_info;
     basic_authn_info_t *basic_info;
     apr_status_t status;
-    apr_pool_t *cred_pool;
-    char *username, *password, *realm_name;
-    const char *eq, *realm = NULL;
+    apr_pool_t *scratch_pool;
+    apr_hash_t *attr_dict;
+    char *username, *password;
+    const char *realm_name, *realm = NULL;
 
     /* Can't do Basic authentication if there's no callback to get
        username & password. */
@@ -69,45 +70,32 @@ serf__handle_basic_auth(const serf__authn_scheme_t *scheme,
     }
     basic_info = authn_info->baton;
 
-    realm_name = NULL;
-    eq = strchr(auth_attr, '=');
-
-    if (eq && strncasecmp(auth_attr, "realm", 5) == 0) {
-        realm_name = apr_pstrdup(pool, eq + 1);
-        if (realm_name[0] == '\"') {
-            apr_size_t realm_len;
-
-            realm_len = strlen(realm_name);
-            if (realm_name[realm_len - 1] == '\"') {
-                realm_name[realm_len - 1] = '\0';
-                realm_name++;
-            }
-        }
-
-        if (!realm_name) {
-            return SERF_ERROR_AUTHN_MISSING_ATTRIBUTE;
-        }
-
-        realm = serf__construct_realm(SERF__PEER_FROM_CODE(code),
-                                      conn, realm_name,
-                                      pool);
+    /* Construct the realm from the parameters */
+    apr_pool_create(&scratch_pool, pool);
+    attr_dict = serf__parse_authn_parameters(auth_attr, scratch_pool);
+    realm_name = apr_hash_get(attr_dict, "realm", 5);
+    if (!realm_name) {
+        apr_pool_destroy(scratch_pool);
+        return SERF_ERROR_AUTHN_MISSING_ATTRIBUTE;
     }
+    realm = serf__construct_realm(code == 401 ? HOST : PROXY,
+                                  conn, realm_name,
+                                  pool);
 
     /* Ask the application for credentials */
-    apr_pool_create(&cred_pool, pool);
     status = serf__provide_credentials(ctx,
                                        &username, &password,
                                        request,
                                        code, scheme->name,
-                                       realm, cred_pool);
+                                       realm, scratch_pool);
     if (status) {
-        apr_pool_destroy(cred_pool);
+        apr_pool_destroy(scratch_pool);
         return status;
     }
 
     tmp = apr_pstrcat(conn->pool, username, ":", password, NULL);
     tmp_len = strlen(tmp);
-    apr_pool_destroy(cred_pool);
+    apr_pool_destroy(scratch_pool);
 
     serf__encode_auth_header(&basic_info->value,
                              scheme->name,

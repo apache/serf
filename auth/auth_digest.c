@@ -242,20 +242,18 @@ serf__handle_digest_auth(const serf__authn_scheme_t *scheme,
                          const char *auth_attr,
                          apr_pool_t *pool)
 {
-    char *attrs;
-    char *nextkv;
     const char *realm, *realm_name = NULL;
     const char *nonce = NULL;
     const char *algorithm = NULL;
     const char *qop = NULL;
     const char *opaque = NULL;
-    const char *key;
     serf_connection_t *conn = request->conn;
     serf_context_t *ctx = conn->ctx;
     serf__authn_info_t *authn_info;
     digest_authn_info_t *digest_info;
     apr_status_t status;
-    apr_pool_t *cred_pool;
+    apr_hash_t *auth_params;
+    apr_pool_t *scratch_pool;
     char *username, *password;
 
     /* Can't do Digest authentication if there's no callback to get
@@ -271,50 +269,22 @@ serf__handle_digest_auth(const serf__authn_scheme_t *scheme,
     }
     digest_info = authn_info->baton;
 
-    /* Need a copy cuz we're going to write NUL characters into the string.  */
-    attrs = apr_pstrdup(pool, auth_attr);
-
     /* We're expecting a list of key=value pairs, separated by a comma.
        Ex. realm="SVN Digest",
        nonce="f+zTl/leBAA=e371bd3070adfb47b21f5fc64ad8cc21adc371a5",
        algorithm=MD5, qop="auth" */
-    for ( ; (key = apr_strtok(attrs, ",", &nextkv)) != NULL; attrs = NULL) {
-        char *val;
+    apr_pool_create(&scratch_pool, pool);
+    auth_params = serf__parse_authn_parameters(auth_attr, scratch_pool);
+    realm_name = apr_hash_get(auth_params, "realm", 5);
+    nonce = apr_hash_get(auth_params, "nonce", 5);
+    algorithm = apr_hash_get(auth_params, "algorithm", 9);
+    qop = apr_hash_get(auth_params, "qop", 3);
+    opaque = apr_hash_get(auth_params, "opaque", 6);
 
-        val = strchr(key, '=');
-        if (val == NULL)
-            continue;
-        *val++ = '\0';
-
-        /* skip leading spaces */
-        while (*key == ' ')
-            key++;
-
-        /* If the value is quoted, then remove the quotes.  */
-        if (*val == '"') {
-            apr_size_t last = strlen(val) - 1;
-
-            if (val[last] == '"') {
-                val[last] = '\0';
-                val++;
-            }
-        }
-
-        if (strcmp(key, "realm") == 0)
-            realm_name = val;
-        else if (strcmp(key, "nonce") == 0)
-            nonce = val;
-        else if (strcmp(key, "algorithm") == 0)
-            algorithm = val;
-        else if (strcmp(key, "qop") == 0)
-            qop = val;
-        else if (strcmp(key, "opaque") == 0)
-            opaque = val;
-
-        /* Ignore all unsupported attributes. */
-    }
+    /* Ignore all unsupported attributes. */
 
     if (!realm_name) {
+        apr_pool_destroy(scratch_pool);
         return SERF_ERROR_AUTHN_MISSING_ATTRIBUTE;
     }
 
@@ -323,14 +293,13 @@ serf__handle_digest_auth(const serf__authn_scheme_t *scheme,
                                   pool);
 
     /* Ask the application for credentials */
-    apr_pool_create(&cred_pool, pool);
     status = serf__provide_credentials(ctx,
                                        &username, &password,
                                        request,
                                        code, scheme->name,
-                                       realm, cred_pool);
+                                       realm, scratch_pool);
     if (status) {
-        apr_pool_destroy(cred_pool);
+        apr_pool_destroy(scratch_pool);
         return status;
     }
 
@@ -355,7 +324,7 @@ serf__handle_digest_auth(const serf__authn_scheme_t *scheme,
     status = build_digest_ha1(&digest_info->ha1, username, password,
                               digest_info->realm, digest_info->pool);
 
-    apr_pool_destroy(cred_pool);
+    apr_pool_destroy(scratch_pool);
 
     /* If the handshake is finished tell serf it can send as much requests as it
        likes. */
