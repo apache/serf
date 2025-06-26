@@ -320,19 +320,19 @@ static const apr_uint32_t char_table[256] =
 /* Character class lookup */
 static APR_INLINE int ct_isspace(char c)
 {
-    return char_table[(unsigned char)c] & CT_WHITESPACE;
+    return char_table[0xff & (unsigned char)c] & CT_WHITESPACE;
 }
 
 static APR_INLINE int ct_istoken(char c)
 {
     static const apr_uint32_t ct = CT_TOKEN | CT_DIGIT | CT_UPPER | CT_LOWER;
-    return ct & char_table[(unsigned char)c];
+    return ct & char_table[0xff & (unsigned char)c];
 }
 
 static APR_INLINE int ct_istoken68(char c)
 {
     static const apr_uint32_t ct = CT_TOKEN68 | CT_DIGIT | CT_UPPER | CT_LOWER;
-    return ct & char_table[(unsigned char)c];
+    return ct & char_table[0xff & (unsigned char)c];
 }
 
 
@@ -362,7 +362,7 @@ static const unsigned char casefold_table[256] =
 /* Fold ASCII to lowercase. */
 static APR_INLINE char ct_tolower(char c)
 {
-    return (char) casefold_table[(unsigned char)c];
+    return (char) casefold_table[0xff & (unsigned char)c];
 }
 
 
@@ -453,13 +453,13 @@ apr_hash_t *serf__parse_authn_parameters(const char *attrs, apr_pool_t *pool)
     apr_hash_t *dict = apr_hash_make(pool);
     char *dst = apr_palloc(pool, strlen(attrs) + 1);
     const char *src = skip_space(attrs);
-    const char *end = skip_token68(src);
-    bool want_comma = false;
+    const char *const end = skip_token68(src);
 
     /* Check if the parameters are a single token68. */
     if (end != src && !*skip_space(end)) {
-        memcpy(dst, src, end - src);
-        dst[end - src] = '\0';
+        const apr_size_t len = end - src;
+        memcpy(dst, src, len);
+        dst[len] = '\0';
         apr_hash_set(dict, "", 0, dst);
         return dict;
     }
@@ -470,19 +470,7 @@ apr_hash_t *serf__parse_authn_parameters(const char *attrs, apr_pool_t *pool)
         apr_ssize_t keylen;
         const char *value;
 
-        /* Skip spaces and the separator. */
-        src = skip_space(src);
-        if (want_comma) {
-            if (*src != ',')
-                break;
-            ++src;
-            if (*src)
-                src = skip_space(src);
-        }
-        if (!*src)
-            break;
-
-        /* Pars the key, a lower-cased token. */
+        /* Parse the key, a lower-cased token. */
         key = dst;
         src = copy_token_key(&dst, src);
         if (!src || key == dst || *src != '=')
@@ -503,12 +491,15 @@ apr_hash_t *serf__parse_authn_parameters(const char *attrs, apr_pool_t *pool)
 
         /* Must be at the end of the string or at a valid separator. */
         src = skip_space(src);
-        if (*src && *src != ',')
-            break;
+        if (*src) {
+            if (*src != ',')
+                break;
+            /* Skip the separator and any spaces after the separator. */
+            src = skip_space(src + 1);
+        }
 
         /* Put the new key/value pair into the dict. */
         apr_hash_set(dict, key, keylen, value);
-        want_comma = true;
     }
 
     return dict;
@@ -526,8 +517,8 @@ void serf__tolower_inplace(char *dst)
 
 const char *serf__tolower(const char *src, apr_pool_t *pool)
 {
-    const size_t len = strlen(src) + 1;
-    size_t i;
+    const apr_size_t len = strlen(src) + 1;
+    apr_size_t i;
 
     char *dst = apr_palloc(pool, len);
     for (i = 0; i < len; ++i)
