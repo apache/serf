@@ -750,11 +750,12 @@ serf__authn_info_t *serf__get_authn_info_for_server(serf_connection_t *conn);
 
 /* Parse authentication scheme parameters from a WWW-Authenticate or
    Proxy-Authenticate header. Splits the comma-separated token=value
-   or token="quoted \" value" pairs into a dictionary.
+   or token="quoted \" value" pairs into a dictionary. If the parameters
+   are a single token, it's stored as the value of the empty string key.
 
    The keys in the dictionary will be folded to lowercase.
 
-   See: https://www.rfc-editor.org/rfc/rfc9110.html#section-5.6 */
+   See: https://www.rfc-editor.org/rfc/rfc9110.html#section-11.2 */
 apr_hash_t *serf__parse_authn_parameters(const char *attrs, apr_pool_t *pool);
 
 /* Fold ASCII uppercase letters to lowercase, in place, using the same

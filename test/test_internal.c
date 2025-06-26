@@ -510,19 +510,14 @@ static void test_parse_bad_parameters(CuTest *tc)
     static const struct expected_attrs expected[] = {
         { NULL, NULL }
     };
-    static const struct expected_attrs unexpected[] = {
-        { "key", "value1" },
-        { NULL, NULL }
-    };
 
     parse_parameters(tc, "", expected);
     parse_parameters(tc, "\t", expected);
     parse_parameters(tc, "(comm", expected);
-    parse_parameters(tc, "key", expected);
     parse_parameters(tc, "key=\"value", expected);
     parse_parameters(tc, "key = value", expected);
     parse_parameters(tc, "key=\"value1\"key=value2", expected);
-    parse_parameters(tc, "key=value1 key=value2", unexpected);
+    parse_parameters(tc, "key=value1 key=value2", expected);
 }
 
 static void test_parse_repeated_parameters(CuTest *tc)
@@ -533,6 +528,17 @@ static void test_parse_repeated_parameters(CuTest *tc)
     };
 
     parse_parameters(tc, "key=value1, key=value2", expected);
+}
+
+static void test_parse_single_token_parameters(CuTest *tc)
+{
+    static const struct expected_attrs expected[] = {
+        { "", "Alice/In+Wonderland.==" },
+        { NULL, NULL }
+    };
+
+    parse_parameters(tc, "\tAlice/In+Wonderland.== ", expected);
+    parse_parameters(tc, "Alice=In+Wonderland.=", &expected[1]);
 }
 
 static void test_parameter_case_folding(CuTest *tc)
@@ -564,6 +570,7 @@ CuSuite *test_internal(void)
     SUITE_ADD_TEST(suite, test_parse_parameters);
     SUITE_ADD_TEST(suite, test_parse_bad_parameters);
     SUITE_ADD_TEST(suite, test_parse_repeated_parameters);
+    SUITE_ADD_TEST(suite, test_parse_single_token_parameters);
     SUITE_ADD_TEST(suite, test_parameter_case_folding);
 
     return suite;

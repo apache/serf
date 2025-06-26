@@ -1032,10 +1032,14 @@ typedef apr_status_t
  *
  * @a authn_header and @a authn_parameters come from the authentication header
  * (WWW-Authenticate or Proxy-Authenticate) recevied in a server response.
+ *
  * @a authn_header is the header value, i.e., "scheme <parameters>";
+ *
  * @a authn_parameters is a dictionary of the authentication parameters
  * and their values, e.g., `realm="Wonderland"`. The keys are always folded
- * to lower case.
+ * to lower case. If the parameter is a single token, it is returned in the
+ * dictionary as the value of the empty string key ("").
+ * @see https://www.rfc-editor.org/rfc/rfc9110.html#section-11.2
  *
  * If the scheme flag @a SERF_AUTHN_FLAG_PIPE is *not* set, pipelining will be
  * disabled on the connection after this callback succeeds.
