@@ -1128,6 +1128,12 @@ typedef apr_status_t
  *
  * @a baton and @a authn_baton are the same as in the setup-request function
  *
+ * @a authn_info_parameters is a dictionary with the same structure as the
+ * `authn_parameters` argument to `serf_authn_get_realm_func_t`; except that
+ * they're extracted from the Authentication-Info or Proxy-Authentication-Info
+ * response header. This argument will be NULL @a response does  not contain
+ * one of those headers.
+ *
  * If the scheme flag @c SERF_AUTHN_FLAG_PIPE is *not* set, return a boolean
  * value in @a reset_pipelining to indicate whether pipelining on @a conn should
  * be restored to the value before the init-conn callback was invoked.
@@ -1142,6 +1148,7 @@ typedef apr_status_t
                                        void *authn_baton,
                                        int code,
                                        serf_connection_t *conn,
+                                       apr_hash_t *authn_info_parameters,
                                        serf_request_t *request,
                                        serf_bucket_t *response,
                                        apr_pool_t *scratch_pool);

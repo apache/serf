@@ -658,6 +658,7 @@ static void test_authn_registered_pool_cleanup(CuTest *tc)
 
 typedef struct user_authn_baton user_authn_t;
 struct user_authn_baton {
+    CuTest *tc;
     const char *name;
     int all_count;
     int init_conn_count;
@@ -674,9 +675,11 @@ struct user_authn_baton {
         ++b->all_count;                    \
     } while(0)
 
-static user_authn_t *user_authn_make_baton(const char* name, apr_pool_t *pool)
+static user_authn_t *user_authn_make_baton(CuTest *tc, const char* name,
+                                           apr_pool_t *pool)
 {
     user_authn_t *baton = apr_pcalloc(pool, sizeof(*baton));
+    baton->tc = tc;
     baton->name = apr_pstrdup(pool, name);
     return baton;
 }
@@ -746,9 +749,7 @@ static apr_status_t user_authn_handle(void *baton,
     user_authn_baton_t *const ab = authn_baton;
     USER_AUTHN_COUNT(baton, handle);
 
-    if (username != NULL)
-        return SERF_ERROR_AUTHN_INITALIZATION_FAILED;
-
+    CuAssertTrue(b->tc, username == NULL);
     ab->header = apr_pstrdup(result_pool, response_header);
     ab->value = apr_pstrcat(result_pool, b->name, " ", password, NULL);
 
@@ -767,17 +768,16 @@ static apr_status_t user_authn_setup_request(void *baton,
     user_authn_baton_t *const ab = authn_baton;
     USER_AUTHN_COUNT(baton, setup_request);
 
+    CuAssertPtrNotNull(b->tc, authn_baton);
+    CuAssertPtrNotNull(b->tc, ab->header);
+    CuAssertPtrNotNull(b->tc, ab->value);
 
-    if (ab && ab->header && ab->value) {
-        test__log(TEST_VERBOSE, __FILE__,
-                  "user_authn_setup_request, header %s: %s\n",
-                  ab->header, ab->value);
+    test__log(TEST_VERBOSE, __FILE__,
+              "user_authn_setup_request, header %s: %s\n",
+              ab->header, ab->value);
 
-        serf_bucket_headers_setn(headers, ab->header, ab->value);
-        return APR_SUCCESS;
-    }
-
-    return SERF_ERROR_AUTHN_FAILED;
+    serf_bucket_headers_setn(headers, ab->header, ab->value);
+    return APR_SUCCESS;
 }
 
 static apr_status_t user_authn_validate_response(int *reset_pipelining,
@@ -785,11 +785,22 @@ static apr_status_t user_authn_validate_response(int *reset_pipelining,
                                                  void *authn_baton,
                                                  int code,
                                                  serf_connection_t *conn,
+                                                 apr_hash_t *authn_params,
                                                  serf_request_t *request,
                                                  serf_bucket_t *response,
                                                  apr_pool_t *scratch_pool)
 {
+    const char *knight;
     USER_AUTHN_COUNT(baton, validate_response);
+
+    CuAssertPtrNotNull(b->tc, authn_params);
+    knight = apr_hash_get(authn_params, "white", 5);
+    CuAssertPtrNotNull(b->tc, knight);
+    test__log(TEST_VERBOSE, __FILE__,
+              "user_authn_validate_response, info white=%s\n",
+              knight);
+    CuAssertStrEquals(b->tc, "Knight", knight);
+
     *reset_pipelining = 1;
     return APR_SUCCESS;
 }
@@ -840,8 +851,8 @@ static void user_authentication(CuTest *tc,
     apr_status_t status;
     int typedee, typedum;
     const char *hdr_value = "tweeDlEdee scope=Alice";
-    user_authn_t *const tdee = user_authn_make_baton("TweedleDee", tb->pool);
-    user_authn_t *const tdum = user_authn_make_baton("TweedleDum", tb->pool);
+    user_authn_t *const tdee = user_authn_make_baton(tc, "TweedleDee", tb->pool);
+    user_authn_t *const tdum = user_authn_make_baton(tc, "TweedleDum", tb->pool);
     const int flags = (SERF_AUTHN_FLAG_CREDS
                        | (use_pipelining ? SERF_AUTHN_FLAG_PIPE : 0));
 
@@ -897,7 +908,9 @@ static void user_authentication(CuTest *tc,
                 OnConditionThat(close_conn, WithConnectionCloseHeader))
       GETRequest(URLEqualTo("/"),
                  HeaderEqualTo("Authorization", "TweedleDee TweedleDee"))
-        Respond(WithCode(200),WithChunkedBody(""))
+        Respond(WithCode(200),
+                WithHeader("Authentication-Info", "White=Knight"),
+                WithChunkedBody(""))
     Expect
       AllRequestsReceivedInOrder
     EndGiven

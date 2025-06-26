@@ -176,6 +176,9 @@ extern const serf__authn_scheme_t serf__ntlm_authn_scheme;
 #define SERF__HEADER_FROM_PEER(peer) \
     (((peer) == HOST) ? "Authorization" : "Proxy-Authorization")
 
+#define SERF__INFO_HEADER_FROM_PEER(peer) \
+    (((peer) == HOST) ? "Authentication-Info" : "Proxy-Authentication-Info")
+
 /** User-defined authentication scheme handlers */
 
 apr_status_t

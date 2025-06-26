@@ -291,9 +291,13 @@ serf__authn_user__validate_response(const serf__authn_scheme_t *scheme,
                                     apr_pool_t *pool)
 {
     const int peer_id = SERF__CODE_FROM_PEER(peer);
+    const char *const info_header = SERF__INFO_HEADER_FROM_PEER(peer);
     serf__authn_info_t *const authn_info = get_authn_info(peer_id, conn);
+    serf_bucket_t *headers = serf_bucket_response_get_headers(response);
+    apr_hash_t *info_params = NULL;
     int reset_pipelining = 0;
     struct authn_baton_wrapper *authn_baton;
+    const char *auth_attr;
     apr_pool_t *scratch_pool;
     apr_status_t status;
 
@@ -317,10 +321,17 @@ serf__authn_user__validate_response(const serf__authn_scheme_t *scheme,
 
     authn_baton = authn_info->baton;
     apr_pool_create(&scratch_pool, conn->pool);
+
+    auth_attr = serf_bucket_headers_get(headers, info_header);
+    if (auth_attr) {
+        info_params = serf__parse_authn_parameters(auth_attr, scratch_pool);
+    }
+
     status = scheme->user_validate_response_func(&reset_pipelining,
                                                  scheme->user_baton,
                                                  authn_baton->user_authn_baton,
-                                                 code, conn, request, response,
+                                                 code, conn, info_params,
+                                                 request, response,
                                                  scratch_pool);
 
     /* Reset pipelining if the scheme requires it. */
