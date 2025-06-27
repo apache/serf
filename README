@@ -10,15 +10,20 @@ kept to a minimum to provide high performance operation.
   * Official Git Mirror: https://github.com/apache/serf/
   * Issues: https://issues.apache.org/jira/browse/SERF
   * Mail: dev@serf.apache.org
-  * People: Justin Erenkrantz, Greg Stein 
+  * People: Justin Erenkrantz, Greg Stein
 
 ----
 
 1. INSTALL
 
-1.1. SCons build system
+1.1 Build systems
 
-Apache Serf uses SCons 2.3 for its build system. If it is not installed
+Apache Serf can use either SCons or CMake. Both build systems should offer
+the same features.
+
+1.1.1 SCons build system
+
+You must use at least SCons version 2.3. If it is not installed
 on your system, then you can install it onto your system. If you do not
 have permissions, then you can download and install the "local"
 version into your home directory. When installed privately, simply
@@ -28,7 +33,7 @@ Fetch the scons-local package:
   http://prdownloads.sourceforge.net/scons/scons-local-2.3.0.tar.gz
 
 
-1.2 Building Apache Serf
+1.1.2 Building Apache Serf using SCons
 
 To build serf:
 
@@ -65,12 +70,12 @@ At any point, the current settings can be examined:
 $ scons --help
 
 
-1.3 Running the test suite
+1.1.3 Running the test suite
 
 $ scons check
 
 
-1.4 Installing Apache Serf
+1.1.4 Installing Apache Serf
 
 $ scons install
 
@@ -88,6 +93,76 @@ $ scons PREFIX=/usr/ LIBDIR=/usr/lib64
 $ scons install --install-sandbox=/path/to/buildroot
 
 
-1.4 Cleaning up the build
+1.1.5 Cleaning up the build
 
 $ scons -c
+
+
+1.2.1 CMake build system
+
+
+Get the sources, either a release tarball or by checking out the
+official repository. The CMake build system currently only exists in
+/trunk and it will be included in the 1.4 release.
+
+The process for building on Unix and Windows is the same.
+
+    $ cmake -B out [build options]
+    $ cmake --build out
+
+"out" in the commands above is the build directory used by CMake.
+
+Build options can be added, for example:
+
+    $ cmake -B out -DCMAKE_INSTALL_PREFIX=/usr/local/serf -DSKIP_TESTS=ON
+
+Build options can be listed using:
+
+    $ cmake -LH
+
+Windows tricks:
+
+- Modern versions of Microsoft Visual Studio provide support for
+  CMake projects out-of-box, including intellisense, integrated
+  options editor, test explorer, and more.
+
+  In order to use it for Serf, open the source directory with
+  Visual Studio, and the configuration should start automatically.
+  For editing the cache (options), do right-click to the CMakeLists.txt
+  file and clicking `CMake Settings for Serf` will open the
+  editor. After the required settings are configured, hit `F7` in
+  order to build. For more info, check the article bellow:
+
+      https://learn.microsoft.com/en-us/cpp/build/cmake-projects-in-visual-studio
+
+- There is a useful tool for bootstrapping the dependencies,
+  vcpkg. It provides ports for the most of Serf's dependencies,
+  which then could be installed via a single command.
+
+  To start using it, download the registry from GitHub, bootstrap
+  vcpkg, and install the dependencies:
+
+      $ git clone https://github.com/microsoft/vcpkg
+      $ cd vcpkg && .\bootstrap-vcpkg.bat -disableMetrics
+      $ .\vcpkg install apr apr-util [any other dependency]
+
+  After this is done, vcpkg can be integrated into CMake by passing
+  the vcpkg toolchain to CMAKE_TOOLCHAIN_FILE option. In order to do
+  it with Visual Studio, open the CMake cache editor as explained in
+  the previous step, and put the following into `CMake toolchain
+  file` field, where VCPKG_ROOT is the path to vcpkg registry:
+
+      <VCPKG_ROOT>/scripts/buildsystems/vcpkg.cmake
+
+1.2.1 Running the test suite
+
+$ cd out
+$ ctest
+# this only seems to run part of the testsuite?
+$ ./test/test_all
+# fails due to missing certificates
+$ cp ../test/*.pem ../test/certs test/
+$ ./test/test_all
+# Succeeds?
+
+This should be described in detail.
