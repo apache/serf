@@ -434,25 +434,18 @@ serf__validate_response_digest_auth(const serf__authn_scheme_t *scheme,
                                     serf_bucket_t *response,
                                     apr_pool_t *pool)
 {
-    const char *key;
-    char *auth_attr;
-    char *nextkv;
+    const char *const info_hdr = SERF__INFO_HEADER_FROM_PEER(peer);
     const char *rspauth = NULL;
     const char *qop = NULL;
     const char *nc_str = NULL;
-    serf_bucket_t *hdrs;
     serf_context_t *ctx = conn->ctx;
+    serf_bucket_t *hdrs;
+    const char *auth_attr;
+    apr_hash_t *auth_params;
     apr_status_t status;
 
     hdrs = serf_bucket_response_get_headers(response);
-
-    /* Need a copy cuz we're going to write NUL characters into the string.  */
-    if (peer == HOST)
-        auth_attr = apr_pstrdup(pool,
-            serf_bucket_headers_get(hdrs, "Authentication-Info"));
-    else
-        auth_attr = apr_pstrdup(pool,
-            serf_bucket_headers_get(hdrs, "Proxy-Authentication-Info"));
+    auth_attr = serf_bucket_headers_get(hdrs, info_hdr);
 
     /* If there's no Authentication-Info header there's nothing to validate. */
     if (! auth_attr)
@@ -462,35 +455,10 @@ serf__validate_response_digest_auth(const serf__authn_scheme_t *scheme,
        Ex. rspauth="8a4b8451084b082be6b105e2b7975087",
        cnonce="346531653132652d303033392d3435", nc=00000007,
        qop=auth */
-    for ( ; (key = apr_strtok(auth_attr, ",", &nextkv)) != NULL; auth_attr = NULL) {
-        char *val;
-
-        val = strchr(key, '=');
-        if (val == NULL)
-            continue;
-        *val++ = '\0';
-
-        /* skip leading spaces */
-        while (*key == ' ')
-            key++;
-
-        /* If the value is quoted, then remove the quotes.  */
-        if (*val == '"') {
-            apr_size_t last = strlen(val) - 1;
-
-            if (val[last] == '"') {
-                val[last] = '\0';
-                val++;
-            }
-        }
-
-        if (strcmp(key, "rspauth") == 0)
-            rspauth = val;
-        else if (strcmp(key, "qop") == 0)
-            qop = val;
-        else if (strcmp(key, "nc") == 0)
-            nc_str = val;
-    }
+    auth_params = serf__parse_authn_parameters(auth_attr, pool);
+    rspauth = apr_hash_get(auth_params, "rspauth", 7);
+    qop = apr_hash_get(auth_params, "qop", 3);
+    nc_str = apr_hash_get(auth_params, "nc", 2);
 
     if (rspauth) {
         const char *ha2, *tmp, *resp_hdr_hex;
