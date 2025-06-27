@@ -1777,8 +1777,9 @@ static int ssl_need_client_cert(SSL *ssl, X509 **cert, EVP_PKEY **pkey)
 
             /* no best candidate yet? we're in first place */
             if (!*cert) {
+                EVP_PKEY_up_ref(k);
                 *cert = c; /* don't dup, we're returning this */
-                *pkey = EVP_PKEY_dup(k);
+                *pkey = k;
                 continue;
             }
 
@@ -1787,8 +1788,9 @@ static int ssl_need_client_cert(SSL *ssl, X509 **cert, EVP_PKEY **pkey)
                     X509_get0_notBefore(c)) < 0) {
                 X509_free(*cert);
                 EVP_PKEY_free(*pkey);
+                EVP_PKEY_up_ref(k);
                 *cert = c; /* don't dup, we're returning this */
-                *pkey = EVP_PKEY_dup(k);
+                *pkey = k;
                 continue;
             }
 
