@@ -78,7 +78,7 @@ serf__handle_basic_auth(const serf__authn_scheme_t *scheme,
         apr_pool_destroy(scratch_pool);
         return SERF_ERROR_AUTHN_MISSING_ATTRIBUTE;
     }
-    realm = serf__construct_realm(code == 401 ? HOST : PROXY,
+    realm = serf__construct_realm(SERF__PEER_FROM_CODE(code),
                                   conn, realm_name,
                                   pool);
 
