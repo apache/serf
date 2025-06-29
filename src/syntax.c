@@ -481,12 +481,15 @@ apr_hash_t *serf__parse_authn_parameters(const char *attrs, apr_pool_t *pool)
         /* Parse the value, either a token or a quoted string. */
         ++src;
         value = dst;
-        if (*src == '"')
+        if (*src == '"') {
             src = copy_quoted_string(&dst, src);
-        else if (ct_istoken(*src))
+            if (!src)
+                break;
+        } else {
             src = copy_token(&dst, src);
-        if (!src || value == dst)
-            break;
+            if (!src || value == dst)
+                break;
+        }
         *dst++ = '\0';
 
         /* Must be at the end of the string or at a valid separator. */

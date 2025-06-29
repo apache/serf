@@ -495,25 +495,30 @@ static void test_parse_parameters(CuTest *tc)
         { "realm", "Wonderland" },
         { "scope", "Alice" },
         { "!#$%&'*+-.^_`|~", "(\"\\)"},
+        { "empty", "" },
         { NULL, NULL }
     };
 
     parse_parameters(tc,
                      "Realm=\"Wonderland\","
                      "ScOpE=Alice , "
-                     "!#$%&'*+-.^_`|~=\"(\\\"\\\\)\"",
+                     "!#$%&'*+-.^_`|~=\"(\\\"\\\\)\","
+                     "empty=\"\"",
                      expected);
 }
 
 static void test_parse_bad_parameters(CuTest *tc)
 {
-    static const struct expected_attrs expected[] = {
+    static const struct expected_attrs unexpected[] = {
+        { "first", "value" },
         { NULL, NULL }
     };
+    static const struct expected_attrs *expected = &unexpected[1];
 
     parse_parameters(tc, "", expected);
     parse_parameters(tc, "\t", expected);
     parse_parameters(tc, "(comm", expected);
+    parse_parameters(tc, "first=value, key=", unexpected);
     parse_parameters(tc, "key=\"value", expected);
     parse_parameters(tc, "key = value", expected);
     parse_parameters(tc, "key=\"value1\"key=value2", expected);
