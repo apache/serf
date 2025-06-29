@@ -962,19 +962,22 @@ serf_bucket_t *serf_request_bucket_request_create(
  *    |                         +<---- authenticate <----+ (401 or 407)
  *    +<------ init-conn <------+                        |
  *    |                         |                        |
+ *    |     (pipelining off) <--+ (optional)             |
  *    |    (get credentials) <--+ (optional)             |
  *    |                         |                        |
  *    +<-------- handle <-------+                        |
  *    |                         |                        |
- *    |     (pipelining off) <--+ (optional)             |
+ *    |   (reset pipelining) <--+ (optional)             |
  *    |                         |                        |
  *    +<---- setup-requiest <---+                        |
+ *    |                         |                        |
+ *    |   (reset pipelining) <--+ (optional)             |
  *    |                         +---> request + authn -->+
  *    |                         |                        |
  *    |                         +<------ response <------+
  *    +<-- validate-response <--+                        |
  *    |                         |                        |
- *    |      (pipelining on) <--+ (optional)             |
+ *    |   (reset pipelining) <--+ (optional)             |
  *    |                         |                        |
  * ```
  */
@@ -1077,12 +1080,22 @@ typedef apr_status_t
  * @a request is the pending request and @a response is the response that
  * caused this callback to be called.
  *
+ * If the scheme flag @c SERF_AUTHN_FLAG_PIPE is *not* set, return a boolean
+ * value in @a reset_pipelining to indicate whether pipelining on @a conn
+ * should be restored to the value before the init-conn callback was invoked.
+ * The value of this flag is set to @c false by the caller, so the
+ * implementation does not have to modify it if the pipelining state should
+ * remain unchanged. This parameter has the same meaning in the
+ * serf_authn_setup_request_func_t and serf_authn_validate_response_func_t
+ * callbacks and will only take effect the first time its value @c true.
+ *
  * Use @a scratch_pool for temporary allocations.
  *
  * @since New in 1.4.
  */
 typedef apr_status_t
-(*serf_authn_handle_func_t)(void *baton,
+(*serf_authn_handle_func_t)(int *reset_pipelining,
+                            void *baton,
                             void *authn_baton,
                             int code,
                             const char *authn_header,
@@ -1106,12 +1119,15 @@ typedef apr_status_t
  * @a method and @a uri are the requests attributes and @a headers are the
  * request headers where the credentials are usually set.
  *
+ * For the meaning of @a reset_pipelining, see serf_authn_handle_func_t.
+ *
  * Use @a scratch_pool for temporary allocations.
  *
  * @since New in 1.4.
  */
 typedef apr_status_t
-(*serf_authn_setup_request_func_t)(void *baton,
+(*serf_authn_setup_request_func_t)(int *reset_pipelining,
+                                   void *baton,
                                    void *authn_baton,
                                    serf_connection_t *conn,
                                    serf_request_t *request,
@@ -1134,9 +1150,7 @@ typedef apr_status_t
  * response header. This argument will be NULL @a response does  not contain
  * one of those headers.
  *
- * If the scheme flag @c SERF_AUTHN_FLAG_PIPE is *not* set, return a boolean
- * value in @a reset_pipelining to indicate whether pipelining on @a conn should
- * be restored to the value before the init-conn callback was invoked.
+ * For the meaning of @a reset_pipelining, see serf_authn_handle_func_t.
  *
  * Use @a scratch_pool for temporary allocations.
  *

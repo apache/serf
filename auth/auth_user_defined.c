@@ -53,13 +53,14 @@ struct authn_baton_wrapper {
     int pipelining;
 
     /* Was pipelining reset to its previous value?. */
-    bool pipelining_reset;
+    bool pipelining_was_reset;
 
     /* The user-defined scheme's per-connection baton. */
     void *user_authn_baton;
 };
 
 
+/* Common callback parameter validation. */
 typedef apr_status_t (*callback_fn_t)();
 static apr_status_t validate_handler(serf_config_t *config,
                                      const serf__authn_scheme_t *scheme,
@@ -86,6 +87,34 @@ static apr_status_t validate_handler(serf_config_t *config,
         return APR_ERANGE;
     }
     return APR_SUCCESS;
+}
+
+
+/* Reset request pipelining on the connection if required. */
+static void maybe_reset_pipelining(const serf__authn_scheme_t *scheme,
+                                   struct authn_baton_wrapper *authn_baton,
+                                   serf_connection_t *conn,
+                                   apr_status_t status,
+                                   int reset_pipelining)
+{
+    if (!reset_pipelining
+        || status != APR_SUCCESS
+        || authn_baton->pipelining_was_reset
+        || (scheme->user_flags & SERF_AUTHN_FLAG_PIPE))
+    {
+        serf__log(LOGLVL_DEBUG, LOGCOMP_AUTHN, __FILE__, conn->config,
+                  "User-defined scheme %s: no pipelining change for %s\n",
+                  scheme->name, conn->host_url);
+        return;
+    }
+
+    serf__log(LOGLVL_DEBUG, LOGCOMP_AUTHN, __FILE__, conn->config,
+              "User-defined scheme %s: pipelining reset to %s for %s\n",
+              scheme->name,
+              authn_baton->pipelining ? "on" : "off",
+              conn->host_url);
+    serf__connection_set_pipelining(conn, authn_baton->pipelining);
+    authn_baton->pipelining_was_reset = true;
 }
 
 
@@ -135,9 +164,9 @@ serf__authn_user__init_conn(const serf__authn_scheme_t *scheme,
                   "User-defined scheme %s: pipelining off for %s\n",
                   scheme->name, conn->host_url);
         authn_baton->pipelining = serf__connection_set_pipelining(conn, 0);
-        authn_baton->pipelining_reset = false;
+        authn_baton->pipelining_was_reset = false;
     } else {
-        authn_baton->pipelining_reset = true;
+        authn_baton->pipelining_was_reset = true;
     }
     return status;
 }
@@ -156,6 +185,7 @@ serf__authn_user__handle(const serf__authn_scheme_t *scheme,
     serf__authn_info_t *const authn_info = get_authn_info(code, conn);
     serf_context_t *const ctx = conn->ctx;
     struct authn_baton_wrapper *authn_baton;
+    int reset_pipelining = 0;
     char *username, *password;
     apr_pool_t *scratch_pool;
     apr_hash_t *auth_param;
@@ -222,7 +252,8 @@ serf__authn_user__handle(const serf__authn_scheme_t *scheme,
         username = password = NULL;
     }
 
-    status = scheme->user_handle_func(scheme->user_baton,
+    status = scheme->user_handle_func(&reset_pipelining,
+                                      scheme->user_baton,
                                       authn_baton->user_authn_baton, code,
                                       auth_hdr, auth_param,
                                       SERF__HEADER_FROM_CODE(code),
@@ -231,6 +262,7 @@ serf__authn_user__handle(const serf__authn_scheme_t *scheme,
                                       pool, scratch_pool);
 
   cleanup:
+    maybe_reset_pipelining(scheme, authn_baton, conn, status, reset_pipelining);
     apr_pool_destroy(scratch_pool);
     return status;
 }
@@ -249,6 +281,7 @@ serf__authn_user__setup_request(const serf__authn_scheme_t *scheme,
     const int peer_id = SERF__CODE_FROM_PEER(peer);
     serf__authn_info_t *const authn_info = get_authn_info(peer_id, conn);
     struct authn_baton_wrapper *authn_baton;
+    int reset_pipelining = 0;
     apr_pool_t *scratch_pool;
     apr_status_t status;
 
@@ -271,11 +304,14 @@ serf__authn_user__setup_request(const serf__authn_scheme_t *scheme,
 
     authn_baton = authn_info->baton;
     apr_pool_create(&scratch_pool, conn->pool);
-    status = scheme->user_setup_request_func(scheme->user_baton,
+    status = scheme->user_setup_request_func(&reset_pipelining,
+                                             scheme->user_baton,
                                              authn_baton->user_authn_baton,
                                              conn, request,
                                              method, uri, hdrs_bkt,
                                              scratch_pool);
+
+    maybe_reset_pipelining(scheme, authn_baton, conn, status, reset_pipelining);
     apr_pool_destroy(scratch_pool);
     return status;
 }
@@ -334,19 +370,7 @@ serf__authn_user__validate_response(const serf__authn_scheme_t *scheme,
                                                  request, response,
                                                  scratch_pool);
 
-    /* Reset pipelining if the scheme requires it. */
-    if (status == APR_SUCCESS && reset_pipelining
-        && !authn_baton->pipelining_reset
-        && !(scheme->user_flags & SERF_AUTHN_FLAG_PIPE)) {
-        serf__log(LOGLVL_DEBUG, LOGCOMP_AUTHN, __FILE__, conn->config,
-                  "User-defined scheme %s: pipelining reset to %s for %s\n",
-                  scheme->name,
-                  authn_baton->pipelining ? "on" : "off",
-                  conn->host_url);
-        serf__connection_set_pipelining(conn, authn_baton->pipelining);
-        authn_baton->pipelining_reset = true;
-    }
-
+    maybe_reset_pipelining(scheme, authn_baton, conn, status, reset_pipelining);
     apr_pool_destroy(scratch_pool);
     return status;
 }

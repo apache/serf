@@ -733,7 +733,8 @@ static apr_status_t user_authn_get_realm(const char **realm_name,
     return APR_SUCCESS;
 }
 
-static apr_status_t user_authn_handle(void *baton,
+static apr_status_t user_authn_handle(int *reset_pipelining,
+                                      void *baton,
                                       void *authn_baton,
                                       int code,
                                       const char *authn_header,
@@ -753,10 +754,12 @@ static apr_status_t user_authn_handle(void *baton,
     ab->header = apr_pstrdup(result_pool, response_header);
     ab->value = apr_pstrcat(result_pool, b->name, " ", password, NULL);
 
+    *reset_pipelining = 1;
     return APR_SUCCESS;
 }
 
-static apr_status_t user_authn_setup_request(void *baton,
+static apr_status_t user_authn_setup_request(int *reset_pipelining,
+                                             void *baton,
                                              void *authn_baton,
                                              serf_connection_t *conn,
                                              serf_request_t *request,
@@ -777,6 +780,8 @@ static apr_status_t user_authn_setup_request(void *baton,
               ab->header, ab->value);
 
     serf_bucket_headers_setn(headers, ab->header, ab->value);
+
+    *reset_pipelining = 1;
     return APR_SUCCESS;
 }
 
