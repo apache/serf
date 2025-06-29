@@ -108,14 +108,15 @@ class ExportGenerator(object):
       return TARGET_WINDLL
     if sys.platform == 'darwin':
       return TARGET_MACHO
-    if sys.platform.startswith('linux'):
-      return TARGET_ELF
-    if (sys.platform.startswith('freebsd') and int(sys.platform[7:]) >= 4):
-      return TARGET_ELF
-    if (sys.platform.startswith('openbsd') and int(sys.platform[7:]) >= 6):
-      return TARGET_ELF
-    if (sys.platform.startswith('netbsd') and int(sys.platform[6:]) >= 2):
-      return TARGET_ELF
+    # FIXME: SConstruct checks for ELF, these should probably be removed.
+    # if sys.platform.startswith('linux'):
+    #   return TARGET_ELF
+    # if (sys.platform.startswith('freebsd') and int(sys.platform[7:]) >= 4):
+    #   return TARGET_ELF
+    # if (sys.platform.startswith('openbsd') and int(sys.platform[7:]) >= 6):
+    #   return TARGET_ELF
+    # if (sys.platform.startswith('netbsd') and int(sys.platform[6:]) >= 2):
+    #   return TARGET_ELF
     return None
 
   def _gen_win_def(self, stream, symbols):
