@@ -350,33 +350,33 @@ add_compile_definitions("OPENSSL_NO_STDIO")
 # Set common compiler flags
 if(NOT MSVC)
   if(CC_LIKE_GNUC)
-    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall")
-    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wdeclaration-after-statement")
-    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wmissing-prototypes")
-    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -std=c89")
+    string(APPEND CMAKE_C_FLAGS " -Wall")
+    string(APPEND CMAKE_C_FLAGS " -Wdeclaration-after-statement")
+    string(APPEND CMAKE_C_FLAGS " -Wmissing-prototypes")
+    string(APPEND CMAKE_C_FLAGS " -std=c89")
 
-    set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -O0")
+    string(APPEND CMAKE_C_FLAGS_DEBUG " -O0")
 
     if(SERF_MAINTAINER_MODE)
       # Additional warning flags for more pedantic checks
-      set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wimplicit-function-declaration")
-      set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wmissing-variable-declarations")
-      set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wunreachable-code")
-      set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wshorten-64-to-32")
-      set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wno-system-headers")
-      set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wextra-tokens")
-      set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wnewline-eof")
+      string(APPEND CMAKE_C_FLAGS " -Wimplicit-function-declaration")
+      string(APPEND CMAKE_C_FLAGS " -Wmissing-variable-declarations")
+      string(APPEND CMAKE_C_FLAGS " -Wunreachable-code")
+      string(APPEND CMAKE_C_FLAGS " -Wshorten-64-to-32")
+      string(APPEND CMAKE_C_FLAGS " -Wno-system-headers")
+      string(APPEND CMAKE_C_FLAGS " -Wextra-tokens")
+      string(APPEND CMAKE_C_FLAGS " -Wnewline-eof")
     endif()
   endif()
 else()
   # Warning level 4, no unused argument warnings
-  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} /W4 /wd4100")
+  string(APPEND CMAKE_C_FLAGS " /W4 /wd4100")
   # Conditional expression is constant
-  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} /wd4127")
+  string(APPEND CMAKE_C_FLAGS " /wd4127")
   # Assignment within conditional expression
-  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} /wd4706")
+  string(APPEND CMAKE_C_FLAGS " /wd4706")
   # 'function' undefined; assuming extern returning int
-  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} /we4013")
+  string(APPEND CMAKE_C_FLAGS " /we4013")
 
   add_compile_definitions(
     "WIN32" "WIN32_LEAN_AND_MEAN"
