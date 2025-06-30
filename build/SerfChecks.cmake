@@ -21,7 +21,13 @@ include(CheckCSourceCompiles)
 include(CheckIncludeFile)
 include(CheckTypeSize)
 
+
+# CMake doesn't use current directory properties in the compile checks.
+get_directory_property(cdef_ COMPILE_DEFINITIONS)
+list(TRANSFORM cdef_ PREPEND "-D")
+
 function(_CheckFunction var_ name_ args_ header_ includes_ libraries_)
+  set(CMAKE_REQUIRED_DEFINITIONS ${cdef_})
   if(libraries_)
     set(CMAKE_REQUIRED_LIBRARIES "${libraries_}")
   else()
@@ -61,6 +67,7 @@ function(_CheckFunction var_ name_ args_ header_ includes_ libraries_)
 
   unset(CMAKE_REQUIRED_INCLUDES)
   unset(CMAKE_REQUIRED_LIBRARIES)
+  unset(CMAKE_REQUIRED_DEFINITIONS)
 endfunction(_CheckFunction)
 
 macro(CheckFunction name_ args_ symbol_ header_ includes_)
@@ -81,6 +88,7 @@ endmacro(CheckNotFunction)
 
 
 function(_CheckHeader var_ name_ includes_)
+  set(CMAKE_REQUIRED_DEFINITIONS ${cdef_})
   if(includes_)
     set(CMAKE_REQUIRED_INCLUDES "${includes_}")
   else()
@@ -94,6 +102,7 @@ function(_CheckHeader var_ name_ includes_)
     set("${var_}" FALSE PARENT_SCOPE)
   endif()
   unset(CMAKE_REQUIRED_INCLUDES)
+  unset(CMAKE_REQUIRED_DEFINITIONS)
 endfunction(_CheckHeader)
 
 macro(CheckHeader name_ symbol_)
@@ -105,6 +114,7 @@ endmacro(CheckHeader)
 
 
 function(_CheckType var_ name_ header_ includes_)
+  set(CMAKE_REQUIRED_DEFINITIONS ${cdef_})
   if(includes_)
     set(CMAKE_REQUIRED_INCLUDES "${includes_}")
   else()
@@ -125,6 +135,7 @@ function(_CheckType var_ name_ header_ includes_)
   endif()
   unset(CMAKE_REQUIRED_INCLUDES)
   unset(CMAKE_EXTRA_INCLUDE_FILES)
+  unset(CMAKE_REQUIRED_DEFINITIONS)
 endfunction(_CheckType)
 
 macro(CheckType name_ header_ symbol_)

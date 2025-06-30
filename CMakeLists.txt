@@ -241,6 +241,12 @@ find_package(ZLIB REQUIRED)
 find_package(APR REQUIRED)
 find_package(APRUtil REQUIRED)
 
+# We do not want or need OpenSSL's compatibility macros.
+add_compile_definitions("OPENSSL_NO_DEPRECATED")
+
+# Hide OpenSSL's _fp() API.
+add_compile_definitions("OPENSSL_NO_STDIO")
+
 # Find optional dependencies
 find_package(Brotli)
 if(NOT SERF_WINDOWS)
@@ -343,9 +349,6 @@ endif()
 if(ENABLE_SLOW_TESTS)
   add_compile_definitions("SERF_TEST_DEFLATE_4GBPLUS_BUCKETS")
 endif()
-
-# Define OPENSSL_NO_STDIO to prevent using _fp() API.
-add_compile_definitions("OPENSSL_NO_STDIO")
 
 # Set common compiler flags
 if(NOT MSVC)

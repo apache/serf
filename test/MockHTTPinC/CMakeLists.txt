@@ -46,6 +46,11 @@ elseif(MSVC)
 endif()
 mark_as_advanced(SHOW_MockHTTPinC_WARNINGS)
 
+# MockHTTP needs deprecated OpenSSL APIs
+get_directory_property(_cdef COMPILE_DEFINITIONS)
+list(REMOVE_ITEM _cdef "OPENSSL_NO_DEPRECATED")
+set_directory_properties(PROPERTIES COMPILE_DEFINITIONS "${_cdef}")
+
 add_library(mockhttpinc STATIC ${MockHTTPinC_SOURCES})
 target_compile_definitions(mockhttpinc PUBLIC "MOCKHTTP_OPENSSL")
 target_include_directories(mockhttpinc SYSTEM BEFORE
