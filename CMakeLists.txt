@@ -351,12 +351,14 @@ if(ENABLE_SLOW_TESTS)
 endif()
 
 # Set common compiler flags
+set(CMAKE_C_STANDARD 90)        # Use C90. MockHTTP overrides this.
+set(CMAKE_C_STANDARD_REQUIRED TRUE)
+
 if(NOT MSVC)
   if(CC_LIKE_GNUC)
     string(APPEND CMAKE_C_FLAGS " -Wall")
     string(APPEND CMAKE_C_FLAGS " -Wdeclaration-after-statement")
     string(APPEND CMAKE_C_FLAGS " -Wmissing-prototypes")
-    string(APPEND CMAKE_C_FLAGS " -std=c89")
 
     string(APPEND CMAKE_C_FLAGS_DEBUG " -O0")
 

@@ -22,10 +22,12 @@ set(MockHTTPinC_SOURCES
     "MockHTTP_server.c"
 )
 
+# MockHTTP requires the C99 standard.
+set(CMAKE_C_STANDARD 99)
+set(CMAKE_C_STANDARD_REQUIRED TRUE)
+
 # Update compiler options for this library.
 if(CC_LIKE_GNUC)
-  # MockHTTP requires the C99 standard.
-  string(REPLACE "-std=c89" "-std=c99" CMAKE_C_FLAGS ${CMAKE_C_FLAGS})
   # Also silence all warnings.
   if(NOT SHOW_MockHTTPinC_WARNINGS)
     string(REGEX REPLACE " *-W[a-z][a-z-]+" "" CMAKE_C_FLAGS ${CMAKE_C_FLAGS})
