@@ -21,10 +21,7 @@ include(CheckCSourceCompiles)
 include(CheckIncludeFile)
 include(CheckTypeSize)
 
-
-# CMake doesn't use current directory properties in the compile checks.
-get_directory_property(cdef_ COMPILE_DEFINITIONS)
-list(TRANSFORM cdef_ PREPEND "-D")
+list(TRANSFORM SERF_C_DEFINES PREPEND "-D" OUTPUT_VARIABLE cdef_)
 
 function(_CheckFunction var_ name_ args_ header_ includes_ libraries_)
   set(CMAKE_REQUIRED_DEFINITIONS ${cdef_})
@@ -74,7 +71,7 @@ macro(CheckFunction name_ args_ symbol_ header_ includes_)
   _CheckFunction("serf_feature_CheckFunction_${name_}_"
                  "${name_}" "${args_}" "${header_}" "${includes_}" "${ARGN}")
   if("${serf_feature_CheckFunction_${name_}_}")
-    add_compile_definitions("${symbol_}")
+    list(APPEND SERF_C_DEFINES "${symbol_}")
   endif()
 endmacro(CheckFunction)
 
@@ -82,7 +79,7 @@ macro(CheckNotFunction name_ args_ symbol_ header_ includes_)
   _CheckFunction("serf_feature_CheckNotFunction_${name_}_"
                  "${name_}" "${args_}" "${header_}" "${includes_}" "${ARGN}")
   if(NOT "${serf_feature_CheckNotFunction_${name_}_}")
-    add_compile_definitions("${symbol_}")
+    list(APPEND SERF_C_DEFINES "${symbol_}")
   endif()
 endmacro(CheckNotFunction)
 
@@ -108,7 +105,7 @@ endfunction(_CheckHeader)
 macro(CheckHeader name_ symbol_)
   _CheckHeader("serf_feature_CheckHeader_${name_}_" "${name_}" "${ARGN}")
   if("${serf_feature_CheckHeader_${name_}_}")
-    add_compile_definitions("${symbol_}")
+    list(APPEND SERF_C_DEFINES "${symbol_}")
   endif()
 endmacro(CheckHeader)
 
@@ -141,6 +138,6 @@ endfunction(_CheckType)
 macro(CheckType name_ header_ symbol_)
   _CheckType("serf_feature_CheckType_${name_}_" "${name_}" "${header_}" "${ARGN}")
   if("${serf_feature_CheckType_${name_}_}")
-    add_compile_definitions("${symbol_}")
+    list(APPEND SERF_C_DEFINES "${symbol_}")
   endif()
 endmacro(CheckType)

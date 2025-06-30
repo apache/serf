@@ -222,7 +222,7 @@ if(SERF_WINDOWS)
       "secur32.lib"
       "ws2_32.lib"
   )
-  add_compile_definitions("SERF_HAVE_SSPI")
+  list(APPEND SERF_C_DEFINES "SERF_HAVE_SSPI")
 endif()
 
 # Process build options for dependency search
@@ -242,10 +242,10 @@ find_package(APR REQUIRED)
 find_package(APRUtil REQUIRED)
 
 # We do not want or need OpenSSL's compatibility macros.
-add_compile_definitions("OPENSSL_NO_DEPRECATED")
+list(APPEND SERF_C_DEFINES "OPENSSL_NO_DEPRECATED")
 
 # Hide OpenSSL's _fp() API.
-add_compile_definitions("OPENSSL_NO_STDIO")
+list(APPEND SERF_C_DEFINES "OPENSSL_NO_STDIO")
 
 # Find optional dependencies
 find_package(Brotli)
@@ -265,7 +265,7 @@ if(Brotli_FOUND)
   list(APPEND SERF_PRIVATE_TARGETS Brotli::Decode)
 endif()
 if(GSSAPI_FOUND)
-  add_compile_definitions("SERF_HAVE_GSSAPI")
+  list(APPEND SERF_C_DEFINES "SERF_HAVE_GSSAPI")
   list(APPEND SERF_PRIVATE_TARGETS KRB5::GSSAPI)
 endif()
 
@@ -325,8 +325,7 @@ CheckType("OSSL_HANDSHAKE_STATE" "openssl/ssl.h" "SERF_HAVE_OSSL_HANDSHAKE_STATE
 if(Brotli_FOUND)
   CheckType("BrotliDecoderResult" "brotli/decode.h" "SERF_HAVE_BROTLI_DECODER_RESULT" ${BROTLI_INCLUDES})
   # Check for the function only if the type check succeeded.
-  get_directory_property(_cdef COMPILE_DEFINITIONS)
-  if("SERF_HAVE_BROTLI_DECODER_RESULT" IN_LIST _cdef)
+  if("SERF_HAVE_BROTLI_DECODER_RESULT" IN_LIST SERF_C_DEFINES)
     CheckFunction("BrotliDecoderTakeOutput" "NULL, NULL" "SERF_HAVE_BROTLI"
                   "brotli/decode.h" ${BROTLI_INCLUDES}
                   Brotli::Decode ${SERF_STANDARD_LIBRARIES})
@@ -339,15 +338,15 @@ endif()
 
 # Process other build options
 if(DEBUG)
-  add_compile_definitions("DEBUG" "_DEBUG")
+  list(APPEND SERF_C_DEFINES "DEBUG" "_DEBUG")
 endif()
 
 if(DISABLE_LOGGING)
-  add_compile_definitions("SERF_DISABLE_LOGGING")
+  list(APPEND SERF_C_DEFINES "SERF_DISABLE_LOGGING")
 endif()
 
 if(ENABLE_SLOW_TESTS)
-  add_compile_definitions("SERF_TEST_DEFLATE_4GBPLUS_BUCKETS")
+  list(APPEND SERF_C_DEFINES "SERF_TEST_DEFLATE_4GBPLUS_BUCKETS")
 endif()
 
 # Set common compiler flags
@@ -383,14 +382,14 @@ else()
   # 'function' undefined; assuming extern returning int
   list(APPEND SERF_C_WARNINGS "/we4013")
 
-  add_compile_definitions(
+  list(APPEND SERF_C_DEFINES
     "WIN32" "WIN32_LEAN_AND_MEAN"
     "NOUSER" "NOGDI" "NONLS" "NOCRYPT"
     "_CRT_SECURE_NO_WARNINGS"
     "_CRT_NONSTDC_NO_WARNINGS"
   )
   if(SERF_WIN64)
-    add_compile_definitions("WIN64")
+    list(APPEND SERF_C_DEFINES "WIN64")
   endif()
 
   set(CMAKE_IMPORT_LIBRARY_PREFIX "${SERF_INSTALL_LIBRARIES}")
@@ -403,6 +402,7 @@ if(NOT SKIP_SHARED)
   target_compile_options(serf_shared
                          PUBLIC ${APR_CFLAGS}
                          PRIVATE ${SERF_C_WARNINGS})
+  target_compile_definitions(serf_shared PRIVATE ${SERF_C_DEFINES})
   target_include_directories(serf_shared PUBLIC ${SERF_SOURCE_DIR})
   target_link_libraries(serf_shared
                         PRIVATE ${SERF_PRIVATE_TARGETS}
@@ -436,6 +436,7 @@ if(NOT SKIP_STATIC)
   target_compile_options(serf_static
                          PUBLIC ${APR_CFLAGS}
                          PRIVATE ${SERF_C_WARNINGS})
+  target_compile_definitions(serf_static PRIVATE ${SERF_C_DEFINES})
   target_include_directories(serf_static PUBLIC ${SERF_SOURCE_DIR})
   target_link_libraries(serf_static
                         ${SERF_PRIVATE_TARGETS}
@@ -529,14 +530,13 @@ if(DOT_CLANGD)
   set(_gen_dot_clangd ON)
 endif()
 
-get_directory_property(_cdef COMPILE_DEFINITIONS)
-if("SERF_HAVE_BROTLI" IN_LIST _cdef)
+if("SERF_HAVE_BROTLI" IN_LIST SERF_C_DEFINES)
   set(_have_brotli ON)
 endif()
-if("SERF_HAVE_GSSAPI" IN_LIST _cdef)
+if("SERF_HAVE_GSSAPI" IN_LIST SERF_C_DEFINES)
   set(_have_gssapi ON)
 endif()
-if("SERF_HAVE_SSPI" IN_LIST _cdef)
+if("SERF_HAVE_SSPI" IN_LIST SERF_C_DEFINES)
   set(_have_sspi ON)
 endif()
 

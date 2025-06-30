@@ -46,12 +46,13 @@ endif()
 mark_as_advanced(SHOW_MockHTTPinC_WARNINGS)
 
 # MockHTTP needs deprecated OpenSSL APIs
-get_directory_property(_cdef COMPILE_DEFINITIONS)
-list(REMOVE_ITEM _cdef "OPENSSL_NO_DEPRECATED")
-set_directory_properties(PROPERTIES COMPILE_DEFINITIONS "${_cdef}")
+set(MockHTTPinC_DEFINES ${SERF_C_DEFINES})
+list(REMOVE_ITEM MockHTTPinC_DEFINES "OPENSSL_NO_DEPRECATED")
 
 add_library(mockhttpinc STATIC ${MockHTTPinC_SOURCES})
 target_compile_options(mockhttpinc PRIVATE ${MockHTTPinC_WARNINGS})
-target_compile_definitions(mockhttpinc PUBLIC "MOCKHTTP_OPENSSL")
+target_compile_definitions(mockhttpinc
+                           PUBLIC "MOCKHTTP_OPENSSL"
+                           PRIVATE ${MockHTTPinC_DEFINES})
 target_include_directories(mockhttpinc SYSTEM BEFORE
                            PRIVATE ${APR_INCLUDES} ${APRUTIL_INCLUDES})
