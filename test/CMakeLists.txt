@@ -17,6 +17,7 @@
 #   under the License.
 # ===================================================================
 
+add_subdirectory(MockHTTPinC)
 
 set(TEST_ALL_SOURCES
     "test_all.c"
@@ -30,8 +31,6 @@ set(TEST_ALL_SOURCES
     "mock_buckets.c"
     "mock_sock_buckets.c"
     "test_ssl.c"
-    "MockHTTPinC/MockHTTP.c"
-    "MockHTTPinC/MockHTTP_server.c"
 )
 
 set(TEST_ALL_SUITES
@@ -52,11 +51,6 @@ set(SIMPLE_TEST_TARGETS
     "serf_bwtp"
 )
 
-if(CC_LIKE_GNUC)
-  # MockHTTP requires C99 standard, so use it for the test suite.
-  string(REPLACE "-std=c89" "-std=c99" CMAKE_C_FLAGS ${CMAKE_C_FLAGS})
-endif()
-
 foreach(TEST_TARGET ${SIMPLE_TEST_TARGETS})
   add_executable(${TEST_TARGET} "${TEST_TARGET}.c")
   add_dependencies(${TEST_TARGET} serf_static)
@@ -64,10 +58,9 @@ foreach(TEST_TARGET ${SIMPLE_TEST_TARGETS})
 endforeach()
 
 add_executable(test_all ${TEST_ALL_SOURCES})
-add_dependencies(test_all serf_static)
-target_compile_definitions(test_all PRIVATE "-DMOCKHTTP_OPENSSL")
+add_dependencies(test_all serf_static mockhttpinc)
 target_include_directories(test_all SYSTEM BEFORE PRIVATE ${SERF_DEPENDENCY_INCLUDES})
-target_link_libraries(test_all serf_static)
+target_link_libraries(test_all serf_static mockhttpinc)
 
 file(GLOB RESPONSE_TEST_CASES "${CMAKE_CURRENT_SOURCE_DIR}/testcases/*.response")
 foreach(TEST_CASE ${RESPONSE_TEST_CASES})
