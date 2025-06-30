@@ -27,24 +27,21 @@ set(CMAKE_C_STANDARD 99)
 set(CMAKE_C_STANDARD_REQUIRED TRUE)
 
 # Update compiler options for this library.
-if(CC_LIKE_GNUC)
-  # Also silence all warnings.
-  if(NOT SHOW_MockHTTPinC_WARNINGS)
-    string(REGEX REPLACE " *-W[a-z][a-z-]+" "" CMAKE_C_FLAGS ${CMAKE_C_FLAGS})
-    string(APPEND CMAKE_C_FLAGS " -w")
+if(NOT SHOW_MockHTTPinC_WARNINGS)
+  if(CC_LIKE_GNUC)
+    set(MockHTTPinC_WARNINGS "-w")
+  elseif(MSVC)
+    # Silence warnings from Microsoft's compiler...
+    #
+    # ... of course, somewhere, somehow CMake adds the /W1 warning option
+    # to the command line and then MSVC complains that we're overriding /W1
+    # with /w. But it's more fun this way, or at least more #$@^&@%!
+    # Or maybe that's just MSBuild doing its magic, and it depends on the
+    # build generator. What would life be without its little mysteries?
+    set(MockHTTPinC_WARNINGS "/w")
   endif()
-elseif(MSVC)
-  # Silence warnings from Microsoft's compiler...
-  #
-  # ... of course, somewhere, somehow CMake adds the /W1 warning option
-  # to the command line and then MSVC complains that we're overriding /W1
-  # with /w. But it's more fun this way, or at least more #$@^&@%!
-  # Or maybe that's just MSBuild doing its magic, and it depends on the
-  # build generator. What would life be without its little mysteries?
-  if(NOT SHOW_MockHTTPinC_WARNINGS)
-    string(REGEX REPLACE " */(W|w[de])[0-9]+" "" CMAKE_C_FLAGS ${CMAKE_C_FLAGS})
-    string(APPEND CMAKE_C_FLAGS " /w")
-  endif()
+else()
+  set(MockHTTPinC_WARNINGS ${SERF_C_WARNINGS})
 endif()
 mark_as_advanced(SHOW_MockHTTPinC_WARNINGS)
 
@@ -54,6 +51,7 @@ list(REMOVE_ITEM _cdef "OPENSSL_NO_DEPRECATED")
 set_directory_properties(PROPERTIES COMPILE_DEFINITIONS "${_cdef}")
 
 add_library(mockhttpinc STATIC ${MockHTTPinC_SOURCES})
+target_compile_options(mockhttpinc PRIVATE ${MockHTTPinC_WARNINGS})
 target_compile_definitions(mockhttpinc PUBLIC "MOCKHTTP_OPENSSL")
 target_include_directories(mockhttpinc SYSTEM BEFORE
                            PRIVATE ${APR_INCLUDES} ${APRUTIL_INCLUDES})

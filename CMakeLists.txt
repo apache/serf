@@ -356,32 +356,32 @@ set(CMAKE_C_STANDARD_REQUIRED TRUE)
 
 if(NOT MSVC)
   if(CC_LIKE_GNUC)
-    string(APPEND CMAKE_C_FLAGS " -Wall")
-    string(APPEND CMAKE_C_FLAGS " -Wdeclaration-after-statement")
-    string(APPEND CMAKE_C_FLAGS " -Wmissing-prototypes")
+    list(APPEND SERF_C_WARNINGS "-Wall")
+    list(APPEND SERF_C_WARNINGS "-Wdeclaration-after-statement")
+    list(APPEND SERF_C_WARNINGS "-Wmissing-prototypes")
 
     string(APPEND CMAKE_C_FLAGS_DEBUG " -O0")
 
     if(SERF_MAINTAINER_MODE)
       # Additional warning flags for more pedantic checks
-      string(APPEND CMAKE_C_FLAGS " -Wimplicit-function-declaration")
-      string(APPEND CMAKE_C_FLAGS " -Wmissing-variable-declarations")
-      string(APPEND CMAKE_C_FLAGS " -Wunreachable-code")
-      string(APPEND CMAKE_C_FLAGS " -Wshorten-64-to-32")
-      string(APPEND CMAKE_C_FLAGS " -Wno-system-headers")
-      string(APPEND CMAKE_C_FLAGS " -Wextra-tokens")
-      string(APPEND CMAKE_C_FLAGS " -Wnewline-eof")
+      list(APPEND SERF_C_WARNINGS "-Wimplicit-function-declaration")
+      list(APPEND SERF_C_WARNINGS "-Wmissing-variable-declarations")
+      list(APPEND SERF_C_WARNINGS "-Wunreachable-code")
+      list(APPEND SERF_C_WARNINGS "-Wshorten-64-to-32")
+      list(APPEND SERF_C_WARNINGS "-Wno-system-headers")
+      list(APPEND SERF_C_WARNINGS "-Wextra-tokens")
+      list(APPEND SERF_C_WARNINGS "-Wnewline-eof")
     endif()
   endif()
 else()
   # Warning level 4, no unused argument warnings
-  string(APPEND CMAKE_C_FLAGS " /W4 /wd4100")
+  list(APPEND SERF_C_WARNINGS "/W4" "/wd4100")
   # Conditional expression is constant
-  string(APPEND CMAKE_C_FLAGS " /wd4127")
+  list(APPEND SERF_C_WARNINGS "/wd4127")
   # Assignment within conditional expression
-  string(APPEND CMAKE_C_FLAGS " /wd4706")
+  list(APPEND SERF_C_WARNINGS "/wd4706")
   # 'function' undefined; assuming extern returning int
-  string(APPEND CMAKE_C_FLAGS " /we4013")
+  list(APPEND SERF_C_WARNINGS "/we4013")
 
   add_compile_definitions(
     "WIN32" "WIN32_LEAN_AND_MEAN"
@@ -400,7 +400,9 @@ endif(NOT MSVC)
 # Define all targets
 if(NOT SKIP_SHARED)
   add_library(serf_shared SHARED ${SOURCES} ${SHARED_SOURCES})
-  target_compile_options(serf_shared PUBLIC ${APR_CFLAGS})
+  target_compile_options(serf_shared
+                         PUBLIC ${APR_CFLAGS}
+                         PRIVATE ${SERF_C_WARNINGS})
   target_include_directories(serf_shared PUBLIC ${SERF_SOURCE_DIR})
   target_link_libraries(serf_shared
                         PRIVATE ${SERF_PRIVATE_TARGETS}
@@ -431,7 +433,9 @@ endif()
 
 if(NOT SKIP_STATIC)
   add_library(serf_static STATIC ${SOURCES})
-  target_compile_options(serf_static PUBLIC ${APR_CFLAGS})
+  target_compile_options(serf_static
+                         PUBLIC ${APR_CFLAGS}
+                         PRIVATE ${SERF_C_WARNINGS})
   target_include_directories(serf_static PUBLIC ${SERF_SOURCE_DIR})
   target_link_libraries(serf_static
                         ${SERF_PRIVATE_TARGETS}
