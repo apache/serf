@@ -659,6 +659,7 @@ void serf_ssl_server_cert_chain_callback_set(
  */
 typedef apr_status_t (*serf_ssl_error_cb_t)(
     void *baton,
+    apr_status_t status,
     const char *message);
 
 /**

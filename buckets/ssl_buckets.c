@@ -348,7 +348,7 @@ static void log_ssl_error(serf_ssl_context_t *ctx)
         if (err && ctx->error_callback) {
             char ebuf[256];
             ERR_error_string_n(err, ebuf, sizeof(ebuf));
-            ctx->error_callback(ctx->error_baton, ebuf);
+            ctx->error_callback(ctx->error_baton, ctx->fatal_err, ebuf);
         }
 
     }
@@ -1682,15 +1682,7 @@ static int ssl_need_client_cert(SSL *ssl, X509 **cert, EVP_PKEY **pkey)
 
 error:
 
-    serf__log(LOGLVL_ERROR, LOGCOMP_SSL, __FILE__, ctx->config,
-              "OpenSSL cert error: %d %d\n", ERR_GET_LIB(err),
-              ERR_GET_REASON(err));
-
-    if (err && ctx->error_callback) {
-        char ebuf[256];
-        ERR_error_string_n(err, ebuf, sizeof(ebuf));
-        ctx->error_callback(ctx->error_baton, ebuf);
-    }
+    log_ssl_error(ctx);
 
     return 0;
 }
@@ -2135,8 +2127,9 @@ apr_status_t serf_ssl_add_crl_from_file(serf_ssl_context_t *ssl_ctx,
 
     result = X509_STORE_add_crl(store, crl);
     if (!result) {
+        ssl_ctx->fatal_err = status = SERF_ERROR_SSL_CERT_FAILED;
         log_ssl_error(ssl_ctx);
-        return SERF_ERROR_SSL_CERT_FAILED;
+        return status;
     }
 
     /* TODO: free crl when closing ssl session */
