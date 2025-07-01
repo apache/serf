@@ -222,7 +222,7 @@ if(SERF_WINDOWS)
       "secur32.lib"
       "ws2_32.lib"
   )
-  add_compile_definitions("SERF_HAVE_SSPI")
+  list(APPEND SERF_C_DEFINES "SERF_HAVE_SSPI")
 endif()
 
 # Process build options for dependency search
@@ -240,6 +240,12 @@ find_package(OpenSSL REQUIRED)
 find_package(ZLIB REQUIRED)
 find_package(APR REQUIRED)
 find_package(APRUtil REQUIRED)
+
+# We do not want or need OpenSSL's compatibility macros.
+list(APPEND SERF_C_DEFINES "OPENSSL_NO_DEPRECATED")
+
+# Hide OpenSSL's _fp() API.
+list(APPEND SERF_C_DEFINES "OPENSSL_NO_STDIO")
 
 # Find optional dependencies
 find_package(Brotli)
@@ -259,7 +265,7 @@ if(Brotli_FOUND)
   list(APPEND SERF_PRIVATE_TARGETS Brotli::Decode)
 endif()
 if(GSSAPI_FOUND)
-  add_compile_definitions("SERF_HAVE_GSSAPI")
+  list(APPEND SERF_C_DEFINES "SERF_HAVE_GSSAPI")
   list(APPEND SERF_PRIVATE_TARGETS KRB5::GSSAPI)
 endif()
 
@@ -319,8 +325,7 @@ CheckType("OSSL_HANDSHAKE_STATE" "openssl/ssl.h" "SERF_HAVE_OSSL_HANDSHAKE_STATE
 if(Brotli_FOUND)
   CheckType("BrotliDecoderResult" "brotli/decode.h" "SERF_HAVE_BROTLI_DECODER_RESULT" ${BROTLI_INCLUDES})
   # Check for the function only if the type check succeeded.
-  get_directory_property(_cdef COMPILE_DEFINITIONS)
-  if("SERF_HAVE_BROTLI_DECODER_RESULT" IN_LIST _cdef)
+  if("SERF_HAVE_BROTLI_DECODER_RESULT" IN_LIST SERF_C_DEFINES)
     CheckFunction("BrotliDecoderTakeOutput" "NULL, NULL" "SERF_HAVE_BROTLI"
                   "brotli/decode.h" ${BROTLI_INCLUDES}
                   Brotli::Decode ${SERF_STANDARD_LIBRARIES})
@@ -333,59 +338,59 @@ endif()
 
 # Process other build options
 if(DEBUG)
-  add_compile_definitions("DEBUG" "_DEBUG")
+  list(APPEND SERF_C_DEFINES "DEBUG" "_DEBUG")
 endif()
 
 if(DISABLE_LOGGING)
-  add_compile_definitions("SERF_DISABLE_LOGGING")
+  list(APPEND SERF_C_DEFINES "SERF_DISABLE_LOGGING")
 endif()
 
 if(ENABLE_SLOW_TESTS)
-  add_compile_definitions("SERF_TEST_DEFLATE_4GBPLUS_BUCKETS")
+  list(APPEND SERF_C_DEFINES "SERF_TEST_DEFLATE_4GBPLUS_BUCKETS")
 endif()
 
-# Define OPENSSL_NO_STDIO to prevent using _fp() API.
-add_compile_definitions("OPENSSL_NO_STDIO")
-
 # Set common compiler flags
+set(CMAKE_C_STANDARD 90)        # Use C90. MockHTTP overrides this.
+set(CMAKE_C_EXTENSIONS OFF)
+set(CMAKE_C_STANDARD_REQUIRED TRUE)
+
 if(NOT MSVC)
   if(CC_LIKE_GNUC)
-    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall")
-    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wdeclaration-after-statement")
-    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wmissing-prototypes")
-    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -std=c89")
+    list(APPEND SERF_C_WARNINGS "-Wall")
+    list(APPEND SERF_C_WARNINGS "-Wdeclaration-after-statement")
+    list(APPEND SERF_C_WARNINGS "-Wmissing-prototypes")
 
-    set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -O0")
+    string(APPEND CMAKE_C_FLAGS_DEBUG " -O0")
 
     if(SERF_MAINTAINER_MODE)
       # Additional warning flags for more pedantic checks
-      set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wimplicit-function-declaration")
-      set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wmissing-variable-declarations")
-      set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wunreachable-code")
-      set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wshorten-64-to-32")
-      set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wno-system-headers")
-      set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wextra-tokens")
-      set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wnewline-eof")
+      list(APPEND SERF_C_WARNINGS "-Wimplicit-function-declaration")
+      list(APPEND SERF_C_WARNINGS "-Wmissing-variable-declarations")
+      list(APPEND SERF_C_WARNINGS "-Wunreachable-code")
+      list(APPEND SERF_C_WARNINGS "-Wshorten-64-to-32")
+      list(APPEND SERF_C_WARNINGS "-Wno-system-headers")
+      list(APPEND SERF_C_WARNINGS "-Wextra-tokens")
+      list(APPEND SERF_C_WARNINGS "-Wnewline-eof")
     endif()
   endif()
 else()
   # Warning level 4, no unused argument warnings
-  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} /W4 /wd4100")
+  list(APPEND SERF_C_WARNINGS "/W4" "/wd4100")
   # Conditional expression is constant
-  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} /wd4127")
+  list(APPEND SERF_C_WARNINGS "/wd4127")
   # Assignment within conditional expression
-  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} /wd4706")
+  list(APPEND SERF_C_WARNINGS "/wd4706")
   # 'function' undefined; assuming extern returning int
-  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} /we4013")
+  list(APPEND SERF_C_WARNINGS "/we4013")
 
-  add_compile_definitions(
+  list(APPEND SERF_C_DEFINES
     "WIN32" "WIN32_LEAN_AND_MEAN"
     "NOUSER" "NOGDI" "NONLS" "NOCRYPT"
     "_CRT_SECURE_NO_WARNINGS"
     "_CRT_NONSTDC_NO_WARNINGS"
   )
   if(SERF_WIN64)
-    add_compile_definitions("WIN64")
+    list(APPEND SERF_C_DEFINES "WIN64")
   endif()
 
   set(CMAKE_IMPORT_LIBRARY_PREFIX "${SERF_INSTALL_LIBRARIES}")
@@ -395,7 +400,10 @@ endif(NOT MSVC)
 # Define all targets
 if(NOT SKIP_SHARED)
   add_library(serf_shared SHARED ${SOURCES} ${SHARED_SOURCES})
-  target_compile_options(serf_shared PUBLIC ${APR_CFLAGS})
+  target_compile_options(serf_shared
+                         PUBLIC ${APR_CFLAGS}
+                         PRIVATE ${SERF_C_WARNINGS})
+  target_compile_definitions(serf_shared PRIVATE ${SERF_C_DEFINES})
   target_include_directories(serf_shared PUBLIC ${SERF_SOURCE_DIR})
   target_link_libraries(serf_shared
                         PRIVATE ${SERF_PRIVATE_TARGETS}
@@ -426,7 +434,10 @@ endif()
 
 if(NOT SKIP_STATIC)
   add_library(serf_static STATIC ${SOURCES})
-  target_compile_options(serf_static PUBLIC ${APR_CFLAGS})
+  target_compile_options(serf_static
+                         PUBLIC ${APR_CFLAGS}
+                         PRIVATE ${SERF_C_WARNINGS})
+  target_compile_definitions(serf_static PRIVATE ${SERF_C_DEFINES})
   target_include_directories(serf_static PUBLIC ${SERF_SOURCE_DIR})
   target_link_libraries(serf_static
                         ${SERF_PRIVATE_TARGETS}
@@ -520,14 +531,13 @@ if(DOT_CLANGD)
   set(_gen_dot_clangd ON)
 endif()
 
-get_directory_property(_cdef COMPILE_DEFINITIONS)
-if("SERF_HAVE_BROTLI" IN_LIST _cdef)
+if("SERF_HAVE_BROTLI" IN_LIST SERF_C_DEFINES)
   set(_have_brotli ON)
 endif()
-if("SERF_HAVE_GSSAPI" IN_LIST _cdef)
+if("SERF_HAVE_GSSAPI" IN_LIST SERF_C_DEFINES)
   set(_have_gssapi ON)
 endif()
-if("SERF_HAVE_SSPI" IN_LIST _cdef)
+if("SERF_HAVE_SSPI" IN_LIST SERF_C_DEFINES)
   set(_have_sspi ON)
 endif()
 
