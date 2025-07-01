@@ -651,7 +651,7 @@ void serf_ssl_server_cert_chain_callback_set(
  * Callback type for detailed TLS error strings.
  */
 typedef apr_status_t (*serf_ssl_error_cb_t)(
-    void *data,
+    void *baton,
     const char *message);
 
 /**
@@ -661,7 +661,7 @@ typedef apr_status_t (*serf_ssl_error_cb_t)(
 void serf_ssl_error_cb_set(
     serf_ssl_context_t *context,
     serf_ssl_error_cb_t callback,
-    void *data);
+    void *baton);
 
 /**
  * Use the default root CA certificates as included with the OpenSSL library.

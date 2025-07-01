@@ -189,7 +189,7 @@ struct serf_ssl_context_t {
 
     /* Error callback */
     serf_ssl_error_cb_t error_callback;
-    void *error_userdata;
+    void *error_baton;
 
     apr_status_t pending_err;
 
@@ -348,7 +348,7 @@ static void log_ssl_error(serf_ssl_context_t *ctx)
         if (err && ctx->error_callback) {
             char ebuf[256];
             ERR_error_string_n(err, ebuf, sizeof(ebuf));
-            ctx->error_callback(ctx->error_userdata, ebuf);
+            ctx->error_callback(ctx->error_baton, ebuf);
         }
 
     }
@@ -1689,7 +1689,7 @@ error:
     if (err && ctx->error_callback) {
         char ebuf[256];
         ERR_error_string_n(err, ebuf, sizeof(ebuf));
-        ctx->error_callback(ctx->error_userdata, ebuf);
+        ctx->error_callback(ctx->error_baton, ebuf);
     }
 
     return 0;
@@ -1751,10 +1751,10 @@ void serf_ssl_server_cert_chain_callback_set(
 void serf_ssl_error_cb_set(
     serf_ssl_context_t *context,
     serf_ssl_error_cb_t callback,
-    void *data)
+    void *baton)
 {
     context->error_callback = callback;
-    context->error_userdata = data;
+    context->error_baton = baton;
 }
 
 static int ssl_new_session(SSL *ssl, SSL_SESSION *session)
@@ -1822,7 +1822,7 @@ static serf_ssl_context_t *ssl_init_context(serf_bucket_alloc_t *allocator)
     ssl_ctx->protocol_userdata = NULL;
 
     ssl_ctx->error_callback = NULL;
-    ssl_ctx->error_userdata = NULL;
+    ssl_ctx->error_baton = NULL;
 
     SSL_CTX_set_verify(ssl_ctx->ctx, SSL_VERIFY_PEER,
                        validate_server_certificate);
