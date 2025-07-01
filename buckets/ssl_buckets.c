@@ -187,6 +187,10 @@ struct serf_ssl_context_t {
     X509 *cached_cert;
     EVP_PKEY *cached_cert_pw;
 
+    /* Error callback */
+    serf_ssl_error_cb_t error_callback;
+    void *error_userdata;
+
     apr_status_t pending_err;
 
     /* Status of a fatal error, returned on subsequent encrypt or decrypt
@@ -334,10 +338,20 @@ detect_renegotiate(const SSL *s, int where, int ret)
 
 static void log_ssl_error(serf_ssl_context_t *ctx)
 {
-    unsigned long e = ERR_get_error();
-    serf__log(LOGLVL_ERROR, LOGCOMP_SSL, __FILE__, ctx->config,
-              "SSL Error: %s\n", ERR_error_string(e, NULL));
+    unsigned long err;
 
+    while ((err = ERR_get_error())) {
+
+        serf__log(LOGLVL_ERROR, LOGCOMP_SSL, __FILE__, ctx->config,
+                  "SSL Error: %s\n", ERR_error_string(err, NULL));
+
+        if (err && ctx->error_callback) {
+            char ebuf[256];
+            ERR_error_string_n(err, ebuf, sizeof(ebuf));
+            ctx->error_callback(ctx->error_userdata, ebuf);
+        }
+
+    }
 }
 
 static void bio_set_data(BIO *bio, void *data)
@@ -1056,15 +1070,6 @@ static apr_status_t status_from_ssl_error(serf_ssl_context_t *ctx,
                 status = ctx->pending_err;
                 ctx->pending_err = APR_SUCCESS;
             } else {
-                /*unsigned long l = ERR_peek_error();
-                int lib = ERR_GET_LIB(l);
-                int reason = ERR_GET_REASON(l);*/
-
-                /* ### Detect more specific errors?
-                  When lib is ERR_LIB_SSL, then reason is one of the
-                  many SSL_R_XXXX reasons in ssl.h
-                */
-
                 if (SSL_in_init(ctx->ssl))
                     ctx->fatal_err = SERF_ERROR_SSL_SETUP_FAILED;
                 else
@@ -1536,6 +1541,7 @@ static apr_status_t init_ssl_libraries(void)
 static int ssl_need_client_cert(SSL *ssl, X509 **cert, EVP_PKEY **pkey)
 {
     serf_ssl_context_t *ctx = SSL_get_app_data(ssl);
+    unsigned long err = 0;
     apr_status_t status;
 
     serf__log(LOGLVL_DEBUG, LOGCOMP_SSL, __FILE__, ctx->config,
@@ -1606,7 +1612,7 @@ static int ssl_need_client_cert(SSL *ssl, X509 **cert, EVP_PKEY **pkey)
             return 1;
         }
         else {
-            int err = ERR_get_error();
+            err = ERR_get_error();
             ERR_clear_error();
             if (ERR_GET_LIB(err) == ERR_LIB_PKCS12 &&
                 ERR_GET_REASON(err) == PKCS12_R_MAC_VERIFY_FAILURE) {
@@ -1652,20 +1658,38 @@ static int ssl_need_client_cert(SSL *ssl, X509 **cert, EVP_PKEY **pkey)
                             }
                             return 1;
                         }
+                        else {
+                            err = ERR_get_error();
+                            ERR_clear_error();
+
+                            goto error;
+                        }
                     }
                 }
                 PKCS12_free(p12);
                 bio_meth_free(biom);
-                return 0;
+
+                goto error;
             }
             else {
-                serf__log(LOGLVL_ERROR, LOGCOMP_SSL, __FILE__, ctx->config,
-                          "OpenSSL cert error: %d %d\n", ERR_GET_LIB(err),
-                          ERR_GET_REASON(err));
                 PKCS12_free(p12);
                 bio_meth_free(biom);
+
+                goto error;
             }
         }
+    }
+
+error:
+
+    serf__log(LOGLVL_ERROR, LOGCOMP_SSL, __FILE__, ctx->config,
+              "OpenSSL cert error: %d %d\n", ERR_GET_LIB(err),
+              ERR_GET_REASON(err));
+
+    if (err && ctx->error_callback) {
+        char ebuf[256];
+        ERR_error_string_n(err, ebuf, sizeof(ebuf));
+        ctx->error_callback(ctx->error_userdata, ebuf);
     }
 
     return 0;
@@ -1722,6 +1746,15 @@ void serf_ssl_server_cert_chain_callback_set(
     context->server_cert_callback = cert_callback;
     context->server_cert_chain_callback = cert_chain_callback;
     context->server_cert_userdata = data;
+}
+
+void serf_ssl_error_cb_set(
+    serf_ssl_context_t *context,
+    serf_ssl_error_cb_t callback,
+    void *data)
+{
+    context->error_callback = callback;
+    context->error_userdata = data;
 }
 
 static int ssl_new_session(SSL *ssl, SSL_SESSION *session)
@@ -1787,6 +1820,9 @@ static serf_ssl_context_t *ssl_init_context(serf_bucket_alloc_t *allocator)
     ssl_ctx->handshake_finished = FALSE;
     ssl_ctx->protocol_callback = NULL;
     ssl_ctx->protocol_userdata = NULL;
+
+    ssl_ctx->error_callback = NULL;
+    ssl_ctx->error_userdata = NULL;
 
     SSL_CTX_set_verify(ssl_ctx->ctx, SSL_VERIFY_PEER,
                        validate_server_certificate);
