@@ -648,7 +648,14 @@ void serf_ssl_server_cert_chain_callback_set(
     void *data);
 
 /**
- * Callback type for detailed TLS error strings.
+ * Callback type for detailed TLS error strings. This callback will be fired
+ * every time the underlying crypto library encounters an error. The message
+ * lasts only as long as the callback, if the caller wants to set aside the
+ * message for later use, a copy must be made.
+ *
+ * It is possible that for a given error multiple strings will be returned
+ * in multiple callbacks. The caller may choose to handle all strings, or
+ * may choose to ignore all strings but the last most detailed one.
  */
 typedef apr_status_t (*serf_ssl_error_cb_t)(
     void *baton,
@@ -656,7 +663,10 @@ typedef apr_status_t (*serf_ssl_error_cb_t)(
 
 /**
  * Set a callback to return any detailed certificate error from the underlying
- * cryptographic library..
+ * cryptographic library.
+ *
+ * The callback is associated with the context, however the choice of baton
+ * will depend on the needs of the caller.
  */
 void serf_ssl_error_cb_set(
     serf_ssl_context_t *context,
