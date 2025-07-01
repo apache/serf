@@ -23,14 +23,25 @@ the same features.
 
 1.1.1 SCons build system
 
-You must use at least SCons version 2.3. If it is not installed
+You must use at least SCons version 2.3.5. If it is not installed
 on your system, then you can install it onto your system. If you do not
 have permissions, then you can download and install the "local"
 version into your home directory. When installed privately, simply
 create a symlink for 'scons' in your PATH to /path/to/scons/scons.py.
 
 Fetch the scons-local package:
-  http://prdownloads.sourceforge.net/scons/scons-local-2.3.0.tar.gz
+  http://prdownloads.sourceforge.net/scons/scons-local-2.3.5.tar.gz
+  
+Alternatively create a virtual Python environment and install SCons via
+pip (replace the path ~/scons_venv with your preferred path):
+
+  $ python -m venv ~/scons_venv
+  $ ~/scons_venv/bin/pip install scons
+
+In the build instructions below, make sure to include the full path to your
+virtual environment:
+
+  $ ~/scons_venv/bin/scons [...see below...]
 
 
 1.1.2 Building Apache Serf using SCons
@@ -123,7 +134,7 @@ $ scons -c
 
 Get the sources, either a release tarball or by checking out the
 official repository. The CMake build system currently only exists in
-trunk and it will be included in the 1.4 release.
+trunk and it will be included in the 1.5 release.
 
 The process for building on Unix and Windows is the same.
 
