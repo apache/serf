@@ -24,7 +24,6 @@ set(MockHTTPinC_SOURCES
 
 # MockHTTP requires the C99 standard.
 set(CMAKE_C_STANDARD 99)
-set(CMAKE_C_STANDARD_REQUIRED TRUE)
 
 # Update compiler options for this library.
 if(NOT SHOW_MockHTTPinC_WARNINGS)

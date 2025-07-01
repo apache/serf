@@ -351,6 +351,7 @@ endif()
 
 # Set common compiler flags
 set(CMAKE_C_STANDARD 90)        # Use C90. MockHTTP overrides this.
+set(CMAKE_C_EXTENSIONS OFF)
 set(CMAKE_C_STANDARD_REQUIRED TRUE)
 
 if(NOT MSVC)
