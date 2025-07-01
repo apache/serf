@@ -226,6 +226,24 @@ env.Append(BUILDERS = {
 # Export symbol generator (for Windows DLL, Mach-O and ELF)
 export_generator = build.exports.ExportGenerator()
 if export_generator.target is None:
+  # Detect if the build target is an ELF platform the the
+  # generator doesn't know about.
+  sys.stdout.write("Checking if the build target is ELF ...")
+  conf = Configure(env)  # No custom tests, we want a clean environment.
+  if (conf.TryLink('int main(void) { return 0; }', '.c')):
+    header = conf.lastTarget.get_contents()[:4]
+    if header == b'\x7fELF':    # This is the ELF magic number.
+      print(" yes")
+      elf = build.exports.TARGET_ELF
+      export_generator = build.exports.ExportGenerator(elf)
+    else:
+      print(" no")
+  else:
+    print(" failed")
+  conf.Finish()
+
+# Now try again...
+if export_generator.target is None:
   # Nothing to do on this platform
   export_generator = None
 else:
