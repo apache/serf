@@ -37,7 +37,10 @@ Fetch the scons-local package:
 
 To build serf:
 
-$ scons APR=/path/to/apr APU=/path/to/apu OPENSSL=/openssl/base PREFIX=/path/to/prefix
+$ scons PREFIX=/path/to/prefix \
+        APR=/path/to/apr APU=/path/to/apr-util \
+        OPENSSL=/path/to/openssl ZLIB=/path/to/zlib \
+        BROTLI=/path/to/brotli GSSAPI=/path/to/kerberos
 
 The switches are recorded into .saved_config, so they only need to be
 specified the first time scons is run.
@@ -45,14 +48,31 @@ specified the first time scons is run.
 PREFIX should specify where serf should be installed.  PREFIX defaults to
 /usr/local.
 
-The default for the other three switches (APR, APU, OPENSSL) is /usr.
+The default for the mandatory dependencies (APR, APU, OPENSSL, ZLIB) is /usr.
 
 The build system looks for apr-1-config at $APR/bin/apr-1-config, or
 the path should indicate apr-1-config itself. Similarly for the path
-to apu-1-config.
+to apu-1-config in $APU or $APU/bin/apu-1-config.
 
-OPENSSL should specify the root of the install (eg. /opt/local). The
-includes will be found OPENSSL/include and libraries at OPENSSL/lib.
+OPENSSL should specify the root of the install (e.g., /opt/local). The
+includes will be found $OPENSSL/include/openssl and libraries at $OPENSSL/lib.
+
+OPENSSL should specify the root of the install. The includes will be found
+$ZLIB/include and libraries at $ZLIB/lib.
+
+The BROTLI and GSSAPI dependencies are optional.
+
+BROTLI should be the path to the installation of the Brotli compression
+library; for example, BROTLI=/usr/local. The includes will be found
+in $BROTLI/include/brotli and the libraries in $BROTLI/lib.
+
+GSSAPI should be the path to the installation of a package that provides
+the GSSAPI implementation such as Kerberos5 or Heimdal. SCons will look
+for the configuration program $GSSAPI/bin/krb5-config.
+
+NOTE: Do not use the GSSAPI switch on Windows; it provides the SSPI API
+      which Serf uses by default on that platform.
+
 
 If you wish to use VPATH-style builds (where objects are created in a
 distinct directory from the source), you can use:
@@ -103,12 +123,16 @@ $ scons -c
 
 Get the sources, either a release tarball or by checking out the
 official repository. The CMake build system currently only exists in
-/trunk and it will be included in the 1.4 release.
+trunk and it will be included in the 1.4 release.
 
 The process for building on Unix and Windows is the same.
 
     $ cmake -B out [build options]
     $ cmake --build out
+
+or, with a multi-config generator:
+
+    $ cmake --build out --config Release
 
 "out" in the commands above is the build directory used by CMake.
 
@@ -120,7 +144,30 @@ Build options can be listed using:
 
     $ cmake -LH
 
-Windows tricks:
+By default, CMake will look for dependencies in ${CMAKE_SEARCH_PREFIX}, which
+you can override on the command line, e.g.::
+
+    $ cmake -DCMAKE_SEARCH_PREFIX=/opt
+
+The search for each the five dependencies can be modified by setting their
+*_ROOT CMake variables:
+
+    $ cmake -DAPR_ROOR=/path/to/apr \
+            -DAPRUtil_ROOT=/path/to/apr-util \
+            -DOPENSSL_ROOT_DIR=/path/to/openssl \
+            -DZLIB_ROOT=/path/to/zlib \
+            -DBrotli_ROOT=/path/to/brotli \
+            -DGSSAPI_ROOT=/path/to/kerberos5
+
+
+1.2.2 MacOS specifics
+
+The CMake build system can search for dependencies from Homebrew or
+MacPorts: use 'cmake -DUSE_HOMEBREW=ON' to search for Homebrew packages,
+or 'cmake -DUSE_MACPORTS=ON' to search installed MacPorts. Just not both.
+
+
+1.2.3 Windows tricks
 
 - Modern versions of Microsoft Visual Studio provide support for
   CMake projects out-of-box, including intellisense, integrated
@@ -154,15 +201,33 @@ Windows tricks:
 
       <VCPKG_ROOT>/scripts/buildsystems/vcpkg.cmake
 
-1.2.1 Running the test suite
 
-$ cd out
-$ ctest
-# this only seems to run part of the testsuite?
-$ ./test/test_all
-# fails due to missing certificates
-$ cp ../test/*.pem ../test/certs test/
-$ ./test/test_all
-# Succeeds?
+1.2.4 Running the test suite
 
-This should be described in detail.
+To run the test suite, go to the CMake output directory, then:
+
+    $ ctest
+
+or, with a multi-config generator:
+
+    $ ctest -C Release
+
+This is equivalent to
+
+    $ cmake --build out --target test
+
+or
+
+    $ cmake --build out --config Release --target test
+
+(or, on Windows using the Visual Studio generator, which always has to be
+ special and different for no discernible benefit:
+
+    $ cmake --build out --config Release --target run_tests
+)
+
+
+1.2.5 Installing Apache Serf
+
+    $ cmake --build out --target install
+    $ cmake --build out --config Release --target install
