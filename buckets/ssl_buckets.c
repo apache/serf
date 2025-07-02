@@ -342,9 +342,6 @@ static void log_ssl_error(serf_ssl_context_t *ctx)
 
     while ((err = ERR_get_error())) {
 
-        serf__log(LOGLVL_ERROR, LOGCOMP_SSL, __FILE__, ctx->config,
-                  "SSL Error: %s\n", ERR_error_string(err, NULL));
-
         if (err && ctx->error_callback) {
             char ebuf[256];
             ERR_error_string_n(err, ebuf, sizeof(ebuf));
