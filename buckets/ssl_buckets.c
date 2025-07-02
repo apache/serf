@@ -1656,30 +1656,26 @@ static int ssl_need_client_cert(SSL *ssl, X509 **cert, EVP_PKEY **pkey)
                             return 1;
                         }
                         else {
-                            err = ERR_get_error();
-                            ERR_clear_error();
-
-                            goto error;
+                            log_ssl_error(ctx);
+                            break;
                         }
                     }
                 }
                 PKCS12_free(p12);
                 bio_meth_free(biom);
 
-                goto error;
+                log_ssl_error(ctx);
+                break;
             }
             else {
                 PKCS12_free(p12);
                 bio_meth_free(biom);
 
-                goto error;
+                log_ssl_error(ctx);
+                break;
             }
         }
     }
-
-error:
-
-    log_ssl_error(ctx);
 
     return 0;
 }
