@@ -478,7 +478,7 @@ if(NOT SERF_WINDOWS)
     set(LIBDIR \${prefix}/${SERF_INSTALL_LIBRARIES})
     set(VERSION ${SERF_VERSION})
     set(MAJOR ${SERF_MAJOR_VERSION})
-    set(SERF_INTERFACE_LIBS
+    set(LIBS
       ${APR_LDFLAGS}
       ${APR_LIBRARIES}
       ${APR_EXTRALIBS}
@@ -488,11 +488,8 @@ if(NOT SERF_WINDOWS)
       ${GSSAPI_LIBRARIES}
       ${ZLIB_LIBRARIES}
       )
-    list(REMOVE_DUPLICATES SERF_INTERFACE_LIBS)
-    unset(LIBS)
-    foreach(DEPLIB ${SERF_INTERFACE_LIBS})
-      string(APPEND LIBS " ${DEPLIB}")
-    endforeach()
+    list(REMOVE_DUPLICATES LIBS)
+    list(JOIN LIBS " " LIBS)
     configure_file("build/serf.pc.in" "${SERF_PC_FILE}" @ONLY)
   endfunction()
 
