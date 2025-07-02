@@ -1576,9 +1576,13 @@ static int ssl_need_client_cert(SSL *ssl, X509 **cert, EVP_PKEY **pkey)
         status = apr_file_open(&cert_file, cert_path, APR_READ, APR_OS_DEFAULT,
                                ctx->pool);
 
-        /* TODO: this will hang indefintely when the file can't be found. */
         if (status) {
-            continue;
+            if (ctx->error_callback) {
+                char ebuf[256];
+                apr_strerror(status, ebuf, sizeof(ebuf));
+                ctx->error_callback(ctx->error_baton, ctx->fatal_err, ebuf);
+            }
+            break;
         }
 
         biom = bio_meth_file_new();
