@@ -465,9 +465,15 @@ install(FILES ${HEADERS} DESTINATION "${SERF_INSTALL_HEADERS}")
 
 # Generate the pkg-config module file.
 if(NOT SERF_WINDOWS)
+  set(SERF_PC_FILE "serf-${SERF_MAJOR_VERSION}.pc")
+
   # Use a separate variable scope for the substitutions in serf.pc.in.
   function(make_pkgconfig)
-    set(PREFIX ${CMAKE_INSTALL_PREFIX})
+    # Use a relative prefix to create a relocatable PC file.
+    file(RELATIVE_PATH relfragment "/${SERF_INSTALL_PKGCONFIG}" "/")
+    file(TO_CMAKE_PATH "\${pcfiledir}/${relfragment}" relprefix)
+
+    set(PREFIX ${relprefix})
     set(INCLUDE_SUBDIR ${SERF_INCLUDE_SUBDIR})
     set(LIBDIR \${prefix}/${SERF_INSTALL_LIBRARIES})
     set(VERSION ${SERF_VERSION})
@@ -487,11 +493,11 @@ if(NOT SERF_WINDOWS)
     foreach(DEPLIB ${SERF_INTERFACE_LIBS})
       string(APPEND LIBS " ${DEPLIB}")
     endforeach()
-    configure_file("build/serf.pc.in" "serf-${SERF_MAJOR_VERSION}.pc" @ONLY)
+    configure_file("build/serf.pc.in" "${SERF_PC_FILE}" @ONLY)
   endfunction()
 
   make_pkgconfig()
-  install(FILES "${CMAKE_CURRENT_BINARY_DIR}/serf-${SERF_MAJOR_VERSION}.pc"
+  install(FILES "${CMAKE_CURRENT_BINARY_DIR}/${SERF_PC_FILE}"
           DESTINATION "${SERF_INSTALL_PKGCONFIG}")
 endif()
 
