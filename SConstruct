@@ -96,6 +96,15 @@ def createPathIsDirCreateWithTarget(target):
       return PathVariable.PathAccept(key, val, env)
   return my_validator
 
+def filter_cflags(env, cmd, unique=0):
+  '''Filter all debugging, optimization and warning flags from 'cmd'.'''
+  cmd = re.sub(r'(^|\s)-[gOW]\S*', '', cmd)
+  return env.MergeFlags(cmd, unique)
+
+def unsubstable(string):
+  '''There are things that SCons just shouldn't Subst.'''
+  return string.replace('$', '$$')
+
 # default directories
 if sys.platform == 'win32':
   default_incdir='..'
@@ -538,11 +547,13 @@ else:
     ### we should use --cc, but that is giving some scons error about an implicit
     ### dependency upon gcc. probably ParseConfig doesn't know what to do with
     ### the apr-1-config output
-    env.ParseConfig('$APR --cflags --cppflags --ldflags --includes'
-                    ' --link-ld --libs', unique=0)
+
+    env.ParseConfig('$APR --cflags --cppflags --includes'
+                    ' --ldflags --link-ld --libs',
+                    filter_cflags)
     if apr_major < 2:
-      env.ParseConfig('$APU --ldflags --includes --link-ld --libs',
-                      unique=0)
+      env.ParseConfig('$APU --includes --ldflags --link-ld --libs',
+                      filter_cflags)
 
     ### there is probably a better way to run/capture output.
     ### env.ParseConfig() may be handy for getting this stuff into the build
@@ -664,12 +675,14 @@ for d in env['LIBPATH']:
   env.Append(RPATH=[':'+d])
 
 # Set up the construction of serf-*.pc
+pkgprefix = os.path.relpath(env.subst('$PREFIX'), env.subst('$LIBDIR/pkgconfig'))
+pkglibdir = os.path.relpath(env.subst('$LIBDIR'), env.subst('$PREFIX'))
 pkgconfig = env.Textfile('serf-%d.pc' % (MAJOR,),
                          env.File('build/serf.pc.in'),
                          SUBST_DICT = {
                            '@MAJOR@': str(MAJOR),
-                           '@PREFIX@': re.escape(str(env['PREFIX'])),
-                           '@LIBDIR@': re.escape(str(env['LIBDIR'])),
+                           '@PREFIX@': unsubstable('${pcfiledir}/' + pkgprefix),
+                           '@LIBDIR@': unsubstable('${prefix}/' + pkglibdir),
                            '@INCLUDE_SUBDIR@': 'serf-%d' % (MAJOR,),
                            '@VERSION@': '%d.%d.%d' % (MAJOR, MINOR, PATCH),
                            '@LIBS@': '%s %s %s %s -lz' % (apu_libs, apr_libs,
@@ -738,7 +751,10 @@ test_app = ("%s %s %s %s") % (sys.executable, check_script, test_dir, 'test')
 test_env = {'PATH' : os.environ['PATH'],
             'srcdir' : src_dir}
 if sys.platform != 'win32':
-  test_env['LD_LIBRARY_PATH'] = ':'.join(tenv.get('LIBPATH', []))
+  os_library_path = os.environ.get('LD_LIBRARY_PATH')
+  os_library_path = [os_library_path] if os_library_path else []
+  ld_library_path = [tenv.subst(p) for p in tenv.get('LIBPATH', [])]
+  test_env['LD_LIBRARY_PATH'] = ':'.join(ld_library_path + os_library_path)
 env.AlwaysBuild(env.Alias('check', TEST_EXES, test_app, ENV=test_env))
 
 testall_files = [

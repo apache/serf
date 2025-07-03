@@ -229,7 +229,7 @@ if(NOT _apru_include_only_utilities)
       _apru_config(${APR_CONFIG_EXECUTABLE} ${_varname} "${_regexp}" "${ARGN}")
     endmacro(_apr_invoke)
 
-    _apr_invoke(APR_CFLAGS     "(^| )-(g|O)[^ ]*" --cppflags --cflags)
+    _apr_invoke(APR_CFLAGS     "(^| )-[gOW][^ ]*" --cppflags --cflags)
     _apr_invoke(APR_INCLUDES   "(^| )-I"          --includes)
     _apr_invoke(APR_LDFLAGS    ""                 --ldflags)
     _apr_invoke(APR_LIBRARIES  ""                 --link-ld)
