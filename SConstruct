@@ -673,12 +673,18 @@ for d in env['LIBPATH']:
   env.Append(RPATH=[':'+d])
 
 # Set up the construction of serf-*.pc
+def unsubst(string):
+  '''There are things that SCons just shouldn't Subst.'''
+  return string.replace('$', '$$')
+
+pkgprefix = os.path.relpath(env.subst('$PREFIX'), env.subst('$LIBDIR/pkgconfig'))
+pkglibdir = os.path.relpath(env.subst('$LIBDIR'), env.subst('$PREFIX'))
 pkgconfig = env.Textfile('serf-%d.pc' % (MAJOR,),
                          env.File('build/serf.pc.in'),
                          SUBST_DICT = {
                            '@MAJOR@': str(MAJOR),
-                           '@PREFIX@': re.escape(str(env['PREFIX'])),
-                           '@LIBDIR@': re.escape(str(env['LIBDIR'])),
+                           '@PREFIX@': unsubst('${pcfiledir}/' + pkgprefix),
+                           '@LIBDIR@': unsubst('${prefix}/' + pkglibdir),
                            '@INCLUDE_SUBDIR@': 'serf-%d' % (MAJOR,),
                            '@VERSION@': '%d.%d.%d' % (MAJOR, MINOR, PATCH),
                            '@LIBS@': '%s %s %s %s -lz' % (apu_libs, apr_libs,
