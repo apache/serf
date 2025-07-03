@@ -538,17 +538,26 @@ else:
     ### we should use --cc, but that is giving some scons error about an implicit
     ### dependency upon gcc. probably ParseConfig doesn't know what to do with
     ### the apr-1-config output
-    env.ParseConfig('$APR --cflags --cppflags --ldflags --includes'
-                    ' --link-ld --libs', unique=0)
+
+    def readconfig(cmdline):
+      '''Run the given command, read its output and filter out all
+      debugging, optimization and warning flags.'''
+      output = os.popen(env.subst(cmdline)).read().strip()
+      return re.sub(r'(^| )-[gOW][^ ]*', '', output)
+
+    flags = readconfig('$APR --cflags --cppflags --includes'
+                       ' --ldflags --link-ld --libs')
     if apr_major < 2:
-      env.ParseConfig('$APU --ldflags --includes --link-ld --libs',
-                      unique=0)
+      flags += ' ' + readconfig('$APU --includes --ldflags --link-ld --libs')
+
+    # Now, finally, read this into the environment. It's a pity that
+    env.ParseConfig('echo "%s"' % flags, unique=0)
 
     ### there is probably a better way to run/capture output.
     ### env.ParseConfig() may be handy for getting this stuff into the build
-    apr_libs = os.popen(env.subst('$APR --link-libtool --libs')).read().strip()
+    apr_libs = readconfig('$APR --link-libtool --libs')
     if apr_major < 2:
-      apu_libs = os.popen(env.subst('$APU --link-libtool --libs')).read().strip()
+      apu_libs = readconfig('$APU --link-libtool --libs')
     else:
       apu_libs = ''
   else:
