@@ -418,6 +418,9 @@ if export_filter is not None:
   env.GenExports(target=export_filter, source=HEADER_FILES)
   env.Depends(lib_shared, export_filter)
 
+# We do not want or need OpenSSL's compatibility macros.
+env.Append(CPPDEFINES=['OPENSSL_NO_DEPRECATED'])
+
 # Define OPENSSL_NO_STDIO to prevent using _fp() API.
 env.Append(CPPDEFINES=['OPENSSL_NO_STDIO'])
 
@@ -724,24 +727,30 @@ env.Alias('install', ['install-lib', 'install-inc', 'install-pc', ])
 ### make move to a separate scons file in the test/ subdir?
 
 tenv = env.Clone()
+tenv.Append(CPPDEFINES=['MOCKHTTP_OPENSSL'])
+
+# Build the MockHTTP static library. MockHTTP needs C99 and OpenSSL's
+# deprecated APIs.
+mockenv = tenv.Clone()
+mockenv.Replace(CFLAGS = [f.replace('-std=c89', '-std=c99')
+                          for f in mockenv['CFLAGS']])
+mockenv.Replace(CPPDEFINES = list(filter(lambda d: d != 'OPENSSL_NO_DEPRECATED',
+                                         mockenv['CPPDEFINES'])))
+
+mockhttpinc = mockenv.StaticLibrary('mockhttpinc',
+                                    ['test/MockHTTPinC/MockHTTP.c',
+                                     'test/MockHTTPinC/MockHTTP_server.c'])
 
 # Check if long-running tests should be enabled
 if tenv.get('ENABLE_SLOW_TESTS', None):
     tenv.Append(CPPDEFINES=['SERF_TEST_DEFLATE_4GBPLUS_BUCKETS'])
 
-# MockHTTP requires C99 standard, so use it for the test suite.
-cflags = tenv['CFLAGS']
-tenv.Replace(CFLAGS = [f.replace('-std=c89', '-std=c99') for f in cflags])
-
-tenv.Append(CPPDEFINES=['MOCKHTTP_OPENSSL'])
-
 TEST_PROGRAMS = [ 'serf_get', 'serf_response', 'serf_request', 'serf_spider',
                   'serf_httpd',
                   'test_all', 'serf_bwtp' ]
-if sys.platform == 'win32':
-  TEST_EXES = [ os.path.join('test', '%s.exe' % (prog)) for prog in TEST_PROGRAMS ]
-else:
-  TEST_EXES = [ os.path.join('test', '%s' % (prog)) for prog in TEST_PROGRAMS ]
+
+_exe = '.exe' if sys.platform == 'win32' else ''
+TEST_EXES = [os.path.join('test', '%s%s' % (prog, _exe)) for prog in TEST_PROGRAMS]
 
 check_script = env.File('build/check.py').rstr()
 test_dir = env.File('test/test_all.c').rfile().get_dir()
@@ -769,18 +778,18 @@ testall_files = [
         'test/mock_buckets.c',
         'test/mock_sock_buckets.c',
         'test/test_ssl.c',
-        'test/MockHTTPinC/MockHTTP.c',
-        'test/MockHTTPinC/MockHTTP_server.c',
         ]
 
 # We link the programs explicitly against the static libraries, to allow
 # access to private functions
+mocklib = mockhttpinc[0].rfile().abspath
+serflib = lib_static[0].rfile().abspath
 for proggie in TEST_EXES:
   if 'test_all' in proggie:
-    tenv.Program(proggie, testall_files + [LIBNAME + env['LIBSUFFIX']])
+    tenv.Program(proggie, testall_files + [mocklib, serflib])
   else:
-    tenv.Program(target = proggie, source = [proggie.replace('.exe','') + '.c',
-                                             LIBNAME + env['LIBSUFFIX']])
+    tenv.Program(target=proggie,
+                 source=[proggie.replace('.exe','') + '.c', serflib])
 
 
 # HANDLE CLEANING
