@@ -223,16 +223,15 @@ or, with a multi-config generator:
 
     $ ctest -C Release
 
-This is equivalent to
+This is equivalent to:
 
     $ cmake --build out --target test
 
-or
+or:
 
     $ cmake --build out --config Release --target test
 
-(or, on Windows using the Visual Studio generator, which always has to be
- special and different for no discernible benefit:
+or, on Windows using the Visual Studio generator:
 
     $ cmake --build out --config Release --target run_tests
 )
