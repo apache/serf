@@ -751,7 +751,10 @@ test_app = ("%s %s %s %s") % (sys.executable, check_script, test_dir, 'test')
 test_env = {'PATH' : os.environ['PATH'],
             'srcdir' : src_dir}
 if sys.platform != 'win32':
-  test_env['LD_LIBRARY_PATH'] = ':'.join(tenv.get('LIBPATH', []))
+  os_library_path = os.environ.get('LD_LIBRARY_PATH')
+  os_library_path = [os_library_path] if os_library_path else []
+  ld_library_path = [tenv.subst(p) for p in tenv.get('LIBPATH', [])]
+  test_env['LD_LIBRARY_PATH'] = ':'.join(ld_library_path + os_library_path)
 env.AlwaysBuild(env.Alias('check', TEST_EXES, test_app, ENV=test_env))
 
 testall_files = [
