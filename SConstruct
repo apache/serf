@@ -96,6 +96,15 @@ def createPathIsDirCreateWithTarget(target):
       return PathVariable.PathAccept(key, val, env)
   return my_validator
 
+def filter_cflags(env, cmd, unique=0):
+  '''Filter all debugging, optimization and warning flags from 'cmd'.'''
+  cmd = re.sub(r'(^|\s)-[gOW]\S*', '', cmd)
+  return env.MergeFlags(cmd, unique)
+
+def unsubstable(string):
+  '''There are things that SCons just shouldn't Subst.'''
+  return string.replace('$', '$$')
+
 # default directories
 if sys.platform == 'win32':
   default_incdir='..'
@@ -539,25 +548,18 @@ else:
     ### dependency upon gcc. probably ParseConfig doesn't know what to do with
     ### the apr-1-config output
 
-    def readconfig(cmdline):
-      '''Run the given command, read its output and filter out all
-      debugging, optimization and warning flags.'''
-      output = os.popen(env.subst(cmdline)).read().strip()
-      return re.sub(r'(^| )-[gOW][^ ]*', '', output)
-
-    flags = readconfig('$APR --cflags --cppflags --includes'
-                       ' --ldflags --link-ld --libs')
+    env.ParseConfig('$APR --cflags --cppflags --includes'
+                    ' --ldflags --link-ld --libs',
+                    filter_cflags)
     if apr_major < 2:
-      flags += ' ' + readconfig('$APU --includes --ldflags --link-ld --libs')
-
-    # Now, finally, read this into the environment. It's a pity that
-    env.ParseConfig('echo "%s"' % flags, unique=0)
+      env.ParseConfig('$APU --includes --ldflags --link-ld --libs',
+                      filter_cflags)
 
     ### there is probably a better way to run/capture output.
     ### env.ParseConfig() may be handy for getting this stuff into the build
-    apr_libs = readconfig('$APR --link-libtool --libs')
+    apr_libs = os.popen(env.subst('$APR --link-libtool --libs')).read().strip()
     if apr_major < 2:
-      apu_libs = readconfig('$APU --link-libtool --libs')
+      apu_libs = os.popen(env.subst('$APU --link-libtool --libs')).read().strip()
     else:
       apu_libs = ''
   else:
@@ -673,18 +675,14 @@ for d in env['LIBPATH']:
   env.Append(RPATH=[':'+d])
 
 # Set up the construction of serf-*.pc
-def unsubst(string):
-  '''There are things that SCons just shouldn't Subst.'''
-  return string.replace('$', '$$')
-
 pkgprefix = os.path.relpath(env.subst('$PREFIX'), env.subst('$LIBDIR/pkgconfig'))
 pkglibdir = os.path.relpath(env.subst('$LIBDIR'), env.subst('$PREFIX'))
 pkgconfig = env.Textfile('serf-%d.pc' % (MAJOR,),
                          env.File('build/serf.pc.in'),
                          SUBST_DICT = {
                            '@MAJOR@': str(MAJOR),
-                           '@PREFIX@': unsubst('${pcfiledir}/' + pkgprefix),
-                           '@LIBDIR@': unsubst('${prefix}/' + pkglibdir),
+                           '@PREFIX@': unsubstable('${pcfiledir}/' + pkgprefix),
+                           '@LIBDIR@': unsubstable('${prefix}/' + pkglibdir),
                            '@INCLUDE_SUBDIR@': 'serf-%d' % (MAJOR,),
                            '@VERSION@': '%d.%d.%d' % (MAJOR, MINOR, PATCH),
                            '@LIBS@': '%s %s %s %s -lz' % (apu_libs, apr_libs,
