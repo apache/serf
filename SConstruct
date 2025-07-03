@@ -585,7 +585,7 @@ else:
     env.Append(LIBPATH=['$OPENSSL/lib'])
 
   if brotli:
-    brotli_libs = '-lbrotlicommon -lbrotlienc'
+    brotli_libs = '-lbrotlicommon -lbrotlidec'
     env.Append(CPPPATH=['$BROTLI/include'],
                LIBPATH=['$BROTLI/lib'])
   else:
