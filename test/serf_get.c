@@ -41,6 +41,7 @@ typedef struct app_baton_t {
     int use_h2direct;
     const char *pem_path;
     const char *pem_pwd;
+    const char *cert_uri;
     serf_bucket_alloc_t *bkt_alloc;
     serf_context_t *serf_ctx;
 } app_baton_t;
@@ -80,13 +81,23 @@ static apr_status_t client_cert_pw_cb(void *data,
 {
     app_baton_t *ctx = data;
 
-    if (strcmp(cert_path, ctx->pem_path) == 0)
+    if ((ctx->cert_uri && !strcmp(cert_path, ctx->cert_uri)) ||
+        (ctx->pem_path && !strcmp(cert_path, ctx->pem_path)))
     {
         *password = ctx->pem_pwd;
         return APR_SUCCESS;
     }
 
     return APR_EGENERAL;
+}
+
+static apr_status_t client_cert_uri_cb(void *data, const char **cert_uri)
+{
+    app_baton_t *ctx = data;
+
+    *cert_uri = ctx->cert_uri;
+
+    return APR_SUCCESS;
 }
 
 static void print_ssl_cert_errors(int failures)
@@ -233,6 +244,13 @@ static apr_status_t conn_setup(apr_socket_t *skt,
                                               client_cert_cb,
                                               ctx,
                                               pool);
+        }
+
+        if (ctx->cert_uri) {
+            serf_ssl_cert_uri_set(conn_ctx->ssl_ctx,
+                                  client_cert_uri_cb,
+                                  ctx,
+                                  pool);
         }
 
         if (ctx->pem_pwd) {
@@ -494,6 +512,7 @@ credentials_callback(char **username,
 #define CERTPWD  257
 #define HTTP2FLAG 258
 #define H2DIRECT 259
+#define CERTURI 260
 
 static const apr_getopt_option_t options[] =
 {
@@ -510,6 +529,7 @@ static const apr_getopt_option_t options[] =
     {NULL,      'f', 1, "<file> Use the <file> as the request body"},
     {NULL,      'p', 1, "<hostname:port> Use the <host:port> as proxy server"},
     {"cert",    CERTFILE, 1, "<file> Use SSL client certificate <file>"},
+    {"certuri", CERTURI, 1, "<uri> Use SSL client certificate <uri>"},
     {"certpwd", CERTPWD, 1, "<password> Password for the SSL client certificate"},
     {NULL,      'r', 1, "<header:value> Use <header:value> as request header"},
     {"debug",   'd', 0, "Enable debugging"},
@@ -564,7 +584,7 @@ int main(int argc, const char **argv)
     int print_headers, debug, negotiate_http2, use_h2direct;
     const char *username = NULL;
     const char *password = "";
-    const char *pem_path = NULL, *pem_pwd = NULL;
+    const char *pem_path = NULL, *pem_pwd = NULL, *cert_uri = NULL;
     apr_getopt_t *opt;
     int opt_c;
     const char *opt_arg;
@@ -677,6 +697,9 @@ int main(int argc, const char **argv)
         case CERTFILE:
             pem_path = opt_arg;
             break;
+        case CERTURI:
+            cert_uri = opt_arg;
+            break;
         case CERTPWD:
             pem_pwd = opt_arg;
             break;
@@ -731,6 +754,7 @@ int main(int argc, const char **argv)
     app_ctx.hostname = url.hostname;
     app_ctx.pem_path = pem_path;
     app_ctx.pem_pwd = pem_pwd;
+    app_ctx.cert_uri = cert_uri;
 
     context = serf_context_create(pool);
     app_ctx.serf_ctx = context;
