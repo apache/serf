@@ -749,10 +749,15 @@ mockenv.Replace(CFLAGS = [f.replace('-std=c89', '-std=c99')
                           for f in mockenv['CFLAGS']])
 mockenv.Replace(CCFLAGS = list(
   filter(lambda f: (SHOW_MOCKHTTP_WARNINGS
+                    # NOTE: SCons flags are sometimes tuples, not strings.
+                    #       In those cases, the first element is the flag
+                    #       and the rest ar the flag's value(s).
                     or (# GCC-like warning flags
-                        not re.match(r'^\s*-W[a-z][a-z-]+', f)
+                        not re.match(r'^\s*-W[a-z][a-z-]+',
+                                     f if type(f) == type('') else f[0])
                         # MSVC-like warning flags
-                        and not re.match(r'^\s*/(W|w[de])\d+', f))),
+                        and not re.match(r'^\s*/(W|w[de])\d+',
+                                         f if type(f) == type('') else f[0]))),
          mockenv['CCFLAGS'])
 ))
 if not SHOW_MOCKHTTP_WARNINGS:
