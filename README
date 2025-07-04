@@ -68,7 +68,7 @@ to apu-1-config in $APU or $APU/bin/apu-1-config.
 OPENSSL should specify the root of the install (e.g., /opt/local). The
 includes will be found $OPENSSL/include/openssl and libraries at $OPENSSL/lib.
 
-OPENSSL should specify the root of the install. The includes will be found
+ZLIB should specify the root of the install. The includes will be found
 $ZLIB/include and libraries at $ZLIB/lib.
 
 The BROTLI and GSSAPI dependencies are optional.
@@ -223,16 +223,15 @@ or, with a multi-config generator:
 
     $ ctest -C Release
 
-This is equivalent to
+This is equivalent to:
 
     $ cmake --build out --target test
 
-or
+or:
 
     $ cmake --build out --config Release --target test
 
-(or, on Windows using the Visual Studio generator, which always has to be
- special and different for no discernible benefit:
+or, on Windows using the Visual Studio generator:
 
     $ cmake --build out --config Release --target run_tests
 )

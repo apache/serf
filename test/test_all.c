@@ -18,12 +18,12 @@
  * ====================================================================
  */
 
-#include "apr.h"
-#include "apr_pools.h"
+#include <stdlib.h>
+
+#include <apr.h>
 #include <apr_signal.h>
 
 #include "test_serf.h"
-#include <stdlib.h>
 
 static const struct testlist {
     const char *testname;
@@ -62,19 +62,22 @@ int main(int argc, char *argv[])
         if (!strcmp(argv[i], "-v")) {
             continue;
         }
-        if (!strcmp(argv[i], "-l")) {
+        if (!strcmp(argv[i], "-l") || !strcmp(argv[i], "-L")) {
+            const int details = !strcmp(argv[i], "-l");
             for (i = 0; tests[i].func != NULL; i++) {
                 CuSuite *suite;
-                int j = 0;
 
                 printf("%s\n", tests[i].testname);
-                suite = tests[i].func();
+                if (details) {
+                    int j;
 
-                for (j = 0; j < suite->count; j++) {
-                    printf("  %3d - %s\n", j+1, suite->list[j]->name);
+                    suite = tests[i].func();
+                    for (j = 0; j < suite->count; j++) {
+                        printf("  %3d - %s\n", j+1, suite->list[j]->name);
+                    }
+
+                    printf("\n");
                 }
-
-                printf("\n");
             }
             exit(0);
         }

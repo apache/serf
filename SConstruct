@@ -96,6 +96,15 @@ def createPathIsDirCreateWithTarget(target):
       return PathVariable.PathAccept(key, val, env)
   return my_validator
 
+def filter_cflags(env, cmd, unique=0):
+  '''Filter all debugging, optimization and warning flags from 'cmd'.'''
+  cmd = re.sub(r'(^|\s)-[gOW]\S*', '', cmd)
+  return env.MergeFlags(cmd, unique)
+
+def unsubstable(string):
+  '''There are things that SCons just shouldn't Subst.'''
+  return string.replace('$', '$$')
+
 # default directories
 if sys.platform == 'win32':
   default_incdir='..'
@@ -409,6 +418,9 @@ if export_filter is not None:
   env.GenExports(target=export_filter, source=HEADER_FILES)
   env.Depends(lib_shared, export_filter)
 
+# We do not want or need OpenSSL's compatibility macros.
+env.Append(CPPDEFINES=['OPENSSL_NO_DEPRECATED'])
+
 # Define OPENSSL_NO_STDIO to prevent using _fp() API.
 env.Append(CPPDEFINES=['OPENSSL_NO_STDIO'])
 
@@ -538,11 +550,13 @@ else:
     ### we should use --cc, but that is giving some scons error about an implicit
     ### dependency upon gcc. probably ParseConfig doesn't know what to do with
     ### the apr-1-config output
-    env.ParseConfig('$APR --cflags --cppflags --ldflags --includes'
-                    ' --link-ld --libs', unique=0)
+
+    env.ParseConfig('$APR --cflags --cppflags --includes'
+                    ' --ldflags --link-ld --libs',
+                    filter_cflags)
     if apr_major < 2:
-      env.ParseConfig('$APU --ldflags --includes --link-ld --libs',
-                      unique=0)
+      env.ParseConfig('$APU --includes --ldflags --link-ld --libs',
+                      filter_cflags)
 
     ### there is probably a better way to run/capture output.
     ### env.ParseConfig() may be handy for getting this stuff into the build
@@ -571,7 +585,7 @@ else:
     env.Append(LIBPATH=['$OPENSSL/lib'])
 
   if brotli:
-    brotli_libs = '-lbrotlicommon -lbrotlienc'
+    brotli_libs = '-lbrotlicommon -lbrotlidec'
     env.Append(CPPPATH=['$BROTLI/include'],
                LIBPATH=['$BROTLI/lib'])
   else:
@@ -612,6 +626,9 @@ if conf.CheckFunc('OpenSSL_version_num', ssl_includes):
   env.Append(CPPDEFINES=['SERF_HAVE_OPENSSL_VERSION_NUM'])
 if conf.CheckFunc('SSL_set_alpn_protos', ssl_includes, 'C', 'NULL, NULL, 0'):
   env.Append(CPPDEFINES=['SERF_HAVE_OPENSSL_ALPN'])
+if conf.CheckFunc('OSSL_STORE_open_ex', ssl_includes, 'C',
+                  'NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL'):
+  env.Append(CPPDEFINES=['SERF_HAVE_OSSL_STORE_OPEN_EX'])
 if conf.CheckType('OSSL_HANDSHAKE_STATE', ssl_includes):
   env.Append(CPPDEFINES=['SERF_HAVE_OSSL_HANDSHAKE_STATE'])
 env = conf.Finish()
@@ -664,12 +681,14 @@ for d in env['LIBPATH']:
   env.Append(RPATH=[':'+d])
 
 # Set up the construction of serf-*.pc
+pkgprefix = os.path.relpath(env.subst('$PREFIX'), env.subst('$LIBDIR/pkgconfig'))
+pkglibdir = os.path.relpath(env.subst('$LIBDIR'), env.subst('$PREFIX'))
 pkgconfig = env.Textfile('serf-%d.pc' % (MAJOR,),
                          env.File('build/serf.pc.in'),
                          SUBST_DICT = {
                            '@MAJOR@': str(MAJOR),
-                           '@PREFIX@': re.escape(str(env['PREFIX'])),
-                           '@LIBDIR@': re.escape(str(env['LIBDIR'])),
+                           '@PREFIX@': unsubstable('${pcfiledir}/' + pkgprefix),
+                           '@LIBDIR@': unsubstable('${prefix}/' + pkglibdir),
                            '@INCLUDE_SUBDIR@': 'serf-%d' % (MAJOR,),
                            '@VERSION@': '%d.%d.%d' % (MAJOR, MINOR, PATCH),
                            '@LIBS@': '%s %s %s %s -lz' % (apu_libs, apr_libs,
@@ -711,24 +730,30 @@ env.Alias('install', ['install-lib', 'install-inc', 'install-pc', ])
 ### make move to a separate scons file in the test/ subdir?
 
 tenv = env.Clone()
+tenv.Append(CPPDEFINES=['MOCKHTTP_OPENSSL'])
+
+# Build the MockHTTP static library. MockHTTP needs C99 and OpenSSL's
+# deprecated APIs.
+mockenv = tenv.Clone()
+mockenv.Replace(CFLAGS = [f.replace('-std=c89', '-std=c99')
+                          for f in mockenv['CFLAGS']])
+mockenv.Replace(CPPDEFINES = list(filter(lambda d: d != 'OPENSSL_NO_DEPRECATED',
+                                         mockenv['CPPDEFINES'])))
+
+mockhttpinc = mockenv.StaticLibrary('mockhttpinc',
+                                    ['test/MockHTTPinC/MockHTTP.c',
+                                     'test/MockHTTPinC/MockHTTP_server.c'])
 
 # Check if long-running tests should be enabled
 if tenv.get('ENABLE_SLOW_TESTS', None):
     tenv.Append(CPPDEFINES=['SERF_TEST_DEFLATE_4GBPLUS_BUCKETS'])
 
-# MockHTTP requires C99 standard, so use it for the test suite.
-cflags = tenv['CFLAGS']
-tenv.Replace(CFLAGS = [f.replace('-std=c89', '-std=c99') for f in cflags])
-
-tenv.Append(CPPDEFINES=['MOCKHTTP_OPENSSL'])
-
 TEST_PROGRAMS = [ 'serf_get', 'serf_response', 'serf_request', 'serf_spider',
                   'serf_httpd',
                   'test_all', 'serf_bwtp' ]
-if sys.platform == 'win32':
-  TEST_EXES = [ os.path.join('test', '%s.exe' % (prog)) for prog in TEST_PROGRAMS ]
-else:
-  TEST_EXES = [ os.path.join('test', '%s' % (prog)) for prog in TEST_PROGRAMS ]
+
+_exe = '.exe' if sys.platform == 'win32' else ''
+TEST_EXES = [os.path.join('test', '%s%s' % (prog, _exe)) for prog in TEST_PROGRAMS]
 
 check_script = env.File('build/check.py').rstr()
 test_dir = env.File('test/test_all.c').rfile().get_dir()
@@ -738,7 +763,10 @@ test_app = ("%s %s %s %s") % (sys.executable, check_script, test_dir, 'test')
 test_env = {'PATH' : os.environ['PATH'],
             'srcdir' : src_dir}
 if sys.platform != 'win32':
-  test_env['LD_LIBRARY_PATH'] = ':'.join(tenv.get('LIBPATH', []))
+  os_library_path = os.environ.get('LD_LIBRARY_PATH')
+  os_library_path = [os_library_path] if os_library_path else []
+  ld_library_path = [tenv.subst(p) for p in tenv.get('LIBPATH', [])]
+  test_env['LD_LIBRARY_PATH'] = ':'.join(ld_library_path + os_library_path)
 env.AlwaysBuild(env.Alias('check', TEST_EXES, test_app, ENV=test_env))
 
 testall_files = [
@@ -753,18 +781,18 @@ testall_files = [
         'test/mock_buckets.c',
         'test/mock_sock_buckets.c',
         'test/test_ssl.c',
-        'test/MockHTTPinC/MockHTTP.c',
-        'test/MockHTTPinC/MockHTTP_server.c',
         ]
 
 # We link the programs explicitly against the static libraries, to allow
 # access to private functions
+mocklib = mockhttpinc[0].rfile().abspath
+serflib = lib_static[0].rfile().abspath
 for proggie in TEST_EXES:
   if 'test_all' in proggie:
-    tenv.Program(proggie, testall_files + [LIBNAME + env['LIBSUFFIX']])
+    tenv.Program(proggie, testall_files + [mocklib, serflib])
   else:
-    tenv.Program(target = proggie, source = [proggie.replace('.exe','') + '.c',
-                                             LIBNAME + env['LIBSUFFIX']])
+    tenv.Program(target=proggie,
+                 source=[proggie.replace('.exe','') + '.c', serflib])
 
 
 # HANDLE CLEANING
