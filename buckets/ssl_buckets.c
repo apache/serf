@@ -1095,6 +1095,15 @@ static apr_status_t status_from_ssl_error(serf_ssl_context_t *ctx,
                 log_ssl_error(ctx);
             }
             break;
+
+        case SSL_ERROR_WANT_X509_LOOKUP:
+            /* The ssl_need_client_cert() function returned -1 because an
+             * error occurred inside that function. The error has already
+             * been handled, just return the fatal error.
+             */
+            status = ctx->fatal_err = SERF_ERROR_SSL_CERT_FAILED;
+            break;
+
         default:
             status = ctx->fatal_err = SERF_ERROR_SSL_COMM_FAILED;
             log_ssl_error(ctx);
@@ -1660,10 +1669,6 @@ static int ssl_need_client_cert(SSL *ssl, X509 **cert, EVP_PKEY **pkey)
         store = OSSL_STORE_open_ex(cert_uri, NULL, NULL, ui_method, ctx, NULL,
                                    NULL, NULL);
         if (!store) {
-            int err = ERR_get_error();
-            serf__log(LOGLVL_ERROR, LOGCOMP_SSL, __FILE__, ctx->config,
-                      "OpenSSL store error (%s): %d %d\n", cert_uri,
-                      ERR_GET_LIB(err), ERR_GET_REASON(err));
             break;
         }
 
@@ -1719,9 +1724,11 @@ static int ssl_need_client_cert(SSL *ssl, X509 **cert, EVP_PKEY **pkey)
             OSSL_STORE_INFO_free(info);
         }
 
-        /* FIXME: openssl error checking goes here */
-
         OSSL_STORE_close(store);
+
+        if (ERR_peek_error()) {
+            break;
+        }
 
         /* walk the leaf certificates, choose the best one */
 
@@ -1788,6 +1795,12 @@ static int ssl_need_client_cert(SSL *ssl, X509 **cert, EVP_PKEY **pkey)
     sk_EVP_PKEY_pop_free(keys, EVP_PKEY_free);
     X509_STORE_free(requests);
     UI_destroy_method(ui_method);
+
+    if (ERR_peek_error()) {
+        log_ssl_error(ctx);
+
+        return -1;
+    }
 
     /* we settled on a cert and key, cache it for later */
 
