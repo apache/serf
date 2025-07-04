@@ -59,6 +59,9 @@ except TypeError:
   custom_tests['CheckFunc'] = build.scons_extras.CheckFunc
   print('warning: replaced Conftest.CheckFunc() for SCons version < 4.7.')
 
+# By default, we silence all warnings when compiling MockHTTP.
+# Set this to True to show them instead.
+SHOW_MOCKHTTP_WARNINGS = False
 
 HEADER_FILES = ['serf.h',
                 'serf_bucket_types.h',
@@ -364,6 +367,13 @@ if sys.platform != 'win32':
     # env.Append(CCFLAGS=['-g'])
     env.SerfAppendIf(['CFLAGS', 'CCFLAGS'], r'-g\S*', CCFLAGS=['-g'])
     env.Append(CPPDEFINES=['DEBUG', '_DEBUG'])
+    env.Append(CCFLAGS=['-Wimplicit-function-declaration',
+                        '-Wmissing-variable-declarations',
+                        '-Wunreachable-code',
+                        '-Wshorten-64-to-32',
+                        '-Wno-system-headers',
+                        '-Wextra-tokens',
+                        '-Wnewline-eof'])
   else:
     # env.Append(CCFLAGS=['-O2'])
     env.SerfAppendIf(['CFLAGS', 'CCFLAGS'], r'-O\S*', CCFLAGS=['-O2'])
@@ -733,10 +743,20 @@ tenv = env.Clone()
 tenv.Append(CPPDEFINES=['MOCKHTTP_OPENSSL'])
 
 # Build the MockHTTP static library. MockHTTP needs C99 and OpenSSL's
-# deprecated APIs.
+# deprecated APIs. Also silence all warnings from MockHTTP.
 mockenv = tenv.Clone()
 mockenv.Replace(CFLAGS = [f.replace('-std=c89', '-std=c99')
                           for f in mockenv['CFLAGS']])
+mockenv.Replace(CCFLAGS = list(
+  filter(lambda f: (SHOW_MOCKHTTP_WARNINGS
+                    or (# GCC-like warning flags
+                        not re.match(r'^\s*-W[a-z][a-z-]+', f)
+                        # MSVC-like warning flags
+                        and not re.match(r'^\s*/(W|w[de])\d+', f))),
+         mockenv['CCFLAGS'])
+))
+if not SHOW_MOCKHTTP_WARNINGS:
+  mockenv.Append(CCFLAGS = ['-w' if sys.platform != 'win32' else '/w'])
 mockenv.Replace(CPPDEFINES = list(filter(lambda d: d != 'OPENSSL_NO_DEPRECATED',
                                          mockenv['CPPDEFINES'])))
 
