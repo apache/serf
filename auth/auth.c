@@ -249,7 +249,7 @@ static int store_header_in_dict(void *baton,
 {
     auth_baton_t *ab = baton;
     const char *auth_attr;
-    char *auth_name, *c;
+    char *auth_name;
 
     /* We're only interested in xxxx-Authenticate headers. */
     if (strcasecmp(key, ab->header) != 0)
