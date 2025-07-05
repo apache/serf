@@ -1565,17 +1565,16 @@ static int ssl_pass_cb(UI *ui, UI_STRING *uis)
     serf_ssl_context_t *ctx = UI_get0_user_data(ui);
 
     const char *password;
-    apr_status_t status;
 
     if (ctx->cert_pw_success) {
-        status = APR_SUCCESS;
         password = ctx->cert_pw_success;
         ctx->cert_pw_success = NULL;
     }
     else if (ctx->cert_pw_callback) {
-        status = ctx->cert_pw_callback(ctx->cert_pw_userdata,
-                                       ctx->cert_uri,
-                                       &password);
+        if (APR_SUCCESS != ctx->cert_pw_callback(ctx->cert_pw_userdata,
+                                                 ctx->cert_uri,
+                                                 &password))
+            return 0;
     }
     else {
         return 0;
