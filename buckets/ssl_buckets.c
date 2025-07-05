@@ -1669,6 +1669,14 @@ static int ssl_need_client_cert(SSL *ssl, X509 **cert, EVP_PKEY **pkey)
         store = OSSL_STORE_open_ex(cert_uri, NULL, NULL, ui_method, ctx, NULL,
                                    NULL, NULL);
         if (!store) {
+
+            if (ctx->error_callback) {
+                char ebuf[1024];
+                ctx->fatal_err = SERF_ERROR_SSL_CERT_FAILED;
+                apr_snprintf(ebuf, sizeof(ebuf), "could not open URI: %s", cert_uri);
+                ctx->error_callback(ctx->error_baton, ctx->fatal_err, ebuf);
+            }
+
             break;
         }
 
@@ -1678,6 +1686,14 @@ static int ssl_need_client_cert(SSL *ssl, X509 **cert, EVP_PKEY **pkey)
             info = OSSL_STORE_load(store);
 
             if (!info) {
+
+                if (ctx->error_callback) {
+                    char ebuf[1024];
+                    ctx->fatal_err = SERF_ERROR_SSL_CERT_FAILED;
+                    apr_snprintf(ebuf, sizeof(ebuf), "could not read URI: %s", cert_uri);
+                    ctx->error_callback(ctx->error_baton, ctx->fatal_err, ebuf);
+                }
+
                 break;
             }
 
@@ -1862,7 +1878,9 @@ static int ssl_need_client_cert(SSL *ssl, X509 **cert, EVP_PKEY **pkey)
 
         if (status) {
             if (ctx->error_callback) {
-                char ebuf[256];
+                char ebuf[1024];
+                apr_snprintf(ebuf, sizeof(ebuf), "could not open PKCS12: %s", cert_path);
+                ctx->error_callback(ctx->error_baton, ctx->fatal_err, ebuf);
                 apr_strerror(status, ebuf, sizeof(ebuf));
                 ctx->error_callback(ctx->error_baton, ctx->fatal_err, ebuf);
             }
@@ -1944,6 +1962,14 @@ static int ssl_need_client_cert(SSL *ssl, X509 **cert, EVP_PKEY **pkey)
                             return 1;
                         }
                         else {
+
+                            if (ctx->error_callback) {
+                                char ebuf[1024];
+                                ctx->fatal_err = SERF_ERROR_SSL_CERT_FAILED;
+                                apr_snprintf(ebuf, sizeof(ebuf), "could not parse PKCS12: %s", cert_path);
+                                ctx->error_callback(ctx->error_baton, ctx->fatal_err, ebuf);
+                            }
+
                             log_ssl_error(ctx);
                             return -1;
                         }
@@ -1952,12 +1978,26 @@ static int ssl_need_client_cert(SSL *ssl, X509 **cert, EVP_PKEY **pkey)
                 PKCS12_free(p12);
                 bio_meth_free(biom);
 
+                if (ctx->error_callback) {
+                    char ebuf[1024];
+                    ctx->fatal_err = SERF_ERROR_SSL_CERT_FAILED;
+                    apr_snprintf(ebuf, sizeof(ebuf), "PKCS12 needs a password: %s", cert_path);
+                    ctx->error_callback(ctx->error_baton, ctx->fatal_err, ebuf);
+                }
+
                 log_ssl_error(ctx);
                 return -1;
             }
             else {
                 PKCS12_free(p12);
                 bio_meth_free(biom);
+
+                if (ctx->error_callback) {
+                    char ebuf[1024];
+                    ctx->fatal_err = SERF_ERROR_SSL_CERT_FAILED;
+                    apr_snprintf(ebuf, sizeof(ebuf), "could not parse PKCS12: %s", cert_path);
+                    ctx->error_callback(ctx->error_baton, ctx->fatal_err, ebuf);
+                }
 
                 log_ssl_error(ctx);
                 return -1;
