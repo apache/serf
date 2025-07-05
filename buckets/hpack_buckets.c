@@ -1396,9 +1396,8 @@ handle_read_entry_and_clear(serf_hpack_decode_ctx_t *ctx,
     serf_hpack_table_t *tbl = ctx->tbl;
     const char *keep_key = NULL;
     const char *keep_val = NULL;
-    apr_status_t status;
-    char own_key;
-    char own_val;
+    bool own_key;
+    bool own_val;
 
     serf__log(LOGLVL_INFO, SERF_LOGCOMP_PROTOCOL, __FILE__, ctx->config,
               "Parsed from HPACK: %.*s: %.*s\n",
@@ -1476,9 +1475,11 @@ handle_read_entry_and_clear(serf_hpack_decode_ctx_t *ctx,
 
     if (ctx->reuse_item)
     {
-        status = hpack_table_get(ctx->reuse_item, tbl,
-                                 &keep_key, NULL,
-                                 &keep_val, NULL);
+        /* hpack_table_get() does not modify its output arguments if
+           it returns an error, so we ignore the return value here. */
+        hpack_table_get(ctx->reuse_item, tbl,
+                        &keep_key, NULL,
+                        &keep_val, NULL);
     }
 
     own_key = (ctx->key && ctx->key != keep_key);
