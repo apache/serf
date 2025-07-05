@@ -204,7 +204,7 @@ static void serf_deflate_destroy_and_data(serf_bucket_t *bucket)
 
     if ((ctx->state > STATE_INIT && ctx->state <= STATE_FINISH)
         || (ctx->state > STATE_COMPRESS_INIT
-            && ctx->state < STATE_COMPRESS_FINISH))
+            && ctx->state <= STATE_COMPRESS_FINISH))
     {
         if (ctx->memLevel >= 0)
             deflateEnd(&ctx->zstream);

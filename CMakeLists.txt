@@ -76,6 +76,7 @@ endif()
 if(NOT CMAKE_BUILD_TYPE)
   if(DEBUG)
     set(CMAKE_BUILD_TYPE Debug CACHE STRING "Default to debug build." FORCE)
+    set(SERF_MAINTAINER_MODE TRUE)
   else()
     set(CMAKE_BUILD_TYPE Release CACHE STRING "Default to release build." FORCE)
   endif()
@@ -307,6 +308,11 @@ CheckNotFunction("X509_STORE_CTX_get0_chain" "NULL" "SERF_NO_SSL_X509_GET0_CHAIN
 CheckNotFunction("ASN1_STRING_get0_data" "NULL" "SERF_NO_SSL_ASN1_STRING_GET0_DATA"
                  "openssl/asn1.h" "${OPENSSL_INCLUDE_DIR}"
                  ${OPENSSL_LIBRARIES} ${SERF_STANDARD_LIBRARIES})
+CheckFunction("OSSL_STORE_open_ex"
+              "NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL"
+              "SERF_HAVE_OSSL_STORE_OPEN_EX" "openssl/store.h"
+              "${OPENSSL_INCLUDE_DIR}" ${OPENSSL_LIBRARIES}
+              ${SERF_STANDARD_LIBRARIES})
 CheckFunction("CRYPTO_set_locking_callback" "NULL" "SERF_HAVE_SSL_LOCKING_CALLBACKS"
               "openssl/crypto.h" "${OPENSSL_INCLUDE_DIR}"
               ${OPENSSL_LIBRARIES} ${SERF_STANDARD_LIBRARIES})

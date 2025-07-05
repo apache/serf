@@ -59,6 +59,9 @@ except TypeError:
   custom_tests['CheckFunc'] = build.scons_extras.CheckFunc
   print('warning: replaced Conftest.CheckFunc() for SCons version < 4.7.')
 
+# By default, we silence all warnings when compiling MockHTTP.
+# Set this to True to show them instead.
+SHOW_MOCKHTTP_WARNINGS = False
 
 HEADER_FILES = ['serf.h',
                 'serf_bucket_types.h',
@@ -364,6 +367,13 @@ if sys.platform != 'win32':
     # env.Append(CCFLAGS=['-g'])
     env.SerfAppendIf(['CFLAGS', 'CCFLAGS'], r'-g\S*', CCFLAGS=['-g'])
     env.Append(CPPDEFINES=['DEBUG', '_DEBUG'])
+    env.Append(CCFLAGS=['-Wimplicit-function-declaration',
+                        '-Wmissing-variable-declarations',
+                        '-Wunreachable-code',
+                        '-Wshorten-64-to-32',
+                        '-Wno-system-headers',
+                        '-Wextra-tokens',
+                        '-Wnewline-eof'])
   else:
     # env.Append(CCFLAGS=['-O2'])
     env.SerfAppendIf(['CFLAGS', 'CCFLAGS'], r'-O\S*', CCFLAGS=['-O2'])
@@ -417,6 +427,9 @@ lib_shared = env.SharedLibrary(SHLIBNAME, SOURCES + SHARED_SOURCES)
 if export_filter is not None:
   env.GenExports(target=export_filter, source=HEADER_FILES)
   env.Depends(lib_shared, export_filter)
+
+# We do not want or need OpenSSL's compatibility macros.
+env.Append(CPPDEFINES=['OPENSSL_NO_DEPRECATED'])
 
 # Define OPENSSL_NO_STDIO to prevent using _fp() API.
 env.Append(CPPDEFINES=['OPENSSL_NO_STDIO'])
@@ -582,7 +595,7 @@ else:
     env.Append(LIBPATH=['$OPENSSL/lib'])
 
   if brotli:
-    brotli_libs = '-lbrotlicommon -lbrotlienc'
+    brotli_libs = '-lbrotlicommon -lbrotlidec'
     env.Append(CPPPATH=['$BROTLI/include'],
                LIBPATH=['$BROTLI/lib'])
   else:
@@ -623,6 +636,9 @@ if conf.CheckFunc('OpenSSL_version_num', ssl_includes):
   env.Append(CPPDEFINES=['SERF_HAVE_OPENSSL_VERSION_NUM'])
 if conf.CheckFunc('SSL_set_alpn_protos', ssl_includes, 'C', 'NULL, NULL, 0'):
   env.Append(CPPDEFINES=['SERF_HAVE_OPENSSL_ALPN'])
+if conf.CheckFunc('OSSL_STORE_open_ex', ssl_includes, 'C',
+                  'NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL'):
+  env.Append(CPPDEFINES=['SERF_HAVE_OSSL_STORE_OPEN_EX'])
 if conf.CheckType('OSSL_HANDSHAKE_STATE', ssl_includes):
   env.Append(CPPDEFINES=['SERF_HAVE_OSSL_HANDSHAKE_STATE'])
 env = conf.Finish()
@@ -724,24 +740,45 @@ env.Alias('install', ['install-lib', 'install-inc', 'install-pc', ])
 ### make move to a separate scons file in the test/ subdir?
 
 tenv = env.Clone()
+tenv.Append(CPPDEFINES=['MOCKHTTP_OPENSSL'])
+
+# Build the MockHTTP static library. MockHTTP needs C99 and OpenSSL's
+# deprecated APIs. Also silence all warnings from MockHTTP.
+mockenv = tenv.Clone()
+mockenv.Replace(CFLAGS = [f.replace('-std=c89', '-std=c99')
+                          for f in mockenv['CFLAGS']])
+mockenv.Replace(CCFLAGS = list(
+  filter(lambda f: (SHOW_MOCKHTTP_WARNINGS
+                    # NOTE: SCons flags are sometimes tuples, not strings.
+                    #       In those cases, the first element is the flag
+                    #       and the rest ar the flag's value(s).
+                    or (# GCC-like warning flags
+                        not re.match(r'^\s*-W[a-z][a-z-]+',
+                                     f if type(f) == type('') else f[0])
+                        # MSVC-like warning flags
+                        and not re.match(r'^\s*/(W|w[de])\d+',
+                                         f if type(f) == type('') else f[0]))),
+         mockenv['CCFLAGS'])
+))
+if not SHOW_MOCKHTTP_WARNINGS:
+  mockenv.Append(CCFLAGS = ['-w' if sys.platform != 'win32' else '/w'])
+mockenv.Replace(CPPDEFINES = list(filter(lambda d: d != 'OPENSSL_NO_DEPRECATED',
+                                         mockenv['CPPDEFINES'])))
+
+mockhttpinc = mockenv.StaticLibrary('mockhttpinc',
+                                    ['test/MockHTTPinC/MockHTTP.c',
+                                     'test/MockHTTPinC/MockHTTP_server.c'])
 
 # Check if long-running tests should be enabled
 if tenv.get('ENABLE_SLOW_TESTS', None):
     tenv.Append(CPPDEFINES=['SERF_TEST_DEFLATE_4GBPLUS_BUCKETS'])
 
-# MockHTTP requires C99 standard, so use it for the test suite.
-cflags = tenv['CFLAGS']
-tenv.Replace(CFLAGS = [f.replace('-std=c89', '-std=c99') for f in cflags])
-
-tenv.Append(CPPDEFINES=['MOCKHTTP_OPENSSL'])
-
 TEST_PROGRAMS = [ 'serf_get', 'serf_response', 'serf_request', 'serf_spider',
                   'serf_httpd',
                   'test_all', 'serf_bwtp' ]
-if sys.platform == 'win32':
-  TEST_EXES = [ os.path.join('test', '%s.exe' % (prog)) for prog in TEST_PROGRAMS ]
-else:
-  TEST_EXES = [ os.path.join('test', '%s' % (prog)) for prog in TEST_PROGRAMS ]
+
+_exe = '.exe' if sys.platform == 'win32' else ''
+TEST_EXES = [os.path.join('test', '%s%s' % (prog, _exe)) for prog in TEST_PROGRAMS]
 
 check_script = env.File('build/check.py').rstr()
 test_dir = env.File('test/test_all.c').rfile().get_dir()
@@ -769,18 +806,18 @@ testall_files = [
         'test/mock_buckets.c',
         'test/mock_sock_buckets.c',
         'test/test_ssl.c',
-        'test/MockHTTPinC/MockHTTP.c',
-        'test/MockHTTPinC/MockHTTP_server.c',
         ]
 
 # We link the programs explicitly against the static libraries, to allow
 # access to private functions
+mocklib = mockhttpinc[0].rfile().abspath
+serflib = lib_static[0].rfile().abspath
 for proggie in TEST_EXES:
   if 'test_all' in proggie:
-    tenv.Program(proggie, testall_files + [LIBNAME + env['LIBSUFFIX']])
+    tenv.Program(proggie, testall_files + [mocklib, serflib])
   else:
-    tenv.Program(target = proggie, source = [proggie.replace('.exe','') + '.c',
-                                             LIBNAME + env['LIBSUFFIX']])
+    tenv.Program(target=proggie,
+                 source=[proggie.replace('.exe','') + '.c', serflib])
 
 
 # HANDLE CLEANING
