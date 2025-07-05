@@ -73,7 +73,7 @@ static apr_status_t next_action(mockbkt_context_t *ctx)
         if (ctx->remaining_data <= 0) {
             ctx->current_data = action->data;
             ctx->remaining_times = action->times;
-            ctx->remaining_data = strlen(action->data);
+            ctx->remaining_data = (int)strlen(action->data);
         }
 
         return APR_SUCCESS;
@@ -331,7 +331,7 @@ static void test_basic_mock_bucket(CuTest *tc)
         for (i = 0; i < 5; i++) {
             status = serf_bucket_peek(mock_bkt, &data, &len);
             CuAssertIntEquals(tc, APR_SUCCESS, status);
-            CuAssertIntEquals(tc, 0, len);
+            CuAssertUIntEquals(tc, 0, len);
             CuAssertIntEquals(tc, '\0', *data);
         }
 
@@ -339,7 +339,7 @@ static void test_basic_mock_bucket(CuTest *tc)
 
         status = serf_bucket_peek(mock_bkt, &data, &len);
         CuAssertIntEquals(tc, APR_EOF, status);
-        CuAssertIntEquals(tc, 6, len);
+        CuAssertUIntEquals(tc, 6, len);
         CuAssert(tc, "Read data is not equal to expected.",
                  strncmp("blabla", data, len) == 0);
         serf_bucket_destroy(mock_bkt);

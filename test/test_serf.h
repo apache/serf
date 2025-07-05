@@ -90,6 +90,7 @@ typedef struct test_baton_t {
     /* Extra batons which can be freely used by tests. */
     void *user_baton;
     long user_baton_l;
+    apr_status_t user_baton_s;
 
     /* Flags that can be used to report situations, e.g. that a callback was
        called. */
@@ -295,7 +296,7 @@ run_client_and_mock_servers_loops_expect_ok(CuTest *tc, test_baton_t *tb,
                                             handler_baton_t handler_ctx[],
                                             apr_pool_t *pool);
 
-/* Logs a test suite error with its code location, and return status 
+/* Logs a test suite error with its code location, and return status
    SERF_ERROR_ISSUE_IN_TESTSUITE. */
 #define REPORT_TEST_SUITE_ERROR()\
      test__report_suite_error(__FILE__, __LINE__)

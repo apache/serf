@@ -264,11 +264,12 @@ static apr_status_t serf_deflate_refill(serf_bucket_t *bucket)
         /* Make valgrind happy and explicitly initialize next_in to specific
           * value for empty buffer. */
         if (private_len) {
-            ctx->zstream.next_in = (unsigned char*)private_data;
-            ctx->zstream.avail_in = private_len;
+            ctx->zstream.next_in = (Bytef *)private_data;
+            SERF__POSITIVE_TO_INT(ctx->zstream.avail_in, apr_size_t, private_len);
             if (ctx->memLevel >= 0)
-                ctx->crc = crc32(ctx->crc, (const Bytef *)private_data,
-                                 private_len);
+                ctx->crc = crc32(ctx->crc,
+                                 ctx->zstream.next_in,
+                                 ctx->zstream.avail_in);
         } else {
             ctx->zstream.next_in = Z_NULL;
             ctx->zstream.avail_in = 0;
@@ -295,7 +296,7 @@ static apr_status_t serf_deflate_refill(serf_bucket_t *bucket)
         if (zRC == Z_BUF_ERROR || ctx->zstream.avail_out == 0) {
             /* We're full or zlib requires more space. Either case, clear
                out our buffer, reset, and return. */
-            apr_size_t private_len;
+            uInt private_len;
             serf_bucket_t *tmp;
 
             ctx->zstream.next_out = ctx->buffer;
@@ -317,7 +318,7 @@ static apr_status_t serf_deflate_refill(serf_bucket_t *bucket)
         }
 
         if (zRC == Z_STREAM_END) {
-            apr_size_t private_len;
+            uInt private_len;
             serf_bucket_t *tmp;
 
             private_len = ctx->bufferSize - ctx->zstream.avail_out;
