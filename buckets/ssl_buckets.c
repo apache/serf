@@ -1866,7 +1866,7 @@ static int ssl_need_client_cert(SSL *ssl, X509 **cert, EVP_PKEY **pkey)
                 apr_strerror(status, ebuf, sizeof(ebuf));
                 ctx->error_callback(ctx->error_baton, ctx->fatal_err, ebuf);
             }
-            break;
+            return -1;
         }
 
         biom = bio_meth_file_new();
@@ -1945,7 +1945,7 @@ static int ssl_need_client_cert(SSL *ssl, X509 **cert, EVP_PKEY **pkey)
                         }
                         else {
                             log_ssl_error(ctx);
-                            break;
+                            return -1;
                         }
                     }
                 }
@@ -1953,14 +1953,14 @@ static int ssl_need_client_cert(SSL *ssl, X509 **cert, EVP_PKEY **pkey)
                 bio_meth_free(biom);
 
                 log_ssl_error(ctx);
-                break;
+                return -1;
             }
             else {
                 PKCS12_free(p12);
                 bio_meth_free(biom);
 
                 log_ssl_error(ctx);
-                break;
+                return -1;
             }
         }
     }
