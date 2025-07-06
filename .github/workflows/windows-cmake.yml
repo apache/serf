@@ -40,7 +40,7 @@ jobs:
               core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
 
       - name: Restore vcpkg/installed from stash
-        uses: infrastructure-actions/stash/restore@v1
+        uses: apache/infrastructure-actions/stash/restore@v1
         with:
           key: 'vcpkg_installed_${{ matrix.triplet }}'
           path: 'C:/vcpkg/installed/'
@@ -49,7 +49,7 @@ jobs:
         run: vcpkg install --triplet ${{ matrix.triplet }} apr apr-util zlib openssl brotli
 
       - name: Save vcpkg/installed to stash for next run
-        uses: infrastructure-actions/stash/save@v1
+        uses: apache/infrastructure-actions/stash/save@v1
         with:
           key: 'vcpkg_installed_${{ matrix.triplet }}'
           path: 'C:/vcpkg/installed/'
