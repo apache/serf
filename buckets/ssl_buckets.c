@@ -430,7 +430,9 @@ static int bio_bucket_read(BIO *bio, char *in, int inlen)
               "bio_bucket_read received %"APR_SIZE_T_FMT" bytes (%d)\n", len, status);
 
     memcpy(in, data, len);
-    return len;
+
+    /* Safe cast: len <= inlen */
+    return (int)len;
 }
 
 /* Returns the amount written. */
@@ -476,7 +478,8 @@ static int bio_file_read(BIO *bio, char *in, int inlen)
         if (APR_STATUS_IS_EOF(status)) {
             return -1;
         } else {
-            return len;
+            /* Safe cast: len <= inlen */
+            return (int)len;
         }
     }
 
@@ -494,7 +497,8 @@ static int bio_file_write(BIO *bio, const char *in, int inl)
     nbytes = inl;
     apr_file_write(file, in, &nbytes);
 
-    return nbytes;
+    /* Safe cast: nbytes <= inlen */
+    return (int)nbytes;
 }
 
 static int bio_file_gets(BIO *bio, char *in, int inlen)
@@ -694,7 +698,7 @@ static int ocsp_callback(SSL *ssl, void *baton)
     serf_ssl_context_t *ctx = (serf_ssl_context_t*)baton;
     OCSP_RESPONSE *response;
     const unsigned char *resp_der;
-    int len;
+    long len;
     int failures = 0;
     int cert_valid = 0;
 
@@ -1154,7 +1158,7 @@ static apr_status_t ssl_decrypt(void *baton, apr_size_t bufsize,
 {
     serf_ssl_context_t *ctx = baton;
     apr_status_t status;
-    int ssl_len;
+    int ssl_len, ssl_bufsize;
 
     if (ctx->fatal_err)
         return ctx->fatal_err;
@@ -1171,8 +1175,9 @@ static apr_status_t ssl_decrypt(void *baton, apr_size_t bufsize,
         }
     }
 
+    SERF__POSITIVE_TO_INT(ssl_bufsize, apr_size_t, bufsize);
     serf__log(LOGLVL_DEBUG, LOGCOMP_SSL, __FILE__, ctx->config,
-              "ssl_decrypt: begin %" APR_SIZE_T_FMT "\n", bufsize);
+              "ssl_decrypt: begin %d\n", ssl_bufsize);
 
     ctx->want_read = FALSE; /* Reading now */
     ctx->crypt_status = APR_SUCCESS; /* Clear before calling SSL */
@@ -1184,7 +1189,7 @@ static apr_status_t ssl_decrypt(void *baton, apr_size_t bufsize,
        Luckily we can assume that we are called from the databuffer
        implementation */
     /* Is there some data waiting to be read? */
-    ssl_len = SSL_read(ctx->ssl, buf, bufsize);
+    ssl_len = SSL_read(ctx->ssl, buf, ssl_bufsize);
     if (ssl_len < 0) {
 
         *len = 0;
@@ -1218,7 +1223,7 @@ static apr_status_t ssl_decrypt(void *baton, apr_size_t bufsize,
         *len = ssl_len;
         status = ctx->crypt_status;
         serf__log(LOGLVL_DEBUG, LOGCOMP_SSLMSG, __FILE__, ctx->config,
-                  "---\n%.*s\n-(%"APR_SIZE_T_FMT")-\n", (int)*len, buf, *len);
+                  "---\n%.*s\n-(%"APR_SIZE_T_FMT")-\n", ssl_len, buf, *len);
     }
 
 
@@ -1315,7 +1320,7 @@ static apr_status_t ssl_encrypt(void *baton, apr_size_t bufsize,
     /* Oh well, read from our stream now. */
     interim_bufsize = bufsize;
     do {
-        apr_size_t interim_len;
+        int interim_len;
 
         if (!ctx->want_read) {
             struct iovec vecs[SERF__STD_IOV_COUNT];
@@ -1351,7 +1356,7 @@ static apr_status_t ssl_encrypt(void *baton, apr_size_t bufsize,
                 interim_len = vecs_data_len;
 
                 serf__log(LOGLVL_DEBUG, LOGCOMP_SSL, __FILE__, ctx->config,
-                          "ssl_encrypt: bucket read %"APR_SIZE_T_FMT" bytes; "\
+                          "ssl_encrypt: bucket read %d bytes; "\
                           "status %d\n", interim_len, status);
 
                 /* When an SSL_write() operation has to be repeated because of
@@ -1386,8 +1391,8 @@ static apr_status_t ssl_encrypt(void *baton, apr_size_t bufsize,
                     serf_bucket_mem_free(ctx->allocator, vecs_data);
 
                     serf__log(LOGLVL_DEBUG, LOGCOMP_SSL, __FILE__, ctx->config,
-                              "---\n%.*s\n-(%"APR_SIZE_T_FMT")-\n",
-                              (int)interim_len, vecs_data, interim_len);
+                              "---\n%.*s\n-(%d)-\n",
+                              interim_len, vecs_data, interim_len);
 
                 }
             }
@@ -1641,7 +1646,7 @@ static int ssl_need_client_cert(SSL *ssl, X509 **cert, EVP_PKEY **pkey)
         const char *cert_uri = NULL;
         OSSL_STORE_CTX *store = NULL;
         OSSL_STORE_INFO *info;
-        X509 *c;
+        X509 *x509;
         STACK_OF(X509_NAME) *requested;
         int type;
 
@@ -1747,7 +1752,7 @@ static int ssl_need_client_cert(SSL *ssl, X509 **cert, EVP_PKEY **pkey)
 
         /* walk the leaf certificates, choose the best one */
 
-        while ((c = sk_X509_pop(leaves))) {
+        while ((x509 = sk_X509_pop(leaves))) {
 
             EVP_PKEY *k = NULL;
             int i, n, found = 0;
@@ -1756,7 +1761,7 @@ static int ssl_need_client_cert(SSL *ssl, X509 **cert, EVP_PKEY **pkey)
             n = sk_EVP_PKEY_num(keys);
             for (i = 0; i < n; ++i) {
                 k = sk_EVP_PKEY_value(keys, i);
-                if (X509_check_private_key(c, k)) {
+                if (X509_check_private_key(x509, k)) {
                     found = 1;
                     break;
                 }
@@ -1767,10 +1772,10 @@ static int ssl_need_client_cert(SSL *ssl, X509 **cert, EVP_PKEY **pkey)
 
             /* CAs requested? if so, skip non matches, if not, accept all */
             if (sk_X509_NAME_num(requested) &&
-                    !X509_get_ex_data(c, ssl_x509_ex_data_idx)) {
+                    !X509_get_ex_data(x509, ssl_x509_ex_data_idx)) {
                 STACK_OF(X509) *chain;
 
-                chain = X509_build_chain(c, intermediates, requests, 0, NULL,
+                chain = X509_build_chain(x509, intermediates, requests, 0, NULL,
                                          NULL);
 
                 if (!chain) {
@@ -1783,23 +1788,23 @@ static int ssl_need_client_cert(SSL *ssl, X509 **cert, EVP_PKEY **pkey)
             /* no best candidate yet? we're in first place */
             if (!*cert) {
                 EVP_PKEY_up_ref(k);
-                *cert = c; /* don't dup, we're returning this */
+                *cert = x509; /* don't dup, we're returning this */
                 *pkey = k;
                 continue;
             }
 
             /* were we issued after the previous best? */
             if (ASN1_TIME_compare(X509_get0_notBefore(*cert),
-                    X509_get0_notBefore(c)) < 0) {
+                    X509_get0_notBefore(x509)) < 0) {
                 X509_free(*cert);
                 EVP_PKEY_free(*pkey);
                 EVP_PKEY_up_ref(k);
-                *cert = c; /* don't dup, we're returning this */
+                *cert = x509; /* don't dup, we're returning this */
                 *pkey = k;
                 continue;
             }
 
-            X509_free(c);
+            X509_free(x509);
         }
 
         break;
@@ -2243,8 +2248,9 @@ apr_status_t serf_ssl_set_hostname(serf_ssl_context_t *context,
         ERR_clear_error();
     }
     return APR_SUCCESS;
-#endif
+#else
     return APR_ENOTIMPL;
+#endif
 }
 
 apr_status_t serf_ssl_negotiate_protocol(serf_ssl_context_t *context,
@@ -2297,7 +2303,8 @@ apr_status_t serf_ssl_negotiate_protocol(serf_ssl_context_t *context,
     at += len;
 
 #ifdef SERF_HAVE_OPENSSL_ALPN
-    if (SSL_set_alpn_protos(context->ssl, raw_header, raw_len)) {
+    /* Safe cast: raw_len < 65536 therefore raw_len <= INT_MAX */
+    if (SSL_set_alpn_protos(context->ssl, raw_header, (int)raw_len)) {
         ERR_clear_error();
     }
     apr_pool_destroy(subpool);
@@ -2482,8 +2489,9 @@ serf_ssl_check_cert_status_request(serf_ssl_context_t *ssl_ctx, int enabled)
     SSL_CTX_set_tlsext_status_arg(ssl_ctx->ctx, ssl_ctx);
     SSL_set_tlsext_status_type(ssl_ctx->ssl, TLSEXT_STATUSTYPE_ocsp);
     return APR_SUCCESS;
-#endif
+#else
     return APR_ENOTIMPL;
+#endif
 }
 
 serf_bucket_t *serf_bucket_ssl_decrypt_create(
@@ -2848,19 +2856,17 @@ static void disable_compression(serf_ssl_context_t *ssl_ctx)
 
 apr_status_t serf_ssl_use_compression(serf_ssl_context_t *ssl_ctx, int enabled)
 {
-    if (enabled) {
 #ifdef SSL_OP_NO_COMPRESSION
+    if (enabled) {
         SSL_clear_options(ssl_ctx->ssl, SSL_OP_NO_COMPRESSION);
         return APR_SUCCESS;
-#endif
     } else {
-#ifdef SSL_OP_NO_COMPRESSION
         SSL_set_options(ssl_ctx->ssl, SSL_OP_NO_COMPRESSION);
         return APR_SUCCESS;
-#endif
     }
-
-    return APR_EGENERAL;
+#else
+    return APR_ENOTIMPL;
+#endif
 }
 
 static void serf_ssl_destroy_and_data(serf_bucket_t *bucket)
@@ -3033,7 +3039,7 @@ struct serf_ssl_ocsp_request_t {
 
     /* DER-encoded request and size. */
     const void *der_request;
-    apr_size_t der_request_size;
+    int der_request_size;
 };
 
 static apr_status_t free_ocsp_request(void *data)
@@ -3216,8 +3222,8 @@ serf_ssl_ocsp_request_t *serf_ssl_ocsp_request_import(
         const char *base64_request = apr_pstrmemdup(
             scratch_pool, encoded_ocsp_request,
             end_request - encoded_ocsp_request);
-        long der_request_size = apr_base64_decode_len(base64_request);
-        long der_id_size = apr_base64_decode_len(base64_id);
+        int der_request_size = apr_base64_decode_len(base64_request);
+        int der_id_size = apr_base64_decode_len(base64_id);
 
         OCSP_REQUEST *ocsp_req;
         OCSP_CERTID *cert_id;

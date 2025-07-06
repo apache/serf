@@ -365,6 +365,7 @@ if(NOT MSVC)
     list(APPEND SERF_C_WARNINGS "-Wall")
     list(APPEND SERF_C_WARNINGS "-Wdeclaration-after-statement")
     list(APPEND SERF_C_WARNINGS "-Wmissing-prototypes")
+    list(APPEND SERF_C_WARNINGS "-Wshadow")
 
     string(APPEND CMAKE_C_FLAGS_DEBUG " -O0")
 
