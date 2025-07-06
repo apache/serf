@@ -160,7 +160,7 @@ const char *serf_bucket_headers_get(
     headers_context_t *ctx = headers_bucket->data;
     header_list_t *found = ctx->list;
     const char *val = NULL;
-    int value_size = 0;
+    apr_size_t value_size = 0;
     int val_alloc = 0;
 
     while (found) {
@@ -308,10 +308,10 @@ static void select_value(
         l = 2;
         break;
     case READ_DONE:
-        *len = 0;
-        return;
+        /* ctx->state can have no other value here, but fall through to the
+           default anyway, so that *len is initialized before we return. */
     default:
-        /* Not reachable */
+        *len = 0;
         return;
     }
 

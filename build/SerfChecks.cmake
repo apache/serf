@@ -18,6 +18,7 @@
 # ===================================================================
 
 include(CheckCSourceCompiles)
+include(CheckCCompilerFlag)
 include(CheckIncludeFile)
 include(CheckTypeSize)
 
@@ -141,3 +142,13 @@ macro(CheckType name_ header_ symbol_)
     list(APPEND SERF_C_DEFINES "${symbol_}")
   endif()
 endmacro(CheckType)
+
+
+macro(CheckCFlag list_ flag_)
+  string(REGEX REPLACE "[/=-]" "__" __c__ "serf_feature_CheckCFlag_${flag_}")
+  check_c_compiler_flag(${flag_} ${__c__})
+  if(${__c__})
+    list(APPEND ${list_} ${flag_})
+  endif()
+  unset(__c__)
+endmacro(CheckCFlag)

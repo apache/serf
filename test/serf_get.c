@@ -231,8 +231,8 @@ static apr_status_t conn_setup(apr_socket_t *skt,
         if (!conn_ctx->ssl_ctx) {
             conn_ctx->ssl_ctx = serf_bucket_ssl_decrypt_context_get(c);
         }
-        serf_ssl_server_cert_chain_callback_set(conn_ctx->ssl_ctx, 
-                                                ignore_all_cert_errors, 
+        serf_ssl_server_cert_chain_callback_set(conn_ctx->ssl_ctx,
+                                                ignore_all_cert_errors,
                                                 print_certs, NULL);
         serf_ssl_set_hostname(conn_ctx->ssl_ctx, ctx->hostname);
 
@@ -407,7 +407,7 @@ static apr_status_t setup_request(serf_request_t *request,
     *acceptor_baton = ctx->acceptor_baton;
     *handler = ctx->handler;
     *handler_baton = ctx;
-    
+
     return APR_SUCCESS;
 }
 
@@ -816,7 +816,6 @@ int main(int argc, const char **argv)
     if (debug)
     {
         serf_log_output_t *output;
-        apr_status_t status;
 
         status = serf_logging_create_stream_output(&output,
                                                    context,
