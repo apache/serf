@@ -241,3 +241,4 @@ or, on Windows using the Visual Studio generator:
 
     $ cmake --build out --target install
     $ cmake --build out --config Release --target install
+
