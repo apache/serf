@@ -368,13 +368,16 @@ if sys.platform != 'win32':
     # env.Append(CCFLAGS=['-g'])
     env.SerfAppendIf(['CFLAGS', 'CCFLAGS'], r'-g\S*', CCFLAGS=['-g'])
     env.Append(CPPDEFINES=['DEBUG', '_DEBUG'])
-    env.Append(CCFLAGS=['-Wimplicit-function-declaration',
-                        '-Wmissing-variable-declarations',
-                        '-Wunreachable-code',
-                        '-Wshorten-64-to-32',
-                        '-Wno-system-headers',
-                        '-Wextra-tokens',
-                        '-Wnewline-eof'])
+    for flag in ['-Werror=unknown-warning-option',
+                 '-Wimplicit-function-declaration',
+                 '-Wmissing-variable-declarations',
+                 '-Wunreachable-code',
+                 '-Wshorten-64-to-32',
+                 '-Wno-system-headers',
+                 '-Wextra-tokens',
+                 '-Wnewline-eof']:
+        if env.SerfCheckCFlag(flag):
+          env.Append(CCFLAGS=[flag])
   else:
     # env.Append(CCFLAGS=['-O2'])
     env.SerfAppendIf(['CFLAGS', 'CCFLAGS'], r'-O\S*', CCFLAGS=['-O2'])
