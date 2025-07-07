@@ -759,8 +759,8 @@ serf__authn_info_t *serf__get_authn_info_for_server(serf_connection_t *conn);
 apr_hash_t *serf__parse_authn_parameters(const char *attrs, apr_pool_t *pool);
 
 /* Fold ASCII uppercase letters to lowercase, in place, using the same
-   case-folding table as serf__parse_authn_attributes() does for keys.*/
-void serf__tolower_inplace(char *dst);
+   case-folding serf__parse_authn_parameters() does for keys. */
+void serf__tolower_inplace(char *dst, apr_size_t length);
 
 /* Like serf__tolower_inplace, but allocates a new string from the pool. */
 const char *serf__tolower(const char *src, apr_pool_t *pool);

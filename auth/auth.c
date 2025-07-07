@@ -248,7 +248,7 @@ static int store_header_in_dict(void *baton,
                                 const char *header)
 {
     auth_baton_t *ab = baton;
-    const char *auth_attr;
+    apr_size_t auth_attr_len;
     char *auth_name;
 
     /* We're only interested in xxxx-Authenticate headers. */
@@ -256,15 +256,11 @@ static int store_header_in_dict(void *baton,
         return 0;
 
     /* Extract the authentication scheme name.  */
-    auth_attr = strchr(header, ' ');
-    if (auth_attr) {
-        auth_name = apr_pstrmemdup(ab->pool, header, auth_attr - header);
-    }
-    else
-        auth_name = apr_pstrmemdup(ab->pool, header, strlen(header));
+    auth_attr_len = strcspn(header, " ");
+    auth_name = apr_pstrmemdup(ab->pool, header, auth_attr_len);
 
     /* Convert scheme name to lower case to enable case insensitive matching. */
-    serf__tolower_inplace(auth_name);
+    serf__tolower_inplace(auth_name, auth_attr_len);
     apr_hash_set(ab->hdrs, auth_name, APR_HASH_KEY_STRING,
                  apr_pstrdup(ab->pool, header));
 
