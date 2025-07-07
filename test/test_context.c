@@ -183,7 +183,7 @@ static apr_status_t http_conn_setup_mock_socket(apr_socket_t *skt,
                                                                skt,
                                                                tb->bkt_alloc);
     *input_bkt = serf_bucket_mock_sock_create(skt_bkt,
-                                              tb->user_baton_s,
+                                              tb->user_status,
                                               tb->bkt_alloc);
 
     return APR_SUCCESS;
@@ -286,7 +286,7 @@ static void test_aborted_connection(CuTest *tc)
     /* Set up a test context with a server. Use the mock socket to return
        APR_ECONNABORTED instead of APR_EOF. */
     setup_test_mock_server(tb);
-    tb->user_baton_s = APR_ECONNABORTED;
+    tb->user_status = APR_ECONNABORTED;
     status = setup_test_client_context(tb, http_conn_setup_mock_socket,
                                        tb->pool);
     CuAssertIntEquals(tc, APR_SUCCESS, status);
@@ -304,7 +304,7 @@ static void test_aborted_connection_with_authn_cb(CuTest *tc)
     /* Set up a test context with a server. Use the mock socket to return
      APR_ECONNABORTED instead of APR_EOF. */
     setup_test_mock_server(tb);
-    tb->user_baton_s = APR_ECONNABORTED;
+    tb->user_status = APR_ECONNABORTED;
     status = setup_test_client_context(tb, http_conn_setup_mock_socket,
                                        tb->pool);
     CuAssertIntEquals(tc, APR_SUCCESS, status);
@@ -323,7 +323,7 @@ static void test_reset_connection(CuTest *tc)
     /* Set up a test context with a server. Use the mock socket to return
        APR_ECONNRESET instead of APR_EOF. */
     setup_test_mock_server(tb);
-    tb->user_baton_s = APR_ECONNRESET;
+    tb->user_status = APR_ECONNRESET;
     status = setup_test_client_context(tb, http_conn_setup_mock_socket,
                                        tb->pool);
     CuAssertIntEquals(tc, APR_SUCCESS, status);
@@ -341,7 +341,7 @@ static void test_reset_connection_with_authn_cb(CuTest *tc)
     /* Set up a test context with a server. Use the mock socket to return
        APR_ECONNRESET instead of APR_EOF. */
     setup_test_mock_server(tb);
-    tb->user_baton_s = APR_ECONNRESET;
+    tb->user_status = APR_ECONNRESET;
     status = setup_test_client_context(tb, http_conn_setup_mock_socket,
                                        tb->pool);
     CuAssertIntEquals(tc, APR_SUCCESS, status);

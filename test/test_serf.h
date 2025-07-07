@@ -89,8 +89,8 @@ typedef struct test_baton_t {
 
     /* Extra batons which can be freely used by tests. */
     void *user_baton;
-    long user_baton_l;
-    apr_status_t user_baton_s;
+    apr_uint64_t user_number;
+    apr_status_t user_status;
 
     /* Flags that can be used to report situations, e.g. that a callback was
        called. */

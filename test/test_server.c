@@ -78,8 +78,8 @@ static apr_status_t client_generate_response(serf_bucket_t **resp_bkt,
     serf_bucket_t *headers;
 #define CRLF "\r\n"
 
-    if (tb->user_baton_l == 401) {
-        tb->user_baton_l = 0;
+    if (tb->user_number == 401) {
+        tb->user_number = 0;
 
         body = SERF_BUCKET_SIMPLE_STRING("NOT HERE" CRLF, allocator);
 
@@ -299,7 +299,7 @@ static void test_listen_auth_http(CuTest *tc)
     create_new_request(tb, &handler_ctx[0], "GET", "/", 1);
     create_new_request(tb, &handler_ctx[1], "GET", "/", 2);
 
-    tb->user_baton_l = 401;
+    tb->user_number = 401;
     tb->user_baton = tc;
 
     status = run_client_server_loop(tb, num_requests,
@@ -327,7 +327,7 @@ static void test_listen_auth_http2(CuTest *tc)
     create_new_request(tb, &handler_ctx[0], "GET", "/", 1);
     create_new_request(tb, &handler_ctx[1], "GET", "/", 2);
 
-    tb->user_baton_l = 401;
+    tb->user_number = 401;
     tb->user_baton = tc;
 
     status = run_client_server_loop(tb, num_requests,

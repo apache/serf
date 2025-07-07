@@ -2026,7 +2026,7 @@ static void deflate_buckets(CuTest *tc, int nr_of_loops)
         serf_bucket_aggregate_append(aggbkt, strbkt);
     }
 
-    tb->user_baton_l = APR_EOF;
+    tb->user_status = APR_EOF;
     read_bucket_and_check_pattern(tc, defbkt, msg, nr_of_loops * strlen(msg));
 
     /* Release a few MB of memory kept by zlib */
@@ -2048,7 +2048,7 @@ static apr_status_t hold_open(void *baton, serf_bucket_t *aggbkt)
 {
     test_baton_t *tb = baton;
 
-    return tb->user_baton_l;
+    return tb->user_status;
 }
 
 static void put_32bit(unsigned char *buf, unsigned long x)
@@ -2109,7 +2109,7 @@ static void test_deflate_4GBplus_buckets(CuTest *tc)
     unsigned char uncompressed[BUFSIZE];
 
     serf_bucket_aggregate_hold_open(aggbkt, hold_open, tb);
-    tb->user_baton_l = APR_EAGAIN;
+    tb->user_status = APR_EAGAIN;
 
 
 #if 0 /* Enable logging */
@@ -2176,7 +2176,7 @@ static void test_deflate_4GBplus_buckets(CuTest *tc)
                                            sizeof(gzip_trailer), alloc);
     serf_bucket_aggregate_append(aggbkt, strbkt);
 
-    tb->user_baton_l = APR_EOF;
+    tb->user_status = APR_EOF;
 
     while (1) {
         apr_size_t read_len;
