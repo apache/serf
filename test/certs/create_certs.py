@@ -118,7 +118,7 @@ def create_crl(revokedcert, cakey, cacert, crlfile):
 
 
 # subjectAltName
-def create_cert(subjectkey, certfile, issuer: Certificate=None, issuerkey=None, country='',
+def create_cert(subjectkey, certfile, issuer=None, issuerkey=None, country='',
                 state='', city='', org='', ou='', cn='', email='', ca=False,
                 not_before=NOT_BEFORE, not_after=NOT_AFTER,
                 subjectAltName=None, ocsp_responder_url=None, ocsp_signer=False):
