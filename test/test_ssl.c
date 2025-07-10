@@ -175,7 +175,7 @@ static void test_ssl_cert_certificate(CuTest *tc)
     kv = serf_ssl_cert_certificate(cert, tb->pool);
     CuAssertPtrNotNull(tc, kv);
 
-    CuAssertStrEquals(tc, "11:07:27:BA:82:70:08:38:76:4D:F7:17:94:99:61:F0:46:04:F3:6D",
+    CuAssertStrEquals(tc, "29:56:A7:47:AA:F4:41:3C:50:B5:54:FB:49:94:F2:8E:14:41:59:4F",
                       apr_hash_get(kv, "sha1", APR_HASH_KEY_STRING));
     CuAssertStrEquals(tc, "Jun 18 10:39:14 2025 GMT",
                       apr_hash_get(kv, "notBefore", APR_HASH_KEY_STRING));
