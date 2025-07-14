@@ -54,7 +54,7 @@ BEGIN
       VALUE "InternalName", SERF_DLL_BASENAME "\0"
       VALUE "LegalCopyright", SERF_COPYRIGHT "\0"
       VALUE "OriginalFilename", SERF_DLL_BASENAME ".dll\0"
-      VALUE "ProductName", "Serf\0"
+      VALUE "ProductName", "Apache Serf\0"
       VALUE "ProductVersion", SERF_VERSION_STRING "\0"
     END
   END
