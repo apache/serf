@@ -31,7 +31,7 @@ create a symlink for 'scons' in your PATH to /path/to/scons/scons.py.
 
 Fetch the scons-local package:
   http://prdownloads.sourceforge.net/scons/scons-local-2.3.5.tar.gz
-  
+
 Alternatively create a virtual Python environment and install SCons via
 pip (replace the path ~/scons_venv with your preferred path):
 
@@ -104,6 +104,11 @@ $ scons --help
 1.1.3 Running the test suite
 
 $ scons check
+
+Some tests take a long time to run, for example a 4GB request. These can
+be enabled by passing ENABLE_SLOW_TESTS on the command line:
+
+$ scons check ENABLE_SLOW_TESTS=1
 
 
 1.1.4 Installing Apache Serf
@@ -235,6 +240,11 @@ or, on Windows using the Visual Studio generator:
 
     $ cmake --build out --config Release --target run_tests
 )
+
+Some tests take a long time to run, for example a 4GB request. These can
+be enabled by passing ENABLE_SLOW_TESTS on the command line:
+
+$ cmake -DENABLE_SLOW_TESTS=ON
 
 
 1.2.5 Installing Apache Serf
