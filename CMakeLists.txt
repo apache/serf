@@ -137,6 +137,7 @@ list(APPEND SOURCES
     "src/outgoing.c"
     "src/outgoing_request.c"
     "src/pump.c"
+    "src/resolve.c"
     "src/ssltunnel.c"
     "src/syntax.c"
     "auth/auth.c"
@@ -540,6 +541,9 @@ if(NOT SKIP_STATIC)
 endif()
 if(NOT SKIP_TESTS)
   set(_build_tests ON)
+  if(ENABLE_SLOW_TESTS)
+    set(_build_tests "ON, slow tests enabled")
+  endif()
 endif()
 if(DOT_CLANGD)
   set(_gen_dot_clangd ON)
