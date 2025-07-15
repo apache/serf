@@ -120,6 +120,8 @@ apr_status_t default_https_conn_setup(apr_socket_t *skt,
 
 apr_status_t use_new_connection(test_baton_t *tb,
                                 apr_pool_t *pool);
+apr_status_t use_new_async_connection(test_baton_t *tb,
+                                      apr_pool_t *pool);
 
 void *test_setup(void *baton);
 void *test_teardown(void *baton);

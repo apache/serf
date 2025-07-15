@@ -540,6 +540,58 @@ apr_status_t serf_connection_create3(
     apr_pool_t *pool);
 
 
+/**
+ * Notification callback when an address hae been resolved.
+ *
+ * The @a ctx and @a resolved_baton arguments are the same that were passed
+ * to serf_address_resolve_async().
+ *
+ * @a status contains the result of the address resolution. If it is notably
+ * @c APR_SUCCESS, then @a host_address is invalid and should be ignored.
+ *
+ * The resolved @a host_address is ephemeral, allocated iun @a pool and lives
+ * only for the duration of the callback. If ti is not consumed, it should be
+ * copied to a more permanent pool, using for example apr_sockaddr_info_copy().
+ *
+ * All temporary allocations should be made in @a pool.
+ *
+ * @since New in 1.4.
+ */
+/* FIXME: EXPERIMENTAL */
+typedef void (*serf_address_resolved_t)(
+    serf_context_t *ctx,
+    void *resolved_baton,
+    apr_sockaddr_t *host_address,
+    apr_status_t status,
+    apr_pool_t *pool);
+
+/**
+ * Asynchronously resolve an address.
+ *
+ * The address represented by @a host_info is intended to be used to create
+ * new connections in @a ctx; proxy configuration will be taken into account
+ * during resolution. See, for example, serf_connection_create3().
+ *
+ * The @a resolve callback will be called during a subsequent call to
+ * serf_context_run() or serf_context_prerun() and will receive the same
+ * @a ctx and @a resolved_baton that are preovided here.
+ *
+ * The lifetime of all function arguments except @a pool must extend until
+ * either @a resolve is called or an error is reported.
+ *
+ * All temporary allocations should be made in @a pool.
+ *
+ * @since New in 1.4.
+ */
+/* FIXME: EXPERIMENTAL */
+apr_status_t serf_address_resolve_async(
+    serf_context_t *ctx,
+    apr_uri_t host_info,
+    serf_address_resolved_t resolved,
+    void *resolved_baton,
+    apr_pool_t *pool);
+
+
 typedef apr_status_t (*serf_accept_client_t)(
     serf_context_t *ctx,
     serf_listener_t *l,

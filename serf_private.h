@@ -43,7 +43,8 @@ typedef int serf__bool_t; /* Not _Bool */
 #endif
 #endif
 
-#include <apr.h> /* For __attribute__ */
+#include <apr.h> /* For __attribute__ and APR_HAS_THREADS */
+#include <apr_thread_mutex.h>   /* For apr_thread_mutext_t */
 
  /* Define a MAX macro if we don't already have one */
 #ifndef MAX
@@ -438,6 +439,18 @@ apr_status_t
 serf__config_store_remove_host(serf__config_store_t config_store,
                                const char *hostname_port);
 
+
+typedef struct serf__resolve_result_t serf__resolve_result_t;
+struct serf__resolve_result_t
+{
+    apr_sockaddr_t *host_address;
+    apr_status_t status;
+    serf_address_resolved_t resolved;
+    void *resolved_baton;
+    apr_pool_t *result_pool;
+    serf__resolve_result_t *next;
+};
+
 struct serf_context_t {
     /* the pool used for self and for other allocations */
     apr_pool_t *pool;
@@ -484,6 +497,12 @@ struct serf_context_t {
     serf_credentials_callback_t cred_cb;
 
     serf_config_t *config;
+
+    /* The results of asynchronous address resolution. */
+#if APR_HAS_THREADS
+    apr_thread_mutex_t *resolve_guard;
+#endif
+    serf__resolve_result_t *resolve_head;
 };
 
 struct serf_listener_t {
@@ -664,6 +683,12 @@ struct serf_connection_t {
 /* Called by requests that still have outstanding requests to allow cleaning
    up buckets that may still reference buckets of this request */
 void serf__connection_pre_cleanup(serf_connection_t *);
+
+/* Called from serf_context_prerun() before handling the connections.
+   Processes the results of any asynchronously resolved addresses
+   that were initiated for CTX. */
+apr_status_t serf__process_async_resolve_results(serf_context_t *ctx);
+
 
 /*** Internal bucket functions ***/
 

@@ -192,6 +192,15 @@ serf_context_t *serf_context_create_ex(
     ctx->authn_types = SERF_AUTHN_ALL;
     ctx->server_authn_info = apr_hash_make(pool);
 
+    /* Initialize async resolver result queue. */
+#if APR_HAS_THREADS
+    /* FIXME: Ignore the status? */
+    apr_thread_mutex_create(&ctx->resolve_guard,
+                            APR_THREAD_MUTEX_DEFAULT,
+                            ctx->pool);
+#endif
+    ctx->resolve_head = NULL;
+
     /* Assume returned status is APR_SUCCESS */
     serf__config_store_init(ctx);
 
@@ -210,7 +219,14 @@ serf_context_t *serf_context_create(apr_pool_t *pool)
 
 apr_status_t serf_context_prerun(serf_context_t *ctx)
 {
-    apr_status_t status = APR_SUCCESS;
+    apr_status_t status;
+
+    /* Process async resolver results here, as that gives users a chance
+       to get their connections active in the same context run when the
+       result was made available. */
+    if ((status = serf__process_async_resolve_results(ctx)) != APR_SUCCESS)
+        return status;
+
     if ((status = serf__open_connections(ctx)) != APR_SUCCESS)
         return status;
 
