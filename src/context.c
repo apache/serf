@@ -136,6 +136,20 @@ void serf_config_authn_types(serf_context_t *ctx,
 }
 
 
+#ifdef BROKEN_WSAPOLL
+/* APR 1.4.x switched to using WSAPoll() on Win32, but it does not
+ * properly handle errors on a non-blocking sockets (such as
+ * connecting to a server where no listener is active).
+ *
+ * So, sadly, we must force using select() on Win32.
+ *
+ * http://mail-archives.apache.org/mod_mbox/apr-dev/201105.mbox/%3CBANLkTin3rBCecCBRvzUA5B-14u-NWxR_Kg@mail.gmail.com%3E
+ */
+#define PLATFORM_POLLSET_METHOD APR_POLLSET_SELECT
+#else
+#define PLATFORM_POLLSET_METHOD APR_POLLSET_DEFAULT
+#endif
+
 serf_context_t *serf_context_create_ex(
     void *user_baton,
     serf_socket_add_t addf,
@@ -160,20 +174,8 @@ serf_context_t *serf_context_create_ex(
            ### Probably move creation of the pollset to later when we have
            ### the possibility of returning status to the caller.
          */
-#ifdef BROKEN_WSAPOLL
-        /* APR 1.4.x switched to using WSAPoll() on Win32, but it does not
-         * properly handle errors on a non-blocking sockets (such as
-         * connecting to a server where no listener is active).
-         *
-         * So, sadly, we must force using select() on Win32.
-         *
-         * http://mail-archives.apache.org/mod_mbox/apr-dev/201105.mbox/%3CBANLkTin3rBCecCBRvzUA5B-14u-NWxR_Kg@mail.gmail.com%3E
-         */
         (void) apr_pollset_create_ex(&ps->pollset, MAX_CONN, pool, 0,
-                                     APR_POLLSET_SELECT);
-#else
-        (void) apr_pollset_create(&ps->pollset, MAX_CONN, pool, 0);
-#endif
+                                     PLATFORM_POLLSET_METHOD);
         ctx->pollset_baton = ps;
         ctx->pollset_add = pollset_add;
         ctx->pollset_rm = pollset_rm;
