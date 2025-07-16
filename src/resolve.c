@@ -79,6 +79,12 @@ apr_status_t serf_address_resolve_async(serf_context_t *ctx,
 {
     apr_pool_t *resolve_pool;
 
+#if APR_HAS_THREADS
+    if (ctx->resolve_guard_status != APR_SUCCESS) {
+        return ctx->resolve_guard_status;
+    }
+#endif
+
     apr_pool_create(&resolve_pool, ctx->pool);
 
     /* See serf_connection_create3(): if there's a proxy configured in the

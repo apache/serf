@@ -501,6 +501,7 @@ struct serf_context_t {
     /* The results of asynchronous address resolution. */
 #if APR_HAS_THREADS
     apr_thread_mutex_t *resolve_guard;
+    apr_status_t resolve_guard_status;
 #endif
     serf__resolve_result_t *resolve_head;
 };

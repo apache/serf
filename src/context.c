@@ -194,10 +194,11 @@ serf_context_t *serf_context_create_ex(
 
     /* Initialize async resolver result queue. */
 #if APR_HAS_THREADS
-    /* FIXME: Ignore the status? */
-    apr_thread_mutex_create(&ctx->resolve_guard,
-                            APR_THREAD_MUTEX_DEFAULT,
-                            ctx->pool);
+    ctx->resolve_guard_status = apr_thread_mutex_create(
+        &ctx->resolve_guard, APR_THREAD_MUTEX_DEFAULT, ctx->pool);
+    if (ctx->resolve_guard_status != APR_SUCCESS) {
+        ctx->resolve_guard = NULL;
+    }
 #endif
     ctx->resolve_head = NULL;
 
