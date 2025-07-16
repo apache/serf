@@ -362,9 +362,8 @@ static void log_ssl_error(serf_ssl_context_t *ctx)
     while ((err = ERR_get_error())) {
 
         if (err && ctx->error_callback) {
-            char ebuf[256];
-            ERR_error_string_n(err, ebuf, sizeof(ebuf));
-            ctx->error_callback(ctx->error_baton, ctx->fatal_err, ebuf);
+            char *errstr = ERR_error_string(err, NULL);
+            ctx->error_callback(ctx->error_baton, ctx->fatal_err, errstr);
         }
 
     }
@@ -1608,7 +1607,6 @@ static int ssl_pass_cb(UI *ui, UI_STRING *uis)
 static int ssl_need_client_cert(SSL *ssl, X509 **cert, EVP_PKEY **pkey)
 {
     serf_ssl_context_t *ctx = SSL_get_app_data(ssl);
-    unsigned long err = 0;
 #if defined(SERF_HAVE_OSSL_STORE_OPEN_EX)
     STACK_OF(X509) *leaves;
     STACK_OF(X509) *intermediates;
@@ -1919,7 +1917,7 @@ static int ssl_need_client_cert(SSL *ssl, X509 **cert, EVP_PKEY **pkey)
             return 1;
         }
         else {
-            err = ERR_get_error();
+            unsigned long err = ERR_get_error();
             ERR_clear_error();
             if (ERR_GET_LIB(err) == ERR_LIB_PKCS12 &&
                 ERR_GET_REASON(err) == PKCS12_R_MAC_VERIFY_FAILURE) {
