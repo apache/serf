@@ -37,6 +37,12 @@
  *  - Add cleanup function for in-flight resolve tasks if their owning
  *    context is destroyed. This function should be called from the
  *    context's pool cleanup handler.
+ *
+ *  - Wake the poll/select in serf_context_run() when new resolve
+ *    results are available.
+ *
+ *  - Add a way to cancel a resolve task.
+ *
  *  - Figure out what to do if the lock/unlock calls return an error.
  *    This should not be possible unless we messed up the implementation,
  *    but there should be a way for clients to back out of this situation.
