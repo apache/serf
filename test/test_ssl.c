@@ -31,6 +31,7 @@
 
 #include <openssl/ssl.h>
 #include <openssl/x509v3.h>
+#include <openssl/opensslv.h>
 #ifndef OPENSSL_NO_OCSP /* requires openssl 0.9.7 or later */
 #include <openssl/ocsp.h>
 #endif
@@ -2783,10 +2784,16 @@ static void test_ssl_ocsp_verify_response_no_signer(CuTest *tc)
 {
 #ifndef OPENSSL_NO_OCSP
     apr_status_t status = verify_ocsp_response(tc, 1, 0, 0, 0);
-    /* OCSP responses MUST be signed, we can't even create one
-       without a signature. This error doesn't come from response
-       validation but because OCSP_response_create() fails. */
+#if OPENSSL_VERSION_NUMBER >= (3 << 28) /* OpenSSL 3.0.0 */
+    /* OCSP responses MUST be signed, and on newer versions of OpenSSL we
+       can't even create one without a signature. This error doesn't come
+       from response validation but because OCSP_response_create() fails. */
     CuAssertIntEquals(tc, APR_EGENERAL, status);
+#else
+    /* But both LibreSSL and OpenSSL up to 1.1.1 do allow creating such
+       a response, and so our validation will return a different error. */
+    CuAssertIntEquals(tc, SERF_ERROR_SSL_OCSP_RESPONSE_INVALID, status);
+#endif
 #endif  /* OPENSSL_NO_OCSP */
 }
 
