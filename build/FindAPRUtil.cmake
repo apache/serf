@@ -41,7 +41,7 @@ cmake_minimum_required(VERSION 3.12)
 #
 #   APRUtil_FOUND          - True if APR-Util was found
 #   APRUTIL_VERSION        - The version of APR-Util found (x.y.z)
-#   APRUTIL_INCLUDES       - Where to find apr.h, etc.
+#   APRUTIL_INCLUDE_DIR    - Where to find apr.h, etc.
 #   APRUTIL_LIBRARIES      - Linker switches to use with ld to link against APR
 #
 # ::
@@ -83,7 +83,7 @@ else(APR_CONTAINS_APRUTIL)
 
   if(${CMAKE_SYSTEM_NAME} MATCHES "Windows")
 
-    _apru_find_win_version("apu" APRUTIL_INCLUDES
+    _apru_find_win_version("apu" APRUTIL_INCLUDE_DIR
                            APRUTIL_VERSION _apu_major _apu_minor)
     set(_apu_name "aprutil-${_apu_major}")
 
@@ -122,18 +122,17 @@ else(APR_CONTAINS_APRUTIL)
       _apru_config(${APRUTIL_CONFIG_EXECUTABLE} ${_varname} "${_regexp}" "${ARGN}")
     endmacro(_apu_invoke)
 
-    _apu_invoke(APRUTIL_INCLUDES  "(^| )-I" --includes)
-    _apu_invoke(APRUTIL_EXTRALIBS ""        --libs)
-    _apu_invoke(APRUTIL_LIBRARIES ""        --link-ld)
-    _apu_invoke(APRUTIL_LDFLAGS   ""        --ldflags)
-    _apu_invoke(APRUTIL_VERSION   ""        --version)
+    _apu_invoke(APRUTIL_INCLUDE_DIR  ""  --includedir)
+    _apu_invoke(APRUTIL_EXTRALIBS    ""  --libs)
+    _apu_invoke(APRUTIL_LIBRARIES    ""  --link-ld)
+    _apu_invoke(APRUTIL_VERSION      ""  --version)
 
   endif()   # NOT Windows
 
   include(FindPackageHandleStandardArgs)
   find_package_handle_standard_args(
     APRUtil
-    REQUIRED_VARS APRUTIL_LIBRARIES APRUTIL_INCLUDES
+    REQUIRED_VARS APRUTIL_LIBRARIES APRUTIL_INCLUDE_DIR
     VERSION_VAR APRUTIL_VERSION)
 
   if(APRUtil_FOUND)
@@ -142,7 +141,7 @@ else(APR_CONTAINS_APRUTIL)
       if(APRUTIL_LIBRARIES AND APRUTIL_RUNTIME_LIBS)
         add_library(APR::APRUtil SHARED IMPORTED)
         set_target_properties(APR::APRUtil PROPERTIES
-          INTERFACE_INCLUDE_DIRECTORIES "${APRUTIL_INCLUDES}"
+          INTERFACE_INCLUDE_DIRECTORIES "${APRUTIL_INCLUDE_DIR}"
           IMPORTED_LOCATION "${APRUTIL_RUNTIME_LIBS}"
           IMPORTED_IMPLIB "${APRUTIL_LIBRARIES}")
         if(TARGET APR::APR)
@@ -159,7 +158,7 @@ else(APR_CONTAINS_APRUTIL)
         add_library(APR::APRUtil_static STATIC IMPORTED)
         set_target_properties(APR::APRUtil_static PROPERTIES
           INTERFACE_COMPILE_DEFINITIONS "APU_DECLARE_STATIC"
-          INTERFACE_INCLUDE_DIRECTORIES "${APRUTIL_INCLUDES}"
+          INTERFACE_INCLUDE_DIRECTORIES "${APRUTIL_INCLUDE_DIR}"
           IMPORTED_LOCATION "${_apu_static}")
         target_link_libraries(APR::APRUtil_static
           INTERFACE ${_apu_extra})
@@ -170,10 +169,10 @@ else(APR_CONTAINS_APRUTIL)
       _apru_location(_apu_library _apu_extra "${APRUTIL_LIBRARIES}")
       add_library(APR::APRUtil UNKNOWN IMPORTED)
       set_target_properties(APR::APRUtil PROPERTIES
-        INTERFACE_INCLUDE_DIRECTORIES "${APRUTIL_INCLUDES}"
+        INTERFACE_INCLUDE_DIRECTORIES "${APRUTIL_INCLUDE_DIR}"
         IMPORTED_LOCATION "${_apu_library}")
       target_link_libraries(APR::APRUtil
-          INTERFACE ${APRUTIL_LDFLAGS};${APRUTIL_EXTRALIBS};${_apu_extra})
+        INTERFACE ${APRUTIL_EXTRALIBS} ${_apu_extra})
     endif()   # NOT Windows
   endif(APRUtil_FOUND)
 
