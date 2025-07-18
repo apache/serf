@@ -28,6 +28,7 @@
 # ZLIB_ROOT         - Path to zlib's install area
 # Brotli_ROOT       - Path to Brotli's install area
 # GSSAPI_ROOT       - Path to GSSAPI's install area
+# Unbound_ROOT      - Path to libunbound's install area
 # ===================================================================
 
 cmake_minimum_required(VERSION 3.12)
@@ -261,6 +262,21 @@ else()
   endif()
 endif()
 
+
+# FIXME: VERYTEMPORARY, figure out FindUnbound.cmake first.
+set(Unbound_FOUND FALSE)
+if (Unbound_FOUND)
+  set(UNBOUND_INCLUDE_DIR "/opt/homebrew/opt/unbound/include")
+  set(UNBOUND_LIBRARIES "/opt/homebrew/opt/unbound/lib/libunbound.dylib")
+  # set(UNBOUND_LIBRARIES "/usr/lib/aarch64-linux-gnu/libunbound.so")
+  # set(UNBOUND_LIBRARIES "/usr/lib64/libunbound.so")
+  add_library(Unbound::Unbound UNKNOWN IMPORTED)
+  set_target_properties(Unbound::Unbound PROPERTIES
+    INTERFACE_INCLUDE_DIRECTORIES "${UNBOUND_INCLUDE_DIR}")
+  set_target_properties(Unbound::Unbound PROPERTIES
+    IMPORTED_LOCATION "${UNBOUND_LIBRARIES}")
+endif(Unbound_FOUND)
+
 # Calculate the set of private and public targets
 set(SERF_PRIVATE_TARGETS OpenSSL::Crypto OpenSSL::SSL ZLIB::ZLIB)
 if(Brotli_FOUND)
@@ -269,6 +285,11 @@ endif()
 if(GSSAPI_FOUND)
   list(APPEND SERF_C_DEFINES "SERF_HAVE_GSSAPI")
   list(APPEND SERF_PRIVATE_TARGETS KRB5::GSSAPI)
+endif()
+if(Unbound_FOUND)
+  list(APPEND SERF_C_DEFINES "SERF_HAVE_ASYNC_RESOLVER=1")
+  list(APPEND SERF_C_DEFINES "SERF_HAVE_UNBOUND")
+  list(APPEND SERF_PRIVATE_TARGETS Unbound::Unbound)
 endif()
 
 if(APR_STATIC)
@@ -532,6 +553,7 @@ set(_gen_dot_clangd OFF)
 set(_have_brotli OFF)
 set(_have_gssapi OFF)
 set(_have_sspi OFF)
+set(_have_unbound OFF)
 
 if(NOT SKIP_SHARED)
   set(_build_shared ON)
@@ -558,6 +580,9 @@ endif()
 if("SERF_HAVE_SSPI" IN_LIST SERF_C_DEFINES)
   set(_have_sspi ON)
 endif()
+if ("SERF_HAVE_UNBOUND" IN_LIST SERF_C_DEFINES)
+  set(_have_unbound "EXPERIMENTAL")
+endif()
 
 message(STATUS "Summary:")
 message(STATUS "  Version ................... : ${SERF_VERSION}")
@@ -574,6 +599,7 @@ message(STATUS "  Options:")
 message(STATUS "    Brotli .................. : ${_have_brotli}")
 message(STATUS "    GSSAPI .................. : ${_have_gssapi}")
 message(STATUS "    SSPI .................... : ${_have_sspi}")
+message(STATUS "    Unbound ................. : ${_have_unbound}")
 message(STATUS "  Install:")
 message(STATUS "    prefix: ................. : ${CMAKE_INSTALL_PREFIX}")
 message(STATUS "    headers: ................ : ${SERF_INSTALL_HEADERS}")

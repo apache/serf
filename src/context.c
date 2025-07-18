@@ -195,14 +195,21 @@ serf_context_t *serf_context_create_ex(
     ctx->server_authn_info = apr_hash_make(pool);
 
     /* Initialize async resolver result queue. */
+    ctx->resolve_init_status = APR_SUCCESS;
+    ctx->resolve_head = NULL;
 #if APR_HAS_THREADS
-    ctx->resolve_guard_status = apr_thread_mutex_create(
+    ctx->resolve_init_status = apr_thread_mutex_create(
         &ctx->resolve_guard, APR_THREAD_MUTEX_DEFAULT, ctx->pool);
-    if (ctx->resolve_guard_status != APR_SUCCESS) {
+    if (ctx->resolve_init_status != APR_SUCCESS) {
         ctx->resolve_guard = NULL;
     }
 #endif
-    ctx->resolve_head = NULL;
+    if (ctx->resolve_init_status == APR_SUCCESS) {
+        ctx->resolve_init_status = serf__create_resolve_context(ctx);
+    }
+    if (ctx->resolve_init_status != APR_SUCCESS) {
+        ctx->resolve_context = NULL;
+    }
 
     /* Assume returned status is APR_SUCCESS */
     serf__config_store_init(ctx);

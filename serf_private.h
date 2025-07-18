@@ -498,12 +498,13 @@ struct serf_context_t {
 
     serf_config_t *config;
 
-    /* The results of asynchronous address resolution. */
+    /* Support for asynchronous address resolution. */
+    apr_status_t resolve_init_status;
+    serf__resolve_result_t *resolve_head;
 #if APR_HAS_THREADS
     apr_thread_mutex_t *resolve_guard;
-    apr_status_t resolve_guard_status;
 #endif
-    serf__resolve_result_t *resolve_head;
+    void *resolve_context;
 };
 
 struct serf_listener_t {
@@ -684,6 +685,10 @@ struct serf_connection_t {
 /* Called by requests that still have outstanding requests to allow cleaning
    up buckets that may still reference buckets of this request */
 void serf__connection_pre_cleanup(serf_connection_t *);
+
+/* Called from serf_context_create_ex() to set up the context-specific
+   asynchronous address resolver context. */
+apr_status_t serf__create_resolve_context(serf_context_t *ctx);
 
 /* Called from serf_context_prerun() before handling the connections.
    Processes the results of any asynchronously resolved addresses

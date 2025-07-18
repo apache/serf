@@ -1046,8 +1046,8 @@ static void test_async_resolve(CuTest *tc)
         if (!APR_STATUS_IS_TIMEUP(status))
             CuAssertIntEquals(tc, APR_SUCCESS, status);
     }
-    CuAssertPtrNotNull(tc, tb->connection);
     CuAssertIntEquals(tc, APR_SUCCESS, tb->user_status);
+    CuAssertPtrNotNull(tc, tb->connection);
 
     /* Send some requests on the connections */
     for (i = 0 ; i < num_requests ; i++) {

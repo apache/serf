@@ -20,16 +20,32 @@
 
 #include <apr.h>
 #include <apr_errno.h>
-#include <apr_network_io.h>
 #include <apr_pools.h>
+#include <apr_network_io.h>
 #include <apr_thread_mutex.h>
 #include <apr_thread_pool.h>
+
+/* This will include <netinet/in.h> and/or <arpa/inet.h>, which we'll
+   use for logging the resolver results. On Windows, we'll always get
+   <Winsock2.h> from <apr.h>. */
+#define APR_WANT_BYTEFUNC
+#include <apr_want.h>
 
 #include "serf.h"
 #include "serf_private.h"
 
 
-#define HAVE_ASYNC_RESOLVER (SERF_USE_ASYNC_RESOLVER || APR_HAS_THREADS)
+#define HAVE_ASYNC_RESOLVER (SERF_HAVE_ASYNC_RESOLVER || APR_HAS_THREADS)
+
+#if SERF_HAVE_ASYNC_RESOLVER
+#if SERF_HAVE_UNBOUND
+#include <unbound.h>
+#else
+/* Really shouldn't happen, but just in case it does, fall back
+   to the apr_thread_pool-based resolver. */
+#undef SERF_HAVE_ASYNC_RESOLVER
+#endif  /* SERF_HAVE_UNBOUND */
+#endif
 
 /*
  * FIXME: EXPERIMENTAL
@@ -41,13 +57,23 @@
  *  - Wake the poll/select in serf_context_run() when new resolve
  *    results are available.
  *
- *  - Add a way to cancel a resolve task.
+ *  - Add a way to cancel a resolve task?
  *
  *  - Figure out what to do if the lock/unlock calls return an error.
  *    This should not be possible unless we messed up the implementation,
  *    but there should be a way for clients to back out of this situation.
  *    Failed lock/unlock could potentially leave the context in an
  *    inconsistent state.
+ *
+ * TODO for Unbound:
+ *  - Convert unbound results to apr_sockaddr_t.
+ *
+ *  - Resolve both IPv4 and IPv6 addresses. This will require creating two
+ *    asynchronous resolve tasks and combining the results so that our
+ *    callback gets invoked only once both tasks are completed.
+ *
+ *  - Figure out how to use libunbound's event-based API, because it uses
+ *    true asynchronous I/O instead of background threads.
  */
 
 
@@ -57,7 +83,7 @@
    onto the context's result queue. */
 static void push_resolve_result(serf_context_t *ctx,
                                 apr_sockaddr_t *host_address,
-                                apr_status_t status,
+                                apr_status_t resolve_status,
                                 serf_address_resolved_t resolved,
                                 void *resolved_baton,
                                 apr_pool_t *resolve_pool);
@@ -80,8 +106,8 @@ apr_status_t serf_address_resolve_async(serf_context_t *ctx,
     apr_pool_t *resolve_pool;
 
 #if APR_HAS_THREADS
-    if (ctx->resolve_guard_status != APR_SUCCESS) {
-        return ctx->resolve_guard_status;
+    if (ctx->resolve_init_status != APR_SUCCESS) {
+        return ctx->resolve_init_status;
     }
 #endif
 
@@ -117,10 +143,16 @@ apr_status_t serf_address_resolve_async(serf_context_t *ctx,
 #endif  /* !HAVE_ASYNC_RESOLVER */
 
 
-#if SERF_USE_ASYNC_RESOLVER
+#if SERF_HAVE_ASYNC_RESOLVER
 
 /* TODO: Add implementation for one or more async resolver libraries. */
 #if 0
+/* Called during context creation. Must initialize ctx->resolver_context. */
+static apr_status_t create_resolve_context(serf_context_t *ctx)
+{
+    ...
+}
+
 static apr_status_t resolve_address_async(serf_context_t *ctx,
                                           apr_uri_t host_info,
                                           serf_address_resolved_t resolved,
@@ -134,13 +166,257 @@ static apr_status_t resolve_address_async(serf_context_t *ctx,
 /* Some asynchronous resolved libraries use event loop to harvest results.
    This function will be called from serf__process_async_resolve_results()
    so, in effect, from serf_context_prerun(). */
-static void run_async_resolver_loop(void)
+static apr_status_t run_async_resolver_loop(serf_context_t *ctx)
 {
     ...
 }
-#endif
+#endif  /* 0 */
 
-#else    /* !SERF_USE_ASYNC_RESOLVER */
+#if SERF_HAVE_UNBOUND
+
+static apr_status_t err_to_status(enum ub_ctx_err err)
+{
+    switch (err)
+    {
+    case UB_NOERROR:
+        /* no error */
+        return APR_SUCCESS;
+
+    case UB_SOCKET:
+        /* socket operation. Set to -1, so that if an error from _fd() is
+           passed (-1) it gives a socket error. */
+        if (errno)
+            return APR_FROM_OS_ERROR(errno);
+        return APR_ENOTSOCK;
+
+    case UB_NOMEM:
+        /* alloc failure */
+        return APR_ENOMEM;
+
+    case UB_SYNTAX:
+        /* syntax error */
+        return APR_EINIT;
+
+    case UB_SERVFAIL:
+        /* DNS service failed */
+        return APR_EAGAIN;
+
+    case UB_FORKFAIL:
+        /* fork() failed */
+        return APR_ENOMEM;
+
+    case UB_AFTERFINAL:
+        /* cfg change after finalize() */
+        return APR_EINIT;
+
+    case UB_INITFAIL:
+        /* initialization failed (bad settings) */
+        return APR_EINIT;
+
+    case UB_PIPE:
+        /* error in pipe communication with async bg worker */
+        return APR_EPIPE;
+
+    case UB_READFILE:
+        /* error reading from file (resolv.conf) */
+        if (errno)
+            return APR_FROM_OS_ERROR(errno);
+        return APR_ENOENT;
+
+    case UB_NOID:
+        /* error async_id does not exist or result already been delivered */
+        return APR_EINVAL;
+
+    default:
+        return APR_EGENERAL;
+    }
+}
+
+
+static apr_status_t cleanup_resolve_context(void *baton)
+{
+    struct ub_ctx *const resolve_context = baton;
+    ub_ctx_delete(resolve_context);
+    return APR_SUCCESS;
+}
+
+static apr_status_t create_resolve_context(serf_context_t *ctx)
+{
+    int err;
+    struct ub_ctx *const resolve_context = ub_ctx_create();
+    if (!resolve_context)
+        return APR_ENOMEM;
+
+    err = ub_ctx_resolvconf(resolve_context, NULL);
+    if (!err)
+        err = ub_ctx_hosts(resolve_context, NULL);
+    if (!err)
+        err = ub_ctx_async(resolve_context, true);
+
+    if (err) {
+        const apr_status_t status = err_to_status(err);
+        /* TODO: Error callback */
+        serf__log(LOGLVL_ERROR, LOGCOMP_CONN, __FILE__, ctx->config,
+                  "unbound ctx init: %s\n", ub_strerror(err));
+        return status;
+    }
+
+    ctx->resolve_context = resolve_context;
+    /* pre-cleanup because the live resolve tasks contain subpools of the
+       context pool and must be canceled before their pools go away. */
+    apr_pool_pre_cleanup_register(ctx->pool, resolve_context,
+                                  cleanup_resolve_context);
+    return APR_SUCCESS;
+}
+
+
+/* Task data for the Unbound resolver. */
+typedef struct unbound_resolve_task resolve_task_t;
+struct unbound_resolve_task
+{
+    serf_context_t *ctx;
+    apr_port_t host_port;
+    serf_address_resolved_t resolved;
+    void *resolved_baton;
+    apr_pool_t *resolve_pool;
+};
+
+static void resolve_callback(void* baton, int err,
+                             struct ub_result* result)
+{
+    resolve_task_t *const task = baton;
+    apr_status_t status = err_to_status(err);
+
+    if (err) {
+        /* TODO: Error callback */
+        serf__log(LOGLVL_ERROR, LOGCOMP_CONN, __FILE__, task->ctx->config,
+                  "unbound resolve: error %s\n", ub_strerror(err));
+    }
+    if (!result->havedata) {
+        if (result->nxdomain) {
+            /* TODO: Error callback */
+            serf__log(LOGLVL_ERROR, LOGCOMP_CONN, __FILE__, task->ctx->config,
+                      "unbound resolve: NXDOMAIN [%d]\n", result->rcode);
+            if (status == APR_SUCCESS)
+                status = APR_ENOENT;
+        }
+        if (result->bogus) {
+            /* TODO: Error callback */
+            serf__log(LOGLVL_ERROR, LOGCOMP_CONN, __FILE__, task->ctx->config,
+                      "unbound resolve: BOGUS [%d]%s%s\n", result->rcode,
+                      result->why_bogus ? " " : "",
+                      result->why_bogus ? result->why_bogus : "");
+            if (status == APR_SUCCESS)
+                status = APR_EINVAL;
+        }
+        if (result->was_ratelimited) {
+            /* TODO: Error callback */
+            serf__log(LOGLVL_ERROR, LOGCOMP_CONN, __FILE__, task->ctx->config,
+                      "unbound resolve: SERVFAIL [%d]\n", result->rcode);
+            if (status == APR_SUCCESS)
+                status = APR_EAGAIN;
+        }
+
+        /* This shouldn't happen, one of the previous checks should
+           have caught an error. */
+        if (status == APR_SUCCESS) {
+            /* TODO: Error callback */
+            serf__log(LOGLVL_ERROR, LOGCOMP_CONN, __FILE__, task->ctx->config,
+                      "unbound resolve: no data [%d]\n", result->rcode);
+            status = APR_ENOENT;
+        }
+    }
+
+    if (status)
+    {
+        push_resolve_result(task->ctx, NULL, status,
+                            task->resolved, task->resolved_baton,
+                            task->resolve_pool);
+    }
+    else
+    {
+        if (serf__log_enabled(LOGLVL_DEBUG, LOGCOMP_CONN,task->ctx->config))
+        {
+            int i;
+
+            for (i = 0; result->data && result->data[i]; ++i) {
+                char buf[INET6_ADDRSTRLEN];
+                const socklen_t len = sizeof(buf);
+                const char *address = "(AF-unknown)";
+
+                if (result->len[i] == sizeof(struct in_addr))
+                    address = inet_ntop(AF_INET, result->data[i], buf, len);
+                else if (result->len[i] == sizeof(struct in6_addr))
+                    address = inet_ntop(AF_INET6, result->data[i], buf, len);
+                serf__log(LOGLVL_DEBUG, LOGCOMP_CONN,
+                          __FILE__, task->ctx->config,
+                          "unbound resolve: %s: %s\n", result->qname, address);
+            }
+        }
+
+        /* TODO: Convert ub_result to apr_sockaddr_t */
+        push_resolve_result(task->ctx, NULL, APR_EAFNOSUPPORT,
+                            task->resolved, task->resolved_baton,
+                            task->resolve_pool);
+    }
+
+    ub_resolve_free(result);
+}
+
+static apr_status_t resolve_address_async(serf_context_t *ctx,
+                                          apr_uri_t host_info,
+                                          serf_address_resolved_t resolved,
+                                          void *resolved_baton,
+                                          apr_pool_t *resolve_pool,
+                                          apr_pool_t *scratch_pool)
+{
+    struct ub_ctx *const resolve_context = ctx->resolve_context;
+    resolve_task_t *const task = apr_palloc(resolve_pool, sizeof(*task));
+    apr_status_t status = APR_SUCCESS;
+    int err;
+
+    task->ctx = ctx;
+    task->host_port = host_info.port;
+    task->resolved = resolved;
+    task->resolved_baton = resolved_baton;
+    task->resolve_pool = resolve_pool;
+
+    /* FIXME: We should resolve both RRType 1 (A) and RRType 28 (AAAA). */
+    if ((err = ub_resolve_async(resolve_context, host_info.hostname,
+                                1,   /* rrtype: IPv4 host address (A) */
+                                1,   /* rrclass: IN(ternet) */
+                                task, resolve_callback, NULL)))
+    {
+        /* TODO: Error callback */
+        status = err_to_status(err);
+        serf__log(LOGLVL_ERROR, LOGCOMP_CONN, __FILE__, ctx->config,
+                  "unbound resolve start: %s\n", ub_strerror(err));
+    }
+
+    return status;
+}
+
+static apr_status_t run_async_resolver_loop(serf_context_t *ctx)
+{
+    struct ub_ctx *const resolve_context = ctx->resolve_context;
+
+    if (ub_poll(resolve_context)) {
+        const int err = ub_process(resolve_context);
+        if (err) {
+            const apr_status_t status = err_to_status(err);
+            /* TODO: Error callback */
+            serf__log(LOGLVL_ERROR, LOGCOMP_CONN, __FILE__, ctx->config,
+                      "unbound process: %s\n", ub_strerror(err));
+            return status;
+        }
+    }
+
+    return APR_SUCCESS;
+}
+
+#endif  /* SERF_HAVE_UNBOUND */
+
+#else   /* !SERF_HAVE_ASYNC_RESOLVER */
 #if APR_HAS_THREADS
 
 /* This could be made configurable, but given that this is a fallback
@@ -165,9 +441,16 @@ static apr_status_t init_work_queue(void *baton)
 }
 
 
+static apr_status_t create_resolve_context(serf_context_t *ctx)
+{
+    ctx->resolve_context = NULL;
+    return APR_SUCCESS;
+}
+
+
 /* Task data for the thred pool resolver. */
-typedef struct resolve_task_t resolve_task_t;
-struct resolve_task_t
+typedef struct threadpool_resolve_task resolve_task_t;
+struct threadpool_resolve_task
 {
     serf_context_t *ctx;
     apr_uri_t host_info;
@@ -188,6 +471,28 @@ static void *APR_THREAD_FUNC resolve(apr_thread_t *thread, void *baton)
                                    APR_UNSPEC,
                                    task->host_info.port,
                                    0, task->resolve_pool);
+
+    if (status) {
+        host_address = NULL;
+    }
+    else if (serf__log_enabled(LOGLVL_DEBUG, LOGCOMP_CONN, task->ctx->config))
+    {
+        apr_sockaddr_t *addr = host_address;
+        while (addr)
+        {
+            char buf[INET6_ADDRSTRLEN];
+            const socklen_t len = sizeof(buf);
+            const char *address = "(AF-unknown)";
+
+            if (addr->family == APR_INET || addr->family == APR_INET6)
+                address = inet_ntop(addr->family, addr->ipaddr_ptr, buf, len);
+            serf__log(LOGLVL_DEBUG, LOGCOMP_CONN,
+                      __FILE__, task->ctx->config,
+                      "apr async resolve: %s: %s\n", addr->hostname, address);
+            addr = addr->next;
+        }
+    }
+
     push_resolve_result(task->ctx, host_address, status,
                         task->resolved, task->resolved_baton,
                         task->resolve_pool);
@@ -222,10 +527,13 @@ static apr_status_t resolve_address_async(serf_context_t *ctx,
 
 /* This is a no-op since we're using a thread pool that
    does its own task queue management. */
-static void run_async_resolver_loop(void) {}
+static apr_status_t run_async_resolver_loop(serf_context_t *ctx)
+{
+    return APR_SUCCESS;
+}
 
 #endif  /* !APR_HAS_THREADS */
-#endif  /* !SERF_USE_ASYNC_RESOLVER */
+#endif  /* !SERF_HAVE_ASYNC_RESOLVER */
 
 
 /*******************************************************************/
@@ -269,30 +577,37 @@ static apr_status_t unlock_results(serf_context_t *ctx)
 
 static void push_resolve_result(serf_context_t *ctx,
                                 apr_sockaddr_t *host_address,
-                                apr_status_t status,
+                                apr_status_t resolve_status,
                                 serf_address_resolved_t resolved,
                                 void *resolved_baton,
                                 apr_pool_t *resolve_pool)
 {
     serf__resolve_result_t *result;
-    apr_status_t lock_status;
+    apr_status_t status;
 
     result = apr_palloc(resolve_pool, sizeof(*result));
     result->host_address = host_address;
-    result->status = status;
+    result->status = resolve_status;
     result->resolved = resolved;
     result->resolved_baton = resolved_baton;
     result->result_pool = resolve_pool;
 
-    lock_status = lock_results(ctx);
-    if (!lock_status)
+    status = lock_results(ctx);
+    if (!status)
     {
         result->next = ctx->resolve_head;
         ctx->resolve_head = result;
-        lock_status = unlock_results(ctx);
+        status = unlock_results(ctx);
     }
 
-    /* TODO: if (lock_status) ... then what? */
+    /* TODO: if (status) ... then what? */
+}
+
+
+/* Internal API */
+apr_status_t serf__create_resolve_context(serf_context_t *ctx)
+{
+    return create_resolve_context(ctx);
 }
 
 
@@ -300,21 +615,23 @@ static void push_resolve_result(serf_context_t *ctx,
 apr_status_t serf__process_async_resolve_results(serf_context_t *ctx)
 {
     serf__resolve_result_t *result = NULL;
-    apr_status_t lock_status;
+    apr_status_t status;
 
-    run_async_resolver_loop();
+    status = run_async_resolver_loop(ctx);
+    if (status)
+        return status;
 
-    lock_status = lock_results(ctx);
-    if (lock_status)
-        return lock_status;
+    status = lock_results(ctx);
+    if (status)
+        return status;
 
     result = ctx->resolve_head;
     ctx->resolve_head = NULL;
-    lock_status = unlock_results(ctx);
+    status = unlock_results(ctx);
 
-    /* TODO: if (lock_status) ... then what? Shouldn't be possible. */
-    /* if (lock_status) */
-    /*     return lock_status; */
+    /* TODO: if (status) ... then what? Shouldn't be possible. */
+    /* if (status) */
+    /*     return status; */
 
     while (result)
     {
