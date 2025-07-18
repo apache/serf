@@ -50,10 +50,6 @@
 /*
  * FIXME: EXPERIMENTAL
  * TODO:
- *  - Add cleanup function for in-flight resolve tasks if their owning
- *    context is destroyed. This function should be called from the
- *    context's pool cleanup handler.
- *
  *  - Wake the poll/select in serf_context_run() when new resolve
  *    results are available.
  *
@@ -424,9 +420,10 @@ static apr_status_t run_async_resolver_loop(serf_context_t *ctx)
 #define MAX_WORK_QUEUE_THREADS 50
 static apr_pool_t *work_pool = NULL;
 static apr_thread_pool_t *work_queue = NULL;
-static apr_status_t init_work_queue(void *baton)
+
+static apr_status_t do_init_work_queue(void *baton)
 {
-    serf_context_t *ctx = baton;
+    serf_context_t *const ctx = baton;
     apr_status_t status;
 
     apr_pool_create(&work_pool, NULL);
@@ -440,11 +437,29 @@ static apr_status_t init_work_queue(void *baton)
     return status;
 }
 
+static apr_status_t init_work_queue(serf_context_t *ctx)
+{
+    SERF__DECLARE_STATIC_INIT_ONCE_CONTEXT(init_ctx);
+    return serf__init_once(&init_ctx, do_init_work_queue, ctx);
+}
+
+
+static apr_status_t cleanup_resolve_tasks(void *baton)
+{
+    /* baton is serf_context_t */
+    return apr_thread_pool_tasks_cancel(work_queue, baton);
+}
 
 static apr_status_t create_resolve_context(serf_context_t *ctx)
 {
+    apr_status_t status;
+
     ctx->resolve_context = NULL;
-    return APR_SUCCESS;
+    status = init_work_queue(ctx);
+    if (status == APR_SUCCESS)
+        apr_pool_pre_cleanup_register(ctx->pool, ctx, cleanup_resolve_tasks);
+
+    return status;
 }
 
 
@@ -507,10 +522,7 @@ static apr_status_t resolve_address_async(serf_context_t *ctx,
                                           apr_pool_t *scratch_pool)
 {
     resolve_task_t *task;
-    apr_status_t status;
-    SERF__DECLARE_STATIC_INIT_ONCE_CONTEXT(init_ctx);
-
-    status = serf__init_once(&init_ctx, init_work_queue, ctx);
+    apr_status_t status = init_work_queue(ctx);
     if (status)
         return status;
 
