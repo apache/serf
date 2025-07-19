@@ -19,24 +19,24 @@
  */
 
 #include <apr.h>
+
+/* This will the headers needed for inet_ntop and related structs.
+   On Windows, we'll always get <Winsock2.h> from <apr.h>. */
+#if APR_HAVE_NETINET_IN_H
+#include <netinet/in.h>
+#endif
+#if APR_HAVE_ARPA_INET_H
+#include <arpa/inet.h>
+#endif
+
 #include <apr_errno.h>
 #include <apr_pools.h>
+#include <apr_atomic.h>
 #include <apr_network_io.h>
 #include <apr_thread_mutex.h>
 #include <apr_thread_pool.h>
 
-/* This will include <netinet/in.h> and/or <arpa/inet.h>, which we'll
-   use for logging the resolver results. On Windows, we'll always get
-   <Winsock2.h> from <apr.h>. */
-#define APR_WANT_BYTEFUNC
-#include <apr_want.h>
-
-#include "serf.h"
-#include "serf_private.h"
-
-
-#define HAVE_ASYNC_RESOLVER (SERF_HAVE_ASYNC_RESOLVER || APR_HAS_THREADS)
-
+/* Third-party resolver headers. */
 #if SERF_HAVE_ASYNC_RESOLVER
 #if SERF_HAVE_UNBOUND
 #include <unbound.h>
@@ -46,6 +46,12 @@
 #undef SERF_HAVE_ASYNC_RESOLVER
 #endif  /* SERF_HAVE_UNBOUND */
 #endif
+
+#include "serf.h"
+#include "serf_private.h"
+
+
+#define HAVE_ASYNC_RESOLVER (SERF_HAVE_ASYNC_RESOLVER || APR_HAS_THREADS)
 
 /*
  * FIXME: EXPERIMENTAL
@@ -229,39 +235,48 @@ static apr_status_t err_to_status(enum ub_ctx_err err)
 }
 
 
+struct resolve_context
+{
+    struct ub_ctx *ub_ctx;
+    volatile apr_uint32_t tasks;
+};
+
 static apr_status_t cleanup_resolve_context(void *baton)
 {
-    struct ub_ctx *const resolve_context = baton;
-    ub_ctx_delete(resolve_context);
+    struct resolve_context *const rctx = baton;
+    ub_ctx_delete(rctx->ub_ctx);
     return APR_SUCCESS;
 }
 
 static apr_status_t create_resolve_context(serf_context_t *ctx)
 {
+    struct resolve_context *const rctx = apr_palloc(ctx->pool, sizeof(*rctx));
     int err;
-    struct ub_ctx *const resolve_context = ub_ctx_create();
-    if (!resolve_context)
+
+    rctx->ub_ctx = ub_ctx_create();
+    rctx->tasks = 0;
+    if (!rctx->ub_ctx)
         return APR_ENOMEM;
 
-    err = ub_ctx_resolvconf(resolve_context, NULL);
+    err = ub_ctx_resolvconf(rctx->ub_ctx, NULL);
     if (!err)
-        err = ub_ctx_hosts(resolve_context, NULL);
+        err = ub_ctx_hosts(rctx->ub_ctx, NULL);
     if (!err)
-        err = ub_ctx_async(resolve_context, true);
+        err = ub_ctx_async(rctx->ub_ctx, true);
 
     if (err) {
         const apr_status_t status = err_to_status(err);
         /* TODO: Error callback */
         serf__log(LOGLVL_ERROR, LOGCOMP_CONN, __FILE__, ctx->config,
                   "unbound ctx init: %s\n", ub_strerror(err));
+        cleanup_resolve_context(rctx);
         return status;
     }
 
-    ctx->resolve_context = resolve_context;
+    ctx->resolve_context = rctx;
     /* pre-cleanup because the live resolve tasks contain subpools of the
        context pool and must be canceled before their pools go away. */
-    apr_pool_pre_cleanup_register(ctx->pool, resolve_context,
-                                  cleanup_resolve_context);
+    apr_pool_pre_cleanup_register(ctx->pool, rctx, cleanup_resolve_context);
     return APR_SUCCESS;
 }
 
@@ -282,6 +297,9 @@ static void resolve_callback(void* baton, int err,
 {
     resolve_task_t *const task = baton;
     apr_status_t status = err_to_status(err);
+
+    struct resolve_context *const rctx = task->ctx->resolve_context;
+    apr_atomic_dec32(&rctx->tasks);
 
     if (err) {
         /* TODO: Error callback */
@@ -366,7 +384,7 @@ static apr_status_t resolve_address_async(serf_context_t *ctx,
                                           apr_pool_t *resolve_pool,
                                           apr_pool_t *scratch_pool)
 {
-    struct ub_ctx *const resolve_context = ctx->resolve_context;
+    struct resolve_context *const rctx = ctx->resolve_context;
     resolve_task_t *const task = apr_palloc(resolve_pool, sizeof(*task));
     apr_status_t status = APR_SUCCESS;
     int err;
@@ -378,7 +396,7 @@ static apr_status_t resolve_address_async(serf_context_t *ctx,
     task->resolve_pool = resolve_pool;
 
     /* FIXME: We should resolve both RRType 1 (A) and RRType 28 (AAAA). */
-    if ((err = ub_resolve_async(resolve_context, host_info.hostname,
+    if ((err = ub_resolve_async(rctx->ub_ctx, host_info.hostname,
                                 1,   /* rrtype: IPv4 host address (A) */
                                 1,   /* rrclass: IN(ternet) */
                                 task, resolve_callback, NULL)))
@@ -389,21 +407,28 @@ static apr_status_t resolve_address_async(serf_context_t *ctx,
                   "unbound resolve start: %s\n", ub_strerror(err));
     }
 
+    if (status == APR_SUCCESS) {
+        apr_atomic_inc32(&rctx->tasks);
+    }
     return status;
 }
 
 static apr_status_t run_async_resolver_loop(serf_context_t *ctx)
 {
-    struct ub_ctx *const resolve_context = ctx->resolve_context;
+    struct resolve_context *const rctx = ctx->resolve_context;
 
-    if (ub_poll(resolve_context)) {
-        const int err = ub_process(resolve_context);
-        if (err) {
-            const apr_status_t status = err_to_status(err);
-            /* TODO: Error callback */
-            serf__log(LOGLVL_ERROR, LOGCOMP_CONN, __FILE__, ctx->config,
-                      "unbound process: %s\n", ub_strerror(err));
-            return status;
+    /* No need to poll if there are no in-flight tasks. */
+    if (apr_atomic_read32(&rctx->tasks))
+    {
+        if (ub_poll(rctx->ub_ctx)) {
+            const int err = ub_process(rctx->ub_ctx);
+            if (err) {
+                const apr_status_t status = err_to_status(err);
+                /* TODO: Error callback */
+                serf__log(LOGLVL_ERROR, LOGCOMP_CONN, __FILE__, ctx->config,
+                          "unbound process: %s\n", ub_strerror(err));
+                return status;
+            }
         }
     }
 
