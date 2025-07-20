@@ -362,8 +362,9 @@ static void log_ssl_error(serf_ssl_context_t *ctx)
     while ((err = ERR_get_error())) {
 
         if (err && ctx->error_callback) {
-            char *errstr = ERR_error_string(err, NULL);
-            ctx->error_callback(ctx->error_baton, ctx->fatal_err, errstr);
+            char ebuf[256];
+            ERR_error_string_n(err, ebuf, sizeof(ebuf));
+            ctx->error_callback(ctx->error_baton, ctx->fatal_err, ebuf);
         }
 
     }
