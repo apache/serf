@@ -1362,6 +1362,78 @@ apr_status_t serf_connection_create3(
     return status;
 }
 
+
+struct async_create_baton
+{
+    apr_uri_t host_info;
+    serf_connection_created_t created;
+    void *created_baton;
+    serf_connection_setup_t setup;
+    void *setup_baton;
+    serf_connection_closed_t closed;
+    void *closed_baton;
+    apr_pool_t *conn_pool;
+};
+
+static void async_conn_create(serf_context_t *ctx,
+                              void *resolved_baton,
+                              apr_sockaddr_t *host_address,
+                              apr_status_t status,
+                              apr_pool_t *scratch_pool)
+{
+    struct async_create_baton *const baton = resolved_baton;
+    serf_connection_t *conn = NULL;
+
+    if (status == APR_SUCCESS)
+    {
+        status = apr_sockaddr_info_copy(&host_address, host_address,
+                                        baton->conn_pool);
+        if (status == APR_SUCCESS) {
+            status = serf_connection_create3(&conn, ctx,
+                                             baton->host_info,
+                                             host_address,
+                                             baton->setup, baton->setup_baton,
+                                             baton->closed, baton->closed_baton,
+                                             baton->conn_pool);
+        }
+    }
+
+    baton->created(ctx, baton->created_baton, conn, status, scratch_pool);
+}
+
+apr_status_t serf_connection_create_async(
+    serf_context_t *ctx,
+    apr_uri_t host_info,
+    serf_connection_created_t created,
+    void *created_baton,
+    serf_connection_setup_t setup,
+    void *setup_baton,
+    serf_connection_closed_t closed,
+    void *closed_baton,
+    apr_pool_t *pool)
+{
+    apr_pool_t *scratch_pool;
+    apr_status_t status;
+
+    struct async_create_baton *const baton = apr_palloc(pool, sizeof(*baton));
+    baton->host_info = host_info;
+    baton->created = created;
+    baton->created_baton = created_baton;
+    baton->setup = setup;
+    baton->setup_baton = setup_baton;
+    baton->closed = closed;
+    baton->closed_baton = closed_baton;
+    baton->conn_pool = pool;
+
+    apr_pool_create(&scratch_pool, pool);
+    status = serf_address_resolve_async(ctx, host_info,
+                                        async_conn_create, baton,
+                                        scratch_pool);
+    apr_pool_destroy(scratch_pool);
+    return status;
+}
+
+
 apr_status_t serf_connection_reset(
     serf_connection_t *conn)
 {

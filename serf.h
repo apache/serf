@@ -546,7 +546,7 @@ apr_status_t serf_connection_create3(
  * The @a ctx and @a resolved_baton arguments are the same that were passed
  * to serf_address_resolve_async().
  *
- * @a status contains the result of the address resolution. If it is notably
+ * @a status contains the result of the address resolution. If it is not
  * @c APR_SUCCESS, then @a host_address is invalid and should be ignored.
  *
  * The resolved @a host_address is ephemeral, allocated iun @a pool and lives
@@ -589,6 +589,56 @@ apr_status_t serf_address_resolve_async(
     apr_uri_t host_info,
     serf_address_resolved_t resolved,
     void *resolved_baton,
+    apr_pool_t *pool);
+
+
+/**
+ * Notification callback when a connection hae been created.
+ *
+ * The @a ctx and @a created_baton arguments are the same that were passed
+ * to serf_connection_create_async().
+ *
+ * @a status contains the result of the connection creation. If it is not
+ * @c APR_SUCCESS, then @a conn is invalid and should be ignored.
+ *
+ * The created @a conn is allocated in the pool that was passed to
+ * serf_connection_create_async(); this is @b not the same as @a pool.
+ *
+ * All temporary allocations should be made in @a pool.
+ *
+ * @since New in 1.4.
+ */
+/* FIXME: EXPERIMENTAL */
+typedef void (*serf_connection_created_t)(
+    serf_context_t *ctx,
+    void *created_baton,
+    serf_connection_t *conn,
+    apr_status_t status,
+    apr_pool_t *pool);
+
+/**
+ * Asyncchronously create a new connection associated with
+ * the @a ctx serf context.
+ *
+ * Like serf_connection_create3() with @a host_address set to @c NULL,
+ * except that address resolution is performed asynchronously, similarly to
+ * serf_address_resolve_async().
+ *
+ * The @a created callback with @a created_baton is called when the connection
+ * is created but before it is opened.
+ *
+ * @since New in 1.4.
+ */
+/* FIXME: EXPERIMENTAL */
+apr_status_t serf_connection_create_async(
+    serf_context_t *ctx,
+    apr_uri_t host_info,
+    serf_connection_created_t created,
+    void *created_baton,
+    serf_connection_setup_t setup,
+    void *setup_baton,
+    serf_connection_closed_t closed,
+    void *closed_baton,
     apr_pool_t *pool);
 
 
