@@ -20,7 +20,7 @@
 
 #include <apr.h>
 
-/* This will the headers needed for inet_ntop and related structs.
+/* Include the headers needed for inet_ntop and related structs.
    On Windows, we'll always get <Winsock2.h> from <apr.h>. */
 #if APR_HAVE_NETINET_IN_H
 #include <netinet/in.h>
@@ -59,8 +59,6 @@
  *  - Wake the poll/select in serf_context_run() when new resolve
  *    results are available.
  *
- *  - Add a way to cancel a resolve task?
- *
  *  - Figure out what to do if the lock/unlock calls return an error.
  *    This should not be possible unless we messed up the implementation,
  *    but there should be a way for clients to back out of this situation.
@@ -69,13 +67,6 @@
  *
  * TODO for Unbound:
  *  - Convert unbound results to apr_sockaddr_t.
- *
- *  - Resolve both IPv4 and IPv6 addresses. This will require creating two
- *    asynchronous resolve tasks and combining the results so that our
- *    callback gets invoked only once both tasks are completed.
- *
- *  - Figure out how to use libunbound's event-based API, because it uses
- *    true asynchronous I/O instead of background threads.
  */
 
 
@@ -107,11 +98,9 @@ apr_status_t serf_address_resolve_async(serf_context_t *ctx,
 {
     apr_pool_t *resolve_pool;
 
-#if APR_HAS_THREADS
     if (ctx->resolve_init_status != APR_SUCCESS) {
         return ctx->resolve_init_status;
     }
-#endif
 
     apr_pool_create(&resolve_pool, ctx->pool);
 
@@ -175,6 +164,13 @@ static apr_status_t run_async_resolver_loop(serf_context_t *ctx)
 #endif  /* 0 */
 
 #if SERF_HAVE_UNBOUND
+
+/* DNS classes and record types.
+   https://www.iana.org/assignments/dns-parameters/dns-parameters.xhtml */
+#define RR_CLASS_IN    1        /* Internet */
+#define RR_TYPE_A      1        /* IPv4 address */
+#define RR_TYPE_AAAA  28        /* IPv6 address */
+
 
 static apr_status_t err_to_status(enum ub_ctx_err err)
 {
@@ -283,50 +279,86 @@ static apr_status_t create_resolve_context(serf_context_t *ctx)
 
 /* Task data for the Unbound resolver. */
 typedef struct unbound_resolve_task resolve_task_t;
+
+struct resolve_result
+{
+    int err;
+    apr_status_t status;
+    struct ub_result* ub_result;
+    resolve_task_t *task;
+    const char *qtype;
+};
+
 struct unbound_resolve_task
 {
     serf_context_t *ctx;
     apr_port_t host_port;
+
+    /* There can be one or two pending results, depending on whether
+       we resolve for IPv6 as well as IPv4. */
+    volatile apr_uint32_t pending_results;
+    struct resolve_result results[2];
+
     serf_address_resolved_t resolved;
     void *resolved_baton;
     apr_pool_t *resolve_pool;
 };
 
-static void resolve_callback(void* baton, int err,
-                             struct ub_result* result)
+static void resolve_finalize(resolve_task_t *task)
 {
-    resolve_task_t *const task = baton;
+    /* TODO: Convert ub_result to apr_sockaddr_t */
+    if (task->results[0].ub_result)
+        ub_resolve_free(task->results[0].ub_result);
+    if (task->results[1].ub_result)
+        ub_resolve_free(task->results[1].ub_result);
+
+    push_resolve_result(task->ctx, NULL, APR_EAFNOSUPPORT,
+                        task->resolved, task->resolved_baton,
+                        task->resolve_pool);
+}
+
+static void resolve_callback(void* baton, int err,
+                             struct ub_result* ub_result)
+{
+    struct resolve_result *const resolve_result = baton;
+    resolve_task_t *const task = resolve_result->task;
     apr_status_t status = err_to_status(err);
 
     struct resolve_context *const rctx = task->ctx->resolve_context;
     apr_atomic_dec32(&rctx->tasks);
 
-    if (err) {
+    if (err)
+    {
         /* TODO: Error callback */
         serf__log(LOGLVL_ERROR, LOGCOMP_CONN, __FILE__, task->ctx->config,
-                  "unbound resolve: error %s\n", ub_strerror(err));
+                  "unbound resolve: [%s] error %s\n",
+                  resolve_result->qtype, ub_strerror(err));
     }
-    if (!result->havedata) {
-        if (result->nxdomain) {
+    else if (!ub_result->havedata)
+    {
+        if (ub_result->nxdomain) {
             /* TODO: Error callback */
             serf__log(LOGLVL_ERROR, LOGCOMP_CONN, __FILE__, task->ctx->config,
-                      "unbound resolve: NXDOMAIN [%d]\n", result->rcode);
+                      "unbound resolve: [%s] NXDOMAIN [%d]\n",
+                      resolve_result->qtype, ub_result->rcode);
             if (status == APR_SUCCESS)
                 status = APR_ENOENT;
         }
-        if (result->bogus) {
+        if (ub_result->bogus) {
             /* TODO: Error callback */
             serf__log(LOGLVL_ERROR, LOGCOMP_CONN, __FILE__, task->ctx->config,
-                      "unbound resolve: BOGUS [%d]%s%s\n", result->rcode,
-                      result->why_bogus ? " " : "",
-                      result->why_bogus ? result->why_bogus : "");
+                      "unbound resolve: [%s] BOGUS [%d]%s%s\n",
+                      resolve_result->qtype, ub_result->rcode,
+                      ub_result->why_bogus ? " " : "",
+                      ub_result->why_bogus ? ub_result->why_bogus : "");
             if (status == APR_SUCCESS)
                 status = APR_EINVAL;
         }
-        if (result->was_ratelimited) {
+        if (ub_result->was_ratelimited) {
             /* TODO: Error callback */
             serf__log(LOGLVL_ERROR, LOGCOMP_CONN, __FILE__, task->ctx->config,
-                      "unbound resolve: SERVFAIL [%d]\n", result->rcode);
+                      "unbound resolve: [%s] SERVFAIL [%d]\n",
+                      resolve_result->qtype, ub_result->rcode);
             if (status == APR_SUCCESS)
                 status = APR_EAGAIN;
         }
@@ -336,45 +368,40 @@ static void resolve_callback(void* baton, int err,
         if (status == APR_SUCCESS) {
             /* TODO: Error callback */
             serf__log(LOGLVL_ERROR, LOGCOMP_CONN, __FILE__, task->ctx->config,
-                      "unbound resolve: no data [%d]\n", result->rcode);
+                      "unbound resolve: [%s] no data [%d]\n",
+                      resolve_result->qtype, ub_result->rcode);
             status = APR_ENOENT;
         }
     }
 
-    if (status)
-    {
-        push_resolve_result(task->ctx, NULL, status,
-                            task->resolved, task->resolved_baton,
-                            task->resolve_pool);
-    }
-    else
-    {
-        if (serf__log_enabled(LOGLVL_DEBUG, LOGCOMP_CONN,task->ctx->config))
-        {
-            int i;
+    resolve_result->err = err;
+    resolve_result->status = status;
+    resolve_result->ub_result = ub_result;
 
-            for (i = 0; result->data && result->data[i]; ++i) {
-                char buf[INET6_ADDRSTRLEN];
-                const socklen_t len = sizeof(buf);
-                const char *address = "(AF-unknown)";
+    if (status == APR_SUCCESS
+        && serf__log_enabled(LOGLVL_DEBUG, LOGCOMP_CONN, task->ctx->config))
+    {
+        char buf[INET6_ADDRSTRLEN];
+        const socklen_t len = sizeof(buf);
+        int i;
 
-                if (result->len[i] == sizeof(struct in_addr))
-                    address = inet_ntop(AF_INET, result->data[i], buf, len);
-                else if (result->len[i] == sizeof(struct in6_addr))
-                    address = inet_ntop(AF_INET6, result->data[i], buf, len);
-                serf__log(LOGLVL_DEBUG, LOGCOMP_CONN,
-                          __FILE__, task->ctx->config,
-                          "unbound resolve: %s: %s\n", result->qname, address);
-            }
+        for (i = 0; ub_result->data && ub_result->data[i]; ++i) {
+            const char *address = "(AF-unknown)";
+
+            if (ub_result->len[i] == sizeof(struct in_addr))
+                address = inet_ntop(AF_INET, ub_result->data[i], buf, len);
+            else if (ub_result->len[i] == sizeof(struct in6_addr))
+                address = inet_ntop(AF_INET6, ub_result->data[i], buf, len);
+            serf__log(LOGLVL_DEBUG, LOGCOMP_CONN,
+                      __FILE__, task->ctx->config,
+                      "unbound resolve: [%s] %s: %s\n",
+                      resolve_result->qtype, ub_result->qname, address);
         }
-
-        /* TODO: Convert ub_result to apr_sockaddr_t */
-        push_resolve_result(task->ctx, NULL, APR_EAFNOSUPPORT,
-                            task->resolved, task->resolved_baton,
-                            task->resolve_pool);
     }
 
-    ub_resolve_free(result);
+    /* The last pending task combines and publishes the results. */
+    if (apr_atomic_dec32(&task->pending_results) == 1)
+        resolve_finalize(task);
 }
 
 static apr_status_t resolve_address_async(serf_context_t *ctx,
@@ -387,29 +414,75 @@ static apr_status_t resolve_address_async(serf_context_t *ctx,
     struct resolve_context *const rctx = ctx->resolve_context;
     resolve_task_t *const task = apr_palloc(resolve_pool, sizeof(*task));
     apr_status_t status = APR_SUCCESS;
-    int err;
+    int err4 = 0, err6 = 0;
 
     task->ctx = ctx;
     task->host_port = host_info.port;
+
+#if APR_HAVE_IPV6
+    task->pending_results = 2;
+#else
+    task->pending_results = 1;
+#endif
+    task->results[0].err = task->results[1].err = 0;
+    task->results[0].status = task->results[1].status = APR_SUCCESS;
+    task->results[0].ub_result = task->results[1].ub_result = NULL;
+    task->results[0].task = task->results[1].task = task;
+    task->results[0].qtype = task->results[1].qtype = "??";
+
     task->resolved = resolved;
     task->resolved_baton = resolved_baton;
     task->resolve_pool = resolve_pool;
 
-    /* FIXME: We should resolve both RRType 1 (A) and RRType 28 (AAAA). */
-    if ((err = ub_resolve_async(rctx->ub_ctx, host_info.hostname,
-                                1,   /* rrtype: IPv4 host address (A) */
-                                1,   /* rrclass: IN(ternet) */
-                                task, resolve_callback, NULL)))
-    {
-        /* TODO: Error callback */
-        status = err_to_status(err);
-        serf__log(LOGLVL_ERROR, LOGCOMP_CONN, __FILE__, ctx->config,
-                  "unbound resolve start: %s\n", ub_strerror(err));
-    }
-
-    if (status == APR_SUCCESS) {
+    task->results[0].qtype = "v4";
+    err4 = ub_resolve_async(rctx->ub_ctx, host_info.hostname,
+                            RR_TYPE_A, RR_CLASS_IN,
+                            &task->results[0], resolve_callback, NULL);
+    if (!err4) {
         apr_atomic_inc32(&rctx->tasks);
     }
+
+#if APR_HAVE_IPV6
+    task->results[1].qtype = "v6";
+    err6 = ub_resolve_async(rctx->ub_ctx, host_info.hostname,
+                            RR_TYPE_AAAA, RR_CLASS_IN,
+                            &task->results[1], resolve_callback, NULL);
+    if (!err6) {
+        apr_atomic_inc32(&rctx->tasks);
+    }
+#endif  /* APR_HAVE_IPV6 */
+
+    if (err4 || err6)
+    {
+        apr_uint32_t pending_results = -1;
+
+        if (err4) {
+            pending_results = apr_atomic_dec32(&task->pending_results);
+            /* TODO: Error callback */
+            serf__log(LOGLVL_ERROR, LOGCOMP_CONN, __FILE__, ctx->config,
+                      "unbound resolve start: [v4] %s\n", ub_strerror(err4));
+            status = err_to_status(err4);
+        }
+
+#if APR_HAVE_IPV6
+        if (err6) {
+            pending_results = apr_atomic_dec32(&task->pending_results);
+            /* TODO: Error callback */
+            serf__log(LOGLVL_ERROR, LOGCOMP_CONN, __FILE__, ctx->config,
+                      "unbound resolve start: [v6] %s\n", ub_strerror(err6));
+            /* We have only one status to report. */
+            if (!err4)
+                status = err_to_status(err6);
+        }
+#endif  /* APR_HAVE_IPV6 */
+
+        /* If one of the tasks failed and the other has already completed,
+           we have to do the result processing here. Note that the Unbound
+           callbacks can be called synchronously from ub_resolve_async(). */
+        if (pending_results == 1)
+            resolve_finalize(task);
+    }
+
     return status;
 }
 
