@@ -1018,7 +1018,7 @@ static void test_outgoing_request_err(CuTest *tc)
 }
 
 /* Test that asynchronus name resolution happens. */
-static void test_async_resolve(CuTest *tc)
+static void test_async_connection(CuTest *tc)
 {
     test_baton_t *tb = tc->testBaton;
     apr_status_t status;
@@ -1046,6 +1046,54 @@ static void test_async_resolve(CuTest *tc)
         if (!APR_STATUS_IS_TIMEUP(status))
             CuAssertIntEquals(tc, APR_SUCCESS, status);
     }
+    CuAssertIntEquals(tc, APR_SUCCESS, tb->user_status);
+    CuAssertPtrNotNull(tc, tb->connection);
+
+    /* Send some requests on the connections */
+    for (i = 0 ; i < num_requests ; i++) {
+        create_new_request(tb, &handler_ctx[i], "GET", "/", i+1);
+    }
+
+    run_client_and_mock_servers_loops_expect_ok(tc, tb, num_requests,
+                                                handler_ctx, tb->pool);
+}
+
+/* Test that async connection to proxy short-circuits. */
+static void test_async_proxy_connection(CuTest *tc)
+{
+    test_baton_t *tb = tc->testBaton;
+    handler_baton_t handler_ctx[2];
+    const int num_requests = sizeof(handler_ctx)/sizeof(handler_ctx[0]);
+    apr_status_t status;
+    int i;
+
+    /* Set up a test context with a proxy */
+    setup_test_mock_server(tb);
+    status = setup_test_mock_proxy(tb);
+    CuAssertIntEquals(tc, APR_SUCCESS, status);
+    status = setup_test_client_context_with_proxy(tb, NULL, tb->pool);
+    CuAssertIntEquals(tc, APR_SUCCESS, status);
+
+    Given(tb->mh)
+      RequestsReceivedByProxy
+        GETRequest(
+            URLEqualTo(apr_psprintf(tb->pool, "http://%s", tb->serv_host)),
+            HeaderEqualTo("Host", tb->serv_host),
+            ChunkedBodyEqualTo("1"))
+          Respond(WithCode(200), WithChunkedBody(""))
+        GETRequest(
+            URLEqualTo(apr_psprintf(tb->pool, "http://%s", tb->serv_host)),
+            HeaderEqualTo("Host", tb->serv_host),
+            ChunkedBodyEqualTo("2"))
+          Respond(WithCode(200), WithChunkedBody(""))
+    EndGiven
+
+    status = use_new_async_connection(tb, tb->pool);
+    CuAssertIntEquals(tc, APR_SUCCESS, status);
+
+    /* Because we use a proxy, the connection creation is actually synchronous,
+       because we don't resolve the host address -- that's the proxy's job.
+       The connection-created callback was called immediately.*/
     CuAssertIntEquals(tc, APR_SUCCESS, tb->user_status);
     CuAssertPtrNotNull(tc, tb->connection);
 
@@ -1123,7 +1171,8 @@ CuSuite *test_context(void)
     SUITE_ADD_TEST(suite, test_connection_large_request);
     SUITE_ADD_TEST(suite, test_max_keepalive_requests);
     SUITE_ADD_TEST(suite, test_outgoing_request_err);
-    SUITE_ADD_TEST(suite, test_async_resolve);
+    SUITE_ADD_TEST(suite, test_async_connection);
+    SUITE_ADD_TEST(suite, test_async_proxy_connection);
     SUITE_ADD_TEST(suite, test_async_resolve_cancel);
     return suite;
 }

@@ -625,7 +625,9 @@ typedef void (*serf_connection_created_t)(
  * serf_address_resolve_async().
  *
  * The @a created callback with @a created_baton is called when the connection
- * is created but before it is opened.
+ * is created but before it is opened. Note that depending on the configuration
+ * of @a ctx,the connection may be created and this callback be invoked
+ * synchronously during the scope of this function call.
  *
  * @since New in 1.4.
  */
