@@ -1046,8 +1046,8 @@ static void test_async_resolve(CuTest *tc)
         if (!APR_STATUS_IS_TIMEUP(status))
             CuAssertIntEquals(tc, APR_SUCCESS, status);
     }
-    CuAssertPtrNotNull(tc, tb->connection);
     CuAssertIntEquals(tc, APR_SUCCESS, tb->user_status);
+    CuAssertPtrNotNull(tc, tb->connection);
 
     /* Send some requests on the connections */
     for (i = 0 ; i < num_requests ; i++) {
@@ -1056,6 +1056,44 @@ static void test_async_resolve(CuTest *tc)
 
     run_client_and_mock_servers_loops_expect_ok(tc, tb, num_requests,
                                                 handler_ctx, tb->pool);
+}
+
+static void async_resolve_cancel_callback(serf_context_t *ctx,
+                                          void *resolved_baton,
+                                          apr_sockaddr_t *host_address,
+                                          apr_status_t status,
+                                          apr_pool_t *scratch_pool)
+{
+    *(int*)resolved_baton = 1;
+}
+
+static void test_async_resolve_cancel(CuTest *tc)
+{
+    test_baton_t *tb = tc->testBaton;
+    serf_context_t *ctx;
+    apr_pool_t *ctx_pool;
+    apr_status_t status;
+    apr_uri_t url;
+    int resolved = 0;
+
+    status = apr_uri_parse(tb->pool, "http://localhost:8080/", &url);
+    CuAssertIntEquals(tc, APR_SUCCESS, status);
+
+    apr_pool_create(&ctx_pool, tb->pool);
+    CuAssertPtrNotNull(tc, ctx_pool);
+    ctx = serf_context_create(ctx_pool);
+    CuAssertPtrNotNull(tc, ctx);
+
+    status = serf_address_resolve_async(ctx, url,
+                                        async_resolve_cancel_callback,
+                                        &resolved, ctx_pool);
+
+    /* This would create and actual race in the test case: */
+    /* serf_context_prerun(ctx); */
+
+    apr_pool_destroy(ctx_pool);
+    CuAssertIntEquals(tc, APR_SUCCESS, status);
+    CuAssertIntEquals(tc, 0, resolved);
 }
 
 
@@ -1086,5 +1124,6 @@ CuSuite *test_context(void)
     SUITE_ADD_TEST(suite, test_max_keepalive_requests);
     SUITE_ADD_TEST(suite, test_outgoing_request_err);
     SUITE_ADD_TEST(suite, test_async_resolve);
+    SUITE_ADD_TEST(suite, test_async_resolve_cancel);
     return suite;
 }

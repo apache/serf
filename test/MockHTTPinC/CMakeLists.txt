@@ -56,5 +56,7 @@ target_compile_options(mockhttpinc
 target_compile_definitions(mockhttpinc
                            PUBLIC "MOCKHTTP_OPENSSL"
                            PRIVATE ${MockHTTPinC_DEFINES})
-target_include_directories(mockhttpinc SYSTEM BEFORE
-                           PRIVATE ${APR_INCLUDES} ${APRUTIL_INCLUDES})
+target_link_libraries(mockhttpinc
+                      ${SERF_PRIVATE_TARGETS}
+                      ${SERF_PUBLIC_TARGETS}
+                      ${SERF_STANDARD_LIBRARIES})

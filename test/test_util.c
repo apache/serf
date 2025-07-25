@@ -142,44 +142,22 @@ apr_status_t use_new_connection(test_baton_t *tb,
     return status;
 }
 
-struct async_reolved_baton
+static void conn_created(serf_context_t *ctx,
+                         void *resolved_baton,
+                         serf_connection_t *conn,
+                         apr_status_t status,
+                         apr_pool_t *unused_scratch_pool)
 {
-    test_baton_t *tb;
-    apr_uri_t url;
-};
-
-static void address_resolved(serf_context_t *ctx,
-                             void *resolved_baton,
-                             apr_sockaddr_t *host_address,
-                             apr_status_t status,
-                             apr_pool_t *unused_scratch_pool)
-{
-    struct async_reolved_baton *baton = resolved_baton;
-    test_baton_t *tb = baton->tb;
-    serf_connection_t *conn;
-    apr_pool_t *conn_pool = tb->pool;
+    test_baton_t *tb = resolved_baton;
 
     if (tb->context != ctx)
         REPORT_TEST_SUITE_ERROR();
 
     if (status == APR_SUCCESS)
     {
-        status = apr_sockaddr_info_copy(&host_address, host_address, conn_pool);
-        if (status == APR_SUCCESS)
-            status = serf_connection_create3(&conn, ctx,
-                                             baton->url,
-                                             host_address,
-                                             tb->conn_setup,
-                                             tb,
-                                             default_closed_connection,
-                                             tb,
-                                             conn_pool);
-        if (status == APR_SUCCESS)
-        {
-            tb->connection = conn;
-            apr_pool_cleanup_register(conn_pool, tb->connection, cleanup_conn,
-                                      apr_pool_cleanup_null);
-        }
+        tb->connection = conn;
+        apr_pool_cleanup_register(tb->pool, tb->connection, cleanup_conn,
+                                  apr_pool_cleanup_null);
     }
 
     tb->user_status = status;
@@ -190,7 +168,6 @@ apr_status_t use_new_async_connection(test_baton_t *tb,
 {
     apr_uri_t url;
     apr_status_t status;
-    struct async_reolved_baton *baton;
 
     if (tb->connection)
         cleanup_conn(tb->connection);
@@ -200,12 +177,12 @@ apr_status_t use_new_async_connection(test_baton_t *tb,
     if (status != APR_SUCCESS)
         return status;
 
-    baton = apr_palloc(pool, sizeof(*baton));
-    baton->tb = tb;
-    baton->url = url;
     tb->user_status = APR_SUCCESS;
-    return serf_address_resolve_async(tb->context, url,
-                                      address_resolved, baton, pool);
+    return serf_connection_create_async(tb->context, url,
+                                        conn_created, tb,
+                                        tb->conn_setup, tb,
+                                        default_closed_connection, tb,
+                                        tb->pool);
 }
 
 static test_baton_t *initTestCtx(CuTest *tc, apr_pool_t *pool)
