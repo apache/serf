@@ -19,6 +19,7 @@
  */
 
 #include <apr.h>
+#include <apr_version.h>
 
 /* Include the headers needed for inet_ntop and related structs.
    On Windows, we'll always get <Winsock2.h> from <apr.h>. */
@@ -58,12 +59,6 @@
  * TODO:
  *  - Wake the poll/select in serf_context_run() when new resolve
  *    results are available.
- *
- *  - Figure out what to do if the lock/unlock calls return an error.
- *    This should not be possible unless we messed up the implementation,
- *    but there should be a way for clients to back out of this situation.
- *    Failed lock/unlock could potentially leave the context in an
- *    inconsistent state.
  *
  * TODO for Unbound:
  *  - Convert unbound results to apr_sockaddr_t.
@@ -650,39 +645,15 @@ static apr_status_t run_async_resolver_loop(serf_context_t *ctx)
 /* The result queue implementation. */
 #if HAVE_ASYNC_RESOLVER
 
-static apr_status_t lock_results(serf_context_t *ctx)
-{
-#if APR_HAS_THREADS
-    apr_status_t status = apr_thread_mutex_lock(ctx->resolve_guard);
-    if (status) {
-        /* TODO: ctx->error_callback... */
-        char buffer[256];
-        serf__log(LOGLVL_ERROR, LOGCOMP_CONN, __FILE__, ctx->config,
-                  "Lock async resolve results: %s\n",
-                  apr_strerror(status, buffer, sizeof(buffer)));
-    }
-    return status;
-#else
-    return APR_SUCCESS;
-#endif
-}
-
-static apr_status_t unlock_results(serf_context_t *ctx)
-{
-#if APR_HAS_THREADS
-    apr_status_t status = apr_thread_mutex_unlock(ctx->resolve_guard);
-    if (status) {
-        /* TODO: ctx->error_callback... */
-        char buffer[256];
-        serf__log(LOGLVL_ERROR, LOGCOMP_CONN, __FILE__, ctx->config,
-                  "Unlock async resolve results: %s\n",
-                  apr_strerror(status, buffer, sizeof(buffer)));
-    }
-    return status;
-#else
-    return APR_SUCCESS;
-#endif
-}
+#if APR_MAJOR_VERSION < 2
+/* NOTE: The atomic pointer prototypes in apr-1.x are just horribly
+         wrong. They're fixed in version 2.x and these macros deal
+         with the difference. */
+#define apr_atomic_casptr(mem, with, cmp) \
+    (apr_atomic_casptr)((volatile void**)(mem), (with), (cmp))
+#define apr_atomic_xchgptr(mem, with) \
+    (apr_atomic_xchgptr)((volatile void**)(mem), (with))
+#endif  /* APR_MAJOR_VERSION < 2 */
 
 
 static void push_resolve_result(serf_context_t *ctx,
@@ -693,7 +664,7 @@ static void push_resolve_result(serf_context_t *ctx,
                                 apr_pool_t *resolve_pool)
 {
     serf__resolve_result_t *result;
-    apr_status_t status;
+    void *head;
 
     result = apr_palloc(resolve_pool, sizeof(*result));
     result->host_address = host_address;
@@ -702,15 +673,15 @@ static void push_resolve_result(serf_context_t *ctx,
     result->resolved_baton = resolved_baton;
     result->result_pool = resolve_pool;
 
-    status = lock_results(ctx);
-    if (!status)
-    {
-        result->next = ctx->resolve_head;
-        ctx->resolve_head = result;
-        status = unlock_results(ctx);
-    }
-
-    /* TODO: if (status) ... then what? */
+    /* Atomic push this result to the result stack. This might look like
+       a potential priority inversion, however, it's not likely that we'll
+       resolve several tens of thousands of results per second in hundreds
+       of separate threads. */
+    head = apr_atomic_casptr(&ctx->resolve_head, NULL, NULL);
+    do {
+        result->next = head;
+        head = apr_atomic_casptr(&ctx->resolve_head, result, head);
+    } while(head != result->next);
 }
 
 
@@ -724,25 +695,15 @@ apr_status_t serf__create_resolve_context(serf_context_t *ctx)
 /* Internal API */
 apr_status_t serf__process_async_resolve_results(serf_context_t *ctx)
 {
-    serf__resolve_result_t *result = NULL;
+    serf__resolve_result_t *result;
     apr_status_t status;
 
     status = run_async_resolver_loop(ctx);
     if (status)
         return status;
 
-    status = lock_results(ctx);
-    if (status)
-        return status;
-
-    result = ctx->resolve_head;
-    ctx->resolve_head = NULL;
-    status = unlock_results(ctx);
-
-    /* TODO: if (status) ... then what? Shouldn't be possible. */
-    /* if (status) */
-    /*     return status; */
-
+    /* Grab the whole stack, leaving it empty, and process the contents. */
+    result = apr_atomic_xchgptr(&ctx->resolve_head, NULL);
     while (result)
     {
         serf__resolve_result_t *const next = result->next;

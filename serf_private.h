@@ -499,11 +499,8 @@ struct serf_context_t {
     serf_config_t *config;
 
     /* Support for asynchronous address resolution. */
+    void *volatile resolve_head;
     apr_status_t resolve_init_status;
-    serf__resolve_result_t *resolve_head;
-#if APR_HAS_THREADS
-    apr_thread_mutex_t *resolve_guard;
-#endif
     void *resolve_context;
 };
 
