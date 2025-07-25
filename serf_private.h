@@ -440,17 +440,6 @@ serf__config_store_remove_host(serf__config_store_t config_store,
                                const char *hostname_port);
 
 
-typedef struct serf__resolve_result_t serf__resolve_result_t;
-struct serf__resolve_result_t
-{
-    apr_sockaddr_t *host_address;
-    apr_status_t status;
-    serf_address_resolved_t resolved;
-    void *resolved_baton;
-    apr_pool_t *result_pool;
-    serf__resolve_result_t *next;
-};
-
 struct serf_context_t {
     /* the pool used for self and for other allocations */
     apr_pool_t *pool;

@@ -656,6 +656,18 @@ static apr_status_t run_async_resolver_loop(serf_context_t *ctx)
 #endif  /* APR_MAJOR_VERSION < 2 */
 
 
+typedef struct resolve_result_t resolve_result_t;
+struct resolve_result_t
+{
+    apr_sockaddr_t *host_address;
+    apr_status_t status;
+    serf_address_resolved_t resolved;
+    void *resolved_baton;
+    apr_pool_t *result_pool;
+    resolve_result_t *next;
+};
+
+
 static void push_resolve_result(serf_context_t *ctx,
                                 apr_sockaddr_t *host_address,
                                 apr_status_t resolve_status,
@@ -663,7 +675,7 @@ static void push_resolve_result(serf_context_t *ctx,
                                 void *resolved_baton,
                                 apr_pool_t *resolve_pool)
 {
-    serf__resolve_result_t *result;
+    resolve_result_t *result;
     void *head;
 
     result = apr_palloc(resolve_pool, sizeof(*result));
@@ -695,7 +707,7 @@ apr_status_t serf__create_resolve_context(serf_context_t *ctx)
 /* Internal API */
 apr_status_t serf__process_async_resolve_results(serf_context_t *ctx)
 {
-    serf__resolve_result_t *result;
+    resolve_result_t *result;
     apr_status_t status;
 
     status = run_async_resolver_loop(ctx);
@@ -706,7 +718,7 @@ apr_status_t serf__process_async_resolve_results(serf_context_t *ctx)
     result = apr_atomic_xchgptr(&ctx->resolve_head, NULL);
     while (result)
     {
-        serf__resolve_result_t *const next = result->next;
+        resolve_result_t *const next = result->next;
         result->resolved(ctx, result->resolved_baton,
                          result->host_address, result->status,
                          result->result_pool);
