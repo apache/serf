@@ -1161,14 +1161,14 @@ static void test_async_resolve_ipv4(CuTest *tc)
 static void test_async_resolve_ipv6(CuTest *tc)
 {
 #if APR_HAVE_IPV6
-    async_resolve_ip(tc, "http://[::1]:8080/");
+    async_resolve(tc, "http://[::1]:8080/");
 #endif
 }
 
 static void test_async_resolve_ipv64(CuTest *tc)
 {
 #if APR_HAVE_IPV6
-    async_resolve_ip(tc, "http://[::ffff:127.0.0.1]:8080/");
+    async_resolve(tc, "http://[::ffff:127.0.0.1]:8080/");
 #endif
 }
 
