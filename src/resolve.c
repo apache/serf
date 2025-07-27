@@ -72,9 +72,6 @@
  * TODO:
  *  - Wake the poll/select in serf_context_run() when new resolve
  *    results are available.
- *
- * - Unbound: Detect when the "hostname" is actually a stringified IP address.
- *   The resolver doesn't handle that, so we have to short-circuit that case.
  */
 
 
@@ -172,6 +169,9 @@ static apr_status_t run_async_resolver_loop(serf_context_t *ctx)
 #endif  /* 0 */
 
 #if SERF_HAVE_UNBOUND
+
+/*******************************************************************/
+/* Async resolver that uses libunbound. */
 
 /* DNS classes and record types.
    https://www.iana.org/assignments/dns-parameters/dns-parameters.xhtml */
@@ -692,6 +692,9 @@ static apr_status_t run_async_resolver_loop(serf_context_t *ctx)
 
 #else   /* !SERF_HAVE_ASYNC_RESOLVER */
 #if APR_HAS_THREADS
+
+/*******************************************************************/
+/* Default async resolver that uses APR thread pools. */
 
 /* This could be made configurable, but given that this is a fallback
    implementation, it really shouldn't be necessary. */
