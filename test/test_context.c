@@ -1106,13 +1106,70 @@ static void test_async_proxy_connection(CuTest *tc)
                                                 handler_ctx, tb->pool);
 }
 
-static void async_resolve_cancel_callback(serf_context_t *ctx,
-                                          void *resolved_baton,
-                                          apr_sockaddr_t *host_address,
-                                          apr_status_t status,
-                                          apr_pool_t *scratch_pool)
+static void async_resolve_callback(serf_context_t *ctx,
+                                   void *resolved_baton,
+                                   apr_sockaddr_t *host_address,
+                                   apr_status_t status,
+                                   apr_pool_t *scratch_pool)
 {
     *(int*)resolved_baton = 1;
+}
+
+static void async_resolve(CuTest *tc, const char *url)
+{
+    test_baton_t *tb = tc->testBaton;
+    serf_context_t *ctx;
+    apr_pool_t *ctx_pool;
+    apr_status_t status;
+    apr_uri_t host_info;
+    int resolved = 0;
+
+    status = apr_uri_parse(tb->pool, url, &host_info);
+    CuAssertIntEquals(tc, APR_SUCCESS, status);
+
+    apr_pool_create(&ctx_pool, tb->pool);
+    CuAssertPtrNotNull(tc, ctx_pool);
+    ctx = serf_context_create(ctx_pool);
+    CuAssertPtrNotNull(tc, ctx);
+
+    status = serf_address_resolve_async(ctx, host_info,
+                                        async_resolve_callback,
+                                        &resolved, ctx_pool);
+    CuAssertIntEquals(tc, APR_SUCCESS, status);
+
+    while (!resolved && status == APR_SUCCESS) {
+        status = serf_context_run(ctx, 70, ctx_pool);
+        if (APR_STATUS_IS_TIMEUP(status))
+            status = APR_SUCCESS;
+    }
+
+    apr_pool_destroy(ctx_pool);
+    CuAssertIntEquals(tc, APR_SUCCESS, status);
+    CuAssertIntEquals(tc, 1, resolved);
+}
+
+static void test_async_resolve_name(CuTest *tc)
+{
+    async_resolve(tc, "http://localhost:8080/");
+}
+
+static void test_async_resolve_ipv4(CuTest *tc)
+{
+    async_resolve(tc, "http://127.0.0.1:8080/");
+}
+
+static void test_async_resolve_ipv6(CuTest *tc)
+{
+#if APR_HAVE_IPV6
+    async_resolve_ip(tc, "http://[::1]:8080/");
+#endif
+}
+
+static void test_async_resolve_ipv64(CuTest *tc)
+{
+#if APR_HAVE_IPV6
+    async_resolve_ip(tc, "http://[::ffff:127.0.0.1]:8080/");
+#endif
 }
 
 static void test_async_resolve_cancel(CuTest *tc)
@@ -1133,7 +1190,7 @@ static void test_async_resolve_cancel(CuTest *tc)
     CuAssertPtrNotNull(tc, ctx);
 
     status = serf_address_resolve_async(ctx, url,
-                                        async_resolve_cancel_callback,
+                                        async_resolve_callback,
                                         &resolved, ctx_pool);
 
     /* This would create and actual race in the test case: */
@@ -1173,6 +1230,10 @@ CuSuite *test_context(void)
     SUITE_ADD_TEST(suite, test_outgoing_request_err);
     SUITE_ADD_TEST(suite, test_async_connection);
     SUITE_ADD_TEST(suite, test_async_proxy_connection);
+    SUITE_ADD_TEST(suite, test_async_resolve_name);
+    SUITE_ADD_TEST(suite, test_async_resolve_ipv4);
+    SUITE_ADD_TEST(suite, test_async_resolve_ipv6);
+    SUITE_ADD_TEST(suite, test_async_resolve_ipv64);
     SUITE_ADD_TEST(suite, test_async_resolve_cancel);
     return suite;
 }

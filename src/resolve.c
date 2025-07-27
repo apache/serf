@@ -18,6 +18,13 @@
  * ====================================================================
  */
 
+#if defined(_DEBUG)
+#include <assert.h>
+#define SERF__RESOLV_assert(x) assert(x)
+#else
+#define SERF__RESOLV_assert(x) ((void)0)
+#endif
+
 #include <apr.h>
 #include <apr_version.h>
 
@@ -46,6 +53,9 @@
 
 #include "serf.h"
 #include "serf_private.h"
+
+/* Sufficient buffer size for an IPv4 and IPv6 binary address. */
+#define MAX_ADDRLEN 16
 
 /* Stringified address lengths. */
 #ifndef INET_ADDRSTRLEN
@@ -303,7 +313,7 @@ struct unbound_resolve_task
 };
 
 static apr_status_t resolve_convert(apr_sockaddr_t **host_address,
-                                    apr_int32_t family,
+                                    apr_int32_t family, bool free_result,
                                     const struct resolve_result *result)
 {
     const struct unbound_resolve_task *const task = result->task;
@@ -392,7 +402,7 @@ static apr_status_t resolve_convert(apr_sockaddr_t **host_address,
     }
 
   cleanup:
-    if (result->ub_result)
+    if (free_result && result->ub_result)
         ub_resolve_free(result->ub_result);
 
     return status;
@@ -403,9 +413,9 @@ static void resolve_finalize(resolve_task_t *task)
     apr_sockaddr_t *host_address = NULL;
     apr_status_t status, status6;
 
-    status = resolve_convert(&host_address, APR_INET, &task->results[0]);
+    status = resolve_convert(&host_address, APR_INET, true, &task->results[0]);
 #if APR_HAVE_IPV6
-    status6 = resolve_convert(&host_address, APR_INET6, &task->results[1]);
+    status6 = resolve_convert(&host_address, APR_INET6, true, &task->results[1]);
 #else
     status6 = APR_SUCCESS;
 #endif
@@ -498,11 +508,94 @@ static apr_status_t resolve_address_async(serf_context_t *ctx,
                                           apr_pool_t *resolve_pool,
                                           apr_pool_t *scratch_pool)
 {
+    unsigned char addr[MAX_ADDRLEN];
     struct resolve_context *const rctx = ctx->resolve_context;
-    resolve_task_t *const task = apr_palloc(resolve_pool, sizeof(*task));
+    resolve_task_t *task;
     apr_status_t status = APR_SUCCESS;
     int err4 = 0, err6 = 0;
+    apr_int32_t family;
+    int pton, ipaddr_len, rr_type;
 
+    /* If the hostname is an IP address, "resolve" it immediately. */
+    pton = serf__inet_pton4(host_info.hostname, addr);
+    if (pton > 0) {
+        family = APR_INET;
+        rr_type = RR_TYPE_A;
+        ipaddr_len = sizeof(struct in_addr);
+        SERF__RESOLV_assert(ipaddr_len <= MAX_ADDRLEN);
+    }
+    else {
+        pton = serf__inet_pton6(host_info.hostname, addr);
+        if (pton > 0) {
+#if APR_HAVE_IPV6
+            family = APR_INET6;
+            rr_type = RR_TYPE_AAAA;
+            ipaddr_len = sizeof(struct in6_addr);
+            SERF__RESOLV_assert(ipaddr_len <= MAX_ADDRLEN);
+#else
+            return APR_EAFNOSUPPORT;
+#endif
+        }
+    }
+
+    if (pton > 0)
+    {
+        static const struct ub_result ub_template = {
+            NULL,               /* .qname */
+            0,                  /* .qtype */
+            RR_CLASS_IN,        /* .qclass */
+            NULL,               /* .data */
+            NULL,               /* .len */
+            NULL,               /* .canonname */
+            0,                  /* .rcode */
+            NULL,               /* .answer_packet */
+            0,                  /* .answer_len */
+            1,                  /* .havedata */
+            0,                  /* .nxdomain */
+            0,                  /* .secure */
+            0,                  /* .bogus */
+            NULL,               /* .why_bogus */
+            0,                  /* .was_ratelimited */
+            INT_MAX             /* .ttl */
+        };
+
+        struct ub_result ub_result = ub_template;
+        apr_sockaddr_t *host_address = NULL;
+        char *data[2] = { NULL, NULL };
+        int len[2] = { 0, 0 };
+        struct resolve_result *result;
+        resolve_task_t local_task;
+
+        memset(&local_task, 0, sizeof(local_task));
+        data[0] = (char*) addr;
+        len[0] = ipaddr_len;
+        ub_result.qname = host_info.hostname;
+        ub_result.qtype = rr_type;
+        ub_result.data = data;
+        ub_result.len = len;
+
+        task = &local_task;
+        task->ctx = ctx;
+        task->host_port_str = host_info.port_str;
+        task->host_port = host_info.port;
+        task->resolve_pool = resolve_pool;
+        result = &task->results[0];
+        result->status = APR_SUCCESS;
+        result->ub_result = &ub_result;
+        result->task = task;
+        result->qtype = family == APR_INET ? "v4" : "v6";
+
+        status = resolve_convert(&host_address, family, false, result);
+        if (status == APR_SUCCESS) {
+            push_resolve_result(ctx, host_address, status,
+                                resolved, resolved_baton,
+                                resolve_pool);
+        }
+        return status;
+    }
+
+    /* Create the async resolve tasks. */
+    task = apr_palloc(resolve_pool, sizeof(*task));
     task->ctx = ctx;
     task->host_port_str = apr_pstrdup(resolve_pool, host_info.port_str);
     task->host_port = host_info.port;
