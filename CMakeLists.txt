@@ -133,6 +133,7 @@ list(APPEND SOURCES
     "src/context.c"
     "src/deprecated.c"
     "src/incoming.c"
+    "src/inet_pton.c"
     "src/init_once.c"
     "src/logging.c"
     "src/outgoing.c"

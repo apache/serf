@@ -1386,8 +1386,10 @@ static void async_conn_create(serf_context_t *ctx,
 
     if (status == APR_SUCCESS)
     {
-        status = apr_sockaddr_info_copy(&host_address, host_address,
-                                        baton->conn_pool);
+        if (host_address) {
+            status = apr_sockaddr_info_copy(&host_address, host_address,
+                                            baton->conn_pool);
+        }
         if (status == APR_SUCCESS) {
             status = serf_connection_create3(&conn, ctx,
                                              baton->host_info,
@@ -1415,20 +1417,38 @@ apr_status_t serf_connection_create_async(
     apr_pool_t *scratch_pool;
     apr_status_t status;
 
-    struct async_create_baton *const baton = apr_palloc(pool, sizeof(*baton));
-    baton->host_info = host_info;
-    baton->created = created;
-    baton->created_baton = created_baton;
-    baton->setup = setup;
-    baton->setup_baton = setup_baton;
-    baton->closed = closed;
-    baton->closed_baton = closed_baton;
-    baton->conn_pool = pool;
-
     apr_pool_create(&scratch_pool, pool);
-    status = serf_address_resolve_async(ctx, host_info,
-                                        async_conn_create, baton,
-                                        scratch_pool);
+    if (ctx->proxy_address)
+    {
+        /* If we're using a proxy, we do *not* resolve the host
+           (see serf_connection_create3(), above), so just create
+           the connection immediately. */
+        serf_connection_t *conn;
+        status = serf_connection_create3(&conn, ctx,
+                                         host_info, NULL,
+                                         setup, setup_baton,
+                                         closed, closed_baton,
+                                         pool);
+        if (status == APR_SUCCESS)
+            created(ctx, created_baton, conn, status, scratch_pool);
+    }
+    else
+    {
+        struct async_create_baton *const baton = apr_palloc(pool, sizeof(*baton));
+        baton->host_info = host_info;
+        baton->created = created;
+        baton->created_baton = created_baton;
+        baton->setup = setup;
+        baton->setup_baton = setup_baton;
+        baton->closed = closed;
+        baton->closed_baton = closed_baton;
+        baton->conn_pool = pool;
+
+        status = serf_address_resolve_async(ctx, host_info,
+                                            async_conn_create, baton,
+                                            scratch_pool);
+    }
+
     apr_pool_destroy(scratch_pool);
     return status;
 }

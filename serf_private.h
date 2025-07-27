@@ -682,6 +682,12 @@ apr_status_t serf__create_resolve_context(serf_context_t *ctx);
 apr_status_t serf__process_async_resolve_results(serf_context_t *ctx);
 
 
+/*** IP address parsing ***/
+
+int serf__inet_pton4(const char *src, unsigned char *dst);
+int serf__inet_pton6(const char *src, unsigned char *dst);
+
+
 /*** Internal bucket functions ***/
 
 /* Copies all data contained in vecs to *data, optionally telling how much was
