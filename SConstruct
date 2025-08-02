@@ -695,6 +695,7 @@ for d in env['LIBPATH']:
   env.Append(RPATH=[':'+d])
 
 # Set up the construction of serf-*.pc
+PC_REQUIRES = []                 # TODO: Add dependency pkg-config modules
 pkgprefix = os.path.relpath(env.subst('$PREFIX'), env.subst('$LIBDIR/pkgconfig'))
 pkglibdir = os.path.relpath(env.subst('$LIBDIR'), env.subst('$PREFIX'))
 pkgconfig = env.Textfile('serf-%d.pc' % (MAJOR,),
@@ -704,6 +705,7 @@ pkgconfig = env.Textfile('serf-%d.pc' % (MAJOR,),
                            '@PREFIX@': unsubstable('${pcfiledir}/' + pkgprefix),
                            '@LIBDIR@': unsubstable('${prefix}/' + pkglibdir),
                            '@INCLUDE_SUBDIR@': 'serf-%d' % (MAJOR,),
+                           '@PC_REQUIRES@': ' '.join(PC_REQUIRES),
                            '@VERSION@': '%d.%d.%d' % (MAJOR, MINOR, PATCH),
                            '@LIBS@': '%s %s %s %s -lz' % (apu_libs, apr_libs,
                                                           env.get('GSSAPI_LIBS', ''),

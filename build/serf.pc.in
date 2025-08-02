@@ -7,7 +7,7 @@ includedir=${prefix}/include/@INCLUDE_SUBDIR@
 Name: serf
 Description: HTTP client library
 Version: @VERSION@
-Requires.private: libssl libcrypto
+Requires.private: libssl libcrypto @PC_REQUIRES@
 Libs: -L${libdir} -lserf-${SERF_MAJOR_VERSION}
 Libs.private: @LIBS@
 Cflags: -I${includedir}

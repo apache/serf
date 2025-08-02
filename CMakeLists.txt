@@ -262,21 +262,7 @@ else()
     message(WARNING "option GSSAPI_ROOT is not implemented on this platform")
   endif()
 endif()
-
-
-# FIXME: VERYTEMPORARY, figure out FindUnbound.cmake first.
-set(Unbound_FOUND FALSE)
-if (Unbound_FOUND)
-  set(UNBOUND_INCLUDE_DIR "/opt/homebrew/opt/unbound/include")
-  set(UNBOUND_LIBRARIES "/opt/homebrew/opt/unbound/lib/libunbound.dylib")
-  # set(UNBOUND_LIBRARIES "/usr/lib/aarch64-linux-gnu/libunbound.so")
-  # set(UNBOUND_LIBRARIES "/usr/lib64/libunbound.so")
-  add_library(Unbound::Unbound UNKNOWN IMPORTED)
-  set_target_properties(Unbound::Unbound PROPERTIES
-    INTERFACE_INCLUDE_DIRECTORIES "${UNBOUND_INCLUDE_DIR}")
-  set_target_properties(Unbound::Unbound PROPERTIES
-    IMPORTED_LOCATION "${UNBOUND_LIBRARIES}")
-endif(Unbound_FOUND)
+find_package(Unbound)
 
 # Calculate the set of private and public targets
 set(SERF_PRIVATE_TARGETS OpenSSL::Crypto OpenSSL::SSL ZLIB::ZLIB)
@@ -289,7 +275,7 @@ if(GSSAPI_FOUND)
 endif()
 if(Unbound_FOUND)
   list(APPEND SERF_C_DEFINES "SERF_HAVE_ASYNC_RESOLVER=1")
-  list(APPEND SERF_C_DEFINES "SERF_HAVE_UNBOUND")
+  list(APPEND SERF_C_DEFINES "SERF_HAVE_UNBOUND=1")
   list(APPEND SERF_PRIVATE_TARGETS Unbound::Unbound)
 endif()
 
@@ -510,6 +496,9 @@ if(NOT SERF_WINDOWS)
     set(LIBDIR \${prefix}/${SERF_INSTALL_LIBRARIES})
     set(VERSION ${SERF_VERSION})
     set(MAJOR ${SERF_MAJOR_VERSION})
+    set(PC_REQUIRES
+      ${UNBOUND_PC_REQUIRES}
+      )
     set(LIBS
       ${APR_LDFLAGS}
       ${APR_LIBRARIES}
@@ -520,6 +509,7 @@ if(NOT SERF_WINDOWS)
       ${BROTLI_COMMON_LIBRARY}
       ${BROTLI_DECODE_LIBRARY}
       ${GSSAPI_LIBRARIES}
+      ${UNBOUND_PC_LIBS}
       ${ZLIB_LIBRARIES}
       )
     list(REMOVE_DUPLICATES LIBS)
@@ -581,7 +571,7 @@ endif()
 if("SERF_HAVE_SSPI" IN_LIST SERF_C_DEFINES)
   set(_have_sspi ON)
 endif()
-if ("SERF_HAVE_UNBOUND" IN_LIST SERF_C_DEFINES)
+if ("SERF_HAVE_UNBOUND=1" IN_LIST SERF_C_DEFINES)
   set(_have_unbound "EXPERIMENTAL")
 endif()
 
