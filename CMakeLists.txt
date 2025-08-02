@@ -49,6 +49,11 @@ message(WARNING
         "Some features are not supported and the build "
         "has not been tested on many supported platforms.")
 
+# Optional dependency options
+option(USE_BROTLI "Use the Brotli decoding library if available" ON)
+option(USE_GSSAPI "Use GSSAPI authentication if available" ON)
+option(USE_UNBOUND "Use the Unbound async resolver if available" ON)
+
 # Build options
 option(DEBUG "Enable debugging info and strict compile warnings" OFF)
 option(DOT_CLANGD "Generate a .clangd file at the root of the source tree" OFF)
@@ -252,9 +257,14 @@ list(APPEND SERF_C_DEFINES "OPENSSL_NO_DEPRECATED")
 list(APPEND SERF_C_DEFINES "OPENSSL_NO_STDIO")
 
 # Find optional dependencies
-find_package(Brotli)
+if(USE_BROTLI)
+  find_package(Brotli)
+endif()
+
 if(NOT SERF_WINDOWS)
-  find_package(GSSAPI)
+  if(USE_GSSAPI)
+    find_package(GSSAPI)
+  endif()
 else()
   # We use SSPI on Windows and there's no Kerberos/GSSAPI port there.
   set(GSSAPI_FOUND FALSE)
@@ -262,7 +272,9 @@ else()
     message(WARNING "option GSSAPI_ROOT is not implemented on this platform")
   endif()
 endif()
-find_package(Unbound)
+if(USE_UNBOUND)
+  find_package(Unbound)
+endif()
 
 # Calculate the set of private and public targets
 set(SERF_PRIVATE_TARGETS OpenSSL::Crypto OpenSSL::SSL ZLIB::ZLIB)
@@ -482,45 +494,51 @@ install(TARGETS ${SERF_TARGETS}
 install(FILES ${HEADERS} DESTINATION "${SERF_INSTALL_HEADERS}")
 
 # Generate the pkg-config module file.
-if(NOT SERF_WINDOWS)
-  set(SERF_PC_FILE "serf-${SERF_MAJOR_VERSION}.pc")
+set(SERF_PC_FILE "serf-${SERF_MAJOR_VERSION}.pc")
 
-  # Use a separate variable scope for the substitutions in serf.pc.in.
-  function(make_pkgconfig)
-    # Use a relative prefix to create a relocatable PC file.
+# Use a separate variable scope for the substitutions in serf.pc.in.
+function(make_pkgconfig)
+  # Use a relative prefix to create a relocatable PC file.
+  if(SERF_WINDOWS)
+    file(RELATIVE_PATH relfragment "X:\\${SERF_INSTALL_PKGCONFIG}" "X:\\")
+  else()
     file(RELATIVE_PATH relfragment "/${SERF_INSTALL_PKGCONFIG}" "/")
-    file(TO_CMAKE_PATH "\${pcfiledir}/${relfragment}" relprefix)
+  endif()
+  file(TO_CMAKE_PATH "\${pcfiledir}/${relfragment}" relprefix)
 
-    set(PREFIX ${relprefix})
-    set(INCLUDE_SUBDIR ${SERF_INCLUDE_SUBDIR})
-    set(LIBDIR \${prefix}/${SERF_INSTALL_LIBRARIES})
-    set(VERSION ${SERF_VERSION})
-    set(MAJOR ${SERF_MAJOR_VERSION})
-    set(PC_REQUIRES
-      ${UNBOUND_PC_REQUIRES}
-      )
-    set(LIBS
-      ${APR_LDFLAGS}
-      ${APR_LIBRARIES}
-      ${APR_EXTRALIBS}
-      ${APRUTIL_LDFLAGS}
-      ${APRUTIL_LIBRARIES}
-      ${APRUTIL_EXTRALIBS}
-      ${BROTLI_COMMON_LIBRARY}
-      ${BROTLI_DECODE_LIBRARY}
-      ${GSSAPI_LIBRARIES}
-      ${UNBOUND_PC_LIBS}
-      ${ZLIB_LIBRARIES}
-      )
-    list(REMOVE_DUPLICATES LIBS)
-    list(JOIN LIBS " " LIBS)
-    configure_file("build/serf.pc.in" "${SERF_PC_FILE}" @ONLY)
-  endfunction()
+  set(PREFIX ${relprefix})
+  set(INCLUDE_SUBDIR ${SERF_INCLUDE_SUBDIR})
+  set(LIBDIR \${prefix}/${SERF_INSTALL_LIBRARIES})
+  set(VERSION ${SERF_VERSION})
+  set(MAJOR ${SERF_MAJOR_VERSION})
+  set(PC_REQUIRES
+    "libssl"
+    "libcrypto"
+    ${UNBOUND_PC_REQUIRES}
+  )
+  set(LIBS
+    ${APR_LDFLAGS}
+    ${APR_LIBRARIES}
+    ${APR_EXTRALIBS}
+    ${APRUTIL_LDFLAGS}
+    ${APRUTIL_LIBRARIES}
+    ${APRUTIL_EXTRALIBS}
+    ${BROTLI_COMMON_LIBRARY}
+    ${BROTLI_DECODE_LIBRARY}
+    ${GSSAPI_LIBRARIES}
+    ${UNBOUND_PC_LIBS}
+    ${ZLIB_LIBRARIES}
+  )
+  list(REMOVE_DUPLICATES PC_REQUIRES)
+  list(JOIN PC_REQUIRES " " PC_REQUIRES)
+  list(REMOVE_DUPLICATES LIBS)
+  list(JOIN LIBS " " LIBS)
+  configure_file("build/serf.pc.in" "${SERF_PC_FILE}" @ONLY)
+endfunction()
 
-  make_pkgconfig()
-  install(FILES "${CMAKE_CURRENT_BINARY_DIR}/${SERF_PC_FILE}"
-          DESTINATION "${SERF_INSTALL_PKGCONFIG}")
-endif()
+make_pkgconfig()
+install(FILES "${CMAKE_CURRENT_BINARY_DIR}/${SERF_PC_FILE}"
+        DESTINATION "${SERF_INSTALL_PKGCONFIG}")
 
 
 if(NOT SKIP_TESTS)

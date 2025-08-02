@@ -695,7 +695,7 @@ for d in env['LIBPATH']:
   env.Append(RPATH=[':'+d])
 
 # Set up the construction of serf-*.pc
-PC_REQUIRES = []                 # TODO: Add dependency pkg-config modules
+PC_REQUIRES = ['libssl', 'libcrypto']  # TODO: Add dependency modules
 pkgprefix = os.path.relpath(env.subst('$PREFIX'), env.subst('$LIBDIR/pkgconfig'))
 pkglibdir = os.path.relpath(env.subst('$LIBDIR'), env.subst('$PREFIX'))
 pkgconfig = env.Textfile('serf-%d.pc' % (MAJOR,),
