@@ -232,7 +232,7 @@ if(NOT _apru_include_only_utilities)
     _apr_invoke(APR_CFLAGS      "(^| )-[gOW][^ ]*" --cppflags --cflags)
     _apr_invoke(APR_INCLUDE_DIR ""                 --includedir)
     _apr_invoke(APR_LIBRARIES   ""                 --link-ld)
-    _apr_invoke(APR_EXTRALIBS   ""                 --libs)
+    _apr_invoke(APR_EXTRALIBS   ""                 --ldflags --libs)
     _apr_invoke(APR_VERSION     ""                 --version)
     string(REGEX REPLACE "^([0-9]+)\\..*$" "\\1" _apr_major "${APR_VERSION}")
 
