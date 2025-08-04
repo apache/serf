@@ -123,7 +123,7 @@ else(APR_CONTAINS_APRUTIL)
     endmacro(_apu_invoke)
 
     _apu_invoke(APRUTIL_INCLUDE_DIR  ""  --includedir)
-    _apu_invoke(APRUTIL_EXTRALIBS    ""  --libs)
+    _apu_invoke(APRUTIL_EXTRALIBS    ""  --ldflags --libs)
     _apu_invoke(APRUTIL_LIBRARIES    ""  --link-ld)
     _apu_invoke(APRUTIL_VERSION      ""  --version)
 

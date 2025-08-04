@@ -110,9 +110,9 @@ def unsubstable(string):
 
 # default directories
 if sys.platform == 'win32':
-  default_incdir='..'
-  default_libdir='..'
-  default_prefix='Debug'
+  default_incdir='$PREFIX'
+  default_libdir='$PREFIX/lib'
+  default_prefix='./install'
 else:
   default_incdir='/usr'
   default_libdir='$PREFIX/lib'
@@ -154,6 +154,10 @@ opts.AddVariables(
                None),
   PathVariable('BROTLI',
                "Path to Brotli's install area",
+               None,
+               PathVariable.PathIsDir),
+  PathVariable('UNBOUND',
+               "Path to libunbound's install area",
                None,
                PathVariable.PathIsDir),
   BoolVariable('DEBUG',
@@ -227,14 +231,6 @@ env = Environment(variables=opts,
                   CPPPATH=['.', ],
                   )
 
-# "Legacy" .def file builder
-gen_def_script = env.File('build/gen_def.py').rstr()
-env.Append(BUILDERS = {
-    'GenDef' :
-      Builder(action = '"%s" "%s" $SOURCES > $TARGET' % (sys.executable, gen_def_script,),
-              suffix='.def', src_suffix='.h')
-  })
-
 # Export symbol generator (for Windows DLL, Mach-O and ELF)
 export_generator = build.exports.ExportGenerator()
 if export_generator.target is None:
@@ -298,6 +294,7 @@ zlib = str(env['ZLIB'])
 expat = env.get('EXPAT', None)
 gssapi = env.get('GSSAPI', None)
 brotli = env.get('BROTLI', None)
+unbound = env.get('UNBOUND', None)
 
 if gssapi and os.path.isdir(gssapi):
   krb5_config = os.path.join(gssapi, 'bin', 'krb5-config')
@@ -318,6 +315,7 @@ opts.Save(SAVED_CONFIG, env)
 thisdir = os.getcwd()
 libdir = '$LIBDIR'
 incdir = '$PREFIX/include/serf-$MAJOR'
+pkgdir = '$LIBDIR/pkgconfig'
 
 # This version string is used in the dynamic library name, and for Mac OS X also
 # for the compatibility_version option in the .dylib.
@@ -393,6 +391,9 @@ if sys.platform != 'win32':
   if brotli:
     env.Append(LIBS=['brotlicommon', 'brotlidec'])
 
+  if unbound:
+    env.Append(LIBS=['unbound'])
+
 else:
   # Warning level 4, no unused argument warnings
   env.Append(CCFLAGS=['/W4',
@@ -416,12 +417,7 @@ else:
 # PLAN THE BUILD
 SHARED_SOURCES = []
 if sys.platform == 'win32':
-  env.GenDef(target=[export_filter], source=HEADER_FILES)
-  SHARED_SOURCES.append([export_filter])
-  dll_res = env.RES(['serf.rc'])
-  SHARED_SOURCES.append(dll_res)
-  # TODO: Use GenExports instead.
-  export_filter = None
+  SHARED_SOURCES.append(env.RES(['serf.rc']))
 
 SOURCES = Glob('src/*.c') + Glob('buckets/*.c') + Glob('auth/*.c') + \
           Glob('protocols/*.c')
@@ -441,9 +437,16 @@ env.Append(CPPDEFINES=['OPENSSL_NO_STDIO'])
 if aprstatic:
   env.Append(CPPDEFINES=['APR_DECLARE_STATIC', 'APU_DECLARE_STATIC'])
 
+# Prepare lists for the pkg-config file
+pc_requires = ['libssl', 'libcrypto']
+pc_cppflags = []
+pc_private_libs = []
+win_std_libs = []
+
 if sys.platform == 'win32':
-  env.Append(LIBS=['user32.lib', 'advapi32.lib', 'gdi32.lib', 'ws2_32.lib',
-                   'crypt32.lib', 'mswsock.lib', 'rpcrt4.lib', 'secur32.lib'])
+  source_layout = env.get('SOURCE_LAYOUT', None)
+  win_std_libs = ['crypt32.lib', 'mswsock.lib', 'rpcrt4.lib',
+                  'secur32.lib', 'ws2_32.lib']
 
   # Get apr/apu information into our build
   env.Append(CPPDEFINES=['WIN32','WIN32_LEAN_AND_MEAN','NOUSER',
@@ -486,37 +489,48 @@ if sys.platform == 'win32':
   if aprstatic:
     apr_libs='apr-1.lib'
     apu_libs='aprutil-1.lib'
-    env.Append(LIBS=['shell32.lib', expat_lib_name])
+    win_std_libs.append('shell32.lib')
   else:
     apr_libs='libapr-1.lib'
     apu_libs='libaprutil-1.lib'
 
-  env.Append(LIBS=[apr_libs, apu_libs])
-  if expat and aprstatic:
-    env.Append(LIBPATH=[expat])
-
-  if not env.get('SOURCE_LAYOUT', None):
-    env.Append(LIBPATH=['$APR/lib', '$APU/lib'],
-               CPPPATH=['$APR/include', '$APR/include/apr-1',
+  if not source_layout:
+    apr_libdir = '$APR/lib'
+    apu_libdir = '$APU/lib'
+    env.Append(CPPPATH=['$APR/include', '$APR/include/apr-1',
                         '$APU/include', '$APU/include/apr-1'])
   elif aprstatic:
-    env.Append(LIBPATH=['$APR/LibR','$APU/LibR'],
-               CPPPATH=['$APR/include', '$APU/include'])
+    apr_libdir = '$APR/LibR'
+    apu_libdir = '$APU/LibR'
+    env.Append(CPPPATH=['$APR/include', '$APU/include'])
   else:
-    env.Append(LIBPATH=['$APR/Release','$APU/Release'],
-               CPPPATH=['$APR/include', '$APU/include'])
+    apr_libdir = '$APR/Release'
+    apu_libdir = '$APU/Release'
+    env.Append(CPPPATH=['$APR/include', '$APU/include'])
+
+  env.Append(LIBPATH=[apr_libdir, apu_libdir],
+             LIBS=[apr_libs, apu_libs])
+  pc_private_libs.append('/'.join([apr_libdir, apr_libs]))
+  pc_private_libs.append('/'.join([apu_libdir, apu_libs]))
+
+  if expat and aprstatic:
+    env.Append(LIBPATH=[expat],
+               LIBS=[expat_lib_name])
+    pc_private_libs.append('/'.join([expat, expat_lib_name]))
 
   # zlib
   env.Append(LIBS=['zlib.lib'])
-  if not env.get('SOURCE_LAYOUT', None):
+  if not source_layout:
     env.Append(CPPPATH=['$ZLIB/include'],
                LIBPATH=['$ZLIB/lib'])
+    pc_private_libs.append('$ZLIB/lib/zlib.lib')
   else:
     env.Append(CPPPATH=['$ZLIB'],
                LIBPATH=['$ZLIB'])
+    pc_private_libs.append('$ZLIB/zlib.lib')
 
   # openssl
-  if not env.get('SOURCE_LAYOUT', None):
+  if not source_layout:
     env.Append(CPPPATH=['$OPENSSL/include'],
                LIBPATH=['$OPENSSL/lib'])
   else:
@@ -533,16 +547,26 @@ if sys.platform == 'win32':
 
   # brotli
   if brotli:
-    brotli_libs = 'brotlicommon.lib brotlidec.lib'
     env.Append(LIBS=['brotlicommon.lib', 'brotlidec.lib'])
-    if not env.get('SOURCE_LAYOUT', None):
+    if not source_layout:
       env.Append(CPPPATH=['$BROTLI/include'],
                  LIBPATH=['$BROTLI/lib'])
+      pc_private_libs.append('$BROTLI/lib/brotlicommon.lib')
+      pc_private_libs.append('$BROTLI/lib/brotlidec.lib')
     else:
       env.Append(CPPPATH=['$BROTLI/include'],
                  LIBPATH=['$BROTLI/Release'])
-  else:
-    brotli_libs = ''
+      pc_private_libs.append('$BROTLI/Release/brotlicommon.lib')
+      pc_private_libs.append('$BROTLI/Release/brotlidec.lib')
+
+  # unbound
+  if unbound:
+    env.Append(CPPPATH=['$UNBOUND/include'],
+               LIBPATH=['$UNBOUND/lib'],
+               LIBS=['unbound.lib'])
+    pc_private_libs.append('$UNBOUND/lib/unbound.lib')
+
+  env.Append(LIBS=win_std_libs)
 
 else:
   if CALLOUT_OKAY:
@@ -574,17 +598,19 @@ else:
 
     ### there is probably a better way to run/capture output.
     ### env.ParseConfig() may be handy for getting this stuff into the build
-    apr_libs = os.popen(env.subst('$APR --link-libtool --libs')).read().strip()
+    apr_defs = os.popen(env.subst('$APR --cppflags')).read().strip()
+    apr_libs = os.popen(env.subst('$APR --link-ld --libs')).read().strip()
+    pc_cppflags.append(apr_defs)
+    pc_private_libs.append(apr_libs)
     if apr_major < 2:
-      apu_libs = os.popen(env.subst('$APU --link-libtool --libs')).read().strip()
-    else:
-      apu_libs = ''
-  else:
-    apr_libs = ''
-    apu_libs = ''
+      apu_libs = os.popen(env.subst('$APU --link-ld --libs')).read().strip()
+      pc_private_libs.append(apu_libs)
 
   env.Append(CPPPATH=['$ZLIB/include'])
   env.Append(LIBPATH=['$ZLIB/lib'])
+  if env.subst('$ZLIB') not in ('', '/usr'):
+    pc_private_libs.append('-L$ZLIB/lib')
+  pc_private_libs.append('-lz')
 
   # MacOS ships ancient OpenSSL libraries, but no headers, so we can
   # assume we're building with an OpenSSL installed outside the
@@ -599,11 +625,18 @@ else:
     env.Append(LIBPATH=['$OPENSSL/lib'])
 
   if brotli:
-    brotli_libs = '-lbrotlicommon -lbrotlidec'
     env.Append(CPPPATH=['$BROTLI/include'],
                LIBPATH=['$BROTLI/lib'])
-  else:
-    brotli_libs = ''
+    if env.subst('$BROTLI') not in ('', '/usr'):
+      pc_private_libs.append('-L$BROTLI/lib')
+    pc_private_libs.append('-lbrotlicommon -lbrotlidec')
+
+  if unbound:
+    env.Append(CPPPATH=['$UNBOUND/include'],
+               LIBPATH=['$UNBOUND/lib'])
+    if env.subst('$UNBOUND') not in ('', '/usr'):
+      pc_private_libs.append('-L$UNBOUND/lib')
+    pc_private_libs.append('-lunbound')
 
 # Check for OpenSSL functions which are only available in some of
 # the versions we support. Also handles forks like LibreSSL.
@@ -615,7 +648,6 @@ for line in stream.readlines():
   if ssl_include_rx.match(line):
     ssl_include_list.append(line.rstrip())
 ssl_includes = '\n'.join(ssl_include_list)
-
 
 conf = Configure(env, custom_tests=custom_tests)
 if not conf.CheckFunc('BIO_set_init', ssl_includes, 'C', 'NULL, 0'):
@@ -655,18 +687,37 @@ if gssapi and CALLOUT_OKAY:
         return env.MergeFlags(cmd, unique)
     env.ParseConfig('$GSSAPI --libs gssapi', parse_libs)
     env.Append(CPPDEFINES=['SERF_HAVE_GSSAPI'])
+    pc_private_libs.append(env['GSSAPI_LIBS'])
 if sys.platform == 'win32':
   env.Append(CPPDEFINES=['SERF_HAVE_SSPI'])
 
 if brotli and CALLOUT_OKAY:
   conf = Configure(env, custom_tests=custom_tests)
-  if conf.CheckCHeader('brotli/decode.h') and \
-     conf.CheckFunc('BrotliDecoderTakeOutput',
-                    '#include <brotli/decode.h>',
-                    'C', 'NULL, NULL'):
+  if (conf.CheckCHeader('brotli/decode.h')
+      and conf.CheckFunc('BrotliDecoderTakeOutput',
+                         '#include <brotli/decode.h>',
+                         'C', 'NULL, NULL')):
     env.Append(CPPDEFINES=['SERF_HAVE_BROTLI'])
   else:
     print("Cannot find Brotli library >= 1.0.0 in '%s'." % env.get('BROTLI'))
+    Exit(1)
+  env = conf.Finish()
+
+if unbound and CALLOUT_OKAY:
+  print(custom_tests)
+  conf = Configure(env, custom_tests=custom_tests)
+  if (conf.CheckCHeader('unbound.h')
+      and conf.CheckFunc('ub_ctx_create',
+                         '#include <unbound.h>',
+                         'C', '')
+      and conf.CheckFunc('ub_resolve_async',
+                         '#include <stddef.h>\n'
+                         '#include <unbound.h>',
+                         'C', 'NULL, NULL, 0, 0, NULL, NULL, NULL')):
+    env.Append(CPPDEFINES=['SERF_HAVE_ASYNC_RESOLVER=1',
+                           'SERF_HAVE_UNBOUND=1'])
+  else:
+    print("Cannot find Unbound library in '%s'." % env.get('UNBOUND'))
     Exit(1)
   env = conf.Finish()
 
@@ -695,8 +746,12 @@ for d in env['LIBPATH']:
   env.Append(RPATH=[':'+d])
 
 # Set up the construction of serf-*.pc
-pkgprefix = os.path.relpath(env.subst('$PREFIX'), env.subst('$LIBDIR/pkgconfig'))
-pkglibdir = os.path.relpath(env.subst('$LIBDIR'), env.subst('$PREFIX'))
+pkgprefix = os.path.relpath(env.subst('$PREFIX'), env.subst(pkgdir)
+                            ).replace(os.path.sep, '/')
+pkglibdir = os.path.relpath(env.subst('$LIBDIR'), env.subst('$PREFIX')
+                            ).replace(os.path.sep, '/')
+pkglibs = env.subst(' '.join(pc_private_libs + win_std_libs)
+                    ).replace(os.path.sep, '/')
 pkgconfig = env.Textfile('serf-%d.pc' % (MAJOR,),
                          env.File('build/serf.pc.in'),
                          SUBST_DICT = {
@@ -704,10 +759,10 @@ pkgconfig = env.Textfile('serf-%d.pc' % (MAJOR,),
                            '@PREFIX@': unsubstable('${pcfiledir}/' + pkgprefix),
                            '@LIBDIR@': unsubstable('${prefix}/' + pkglibdir),
                            '@INCLUDE_SUBDIR@': 'serf-%d' % (MAJOR,),
+                           '@REQUIRES@': ' '.join(pc_requires),
                            '@VERSION@': '%d.%d.%d' % (MAJOR, MINOR, PATCH),
-                           '@LIBS@': '%s %s %s %s -lz' % (apu_libs, apr_libs,
-                                                          env.get('GSSAPI_LIBS', ''),
-                                                          brotli_libs),
+                           '@CFLAGS@': unsubstable(' '.join(pc_cppflags)),
+                           '@LIBS@': unsubstable(pkglibs),
                            })
 
 env.Default(lib_static, lib_shared, pkgconfig)
@@ -732,11 +787,9 @@ if sys.platform == 'darwin':
                                      % (target_install_shared_path,
                                         install_shared_path)))
 
-env.Alias('install-lib', [install_static, install_shared,
-                          ])
+env.Alias('install-lib', [install_static, install_shared])
 env.Alias('install-inc', env.Install(incdir, HEADER_FILES))
-env.Alias('install-pc', env.Install(os.path.join(libdir, 'pkgconfig'),
-                                    pkgconfig))
+env.Alias('install-pc', env.Install(pkgdir, pkgconfig))
 env.Alias('install', ['install-lib', 'install-inc', 'install-pc', ])
 
 
