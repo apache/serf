@@ -156,6 +156,10 @@ opts.AddVariables(
                "Path to Brotli's install area",
                None,
                PathVariable.PathIsDir),
+  PathVariable('UNBOUND',
+               "Path to libunbound's install area",
+               None,
+               PathVariable.PathIsDir),
   BoolVariable('DEBUG',
                "Enable debugging info and strict compile warnings",
                False),
@@ -290,6 +294,7 @@ zlib = str(env['ZLIB'])
 expat = env.get('EXPAT', None)
 gssapi = env.get('GSSAPI', None)
 brotli = env.get('BROTLI', None)
+unbound = env.get('UNBOUND', None)
 
 if gssapi and os.path.isdir(gssapi):
   krb5_config = os.path.join(gssapi, 'bin', 'krb5-config')
@@ -385,6 +390,9 @@ if sys.platform != 'win32':
 
   if brotli:
     env.Append(LIBS=['brotlicommon', 'brotlidec'])
+
+  if unbound:
+    env.Append(LIBS=['unbound'])
 
 else:
   # Warning level 4, no unused argument warnings
@@ -551,6 +559,13 @@ if sys.platform == 'win32':
       pc_private_libs.append('$BROTLI/Release/brotlicommon.lib')
       pc_private_libs.append('$BROTLI/Release/brotlidec.lib')
 
+  # unbound
+  if unbound:
+    env.Append(CPPPATH=['$UNBOUND/include'],
+               LIBPATH=['$UNBOUND/lib'],
+               LIBS=['unbound.lib'])
+    pc_private_libs.append('$UNBOUND/lib/unbound.lib')
+
   env.Append(LIBS=win_std_libs)
 
 else:
@@ -616,6 +631,13 @@ else:
       pc_private_libs.append('-L$BROTLI/lib')
     pc_private_libs.append('-lbrotlicommon -lbrotlidec')
 
+  if unbound:
+    env.Append(CPPPATH=['$UNBOUND/include'],
+               LIBPATH=['$UNBOUND/lib'])
+    if env.subst('$UNBOUND') not in ('', '/usr'):
+      pc_private_libs.append('-L$UNBOUND/lib')
+    pc_private_libs.append('-lunbound')
+
 # Check for OpenSSL functions which are only available in some of
 # the versions we support. Also handles forks like LibreSSL.
 ssl_include_rx = re.compile(r'^\s*#\s*include\s+<openssl/[^>]+>')
@@ -626,7 +648,6 @@ for line in stream.readlines():
   if ssl_include_rx.match(line):
     ssl_include_list.append(line.rstrip())
 ssl_includes = '\n'.join(ssl_include_list)
-
 
 conf = Configure(env, custom_tests=custom_tests)
 if not conf.CheckFunc('BIO_set_init', ssl_includes, 'C', 'NULL, 0'):
@@ -672,13 +693,31 @@ if sys.platform == 'win32':
 
 if brotli and CALLOUT_OKAY:
   conf = Configure(env, custom_tests=custom_tests)
-  if conf.CheckCHeader('brotli/decode.h') and \
-     conf.CheckFunc('BrotliDecoderTakeOutput',
-                    '#include <brotli/decode.h>',
-                    'C', 'NULL, NULL'):
+  if (conf.CheckCHeader('brotli/decode.h')
+      and conf.CheckFunc('BrotliDecoderTakeOutput',
+                         '#include <brotli/decode.h>',
+                         'C', 'NULL, NULL')):
     env.Append(CPPDEFINES=['SERF_HAVE_BROTLI'])
   else:
     print("Cannot find Brotli library >= 1.0.0 in '%s'." % env.get('BROTLI'))
+    Exit(1)
+  env = conf.Finish()
+
+if unbound and CALLOUT_OKAY:
+  print(custom_tests)
+  conf = Configure(env, custom_tests=custom_tests)
+  if (conf.CheckCHeader('unbound.h')
+      and conf.CheckFunc('ub_ctx_create',
+                         '#include <unbound.h>',
+                         'C', '')
+      and conf.CheckFunc('ub_resolve_async',
+                         '#include <stddef.h>\n'
+                         '#include <unbound.h>',
+                         'C', 'NULL, NULL, 0, 0, NULL, NULL, NULL')):
+    env.Append(CPPDEFINES=['SERF_HAVE_ASYNC_RESOLVER=1',
+                           'SERF_HAVE_UNBOUND=1'])
+  else:
+    print("Cannot find Unbound library in '%s'." % env.get('UNBOUND'))
     Exit(1)
   env = conf.Finish()
 
