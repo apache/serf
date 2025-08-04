@@ -454,11 +454,14 @@ if(NOT SKIP_SHARED)
   list(APPEND SERF_TARGETS serf_shared)
 
   if(SERF_WINDOWS)
-    string(TOLOWER "${CMAKE_BUILD_TYPE}" config)
-    if(NOT "${config}" STREQUAL "release")
-      install(FILES $<TARGET_PDB_FILE:serf_shared>
-              DESTINATION "${SERF_INSTALL_RUNTIME}")
-    endif()
+    install(FILES $<TARGET_PDB_FILE:serf_shared>
+            CONFIGURATIONS Debug RelWithDebinfo
+            DESTINATION "${SERF_INSTALL_RUNTIME}")
+    # string(TOLOWER "${CMAKE_BUILD_TYPE}" config)
+    # if(NOT "${config}" STREQUAL "release")
+    #   install(FILES $<TARGET_PDB_FILE:serf_shared>
+    #           DESTINATION "${SERF_INSTALL_RUNTIME}")
+    # endif()
   endif()
 endif()
 
@@ -511,10 +514,13 @@ function(make_pkgconfig)
   set(LIBDIR \${prefix}/${SERF_INSTALL_LIBRARIES})
   set(VERSION ${SERF_VERSION})
   set(MAJOR ${SERF_MAJOR_VERSION})
-  set(PC_REQUIRES
+  set(REQUIRES
     "libssl"
     "libcrypto"
     ${UNBOUND_PC_REQUIRES}
+  )
+  set(CFLAGS
+    ${APR_CFLAGS}
   )
   set(LIBS
     ${APR_LDFLAGS}
@@ -523,14 +529,17 @@ function(make_pkgconfig)
     ${APRUTIL_LDFLAGS}
     ${APRUTIL_LIBRARIES}
     ${APRUTIL_EXTRALIBS}
+    ${ZLIB_LIBRARIES}
     ${BROTLI_COMMON_LIBRARY}
     ${BROTLI_DECODE_LIBRARY}
     ${GSSAPI_LIBRARIES}
     ${UNBOUND_PC_LIBS}
-    ${ZLIB_LIBRARIES}
+    ${SERF_STANDARD_LIBRARIES}
   )
-  list(REMOVE_DUPLICATES PC_REQUIRES)
-  list(JOIN PC_REQUIRES " " PC_REQUIRES)
+  list(REMOVE_DUPLICATES REQUIRES)
+  list(JOIN REQUIRES " " REQUIRES)
+  list(REMOVE_DUPLICATES CFLAGS)
+  list(JOIN CFLAGS " " CFLAGS)
   list(REMOVE_DUPLICATES LIBS)
   list(JOIN LIBS " " LIBS)
   configure_file("build/serf.pc.in" "${SERF_PC_FILE}" @ONLY)
@@ -615,6 +624,5 @@ message(STATUS "    headers: ................ : ${SERF_INSTALL_HEADERS}")
 message(STATUS "    libraries: .............. : ${SERF_INSTALL_LIBRARIES}")
 if(SERF_WINDOWS)
 message(STATUS "    dynamic libraries: ...... : ${SERF_INSTALL_RUNTIME}")
-else()
-message(STATUS "    pkg-config file: ........ : ${SERF_INSTALL_PKGCONFIG}")
 endif()
+message(STATUS "    pkg-config file: ........ : ${SERF_INSTALL_PKGCONFIG}")
