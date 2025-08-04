@@ -89,6 +89,7 @@ if(NOT CMAKE_BUILD_TYPE)
 endif()
 
 include(GNUInstallDirs)
+include(SerfFindPkgConfig)
 include(SerfPlatform)
 
 # On the Mac: Use dependencies from Homebrew or MacPorts
@@ -245,10 +246,29 @@ if(EXPAT)
 endif(EXPAT)
 
 # Find required dependencies
-find_package(OpenSSL REQUIRED)
-find_package(ZLIB REQUIRED)
 find_package(APR REQUIRED)
 find_package(APRUtil REQUIRED)
+
+
+SerfFindPkgConfig(OpenSSL_SSL OPENSSL_ROOT_DIR libssl OpenSSL::SSL)
+SerfFindPkgConfig(OpenSSL_Crypto OPENSSL_ROOT_DIR libcrypto OpenSSL::Crypto)
+if(NOT (OpenSSL_SSL_FOUND AND OpenSSL_Crypto_FOUND))
+  find_package(OpenSSL REQUIRED)
+  if(OpenSSL_FOUND)
+    set(OPENSSL_PC_LIBS ${OPENSSL_LIBRARIES})
+  endif()
+else()
+  set(OpenSSL_FOUND TRUE)
+  set(OPENSSL_INCLUDE_DIR ${OPENSSL_SSL_INCLUDE_DIR})
+  set(OPENSSL_PC_REQUIRES ${OPENSSL_SSL_PC_REQUIRES} ${OPENSSL_CRYPTO_PC_REQUIRES})
+  set(OPENSSL_LIBRARIES ${OPENSSL_SSL_LIBRARY} ${OPENSSL_CRYPTO_LIBRARY})
+endif()
+
+SerfFindPkgConfig(ZLIB ZLIB_ROOT zlib ZLIB::ZLIB)
+if(NOT ZLIB_FOUND)
+  find_package(ZLIB REQUIRED)
+  set(ZLIB_PC_LIBS ${ZLIB_LIBRARIES})
+endif()
 
 # We do not want or need OpenSSL's compatibility macros.
 list(APPEND SERF_C_DEFINES "OPENSSL_NO_DEPRECATED")
@@ -258,12 +278,24 @@ list(APPEND SERF_C_DEFINES "OPENSSL_NO_STDIO")
 
 # Find optional dependencies
 if(USE_BROTLI)
-  find_package(Brotli)
+  SerfFindPkgConfig(Brotli Brotli_ROOT libbrotlidec Brotli::Decode)
+  if(NOT Brotli_FOUND)
+    find_package(Brotli)
+    if(Brotli_FOUND)
+      set(BROTLI_PC_LIBS ${BROTLI_DECODE_LIBRARY})
+    endif()
+  endif()
 endif()
 
 if(NOT SERF_WINDOWS)
   if(USE_GSSAPI)
-    find_package(GSSAPI)
+    SerfFindPkgConfig(GSSAPI GSSAPI_ROOT krb5-gssapi KRB5::GSSAPI)
+    if(NOT GSSAPI_FOUND)
+      find_package(GSSAPI)
+      if(GSSAPI_FOUND)
+        set(GSSAPI_PC_LIBS ${GSSAPI_LIBRARIES})
+      endif()
+    endif()
   endif()
 else()
   # We use SSPI on Windows and there's no Kerberos/GSSAPI port there.
@@ -272,25 +304,18 @@ else()
     message(WARNING "option GSSAPI_ROOT is not implemented on this platform")
   endif()
 endif()
+
 if(USE_UNBOUND)
-  find_package(Unbound)
+  SerfFindPkgConfig(Unbound Unbound_ROOT libunbound Unbound::Unbound)
+  if(NOT Unbound_FOUND)
+    find_package(Unbound)
+    if(Unbound_FOUND)
+      set(UNBOUND_PC_LIBS "${UNBOUND_LIBRARY}")
+    endif()
+  endif()
 endif()
 
 # Calculate the set of private and public targets
-set(SERF_PRIVATE_TARGETS OpenSSL::Crypto OpenSSL::SSL ZLIB::ZLIB)
-if(Brotli_FOUND)
-  list(APPEND SERF_PRIVATE_TARGETS Brotli::Decode)
-endif()
-if(GSSAPI_FOUND)
-  list(APPEND SERF_C_DEFINES "SERF_HAVE_GSSAPI")
-  list(APPEND SERF_PRIVATE_TARGETS KRB5::GSSAPI)
-endif()
-if(Unbound_FOUND)
-  list(APPEND SERF_C_DEFINES "SERF_HAVE_ASYNC_RESOLVER=1")
-  list(APPEND SERF_C_DEFINES "SERF_HAVE_UNBOUND=1")
-  list(APPEND SERF_PRIVATE_TARGETS Unbound::Unbound)
-endif()
-
 if(APR_STATIC)
   if(SERF_WINDOWS)
     list(APPEND SERF_PUBLIC_TARGETS APR::APR_static)
@@ -306,6 +331,20 @@ else(APR_STATIC)
     list(APPEND SERF_PUBLIC_TARGETS APR::APRUtil)
   endif()
 endif(APR_STATIC)
+
+list(APPEND SERF_PRIVATE_TARGETS OpenSSL::SSL OpenSSL::Crypto ZLIB::ZLIB)
+if(Brotli_FOUND)
+  list(APPEND SERF_PRIVATE_TARGETS Brotli::Decode)
+endif()
+if(GSSAPI_FOUND)
+  list(APPEND SERF_C_DEFINES "SERF_HAVE_GSSAPI")
+  list(APPEND SERF_PRIVATE_TARGETS KRB5::GSSAPI)
+endif()
+if(Unbound_FOUND)
+  list(APPEND SERF_C_DEFINES "SERF_HAVE_ASYNC_RESOLVER=1")
+  list(APPEND SERF_C_DEFINES "SERF_HAVE_UNBOUND=1")
+  list(APPEND SERF_PRIVATE_TARGETS Unbound::Unbound)
+endif()
 
 # Feature tests
 include(SerfChecks)
@@ -457,11 +496,6 @@ if(NOT SKIP_SHARED)
     install(FILES $<TARGET_PDB_FILE:serf_shared>
             CONFIGURATIONS Debug RelWithDebinfo
             DESTINATION "${SERF_INSTALL_RUNTIME}")
-    # string(TOLOWER "${CMAKE_BUILD_TYPE}" config)
-    # if(NOT "${config}" STREQUAL "release")
-    #   install(FILES $<TARGET_PDB_FILE:serf_shared>
-    #           DESTINATION "${SERF_INSTALL_RUNTIME}")
-    # endif()
   endif()
 endif()
 
@@ -515,8 +549,10 @@ function(make_pkgconfig)
   set(VERSION ${SERF_VERSION})
   set(MAJOR ${SERF_MAJOR_VERSION})
   set(REQUIRES
-    "libssl"
-    "libcrypto"
+    ${OPENSSL_PC_REQUIRES}
+    ${ZLIB_PC_REQUIRES}
+    ${BROTLI_PC_REQUIRES}
+    ${GSSAPI_PC_REQUIRES}
     ${UNBOUND_PC_REQUIRES}
   )
   set(CFLAGS
@@ -529,10 +565,10 @@ function(make_pkgconfig)
     ${APRUTIL_LDFLAGS}
     ${APRUTIL_LIBRARIES}
     ${APRUTIL_EXTRALIBS}
-    ${ZLIB_LIBRARIES}
-    ${BROTLI_COMMON_LIBRARY}
-    ${BROTLI_DECODE_LIBRARY}
-    ${GSSAPI_LIBRARIES}
+    ${OPENSSL_PC_LIBS}
+    ${ZLIB_PC_LIBS}
+    ${BROTLI_PC_LIBS}
+    ${GSSAPI_PC_LIBS}
     ${UNBOUND_PC_LIBS}
     ${SERF_STANDARD_LIBRARIES}
   )
