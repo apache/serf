@@ -461,7 +461,6 @@ int main(int argc, const char **argv)
     /* Setup debug logging */
     if (verbose) {
         serf_log_output_t *output;
-        apr_status_t status;
         apr_uint32_t level;
 
         level = SERF_LOG_WARNING;

@@ -43,7 +43,8 @@ typedef int serf__bool_t; /* Not _Bool */
 #endif
 #endif
 
-#include <apr.h> /* For __attribute__ */
+#include <apr.h> /* For __attribute__ and APR_HAS_THREADS */
+#include <apr_thread_mutex.h>   /* For apr_thread_mutext_t */
 
  /* Define a MAX macro if we don't already have one */
 #ifndef MAX
@@ -438,6 +439,7 @@ apr_status_t
 serf__config_store_remove_host(serf__config_store_t config_store,
                                const char *hostname_port);
 
+
 struct serf_context_t {
     /* the pool used for self and for other allocations */
     apr_pool_t *pool;
@@ -484,6 +486,11 @@ struct serf_context_t {
     serf_credentials_callback_t cred_cb;
 
     serf_config_t *config;
+
+    /* Support for asynchronous address resolution. */
+    void *volatile resolve_head;
+    apr_status_t resolve_init_status;
+    void *resolve_context;
 };
 
 struct serf_listener_t {
@@ -665,6 +672,22 @@ struct serf_connection_t {
    up buckets that may still reference buckets of this request */
 void serf__connection_pre_cleanup(serf_connection_t *);
 
+/* Called from serf_context_create_ex() to set up the context-specific
+   asynchronous address resolver context. */
+apr_status_t serf__create_resolve_context(serf_context_t *ctx);
+
+/* Called from serf_context_prerun() before handling the connections.
+   Processes the results of any asynchronously resolved addresses
+   that were initiated for CTX. */
+apr_status_t serf__process_async_resolve_results(serf_context_t *ctx);
+
+
+/*** IP address parsing ***/
+
+int serf__inet_pton4(const char *src, unsigned char *dst);
+int serf__inet_pton6(const char *src, unsigned char *dst);
+
+
 /*** Internal bucket functions ***/
 
 /* Copies all data contained in vecs to *data, optionally telling how much was
@@ -747,6 +770,34 @@ apr_status_t serf__handle_auth_response(bool *consumed_response,
    able to cleanup stale objects from time to time. */
 serf__authn_info_t *serf__get_authn_info_for_server(serf_connection_t *conn);
 
+
+/* Parse authentication scheme parameters from a WWW-Authenticate or
+   Proxy-Authenticate header. Splits the comma-separated token=value
+   or token="quoted \" value" pairs into a dictionary. If the parameters
+   are a single token, it's stored as the value of the empty string key.
+
+   The keys in the dictionary will be folded to lowercase.
+
+   See: https://www.rfc-editor.org/rfc/rfc9110.html#section-11.2 */
+apr_hash_t *serf__parse_authn_parameters(const char *attrs, apr_pool_t *pool);
+
+/* Fold ASCII uppercase letters to lowercase, in place, using the same
+   case-folding serf__parse_authn_parameters() does for keys. */
+void serf__tolower_inplace(char *dst, apr_size_t length);
+
+/* Like serf__tolower_inplace, but allocates a new string from the pool. */
+const char *serf__tolower(const char *src, apr_pool_t *pool);
+
+/* Find a given TOKEN in string of whitespace-delimited tokens SRC.
+   If LEN > 0, it is the length of TOKEN; otherwise this function will
+   call strlen() to find the length. All comparisons are case-sensitive.
+   Whitespace is either space ('\x20') or horizontal tab ('\x09').
+
+   NOTE: This function does not modify SRC, so there's no guarantee that
+         the returned token is properly NUL-terminated, as it may have
+         been found somewhere in the middle of the string. */
+const char *serf__find_token(const char *token, apr_size_t len, const char *src);
+
 /* from context.c */
 void serf__context_progress_delta(void *progress_baton, apr_off_t read,
                                   apr_off_t written);
@@ -767,7 +818,7 @@ apr_status_t serf__conn_update_pollset(serf_connection_t *conn);
 serf_request_t *serf__ssltunnel_request_create(serf_connection_t *conn,
                                                serf_request_setup_t setup,
                                                void *setup_baton);
-void serf__connection_set_pipelining(serf_connection_t *conn, int enabled);
+int serf__connection_set_pipelining(serf_connection_t *conn, int enabled);
 apr_status_t serf__connection_flush(serf_connection_t *conn,
                                     bool fetch_new);
 

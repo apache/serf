@@ -465,6 +465,115 @@ static void test_narrowing_conversions(CuTest *tc)
     CuAssertIntEquals(tc, -1, val);
 }
 
+
+struct expected_attrs
+{
+    const char *token;
+    const char *value;
+};
+
+static void parse_parameters(CuTest *tc, const char *attrs,
+                             const struct expected_attrs expected[])
+{
+    test_baton_t *const tb = tc->testBaton;
+    apr_hash_t *const dict = serf__parse_authn_parameters(attrs, tb->pool);
+    const short attr_count = apr_hash_count(dict);
+    int i;
+
+    for (i = 0; expected[i].token; ++i)
+    {
+        const char *token = expected[i].token;
+        const char *value = apr_hash_get(dict, token, APR_HASH_KEY_STRING);
+        CuAssertStrEquals(tc, expected[i].value, value);
+    }
+    CuAssertIntEquals(tc, i, attr_count);
+}
+
+static void test_parse_parameters(CuTest *tc)
+{
+    static const struct expected_attrs expected[] = {
+        { "realm", "Wonderland" },
+        { "scope", "Alice" },
+        { "!#$%&'*+-.^_`|~", "(\"\\)"},
+        { "empty", "" },
+        { NULL, NULL }
+    };
+
+    parse_parameters(tc,
+                     "Realm=\"Wonderland\","
+                     "ScOpE=Alice , "
+                     "!#$%&'*+-.^_`|~=\"(\\\"\\\\)\","
+                     "empty=\"\"",
+                     expected);
+}
+
+static void test_parse_bad_parameters(CuTest *tc)
+{
+    static const struct expected_attrs unexpected[] = {
+        { "first", "value" },
+        { NULL, NULL }
+    };
+    static const struct expected_attrs *expected = &unexpected[1];
+
+    parse_parameters(tc, "", expected);
+    parse_parameters(tc, "\t", expected);
+    parse_parameters(tc, "(comm", expected);
+    parse_parameters(tc, "first=value, key=", unexpected);
+    parse_parameters(tc, "key=\"value", expected);
+    parse_parameters(tc, "key = value", expected);
+    parse_parameters(tc, "key=\"value1\"key=value2", expected);
+    parse_parameters(tc, "key=value1 key=value2", expected);
+}
+
+static void test_parse_repeated_parameters(CuTest *tc)
+{
+    static const struct expected_attrs expected[] = {
+        { "key", "value2" },
+        { NULL, NULL }
+    };
+
+    parse_parameters(tc, "key=value1, key=value2", expected);
+}
+
+static void test_parse_single_token_parameters(CuTest *tc)
+{
+    static const struct expected_attrs expected[] = {
+        { "", "Alice/In+Wonderland.==" },
+        { NULL, NULL }
+    };
+
+    parse_parameters(tc, "\tAlice/In+Wonderland.== ", expected);
+    parse_parameters(tc, "Alice=In+Wonderland.=", &expected[1]);
+}
+
+static void test_parameter_case_folding(CuTest *tc)
+{
+    static const struct expected_attrs expected[] = {
+        { "01234abcdefghijklmnopqrstuvwxyz56789", "Val" },
+        { NULL, NULL }
+    };
+
+    parse_parameters(tc, "01234abcdefghijklmnopqrstuvwxyz56789=Val", expected);
+    parse_parameters(tc, "01234ABCDEFGHIJKLMNOPQRSTUVWXYZ56789=Val", expected);
+}
+
+static void test_find_token(CuTest *tc)
+{
+    CuAssertPtrNotNull(tc, serf__find_token("foo", 0, "foo"));
+    CuAssertPtrNotNull(tc, serf__find_token("foo", 3, "foo"));
+    CuAssertPtrNotNull(tc, serf__find_token("foo", 3, " foo"));
+    CuAssertPtrNotNull(tc, serf__find_token("foo", 3, "foo "));
+    CuAssertPtrNotNull(tc, serf__find_token("foo", 3, "bar\tfoo"));
+    CuAssertPtrNotNull(tc, serf__find_token("foo", 3, "foo\tbar"));
+    CuAssertPtrNotNull(tc, serf__find_token("foo", 3, "bar\t #$@*&^! foo qux"));
+    CuAssertPtrEquals(tc, NULL, serf__find_token("foo", 2, "foo"));
+    CuAssertPtrEquals(tc, NULL, serf__find_token("foo", 3, "\vfoo"));
+    CuAssertPtrEquals(tc, NULL, serf__find_token("foo", 3, "foobar"));
+    CuAssertPtrEquals(tc, NULL, serf__find_token("foo", 3, " qux foobar baz"));
+    CuAssertPtrEquals(tc, NULL, serf__find_token("foo", 3, " qux bar"));
+}
+
+
 CuSuite *test_internal(void)
 {
     CuSuite *suite = CuSuiteNew();
@@ -479,6 +588,12 @@ CuSuite *test_internal(void)
     SUITE_ADD_TEST(suite, test_header_buckets_remove);
     SUITE_ADD_TEST(suite, test_runtime_versions);
     SUITE_ADD_TEST(suite, test_narrowing_conversions);
+    SUITE_ADD_TEST(suite, test_parse_parameters);
+    SUITE_ADD_TEST(suite, test_parse_bad_parameters);
+    SUITE_ADD_TEST(suite, test_parse_repeated_parameters);
+    SUITE_ADD_TEST(suite, test_parse_single_token_parameters);
+    SUITE_ADD_TEST(suite, test_parameter_case_folding);
+    SUITE_ADD_TEST(suite, test_find_token);
 
     return suite;
 }

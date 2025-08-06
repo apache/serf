@@ -1,5 +1,5 @@
 Apache Serf
-Copyright 2016 The Apache Software Foundation
+Copyright 2025 The Apache Software Foundation
 
 This product includes software developed by many people, and distributed
 under Contributor License Agreements to The Apache Software Foundation
@@ -8,3 +8,6 @@ history.
 
 This product includes software developed by the SCons Foundation under the
 MIT license, see LICENSE.
+
+This product contanis code derived from the Internet Software Consortium.
+See LICENSE; Copyright (c) 1996 by Internet Software Consortium.

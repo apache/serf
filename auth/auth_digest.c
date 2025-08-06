@@ -242,20 +242,18 @@ serf__handle_digest_auth(const serf__authn_scheme_t *scheme,
                          const char *auth_attr,
                          apr_pool_t *pool)
 {
-    char *attrs;
-    char *nextkv;
     const char *realm, *realm_name = NULL;
     const char *nonce = NULL;
     const char *algorithm = NULL;
     const char *qop = NULL;
     const char *opaque = NULL;
-    const char *key;
     serf_connection_t *conn = request->conn;
     serf_context_t *ctx = conn->ctx;
     serf__authn_info_t *authn_info;
     digest_authn_info_t *digest_info;
     apr_status_t status;
-    apr_pool_t *cred_pool;
+    apr_hash_t *auth_params;
+    apr_pool_t *scratch_pool;
     char *username, *password;
 
     /* Can't do Digest authentication if there's no callback to get
@@ -264,78 +262,65 @@ serf__handle_digest_auth(const serf__authn_scheme_t *scheme,
         return SERF_ERROR_AUTHN_FAILED;
     }
 
-    if (code == 401) {
+    if (code == SERF_AUTHN_CODE_HOST) {
         authn_info = serf__get_authn_info_for_server(conn);
     } else {
         authn_info = &ctx->proxy_authn_info;
     }
     digest_info = authn_info->baton;
 
-    /* Need a copy cuz we're going to write NUL characters into the string.  */
-    attrs = apr_pstrdup(pool, auth_attr);
-
     /* We're expecting a list of key=value pairs, separated by a comma.
        Ex. realm="SVN Digest",
        nonce="f+zTl/leBAA=e371bd3070adfb47b21f5fc64ad8cc21adc371a5",
        algorithm=MD5, qop="auth" */
-    for ( ; (key = apr_strtok(attrs, ",", &nextkv)) != NULL; attrs = NULL) {
-        char *val;
+    apr_pool_create(&scratch_pool, pool);
+    auth_params = serf__parse_authn_parameters(auth_attr, scratch_pool);
+    realm_name = apr_hash_get(auth_params, "realm", 5);
+    nonce = apr_hash_get(auth_params, "nonce", 5);
+    algorithm = apr_hash_get(auth_params, "algorithm", 9);
+    qop = apr_hash_get(auth_params, "qop", 3);
+    opaque = apr_hash_get(auth_params, "opaque", 6);
 
-        val = strchr(key, '=');
-        if (val == NULL)
-            continue;
-        *val++ = '\0';
-
-        /* skip leading spaces */
-        while (*key == ' ')
-            key++;
-
-        /* If the value is quoted, then remove the quotes.  */
-        if (*val == '"') {
-            apr_size_t last = strlen(val) - 1;
-
-            if (val[last] == '"') {
-                val[last] = '\0';
-                val++;
-            }
-        }
-
-        if (strcmp(key, "realm") == 0)
-            realm_name = val;
-        else if (strcmp(key, "nonce") == 0)
-            nonce = val;
-        else if (strcmp(key, "algorithm") == 0)
-            algorithm = val;
-        else if (strcmp(key, "qop") == 0)
-            qop = val;
-        else if (strcmp(key, "opaque") == 0)
-            opaque = val;
-
-        /* Ignore all unsupported attributes. */
-    }
+    /* Ignore all unsupported attributes. */
 
     if (!realm_name) {
+        apr_pool_destroy(scratch_pool);
         return SERF_ERROR_AUTHN_MISSING_ATTRIBUTE;
     }
 
-    realm = serf__construct_realm(code == 401 ? HOST : PROXY,
+    /* We only support the MD5 hash, fail early if it's anything else. */
+    if (algorithm && strcmp(algorithm, "MD5")) {
+        apr_pool_destroy(scratch_pool);
+        return SERF_ERROR_AUTHN_NOT_SUPPORTED;
+    }
+
+    /* The qop parameter must contain "auth", as that's the only value we
+       support. Fail early if it's not one of the requested qop modes. */
+    if (qop) {
+        qop = serf__find_token("auth", 4, qop);
+        if (!qop) {
+            apr_pool_destroy(scratch_pool);
+            return SERF_ERROR_AUTHN_NOT_SUPPORTED;
+        }
+        qop = "auth";           /* qop must NUL-terminated. */
+    }
+
+    realm = serf__construct_realm(SERF__PEER_FROM_CODE(code),
                                   conn, realm_name,
                                   pool);
 
     /* Ask the application for credentials */
-    apr_pool_create(&cred_pool, pool);
     status = serf__provide_credentials(ctx,
                                        &username, &password,
                                        request,
                                        code, scheme->name,
-                                       realm, cred_pool);
+                                       realm, scratch_pool);
     if (status) {
-        apr_pool_destroy(cred_pool);
+        apr_pool_destroy(scratch_pool);
         return status;
     }
 
-    digest_info->header = (code == 401) ? "Authorization" :
-                                          "Proxy-Authorization";
+    digest_info->header = SERF__HEADER_FROM_CODE(code);
 
     /* Store the digest authentication parameters in the context cached for
        this server in the serf context, so we can use it to create the
@@ -356,7 +341,7 @@ serf__handle_digest_auth(const serf__authn_scheme_t *scheme,
     status = build_digest_ha1(&digest_info->ha1, username, password,
                               digest_info->realm, digest_info->pool);
 
-    apr_pool_destroy(cred_pool);
+    apr_pool_destroy(scratch_pool);
 
     /* If the handshake is finished tell serf it can send as much requests as it
        likes. */
@@ -375,7 +360,7 @@ serf__init_digest_connection(const serf__authn_scheme_t *scheme,
     serf_context_t *ctx = conn->ctx;
     serf__authn_info_t *authn_info;
 
-    if (code == 401) {
+    if (code == SERF_AUTHN_CODE_HOST) {
         authn_info = serf__get_authn_info_for_server(conn);
     } else {
         authn_info = &ctx->proxy_authn_info;
@@ -437,8 +422,7 @@ serf__setup_request_digest_auth(const serf__authn_scheme_t *scheme,
         }
 
         /* Build a new Authorization header. */
-        digest_info->header = (peer == HOST) ? "Authorization" :
-            "Proxy-Authorization";
+        digest_info->header = SERF__HEADER_FROM_PEER(peer);
         status = build_auth_header(&value, digest_info, path, method,
                                    conn->pool);
         if (status)
@@ -467,25 +451,18 @@ serf__validate_response_digest_auth(const serf__authn_scheme_t *scheme,
                                     serf_bucket_t *response,
                                     apr_pool_t *pool)
 {
-    const char *key;
-    char *auth_attr;
-    char *nextkv;
+    const char *const info_hdr = SERF__INFO_HEADER_FROM_PEER(peer);
     const char *rspauth = NULL;
     const char *qop = NULL;
     const char *nc_str = NULL;
-    serf_bucket_t *hdrs;
     serf_context_t *ctx = conn->ctx;
+    serf_bucket_t *hdrs;
+    const char *auth_attr;
+    apr_hash_t *auth_params;
     apr_status_t status;
 
     hdrs = serf_bucket_response_get_headers(response);
-
-    /* Need a copy cuz we're going to write NUL characters into the string.  */
-    if (peer == HOST)
-        auth_attr = apr_pstrdup(pool,
-            serf_bucket_headers_get(hdrs, "Authentication-Info"));
-    else
-        auth_attr = apr_pstrdup(pool,
-            serf_bucket_headers_get(hdrs, "Proxy-Authentication-Info"));
+    auth_attr = serf_bucket_headers_get(hdrs, info_hdr);
 
     /* If there's no Authentication-Info header there's nothing to validate. */
     if (! auth_attr)
@@ -495,35 +472,10 @@ serf__validate_response_digest_auth(const serf__authn_scheme_t *scheme,
        Ex. rspauth="8a4b8451084b082be6b105e2b7975087",
        cnonce="346531653132652d303033392d3435", nc=00000007,
        qop=auth */
-    for ( ; (key = apr_strtok(auth_attr, ",", &nextkv)) != NULL; auth_attr = NULL) {
-        char *val;
-
-        val = strchr(key, '=');
-        if (val == NULL)
-            continue;
-        *val++ = '\0';
-
-        /* skip leading spaces */
-        while (*key == ' ')
-            key++;
-
-        /* If the value is quoted, then remove the quotes.  */
-        if (*val == '"') {
-            apr_size_t last = strlen(val) - 1;
-
-            if (val[last] == '"') {
-                val[last] = '\0';
-                val++;
-            }
-        }
-
-        if (strcmp(key, "rspauth") == 0)
-            rspauth = val;
-        else if (strcmp(key, "qop") == 0)
-            qop = val;
-        else if (strcmp(key, "nc") == 0)
-            nc_str = val;
-    }
+    auth_params = serf__parse_authn_parameters(auth_attr, pool);
+    rspauth = apr_hash_get(auth_params, "rspauth", 7);
+    qop = apr_hash_get(auth_params, "qop", 3);
+    nc_str = apr_hash_get(auth_params, "nc", 2);
 
     if (rspauth) {
         const char *ha2, *tmp, *resp_hdr_hex;
@@ -566,4 +518,6 @@ const serf__authn_scheme_t serf__digest_authn_scheme = {
     serf__handle_digest_auth,
     serf__setup_request_digest_auth,
     serf__validate_response_digest_auth,
+
+    0                           /* user-defined scheme magic */
 };

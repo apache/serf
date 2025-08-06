@@ -652,7 +652,6 @@ serf__bucket_hpack_setx(serf_bucket_t *bucket,
 {
     serf_hpack_context_t *ctx = bucket->data;
     serf_hpack_entry_t *entry;
-    apr_size_t i;
 
     for (entry = ctx->first; entry; entry = entry->next)
     {
@@ -694,11 +693,7 @@ serf__bucket_hpack_setx(serf_bucket_t *bucket,
          header field names MUST be treated as malformed (Section 8.1.2.6). */
 
         char *ckey = serf_bstrmemdup(bucket->allocator, key, key_size);
-        for (i = 0; i < key_size; i++)
-        {
-            if (ckey[i] >= 'A' && key[i] <= 'Z')
-                ckey[i] += ('a' - 'A');
-        }
+        serf__tolower_inplace(ckey, key_size);
         entry->key = ckey;
         entry->free_key = true;
     }
@@ -1396,9 +1391,8 @@ handle_read_entry_and_clear(serf_hpack_decode_ctx_t *ctx,
     serf_hpack_table_t *tbl = ctx->tbl;
     const char *keep_key = NULL;
     const char *keep_val = NULL;
-    apr_status_t status;
-    char own_key;
-    char own_val;
+    bool own_key;
+    bool own_val;
 
     serf__log(LOGLVL_INFO, SERF_LOGCOMP_PROTOCOL, __FILE__, ctx->config,
               "Parsed from HPACK: %.*s: %.*s\n",
@@ -1476,9 +1470,11 @@ handle_read_entry_and_clear(serf_hpack_decode_ctx_t *ctx,
 
     if (ctx->reuse_item)
     {
-        status = hpack_table_get(ctx->reuse_item, tbl,
-                                 &keep_key, NULL,
-                                 &keep_val, NULL);
+        /* hpack_table_get() does not modify its output arguments if
+           it returns an error, so we ignore the return value here. */
+        hpack_table_get(ctx->reuse_item, tbl,
+                        &keep_key, NULL,
+                        &keep_val, NULL);
     }
 
     own_key = (ctx->key && ctx->key != keep_key);

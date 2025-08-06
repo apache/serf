@@ -49,9 +49,14 @@ set(MockHTTPinC_DEFINES ${SERF_C_DEFINES})
 list(REMOVE_ITEM MockHTTPinC_DEFINES "OPENSSL_NO_DEPRECATED")
 
 add_library(mockhttpinc STATIC ${MockHTTPinC_SOURCES})
-target_compile_options(mockhttpinc PRIVATE ${MockHTTPinC_WARNINGS})
+target_compile_options(mockhttpinc
+                       PRIVATE
+                       ${MockHTTPinC_WARNINGS}
+                       ${APR_CFLAGS})
 target_compile_definitions(mockhttpinc
                            PUBLIC "MOCKHTTP_OPENSSL"
                            PRIVATE ${MockHTTPinC_DEFINES})
-target_include_directories(mockhttpinc SYSTEM BEFORE
-                           PRIVATE ${APR_INCLUDES} ${APRUTIL_INCLUDES})
+target_link_libraries(mockhttpinc
+                      ${SERF_PRIVATE_TARGETS}
+                      ${SERF_PUBLIC_TARGETS}
+                      ${SERF_STANDARD_LIBRARIES})

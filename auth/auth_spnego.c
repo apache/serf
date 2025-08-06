@@ -371,7 +371,7 @@ serf__init_spnego_connection(const serf__authn_scheme_t *scheme,
 
     /* For proxy authentication, reuse the gss context for all connections.
        For server authentication, create a new gss context per connection. */
-    if (code == 401) {
+    if (code == SERF_AUTHN_CODE_HOST) {
         authn_info = &conn->authn_info;
     } else {
         authn_info = &ctx->proxy_authn_info;
@@ -415,11 +415,12 @@ serf__handle_spnego_auth(const serf__authn_scheme_t *scheme,
 {
     serf_connection_t *conn = request->conn;
     serf_context_t *ctx = conn->ctx;
-    gss_authn_info_t *gss_info = (code == 401) ? conn->authn_info.baton :
-                                                 ctx->proxy_authn_info.baton;
+    gss_authn_info_t *gss_info = ((code == SERF_AUTHN_CODE_HOST)
+                                  ? conn->authn_info.baton :
+                                  ctx->proxy_authn_info.baton);
 
     return do_auth(scheme,
-                   code == 401 ? HOST : PROXY,
+                   SERF__PEER_FROM_CODE(code),
                    code,
                    gss_info,
                    request->conn,
@@ -654,6 +655,8 @@ const serf__authn_scheme_t serf__spnego_authn_scheme = {
     serf__handle_spnego_auth,
     serf__setup_request_spnego_auth,
     serf__validate_response_spnego_auth,
+
+    0                           /* user-defined scheme magic */
 };
 
 #ifdef WIN32
@@ -665,6 +668,8 @@ const serf__authn_scheme_t serf__ntlm_authn_scheme = {
     serf__handle_spnego_auth,
     serf__setup_request_spnego_auth,
     serf__validate_response_spnego_auth,
+
+    0                           /* user-defined scheme magic */
 };
 #endif /* #ifdef WIN32 */
 

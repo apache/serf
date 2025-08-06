@@ -89,7 +89,8 @@ typedef struct test_baton_t {
 
     /* Extra batons which can be freely used by tests. */
     void *user_baton;
-    long user_baton_l;
+    apr_uint64_t user_number;
+    apr_status_t user_status;
 
     /* Flags that can be used to report situations, e.g. that a callback was
        called. */
@@ -119,6 +120,8 @@ apr_status_t default_https_conn_setup(apr_socket_t *skt,
 
 apr_status_t use_new_connection(test_baton_t *tb,
                                 apr_pool_t *pool);
+apr_status_t use_new_async_connection(test_baton_t *tb,
+                                      apr_pool_t *pool);
 
 void *test_setup(void *baton);
 void *test_teardown(void *baton);
@@ -241,6 +244,9 @@ serf_bucket_t *serf_bucket_mock_sock_create(serf_bucket_t *stream,
 /* Test utility functions, to be used with the MockHTTPinC framework         */
 /*****************************************************************************/
 
+/* Initiate a simple serf context with no connections. */
+apr_status_t setup_test_context(test_baton_t *tb, apr_pool_t *pool);
+
 /* Initiate a serf context configured to connect to the mock http server */
 apr_status_t setup_test_client_context(test_baton_t *tb,
                                        serf_connection_setup_t conn_setup,
@@ -295,7 +301,7 @@ run_client_and_mock_servers_loops_expect_ok(CuTest *tc, test_baton_t *tb,
                                             handler_baton_t handler_ctx[],
                                             apr_pool_t *pool);
 
-/* Logs a test suite error with its code location, and return status 
+/* Logs a test suite error with its code location, and return status
    SERF_ERROR_ISSUE_IN_TESTSUITE. */
 #define REPORT_TEST_SUITE_ERROR()\
      test__report_suite_error(__FILE__, __LINE__)

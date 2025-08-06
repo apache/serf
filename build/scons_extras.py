@@ -22,6 +22,7 @@
 import re
 
 import SCons.Environment
+import SCons.SConf
 import SCons.Util
 
 
@@ -54,6 +55,20 @@ def __env_munge_if(env, method, variables, pattern, **kwargs):
   getattr(env, method)(**kwargs)
 
 
+def __env_check_c_flag(env, flag):
+  '''Check if the C compiler accepts the `flag`'''
+
+  xenv = env.Clone()
+  xenv.Append(CCFLAGS=[flag])
+  xonf = SCons.SConf.SConf(xenv)
+  xmsg = SCons.SConf.CheckContext(xonf)
+  xmsg.Display('Checking if the C compiler accepts %s... ' % (flag,))
+  result = xonf.TryCompile('int main(void) { return 0; }', '.c')
+  xmsg.Result(result)
+  xonf.Finish()
+  return result
+
+
 def AddEnvironmentMethods():
   SCons.Util.AddMethod(
     SCons.Environment.Environment,
@@ -65,6 +80,9 @@ def AddEnvironmentMethods():
     lambda env, variables, pattern, **kwargs:
     __env_munge_if(env, 'Prepend', variables, pattern, **kwargs),
     'SerfPrependIf')
+  SCons.Util.AddMethod(
+    SCons.Environment.Environment,
+    __env_check_c_flag, 'SerfCheckCFlag')
 
 
 #

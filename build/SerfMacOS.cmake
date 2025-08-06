@@ -52,6 +52,7 @@ function(serf_macos_find_packages)
   endif()
   _serf_macos__find_package("brotli" Brotli_ROOT "Path to Brotli's install area")
   _serf_macos__find_package("gssapi" GSSAPI_ROOT "Path to GSSAPI's install area")
+  _serf_macos__find_package("unbound" Unbound_ROOT "Path to Unbound's install area")
 endfunction()
 
 #

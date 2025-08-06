@@ -30,6 +30,7 @@
 #include <apr_errno.h>
 #include <apr_allocator.h>
 #include <apr_pools.h>
+#include <apr_hash.h>
 #include <apr_network_io.h>
 #include <apr_time.h>
 #include <apr_poll.h>
@@ -443,7 +444,11 @@ typedef apr_status_t (*serf_response_handler_t)(
  * can handle server and proxy authentication.
  * code = 401 (server) or 407 (proxy).
  * baton = the baton passed to serf_context_run.
- * authn_type = one of "Basic", "Digest".
+ * authn_type = one of "Basic", "Digest", or the name of a user-defined
+ *              authentication scheme if it uses this callback.
+ *
+ * @see SERF_AUTHN_CODE_HOST
+ * @see SERF_AUTHN_CODE_PROXY
  */
 typedef apr_status_t (*serf_credentials_callback_t)(
     char **username,
@@ -533,6 +538,110 @@ apr_status_t serf_connection_create3(
     serf_context_t *ctx,
     apr_uri_t host_info,
     apr_sockaddr_t *host_address,
+    serf_connection_setup_t setup,
+    void *setup_baton,
+    serf_connection_closed_t closed,
+    void *closed_baton,
+    apr_pool_t *pool);
+
+
+/**
+ * Notification callback when an address hae been resolved.
+ *
+ * The @a ctx and @a resolved_baton arguments are the same that were passed
+ * to serf_address_resolve_async().
+ *
+ * @a status contains the result of the address resolution. If it is not
+ * @c APR_SUCCESS, then @a host_address is invalid and should be ignored.
+ *
+ * The resolved @a host_address is ephemeral, allocated iun @a pool and lives
+ * only for the duration of the callback. If ti is not consumed, it should be
+ * copied to a more permanent pool, using for example apr_sockaddr_info_copy().
+ *
+ * All temporary allocations should be made in @a pool.
+ *
+ * @since New in 1.4.
+ */
+/* FIXME: EXPERIMENTAL */
+typedef void (*serf_address_resolved_t)(
+    serf_context_t *ctx,
+    void *resolved_baton,
+    apr_sockaddr_t *host_address,
+    apr_status_t status,
+    apr_pool_t *pool);
+
+/**
+ * Asynchronously resolve an address.
+ *
+ * The address represented by @a host_info is intended to be used to create
+ * new connections in @a ctx; proxy configuration will be taken into account
+ * during resolution. See, for example, serf_connection_create3().
+ *
+ * The @a resolve callback will be called during a subsequent call to
+ * serf_context_run() or serf_context_prerun() and will receive the same
+ * @a ctx and @a resolved_baton that are preovided here.
+ *
+ * The lifetime of all function arguments except @a pool must extend until
+ * either @a resolve is called or an error is reported.
+ *
+ * All temporary allocations should be made in @a pool.
+ *
+ * @since New in 1.4.
+ */
+/* FIXME: EXPERIMENTAL */
+apr_status_t serf_address_resolve_async(
+    serf_context_t *ctx,
+    apr_uri_t host_info,
+    serf_address_resolved_t resolved,
+    void *resolved_baton,
+    apr_pool_t *pool);
+
+
+/**
+ * Notification callback when a connection hae been created.
+ *
+ * The @a ctx and @a created_baton arguments are the same that were passed
+ * to serf_connection_create_async().
+ *
+ * @a status contains the result of the connection creation. If it is not
+ * @c APR_SUCCESS, then @a conn is invalid and should be ignored.
+ *
+ * The created @a conn is allocated in the pool that was passed to
+ * serf_connection_create_async(); this is @b not the same as @a pool.
+ *
+ * All temporary allocations should be made in @a pool.
+ *
+ * @since New in 1.4.
+ */
+/* FIXME: EXPERIMENTAL */
+typedef void (*serf_connection_created_t)(
+    serf_context_t *ctx,
+    void *created_baton,
+    serf_connection_t *conn,
+    apr_status_t status,
+    apr_pool_t *pool);
+
+/**
+ * Asyncchronously create a new connection associated with
+ * the @a ctx serf context.
+ *
+ * Like serf_connection_create3() with @a host_address set to @c NULL,
+ * except that address resolution is performed asynchronously, similarly to
+ * serf_address_resolve_async().
+ *
+ * The @a created callback with @a created_baton is called when the connection
+ * is created but before it is opened. Note that depending on the configuration
+ * of @a ctx,the connection may be created and this callback be invoked
+ * synchronously during the scope of this function call.
+ *
+ * @since New in 1.4.
+ */
+/* FIXME: EXPERIMENTAL */
+apr_status_t serf_connection_create_async(
+    serf_context_t *ctx,
+    apr_uri_t host_info,
+    serf_connection_created_t created,
+    void *created_baton,
     serf_connection_setup_t setup,
     void *setup_baton,
     serf_connection_closed_t closed,
@@ -631,7 +740,8 @@ apr_status_t serf_incoming_create2(
     void *req_setup_baton,
     apr_pool_t *client_pool);
 
-/* Allows creating a response before the request is completely
+/**
+ * Allows creating a response before the request is completely
  * read. Will call the response create function if it hasn't
  * been called yet.
  *
@@ -893,16 +1003,10 @@ void serf_config_proxy(
     serf_context_t *ctx,
     apr_sockaddr_t *address);
 
-/* Supported authentication types. */
-#define SERF_AUTHN_NONE      0x00
-#define SERF_AUTHN_BASIC     0x01
-#define SERF_AUTHN_DIGEST    0x02
-#define SERF_AUTHN_NTLM      0x04
-#define SERF_AUTHN_NEGOTIATE 0x08
-#define SERF_AUTHN_ALL       0xFF
-
 /**
  * Define the authentication handlers that serf will try on incoming requests.
+ *
+ * @see @c SERF_AUTHN_ALL etc.
  */
 void serf_config_authn_types(
     serf_context_t *ctx,
@@ -948,6 +1052,292 @@ serf_bucket_t *serf_request_bucket_request_create(
 
 /** @} */
 
+/**
+ * @defgroup serf authentication
+ * @ingroup serf
+ * @{
+ *
+ * Interaction during authentication hanshake for user-defined schemes:
+ * ```
+ * scheme                     serf                      peer
+ *    |                         |                        |
+ *    |                         +------> request ------->+
+ *    |                         |                        |
+ *    |                         +<---- authenticate <----+ (401 or 407)
+ *    +<------ init-conn <------+                        |
+ *    |                         |                        |
+ *    |     (pipelining off) <--+ (optional)             |
+ *    |    (get credentials) <--+ (optional)             |
+ *    |                         |                        |
+ *    +<-------- handle <-------+                        |
+ *    |                         |                        |
+ *    |   (reset pipelining) <--+ (optional)             |
+ *    |                         |                        |
+ *    +<---- setup-requiest <---+                        |
+ *    |                         |                        |
+ *    |   (reset pipelining) <--+ (optional)             |
+ *    |                         +---> request + authn -->+
+ *    |                         |                        |
+ *    |                         +<------ response <------+
+ *    +<-- validate-response <--+                        |
+ *    |                         |                        |
+ *    |   (reset pipelining) <--+ (optional)             |
+ *    |                         |                        |
+ * ```
+ */
+
+/* Supported authentication types. */
+#define SERF_AUTHN_NONE      0x00 /**< Authentication type: None */
+#define SERF_AUTHN_BASIC     0x01 /**< Authentication type: Basic */
+#define SERF_AUTHN_DIGEST    0x02 /**< Authentication type: Digest */
+#define SERF_AUTHN_NTLM      0x04 /**< Authentication type: NTLM */
+#define SERF_AUTHN_NEGOTIATE 0x08 /**< Authentication type: Negotiate */
+#define SERF_AUTHN_ALL      ~0x00 /**< All authentication types */
+
+/* For user-defined authentication callbacks: these the sources of an
+   authentication callback. */
+#define SERF_AUTHN_CODE_HOST  401 /**< Authentication request from a host */
+#define SERF_AUTHN_CODE_PROXY 407 /**< Authentication requset from a proxy */
+
+/* Flags returned from the init-connection callback. */
+#define SERF_AUTHN_FLAG_NONE  0x00 /**< Authn flags: None */
+#define SERF_AUTHN_FLAG_PIPE  0x01 /**< Authn flags: Allow pipelining */
+#define SERF_AUTHN_FLAG_CREDS 0x02 /**< Authn flags: Require credentials */
+
+/**
+ * Callback for user-defined authentication scheme providers.
+ *
+ * Called to initialize the connection for this authentication scheme. Return
+ * the connection-specific @a authn_baton allocated from @a result_pool, that
+ * will be passed to the other callbacks when called for the same connection.
+ *
+ * @a baton is the user data pointer passed to serf_authn_register_scheme().
+ *
+ * @a code is the HTTP status code from the response that caused the call to
+ * this callback; either @c SERF_AUTHN_CODE_HOST when the peer is a server, or
+ * @c SERF_AUTHN_CODE_PROXY when proxy authentication is required.
+ *
+ * Use @a scratch_pool for temporary allocations.
+ *
+ * @since New in 1.4.
+ */
+typedef apr_status_t
+(*serf_authn_init_conn_func_t)(void **authn_baton,
+                               void *baton, int code,
+                               apr_pool_t *result_pool,
+                               apr_pool_t *scratch_pool);
+
+/**
+ * Callback for user-defined authentication scheme providers.
+ *
+ * Return a unique identifier of the server (or service) in @a realm_name,
+ * allocated from @a result_pool.
+ *
+ * @a baton is the user data pointer passed to serf_authn_register_scheme().
+ *
+ * @a authn_baton is the pointer returned from the init-connection callback.
+ *
+ * @a authn_header and @a authn_parameters come from the authentication header
+ * (WWW-Authenticate or Proxy-Authenticate) recevied in a server response.
+ *
+ * @a authn_header is the header value, i.e., "scheme <parameters>";
+ *
+ * @a authn_parameters is a dictionary of the authentication parameters
+ * and their values, e.g., `realm="Wonderland"`. The keys are always folded
+ * to lower case. If the parameter is a single token, it is returned in the
+ * dictionary as the value of the empty string key ("").
+ * @see https://www.rfc-editor.org/rfc/rfc9110.html#section-11.2
+ *
+ * If the scheme flag @a SERF_AUTHN_FLAG_PIPE is *not* set, pipelining will be
+ * disabled on the connection after this callback succeeds.
+ *
+ * Use @a scratch_pool for temporary allocations.
+ *
+ * @since New in 1.4.
+ */
+typedef apr_status_t
+(*serf_authn_get_realm_func_t)(const char **realm_name,
+                               void *baton,
+                               void *authn_baton,
+                               const char *authn_header,
+                               apr_hash_t *authn_parameters,
+                               apr_pool_t *result_pool,
+                               apr_pool_t *scratch_pool);
+
+/**
+ * Callback for user-defined authentication scheme providers.
+ *
+ * Called after the init-conn function has succeeded to prepare (cache) the
+ * credentials for this connection, usually in @a auth_baton.
+ *
+ * @a baton, @a authn_baton, @a authn_header and @a authn_parameters have the
+ * same meaning as in the get-realm function; @a code is the same as in the
+ * init-conn function.
+ *
+ * @a response_header is either "Authorization" or "Proxy-Authorization",
+ * depending on the type of the peer for the authentication handshake.
+ *
+ * @a username and @a password are optional (may ba null), provided by the
+ * credentials callback, which is called automatically if the scheme flag
+ * @c SERF_AUTHN_FLAG_CREDS is set.
+ *
+ * @a request is the pending request and @a response is the response that
+ * caused this callback to be called.
+ *
+ * If the scheme flag @c SERF_AUTHN_FLAG_PIPE is *not* set, return a boolean
+ * value in @a reset_pipelining to indicate whether pipelining on @a conn
+ * should be restored to the value before the init-conn callback was invoked.
+ * The value of this flag is set to @c false by the caller, so the
+ * implementation does not have to modify it if the pipelining state should
+ * remain unchanged. This parameter has the same meaning in the
+ * serf_authn_setup_request_func_t and serf_authn_validate_response_func_t
+ * callbacks and will only take effect the first time its value @c true.
+ *
+ * Use @a scratch_pool for temporary allocations.
+ *
+ * @since New in 1.4.
+ */
+typedef apr_status_t
+(*serf_authn_handle_func_t)(int *reset_pipelining,
+                            void *baton,
+                            void *authn_baton,
+                            int code,
+                            const char *authn_header,
+                            apr_hash_t *authn_parameters,
+                            const char *response_header,
+                            const char *username,
+                            const char *password,
+                            serf_request_t *request,
+                            serf_bucket_t *response,
+                            apr_pool_t *result_pool,
+                            apr_pool_t *scratch_pool);
+
+/**
+ * Callback for user-defined authentication scheme providers.
+ *
+ * Called every time a new authenticated @a request is being prepared for the
+ * connection @a conn, in order to add credentials etc. to the request.
+ *
+ * @a baton and @a authn_baton are the same as in the handle function.
+ *
+ * @a method and @a uri are the requests attributes and @a headers are the
+ * request headers where the credentials are usually set.
+ *
+ * For the meaning of @a reset_pipelining, see serf_authn_handle_func_t.
+ *
+ * Use @a scratch_pool for temporary allocations.
+ *
+ * @since New in 1.4.
+ */
+typedef apr_status_t
+(*serf_authn_setup_request_func_t)(int *reset_pipelining,
+                                   void *baton,
+                                   void *authn_baton,
+                                   serf_connection_t *conn,
+                                   serf_request_t *request,
+                                   const char *method,
+                                   const char *uri,
+                                   serf_bucket_t *headers,
+                                   apr_pool_t *scratch_pool);
+
+/**
+ * Callback for user-defined authentication scheme providers.
+ *
+ * Called every time a @a response with status @a code to the authenticated @a
+ * request is received from the connection @a conn.
+ *
+ * @a baton and @a authn_baton are the same as in the setup-request function
+ *
+ * @a authn_info_parameters is a dictionary with the same structure as the
+ * `authn_parameters` argument to `serf_authn_get_realm_func_t`; except that
+ * they're extracted from the Authentication-Info or Proxy-Authentication-Info
+ * response header. This argument will be NULL @a response does  not contain
+ * one of those headers.
+ *
+ * For the meaning of @a reset_pipelining, see serf_authn_handle_func_t.
+ *
+ * Use @a scratch_pool for temporary allocations.
+ *
+ * @since New in 1.4.
+ */
+typedef apr_status_t
+(*serf_authn_validate_response_func_t)(int *reset_pipelining,
+                                       void *baton,
+                                       void *authn_baton,
+                                       int code,
+                                       serf_connection_t *conn,
+                                       apr_hash_t *authn_info_parameters,
+                                       serf_request_t *request,
+                                       serf_bucket_t *response,
+                                       apr_pool_t *scratch_pool);
+
+/**
+ * Register an autehtication scheme.
+ *
+ * The @a name is the name of the authentication scheme as it appears in the
+ * authorization headers. It must be a valid token as defined in RFC-9110
+ * (see reference, below).
+ *
+ * @a baton will be passed unchanged to the callbacks.
+ *
+ * @a flags is a bitmask of @c APR_AUTHN_FLAG_* constants that define the
+ * scheme's requirements; e.g., whether the credentials callback should be
+ * invoked, or whether pipelining should be disabled while the authentication
+ * handshake is in progress.
+ *
+ * @a init_conn, @a handle, @a setup_request and @a validate_response are the
+ * callbacks that implement the authentication handshake for this scheme.
+ *
+ * The number returned in @a type can be used as a bit mask in
+ * serf_config_authn_types(). If an error occurs during registration,
+ * @a type will be set to @c SERF_AUTHN_NONE.
+ *
+ * The @a ctx is used only for logging.
+ *
+ * Internal structures related to this provider will be allocated from @a
+ * result_pool, so take care that it lives as long as the autehtication scheme
+ * is registered. Ideally, this pool should have a longer lifetime than any of
+ * the pools used in calls to the serf_contex_create() family of functions.
+ *
+ * @see https://www.rfc-editor.org/rfc/rfc9110#section-11.1
+ * @since New in 1.4
+ */
+apr_status_t serf_authn_register_scheme(
+    int *type,
+    serf_context_t *ctx,
+    const char *name, void *baton, int flags,
+    serf_authn_init_conn_func_t init_conn,
+    serf_authn_get_realm_func_t get_realm,
+    serf_authn_handle_func_t handle,
+    serf_authn_setup_request_func_t setup_request,
+    serf_authn_validate_response_func_t validate_response,
+    apr_pool_t *result_pool);
+
+/**
+ * Unregister an uthentication scheme.
+ *
+ * Removes the scheme, identified by @a type that was returned from and
+ * @a name that was supplied to serf_authn_register_scheme(), from the
+ * list of supported authentication schemes. Uses @a scratch_pool for
+ * temporary allocations; this pool can be destroyed after the function
+ * has returned.
+ *
+ * The @a ctx is used only for logging.
+ *
+ * NOTE: Unregistering a scheme should be avoided, unless you can be absolutely
+ *       sure that there are no outstanding requests, responses, connections or
+ *       contexts that refer to it. There is no internal reference counting or
+ *       other mechanism to ensure that the scheme remains accessible while it's
+ *       in use. So in short: *do not* use this function at all.
+ *
+ * @since New in 1.4
+ */
+apr_status_t serf_authn_unregister_scheme(serf_context_t *ctx,
+                                          int type,
+                                          const char *name,
+                                          apr_pool_t *scratch_pool);
+
+/** @} */
 
 /**
  * @defgroup serf buckets

@@ -28,6 +28,7 @@
 # ZLIB_ROOT         - Path to zlib's install area
 # Brotli_ROOT       - Path to Brotli's install area
 # GSSAPI_ROOT       - Path to GSSAPI's install area
+# Unbound_ROOT      - Path to libunbound's install area
 # ===================================================================
 
 cmake_minimum_required(VERSION 3.12)
@@ -47,6 +48,11 @@ message(WARNING
         "Serf's CMake build is considered EXPERIMENTAL. "
         "Some features are not supported and the build "
         "has not been tested on many supported platforms.")
+
+# Optional dependency options
+option(USE_BROTLI "Use the Brotli decoding library if available" ON)
+option(USE_GSSAPI "Use GSSAPI authentication if available" ON)
+option(USE_UNBOUND "Use the Unbound async resolver if available" ON)
 
 # Build options
 option(DEBUG "Enable debugging info and strict compile warnings" OFF)
@@ -76,12 +82,14 @@ endif()
 if(NOT CMAKE_BUILD_TYPE)
   if(DEBUG)
     set(CMAKE_BUILD_TYPE Debug CACHE STRING "Default to debug build." FORCE)
+    set(SERF_MAINTAINER_MODE TRUE)
   else()
     set(CMAKE_BUILD_TYPE Release CACHE STRING "Default to release build." FORCE)
   endif()
 endif()
 
 include(GNUInstallDirs)
+include(SerfFindPkgConfig)
 include(SerfPlatform)
 
 # On the Mac: Use dependencies from Homebrew or MacPorts
@@ -131,18 +139,22 @@ list(APPEND SOURCES
     "src/context.c"
     "src/deprecated.c"
     "src/incoming.c"
+    "src/inet_pton.c"
     "src/init_once.c"
     "src/logging.c"
     "src/outgoing.c"
     "src/outgoing_request.c"
     "src/pump.c"
+    "src/resolve.c"
     "src/ssltunnel.c"
+    "src/syntax.c"
     "auth/auth.c"
     "auth/auth_basic.c"
     "auth/auth_digest.c"
     "auth/auth_spnego.c"
     "auth/auth_spnego_gss.c"
     "auth/auth_spnego_sspi.c"
+    "auth/auth_user_defined.c"
     "buckets/aggregate_buckets.c"
     "buckets/allocator.c"
     "buckets/barrier_buckets.c"
@@ -236,10 +248,29 @@ if(EXPAT)
 endif(EXPAT)
 
 # Find required dependencies
-find_package(OpenSSL REQUIRED)
-find_package(ZLIB REQUIRED)
 find_package(APR REQUIRED)
 find_package(APRUtil REQUIRED)
+
+
+SerfFindPkgConfig(OpenSSL_SSL OPENSSL_ROOT_DIR libssl OpenSSL::SSL)
+SerfFindPkgConfig(OpenSSL_Crypto OPENSSL_ROOT_DIR libcrypto OpenSSL::Crypto)
+if(NOT (OpenSSL_SSL_FOUND AND OpenSSL_Crypto_FOUND))
+  find_package(OpenSSL REQUIRED)
+  if(OpenSSL_FOUND)
+    set(OPENSSL_PC_LIBS ${OPENSSL_LIBRARIES})
+  endif()
+else()
+  set(OpenSSL_FOUND TRUE)
+  set(OPENSSL_INCLUDE_DIR ${OPENSSL_SSL_INCLUDE_DIR})
+  set(OPENSSL_PC_REQUIRES ${OPENSSL_SSL_PC_REQUIRES} ${OPENSSL_CRYPTO_PC_REQUIRES})
+  set(OPENSSL_LIBRARIES ${OPENSSL_SSL_LIBRARY} ${OPENSSL_CRYPTO_LIBRARY})
+endif()
+
+SerfFindPkgConfig(ZLIB ZLIB_ROOT zlib ZLIB::ZLIB)
+if(NOT ZLIB_FOUND)
+  find_package(ZLIB REQUIRED)
+  set(ZLIB_PC_LIBS ${ZLIB_LIBRARIES})
+endif()
 
 # We do not want or need OpenSSL's compatibility macros.
 list(APPEND SERF_C_DEFINES "OPENSSL_NO_DEPRECATED")
@@ -248,9 +279,26 @@ list(APPEND SERF_C_DEFINES "OPENSSL_NO_DEPRECATED")
 list(APPEND SERF_C_DEFINES "OPENSSL_NO_STDIO")
 
 # Find optional dependencies
-find_package(Brotli)
+if(USE_BROTLI)
+  SerfFindPkgConfig(Brotli Brotli_ROOT libbrotlidec Brotli::Decode)
+  if(NOT Brotli_FOUND)
+    find_package(Brotli)
+    if(Brotli_FOUND)
+      set(BROTLI_PC_LIBS ${BROTLI_DECODE_LIBRARY})
+    endif()
+  endif()
+endif()
+
 if(NOT SERF_WINDOWS)
-  find_package(GSSAPI)
+  if(USE_GSSAPI)
+    SerfFindPkgConfig(GSSAPI GSSAPI_ROOT krb5-gssapi KRB5::GSSAPI)
+    if(NOT GSSAPI_FOUND)
+      find_package(GSSAPI)
+      if(GSSAPI_FOUND)
+        set(GSSAPI_PC_LIBS ${GSSAPI_LIBRARIES})
+      endif()
+    endif()
+  endif()
 else()
   # We use SSPI on Windows and there's no Kerberos/GSSAPI port there.
   set(GSSAPI_FOUND FALSE)
@@ -259,16 +307,17 @@ else()
   endif()
 endif()
 
-# Calculate the set of private and public targets
-set(SERF_PRIVATE_TARGETS OpenSSL::Crypto OpenSSL::SSL ZLIB::ZLIB)
-if(Brotli_FOUND)
-  list(APPEND SERF_PRIVATE_TARGETS Brotli::Decode)
-endif()
-if(GSSAPI_FOUND)
-  list(APPEND SERF_C_DEFINES "SERF_HAVE_GSSAPI")
-  list(APPEND SERF_PRIVATE_TARGETS KRB5::GSSAPI)
+if(USE_UNBOUND)
+  SerfFindPkgConfig(Unbound Unbound_ROOT libunbound Unbound::Unbound)
+  if(NOT Unbound_FOUND)
+    find_package(Unbound)
+    if(Unbound_FOUND)
+      set(UNBOUND_PC_LIBS "${UNBOUND_LIBRARY}")
+    endif()
+  endif()
 endif()
 
+# Calculate the set of private and public targets
 if(APR_STATIC)
   if(SERF_WINDOWS)
     list(APPEND SERF_PUBLIC_TARGETS APR::APR_static)
@@ -284,6 +333,20 @@ else(APR_STATIC)
     list(APPEND SERF_PUBLIC_TARGETS APR::APRUtil)
   endif()
 endif(APR_STATIC)
+
+list(APPEND SERF_PRIVATE_TARGETS OpenSSL::SSL OpenSSL::Crypto ZLIB::ZLIB)
+if(Brotli_FOUND)
+  list(APPEND SERF_PRIVATE_TARGETS Brotli::Decode)
+endif()
+if(GSSAPI_FOUND)
+  list(APPEND SERF_C_DEFINES "SERF_HAVE_GSSAPI")
+  list(APPEND SERF_PRIVATE_TARGETS KRB5::GSSAPI)
+endif()
+if(Unbound_FOUND)
+  list(APPEND SERF_C_DEFINES "SERF_HAVE_ASYNC_RESOLVER=1")
+  list(APPEND SERF_C_DEFINES "SERF_HAVE_UNBOUND=1")
+  list(APPEND SERF_PRIVATE_TARGETS Unbound::Unbound)
+endif()
 
 # Feature tests
 include(SerfChecks)
@@ -305,6 +368,11 @@ CheckNotFunction("X509_STORE_CTX_get0_chain" "NULL" "SERF_NO_SSL_X509_GET0_CHAIN
 CheckNotFunction("ASN1_STRING_get0_data" "NULL" "SERF_NO_SSL_ASN1_STRING_GET0_DATA"
                  "openssl/asn1.h" "${OPENSSL_INCLUDE_DIR}"
                  ${OPENSSL_LIBRARIES} ${SERF_STANDARD_LIBRARIES})
+CheckFunction("OSSL_STORE_open_ex"
+              "NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL"
+              "SERF_HAVE_OSSL_STORE_OPEN_EX" "openssl/store.h"
+              "${OPENSSL_INCLUDE_DIR}" ${OPENSSL_LIBRARIES}
+              ${SERF_STANDARD_LIBRARIES})
 CheckFunction("CRYPTO_set_locking_callback" "NULL" "SERF_HAVE_SSL_LOCKING_CALLBACKS"
               "openssl/crypto.h" "${OPENSSL_INCLUDE_DIR}"
               ${OPENSSL_LIBRARIES} ${SERF_STANDARD_LIBRARIES})
@@ -359,18 +427,21 @@ if(NOT MSVC)
     list(APPEND SERF_C_WARNINGS "-Wall")
     list(APPEND SERF_C_WARNINGS "-Wdeclaration-after-statement")
     list(APPEND SERF_C_WARNINGS "-Wmissing-prototypes")
+    list(APPEND SERF_C_WARNINGS "-Wshadow")
 
     string(APPEND CMAKE_C_FLAGS_DEBUG " -O0")
 
     if(SERF_MAINTAINER_MODE)
+      # This is for clang, which happily accepts unknow warning options.
+      CheckCFlag(SERF_C_WARNINGS "-Werror=unknown-warning-option")
       # Additional warning flags for more pedantic checks
-      list(APPEND SERF_C_WARNINGS "-Wimplicit-function-declaration")
-      list(APPEND SERF_C_WARNINGS "-Wmissing-variable-declarations")
-      list(APPEND SERF_C_WARNINGS "-Wunreachable-code")
-      list(APPEND SERF_C_WARNINGS "-Wshorten-64-to-32")
-      list(APPEND SERF_C_WARNINGS "-Wno-system-headers")
-      list(APPEND SERF_C_WARNINGS "-Wextra-tokens")
-      list(APPEND SERF_C_WARNINGS "-Wnewline-eof")
+      CheckCFlag(SERF_C_WARNINGS "-Wimplicit-function-declaration")
+      CheckCFlag(SERF_C_WARNINGS "-Wmissing-variable-declarations")
+      CheckCFlag(SERF_C_WARNINGS "-Wunreachable-code")
+      CheckCFlag(SERF_C_WARNINGS "-Wshorten-64-to-32")
+      CheckCFlag(SERF_C_WARNINGS "-Wno-system-headers")
+      CheckCFlag(SERF_C_WARNINGS "-Wextra-tokens")
+      CheckCFlag(SERF_C_WARNINGS "-Wnewline-eof")
     endif()
   endif()
 else()
@@ -424,11 +495,9 @@ if(NOT SKIP_SHARED)
   list(APPEND SERF_TARGETS serf_shared)
 
   if(SERF_WINDOWS)
-    string(TOLOWER "${CMAKE_BUILD_TYPE}" config)
-    if(NOT "${config}" STREQUAL "release")
-      install(FILES $<TARGET_PDB_FILE:serf_shared>
-              DESTINATION "${SERF_INSTALL_RUNTIME}")
-    endif()
+    install(FILES $<TARGET_PDB_FILE:serf_shared>
+            CONFIGURATIONS Debug RelWithDebinfo
+            DESTINATION "${SERF_INSTALL_RUNTIME}")
   endif()
 endif()
 
@@ -464,36 +533,59 @@ install(TARGETS ${SERF_TARGETS}
 install(FILES ${HEADERS} DESTINATION "${SERF_INSTALL_HEADERS}")
 
 # Generate the pkg-config module file.
-if(NOT SERF_WINDOWS)
-  # Use a separate variable scope for the substitutions in serf.pc.in.
-  function(make_pkgconfig)
-    set(PREFIX ${CMAKE_INSTALL_PREFIX})
-    set(INCLUDE_SUBDIR ${SERF_INCLUDE_SUBDIR})
-    set(LIBDIR \${prefix}/${SERF_INSTALL_LIBRARIES})
-    set(VERSION ${SERF_VERSION})
-    set(MAJOR ${SERF_MAJOR_VERSION})
-    set(SERF_INTERFACE_LIBS
-      ${APR_LDFLAGS}
-      ${APR_LIBRARIES}
-      ${APR_EXTRALIBS}
-      ${APRUTIL_LDFLAGS}
-      ${APRUTIL_LIBRARIES}
-      ${APRUTIL_EXTRALIBS}
-      ${GSSAPI_LIBRARIES}
-      ${ZLIB_LIBRARIES}
-      )
-    list(REMOVE_DUPLICATES SERF_INTERFACE_LIBS)
-    unset(LIBS)
-    foreach(DEPLIB ${SERF_INTERFACE_LIBS})
-      string(APPEND LIBS " ${DEPLIB}")
-    endforeach()
-    configure_file("build/serf.pc.in" "serf-${SERF_MAJOR_VERSION}.pc" @ONLY)
-  endfunction()
+set(SERF_PC_FILE "serf-${SERF_MAJOR_VERSION}.pc")
 
-  make_pkgconfig()
-  install(FILES "${CMAKE_CURRENT_BINARY_DIR}/serf-${SERF_MAJOR_VERSION}.pc"
-          DESTINATION "${SERF_INSTALL_PKGCONFIG}")
-endif()
+# Use a separate variable scope for the substitutions in serf.pc.in.
+function(make_pkgconfig)
+  # Use a relative prefix to create a relocatable PC file.
+  if(SERF_WINDOWS)
+    file(RELATIVE_PATH relfragment "X:\\${SERF_INSTALL_PKGCONFIG}" "X:\\")
+  else()
+    file(RELATIVE_PATH relfragment "/${SERF_INSTALL_PKGCONFIG}" "/")
+  endif()
+  file(TO_CMAKE_PATH "\${pcfiledir}/${relfragment}" relprefix)
+
+  set(PREFIX ${relprefix})
+  set(INCLUDE_SUBDIR ${SERF_INCLUDE_SUBDIR})
+  set(LIBDIR \${prefix}/${SERF_INSTALL_LIBRARIES})
+  set(VERSION ${SERF_VERSION})
+  set(MAJOR ${SERF_MAJOR_VERSION})
+  set(REQUIRES
+    ${OPENSSL_PC_REQUIRES}
+    ${ZLIB_PC_REQUIRES}
+    ${BROTLI_PC_REQUIRES}
+    ${GSSAPI_PC_REQUIRES}
+    ${UNBOUND_PC_REQUIRES}
+  )
+  set(CFLAGS
+    ${APR_CFLAGS}
+  )
+  set(LIBS
+    ${APR_LDFLAGS}
+    ${APR_LIBRARIES}
+    ${APR_EXTRALIBS}
+    ${APRUTIL_LDFLAGS}
+    ${APRUTIL_LIBRARIES}
+    ${APRUTIL_EXTRALIBS}
+    ${OPENSSL_PC_LIBS}
+    ${ZLIB_PC_LIBS}
+    ${BROTLI_PC_LIBS}
+    ${GSSAPI_PC_LIBS}
+    ${UNBOUND_PC_LIBS}
+    ${SERF_STANDARD_LIBRARIES}
+  )
+  list(REMOVE_DUPLICATES REQUIRES)
+  list(JOIN REQUIRES " " REQUIRES)
+  list(REMOVE_DUPLICATES CFLAGS)
+  list(JOIN CFLAGS " " CFLAGS)
+  list(REMOVE_DUPLICATES LIBS)
+  list(JOIN LIBS " " LIBS)
+  configure_file("build/serf.pc.in" "${SERF_PC_FILE}" @ONLY)
+endfunction()
+
+make_pkgconfig()
+install(FILES "${CMAKE_CURRENT_BINARY_DIR}/${SERF_PC_FILE}"
+        DESTINATION "${SERF_INSTALL_PKGCONFIG}")
 
 
 if(NOT SKIP_TESTS)
@@ -517,6 +609,7 @@ set(_gen_dot_clangd OFF)
 set(_have_brotli OFF)
 set(_have_gssapi OFF)
 set(_have_sspi OFF)
+set(_have_unbound OFF)
 
 if(NOT SKIP_SHARED)
   set(_build_shared ON)
@@ -526,6 +619,9 @@ if(NOT SKIP_STATIC)
 endif()
 if(NOT SKIP_TESTS)
   set(_build_tests ON)
+  if(ENABLE_SLOW_TESTS)
+    set(_build_tests "ON, slow tests enabled")
+  endif()
 endif()
 if(DOT_CLANGD)
   set(_gen_dot_clangd ON)
@@ -539,6 +635,9 @@ if("SERF_HAVE_GSSAPI" IN_LIST SERF_C_DEFINES)
 endif()
 if("SERF_HAVE_SSPI" IN_LIST SERF_C_DEFINES)
   set(_have_sspi ON)
+endif()
+if ("SERF_HAVE_UNBOUND=1" IN_LIST SERF_C_DEFINES)
+  set(_have_unbound "EXPERIMENTAL")
 endif()
 
 message(STATUS "Summary:")
@@ -556,12 +655,12 @@ message(STATUS "  Options:")
 message(STATUS "    Brotli .................. : ${_have_brotli}")
 message(STATUS "    GSSAPI .................. : ${_have_gssapi}")
 message(STATUS "    SSPI .................... : ${_have_sspi}")
+message(STATUS "    Unbound ................. : ${_have_unbound}")
 message(STATUS "  Install:")
 message(STATUS "    prefix: ................. : ${CMAKE_INSTALL_PREFIX}")
 message(STATUS "    headers: ................ : ${SERF_INSTALL_HEADERS}")
 message(STATUS "    libraries: .............. : ${SERF_INSTALL_LIBRARIES}")
 if(SERF_WINDOWS)
 message(STATUS "    dynamic libraries: ...... : ${SERF_INSTALL_RUNTIME}")
-else()
-message(STATUS "    pkg-config file: ........ : ${SERF_INSTALL_PKGCONFIG}")
 endif()
+message(STATUS "    pkg-config file: ........ : ${SERF_INSTALL_PKGCONFIG}")

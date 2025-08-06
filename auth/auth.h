@@ -95,7 +95,7 @@ struct serf__authn_scheme_t {
     const char *key;
 
     /* Internal code used for this authn type. */
-    int type;
+    unsigned int type;
 
     /* The connection initialization function if any; otherwise, NULL */
     serf__init_conn_func_t init_conn_func;
@@ -108,6 +108,30 @@ struct serf__authn_scheme_t {
 
     /* Function to validate the authentication header of a response */
     serf__validate_response_func_t validate_response_func;
+
+    /*
+     * Additional data for user-defined authentication schemes.
+     */
+
+    /* The magic number that helps verify the user-defined scheme data. */
+    apr_uint64_t user_magic;
+
+    /* The pool that this scheme was allocated from; NULL for static objects.
+       This pull is used for pool cleanup handling. */
+    apr_pool_t *user_pool;
+
+    /* The flags for this authentication scheme */
+    int user_flags;
+
+    /* The baton used by the callbacks.  */
+    void *user_baton;
+
+    /* Authentication callbacks. */
+    serf_authn_init_conn_func_t user_init_conn_func;
+    serf_authn_get_realm_func_t user_get_realm_func;
+    serf_authn_handle_func_t user_handle_func;
+    serf_authn_setup_request_func_t user_setup_request_func;
+    serf_authn_validate_response_func_t user_validate_response_func;
 };
 
 
@@ -138,6 +162,61 @@ extern const serf__authn_scheme_t serf__ntlm_authn_scheme;
 #endif /* #ifdef WIN32 */
 
 #endif /* SERF_HAVE_SPNEGO */
+
+/** Helper macros for code <-> peer <-> header conversion */
+#define SERF__PEER_FROM_CODE(code) \
+    (((code) == SERF_AUTHN_CODE_HOST) ? HOST : PROXY)
+
+#define SERF__CODE_FROM_PEER(peer) \
+    (((peer) == HOST) ? SERF_AUTHN_CODE_HOST : SERF_AUTHN_CODE_PROXY)
+
+#define SERF__HEADER_FROM_CODE(code) \
+    SERF__HEADER_FROM_PEER(SERF__PEER_FROM_CODE((code)))
+
+#define SERF__HEADER_FROM_PEER(peer) \
+    (((peer) == HOST) ? "Authorization" : "Proxy-Authorization")
+
+#define SERF__INFO_HEADER_FROM_PEER(peer) \
+    (((peer) == HOST) ? "Authentication-Info" : "Proxy-Authentication-Info")
+
+/** User-defined authentication scheme handlers */
+
+apr_status_t
+serf__authn_user__init_conn(const serf__authn_scheme_t *scheme,
+                            int code,
+                            serf_connection_t *conn,
+                            apr_pool_t *pool);
+
+apr_status_t
+serf__authn_user__handle(const serf__authn_scheme_t *scheme,
+                         int code,
+                         serf_request_t *request,
+                         serf_bucket_t *response,
+                         const char *auth_hdr,
+                         const char *auth_attr,
+                         apr_pool_t *pool);
+
+apr_status_t
+serf__authn_user__setup_request(const serf__authn_scheme_t *scheme,
+                                peer_t peer,
+                                int code,
+                                serf_connection_t *conn,
+                                serf_request_t *request,
+                                const char *method,
+                                const char *uri,
+                                serf_bucket_t *hdrs_bkt);
+
+apr_status_t
+serf__authn_user__validate_response(const serf__authn_scheme_t *scheme,
+                                    peer_t peer,
+                                    int code,
+                                    serf_connection_t *conn,
+                                    serf_request_t *request,
+                                    serf_bucket_t *response,
+                                    apr_pool_t *pool);
+
+extern const apr_uint64_t serf__authn_user__magic;
+extern const unsigned int *const serf__authn_user__type_mask;
 
 #ifdef __cplusplus
 }

@@ -136,6 +136,20 @@ void serf_config_authn_types(serf_context_t *ctx,
 }
 
 
+#ifdef BROKEN_WSAPOLL
+/* APR 1.4.x switched to using WSAPoll() on Win32, but it does not
+ * properly handle errors on a non-blocking sockets (such as
+ * connecting to a server where no listener is active).
+ *
+ * So, sadly, we must force using select() on Win32.
+ *
+ * http://mail-archives.apache.org/mod_mbox/apr-dev/201105.mbox/%3CBANLkTin3rBCecCBRvzUA5B-14u-NWxR_Kg@mail.gmail.com%3E
+ */
+#define PLATFORM_POLLSET_METHOD APR_POLLSET_SELECT
+#else
+#define PLATFORM_POLLSET_METHOD APR_POLLSET_DEFAULT
+#endif
+
 serf_context_t *serf_context_create_ex(
     void *user_baton,
     serf_socket_add_t addf,
@@ -160,20 +174,8 @@ serf_context_t *serf_context_create_ex(
            ### Probably move creation of the pollset to later when we have
            ### the possibility of returning status to the caller.
          */
-#ifdef BROKEN_WSAPOLL
-        /* APR 1.4.x switched to using WSAPoll() on Win32, but it does not
-         * properly handle errors on a non-blocking sockets (such as
-         * connecting to a server where no listener is active).
-         *
-         * So, sadly, we must force using select() on Win32.
-         *
-         * http://mail-archives.apache.org/mod_mbox/apr-dev/201105.mbox/%3CBANLkTin3rBCecCBRvzUA5B-14u-NWxR_Kg@mail.gmail.com%3E
-         */
         (void) apr_pollset_create_ex(&ps->pollset, MAX_CONN, pool, 0,
-                                     APR_POLLSET_SELECT);
-#else
-        (void) apr_pollset_create(&ps->pollset, MAX_CONN, pool, 0);
-#endif
+                                     PLATFORM_POLLSET_METHOD);
         ctx->pollset_baton = ps;
         ctx->pollset_add = pollset_add;
         ctx->pollset_rm = pollset_rm;
@@ -191,6 +193,14 @@ serf_context_t *serf_context_create_ex(
 
     ctx->authn_types = SERF_AUTHN_ALL;
     ctx->server_authn_info = apr_hash_make(pool);
+
+    /* Initialize async resolver result queue. */
+    ctx->resolve_head = NULL;
+    ctx->resolve_init_status = APR_SUCCESS;
+    ctx->resolve_init_status = serf__create_resolve_context(ctx);
+    if (ctx->resolve_init_status != APR_SUCCESS) {
+        ctx->resolve_context = NULL;
+    }
 
     /* Assume returned status is APR_SUCCESS */
     serf__config_store_init(ctx);
@@ -210,7 +220,14 @@ serf_context_t *serf_context_create(apr_pool_t *pool)
 
 apr_status_t serf_context_prerun(serf_context_t *ctx)
 {
-    apr_status_t status = APR_SUCCESS;
+    apr_status_t status;
+
+    /* Process async resolver results here, as that gives users a chance
+       to get their connections active in the same context run when the
+       result was made available. */
+    if ((status = serf__process_async_resolve_results(ctx)) != APR_SUCCESS)
+        return status;
+
     if ((status = serf__open_connections(ctx)) != APR_SUCCESS)
         return status;
 

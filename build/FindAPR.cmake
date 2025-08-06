@@ -42,7 +42,7 @@ cmake_minimum_required(VERSION 3.12)
 #   APR_FOUND          - True if APR was found.
 #   APR_VERSION        - The version of APR found (x.y.z)
 #   APR_CONTAINS_APRUTIL - True if the APR major version is 2 or greater.
-#   APR_INCLUDES       - Where to find apr.h, etc.
+#   APR_INCLUDE_DIR    - Where to find apr.h, etc.
 #   APR_LIBRARIES      - Linker switches to use with ld to link against APR
 #
 # ::
@@ -211,7 +211,7 @@ if(NOT _apru_include_only_utilities)
 
   if(${CMAKE_SYSTEM_NAME} MATCHES "Windows")
 
-    _apru_find_win_version("apr" APR_INCLUDES
+    _apru_find_win_version("apr" APR_INCLUDE_DIR
                            APR_VERSION _apr_major _apr_minor)
     set(_apr_name "apr-${_apr_major}")
 
@@ -229,12 +229,11 @@ if(NOT _apru_include_only_utilities)
       _apru_config(${APR_CONFIG_EXECUTABLE} ${_varname} "${_regexp}" "${ARGN}")
     endmacro(_apr_invoke)
 
-    _apr_invoke(APR_CFLAGS     "(^| )-(g|O)[^ ]*" --cppflags --cflags)
-    _apr_invoke(APR_INCLUDES   "(^| )-I"          --includes)
-    _apr_invoke(APR_LDFLAGS    ""                 --ldflags)
-    _apr_invoke(APR_LIBRARIES  ""                 --link-ld)
-    _apr_invoke(APR_EXTRALIBS  ""                 --libs)
-    _apr_invoke(APR_VERSION    ""                 --version)
+    _apr_invoke(APR_CFLAGS      "(^| )-[gOW][^ ]*" --cppflags --cflags)
+    _apr_invoke(APR_INCLUDE_DIR ""                 --includedir)
+    _apr_invoke(APR_LIBRARIES   ""                 --link-ld)
+    _apr_invoke(APR_EXTRALIBS   ""                 --ldflags --libs)
+    _apr_invoke(APR_VERSION     ""                 --version)
     string(REGEX REPLACE "^([0-9]+)\\..*$" "\\1" _apr_major "${APR_VERSION}")
 
   endif()   # NOT Windows
@@ -248,7 +247,7 @@ if(NOT _apru_include_only_utilities)
   include(FindPackageHandleStandardArgs)
   find_package_handle_standard_args(
     APR
-    REQUIRED_VARS APR_LIBRARIES APR_INCLUDES
+    REQUIRED_VARS APR_LIBRARIES APR_INCLUDE_DIR
     VERSION_VAR APR_VERSION)
 
   if(APR_FOUND)
@@ -257,7 +256,7 @@ if(NOT _apru_include_only_utilities)
       if(APR_LIBRARIES AND APR_RUNTIME_LIBS)
         add_library(APR::APR SHARED IMPORTED)
         set_target_properties(APR::APR PROPERTIES
-          INTERFACE_INCLUDE_DIRECTORIES "${APR_INCLUDES}"
+          INTERFACE_INCLUDE_DIRECTORIES "${APR_INCLUDE_DIR}"
           IMPORTED_LOCATION "${APR_RUNTIME_LIBS}"
           IMPORTED_IMPLIB "${APR_LIBRARIES}")
       endif()
@@ -267,9 +266,10 @@ if(NOT _apru_include_only_utilities)
         add_library(APR::APR_static STATIC IMPORTED)
         set_target_properties(APR::APR_static PROPERTIES
           INTERFACE_COMPILE_DEFINITIONS "APR_DECLARE_STATIC"
-          INTERFACE_INCLUDE_DIRECTORIES "${APR_INCLUDES}"
-          IMPORTED_INTERFACE_LINK_LIBRARIES "${_apr_extra}"
+          INTERFACE_INCLUDE_DIRECTORIES "${APR_INCLUDE_DIR}"
           IMPORTED_LOCATION "${_apr_static}")
+        target_link_libraries(APR::APR_static
+          INTERFACE ${_apr_extra})
       endif()
 
     else()    # NOT Windows
@@ -277,9 +277,10 @@ if(NOT _apru_include_only_utilities)
       _apru_location(_apr_library _apr_extra "${APR_LIBRARIES}")
       add_library(APR::APR UNKNOWN IMPORTED)
       set_target_properties(APR::APR PROPERTIES
-        INTERFACE_INCLUDE_DIRECTORIES "${APR_INCLUDES}"
-        INTERFACE_LINK_LIBRARIES "${APR_LDFLAGS};${APR_EXTRALIBS};${_apr_extra}"
+        INTERFACE_INCLUDE_DIRECTORIES "${APR_INCLUDE_DIR}"
         IMPORTED_LOCATION "${_apr_library}")
+      target_link_libraries(APR::APR
+        INTERFACE ${APR_EXTRALIBS} ${_apr_extra})
 
     endif()   # NOT Windows
   endif(APR_FOUND)

@@ -31,6 +31,7 @@
 
 #include <openssl/ssl.h>
 #include <openssl/x509v3.h>
+#include <openssl/opensslv.h>
 #ifndef OPENSSL_NO_OCSP /* requires openssl 0.9.7 or later */
 #include <openssl/ocsp.h>
 #endif
@@ -175,7 +176,7 @@ static void test_ssl_cert_certificate(CuTest *tc)
     kv = serf_ssl_cert_certificate(cert, tb->pool);
     CuAssertPtrNotNull(tc, kv);
 
-    CuAssertStrEquals(tc, "11:07:27:BA:82:70:08:38:76:4D:F7:17:94:99:61:F0:46:04:F3:6D",
+    CuAssertStrEquals(tc, "29:56:A7:47:AA:F4:41:3C:50:B5:54:FB:49:94:F2:8E:14:41:59:4F",
                       apr_hash_get(kv, "sha1", APR_HASH_KEY_STRING));
     CuAssertStrEquals(tc, "Jun 18 10:39:14 2025 GMT",
                       apr_hash_get(kv, "notBefore", APR_HASH_KEY_STRING));
@@ -1173,6 +1174,76 @@ static void test_ssl_client_certificate(CuTest *tc)
     EndVerify
 }
 
+static apr_status_t
+client_cert_uri_conn_setup(apr_socket_t *skt,
+                           serf_bucket_t **input_bkt,
+                           serf_bucket_t **output_bkt,
+                           void *setup_baton,
+                           apr_pool_t *pool)
+{
+    test_baton_t *tb = setup_baton;
+    apr_status_t status;
+
+    status = https_set_root_ca_conn_setup(skt, input_bkt, output_bkt,
+                                          setup_baton, pool);
+    if (status)
+        return status;
+
+    serf_ssl_cert_uri_set(tb->ssl_context,
+                          client_cert_cb,
+                          tb,
+                          pool);
+
+    serf_ssl_client_cert_password_set(tb->ssl_context,
+                                      client_cert_pw_cb,
+                                      tb,
+                                      pool);
+
+    return APR_SUCCESS;
+}
+
+static void test_ssl_client_certificate_uri(CuTest *tc)
+{
+#if defined(SERF_HAVE_OSSL_STORE_OPEN_EX)
+    test_baton_t *tb = tc->testBaton;
+    handler_baton_t handler_ctx[1];
+    const int num_requests = sizeof(handler_ctx)/sizeof(handler_ctx[0]);
+    apr_status_t status;
+
+
+    /* Set up a test context and a https server */
+    /* The SSL server uses the complete certificate chain to validate the client
+       certificate. */
+    setup_test_mock_https_server(tb, server_key,
+                                 all_server_certs,
+                                 test_clientcert_optional);
+    status = setup_test_client_https_context(tb,
+                                             client_cert_uri_conn_setup,
+                                             NULL, /* No server cert callback */
+                                             tb->pool);
+    CuAssertIntEquals(tc, APR_SUCCESS, status);
+
+    Given(tb->mh)
+      ConnectionSetup(ClientCertificateIsValid,
+                      ClientCertificateCNEqualTo("Serf Client"))
+
+      GETRequest(URLEqualTo("/"), ChunkedBodyEqualTo("1"),
+                 HeaderEqualTo("Host", tb->serv_host))
+        Respond(WithCode(200), WithChunkedBody(""))
+    EndGiven
+
+    create_new_request(tb, &handler_ctx[0], "GET", "/", 1);
+
+    status = run_client_and_mock_servers_loops(tb, num_requests, handler_ctx,
+                                               tb->pool);
+    CuAssertTrue(tc, tb->result_flags & TEST_RESULT_CLIENT_CERTCB_CALLED);
+    CuAssertTrue(tc, tb->result_flags & TEST_RESULT_CLIENT_CERTPWCB_CALLED);
+    Verify(tb->mh)
+      CuAssert(tc, ErrorMessage, VerifyConnectionSetupOk);
+    EndVerify
+#endif
+}
+
 /* Validate that the expired certificate is reported as failure in the
    callback. */
 static void test_ssl_expired_server_cert(CuTest *tc)
@@ -1404,7 +1475,7 @@ static void test_ssltunnel_no_creds_cb(CuTest *tc)
       RequestsReceivedByProxy
         HTTPRequest(MethodEqualTo("CONNECT"),
                     URLEqualTo(tb->serv_host))
-          Respond(WithCode(407), WithChunkedBody(""),
+          Respond(WithCode(SERF_AUTHN_CODE_PROXY), WithChunkedBody(""),
                   WithHeader("Proxy-Authentication",
                              "Basic realm=\"Test Suite Proxy\""))
           SetupSSLTunnel
@@ -1435,7 +1506,7 @@ ssltunnel_basic_authn_callback(char **username,
     if (strcmp("Basic", authn_type) != 0)
         return REPORT_TEST_SUITE_ERROR();
 
-    if (code == 401) {
+    if (code == SERF_AUTHN_CODE_HOST) {
         if (strcmp(apr_psprintf(pool, "<%s> Test Suite", tb->serv_url),
                    realm) != 0)
             return REPORT_TEST_SUITE_ERROR();
@@ -1443,7 +1514,7 @@ ssltunnel_basic_authn_callback(char **username,
         *username = "serf";
         *password = "serftest";
     }
-    else if (code == 407) {
+    else if (code == SERF_AUTHN_CODE_PROXY) {
         if (strcmp(apr_psprintf(pool, "<http://localhost:%u> Test Suite Proxy",
                                 tb->proxy_port), realm) != 0)
             return REPORT_TEST_SUITE_ERROR();
@@ -1487,7 +1558,7 @@ static void ssltunnel_basic_auth(CuTest *tc, int serv_close_conn,
     Given(tb->mh)
       RequestsReceivedByServer
         GETRequest(URLEqualTo("/"), HeaderNotSet("Authorization"))
-          Respond(WithCode(401),WithChunkedBody("1"),
+          Respond(WithCode(SERF_AUTHN_CODE_HOST),WithChunkedBody("1"),
                   WithHeader("www-Authenticate", "bAsIc realm=\"Test Suite\""),
                   OnConditionThat(serv_close_conn, WithConnectionCloseHeader))
         GETRequest(URLEqualTo("/"),
@@ -1497,7 +1568,7 @@ static void ssltunnel_basic_auth(CuTest *tc, int serv_close_conn,
         HTTPRequest(MethodEqualTo("CONNECT"),
                     URLEqualTo(tb->serv_host),
                     HeaderNotSet("Proxy-Authorization"))
-          Respond(WithCode(407), WithChunkedBody(""),
+          Respond(WithCode(SERF_AUTHN_CODE_PROXY), WithChunkedBody(""),
                   WithHeader("Proxy-Authenticate",
                              "Basic realm=\"Test Suite Proxy\""),
                   OnConditionThat(proxy407_close_conn, WithConnectionCloseHeader))
@@ -1578,7 +1649,7 @@ basic_authn_callback_2ndtry(char **username,
     if (strcmp("Basic", authn_type) != 0)
         return REPORT_TEST_SUITE_ERROR();
 
-    if (code == 401) {
+    if (code == SERF_AUTHN_CODE_HOST) {
         if (strcmp(apr_psprintf(pool, "<%s> Test Suite", tb->serv_url),
                    realm) != 0)
             return REPORT_TEST_SUITE_ERROR();
@@ -1586,7 +1657,7 @@ basic_authn_callback_2ndtry(char **username,
         *username = "serf";
         *password = secondtry ? "serftest" : "wrongpwd";
     }
-    else if (code == 407) {
+    else if (code == SERF_AUTHN_CODE_PROXY) {
         if (strcmp(apr_psprintf(pool, "<http://localhost:%u> Test Suite Proxy",
                                 tb->proxy_port), realm) != 0)
             return REPORT_TEST_SUITE_ERROR();
@@ -1645,7 +1716,7 @@ static void test_ssltunnel_basic_auth_2ndtry(CuTest *tc)
         HTTPRequest(MethodEqualTo("CONNECT"),
                     URLEqualTo(tb->serv_host),
                     HeaderNotSet("Proxy-Authorization"))
-            Respond(WithCode(407), WithChunkedBody(""),
+            Respond(WithCode(SERF_AUTHN_CODE_PROXY), WithChunkedBody(""),
                     WithHeader("Proxy-Authenticate",
                                "Basic realm=\"Test Suite Proxy\""))
         /* serfproxy:wrongpwd fails, close connection. */
@@ -1653,7 +1724,7 @@ static void test_ssltunnel_basic_auth_2ndtry(CuTest *tc)
                     URLEqualTo(tb->serv_host),
                     HeaderNotEqualTo("Proxy-Authorization",
                                      "Basic c2VyZnByb3h5OnNlcmZ0ZXN0"))
-            Respond(WithCode(407), WithChunkedBody(""),
+            Respond(WithCode(SERF_AUTHN_CODE_PROXY), WithChunkedBody(""),
                     WithHeader("Proxy-Authenticate",
                                "Basic realm=\"Test Suite Proxy\""))
             CloseConnection
@@ -1702,7 +1773,7 @@ proxy_digest_authn_callback(char **username,
 
     tb->result_flags |= TEST_RESULT_AUTHNCB_CALLED;
 
-    if (code != 407)
+    if (code != SERF_AUTHN_CODE_PROXY)
         return REPORT_TEST_SUITE_ERROR();
     if (strcmp("Digest", authn_type) != 0)
         return REPORT_TEST_SUITE_ERROR();
@@ -1795,7 +1866,7 @@ static void test_ssltunnel_digest_auth(CuTest *tc)
         HTTPRequest(MethodEqualTo("CONNECT"),
                     URLEqualTo(tb->serv_host),
                     HeaderNotSet("Proxy-Authorization"))
-          Respond(WithCode(407), WithChunkedBody("1"),
+          Respond(WithCode(SERF_AUTHN_CODE_PROXY), WithChunkedBody("1"),
                   WithHeader("Proxy-Authenticate",
                              "Basic realm=\"Test Suite Proxy\""),
                   WithHeader("Proxy-Authenticate", "NonExistent blablablabla"),
@@ -1844,7 +1915,7 @@ static void test_ssltunnel_spnego_authn(CuTest *tc)
         HTTPRequest(MethodEqualTo("CONNECT"),
                     URLEqualTo(tb->serv_host),
                     HeaderEqualTo("Host", tb->serv_host))
-          Respond(WithCode(407),
+          Respond(WithCode(SERF_AUTHN_CODE_PROXY),
                   WithHeader("Proxy-Authenticate", "Negotiate"),
                   WithHeader("Proxy-Authenticate", "Kerberos"),
                   WithHeader("Proxy-Authenticate", "NTLM"),
@@ -1878,7 +1949,7 @@ static void test_server_spnego_authn(CuTest *tc)
     Given(tb->mh)
       GETRequest(URLEqualTo("/"),
                  HeaderEqualTo("Host", tb->serv_host))
-        Respond(WithCode(401),
+        Respond(WithCode(SERF_AUTHN_CODE_HOST),
                 WithHeader("WWW-Authenticate", "Negotiate"),
                 WithHeader("Content-Type", "text/html"),
                 WithBody("<html><body>Authn required</body></html>"))
@@ -2713,10 +2784,16 @@ static void test_ssl_ocsp_verify_response_no_signer(CuTest *tc)
 {
 #ifndef OPENSSL_NO_OCSP
     apr_status_t status = verify_ocsp_response(tc, 1, 0, 0, 0);
-    /* OCSP responses MUST be signed, we can't even create one
-       without a signature. This error doesn't come from response
-       validation but because OCSP_response_create() fails. */
+#if OPENSSL_VERSION_NUMBER >= (3 << 28) /* OpenSSL 3.0.0 */
+    /* OCSP responses MUST be signed, and on newer versions of OpenSSL we
+       can't even create one without a signature. This error doesn't come
+       from response validation but because OCSP_response_create() fails. */
     CuAssertIntEquals(tc, APR_EGENERAL, status);
+#else
+    /* But both LibreSSL and OpenSSL up to 1.1.1 do allow creating such
+       a response, and so our validation will return a different error. */
+    CuAssertIntEquals(tc, SERF_ERROR_SSL_OCSP_RESPONSE_INVALID, status);
+#endif
 #endif  /* OPENSSL_NO_OCSP */
 }
 
@@ -2752,6 +2829,7 @@ CuSuite *test_ssl(void)
     SUITE_ADD_TEST(suite, test_ssl_large_response);
     SUITE_ADD_TEST(suite, test_ssl_large_request);
     SUITE_ADD_TEST(suite, test_ssl_client_certificate);
+    SUITE_ADD_TEST(suite, test_ssl_client_certificate_uri);
     SUITE_ADD_TEST(suite, test_ssl_expired_server_cert);
     SUITE_ADD_TEST(suite, test_ssl_future_server_cert);
     SUITE_ADD_TEST(suite, test_ssl_revoked_server_cert);

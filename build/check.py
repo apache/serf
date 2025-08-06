@@ -10,9 +10,9 @@
 #   to you under the Apache License, Version 2.0 (the
 #   "License"); you may not use this file except in compliance
 #   with the License.  You may obtain a copy of the License at
-# 
+#
 #     http://www.apache.org/licenses/LICENSE-2.0
-# 
+#
 #   Unless required by applicable law or agreed to in writing,
 #   software distributed under the License is distributed on an
 #   "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
@@ -60,8 +60,25 @@ if __name__ == '__main__':
       sys.exit(1)
 
   print("== Running the unit tests ==")
+
+  fails = 0
+  def print_exception(x):
+    global fails
+    print("ERROR: test(s) failed in '%s', exit code=%d"
+          % (' '.join(x.cmd), x.returncode))
+    fails += 1
+
   try:
-    subprocess.check_call(TEST_ALL_EXE)
+    suites = subprocess.check_output([TEST_ALL_EXE, '-L']).decode()
+    for suite in suites.splitlines():
+      testcase = (TEST_ALL_EXE, suite.strip())
+      print("==== %s %s" % testcase)
+      try:
+        subprocess.check_call(testcase)
+      except subprocess.CalledProcessError as x:
+        print_exception(x)
   except subprocess.CalledProcessError as x:
-    print("ERROR: test(s) failed in '%s', exit code=%d" % (x.cmd, x.returncode))
+    print_exception(x)
+
+  if fails > 0:
     sys.exit(1)

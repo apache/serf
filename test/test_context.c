@@ -183,7 +183,7 @@ static apr_status_t http_conn_setup_mock_socket(apr_socket_t *skt,
                                                                skt,
                                                                tb->bkt_alloc);
     *input_bkt = serf_bucket_mock_sock_create(skt_bkt,
-                                              tb->user_baton_l,
+                                              tb->user_status,
                                               tb->bkt_alloc);
 
     return APR_SUCCESS;
@@ -286,7 +286,7 @@ static void test_aborted_connection(CuTest *tc)
     /* Set up a test context with a server. Use the mock socket to return
        APR_ECONNABORTED instead of APR_EOF. */
     setup_test_mock_server(tb);
-    tb->user_baton_l = APR_ECONNABORTED;
+    tb->user_status = APR_ECONNABORTED;
     status = setup_test_client_context(tb, http_conn_setup_mock_socket,
                                        tb->pool);
     CuAssertIntEquals(tc, APR_SUCCESS, status);
@@ -304,7 +304,7 @@ static void test_aborted_connection_with_authn_cb(CuTest *tc)
     /* Set up a test context with a server. Use the mock socket to return
      APR_ECONNABORTED instead of APR_EOF. */
     setup_test_mock_server(tb);
-    tb->user_baton_l = APR_ECONNABORTED;
+    tb->user_status = APR_ECONNABORTED;
     status = setup_test_client_context(tb, http_conn_setup_mock_socket,
                                        tb->pool);
     CuAssertIntEquals(tc, APR_SUCCESS, status);
@@ -323,7 +323,7 @@ static void test_reset_connection(CuTest *tc)
     /* Set up a test context with a server. Use the mock socket to return
        APR_ECONNRESET instead of APR_EOF. */
     setup_test_mock_server(tb);
-    tb->user_baton_l = APR_ECONNRESET;
+    tb->user_status = APR_ECONNRESET;
     status = setup_test_client_context(tb, http_conn_setup_mock_socket,
                                        tb->pool);
     CuAssertIntEquals(tc, APR_SUCCESS, status);
@@ -341,7 +341,7 @@ static void test_reset_connection_with_authn_cb(CuTest *tc)
     /* Set up a test context with a server. Use the mock socket to return
        APR_ECONNRESET instead of APR_EOF. */
     setup_test_mock_server(tb);
-    tb->user_baton_l = APR_ECONNRESET;
+    tb->user_status = APR_ECONNRESET;
     status = setup_test_client_context(tb, http_conn_setup_mock_socket,
                                        tb->pool);
     CuAssertIntEquals(tc, APR_SUCCESS, status);
@@ -1017,6 +1017,191 @@ static void test_outgoing_request_err(CuTest *tc)
     CuAssertIntEquals(tc, 0, tb->handled_requests->nelts);
 }
 
+/* Test that asynchronus name resolution happens. */
+static void test_async_connection(CuTest *tc)
+{
+    test_baton_t *tb = tc->testBaton;
+    apr_status_t status;
+    handler_baton_t handler_ctx[2];
+    const int num_requests = sizeof(handler_ctx)/sizeof(handler_ctx[0]);
+    int i;
+
+    /* Set up a test context with a server */
+    setup_test_mock_server(tb);
+    status = setup_test_client_context(tb, NULL, tb->pool);
+    CuAssertIntEquals(tc, APR_SUCCESS, status);
+
+    Given(tb->mh)
+      DefaultResponse(WithCode(200), WithRequestBody)
+
+      GETRequest(URLEqualTo("/"), ChunkedBodyEqualTo("1"))
+      GETRequest(URLEqualTo("/"), ChunkedBodyEqualTo("2"))
+    EndGiven
+
+    status = use_new_async_connection(tb, tb->pool);
+    CuAssertIntEquals(tc, APR_SUCCESS, status);
+
+    while (!tb->connection && tb->user_status == APR_SUCCESS) {
+        status = serf_context_run(tb->context, 70, tb->pool);
+        if (!APR_STATUS_IS_TIMEUP(status))
+            CuAssertIntEquals(tc, APR_SUCCESS, status);
+    }
+    CuAssertIntEquals(tc, APR_SUCCESS, tb->user_status);
+    CuAssertPtrNotNull(tc, tb->connection);
+
+    /* Send some requests on the connections */
+    for (i = 0 ; i < num_requests ; i++) {
+        create_new_request(tb, &handler_ctx[i], "GET", "/", i+1);
+    }
+
+    run_client_and_mock_servers_loops_expect_ok(tc, tb, num_requests,
+                                                handler_ctx, tb->pool);
+}
+
+/* Test that async connection to proxy short-circuits. */
+static void test_async_proxy_connection(CuTest *tc)
+{
+    test_baton_t *tb = tc->testBaton;
+    handler_baton_t handler_ctx[2];
+    const int num_requests = sizeof(handler_ctx)/sizeof(handler_ctx[0]);
+    apr_status_t status;
+    int i;
+
+    /* Set up a test context with a proxy */
+    setup_test_mock_server(tb);
+    status = setup_test_mock_proxy(tb);
+    CuAssertIntEquals(tc, APR_SUCCESS, status);
+    status = setup_test_client_context_with_proxy(tb, NULL, tb->pool);
+    CuAssertIntEquals(tc, APR_SUCCESS, status);
+
+    Given(tb->mh)
+      RequestsReceivedByProxy
+        GETRequest(
+            URLEqualTo(apr_psprintf(tb->pool, "http://%s", tb->serv_host)),
+            HeaderEqualTo("Host", tb->serv_host),
+            ChunkedBodyEqualTo("1"))
+          Respond(WithCode(200), WithChunkedBody(""))
+        GETRequest(
+            URLEqualTo(apr_psprintf(tb->pool, "http://%s", tb->serv_host)),
+            HeaderEqualTo("Host", tb->serv_host),
+            ChunkedBodyEqualTo("2"))
+          Respond(WithCode(200), WithChunkedBody(""))
+    EndGiven
+
+    status = use_new_async_connection(tb, tb->pool);
+    CuAssertIntEquals(tc, APR_SUCCESS, status);
+
+    /* Because we use a proxy, the connection creation is actually synchronous,
+       because we don't resolve the host address -- that's the proxy's job.
+       The connection-created callback was called immediately.*/
+    CuAssertIntEquals(tc, APR_SUCCESS, tb->user_status);
+    CuAssertPtrNotNull(tc, tb->connection);
+
+    /* Send some requests on the connections */
+    for (i = 0 ; i < num_requests ; i++) {
+        create_new_request(tb, &handler_ctx[i], "GET", "/", i+1);
+    }
+
+    run_client_and_mock_servers_loops_expect_ok(tc, tb, num_requests,
+                                                handler_ctx, tb->pool);
+}
+
+static void async_resolve_callback(serf_context_t *ctx,
+                                   void *resolved_baton,
+                                   apr_sockaddr_t *host_address,
+                                   apr_status_t status,
+                                   apr_pool_t *scratch_pool)
+{
+    *(int*)resolved_baton = 1;
+}
+
+static void async_resolve(CuTest *tc, const char *url)
+{
+    test_baton_t *tb = tc->testBaton;
+    serf_context_t *ctx;
+    apr_pool_t *ctx_pool;
+    apr_status_t status;
+    apr_uri_t host_info;
+    int resolved = 0;
+
+    status = apr_uri_parse(tb->pool, url, &host_info);
+    CuAssertIntEquals(tc, APR_SUCCESS, status);
+
+    apr_pool_create(&ctx_pool, tb->pool);
+    CuAssertPtrNotNull(tc, ctx_pool);
+    ctx = serf_context_create(ctx_pool);
+    CuAssertPtrNotNull(tc, ctx);
+
+    status = serf_address_resolve_async(ctx, host_info,
+                                        async_resolve_callback,
+                                        &resolved, ctx_pool);
+    CuAssertIntEquals(tc, APR_SUCCESS, status);
+
+    while (!resolved && status == APR_SUCCESS) {
+        status = serf_context_run(ctx, 70, ctx_pool);
+        if (APR_STATUS_IS_TIMEUP(status))
+            status = APR_SUCCESS;
+    }
+
+    apr_pool_destroy(ctx_pool);
+    CuAssertIntEquals(tc, APR_SUCCESS, status);
+    CuAssertIntEquals(tc, 1, resolved);
+}
+
+static void test_async_resolve_name(CuTest *tc)
+{
+    async_resolve(tc, "http://localhost:8080/");
+}
+
+static void test_async_resolve_ipv4(CuTest *tc)
+{
+    async_resolve(tc, "http://127.0.0.1:8080/");
+}
+
+static void test_async_resolve_ipv6(CuTest *tc)
+{
+#if APR_HAVE_IPV6
+    async_resolve(tc, "http://[::1]:8080/");
+#endif
+}
+
+static void test_async_resolve_ipv64(CuTest *tc)
+{
+#if APR_HAVE_IPV6
+    async_resolve(tc, "http://[::ffff:127.0.0.1]:8080/");
+#endif
+}
+
+static void test_async_resolve_cancel(CuTest *tc)
+{
+    test_baton_t *tb = tc->testBaton;
+    serf_context_t *ctx;
+    apr_pool_t *ctx_pool;
+    apr_status_t status;
+    apr_uri_t url;
+    int resolved = 0;
+
+    status = apr_uri_parse(tb->pool, "http://localhost:8080/", &url);
+    CuAssertIntEquals(tc, APR_SUCCESS, status);
+
+    apr_pool_create(&ctx_pool, tb->pool);
+    CuAssertPtrNotNull(tc, ctx_pool);
+    ctx = serf_context_create(ctx_pool);
+    CuAssertPtrNotNull(tc, ctx);
+
+    status = serf_address_resolve_async(ctx, url,
+                                        async_resolve_callback,
+                                        &resolved, ctx_pool);
+
+    /* This would create and actual race in the test case: */
+    /* serf_context_prerun(ctx); */
+
+    apr_pool_destroy(ctx_pool);
+    CuAssertIntEquals(tc, APR_SUCCESS, status);
+    CuAssertIntEquals(tc, 0, resolved);
+}
+
+
 /*****************************************************************************/
 CuSuite *test_context(void)
 {
@@ -1043,6 +1228,12 @@ CuSuite *test_context(void)
     SUITE_ADD_TEST(suite, test_connection_large_request);
     SUITE_ADD_TEST(suite, test_max_keepalive_requests);
     SUITE_ADD_TEST(suite, test_outgoing_request_err);
-
+    SUITE_ADD_TEST(suite, test_async_connection);
+    SUITE_ADD_TEST(suite, test_async_proxy_connection);
+    SUITE_ADD_TEST(suite, test_async_resolve_name);
+    SUITE_ADD_TEST(suite, test_async_resolve_ipv4);
+    SUITE_ADD_TEST(suite, test_async_resolve_ipv6);
+    SUITE_ADD_TEST(suite, test_async_resolve_ipv64);
+    SUITE_ADD_TEST(suite, test_async_resolve_cancel);
     return suite;
 }
