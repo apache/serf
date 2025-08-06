@@ -557,6 +557,22 @@ static void test_parameter_case_folding(CuTest *tc)
     parse_parameters(tc, "01234ABCDEFGHIJKLMNOPQRSTUVWXYZ56789=Val", expected);
 }
 
+static void test_find_token(CuTest *tc)
+{
+    CuAssertPtrNotNull(tc, serf__find_token("foo", 0, "foo"));
+    CuAssertPtrNotNull(tc, serf__find_token("foo", 3, "foo"));
+    CuAssertPtrNotNull(tc, serf__find_token("foo", 3, " foo"));
+    CuAssertPtrNotNull(tc, serf__find_token("foo", 3, "foo "));
+    CuAssertPtrNotNull(tc, serf__find_token("foo", 3, "bar\tfoo"));
+    CuAssertPtrNotNull(tc, serf__find_token("foo", 3, "foo\tbar"));
+    CuAssertPtrNotNull(tc, serf__find_token("foo", 3, "bar\t #$@*&^! foo qux"));
+    CuAssertPtrEquals(tc, NULL, serf__find_token("foo", 2, "foo"));
+    CuAssertPtrEquals(tc, NULL, serf__find_token("foo", 3, "\vfoo"));
+    CuAssertPtrEquals(tc, NULL, serf__find_token("foo", 3, "foobar"));
+    CuAssertPtrEquals(tc, NULL, serf__find_token("foo", 3, " qux foobar baz"));
+    CuAssertPtrEquals(tc, NULL, serf__find_token("foo", 3, " qux bar"));
+}
+
 
 CuSuite *test_internal(void)
 {
@@ -577,6 +593,7 @@ CuSuite *test_internal(void)
     SUITE_ADD_TEST(suite, test_parse_repeated_parameters);
     SUITE_ADD_TEST(suite, test_parse_single_token_parameters);
     SUITE_ADD_TEST(suite, test_parameter_case_folding);
+    SUITE_ADD_TEST(suite, test_find_token);
 
     return suite;
 }

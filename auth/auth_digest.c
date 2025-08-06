@@ -288,6 +288,23 @@ serf__handle_digest_auth(const serf__authn_scheme_t *scheme,
         return SERF_ERROR_AUTHN_MISSING_ATTRIBUTE;
     }
 
+    /* We only support the MD5 hash, fail early if it's anything else. */
+    if (algorithm && strcmp(algorithm, "MD5")) {
+        apr_pool_destroy(scratch_pool);
+        return SERF_ERROR_AUTHN_NOT_SUPPORTED;
+    }
+
+    /* The qop parameter must contain "auth", as that's the only value we
+       support. Fail early if it's not one of the requested qop modes. */
+    if (qop) {
+        qop = serf__find_token("auth", 4, qop);
+        if (!qop) {
+            apr_pool_destroy(scratch_pool);
+            return SERF_ERROR_AUTHN_NOT_SUPPORTED;
+        }
+        qop = "auth";           /* qop must NUL-terminated. */
+    }
+
     realm = serf__construct_realm(SERF__PEER_FROM_CODE(code),
                                   conn, realm_name,
                                   pool);

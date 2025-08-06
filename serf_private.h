@@ -788,6 +788,16 @@ void serf__tolower_inplace(char *dst, apr_size_t length);
 /* Like serf__tolower_inplace, but allocates a new string from the pool. */
 const char *serf__tolower(const char *src, apr_pool_t *pool);
 
+/* Find a given TOKEN in string of whitespace-delimited tokens SRC.
+   If LEN > 0, it is the length of TOKEN; otherwise this function will
+   call strlen() to find the length. All comparisons are case-sensitive.
+   Whitespace is either space ('\x20') or horizontal tab ('\x09').
+
+   NOTE: This function does not modify SRC, so there's no guarantee that
+         the returned token is properly NUL-terminated, as it may have
+         been found somewhere in the middle of the string. */
+const char *serf__find_token(const char *token, apr_size_t len, const char *src);
+
 /* from context.c */
 void serf__context_progress_delta(void *progress_baton, apr_off_t read,
                                   apr_off_t written);

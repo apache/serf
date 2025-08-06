@@ -87,6 +87,12 @@ static const char *skip_space(const char *src)
     return src + strspn(src, " \t");
 }
 
+/* Skip non-space characters. */
+static const char *skip_not_space(const char *src)
+{
+    return src + strcspn(src, " \t");
+}
+
 /* Skip token68 */
 static const char *skip_token68(const char *src)
 {
@@ -243,4 +249,20 @@ const char *serf__tolower(const char *src, apr_pool_t *pool)
     for (i = 0; i < len; ++i)
         dst[i] = ct_tolower(src[i]); /* The NUL byte is copied, too. */
     return dst;
+}
+
+
+const char *serf__find_token(const char *token, apr_size_t len, const char *src)
+{
+    if (len == 0)
+        len = strlen(token);
+
+    src = skip_space(src);
+    while (*src) {
+        const char *end = skip_not_space(src);
+        if (end - src == len && 0 == strncmp(token, src, len))
+            return src;
+        src = skip_space(end);
+    }
+    return NULL;
 }

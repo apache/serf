@@ -309,6 +309,75 @@ static void test_digest_authentication_keepalive_off(CuTest *tc)
     digest_authentication(tc, 1);
 }
 
+static void digest_check_parameters(CuTest *tc,
+                                        apr_status_t expected_status,
+                                        const char *alg,
+                                        const char *qop)
+{
+    test_baton_t *tb = tc->testBaton;
+    handler_baton_t handler_ctx[2];
+    const char *hdr;
+    apr_status_t status;
+
+    /* fprintf(stderr, "alg=%s qop=%s\n", alg, qop); */
+
+    /* Set up a test context with a server */
+    setup_test_mock_server(tb);
+    status = setup_test_client_context(tb, NULL, tb->pool);
+    CuAssertIntEquals(tc, APR_SUCCESS, status);
+
+    serf_config_authn_types(tb->context, SERF_AUTHN_DIGEST);
+    serf_config_credentials_callback(tb->context, digest_authn_callback);
+
+    create_new_request(tb, &handler_ctx[0], "GET", "/", 1);
+
+    /* Construct the response header. */
+    alg = alg ? apr_psprintf(tb->pool, ",algorithm=\"%s\"", alg) : "";
+    qop = qop ? apr_psprintf(tb->pool, ",qop=\"%s\"", qop) : "";
+    hdr = apr_psprintf(tb->pool, "Digest realm=\"Test Suite\","
+                       "nonce=\"ABCDEF1234567890\",opaque=\"myopaque\""
+                       "%s%s", alg, qop);
+    /* fprintf(stderr, "hdr=%s\n", hdr); */
+
+    Given(tb->mh)
+      GETRequest(URLEqualTo("/"), HeaderNotSet("Authorization"))
+        Respond(WithCode(401), WithChunkedBody("1"),
+                WithHeader("www-Authenticate", hdr))
+      GETRequest(URLEqualTo("/"), HeaderSet("Authorization"))
+        Respond(WithCode(200), WithChunkedBody(""))
+    Expect
+      AllRequestsReceivedInOrder
+    EndGiven
+
+    status = run_client_and_mock_servers_loops(tb, 1, handler_ctx, tb->pool);
+    CuAssertIntEquals(tc, expected_status, status);
+}
+
+static void test_digest_valid_params(CuTest *tc)
+{
+    digest_check_parameters(tc, APR_SUCCESS, NULL, NULL);
+    digest_check_parameters(tc, APR_SUCCESS, "MD5", NULL);
+    digest_check_parameters(tc, APR_SUCCESS, NULL, "auth");
+    digest_check_parameters(tc, APR_SUCCESS, "MD5", "auth");
+    digest_check_parameters(tc, APR_SUCCESS, "MD5", "auth-int auth");
+    digest_check_parameters(tc, APR_SUCCESS, "MD5", "crumple auth auth-int");
+}
+
+static void test_digest_invalid_params(CuTest *tc)
+{
+    static const apr_status_t expected = SERF_ERROR_AUTHN_NOT_SUPPORTED;
+    digest_check_parameters(tc, expected, "", NULL);
+    digest_check_parameters(tc, expected, "MD5-sess", NULL);
+    digest_check_parameters(tc, expected, "SHA-256", NULL);
+    digest_check_parameters(tc, expected, "SHA-256-sess", NULL);
+    digest_check_parameters(tc, expected, "SHA-512-256", NULL);
+    digest_check_parameters(tc, expected, "SHA-512-256-sess", NULL);
+    digest_check_parameters(tc, expected, NULL, "");
+    digest_check_parameters(tc, expected, NULL, "auth-int");
+    digest_check_parameters(tc, expected, NULL, "crumple");
+    digest_check_parameters(tc, expected, NULL, "crumple auth-int");
+}
+
 static apr_status_t
 switched_realm_authn_callback(char **username,
                               char **password,
@@ -1020,6 +1089,8 @@ CuSuite *test_auth(void)
     SUITE_ADD_TEST(suite, test_basic_authentication_keepalive_off);
     SUITE_ADD_TEST(suite, test_digest_authentication);
     SUITE_ADD_TEST(suite, test_digest_authentication_keepalive_off);
+    SUITE_ADD_TEST(suite, test_digest_valid_params);
+    SUITE_ADD_TEST(suite, test_digest_invalid_params);
     SUITE_ADD_TEST(suite, test_basic_switch_realms);
     SUITE_ADD_TEST(suite, test_digest_switch_realms);
     SUITE_ADD_TEST(suite, test_auth_on_HEAD);
