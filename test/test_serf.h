@@ -244,6 +244,9 @@ serf_bucket_t *serf_bucket_mock_sock_create(serf_bucket_t *stream,
 /* Test utility functions, to be used with the MockHTTPinC framework         */
 /*****************************************************************************/
 
+/* Initiate a simple serf context with no connections. */
+apr_status_t setup_test_context(test_baton_t *tb, apr_pool_t *pool);
+
 /* Initiate a serf context configured to connect to the mock http server */
 apr_status_t setup_test_client_context(test_baton_t *tb,
                                        serf_connection_setup_t conn_setup,

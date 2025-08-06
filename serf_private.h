@@ -770,6 +770,24 @@ apr_status_t serf__handle_auth_response(bool *consumed_response,
    able to cleanup stale objects from time to time. */
 serf__authn_info_t *serf__get_authn_info_for_server(serf_connection_t *conn);
 
+
+/* Parse authentication scheme parameters from a WWW-Authenticate or
+   Proxy-Authenticate header. Splits the comma-separated token=value
+   or token="quoted \" value" pairs into a dictionary. If the parameters
+   are a single token, it's stored as the value of the empty string key.
+
+   The keys in the dictionary will be folded to lowercase.
+
+   See: https://www.rfc-editor.org/rfc/rfc9110.html#section-11.2 */
+apr_hash_t *serf__parse_authn_parameters(const char *attrs, apr_pool_t *pool);
+
+/* Fold ASCII uppercase letters to lowercase, in place, using the same
+   case-folding serf__parse_authn_parameters() does for keys. */
+void serf__tolower_inplace(char *dst, apr_size_t length);
+
+/* Like serf__tolower_inplace, but allocates a new string from the pool. */
+const char *serf__tolower(const char *src, apr_pool_t *pool);
+
 /* from context.c */
 void serf__context_progress_delta(void *progress_baton, apr_off_t read,
                                   apr_off_t written);
@@ -790,7 +808,7 @@ apr_status_t serf__conn_update_pollset(serf_connection_t *conn);
 serf_request_t *serf__ssltunnel_request_create(serf_connection_t *conn,
                                                serf_request_setup_t setup,
                                                void *setup_baton);
-void serf__connection_set_pipelining(serf_connection_t *conn, int enabled);
+int serf__connection_set_pipelining(serf_connection_t *conn, int enabled);
 apr_status_t serf__connection_flush(serf_connection_t *conn,
                                     bool fetch_new);
 
