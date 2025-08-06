@@ -470,15 +470,17 @@ typedef apr_status_t (*serf_credentials_callback_t)(
  * destroying this pool will close the connection, and terminate any
  * outstanding requests or responses.
  *
+ * The @a setup callback will be invoked, and @a setup_baton passed to it,
+ * once the connection is actually established. @see serf_connection_setup_t.
+ *
  * When the connection is closed (upon request or because of an error),
  * then the @a closed callback is invoked, and @a closed_baton is passed.
  *
- * ### doc on setup(_baton). tweak below comment re: acceptor.
- * NULL may be passed for @a acceptor and @a closed; default implementations
+ * NULL may be passed for @a setup and @a closed; default implementations
  * will be used.
  *
- * @note The connection is not made immediately. It will be opened on
- * the next call to @see serf_context_run.
+ * @note the connection is not made immediately. It will be opened
+ * asynchronously on the next call to serf_context_run().
  */
 serf_connection_t *serf_connection_create(
     serf_context_t *ctx,
@@ -492,7 +494,26 @@ serf_connection_t *serf_connection_create(
 /**
  * Create a new connection associated with the @a ctx serf context.
  *
- * Like @see serf_connection_create3 but with @a host_address set to @c NULL.
+ * A connection will be created to (eventually) connect to the address
+ * specified by @a host_info (either directly or through a proxy), which
+ * must live at least as long as @a pool (thus, as long as the connection
+ * object). The @a host_info will also be used for setting request headers.
+ *
+ * The connection object will be allocated within @a pool. Clearing or
+ * destroying this pool will close the connection, and terminate any
+ * outstanding requests or responses.
+ *
+ * The @a setup callback will be invoked, and @a setup_baton passed to it,
+ * once the connection is actually established. @see serf_connection_setup_t.
+ *
+ * When the connection is closed (upon request or because of an error),
+ * then the @a closed callback is invoked, and @a closed_baton is passed.
+ *
+ * NULL may be passed for @a setup and @a closed; default implementations
+ * will be used.
+ *
+ * @note The connection is not made immediately. It will be opened
+ * asynchronously on the next call to serf_context_run().
  */
 apr_status_t serf_connection_create2(
     serf_connection_t **conn,
@@ -503,47 +524,6 @@ apr_status_t serf_connection_create2(
     serf_connection_closed_t closed,
     void *closed_baton,
     apr_pool_t *pool);
-
-
-/**
- * Create a new connection associated with the @a ctx serf context.
- *
- * A connection will be created to (eventually) connect to the address
- * specified by @a address. The address must live at least as long as
- * @a pool (thus, as long as the connection object).
- *
- * If @a host_address is @c NULL, the host address will be looked up
- * based on the hostname in @a host_info; otherwise @a host_address
- * will be used to connect and @a host_info will only be used for
- * setting request headers.
- *
- * The connection object will be allocated within @a pool. Clearing or
- * destroying this pool will close the connection, and terminate any
- * outstanding requests or responses.
- *
- * When the connection is closed (upon request or because of an error),
- * then the @a closed callback is invoked, and @a closed_baton is passed.
- *
- * ### doc on setup(_baton). tweak below comment re: acceptor.
- * NULL may be passed for @a acceptor and @a closed; default implementations
- * will be used.
- *
- * @note the connection is not made immediately. It will be opened on
- * the next call to @see serf_context_run.
- *
- * @since New in 1.4.
- */
-apr_status_t serf_connection_create3(
-    serf_connection_t **conn,
-    serf_context_t *ctx,
-    apr_uri_t host_info,
-    apr_sockaddr_t *host_address,
-    serf_connection_setup_t setup,
-    void *setup_baton,
-    serf_connection_closed_t closed,
-    void *closed_baton,
-    apr_pool_t *pool);
-
 
 /**
  * Notification callback when an address hae been resolved.
@@ -574,8 +554,11 @@ typedef void (*serf_address_resolved_t)(
  * Asynchronously resolve an address.
  *
  * The address represented by @a host_info is intended to be used to create
- * new connections in @a ctx; proxy configuration will be taken into account
- * during resolution. See, for example, serf_connection_create3().
+ * new connections in @a ctx; see, for example, serf_connection_create().
+ * However, unlike in the connection creation functions, the address will be
+ * resolved regardless of proxy configuration. In order to avoid unnecessary
+ * address resolution, use serf_connection_create_async(), which does take
+ * proxy configuration into account.
  *
  * The @a resolve callback will be called during a subsequent call to
  * serf_context_run() or serf_context_prerun() and will receive the same
@@ -625,14 +608,15 @@ typedef void (*serf_connection_created_t)(
  * Asyncchronously create a new connection associated with
  * the @a ctx serf context.
  *
- * Like serf_connection_create3() with @a host_address set to @c NULL,
- * except that address resolution is performed asynchronously, similarly to
- * serf_address_resolve_async().
+ * Like serf_connection_create2() except that address resolution is performed
+ * asynchronously, similarly to serf_address_resolve_async(). Address resolution
+ * will be skipped if a proxy is configured; in this case, the function becomes
+ * synchronous and effectively equivalent to serf_connection_create2().
  *
  * The @a created callback with @a created_baton is called when the connection
  * is created but before it is opened. Note that depending on the configuration
- * of @a ctx,the connection may be created and this callback be invoked
- * synchronously during the scope of this function call.
+ * of @a ctx and @a host_info, the connection may be created and this callback
+ * be invoked synchronously during the scope of this function call.
  *
  * @since New in 1.4.
  */
@@ -1040,8 +1024,8 @@ serf_bucket_t *serf_context_bucket_socket_create(
  * settings.
  *
  * This function will set following header(s):
- * - Host: if the connection was created with @see serf_connection_create2
- *         or @see serf_connection_create3
+ * - Host: if the connection was created serf_connection_create2()
+ *         or serf_connection_create_async()
  */
 serf_bucket_t *serf_request_bucket_request_create(
     serf_request_t *request,

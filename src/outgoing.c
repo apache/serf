@@ -1278,33 +1278,15 @@ serf_connection_t *serf_connection_create(
     return conn;
 }
 
-apr_status_t serf_connection_create2(
-    serf_connection_t **conn,
-    serf_context_t *ctx,
-    apr_uri_t host_info,
-    serf_connection_setup_t setup,
-    void *setup_baton,
-    serf_connection_closed_t closed,
-    void *closed_baton,
-    apr_pool_t *pool)
-{
-    return serf_connection_create3(conn, ctx, host_info, NULL,
-                                   setup, setup_baton,
-                                   closed, closed_baton,
-                                   pool);
-}
-
-
-apr_status_t serf_connection_create3(
-    serf_connection_t **conn,
-    serf_context_t *ctx,
-    apr_uri_t host_info,
-    apr_sockaddr_t *host_address,
-    serf_connection_setup_t setup,
-    void *setup_baton,
-    serf_connection_closed_t closed,
-    void *closed_baton,
-    apr_pool_t *pool)
+static apr_status_t create_connection(serf_connection_t **conn,
+                                      serf_context_t *ctx,
+                                      apr_uri_t host_info,
+                                      apr_sockaddr_t *host_address,
+                                      serf_connection_setup_t setup,
+                                      void *setup_baton,
+                                      serf_connection_closed_t closed,
+                                      void *closed_baton,
+                                      apr_pool_t *pool)
 {
     apr_status_t status = APR_SUCCESS;
     serf_config_t *config;
@@ -1362,6 +1344,22 @@ apr_status_t serf_connection_create3(
     return status;
 }
 
+apr_status_t serf_connection_create2(
+    serf_connection_t **conn,
+    serf_context_t *ctx,
+    apr_uri_t host_info,
+    serf_connection_setup_t setup,
+    void *setup_baton,
+    serf_connection_closed_t closed,
+    void *closed_baton,
+    apr_pool_t *pool)
+{
+    return create_connection(conn, ctx, host_info, NULL,
+                             setup, setup_baton,
+                             closed, closed_baton,
+                             pool);
+}
+
 
 struct async_create_baton
 {
@@ -1391,12 +1389,12 @@ static void async_conn_create(serf_context_t *ctx,
                                             baton->conn_pool);
         }
         if (status == APR_SUCCESS) {
-            status = serf_connection_create3(&conn, ctx,
-                                             baton->host_info,
-                                             host_address,
-                                             baton->setup, baton->setup_baton,
-                                             baton->closed, baton->closed_baton,
-                                             baton->conn_pool);
+            status = create_connection(&conn, ctx,
+                                       baton->host_info,
+                                       host_address,
+                                       baton->setup, baton->setup_baton,
+                                       baton->closed, baton->closed_baton,
+                                       baton->conn_pool);
         }
     }
 
@@ -1421,14 +1419,14 @@ apr_status_t serf_connection_create_async(
     if (ctx->proxy_address)
     {
         /* If we're using a proxy, we do *not* resolve the host
-           (see serf_connection_create3(), above), so just create
+           (see create_connection(), above), so just create
            the connection immediately. */
         serf_connection_t *conn;
-        status = serf_connection_create3(&conn, ctx,
-                                         host_info, NULL,
-                                         setup, setup_baton,
-                                         closed, closed_baton,
-                                         pool);
+        status = create_connection(&conn, ctx,
+                                   host_info, NULL,
+                                   setup, setup_baton,
+                                   closed, closed_baton,
+                                   pool);
         if (status == APR_SUCCESS)
             created(ctx, created_baton, conn, status, scratch_pool);
     }
