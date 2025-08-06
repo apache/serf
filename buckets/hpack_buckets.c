@@ -652,7 +652,6 @@ serf__bucket_hpack_setx(serf_bucket_t *bucket,
 {
     serf_hpack_context_t *ctx = bucket->data;
     serf_hpack_entry_t *entry;
-    apr_size_t i;
 
     for (entry = ctx->first; entry; entry = entry->next)
     {
@@ -694,11 +693,7 @@ serf__bucket_hpack_setx(serf_bucket_t *bucket,
          header field names MUST be treated as malformed (Section 8.1.2.6). */
 
         char *ckey = serf_bstrmemdup(bucket->allocator, key, key_size);
-        for (i = 0; i < key_size; i++)
-        {
-            if (ckey[i] >= 'A' && key[i] <= 'Z')
-                ckey[i] += ('a' - 'A');
-        }
+        serf__tolower_inplace(ckey, key_size);
         entry->key = ckey;
         entry->free_key = true;
     }
