@@ -630,21 +630,23 @@ serf__bucket_http2_frame_create(serf_bucket_t *stream,
                                     void *baton,
                                     apr_int32_t *stream_id),
                                 void *stream_id_baton,
-                                apr_uint32_t max_payload_size,
+                                apr_size_t max_payload_size,
                                 serf_bucket_alloc_t *alloc)
 {
-    serf_http2_frame_context_t *ctx = serf_bucket_mem_alloc(alloc,
-                                                            sizeof(*ctx));
+    serf_http2_frame_context_t *ctx;
 
+    /* The upper limit for HTTP/2 MAX_FRAME_SIZE is 16 MiB - 1.
+       https://www.rfc-editor.org/rfc/rfc9113.html#section-4.2 */
+    if (max_payload_size > 0xFFFFFF)
+        max_payload_size = 0xFFFFFF;
+
+    ctx = serf_bucket_mem_alloc(alloc, sizeof(*ctx));
     ctx->alloc = alloc;
     ctx->stream = stream;
     ctx->chunk = serf_bucket_aggregate_create(alloc);
     ctx->max_payload_size = max_payload_size;
     ctx->frametype = frame_type;
     ctx->flags = flags;
-
-    if (max_payload_size > 0xFFFFFF)
-        max_payload_size = 0xFFFFFF;
 
     if (!stream_id_alloc || (stream_id && *stream_id >= 0))
     {
@@ -980,4 +982,3 @@ const serf_bucket_type_t serf_bucket_type__http2_frame =
     serf_http2_frame_get_remaining,
     serf_http2_frame_set_config
 };
-

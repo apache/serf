@@ -202,7 +202,7 @@ serf__bucket_http2_frame_create(serf_bucket_t *stream,
                                       void *baton,
                                       apr_int32_t *stream_id),
                                 void *stream_id_baton,
-                                apr_uint32_t max_payload_size,
+                                apr_size_t max_payload_size,
                                 serf_bucket_alloc_t *alloc);
 
 /* ==================================================================== */
