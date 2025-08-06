@@ -262,6 +262,12 @@ typedef enum serf_request_writing_t {
     SERF_WRITING_FINISHED       /* Safe to destroy */
 } serf_request_writing_t;
 
+typedef struct serf_reqlist_t {
+    struct serf_request_t *head;
+    struct serf_request_t *tail;
+    unsigned int count;
+} serf_reqlist_t;
+
 /* Holds all the information corresponding to a request/response pair. */
 struct serf_request_t {
     serf_connection_t *conn;
@@ -307,7 +313,8 @@ struct serf_request_t {
        for identifying or storing related information */
     void *protocol_baton;
 
-    struct serf_request_t *next;
+    serf_request_t *next;
+    serf_reqlist_t *list;
 };
 
 struct serf_incoming_request_t
@@ -594,20 +601,15 @@ struct serf_connection_t {
 
     /* The list of requests that are written but no response has been received
        yet. */
-    serf_request_t *written_reqs;
-    serf_request_t *written_reqs_tail;
-    unsigned int nr_of_written_reqs;
+    serf_reqlist_t written_reqs;
 
     /* The list of requests that hasn't been written */
-    serf_request_t *unwritten_reqs;
-    serf_request_t *unwritten_reqs_tail;
-    unsigned int nr_of_unwritten_reqs;
+    serf_reqlist_t unwritten_reqs;
 
     /* Requests that are done, but not destroyed yet because they may still
        have data pending in their pools. Will be destroyed at several
        safe points. */
-    serf_request_t *done_reqs;
-    serf_request_t *done_reqs_tail;
+    serf_reqlist_t done_reqs;
 
     serf_connection_setup_t setup;
     void *setup_baton;
@@ -877,17 +879,17 @@ apr_status_t serf__bucket_hpack_create_from_request(
                                         const char *scheme,
                                         serf_bucket_alloc_t *allocator);
 
-/* From connection_request.c */
-void serf__link_requests(serf_request_t **list, serf_request_t **tail,
-                         serf_request_t *request);
+/* From outgoing_request.c */
+void serf__push_request(serf_reqlist_t *list, serf_request_t *request);
+void serf__peek_request(serf_reqlist_t *list, serf_request_t **requestp);
+void serf__take_request(serf_reqlist_t *list, serf_request_t *request);
+void serf__delete_from_reqlist(serf_reqlist_t *list, serf_request_t *request);
 apr_status_t serf__destroy_request(serf_request_t *request);
 apr_status_t serf__cancel_request(serf_request_t *request,
-                                  serf_request_t **list,
+                                  serf_reqlist_t *list,
                                   int notify_request);
-unsigned int serf__req_list_length(serf_request_t *req);
+void serf__req_list_recalc_length(serf_reqlist_t *req);
 apr_status_t serf__setup_request(serf_request_t *request);
-void serf__link_requests(serf_request_t **list, serf_request_t **tail,
-                         serf_request_t *request);
 
 apr_status_t serf__handle_response(serf_request_t *request,
                                    apr_pool_t *pool);

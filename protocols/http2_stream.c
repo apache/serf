@@ -339,7 +339,7 @@ serf_http2__stream_setup_next_request(serf_http2_stream_t *stream,
                                       apr_size_t max_payload_size,
                                       serf_hpack_table_t *hpack_tbl)
 {
-    serf_request_t *request = conn->unwritten_reqs;
+    serf_request_t *request = conn->unwritten_reqs.head;
     apr_status_t status;
     serf_bucket_t *hpack;
     serf_bucket_t *body;
@@ -359,16 +359,8 @@ serf_http2__stream_setup_next_request(serf_http2_stream_t *stream,
             return status;
     }
 
-    conn->unwritten_reqs = request->next;
-    if (conn->unwritten_reqs_tail == request)
-        conn->unwritten_reqs = conn->unwritten_reqs_tail = NULL;
-
-    request->next = NULL;
-
-    serf__link_requests(&conn->written_reqs, &conn->written_reqs_tail,
-                        request);
-    conn->nr_of_written_reqs++;
-    conn->nr_of_unwritten_reqs--;
+    serf__take_request(&conn->unwritten_reqs, request);
+    serf__push_request(&conn->written_reqs, request);
 
     serf__bucket_request_read(request->req_bkt, &body, NULL, NULL);
     status = serf__bucket_hpack_create_from_request(
@@ -802,24 +794,7 @@ serf_http2__stream_processor(void *baton,
              to remove it from the outstanding requests */
         {
             serf_connection_t *conn = serf_request_get_conn(sd->request);
-            serf_request_t **rq = &conn->written_reqs;
-            serf_request_t *last = NULL;
-
-            while (*rq && (*rq != sd->request)) {
-                last = *rq;
-                rq = &last->next;
-            }
-
-            if (*rq)
-            {
-                (*rq) = sd->request->next;
-
-                if (conn->written_reqs_tail == sd->request)
-                    conn->written_reqs_tail = last;
-
-                conn->nr_of_written_reqs--;
-            }
-
+            serf__delete_from_reqlist(&conn->written_reqs, sd->request);
             serf__destroy_request(sd->request);
             stream->data->request = NULL;
         }

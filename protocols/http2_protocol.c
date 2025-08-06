@@ -1698,8 +1698,8 @@ http2_outgoing_write(serf_connection_t *conn)
     serf_http2_protocol_t *h2 = conn->protocol_baton;
     apr_status_t status;
 
-    if (conn->unwritten_reqs
-        && conn->nr_of_written_reqs < h2->lr_max_concurrent)
+    if (conn->unwritten_reqs.head
+        && conn->written_reqs.count < h2->lr_max_concurrent)
     {
         status = enqueue_http2_request(h2);
         if (status)

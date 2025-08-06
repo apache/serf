@@ -18,6 +18,13 @@
  * ====================================================================
  */
 
+#if defined(_DEBUG)
+#include <assert.h>
+#define SERF__REQLIST_assert(x) assert(x)
+#else
+#define SERF__REQLIST_assert(x) ((void)0)
+#endif
+
 #include <stdlib.h>
 
 #include <apr_pools.h>
@@ -91,17 +98,36 @@ static apr_status_t clean_resp(void *data)
     return APR_SUCCESS;
 }
 
-void serf__link_requests(serf_request_t **list, serf_request_t **tail,
-                         serf_request_t *request)
+void serf__push_request(serf_reqlist_t *list, serf_request_t *request)
 {
-    if (*list == NULL) {
-        *list = request;
-        *tail = request;
+    SERF__REQLIST_assert(request->list == NULL);
+    request->list = list;
+    if (list->head == NULL) {
+        list->head = request;
+        list->tail = request;
+    } else {
+        list->tail->next = request;
+        list->tail = request;
     }
-    else {
-        (*tail)->next = request;
-        *tail = request;
-    }
+    ++list->count;
+}
+
+void serf__peek_request(serf_reqlist_t *list, serf_request_t **requestp)
+{
+    serf_request_t *request = list->head;
+    SERF__REQLIST_assert(request == NULL || request->list == list);
+    *requestp = request;
+}
+
+void serf__take_request(serf_reqlist_t *list, serf_request_t *request)
+{
+    SERF__REQLIST_assert(list->head == request && request->list == list);
+    list->head = request->next;
+    if (list->head == NULL)
+        list->tail = NULL;
+    --list->count;
+    request->next = NULL;
+    request->list = NULL;
 }
 
 apr_status_t serf__destroy_request(serf_request_t *request)
@@ -177,6 +203,10 @@ apr_status_t serf__destroy_request(serf_request_t *request)
         request->depends_on = NULL;
     }
 
+    if (request->list != NULL) {
+        serf__delete_from_reqlist(request->list, request);
+    }
+
     if (request->writing >= SERF_WRITING_STARTED
         && request->writing < SERF_WRITING_FINISHED) {
 
@@ -185,8 +215,7 @@ apr_status_t serf__destroy_request(serf_request_t *request)
            Destroying now will destroy memory of buckets that we
            may still need.
         */
-        serf__link_requests(&conn->done_reqs, &conn->done_reqs_tail,
-                            request);
+        serf__push_request(&conn->done_reqs, request);
     }
     else {
 
@@ -203,8 +232,33 @@ apr_status_t serf__destroy_request(serf_request_t *request)
     return APR_SUCCESS;
 }
 
+void serf__delete_from_reqlist(serf_reqlist_t *list, serf_request_t *request)
+{
+    SERF__REQLIST_assert(request->list == list);
+
+    if (list->head == request) {
+        list->head = request->next;
+    } else {
+        serf_request_t *scan = list->head;
+
+        while (scan->next && scan->next != request)
+            scan = scan->next;
+
+        SERF__REQLIST_assert(scan->next == request);
+
+        scan->next = request->next;
+    }
+
+    if (list->head == NULL)
+        list->tail = NULL;
+
+    --list->count;
+    request->next = NULL;
+    request->list = NULL;
+}
+
 apr_status_t serf__cancel_request(serf_request_t *request,
-                                  serf_request_t **list,
+                                  serf_reqlist_t *list,
                                   int notify_request)
 {
     /* If we haven't run setup, then we won't have a handler to call. */
@@ -223,34 +277,23 @@ apr_status_t serf__cancel_request(serf_request_t *request,
                                               SERF_ERROR_HTTP2_CANCEL);
     }
 
-    if (*list == request) {
-        *list = request->next;
-    }
-    else {
-        serf_request_t *scan = *list;
-
-        while (scan->next && scan->next != request)
-            scan = scan->next;
-
-        if (scan->next) {
-            scan->next = scan->next->next;
-        }
-    }
+    serf__delete_from_reqlist(list, request);
 
     return serf__destroy_request(request);
 }
 
 /* Calculate the length of a linked list of requests. */
-unsigned int serf__req_list_length(serf_request_t *req)
+void serf__req_list_recalc_length(serf_reqlist_t *list)
 {
     unsigned int length = 0;
+    serf_request_t *req = list->head;
 
     while (req) {
         length++;
         req = req->next;
     }
 
-    return length;
+    list->count = length;
 }
 
 apr_status_t serf__setup_request(serf_request_t *request)
@@ -392,7 +435,7 @@ serf__provide_credentials(serf_context_t *ctx,
         /* request->next will be NULL if this was the last request written */
         authn_req = request->next;
         if (!authn_req)
-            authn_req = conn->unwritten_reqs;
+            authn_req = conn->unwritten_reqs.head;
 
         /* assert: app_request != NULL */
         if (!authn_req)
@@ -446,6 +489,7 @@ create_request(serf_connection_t *conn,
     request->depends_next = NULL;
     request->depends_first = NULL;
     request->dep_priority = SERF_REQUEST_PRIORITY_DEFAULT;
+    request->list = NULL;
 
     return request;
 }
@@ -462,8 +506,7 @@ serf_request_t *serf_connection_request_create(
                              false /* ssl tunnel */);
 
     /* Link the request to the end of the request chain. */
-    serf__link_requests(&conn->unwritten_reqs, &conn->unwritten_reqs_tail, request);
-    conn->nr_of_unwritten_reqs++;
+    serf__push_request(&conn->unwritten_reqs, request);
 
     /* Ensure our pollset becomes writable in context run */
     serf_io__set_pollset_dirty(&conn->io);
@@ -477,8 +520,10 @@ insert_priority_request(serf_request_t *request)
     serf_request_t *iter, *prev;
     serf_connection_t *conn = request->conn;
 
+    SERF__REQLIST_assert(request->list == NULL);
+
     /* Link the new request after the last written request. */
-    iter = conn->unwritten_reqs;
+    iter = conn->unwritten_reqs.head;
     prev = NULL;
 
     /* TODO: what if a request is partially written? */
@@ -502,14 +547,19 @@ insert_priority_request(serf_request_t *request)
         }
     }
 
+    request->list = &conn->unwritten_reqs;
     if (prev) {
         request->next = iter;
         prev->next = request;
+        if (conn->unwritten_reqs.tail == prev)
+            conn->unwritten_reqs.tail = request;
     } else {
         request->next = iter;
-        conn->unwritten_reqs = request;
+        conn->unwritten_reqs.head = request;
+        if (conn->unwritten_reqs.tail == NULL)
+            conn->unwritten_reqs.tail = request;
     }
-    conn->nr_of_unwritten_reqs++;
+    ++conn->unwritten_reqs.count;
 
     /* Ensure our pollset becomes writable in context run */
     serf_io__set_pollset_dirty(&conn->io);
@@ -644,14 +694,16 @@ apr_status_t serf_connection__request_requeue(serf_request_t *request)
     }
 
     /* And now make the discard request take the place of the old request */
-    for (pr = &request->conn->written_reqs; *pr; pr = &(*pr)->next) {
+    discard->list = &request->conn->written_reqs;
+    for (pr = &request->conn->written_reqs.head; *pr; pr = &(*pr)->next) {
         if (*pr == request) {
             *pr = discard;
             discard->next = request->next;
             request->next = NULL;
+            request->list = NULL;
 
             if (!discard->next)
-                request->conn->written_reqs_tail = discard;
+                request->conn->written_reqs.tail = discard;
             break;
         }
     }
@@ -689,18 +741,7 @@ apr_status_t serf_connection__request_requeue(serf_request_t *request)
 
 apr_status_t serf_request_cancel(serf_request_t *request)
 {
-    serf_connection_t *conn = request->conn;
-    serf_request_t *tmp = conn->unwritten_reqs;
-
-    /* Find out which queue holds the request */
-    while (tmp != NULL && tmp != request)
-        tmp = tmp->next;
-
-    if (tmp)
-        return serf__cancel_request(request, &conn->unwritten_reqs, 0);
-    else
-        return serf__cancel_request(request, &conn->written_reqs, 0);
-
+    return serf__cancel_request(request, request->list, 0);
 }
 
 void serf_connection_request_prioritize(serf_request_t *request,
