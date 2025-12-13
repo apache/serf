@@ -45,8 +45,6 @@ serf__handle_basic_auth(const serf__authn_scheme_t *scheme,
                         const char *auth_attr,
                         apr_pool_t *pool)
 {
-    const char *tmp;
-    apr_size_t tmp_len;
     serf_connection_t *conn = request->conn;
     serf_context_t *ctx = conn->ctx;
     serf__authn_info_t *authn_info;
@@ -55,6 +53,7 @@ serf__handle_basic_auth(const serf__authn_scheme_t *scheme,
     apr_pool_t *scratch_pool;
     apr_hash_t *attr_dict;
     char *username, *password;
+    const char *basic_creds;
     const char *realm_name, *realm = NULL;
 
     /* Can't do Basic authentication if there's no callback to get
@@ -93,14 +92,11 @@ serf__handle_basic_auth(const serf__authn_scheme_t *scheme,
         return status;
     }
 
-    tmp = apr_pstrcat(conn->pool, username, ":", password, NULL);
-    tmp_len = strlen(tmp);
-    apr_pool_destroy(scratch_pool);
-
-    serf__encode_auth_header(&basic_info->value,
-                             scheme->name,
-                             tmp, tmp_len, pool);
+    basic_creds = apr_pstrcat(scratch_pool, username, ":", password, NULL);
+    serf__encode_auth_header(&basic_info->value, scheme->name,
+                             basic_creds, strlen(basic_creds), pool);
     basic_info->header = SERF__HEADER_FROM_CODE(code);
+    apr_pool_destroy(scratch_pool);
 
     return APR_SUCCESS;
 }
