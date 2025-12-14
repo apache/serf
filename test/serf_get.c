@@ -329,6 +329,7 @@ typedef struct handler_baton_t {
     const char *username;
     const char *password;
     int auth_attempts;
+    int conn_count;
     serf_bucket_t *req_hdrs;
 } handler_baton_t;
 
@@ -493,7 +494,8 @@ credentials_callback(char **username,
 {
     handler_baton_t *ctx = baton;
 
-    if (ctx->auth_attempts > 0)
+    /* Every connection should be allowed to connect once. */
+    if (ctx->auth_attempts > ctx->conn_count)
     {
         return SERF_ERROR_AUTHN_FAILED;
     }
@@ -873,6 +875,7 @@ int main(int argc, const char **argv)
     handler_ctx.username = username;
     handler_ctx.password = password;
     handler_ctx.auth_attempts = 0;
+    handler_ctx.conn_count = conn_count;
 
     handler_ctx.req_body_path = req_body_path;
 

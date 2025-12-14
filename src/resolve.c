@@ -108,16 +108,6 @@ apr_status_t serf_address_resolve_async(serf_context_t *ctx,
     }
 
     apr_pool_create(&resolve_pool, ctx->pool);
-
-    /* See serf_connection_create3(): if there's a proxy configured in the
-       context, don't resolve the host address, just register the result. */
-    if (ctx->proxy_address)
-    {
-        push_resolve_result(ctx, NULL, APR_SUCCESS,
-                            resolved, resolved_baton, resolve_pool);
-        return APR_SUCCESS;
-    }
-
     return resolve_address_async(ctx, host_info, resolved, resolved_baton,
                                  resolve_pool, pool);
 }
