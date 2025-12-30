@@ -53,7 +53,7 @@ function(_get_brotli_includes_libs)
   find_library(encode_lib NAMES "brotlienc"
                PATH_SUFFIXES "lib" "${CMAKE_INSTALL_LIBDIR}")
 
-  set(BROTLI_INCLUDES "${includes}" PARENT_SCOPE)
+  set(BROTLI_INCLUDE_DIR "${includes}" PARENT_SCOPE)
   set(BROTLI_COMMON_LIBRARY "${common_lib}" PARENT_SCOPE)
   set(BROTLI_DECODE_LIBRARY "${decode_lib}" PARENT_SCOPE)
   set(BROTLI_ENCODE_LIBRARY "${encode_lib}" PARENT_SCOPE)
@@ -65,9 +65,9 @@ endif()
 
 _get_brotli_version()
 _get_brotli_includes_libs()
-if(NOT EXISTS "${BROTLI_INCLUDES}/brotli/decode.h"
-   OR NOT EXISTS "${BROTLI_INCLUDES}/brotli/encode.h"
-   OR NOT EXISTS "${BROTLI_INCLUDES}/brotli/types.h")
+if(NOT EXISTS "${BROTLI_INCLUDE_DIR}/brotli/decode.h"
+   OR NOT EXISTS "${BROTLI_INCLUDE_DIR}/brotli/encode.h"
+   OR NOT EXISTS "${BROTLI_INCLUDE_DIR}/brotli/types.h")
   message(STATUS "Could NOT find Brotli (missing headers)")
 else()
   include(FindPackageHandleStandardArgs)
@@ -75,23 +75,23 @@ else()
     REQUIRED_VARS BROTLI_COMMON_LIBRARY
                   BROTLI_DECODE_LIBRARY
                   BROTLI_ENCODE_LIBRARY
-                  BROTLI_INCLUDES
+                  BROTLI_INCLUDE_DIR
     VERSION_VAR BROTLI_VERSION)
   if(Brotli_FOUND)
     add_library(Brotli::Common UNKNOWN IMPORTED)
     set_target_properties(Brotli::Common PROPERTIES
-      INTERFACE_INCLUDE_DIRECTORIES "${BROTLI_INCLUDES}"
+      INTERFACE_INCLUDE_DIRECTORIES "${BROTLI_INCLUDE_DIR}"
       IMPORTED_LOCATION "${BROTLI_COMMON_LIBRARY}")
 
     add_library(Brotli::Decode UNKNOWN IMPORTED)
     set_target_properties(Brotli::Decode PROPERTIES
-      INTERFACE_INCLUDE_DIRECTORIES "${BROTLI_INCLUDES}"
+      INTERFACE_INCLUDE_DIRECTORIES "${BROTLI_INCLUDE_DIR}"
       INTERFACE_LINK_LIBRARIES Brotli::Common
       IMPORTED_LOCATION "${BROTLI_DECODE_LIBRARY}")
 
     add_library(Brotli::Encode UNKNOWN IMPORTED)
     set_target_properties(Brotli::Encode PROPERTIES
-      INTERFACE_INCLUDE_DIRECTORIES "${BROTLI_INCLUDES}"
+      INTERFACE_INCLUDE_DIRECTORIES "${BROTLI_INCLUDE_DIR}"
       INTERFACE_LINK_LIBRARIES Brotli::Common
       IMPORTED_LOCATION "${BROTLI_ENCODE_LIBRARY}")
   endif()
