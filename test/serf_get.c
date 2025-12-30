@@ -590,6 +590,9 @@ int main(int argc, const char **argv)
     apr_getopt_t *opt;
     int opt_c;
     const char *opt_arg;
+    unsigned int prev_min_pending = 0;
+    unsigned int prev_max_pending = UINT_MAX;
+    unsigned int prev_all_pending = 0;
 
     apr_initialize();
     atexit(apr_terminate);
@@ -834,7 +837,7 @@ int main(int argc, const char **argv)
     /* ### Connection or Context should have an allocator? */
     app_ctx.bkt_alloc = bkt_alloc;
 
-    connections = apr_pcalloc(pool, conn_count * sizeof(serf_connection_t*));
+    connections = apr_pcalloc(pool, conn_count * sizeof(*connections));
     for (i = 0; i < conn_count; i++)
     {
         conn_baton_t *conn_ctx = apr_pcalloc(pool, sizeof(*conn_ctx));
@@ -910,6 +913,30 @@ int main(int argc, const char **argv)
             break;
         }
         /* Debugging purposes only! */
+        if (debug) {
+            unsigned int min_pending = UINT_MAX;
+            unsigned int max_pending = 0;
+            unsigned int all_pending = 0;
+            for (i = 0; i < conn_count; i++) {
+                serf_connection_t *conn = connections[i];
+                unsigned int pending = (serf_connection_pending_requests(conn)
+                                        -  serf_connection_queued_requests(conn));
+                all_pending += pending;
+                if (min_pending > pending) min_pending = pending;
+                if (max_pending < pending) max_pending = pending;
+            }
+            if (prev_min_pending != min_pending
+                || prev_max_pending != max_pending
+                || prev_all_pending != all_pending)
+            {
+                fprintf(stderr, ">pending: %u [avg=%0.1f min=%u max=%u]\n",
+                        all_pending, (double)all_pending/conn_count,
+                        min_pending, max_pending);
+                prev_min_pending = min_pending;
+                prev_max_pending = max_pending;
+                prev_all_pending = all_pending;
+            }
+        }
         serf_debug__closed_conn(app_ctx.bkt_alloc);
     }
 
