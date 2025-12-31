@@ -1394,16 +1394,22 @@ static void test_ssl_revoked_server_cert(CuTest *tc)
        certificate. OpenSSL may call the application multiple times per depth,
        e.g. once to tell that the cert is revoked, and a second time to tell
        that the certificate itself is valid. */
+#if defined(OPENSSL_VERSION_PREREQ) && OPENSSL_VERSION_PREREQ(3, 6)
+    /* In OpenSSL 3.6, error handling changed so that only the
+       first instance of CERT_UNABLE_TO_GET_CRL is reported. */
     CuAssertStrEquals(tc,
         "cert_cb: failures = CERT_REVOKED, cert = (CN=localhost, depth=0)\n"
         "cert_cb: failures = CERT_UNABLE_TO_GET_CRL, cert = (CN=Serf CA, depth=1)\n"
-#if OPENSSL_VERSION_NUMBER < ((3 << 28) | (6 << 20)) /* OpenSSL 3.6.0 */
-        /* In OpenSSL 3.6, error handling changed so that only
-           the first CERT_UNABLE_TO_GET_CRL is reported. */
-        "cert_cb: failures = CERT_UNABLE_TO_GET_CRL, cert = (CN=Serf Root CA, depth=2)\n"
-#endif
         "cert_cb: failures = NONE, cert = (CN=localhost, depth=0)\n",
         tb->user_baton);
+#else
+    CuAssertStrEquals(tc,
+        "cert_cb: failures = CERT_REVOKED, cert = (CN=localhost, depth=0)\n"
+        "cert_cb: failures = CERT_UNABLE_TO_GET_CRL, cert = (CN=Serf CA, depth=1)\n"
+        "cert_cb: failures = CERT_UNABLE_TO_GET_CRL, cert = (CN=Serf Root CA, depth=2)\n"
+        "cert_cb: failures = NONE, cert = (CN=localhost, depth=0)\n",
+        tb->user_baton);
+#endif
 }
 
 /* Test if serf is sets up an SSL tunnel to the proxy and doesn't contact the
@@ -2788,7 +2794,7 @@ static void test_ssl_ocsp_verify_response_no_signer(CuTest *tc)
 {
 #ifndef OPENSSL_NO_OCSP
     apr_status_t status = verify_ocsp_response(tc, 1, 0, 0, 0);
-#if OPENSSL_VERSION_NUMBER >= (3 << 28) /* OpenSSL 3.0.0 */
+#if defined(OPENSSL_VERSION_PREREQ) && OPENSSL_VERSION_PREREQ(3, 0)
     /* OCSP responses MUST be signed, and on newer versions of OpenSSL we
        can't even create one without a signature. This error doesn't come
        from response validation but because OCSP_response_create() fails. */
