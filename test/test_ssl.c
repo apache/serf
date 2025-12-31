@@ -1397,7 +1397,11 @@ static void test_ssl_revoked_server_cert(CuTest *tc)
     CuAssertStrEquals(tc,
         "cert_cb: failures = CERT_REVOKED, cert = (CN=localhost, depth=0)\n"
         "cert_cb: failures = CERT_UNABLE_TO_GET_CRL, cert = (CN=Serf CA, depth=1)\n"
+#if OPENSSL_VERSION_NUMBER < ((3 << 28) | (6 << 20)) /* OpenSSL 3.6.0 */
+        /* In OpenSSL 3.6, error handling changed so that only
+           the first CERT_UNABLE_TO_GET_CRL is reported. */
         "cert_cb: failures = CERT_UNABLE_TO_GET_CRL, cert = (CN=Serf Root CA, depth=2)\n"
+#endif
         "cert_cb: failures = NONE, cert = (CN=localhost, depth=0)\n",
         tb->user_baton);
 }
