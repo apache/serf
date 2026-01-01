@@ -280,12 +280,16 @@ list(APPEND SERF_C_DEFINES "OPENSSL_NO_STDIO")
 
 # Find optional dependencies
 if(USE_BROTLI)
-  SerfFindPkgConfig(Brotli Brotli_ROOT libbrotlidec Brotli::Decode)
-  if(NOT Brotli_FOUND)
+  SerfFindPkgConfig(Brotli_Decode Brotli_ROOT libbrotlidec Brotli::Decode)
+  if(NOT Brotli_Decode_FOUND)
     find_package(Brotli)
     if(Brotli_FOUND)
       set(BROTLI_PC_LIBS ${BROTLI_DECODE_LIBRARY})
     endif()
+  else()
+    set(Brotli_FOUND TRUE)
+    set(BROTLI_INCLUDE_DIR ${BROTLI_DECODE_INCLUDE_DIR})
+    set(BROTLI_PC_REQUIRES ${BROTLI_DECODE_PC_REQUIRES})
   endif()
 endif()
 
@@ -396,7 +400,7 @@ if(Brotli_FOUND)
   if("SERF_HAVE_BROTLI_DECODER_RESULT" IN_LIST SERF_C_DEFINES)
     CheckFunction("BrotliDecoderTakeOutput" "NULL, NULL" "SERF_HAVE_BROTLI"
                   "brotli/decode.h" ${BROTLI_INCLUDE_DIR}
-                  Brotli::Decode ${SERF_STANDARD_LIBRARIES})
+                  ${BROTLI_DECODE_LIBRARY} ${SERF_STANDARD_LIBRARIES})
   endif()
 endif()
 
