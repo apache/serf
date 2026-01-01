@@ -391,13 +391,13 @@ for line in rfc_text.split('\n'):
     bits = int(m.group(4))
 
     if len(bitvals) != bits:
-      print '%d vs %d (%s)' %(len(bitvals), bits, bitvals)
+      print('%d vs %d (%s)' % (len(bitvals), bits, bitvals))
       continue
 
     shift = hex << (32 - bits)
 
     if '{0:032b}'.format(shift)[0:bits] != bitvals:
-      print '%s vs %s' % ('{0:032b}'.format(shift)[0:bits], bitvals)
+      print('%s vs %s' % ('{0:032b}'.format(shift)[0:bits], bitvals))
       continue
 
     mask = 0
@@ -411,19 +411,19 @@ items = sorted(items, key=lambda x:x[1])
 if len(items) != 257:
   raise Exception('There should be exactly 257 items')
 
-print '/*****************************************************'
-print ' *                 Generated code                    *'
-print ' *****************************************************'
-print ' * Please edit hpack_huffman.py instead of this file *'
-print ' * to recreate this file                             *'
-print ' *****************************************************/'
-print ''
-print 'static const struct serf_hpack_huffman_item_t {'
-print '  apr_uint32_t hval;  /* Huffman code shifted to most left bit */'
-print '  apr_uint32_t hmask; /* Mask of bits used in this code */'
-print '  apr_int16_t  bits;  /* Nr of bits used */'
-print '  apr_int16_t  cval;  /* The character value of this code */'
-print '} serf_hpack_hm_map[] = {'
+print('/*****************************************************')
+print(' *                 Generated code                    *')
+print(' *****************************************************')
+print(' * Please edit hpack_huffman.py instead of this file *')
+print(' * to recreate this file                             *')
+print(' *****************************************************/')
+print('')
+print('static const struct serf_hpack_huffman_item_t {')
+print('  apr_uint32_t hval;  /* Huffman code shifted to most left bit */')
+print('  apr_uint32_t hmask; /* Mask of bits used in this code */')
+print('  apr_int16_t  bits;  /* Nr of bits used */')
+print('  apr_int16_t  cval;  /* The character value of this code */')
+print('} serf_hpack_hm_map[] = {')
 n = 1
 map = {}
 for i in items:
@@ -431,25 +431,25 @@ for i in items:
     comma = ','
   else:
     comma = ' '
-  print '  { 0x%08x, 0x%08x, %2d, %3d }%s /* %s */' % \
-          (i[0], i[1], i[2], i[3], comma, i[4])
+  print('  { 0x%08x, 0x%08x, %2d, %3d }%s /* %s */'
+        % (i[0], i[1], i[2], i[3], comma, i[4]))
   map[i[3]] = n-1
   n += 1
 
-print '};'
-print ''
+print('};')
+print('')
 
-print '/* Maps chars to records in serf_hpack_hm_map. */'
-print 'static const apr_int16_t serf_hpack_hm_rmap[] = {'
+print('/* Maps chars to records in serf_hpack_hm_map. */')
+print('static const apr_int16_t serf_hpack_hm_rmap[] = {')
 for i in range(0,257):
   if i < 256:
     comma = ','
   else:
     comma = ''
   if i % 8 != 7:
-    print '  %3d%s' % (map[i], comma),
+    print('  %3d%s' % (map[i], comma), end=" ")
   else:
-    print '  %3d%s' % (map[i], comma)
-print ''
-print '};'
-print ''
+    print('  %3d%s' % (map[i], comma))
+print('')
+print('};')
+print('')

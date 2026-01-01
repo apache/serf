@@ -391,11 +391,11 @@ CheckFunction("SSL_library_init" "" "SERF_HAVE_OPENSSL_SSL_LIBRARY_INIT"
 CheckHeader("stdbool.h" "HAVE_STDBOOL_H=1")
 CheckType("OSSL_HANDSHAKE_STATE" "openssl/ssl.h" "SERF_HAVE_OSSL_HANDSHAKE_STATE" ${OPENSSL_INCLUDE_DIR})
 if(Brotli_FOUND)
-  CheckType("BrotliDecoderResult" "brotli/decode.h" "SERF_HAVE_BROTLI_DECODER_RESULT" ${BROTLI_INCLUDES})
+  CheckType("BrotliDecoderResult" "brotli/decode.h" "SERF_HAVE_BROTLI_DECODER_RESULT" ${BROTLI_INCLUDE_DIR})
   # Check for the function only if the type check succeeded.
   if("SERF_HAVE_BROTLI_DECODER_RESULT" IN_LIST SERF_C_DEFINES)
     CheckFunction("BrotliDecoderTakeOutput" "NULL, NULL" "SERF_HAVE_BROTLI"
-                  "brotli/decode.h" ${BROTLI_INCLUDES}
+                  "brotli/decode.h" ${BROTLI_INCLUDE_DIR}
                   Brotli::Decode ${SERF_STANDARD_LIBRARIES})
   endif()
 endif()
