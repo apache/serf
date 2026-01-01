@@ -1628,6 +1628,10 @@ static int ssl_need_client_cert(SSL *ssl, X509 **cert, EVP_PKEY **pkey)
     }
 
 #if defined(SERF_HAVE_OSSL_STORE_OPEN_EX)
+    /* FIXME: This is completely messed up. Extract the OPENSSL_STORE
+              part into a separate function instead of using break
+              + ERR_peek_error() for something that, for lack of a more
+              friendly term, might be called "error handling". */
 
     /* until further notice */
     *cert = NULL;
@@ -1669,8 +1673,7 @@ static int ssl_need_client_cert(SSL *ssl, X509 **cert, EVP_PKEY **pkey)
         /* server side request some certs? this list may be empty */
         requested = SSL_get_client_CA_list(ssl);
 
-        store = OSSL_STORE_open_ex(cert_uri, NULL, NULL, ui_method, ctx, NULL,
-                                   NULL, NULL);
+        store = OSSL_STORE_open(cert_uri, ui_method, ctx, NULL, NULL);
         if (!store) {
 
             if (ctx->error_callback) {
@@ -1685,8 +1688,13 @@ static int ssl_need_client_cert(SSL *ssl, X509 **cert, EVP_PKEY **pkey)
 
         /* walk the store, what are we working with */
 
-        while (!OSSL_STORE_eof(store)) {
+        for (;;) {
             info = OSSL_STORE_load(store);
+            if (OSSL_STORE_eof(store)) {
+                /* NOTE: OSSL_STORE_eof() is not signalled until *after* the
+                         first OSSL_STORE_load() fails. */
+                break;
+            }
 
             if (!info) {
 
