@@ -27,6 +27,15 @@
 
 #include <stdlib.h>
 
+#ifdef WIN32
+#include <io.h>
+#define isatty _isatty
+#elif HAVE_UNISTD_H
+#include <unistd.h>
+#else
+#define isatty(x) 0
+#endif
+
 #include "serf.h"
 
 #include "test_serf.h"
@@ -464,6 +473,28 @@ apr_status_t dummy_authn_callback(char **username,
 /* Test utility functions, to be used with the MockHTTPinC framework         */
 /*****************************************************************************/
 
+static apr_status_t test_error_callback(void *baton,
+                                        unsigned source,
+                                        apr_status_t status,
+                                        const char *message)
+{
+    /* We can has nice colours? Use ANSI escape codes on terminals. */
+    const char *const ERROR = (isatty(fileno(stderr))
+                                ? "\033[1;31m" "ERROR" "\033[0;m"
+                                : "ERROR");
+
+    fprintf(stderr, "%s: <%d> %c%c%c%c%c %s\n", ERROR, status,
+            ((source & SERF_ERROR_CB_SSL_CONTEXT) ? '*' : '-'),
+            ((source & SERF_ERROR_CB_GLOBAL) ? 'g' : '-'),
+            ((source & SERF_ERROR_CB_CONTEXT) ? 'c' : '-'),
+            ((source & SERF_ERROR_CB_OUTGOING) ? 'o'
+             : ((source & SERF_ERROR_CB_INCOMING) ? 'i' : '-')),
+            ((source & SERF_ERROR_CB_REQUEST) ? 'q'
+             : ((source & SERF_ERROR_CB_RESPONSE) ? 'p' : '-')),
+            message);
+    return APR_SUCCESS;
+}
+
 apr_status_t
 setup_test_context(test_baton_t *tb, apr_pool_t *pool)
 {
@@ -474,6 +505,7 @@ setup_test_context(test_baton_t *tb, apr_pool_t *pool)
         tb->context = serf_context_create(pool);
 
         if (TEST_VERBOSE) {
+            serf_global_error_callback_set(test_error_callback, NULL);
             status = serf_logging_create_stream_output(&output, tb->context,
                                                        SERF_LOG_DEBUG,
                                                        SERF_LOGCOMP_ALL,

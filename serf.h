@@ -185,6 +185,113 @@ typedef struct serf_config_t serf_config_t;
  */
 const char *serf_error_string(apr_status_t errcode);
 
+/**
+ * The source of an error callback invocation.
+ *
+ * @since New in 1.5.
+ */
+/* Bit masks for error sources. */
+#define SERF_ERROR_CB_MASK        0x00ff
+#define SERF_ERROR_CB_GLOBAL      0x0001
+#define SERF_ERROR_CB_CONTEXT     0x0002
+#define SERF_ERROR_CB_OUTGOING    0x0004
+#define SERF_ERROR_CB_INCOMING    0x0008
+#define SERF_ERROR_CB_REQUEST     0x0010
+#define SERF_ERROR_CB_RESPONSE    0x0020
+
+/* The following flag can be bitwise-combined with any of the above
+   values to indicate that the message originated an SSL context. */
+#define SERF_ERROR_CB_SSL_CONTEXT 0x0100
+
+/**
+ * A callback that, when set, will be called for out-of-band error reporting.
+ *
+ * A callback can be set on any of three levels: globally, for the context, or
+ * the outgoing or incoming connection. Incoming and outgoing requests and
+ * responses do not have their own error handlers, but indicate with the source
+ * flags where the message originated. The default implementations will will
+ * send messages up this hierarchy until a custom callback is found, or the
+ * default global callback drops the message to the floor. This is the error
+ * callback hierarchy:
+ * ```
+ *     Level                    Registration function
+ *
+ *     Global                   serf_error_callback_set()
+ *       Context                serf_context_error_callback_set()
+ *         Connection           serf_connection_error_callback_set()
+ *         Incoming             serf_incoming_error_callback_set()
+ * ```
+ * In addition, any of those handlers can be called from within an SSL
+ * processing context, which is indicated by the flag on the message source.
+ *
+ * The @a baton is the object provided to the callback registration, and
+ * @a source is one of the @c SERF_ERROR_CB_* values, above.
+ *
+ * The @a message lasts only as long as the callback invocation. The caller
+ * must make a copy of the message it it wants to keep it for longer.
+ *
+ * It is possible that for a given error multiple strings will be returned
+ * in multiple callbacks. The caller may choose to handle all strings, or
+ * may choose to ignore all strings but the last most detailed one.
+ *
+ * @since New in 1.5.
+ */
+typedef apr_status_t (*serf_error_cb_t)(
+    void *baton,
+    unsigned source,
+    apr_status_t status,
+    const char *message);
+
+/**
+ * Register the global error @a callback, replacing any previous version.
+ *
+ * @note This function is NOT thread-safe, and calls to the callback are not
+ *       serialized. Users are responsible for making the registration and
+ *       the callback implementation safe for their application.
+ *
+ * @since New in 1.5.
+ */
+void serf_global_error_callback_set(
+    serf_error_cb_t callback,
+    void *baton);
+
+/**
+ * Register the context-specific error callback.
+ *
+ * Like serf_error_callback_set() except that it affects the given
+ * context @a ctx and, since contexts may not be accessed from multiple
+ * threads, serialization is not a concern.
+ *
+ * @since New in 1.5.
+ */
+void serf_context_error_callback_set(
+    serf_context_t *ctx,
+    serf_error_cb_t callback,
+    void *baton);
+
+/**
+ * Register the connection-specific error callback.
+ *
+ * Like serf_context_error_callback_set() but for connections.
+ *
+ * @since New in 1.5.
+ */
+void serf_connection_error_callback_set(
+    serf_connection_t *conn,
+    serf_error_cb_t callback,
+    void *baton);
+
+/**
+ * Register the incoming-connection-specific error callback.
+ *
+ * Like serf_context_error_callback_set() but for incoming connections.
+ *
+ * @since New in 1.5.
+ */
+void serf_incoming_error_callback_set(
+    serf_incoming_t *client,
+    serf_error_cb_t callback,
+    void *baton);
 
 /**
  * Create a new context for serf operations.

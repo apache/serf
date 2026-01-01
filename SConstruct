@@ -727,6 +727,8 @@ if CALLOUT_OKAY:
   ### some configuration stuffs
   if conf.CheckCHeader('stdbool.h'):
     env.Append(CPPDEFINES=['HAVE_STDBOOL_H'])
+  if conf.CheckCHeader('unistd.h'):
+    env.Append(CPPDEFINES=['HAVE_UNISTD_H'])
 
   env = conf.Finish()
 

@@ -137,6 +137,7 @@ list(APPEND EXPORTS_BLACKLIST
 list(APPEND SOURCES
     "src/config_store.c"
     "src/context.c"
+    "src/error_callbacks.c"
     "src/deprecated.c"
     "src/incoming.c"
     "src/inet_pton.c"
@@ -393,6 +394,7 @@ CheckFunction("SSL_library_init" "" "SERF_HAVE_OPENSSL_SSL_LIBRARY_INIT"
               "openssl/ssl.h" "${OPENSSL_INCLUDE_DIR}"
               ${OPENSSL_LIBRARIES} ${SERF_STANDARD_LIBRARIES})
 CheckHeader("stdbool.h" "HAVE_STDBOOL_H=1")
+CheckHeader("unistd.h" "HAVE_UNISTD_H=1")
 CheckType("OSSL_HANDSHAKE_STATE" "openssl/ssl.h" "SERF_HAVE_OSSL_HANDSHAKE_STATE" ${OPENSSL_INCLUDE_DIR})
 if(Brotli_FOUND)
   CheckType("BrotliDecoderResult" "brotli/decode.h" "SERF_HAVE_BROTLI_DECODER_RESULT" ${BROTLI_INCLUDE_DIR})

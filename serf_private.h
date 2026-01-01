@@ -125,6 +125,75 @@ typedef int serf__bool_t; /* Not _Bool */
         (result) = integer_;                             \
     } while(0)
 
+/*** Error callback invocation ***/
+
+/* NOTE: There is no serf__global_error() because the global handler
+         should not be called directly but only as a fallback. */
+
+apr_status_t serf__context_error(const serf_context_t* ctx,
+                                 apr_status_t status,
+                                 const char *message);
+apr_status_t serf__connection_error(const serf_connection_t *conn,
+                                    apr_status_t status,
+                                    const char *message);
+apr_status_t serf__request_error(const serf_request_t *req,
+                                 apr_status_t status,
+                                 const char *message);
+apr_status_t serf__response_error(const serf_request_t *req,
+                                  apr_status_t status,
+                                  const char *message);
+apr_status_t serf__incoming_error(const serf_incoming_t *client,
+                                  apr_status_t status,
+                                  const char *message);
+apr_status_t serf__incoming_request_error(const serf_incoming_request_t *req,
+                                          apr_status_t status,
+                                          const char *message);
+apr_status_t serf__incoming_response_error(const serf_incoming_request_t *req,
+                                           apr_status_t status,
+                                           const char *message);
+
+/* The SSL context is a special case sonce it doesn't directly
+   belong to any context or connection. The ssl context implementation
+   calls serf__ssl_context_error() with an serf__ssl_error_ctx_t provided
+   by the caller of the ssl_context function. This is a bit of a pretzel,
+   but the alternative is to only send errors from the SSL context to the
+   global error context, which is less than ideal. */
+
+typedef struct serf__ssl_error_ctx_t serf__ssl_error_ctx_t;
+struct serf__ssl_error_ctx_t
+{
+    apr_status_t (*dispatch)(const void *baton,
+                             apr_status_t status,
+                             const char *message);
+    void *baton;
+};
+
+/* Error dispatchers for the SSL error context. */
+apr_status_t serf__global_ssl_error(const void *baton,
+                                    apr_status_t status,
+                                    const char *message);
+apr_status_t serf__context_ssl_error(const void *baton,
+                                     apr_status_t status,
+                                     const char *message);
+apr_status_t serf__connection_ssl_error(const void *baton,
+                                        apr_status_t status,
+                                        const char *message);
+apr_status_t serf__request_ssl_error(const void *baton,
+                                     apr_status_t status,
+                                     const char *message);
+apr_status_t serf__response_ssl_error(const void *baton,
+                                      apr_status_t status,
+                                      const char *message);
+apr_status_t serf__incoming_ssl_error(const void *baton,
+                                      apr_status_t status,
+                                      const char *message);
+apr_status_t serf__incoming_request_ssl_error(const void *baton,
+                                              apr_status_t status,
+                                              const char *message);
+apr_status_t serf__incoming_response_ssl_error(const void *baton,
+                                               apr_status_t status,
+                                               const char *message);
+
 /*** Logging facilities ***/
 
 /* Check for the SERF_DISABLE_LOGGING define, as set by scons. */
@@ -491,6 +560,10 @@ struct serf_context_t {
     void *volatile resolve_head;
     apr_status_t resolve_init_status;
     void *resolve_context;
+
+    /* Error callback */
+    serf_error_cb_t error_callback;
+    void *error_callback_baton;
 };
 
 struct serf_listener_t {
@@ -545,6 +618,10 @@ struct serf_incoming_t {
     serf_bucket_t *proto_peek_bkt;
 
     serf_incoming_request_t *current_request; /* For HTTP/1 */
+
+    /* Error callback */
+    serf_error_cb_t error_callback;
+    void *error_callback_baton;
 };
 
 /* States for the different stages in the lifecycle of a connection. */
@@ -666,6 +743,10 @@ struct serf_connection_t {
 
     /* Configuration shared with buckets and authn plugins */
     serf_config_t *config;
+
+    /* Error callback */
+    serf_error_cb_t error_callback;
+    void *error_callback_baton;
 };
 
 /* Called by requests that still have outstanding requests to allow cleaning

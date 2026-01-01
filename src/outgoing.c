@@ -1452,6 +1452,15 @@ apr_status_t serf_connection_create_async(
 }
 
 
+void serf_connection_error_callback_set(serf_connection_t *conn,
+                                        serf_error_cb_t callback,
+                                        void *baton)
+{
+    conn->error_callback_baton = baton;
+    conn->error_callback = callback;
+}
+
+
 apr_status_t serf_connection_reset(
     serf_connection_t *conn)
 {

@@ -218,6 +218,16 @@ serf_context_t *serf_context_create(apr_pool_t *pool)
     return serf_context_create_ex(NULL, NULL, NULL, pool);
 }
 
+
+void serf_context_error_callback_set(serf_context_t *ctx,
+                                     serf_error_cb_t callback,
+                                     void *baton)
+{
+    ctx->error_callback_baton = baton;
+    ctx->error_callback = callback;
+}
+
+
 apr_status_t serf_context_prerun(serf_context_t *ctx)
 {
     apr_status_t status;
