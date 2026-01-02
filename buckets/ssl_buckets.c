@@ -1609,225 +1609,201 @@ static int ssl_pass_cb(UI *ui, UI_STRING *uis)
     return 1;
 }
 
-#endif
-
-static int ssl_need_client_cert(SSL *ssl, X509 **cert, EVP_PKEY **pkey)
+static int ssl_read_client_cert_uri(serf_ssl_context_t *ctx,
+                                    SSL *ssl, X509 **cert, EVP_PKEY **pkey)
 {
-    serf_ssl_context_t *ctx = SSL_get_app_data(ssl);
-#if defined(SERF_HAVE_OSSL_STORE_OPEN_EX)
+    /* NOTE: If we're here, ctx->cert_uri_callback will be set. */
+
     STACK_OF(X509) *leaves;
     STACK_OF(X509) *intermediates;
     STACK_OF(EVP_PKEY) *keys;
     X509_STORE *requests;
     UI_METHOD *ui_method;
-#endif
+    int result = 0;
+
+    STACK_OF(X509_NAME) *requested = NULL;
+    const char *cert_uri = NULL;
+    OSSL_STORE_CTX *store = NULL;
+    OSSL_STORE_INFO *info = NULL;
+
+    int retrying_success;
     apr_status_t status;
-    int retrying_success = 0;
+    int store_error;
+    X509 *x509;
+    int type;
 
-    serf__log(LOGLVL_DEBUG, LOGCOMP_SSL, __FILE__, ctx->config,
-              "Server requests a client certificate.\n");
-
-    if (ctx->cached_cert) {
-        *cert = ctx->cached_cert;
-        *pkey = ctx->cached_cert_pw;
-        return 1;
+    if (ctx->cert_uri_success) {
+        retrying_success = 1;
+        status = APR_SUCCESS;
+        cert_uri = ctx->cert_uri_success;
+        ctx->cert_uri_success = NULL;
+    } else {
+        retrying_success = 0;
+        status = ctx->cert_uri_callback(ctx->cert_uri_userdata, &cert_uri);
     }
 
-#if defined(SERF_HAVE_OSSL_STORE_OPEN_EX)
-    /* FIXME: This is completely messed up. Extract the OPENSSL_STORE
-              part into a separate function instead of using break
-              + ERR_peek_error() for something that, for lack of a more
-              friendly term, might be called "error handling". */
+    if (status || !cert_uri) {
+        return 0;
+    }
 
-    /* until further notice */
-    *cert = NULL;
-    *pkey = NULL;
+    ctx->cert_uri = cert_uri;
 
+    ui_method = UI_create_method("passphrase");
+    UI_method_set_reader(ui_method, ssl_pass_cb);
+
+    store = OSSL_STORE_open(cert_uri, ui_method, ctx, NULL, NULL);
+    if (!store) {
+        char ebuf[1024];
+        ctx->fatal_err = SERF_ERROR_SSL_CERT_FAILED;
+        apr_snprintf(ebuf, sizeof(ebuf), "could not open URI: %s", cert_uri);
+        dispatch_ssl_error(&global_error_ctx, ctx->fatal_err, ebuf);
+
+        log_ssl_error(&global_error_ctx, ctx->fatal_err);
+        UI_destroy_method(ui_method);
+        return 0;
+    }
+
+    /* walk the store, what are we working with */
     leaves = sk_X509_new_null();
     intermediates = sk_X509_new_null();
     keys = sk_EVP_PKEY_new_null();
     requests = X509_STORE_new();
 
-    ui_method = UI_create_method("passphrase");
-    UI_method_set_reader(ui_method, ssl_pass_cb);
+    /* NOTE: No more direct 'return's from this point onwards!
+             The cleanup code must be called. */
 
-    while (ctx->cert_uri_callback) {
-        const char *cert_uri = NULL;
-        OSSL_STORE_CTX *store = NULL;
-        OSSL_STORE_INFO *info;
-        X509 *x509;
-        STACK_OF(X509_NAME) *requested;
-        int type;
+    /* server side request some certs? this list may be empty */
+    requested = SSL_get_client_CA_list(ssl);
 
-        retrying_success = 0;
-
-        if (ctx->cert_uri_success) {
-            status = APR_SUCCESS;
-            cert_uri = ctx->cert_uri_success;
-            ctx->cert_uri_success = NULL;
-            retrying_success = 1;
-        } else {
-            status = ctx->cert_uri_callback(ctx->cert_uri_userdata, &cert_uri);
-        }
-
-        if (status || !cert_uri) {
+    store_error = 0;
+    for (;;) {
+        info = OSSL_STORE_load(store);
+        if (OSSL_STORE_eof(store)) {
+            /* NOTE: OSSL_STORE_eof() is not signalled until after the
+                     first OSSL_STORE_load() fails. */
             break;
         }
 
-        ctx->cert_uri = cert_uri;
-
-        /* server side request some certs? this list may be empty */
-        requested = SSL_get_client_CA_list(ssl);
-
-        store = OSSL_STORE_open(cert_uri, ui_method, ctx, NULL, NULL);
-        if (!store) {
+        if (!info) {
             char ebuf[1024];
             ctx->fatal_err = SERF_ERROR_SSL_CERT_FAILED;
-            apr_snprintf(ebuf, sizeof(ebuf), "could not open URI: %s", cert_uri);
+            apr_snprintf(ebuf, sizeof(ebuf), "could not read URI: %s", cert_uri);
             dispatch_ssl_error(&global_error_ctx, ctx->fatal_err, ebuf);
-
-            log_ssl_error(&global_error_ctx, ctx->fatal_err);
+            store_error = 1;
             break;
         }
 
-        /* walk the store, what are we working with */
+        type = OSSL_STORE_INFO_get_type(info);
+        if (type == OSSL_STORE_INFO_CERT) {
+            X509 *c = OSSL_STORE_INFO_get1_CERT(info);
 
-        for (;;) {
-            info = OSSL_STORE_load(store);
-            if (OSSL_STORE_eof(store)) {
-                /* NOTE: OSSL_STORE_eof() is not signalled until *after* the
-                         first OSSL_STORE_load() fails. */
-                break;
+            int n, i;
+
+            int is_ca = X509_check_ca(c);
+
+            /* split into leaves and intermediate certs */
+            if (is_ca) {
+                sk_X509_push(intermediates, c);
+            }
+            else {
+                sk_X509_push(leaves, c);
             }
 
-            if (!info) {
-                char ebuf[1024];
-                ctx->fatal_err = SERF_ERROR_SSL_CERT_FAILED;
-                apr_snprintf(ebuf, sizeof(ebuf), "could not read URI: %s", cert_uri);
-                dispatch_ssl_error(&global_error_ctx, ctx->fatal_err, ebuf);
-
-                log_ssl_error(&global_error_ctx, ctx->fatal_err);
-                break;
-            }
-
-            type = OSSL_STORE_INFO_get_type(info);
-            if (type == OSSL_STORE_INFO_CERT) {
-                X509 *c = OSSL_STORE_INFO_get1_CERT(info);
-
-                int n, i;
-
-                int is_ca = X509_check_ca(c);
-
-                /* split into leaves and intermediate certs */
-                if (is_ca) {
-                    sk_X509_push(intermediates, c);
-                }
-                else {
-                    sk_X509_push(leaves, c);
-                }
-
-                /* any cert with an issuer matching our requested CAs is also
-                 * added to the requests list, except for leaf certs which are
-                 * marked as requested with a flag so we can skip the chain
-                 * check later. */
-                n = sk_X509_NAME_num(requested);
-                for (i = 0; i < n; ++i) {
-                    X509_NAME *name = sk_X509_NAME_value(requested, i);
-                    if (X509_NAME_cmp(name, X509_get_issuer_name(c)) == 0) {
-                        if (is_ca) {
-                            X509_STORE_add_cert(requests, c);
-                        }
-                        else {
-                            X509_set_ex_data(c, ssl_x509_ex_data_idx,
-                                             (void *)1);
-                        }
+            /* any cert with an issuer matching our requested CAs is also
+             * added to the requests list, except for leaf certs which are
+             * marked as requested with a flag so we can skip the chain
+             * check later. */
+            n = sk_X509_NAME_num(requested);
+            for (i = 0; i < n; ++i) {
+                X509_NAME *name = sk_X509_NAME_value(requested, i);
+                if (X509_NAME_cmp(name, X509_get_issuer_name(c)) == 0) {
+                    if (is_ca) {
+                        X509_STORE_add_cert(requests, c);
+                    }
+                    else {
+                        X509_set_ex_data(c, ssl_x509_ex_data_idx,
+                                         (void *)1);
                     }
                 }
-
-            } else if (type == OSSL_STORE_INFO_PKEY) {
-                EVP_PKEY *k = OSSL_STORE_INFO_get1_PKEY(info);
-
-                sk_EVP_PKEY_push(keys, k);
             }
 
-            OSSL_STORE_INFO_free(info);
+        } else if (type == OSSL_STORE_INFO_PKEY) {
+            EVP_PKEY *k = OSSL_STORE_INFO_get1_PKEY(info);
+
+            sk_EVP_PKEY_push(keys, k);
         }
 
-        OSSL_STORE_close(store);
-
-        if (ERR_peek_error()) {
-            break;
-        }
-
-        /* walk the leaf certificates, choose the best one */
-
-        while ((x509 = sk_X509_pop(leaves))) {
-
-            EVP_PKEY *k = NULL;
-            int i, n, found = 0;
-
-            /* no key, skip */
-            n = sk_EVP_PKEY_num(keys);
-            for (i = 0; i < n; ++i) {
-                k = sk_EVP_PKEY_value(keys, i);
-                if (X509_check_private_key(x509, k)) {
-                    found = 1;
-                    break;
-                }
-            }
-            if (!found) {
-                continue;
-            }
-
-            /* CAs requested? if so, skip non matches, if not, accept all */
-            if (sk_X509_NAME_num(requested) &&
-                    !X509_get_ex_data(x509, ssl_x509_ex_data_idx)) {
-                STACK_OF(X509) *chain;
-
-                chain = X509_build_chain(x509, intermediates, requests, 0, NULL,
-                                         NULL);
-
-                if (!chain) {
-                    continue;
-                }
-
-                sk_X509_pop_free(chain, X509_free);
-            }
-
-            /* no best candidate yet? we're in first place */
-            if (!*cert) {
-                EVP_PKEY_up_ref(k);
-                *cert = x509; /* don't dup, we're returning this */
-                *pkey = k;
-                continue;
-            }
-
-            /* were we issued after the previous best? */
-            if (ASN1_TIME_compare(X509_get0_notBefore(*cert),
-                    X509_get0_notBefore(x509)) < 0) {
-                X509_free(*cert);
-                EVP_PKEY_free(*pkey);
-                EVP_PKEY_up_ref(k);
-                *cert = x509; /* don't dup, we're returning this */
-                *pkey = k;
-                continue;
-            }
-
-            X509_free(x509);
-        }
-
-        break;
+        OSSL_STORE_INFO_free(info);
     }
 
-    sk_X509_pop_free(leaves, X509_free);
-    sk_X509_pop_free(intermediates, X509_free);
-    sk_EVP_PKEY_pop_free(keys, EVP_PKEY_free);
-    X509_STORE_free(requests);
-    UI_destroy_method(ui_method);
+    OSSL_STORE_close(store);
+
+    if (store_error || ERR_peek_error()) {
+        log_ssl_error(&global_error_ctx, ctx->fatal_err);
+        result = 0;
+        goto cleanup;
+    }
+
+    /* walk the leaf certificates, choose the best one */
+
+    *cert = NULL;
+    *pkey = NULL;
+    while ((x509 = sk_X509_pop(leaves)))
+    {
+        EVP_PKEY *k = NULL;
+        int i, n, found = 0;
+
+        /* no key, skip */
+        n = sk_EVP_PKEY_num(keys);
+        for (i = 0; i < n; ++i) {
+            k = sk_EVP_PKEY_value(keys, i);
+            if (X509_check_private_key(x509, k)) {
+                found = 1;
+                break;
+            }
+        }
+        if (!found) {
+            continue;
+        }
+
+        /* CAs requested? if so, skip non matches, if not, accept all */
+        if (sk_X509_NAME_num(requested)
+            && !X509_get_ex_data(x509, ssl_x509_ex_data_idx)) {
+            STACK_OF(X509) *chain = X509_build_chain(x509, intermediates,
+                                                     requests, 0, NULL, NULL);
+            if (!chain) {
+                continue;
+            }
+
+            sk_X509_pop_free(chain, X509_free);
+        }
+
+        /* no best candidate yet? we're in first place */
+        if (!*cert) {
+            EVP_PKEY_up_ref(k);
+            *cert = x509; /* don't dup, we're returning this */
+            *pkey = k;
+            continue;
+        }
+
+        /* were we issued after the previous best? */
+        if (ASN1_TIME_compare(X509_get0_notBefore(*cert),
+                              X509_get0_notBefore(x509)) < 0) {
+            X509_free(*cert);
+            EVP_PKEY_free(*pkey);
+            EVP_PKEY_up_ref(k);
+            *cert = x509; /* don't dup, we're returning this */
+            *pkey = k;
+            continue;
+        }
+
+        X509_free(x509);
+    }
 
     if (ERR_peek_error()) {
         log_ssl_error(&global_error_ctx, ctx->fatal_err);
-        return -1;
+        result = -1;
+        goto cleanup;
     }
 
     /* we settled on a cert and key, cache it for later */
@@ -1857,9 +1833,44 @@ static int ssl_need_client_cert(SSL *ssl, X509 **cert, EVP_PKEY **pkey)
                                    ctx->cert_pw_cache_pool);
         }
 
+        result = 1;
+    }
+
+  cleanup:
+    sk_X509_pop_free(leaves, X509_free);
+    sk_X509_pop_free(intermediates, X509_free);
+    sk_EVP_PKEY_pop_free(keys, EVP_PKEY_free);
+    X509_STORE_free(requests);
+    UI_destroy_method(ui_method);
+
+    return result;
+}
+
+#endif
+
+static int ssl_need_client_cert(SSL *ssl, X509 **cert, EVP_PKEY **pkey)
+{
+    serf_ssl_context_t *ctx = SSL_get_app_data(ssl);
+#if defined(SERF_HAVE_OSSL_STORE_OPEN_EX)
+#endif
+    apr_status_t status;
+    int retrying_success = 0;
+
+    serf__log(LOGLVL_DEBUG, LOGCOMP_SSL, __FILE__, ctx->config,
+              "Server requests a client certificate.\n");
+
+    if (ctx->cached_cert) {
+        *cert = ctx->cached_cert;
+        *pkey = ctx->cached_cert_pw;
         return 1;
     }
 
+#if defined(SERF_HAVE_OSSL_STORE_OPEN_EX)
+    if (ctx->cert_uri_callback) {
+        int result = ssl_read_client_cert_uri(ctx, ssl, cert, pkey);
+        if (result != 0)
+            return result;
+    }
 #endif
 
     while (ctx->cert_callback) {
