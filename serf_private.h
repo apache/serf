@@ -152,7 +152,7 @@ apr_status_t serf__incoming_response_error(const serf_incoming_request_t *req,
                                            apr_status_t status,
                                            const char *message);
 
-/* The SSL context is a special case sonce it doesn't directly
+/* The SSL context is a special case since it doesn't directly
    belong to any context or connection. The ssl context implementation
    calls serf__ssl_context_error() with an serf__ssl_error_ctx_t provided
    by the caller of the ssl_context function. This is a bit of a pretzel,
