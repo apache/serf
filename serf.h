@@ -1142,7 +1142,7 @@ serf_bucket_t *serf_request_bucket_request_create(
  * @ingroup serf
  * @{
  *
- * Interaction during authentication hanshake for user-defined schemes:
+ * Interaction during authentication handshake for user-defined schemes:
  * ```
  * scheme                     serf                      peer
  *    |                         |                        |
