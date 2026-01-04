@@ -585,9 +585,6 @@ serf_bucket_t *serf_bucket_limit_create(
 
 #define SERF_SSL_SIGNATURE_FAILURE      0x0800
 
-extern const serf_bucket_type_t serf_bucket_type_ssl_encrypt;
-#define SERF_BUCKET_IS_SSL_ENCRYPT(b) SERF_BUCKET_CHECK((b), ssl_encrypt)
-
 typedef struct serf_ssl_context_t serf_ssl_context_t;
 typedef struct serf_ssl_certificate_t serf_ssl_certificate_t;
 
@@ -846,14 +843,6 @@ apr_status_t serf_ssl_use_compression(
     serf_ssl_context_t *ssl_ctx,
     int enabled);
 
-serf_bucket_t *serf_bucket_ssl_encrypt_create(
-    serf_bucket_t *stream,
-    serf_ssl_context_t *ssl_context,
-    serf_bucket_alloc_t *allocator);
-
-serf_ssl_context_t *serf_bucket_ssl_encrypt_context_get(
-    serf_bucket_t *bucket);
-
 /* ==================================================================== */
 
 /**
@@ -1009,17 +998,85 @@ apr_status_t serf_ssl_ocsp_response_verify(
 
 /* ==================================================================== */
 
+extern const serf_bucket_type_t serf_bucket_type_ssl_encrypt;
+#define SERF_BUCKET_IS_SSL_ENCRYPT(b) SERF_BUCKET_CHECK((b), ssl_encrypt)
+
+/**
+ * Create an SSL encryption bucket that wraps @a stream.
+ *
+ * If @a ssl_context is not provided, a new one will be created.
+ */
+serf_bucket_t *serf_bucket_ssl_encrypt_create(
+    serf_bucket_t *stream,
+    serf_ssl_context_t *ssl_context,
+    serf_bucket_alloc_t *allocator);
+
+/**
+ * Return the SSL context from an encryption bucket.
+ */
+serf_ssl_context_t *serf_bucket_ssl_encrypt_context_get(
+    serf_bucket_t *bucket);
+
 extern const serf_bucket_type_t serf_bucket_type_ssl_decrypt;
 #define SERF_BUCKET_IS_SSL_DECRYPT(b) SERF_BUCKET_CHECK((b), ssl_decrypt)
 
+/**
+ * Create an SSL encryption bucket that wraps @a stream.
+ *
+ * If @a ssl_context is not provided, a new one will be created.
+ */
 serf_bucket_t *serf_bucket_ssl_decrypt_create(
     serf_bucket_t *stream,
     serf_ssl_context_t *ssl_context,
     serf_bucket_alloc_t *allocator);
 
+/**
+ * Return the SSL context from an decryption bucket.
+ */
 serf_ssl_context_t *serf_bucket_ssl_decrypt_context_get(
     serf_bucket_t *bucket);
 
+/**
+ * Configure the SSL context to use the error cllback set on @a ctx.
+ *
+ * By default, new SSL contexts send error messages to the global
+ * error callback.
+ *
+ * @see serf_global_error_callback_set()
+ * @see serf_context_error_callback_set()
+ *
+ * @since New in 1.5.
+ */
+void serf_ssl_use_context_error_callback(serf_ssl_context_t *ssl_ctx,
+                                         serf_context_t *ctx);
+
+/**
+ * Configure the SSL context to use the error callback set on @a conn.
+ *
+ * By default, new SSL contexts send error messages to the global
+ * error callback.
+ *
+ * @see serf_global_error_callback_set()
+ * @see serf_connection_error_callback_set()
+ *
+ * @since New in 1.5.
+ */
+void serf_ssl_use_connection_error_callback(serf_ssl_context_t *ssl_ctx,
+                                            serf_connection_t *conn);
+
+/**
+ * Configure the SSL context to use the error callback set on @a client.
+ *
+ * By default, new SSL contexts send error messages to the global
+ * error callback.
+ *
+ * @see serf_global_error_callback_set()
+ * @see serf_incoming_error_callback_set()
+ *
+ * @since New in 1.5.
+ */
+void serf_ssl_use_incoming_error_callback(serf_ssl_context_t *ssl_ctx,
+                                          serf_incoming_t *client);
 
 /* ==================================================================== */
 

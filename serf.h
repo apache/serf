@@ -262,6 +262,8 @@ void serf_global_error_callback_set(
  * context @a ctx and, since contexts may not be accessed from multiple
  * threads, serialization is not a concern.
  *
+ * The lifetime of @a baton must be longer than the lifetime of the context.
+ *
  * @since New in 1.5.
  */
 void serf_context_error_callback_set(
@@ -274,6 +276,8 @@ void serf_context_error_callback_set(
  *
  * Like serf_context_error_callback_set() but for connections.
  *
+ * The lifetime of @a baton must be longer than the lifetime of the connection.
+ *
  * @since New in 1.5.
  */
 void serf_connection_error_callback_set(
@@ -285,6 +289,9 @@ void serf_connection_error_callback_set(
  * Register the incoming-connection-specific error callback.
  *
  * Like serf_context_error_callback_set() but for incoming connections.
+ *
+ * The lifetime of @a baton must be longer than the lifetime of the
+ * incoming connection.
  *
  * @since New in 1.5.
  */

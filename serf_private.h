@@ -178,21 +178,9 @@ apr_status_t serf__context_ssl_error(const void *baton,
 apr_status_t serf__connection_ssl_error(const void *baton,
                                         apr_status_t status,
                                         const char *message);
-apr_status_t serf__request_ssl_error(const void *baton,
-                                     apr_status_t status,
-                                     const char *message);
-apr_status_t serf__response_ssl_error(const void *baton,
-                                      apr_status_t status,
-                                      const char *message);
 apr_status_t serf__incoming_ssl_error(const void *baton,
                                       apr_status_t status,
                                       const char *message);
-apr_status_t serf__incoming_request_ssl_error(const void *baton,
-                                              apr_status_t status,
-                                              const char *message);
-apr_status_t serf__incoming_response_ssl_error(const void *baton,
-                                               apr_status_t status,
-                                               const char *message);
 
 /*** Logging facilities ***/
 

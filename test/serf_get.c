@@ -29,6 +29,7 @@
 #include <apr_version.h>
 
 #include "serf.h"
+#include "serf_bucket_types.h"
 
 /* Add Connection: close header to each request. */
 /* #define CONNECTION_CLOSE_HDR */
@@ -230,6 +231,7 @@ static apr_status_t conn_setup(apr_socket_t *skt,
         c = serf_bucket_ssl_decrypt_create(c, conn_ctx->ssl_ctx, ctx->bkt_alloc);
         if (!conn_ctx->ssl_ctx) {
             conn_ctx->ssl_ctx = serf_bucket_ssl_decrypt_context_get(c);
+            serf_ssl_use_connection_error_callback(conn_ctx->ssl_ctx, conn_ctx->conn);
         }
         serf_ssl_server_cert_chain_callback_set(conn_ctx->ssl_ctx,
                                                 ignore_all_cert_errors,
@@ -507,6 +509,32 @@ credentials_callback(char **username,
 
         return APR_SUCCESS;
     }
+}
+
+static apr_status_t
+global_error_callback(void *baton,
+                      unsigned source,
+                      apr_status_t status,
+                      const char *message)
+{
+    fprintf(stderr, "ERROR%s <%d> %s\n",
+            ((source & SERF_ERROR_CB_SSL_CONTEXT) ? " (SSL)" : ""),
+            status, message);
+    return APR_SUCCESS;
+}
+
+static apr_status_t
+connection_error_callback(void *baton,
+                          unsigned source,
+                          apr_status_t status,
+                          const char *message)
+{
+    const char *const conn_id = baton;
+    fprintf(stderr, "ERROR conn[%s]%s <%d> %s\n",
+            conn_id,
+            ((source & SERF_ERROR_CB_SSL_CONTEXT) ? " (SSL)" : ""),
+            status, message);
+    return APR_SUCCESS;
 }
 
 /* Value for 'no short code' should be > 255 */
@@ -817,7 +845,7 @@ int main(int argc, const char **argv)
 
     serf_config_credentials_callback(context, credentials_callback);
 
-    /* Setup debug logging */
+    /* Setup debug logging and error callbacks */
     if (debug)
     {
         serf_log_output_t *output;
@@ -832,6 +860,8 @@ int main(int argc, const char **argv)
 
         if (!status)
             serf_logging_add_output(context, output);
+
+        serf_global_error_callback_set(global_error_callback, NULL);
     }
 
     /* ### Connection or Context should have an allocator? */
@@ -857,6 +887,12 @@ int main(int argc, const char **argv)
         conn_ctx->conn = connections[i];
 
         serf_connection_set_max_outstanding_requests(connections[i], inflight);
+        if (debug)
+        {
+            serf_connection_error_callback_set(connections[i],
+                                               connection_error_callback,
+                                               apr_psprintf(pool, "%02d", i));
+        }
     }
 
     handler_ctx.completed_requests = 0;

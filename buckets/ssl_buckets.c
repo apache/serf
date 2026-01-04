@@ -223,6 +223,9 @@ struct serf_ssl_context_t {
     void *protocol_userdata;
 
     serf_config_t *config;
+
+    /* The error callback context. */
+    serf__ssl_error_ctx_t err_ctx;
 };
 
 /* The fallback SSL error context which logs to the global error callback. */
@@ -230,6 +233,27 @@ static const serf__ssl_error_ctx_t global_error_ctx = {
     serf__global_ssl_error,     /* dispatcher */
     NULL                        /* baton */
 };
+
+void serf_ssl_use_context_error_callback(serf_ssl_context_t *ssl_ctx,
+                                         serf_context_t *ctx)
+{
+    ssl_ctx->err_ctx.dispatch = serf__context_ssl_error;
+    ssl_ctx->err_ctx.baton = ctx;
+}
+
+void serf_ssl_use_connection_error_callback(serf_ssl_context_t *ssl_ctx,
+                                            serf_connection_t *conn)
+{
+    ssl_ctx->err_ctx.dispatch = serf__connection_ssl_error;
+    ssl_ctx->err_ctx.baton = conn;
+}
+
+void serf_ssl_use_incoming_error_callback(serf_ssl_context_t *ssl_ctx,
+                                          serf_incoming_t *client)
+{
+    ssl_ctx->err_ctx.dispatch = serf__incoming_ssl_error;
+    ssl_ctx->err_ctx.baton = client;
+}
 
 static apr_status_t dispatch_ssl_error(const serf__ssl_error_ctx_t *err_ctx,
                                        apr_status_t status,
@@ -1102,7 +1126,7 @@ static apr_status_t status_from_ssl_error(serf_ssl_context_t *ctx,
                     ctx->fatal_err = SERF_ERROR_SSL_COMM_FAILED;
 
                 status = ctx->fatal_err;
-                log_ssl_error(&global_error_ctx, status);
+                log_ssl_error(&ctx->err_ctx, status);
             }
             break;
 
@@ -1116,7 +1140,7 @@ static apr_status_t status_from_ssl_error(serf_ssl_context_t *ctx,
 
         default:
             status = ctx->fatal_err = SERF_ERROR_SSL_COMM_FAILED;
-            log_ssl_error(&global_error_ctx, status);
+            log_ssl_error(&ctx->err_ctx, status);
             break;
     }
 
@@ -1223,7 +1247,7 @@ static apr_status_t ssl_decrypt(void *baton, apr_size_t bufsize,
         } else {
             /* A fatal error occurred. */
             ctx->fatal_err = status = SERF_ERROR_SSL_COMM_FAILED;
-            log_ssl_error(&global_error_ctx, status);
+            log_ssl_error(&ctx->err_ctx, status);
         }
     } else {
         *len = ssl_len;
@@ -1656,9 +1680,9 @@ static int ssl_read_client_cert_uri(serf_ssl_context_t *ctx,
         char ebuf[1024];
         ctx->fatal_err = SERF_ERROR_SSL_CERT_FAILED;
         apr_snprintf(ebuf, sizeof(ebuf), "could not open URI: %s", cert_uri);
-        dispatch_ssl_error(&global_error_ctx, ctx->fatal_err, ebuf);
+        dispatch_ssl_error(&ctx->err_ctx, ctx->fatal_err, ebuf);
 
-        log_ssl_error(&global_error_ctx, ctx->fatal_err);
+        log_ssl_error(&ctx->err_ctx, ctx->fatal_err);
         UI_destroy_method(ui_method);
         return 0;
     }
@@ -1688,7 +1712,7 @@ static int ssl_read_client_cert_uri(serf_ssl_context_t *ctx,
             char ebuf[1024];
             ctx->fatal_err = SERF_ERROR_SSL_CERT_FAILED;
             apr_snprintf(ebuf, sizeof(ebuf), "could not read URI: %s", cert_uri);
-            dispatch_ssl_error(&global_error_ctx, ctx->fatal_err, ebuf);
+            dispatch_ssl_error(&ctx->err_ctx, ctx->fatal_err, ebuf);
             store_error = 1;
             break;
         }
@@ -1739,7 +1763,7 @@ static int ssl_read_client_cert_uri(serf_ssl_context_t *ctx,
     OSSL_STORE_close(store);
 
     if (store_error || ERR_peek_error()) {
-        log_ssl_error(&global_error_ctx, ctx->fatal_err);
+        log_ssl_error(&ctx->err_ctx, ctx->fatal_err);
         result = 0;
         goto cleanup;
     }
@@ -1801,7 +1825,7 @@ static int ssl_read_client_cert_uri(serf_ssl_context_t *ctx,
     }
 
     if (ERR_peek_error()) {
-        log_ssl_error(&global_error_ctx, ctx->fatal_err);
+        log_ssl_error(&ctx->err_ctx, ctx->fatal_err);
         result = -1;
         goto cleanup;
     }
@@ -1902,9 +1926,9 @@ static int ssl_need_client_cert(SSL *ssl, X509 **cert, EVP_PKEY **pkey)
         if (status) {
             char ebuf[1024];
             apr_snprintf(ebuf, sizeof(ebuf), "could not open PKCS12: %s", cert_path);
-            dispatch_ssl_error(&global_error_ctx, status, ebuf);
+            dispatch_ssl_error(&ctx->err_ctx, status, ebuf);
             apr_strerror(status, ebuf, sizeof(ebuf));
-            dispatch_ssl_error(&global_error_ctx, status, ebuf);
+            dispatch_ssl_error(&ctx->err_ctx, status, ebuf);
 
             ctx->fatal_err = status;
             return -1;
@@ -1989,9 +2013,9 @@ static int ssl_need_client_cert(SSL *ssl, X509 **cert, EVP_PKEY **pkey)
                         else {
                             ctx->fatal_err = SERF_ERROR_SSL_CERT_FAILED;
                             apr_snprintf(ebuf, sizeof(ebuf), "could not parse PKCS12: %s", cert_path);
-                            dispatch_ssl_error(&global_error_ctx, ctx->fatal_err, ebuf);
+                            dispatch_ssl_error(&ctx->err_ctx, ctx->fatal_err, ebuf);
 
-                            log_ssl_error(&global_error_ctx, ctx->fatal_err);
+                            log_ssl_error(&ctx->err_ctx, ctx->fatal_err);
                             return -1;
                         }
                     }
@@ -2001,9 +2025,9 @@ static int ssl_need_client_cert(SSL *ssl, X509 **cert, EVP_PKEY **pkey)
 
                 ctx->fatal_err = SERF_ERROR_SSL_CERT_FAILED;
                 apr_snprintf(ebuf, sizeof(ebuf), "PKCS12 needs a password: %s", cert_path);
-                dispatch_ssl_error(&global_error_ctx, ctx->fatal_err, ebuf);
+                dispatch_ssl_error(&ctx->err_ctx, ctx->fatal_err, ebuf);
 
-                log_ssl_error(&global_error_ctx, ctx->fatal_err);
+                log_ssl_error(&ctx->err_ctx, ctx->fatal_err);
                 return -1;
             }
             else {
@@ -2011,9 +2035,9 @@ static int ssl_need_client_cert(SSL *ssl, X509 **cert, EVP_PKEY **pkey)
                 bio_meth_free(biom);
 
                 ctx->fatal_err = SERF_ERROR_SSL_CERT_FAILED;
-                dispatch_ssl_error(&global_error_ctx, ctx->fatal_err, ebuf);
+                dispatch_ssl_error(&ctx->err_ctx, ctx->fatal_err, ebuf);
 
-                log_ssl_error(&global_error_ctx, ctx->fatal_err);
+                log_ssl_error(&ctx->err_ctx, ctx->fatal_err);
                 return -1;
             }
         }
@@ -2197,6 +2221,8 @@ static serf_ssl_context_t *ssl_init_context(serf_bucket_alloc_t *allocator)
     ssl_ctx->want_read = FALSE;
     ssl_ctx->handshake_done = FALSE;
     ssl_ctx->hit_eof = FALSE;
+
+    ssl_ctx->err_ctx = global_error_ctx;
 
     return ssl_ctx;
 }
@@ -2402,6 +2428,8 @@ apr_status_t serf_ssl_load_cert_file(
         return APR_SUCCESS;
     }
 
+    /* We don't have an ssl_context_t here, so log the errors to the global
+       callback. It's better than ignoring them. */
     status = SERF_ERROR_SSL_CERT_FAILED;
     log_ssl_error(&global_error_ctx, status);
     return status;
@@ -2466,7 +2494,7 @@ apr_status_t serf_ssl_add_crl_from_file(serf_ssl_context_t *ssl_ctx,
     result = X509_STORE_add_crl(store, crl);
     if (!result) {
         ssl_ctx->fatal_err = status = SERF_ERROR_SSL_CERT_FAILED;
-        log_ssl_error(&global_error_ctx, status);
+        log_ssl_error(&ssl_ctx->err_ctx, status);
         return status;
     }
 

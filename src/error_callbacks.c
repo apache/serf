@@ -208,28 +208,6 @@ apr_status_t serf__connection_ssl_error(const void *baton,
                                     conn, status, message);
 }
 
-apr_status_t serf__request_ssl_error(const void *baton,
-                                     apr_status_t status,
-                                     const char *message)
-{
-    const serf_request_t *const req = baton;
-    return process_connection_error(SERF_ERROR_CB_SSL_CONTEXT
-                                    | SERF_ERROR_CB_OUTGOING
-                                    | SERF_ERROR_CB_REQUEST,
-                                    req->conn, status, message);
-}
-
-apr_status_t serf__response_ssl_error(const void *baton,
-                                      apr_status_t status,
-                                      const char *message)
-{
-    const serf_request_t *const req = baton;
-    return process_connection_error(SERF_ERROR_CB_SSL_CONTEXT
-                                    | SERF_ERROR_CB_OUTGOING
-                                    | SERF_ERROR_CB_RESPONSE,
-                                    req->conn, status, message);
-}
-
 apr_status_t serf__incoming_ssl_error(const void *baton,
                                       apr_status_t status,
                                       const char *message)
@@ -238,26 +216,4 @@ apr_status_t serf__incoming_ssl_error(const void *baton,
     return process_incoming_error(SERF_ERROR_CB_SSL_CONTEXT
                                   | SERF_ERROR_CB_INCOMING,
                                   client, status, message);
-}
-
-apr_status_t serf__incoming_request_ssl_error(const void *baton,
-                                              apr_status_t status,
-                                              const char *message)
-{
-    const serf_incoming_request_t *const req = baton;
-    return process_incoming_error(SERF_ERROR_CB_SSL_CONTEXT
-                                  | SERF_ERROR_CB_INCOMING
-                                  | SERF_ERROR_CB_REQUEST,
-                                  req->incoming, status, message);
-}
-
-apr_status_t serf__incoming_response_ssl_error(const void *baton,
-                                               apr_status_t status,
-                                               const char *message)
-{
-    const serf_incoming_request_t *const req = baton;
-    return process_incoming_error(SERF_ERROR_CB_SSL_CONTEXT
-                                  | SERF_ERROR_CB_INCOMING
-                                  | SERF_ERROR_CB_RESPONSE,
-                                  req->incoming, status, message);
 }
