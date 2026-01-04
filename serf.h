@@ -505,7 +505,7 @@ typedef void (*serf_connection_closed_t)(
 /**
  * Like serf_connection_closed_t, but applies to incoming connections.
  *
- * @since New in 1.4.
+ * @since New in 1.5.
  */
 typedef apr_status_t (*serf_incoming_closed_t)(
     serf_incoming_t *incoming,
@@ -648,7 +648,7 @@ apr_status_t serf_connection_create2(
  *
  * All temporary allocations should be made in @a pool.
  *
- * @since New in 1.4.
+ * @since New in 1.5.
  */
 /* FIXME: EXPERIMENTAL */
 typedef void (*serf_address_resolved_t)(
@@ -677,7 +677,7 @@ typedef void (*serf_address_resolved_t)(
  *
  * All temporary allocations should be made in @a pool.
  *
- * @since New in 1.4.
+ * @since New in 1.5.
  */
 /* FIXME: EXPERIMENTAL */
 apr_status_t serf_address_resolve_async(
@@ -702,7 +702,7 @@ apr_status_t serf_address_resolve_async(
  *
  * All temporary allocations should be made in @a pool.
  *
- * @since New in 1.4.
+ * @since New in 1.5.
  */
 /* FIXME: EXPERIMENTAL */
 typedef void (*serf_connection_created_t)(
@@ -726,7 +726,7 @@ typedef void (*serf_connection_created_t)(
  * of @a ctx and @a host_info, the connection may be created and this callback
  * be invoked synchronously during the scope of this function call.
  *
- * @since New in 1.4.
+ * @since New in 1.5.
  */
 /* FIXME: EXPERIMENTAL */
 apr_status_t serf_connection_create_async(
@@ -818,7 +818,7 @@ apr_status_t serf_incoming_create(
  * Once the connection is fully setup incoming requests will be routed to @a
  * req_setup with @a req_setup_baton, to handle processing.
  *
- * @since New in 1.4.
+ * @since New in 1.5.
  */
 apr_status_t serf_incoming_create2(
     serf_incoming_t **client,
@@ -837,7 +837,7 @@ apr_status_t serf_incoming_create2(
  * read. Will call the response create function if it hasn't
  * been called yet.
  *
- * @since New in 1.4.
+ * @since New in 1.5.
  */
 apr_status_t serf_incoming_response_create(
     serf_incoming_request_t *request);
@@ -889,14 +889,14 @@ typedef enum serf_connection_framing_type_t {
 * requests should be written to the connection until the framing type is
 * set. Connections default to HTTP1 framing.
 *
-* @since New in 1.4.
+* @since New in 1.5.
 */
 void serf_connection_set_framing_type(
   serf_connection_t *conn,
   serf_connection_framing_type_t framing_type);
 
 /**
- * @since New in 1.4.
+ * @since New in 1.5.
  */
 void serf_incoming_set_framing_type(
     serf_incoming_t *client,
@@ -969,7 +969,7 @@ serf_request_t *serf_connection_priority_request_create(
 /**
  * The default request priority
  *
- * @since New in 1.4.
+ * @since New in 1.5.
  */
 #define SERF_REQUEST_PRIORITY_DEFAULT 0x1000
 
@@ -997,7 +997,7 @@ serf_request_t *serf_connection_priority_request_create(
  * request the only dependency of @a request. When FALSE, request will just
  * be added as a dependency.
  *
- * @since New in 1.4.
+ * @since New in 1.5.
  */
 void serf_connection_request_prioritize(serf_request_t *request,
                                         serf_request_t *depends_on,
@@ -1013,7 +1013,7 @@ apr_interval_time_t serf_connection_get_latency(serf_connection_t *conn);
 /**
  * Returns the number of requests waiting to be sent over connection CONN.
  *
- * @since New in 1.4.
+ * @since New in 1.5.
  */
 unsigned int serf_connection_queued_requests(serf_connection_t *conn);
 
@@ -1023,7 +1023,7 @@ unsigned int serf_connection_queued_requests(serf_connection_t *conn);
  * - that are queued but not sent.
  * - that have been sent but no response has been completely received yet.
  *
- * @since New in 1.4.
+ * @since New in 1.5.
  */
 unsigned int serf_connection_pending_requests(serf_connection_t *conn);
 
@@ -1211,7 +1211,7 @@ serf_bucket_t *serf_request_bucket_request_create(
  *
  * Use @a scratch_pool for temporary allocations.
  *
- * @since New in 1.4.
+ * @since New in 1.5.
  */
 typedef apr_status_t
 (*serf_authn_init_conn_func_t)(void **authn_baton,
@@ -1245,7 +1245,7 @@ typedef apr_status_t
  *
  * Use @a scratch_pool for temporary allocations.
  *
- * @since New in 1.4.
+ * @since New in 1.5.
  */
 typedef apr_status_t
 (*serf_authn_get_realm_func_t)(const char **realm_name,
@@ -1287,7 +1287,7 @@ typedef apr_status_t
  *
  * Use @a scratch_pool for temporary allocations.
  *
- * @since New in 1.4.
+ * @since New in 1.5.
  */
 typedef apr_status_t
 (*serf_authn_handle_func_t)(int *reset_pipelining,
@@ -1319,7 +1319,7 @@ typedef apr_status_t
  *
  * Use @a scratch_pool for temporary allocations.
  *
- * @since New in 1.4.
+ * @since New in 1.5.
  */
 typedef apr_status_t
 (*serf_authn_setup_request_func_t)(int *reset_pipelining,
@@ -1350,7 +1350,7 @@ typedef apr_status_t
  *
  * Use @a scratch_pool for temporary allocations.
  *
- * @since New in 1.4.
+ * @since New in 1.5.
  */
 typedef apr_status_t
 (*serf_authn_validate_response_func_t)(int *reset_pipelining,
@@ -1392,7 +1392,7 @@ typedef apr_status_t
  * the pools used in calls to the serf_contex_create() family of functions.
  *
  * @see https://www.rfc-editor.org/rfc/rfc9110#section-11.1
- * @since New in 1.4
+ * @since New in 1.5
  */
 apr_status_t serf_authn_register_scheme(
     int *type,
@@ -1422,7 +1422,7 @@ apr_status_t serf_authn_register_scheme(
  *       other mechanism to ensure that the scheme remains accessible while it's
  *       in use. So in short: *do not* use this function at all.
  *
- * @since New in 1.4
+ * @since New in 1.5
  */
 apr_status_t serf_authn_unregister_scheme(serf_context_t *ctx,
                                           int type,
@@ -1470,7 +1470,7 @@ apr_status_t serf_authn_unregister_scheme(serf_context_t *ctx,
  * Used to indicate that length of remaining data in bucket is unknown. See
  * serf_bucket_type_t->get_remaining().
  *
- * @since New in 1.4.
+ * @since New in 1.5.
  */
 #define SERF_LENGTH_UNKNOWN ((apr_uint64_t) -1)
 
@@ -1616,7 +1616,7 @@ struct serf_bucket_type_t {
     /* Real pointer to read_bucket() method when read_bucket is
      * serf_buckets_are_v2().
      *
-     * @since New in 1.4 / Buckets v2.
+     * @since New in 1.5 / Buckets v2.
      */
     serf_bucket_t * (*read_bucket_v2)(serf_bucket_t *bucket,
                                       const serf_bucket_type_t *type);
@@ -1624,14 +1624,14 @@ struct serf_bucket_type_t {
     /* Returns length of remaining data to be read in @a bucket. Returns
      * SERF_LENGTH_UNKNOWN if length is unknown.
      *
-     * @since New in 1.4 / Buckets v2.
+     * @since New in 1.5 / Buckets v2.
      */
     apr_uint64_t (*get_remaining)(serf_bucket_t *bucket);
 
     /* Provides a reference to a config object containing all configuration
      * values relevant for this bucket.
      *
-     * @since New in 1.4 / Buckets v2
+     * @since New in 1.5 / Buckets v2
      */
     apr_status_t (*set_config)(serf_bucket_t *bucket, serf_config_t *config);
 
@@ -1664,7 +1664,7 @@ struct serf_bucket_type_t {
 /* Predefined value for read_bucket vtable member to declare v2 buckets
  * vtable.
  *
- * @since New in 1.4.
+ * @since New in 1.5.
  */
 serf_bucket_t * serf_buckets_are_v2(serf_bucket_t *bucket,
                                     const serf_bucket_type_t *type);
@@ -1672,7 +1672,7 @@ serf_bucket_t * serf_buckets_are_v2(serf_bucket_t *bucket,
 /** Gets the serf bucket type of the bucket if the bucket implements at least
  * buckets version, or if not a bucket type providing a default implementation
  *
- * @since New in 1.4.
+ * @since New in 1.5.
  */
 const serf_bucket_type_t *serf_get_type(serf_bucket_t *bucket,
                                         int min_version);
@@ -1870,7 +1870,7 @@ typedef enum serf_config_categories_t {
 /**
  * Set a value of type const char * for configuration item CATEGORY+KEY.
  *
- * @since New in 1.4.
+ * @since New in 1.5.
  */
 apr_status_t serf_config_set_string(serf_config_t *config,
                                     serf_config_key_t key,
@@ -1879,7 +1879,7 @@ apr_status_t serf_config_set_string(serf_config_t *config,
  * Copy a value of type const char * and set it for configuration item
  * CATEGORY+KEY.
  *
- * @since New in 1.4.
+ * @since New in 1.5.
  */
 apr_status_t serf_config_set_stringc(serf_config_t *config,
                                      serf_config_key_t key,
@@ -1889,7 +1889,7 @@ apr_status_t serf_config_set_stringc(serf_config_t *config,
  * Set a value of generic type for configuration item CATEGORY+KEY.
  * See @a serf_set_config_string for COPY_FLAGS description.
  *
- * @since New in 1.4.
+ * @since New in 1.5.
  */
 apr_status_t serf_config_set_stringf(serf_config_t *config,
                                      serf_config_key_t key,
@@ -1900,7 +1900,7 @@ apr_status_t serf_config_set_stringf(serf_config_t *config,
  * Set a value of generic type for configuration item CATEGORY+KEY.
  * See @a serf_set_config_string for COPY_FLAGS description.
  *
- * @since New in 1.4.
+ * @since New in 1.5.
  */
 apr_status_t serf_config_set_object(serf_config_t *config,
                                     serf_config_key_t key,
@@ -1912,7 +1912,7 @@ apr_status_t serf_config_set_object(serf_config_t *config,
  * Returns APR_EINVAL when getting a key from a category that this config
  * object doesn't contain, APR_SUCCESS otherwise.
  *
- * @since New in 1.4.
+ * @since New in 1.5.
  */
 apr_status_t serf_config_get_string(serf_config_t *config,
                                     serf_config_key_t key,
@@ -1926,7 +1926,7 @@ apr_status_t serf_config_get_object(serf_config_t *config,
  * Remove the value for configuration item CATEGORY+KEY from the configuration
  * store.
  *
- * @since New in 1.4.
+ * @since New in 1.5.
  */
 apr_status_t serf_config_remove_value(serf_config_t *config,
                                       serf_config_key_t key);
@@ -1974,7 +1974,7 @@ typedef struct serf_log_layout_t serf_log_layout_t;
  * The lifetime of POOL should be at least the same as that of CTX, but it can
  * be used by multiple contexts.
  *
- * @since New in 1.4.
+ * @since New in 1.5.
  */
 apr_status_t serf_logging_create_stream_output(serf_log_output_t **output,
                                                serf_context_t *ctx,
@@ -1989,7 +1989,7 @@ apr_status_t serf_logging_create_stream_output(serf_log_output_t **output,
  * OUTPUT is the object returned by one of the serf_logging_create_XXX_output
  * factory functions.
  *
- * @since New in 1.4.
+ * @since New in 1.5.
  */
 apr_status_t serf_logging_add_output(serf_context_t *ctx,
                                      const serf_log_output_t *output);

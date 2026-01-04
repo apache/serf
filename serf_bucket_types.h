@@ -120,7 +120,7 @@ serf_bucket_t *serf_bucket_response_create(
 #define SERF_HTTP_VERSION(major, minor)  ((major) * 1000 + (minor))
 #define SERF_HTTP_11 SERF_HTTP_VERSION(1, 1)
 #define SERF_HTTP_10 SERF_HTTP_VERSION(1, 0)
-/** @since New in 1.4. */
+/** @since New in 1.5. */
 #define SERF_HTTP_20 SERF_HTTP_VERSION(2, 0)
 #define SERF_HTTP_VERSION_MAJOR(shv) ((int)shv / 1000)
 #define SERF_HTTP_VERSION_MINOR(shv) ((int)shv % 1000)
@@ -163,7 +163,7 @@ apr_status_t serf_bucket_response_wait_for_headers(
  * If @a wait_for_next is TRUE, the function will wait for the next set
  * of informational header instead of returning success for the first set.
  *
- * @since New in 1.4.
+ * @since New in 1.5.
  */
 apr_status_t serf_bucket_response_wait_for_some_headers(
     serf_bucket_t *response,
@@ -203,13 +203,13 @@ serf_bucket_t *serf_bucket_response_body_create(
     serf_bucket_alloc_t *allocator);
 
 /* ==================================================================== */
-/** @since New in 1.4 */
+/** @since New in 1.5 */
 extern const serf_bucket_type_t serf_bucket_type_outgoing_response;
-/** @since New in 1.4 */
+/** @since New in 1.5 */
 #define SERF_BUCKET_IS_OUTGOING_RESPONSE(b)         \
                 SERF_BUCKET_CHECK((b), outgoing_response)
 
-/** @since New in 1.4 */
+/** @since New in 1.5 */
 serf_bucket_t *serf_bucket_outgoing_response_create(
     serf_bucket_t *body,
     int status,
@@ -217,11 +217,11 @@ serf_bucket_t *serf_bucket_outgoing_response_create(
     int http_version,
     serf_bucket_alloc_t *allocator);
 
-/** @since New in 1.4 */
+/** @since New in 1.5 */
 serf_bucket_t *serf_bucket_outgoing_response_get_headers(
     serf_bucket_t *outgoing_response);
 
-/** @since New in 1.4 */
+/** @since New in 1.5 */
 void serf_bucket_outgoing_response_prepare(
     serf_bucket_t *outgoing_response,
     int http_version,
@@ -712,7 +712,7 @@ typedef apr_status_t (*serf_ssl_protocol_result_cb_t)(
  * If successful CALLBACK will be called as soon as the protocol is negotiated
  * or directly after the secured stream is connected.
  *
- * @since New in 1.4.
+ * @since New in 1.5.
  */
 apr_status_t serf_ssl_negotiate_protocol(
     serf_ssl_context_t *context,
@@ -765,7 +765,7 @@ const char *serf_ssl_cert_export(
  * Uses @a scratch_pool for temporary allocations.
  * Returns NULL on failure.
  *
- * @since New in 1.4.
+ * @since New in 1.5.
  */
 const char *serf_ssl_cert_export2(
     const serf_ssl_certificate_t *cert,
@@ -778,7 +778,7 @@ const char *serf_ssl_cert_export2(
  * Uses @a scratch_pool for temporary allocations.
  * Returns NULL on failure.
  *
- * @since New in 1.4.
+ * @since New in 1.5.
  */
 serf_ssl_certificate_t *serf_ssl_cert_import(
     const char *encoded_cert,
@@ -807,7 +807,7 @@ apr_status_t serf_ssl_trust_cert(
 /**
  * Load a CRL .pem file from @a file_path and enable CRL checking.
  *
- * @since New in 1.4.
+ * @since New in 1.5.
  */
 apr_status_t serf_ssl_add_crl_from_file(serf_ssl_context_t *ssl_ctx,
                                         const char *file_path,
@@ -818,7 +818,7 @@ apr_status_t serf_ssl_add_crl_from_file(serf_ssl_context_t *ssl_ctx,
  * @a enabled = 1 to enable CRL checking, 0 to disable CRL checking.
  * Default = disabled.
  *
- * @since New in 1.4.
+ * @since New in 1.5.
  */
 apr_status_t serf_ssl_check_crl(serf_ssl_context_t *ssl_ctx,
                                 int enabled);
@@ -829,7 +829,7 @@ apr_status_t serf_ssl_check_crl(serf_ssl_context_t *ssl_ctx,
  * @a enabled = 1 to enable checking, 0 to disable checking.
  * Default = disabled.
  *
- * @since New in 1.4.
+ * @since New in 1.5.
  */
 apr_status_t
 serf_ssl_check_cert_status_request(serf_ssl_context_t *ssl_ctx, int enabled);
@@ -848,7 +848,7 @@ apr_status_t serf_ssl_use_compression(
 /**
  * Internal representation of an OCSP request.
  *
- * @since New in 1.4.
+ * @since New in 1.5.
  */
 typedef struct serf_ssl_ocsp_request_t serf_ssl_ocsp_request_t;
 
@@ -864,7 +864,7 @@ typedef struct serf_ssl_ocsp_request_t serf_ssl_ocsp_request_t;
  * Returns @c NULL on failure, e.g., if @a issuer_cert is not the
  * issuer certificate of @a server_cert.
  *
- * @since New in 1.4.
+ * @since New in 1.5.
  */
 serf_ssl_ocsp_request_t *serf_ssl_ocsp_request_create(
     const serf_ssl_certificate_t *server_cert,
@@ -883,7 +883,7 @@ serf_ssl_ocsp_request_t *serf_ssl_ocsp_request_create(
  *
  * @see serf_ssl_ocsp_request_body_size()
  *
- * @since New in 1.4.
+ * @since New in 1.5.
  */
 const void *serf_ssl_ocsp_request_body(
     const serf_ssl_ocsp_request_t *ocsp_request);
@@ -892,7 +892,7 @@ const void *serf_ssl_ocsp_request_body(
  * Returns the size of the DER-encoded OCSP request body.
  * @see serf_ssl_ocsp_request_body().
  *
- * @since New in 1.4.
+ * @since New in 1.5.
  */
 apr_size_t serf_ssl_ocsp_request_body_size(
     const serf_ssl_ocsp_request_t *ocsp_request);
@@ -905,7 +905,7 @@ apr_size_t serf_ssl_ocsp_request_body_size(
  *
  * Returns @c NULL on failure.
  *
- * @since New in 1.4.
+ * @since New in 1.5.
  */
 const char *serf_ssl_ocsp_request_export(
     const serf_ssl_ocsp_request_t *ocsp_request,
@@ -921,7 +921,7 @@ const char *serf_ssl_ocsp_request_export(
  *
  * Returns @c NULL on failure.
  *
- * @since New in 1.4.
+ * @since New in 1.5.
  */
 serf_ssl_ocsp_request_t *serf_ssl_ocsp_request_import(
     const char *encoded_ocsp_request,
@@ -931,7 +931,7 @@ serf_ssl_ocsp_request_t *serf_ssl_ocsp_request_import(
 /**
  * Internal representation of an OCSP response.
  *
- * @since New in 1.4.
+ * @since New in 1.5.
  */
 typedef struct serf_ssl_ocsp_response_t serf_ssl_ocsp_response_t;
 
@@ -947,7 +947,7 @@ typedef struct serf_ssl_ocsp_response_t serf_ssl_ocsp_response_t;
  *
  * Returns @c NULL on failure.
  *
- * @since New in 1.4.
+ * @since New in 1.5.
  */
 serf_ssl_ocsp_response_t *serf_ssl_ocsp_response_parse(
     const void *ocsp_response,
@@ -984,7 +984,7 @@ serf_ssl_ocsp_response_t *serf_ssl_ocsp_response_parse(
  *
  * Uses @a scratch_pool for temporary allocations.
  *
- * @since New in 1.4.
+ * @since New in 1.5.
  */
 apr_status_t serf_ssl_ocsp_response_verify(
     serf_ssl_context_t *ssl_ctx,
@@ -1153,7 +1153,7 @@ serf_bucket_t *serf_bucket_prefix_create(
  * HEAD and TAIL are allocated in STREAM->allocator. STREAM will be
  * destroyed when no longer referenced or after EOF.
  *
- * @since New in 1.4.
+ * @since New in 1.5.
  */
 void serf_bucket_split_create(serf_bucket_t **head,
                               serf_bucket_t **tail,
@@ -1168,17 +1168,17 @@ void serf_bucket_split_create(serf_bucket_t **head,
  * is not supported, the behavior of all related bucket functions such
  * as @a serf_bucket_brotli_decompress_create is undefined.
  *
- * @since New in 1.4.
+ * @since New in 1.5.
  */
 int serf_bucket_is_brotli_supported(void);
 
-/** @since New in 1.4. */
+/** @since New in 1.5. */
 extern const serf_bucket_type_t serf_bucket_type_brotli_decompress;
-/** @since New in 1.4. */
+/** @since New in 1.5. */
 #define SERF_BUCKET_IS_BROTLI_DECOMPRESS(b) \
     SERF_BUCKET_CHECK((b), brotli_decompress)
 
-/** @since New in 1.4. */
+/** @since New in 1.5. */
 serf_bucket_t *
 serf_bucket_brotli_decompress_create(serf_bucket_t *stream,
                                      serf_bucket_alloc_t *alloc);
