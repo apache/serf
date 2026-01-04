@@ -1877,8 +1877,6 @@ static int ssl_read_client_cert_uri(serf_ssl_context_t *ctx,
 static int ssl_need_client_cert(SSL *ssl, X509 **cert, EVP_PKEY **pkey)
 {
     serf_ssl_context_t *ctx = SSL_get_app_data(ssl);
-#if defined(SERF_HAVE_OSSL_STORE_OPEN_EX)
-#endif
     apr_status_t status;
     int retrying_success = 0;
 
