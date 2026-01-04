@@ -126,7 +126,9 @@ DEFINE_STACK_OF(EVP_PKEY)
  *
  */
 
+#if defined(SERF_HAVE_OSSL_STORE_OPEN_EX)
 static int ssl_x509_ex_data_idx = -1;
+#endif
 
 typedef struct bucket_list {
     serf_bucket_t *bucket;

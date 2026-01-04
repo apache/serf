@@ -36,6 +36,14 @@
 #include <openssl/ocsp.h>
 #endif
 
+/* The OPENSSL_VERSION_PREREQ macro is only available from 3.0 onwards,
+   so we'll "backport" it here for older versions. */
+#ifdef OPENSSL_VERSION_PREREQ
+#define SERF__OPENSSL_VERSION_PREREQ(m, n) OPENSSL_VERSION_PREREQ((m), (n))
+#else
+#define SERF__OPENSSL_VERSION_PREREQ(m, n) (0)
+#endif
+
 /* Test setting up the openssl library. */
 static void test_ssl_init(CuTest *tc)
 {
@@ -1174,6 +1182,7 @@ static void test_ssl_client_certificate(CuTest *tc)
     EndVerify
 }
 
+#if defined(SERF_HAVE_OSSL_STORE_OPEN_EX)
 static apr_status_t
 client_cert_uri_conn_setup(apr_socket_t *skt,
                            serf_bucket_t **input_bkt,
@@ -1201,6 +1210,7 @@ client_cert_uri_conn_setup(apr_socket_t *skt,
 
     return APR_SUCCESS;
 }
+#endif
 
 static void test_ssl_client_certificate_uri(CuTest *tc)
 {
@@ -1394,7 +1404,7 @@ static void test_ssl_revoked_server_cert(CuTest *tc)
        certificate. OpenSSL may call the application multiple times per depth,
        e.g. once to tell that the cert is revoked, and a second time to tell
        that the certificate itself is valid. */
-#if defined(OPENSSL_VERSION_PREREQ) && OPENSSL_VERSION_PREREQ(3, 6)
+#if SERF__OPENSSL_VERSION_PREREQ(3, 6)
     /* In OpenSSL 3.6, error handling changed so that only the
        first instance of CERT_UNABLE_TO_GET_CRL is reported. */
     CuAssertStrEquals(tc,
@@ -2794,7 +2804,7 @@ static void test_ssl_ocsp_verify_response_no_signer(CuTest *tc)
 {
 #ifndef OPENSSL_NO_OCSP
     apr_status_t status = verify_ocsp_response(tc, 1, 0, 0, 0);
-#if defined(OPENSSL_VERSION_PREREQ) && OPENSSL_VERSION_PREREQ(3, 0)
+#if SERF__OPENSSL_VERSION_PREREQ(3, 0)
     /* OCSP responses MUST be signed, and on newer versions of OpenSSL we
        can't even create one without a signature. This error doesn't come
        from response validation but because OCSP_response_create() fails. */
