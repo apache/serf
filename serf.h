@@ -634,7 +634,7 @@ apr_status_t serf_connection_create2(
     apr_pool_t *pool);
 
 /**
- * Notification callback when an address hae been resolved.
+ * Notification callback when an address has been resolved.
  *
  * The @a ctx and @a resolved_baton arguments are the same that were passed
  * to serf_address_resolve_async().
@@ -642,8 +642,8 @@ apr_status_t serf_connection_create2(
  * @a status contains the result of the address resolution. If it is not
  * @c APR_SUCCESS, then @a host_address is invalid and should be ignored.
  *
- * The resolved @a host_address is ephemeral, allocated iun @a pool and lives
- * only for the duration of the callback. If ti is not consumed, it should be
+ * The resolved @a host_address is ephemeral, allocated in @a pool and lives
+ * only for the duration of the callback. If it is not consumed, it should be
  * copied to a more permanent pool, using for example apr_sockaddr_info_copy().
  *
  * All temporary allocations should be made in @a pool.
@@ -670,7 +670,7 @@ typedef void (*serf_address_resolved_t)(
  *
  * The @a resolve callback will be called during a subsequent call to
  * serf_context_run() or serf_context_prerun() and will receive the same
- * @a ctx and @a resolved_baton that are preovided here.
+ * @a ctx and @a resolved_baton that are provided here.
  *
  * The lifetime of all function arguments except @a pool must extend until
  * either @a resolve is called or an error is reported.
@@ -689,7 +689,7 @@ apr_status_t serf_address_resolve_async(
 
 
 /**
- * Notification callback when a connection hae been created.
+ * Notification callback when a connection has been created.
  *
  * The @a ctx and @a created_baton arguments are the same that were passed
  * to serf_connection_create_async().
@@ -713,7 +713,7 @@ typedef void (*serf_connection_created_t)(
     apr_pool_t *pool);
 
 /**
- * Asyncchronously create a new connection associated with
+ * Asynchronously create a new connection associated with
  * the @a ctx serf context.
  *
  * Like serf_connection_create2() except that address resolution is performed
