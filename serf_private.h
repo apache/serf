@@ -89,6 +89,7 @@ typedef int serf__bool_t; /* Not _Bool */
 #define SERF_IO_CLIENT (1)
 #define SERF_IO_CONN (2)
 #define SERF_IO_LISTENER (3)
+#define SERF_IO_WAKEUP_PIPE (4)
 
 /*** Narrowing conversions ***/
 
@@ -544,6 +545,9 @@ struct serf_context_t {
 
     serf_config_t *config;
 
+    /* The wakeup socket */
+    struct serf__context_wakeup_t *wakeup;
+
     /* Support for asynchronous address resolution. */
     void *volatile resolve_head;
     apr_status_t resolve_init_status;
@@ -740,6 +744,9 @@ struct serf_connection_t {
 /* Called by requests that still have outstanding requests to allow cleaning
    up buckets that may still reference buckets of this request */
 void serf__connection_pre_cleanup(serf_connection_t *);
+
+/* Called when an asynchronous event should wake up the context's pollset.  */
+void serf__context_wakeup(serf_context_t *ctx);
 
 /* Called from serf_context_create_ex() to set up the context-specific
    asynchronous address resolver context. */

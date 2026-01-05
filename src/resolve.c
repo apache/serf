@@ -67,13 +67,6 @@
 
 #define HAVE_ASYNC_RESOLVER (SERF_HAVE_ASYNC_RESOLVER || APR_HAS_THREADS)
 
-/*
- * FIXME: EXPERIMENTAL
- * TODO:
- *  - Wake the poll/select in serf_context_run() when new resolve
- *    results are available.
- */
-
 
 #if HAVE_ASYNC_RESOLVER
 
@@ -770,7 +763,7 @@ static void *APR_THREAD_FUNC resolve(apr_thread_t *thread, void *baton)
             if (!apr_sockaddr_ip_getbuf(buf, sizeof(buf), addr)) {
                 serf__log(LOGLVL_DEBUG, LOGCOMP_CONN,
                           __FILE__, task->ctx->config,
-                          "apr async resolve: %s: %s\n", addr->hostname, buf);
+                          "thread pool resolve: %s: %s\n", addr->hostname, buf);
             }
             addr = addr->next;
         }
@@ -869,6 +862,8 @@ static void push_resolve_result(serf_context_t *ctx,
         result->next = head;
         head = apr_atomic_casptr(&ctx->resolve_head, result, head);
     } while(head != result->next);
+
+    serf__context_wakeup(ctx);
 }
 
 
@@ -884,12 +879,24 @@ apr_status_t serf__process_async_resolve_results(serf_context_t *ctx)
 {
     resolve_result_t *result;
     apr_status_t status;
+    unsigned counter;
+
+    if (ctx->resolve_init_status != APR_SUCCESS) {
+        /* The async resolver initialization failed, so just return. */
+        serf__log(LOGLVL_DEBUG, LOGCOMP_CONN, __FILE__, ctx->config,
+                  "context 0x%p async resolver is not initialized\n", ctx);
+        return APR_SUCCESS;
+    }
 
     status = run_async_resolver_loop(ctx);
-    if (status)
+    if (status) {
+        serf__log(LOGLVL_ERROR, LOGCOMP_CONN, __FILE__, ctx->config,
+                  "context 0x%p async resolve: <%d>\n", ctx, status);
         return status;
+    }
 
     /* Grab the whole stack, leaving it empty, and process the contents. */
+    counter = 0;
     result = apr_atomic_xchgptr(&ctx->resolve_head, NULL);
     while (result)
     {
@@ -899,6 +906,13 @@ apr_status_t serf__process_async_resolve_results(serf_context_t *ctx)
                          result->result_pool);
         apr_pool_destroy(result->result_pool);
         result = next;
+        ++counter;
+    }
+
+    if (counter > 0) {
+        serf__log(LOGLVL_DEBUG, LOGCOMP_CONN, __FILE__, ctx->config,
+                  "context 0x%p async resolve: %d event%s\n",
+                  ctx, counter, counter == 1 ? "" : "s");
     }
     return APR_SUCCESS;
 }

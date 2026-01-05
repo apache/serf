@@ -331,7 +331,8 @@ typedef apr_status_t (*serf_socket_remove_t)(
     apr_pollfd_t *pfd,
     void *serf_baton);
 
-/* Create a new context for serf operations.
+/**
+ * Create a new context for serf operations.
  *
  * Use this function to make serf not use its internal control loop, but
  * instead rely on an external event loop. Serf will use the @a addf and @a rmf
@@ -650,7 +651,6 @@ apr_status_t serf_connection_create2(
  *
  * @since New in 1.5.
  */
-/* FIXME: EXPERIMENTAL */
 typedef void (*serf_address_resolved_t)(
     serf_context_t *ctx,
     void *resolved_baton,
@@ -668,18 +668,17 @@ typedef void (*serf_address_resolved_t)(
  * address resolution, use serf_connection_create_async(), which does take
  * proxy configuration into account.
  *
- * The @a resolve callback will be called during a subsequent call to
+ * The @a resolved callback will be called during a subsequent call to
  * serf_context_run() or serf_context_prerun() and will receive the same
  * @a ctx and @a resolved_baton that are provided here.
  *
  * The lifetime of all function arguments except @a pool must extend until
- * either @a resolve is called or an error is reported.
+ * either @a resolved is called or an error is reported.
  *
  * All temporary allocations should be made in @a pool.
  *
  * @since New in 1.5.
  */
-/* FIXME: EXPERIMENTAL */
 apr_status_t serf_address_resolve_async(
     serf_context_t *ctx,
     apr_uri_t host_info,
@@ -704,7 +703,6 @@ apr_status_t serf_address_resolve_async(
  *
  * @since New in 1.5.
  */
-/* FIXME: EXPERIMENTAL */
 typedef void (*serf_connection_created_t)(
     serf_context_t *ctx,
     void *created_baton,
@@ -728,7 +726,6 @@ typedef void (*serf_connection_created_t)(
  *
  * @since New in 1.5.
  */
-/* FIXME: EXPERIMENTAL */
 apr_status_t serf_connection_create_async(
     serf_context_t *ctx,
     apr_uri_t host_info,
