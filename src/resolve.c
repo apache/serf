@@ -253,9 +253,11 @@ static apr_status_t create_resolve_context(serf_context_t *ctx)
 
     if (err) {
         const apr_status_t status = err_to_status(err);
-        /* TODO: Error callback */
-        serf__log(LOGLVL_ERROR, LOGCOMP_CONN, __FILE__, ctx->config,
-                  "unbound ctx init: %s\n", ub_strerror(err));
+        const char *message = apr_psprintf(ctx->pool, "unbound ctx init: %s",
+                                           ub_strerror(err));
+        serf__context_error(ctx, status, message);
+        serf__log(LOGLVL_ERROR, LOGCOMP_CONN, __FILE__,
+                  ctx->config, "%s\n", message);
         cleanup_resolve_context(rctx);
         return status;
     }
@@ -331,13 +333,15 @@ static apr_status_t resolve_convert(apr_sockaddr_t **host_address,
         for (i = 0; ub_result->data[i]; ++i)
         {
             if (ub_result->len[i] != ipaddr_len) {
-                /* TODO: Error callback */
-                serf__log(LOGLVL_ERROR, LOGCOMP_CONN, __FILE__,
-                          task->ctx->config,
-                          "unbound resolve: [%s] invalid address: "
-                          " length %d, expected %d\n",
-                          result->qtype, ub_result->len[i], ipaddr_len);
+                const char *message = apr_psprintf(
+                    resolve_pool,
+                    "unbound resolve: [%s] invalid address: "
+                    " length %d, expected %d",
+                    result->qtype, ub_result->len[i], ipaddr_len);
                 status = APR_EINVAL;
+                serf__context_error(task->ctx, status, message);
+                serf__log(LOGLVL_ERROR, LOGCOMP_CONN, __FILE__,
+                          task->ctx->config, "%s\n", message);
                 goto cleanup;
             }
         }
@@ -431,48 +435,64 @@ static void resolve_callback(void* baton, int err,
 
     if (err)
     {
-        /* TODO: Error callback */
-        serf__log(LOGLVL_ERROR, LOGCOMP_CONN, __FILE__, task->ctx->config,
-                  "unbound resolve: [%s] error %s\n",
-                  resolve_result->qtype, ub_strerror(err));
+        const char *message = apr_psprintf(
+            task->resolve_pool,
+            "unbound resolve: [%s] error %s",
+            resolve_result->qtype, ub_strerror(err));
+        serf__context_error(task->ctx, status, message);
+        serf__log(LOGLVL_ERROR, LOGCOMP_CONN, __FILE__,
+                  task->ctx->config, "%s\n", message);
     }
     else if (!ub_result->havedata)
     {
+        const char *message;
         if (ub_result->nxdomain) {
-            /* TODO: Error callback */
-            serf__log(LOGLVL_ERROR, LOGCOMP_CONN, __FILE__, task->ctx->config,
-                      "unbound resolve: [%s] NXDOMAIN [%d]\n",
-                      resolve_result->qtype, ub_result->rcode);
             if (status == APR_SUCCESS)
                 status = APR_ENOENT;
+            message = apr_psprintf(
+                task->resolve_pool,
+                "unbound resolve: [%s] NXDOMAIN [%d]",
+                resolve_result->qtype, ub_result->rcode);
+            serf__context_error(task->ctx, status, message);
+            serf__log(LOGLVL_ERROR, LOGCOMP_CONN, __FILE__,
+                      task->ctx->config, "%s\n", message);
         }
         if (ub_result->bogus) {
-            /* TODO: Error callback */
-            serf__log(LOGLVL_ERROR, LOGCOMP_CONN, __FILE__, task->ctx->config,
-                      "unbound resolve: [%s] BOGUS [%d]%s%s\n",
-                      resolve_result->qtype, ub_result->rcode,
-                      ub_result->why_bogus ? " " : "",
-                      ub_result->why_bogus ? ub_result->why_bogus : "");
             if (status == APR_SUCCESS)
                 status = APR_EINVAL;
+            message = apr_psprintf(
+                task->resolve_pool,
+                "unbound resolve: [%s] BOGUS [%d]%s%s",
+                resolve_result->qtype, ub_result->rcode,
+                ub_result->why_bogus ? " " : "",
+                ub_result->why_bogus ? ub_result->why_bogus : "");
+            serf__context_error(task->ctx, status, message);
+            serf__log(LOGLVL_ERROR, LOGCOMP_CONN, __FILE__,
+                      task->ctx->config, "%s\n", message);
         }
         if (ub_result->was_ratelimited) {
-            /* TODO: Error callback */
-            serf__log(LOGLVL_ERROR, LOGCOMP_CONN, __FILE__, task->ctx->config,
-                      "unbound resolve: [%s] SERVFAIL [%d]\n",
-                      resolve_result->qtype, ub_result->rcode);
             if (status == APR_SUCCESS)
                 status = APR_EAGAIN;
+            message = apr_psprintf(
+                task->resolve_pool,
+                "unbound resolve: [%s] SERVFAIL [%d]",
+                resolve_result->qtype, ub_result->rcode);
+            serf__context_error(task->ctx, status, message);
+            serf__log(LOGLVL_ERROR, LOGCOMP_CONN, __FILE__,
+                      task->ctx->config, "%s\n", message);
         }
 
         /* This shouldn't happen, one of the previous checks should
            have caught an error. */
         if (status == APR_SUCCESS) {
-            /* TODO: Error callback */
-            serf__log(LOGLVL_ERROR, LOGCOMP_CONN, __FILE__, task->ctx->config,
-                      "unbound resolve: [%s] no data [%d]\n",
-                      resolve_result->qtype, ub_result->rcode);
             status = APR_ENOENT;
+            message = apr_psprintf(
+                task->resolve_pool,
+                "unbound resolve: [%s] no data [%d]\n",
+                resolve_result->qtype, ub_result->rcode);
+            serf__context_error(task->ctx, status, message);
+            serf__log(LOGLVL_ERROR, LOGCOMP_CONN, __FILE__,
+                      task->ctx->config, "%s\n", message);
         }
     }
 
@@ -618,24 +638,32 @@ static apr_status_t resolve_address_async(serf_context_t *ctx,
     if (err4 || err6)
     {
         apr_uint32_t pending_results = -1;
+        const char *message;
 
         if (err4) {
             pending_results = apr_atomic_dec32(&task->pending_results);
-            /* TODO: Error callback */
-            serf__log(LOGLVL_ERROR, LOGCOMP_CONN, __FILE__, ctx->config,
-                      "unbound resolve start: [v4] %s\n", ub_strerror(err4));
+            message = apr_psprintf(resolve_pool,
+                                   "unbound resolve start: [v4] %s",
+                                   ub_strerror(err4));
             status = err_to_status(err4);
+            serf__context_error(ctx, status, message);
+            serf__log(LOGLVL_ERROR, LOGCOMP_CONN, __FILE__,
+                      ctx->config, "%s\n", message);
         }
 
 #if APR_HAVE_IPV6
         if (err6) {
+            const apr_status_t status6 = err_to_status(err6);
             pending_results = apr_atomic_dec32(&task->pending_results);
-            /* TODO: Error callback */
-            serf__log(LOGLVL_ERROR, LOGCOMP_CONN, __FILE__, ctx->config,
-                      "unbound resolve start: [v6] %s\n", ub_strerror(err6));
+            message = apr_psprintf(resolve_pool,
+                                   "unbound resolve start: [v6] %s",
+                                   ub_strerror(err6));
+            serf__context_error(ctx, status6, message);
+            serf__log(LOGLVL_ERROR, LOGCOMP_CONN, __FILE__,
+                      ctx->config, "%s\n", message);
             /* We have only one status to report. */
             if (!err4)
-                status = err_to_status(err6);
+                status = status6;
         }
 #endif  /* APR_HAVE_IPV6 */
 
@@ -660,9 +688,15 @@ static apr_status_t run_async_resolver_loop(serf_context_t *ctx)
             const int err = ub_process(rctx->ub_ctx);
             if (err) {
                 const apr_status_t status = err_to_status(err);
-                /* TODO: Error callback */
-                serf__log(LOGLVL_ERROR, LOGCOMP_CONN, __FILE__, ctx->config,
-                          "unbound process: %s\n", ub_strerror(err));
+                apr_pool_t *error_pool;
+                const char *message;
+                apr_pool_create(&error_pool, ctx->pool);
+                message = apr_psprintf(error_pool, "unbound process: %s",
+                                       ub_strerror(err));
+                serf__context_error(ctx, status, message);
+                serf__log(LOGLVL_ERROR, LOGCOMP_CONN, __FILE__,
+                          ctx->config, "%s\n", message);
+                apr_pool_destroy(error_pool);
                 return status;
             }
         }
