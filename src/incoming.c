@@ -28,6 +28,7 @@
 
 #include "serf_private.h"
 
+
 static apr_status_t client_connected(serf_incoming_t *client)
 {
     /* serf_context_t *ctx = client->ctx; */

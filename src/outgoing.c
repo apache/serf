@@ -25,9 +25,8 @@
 #include <apr_strings.h>
 
 #include "serf.h"
-#include "serf_bucket_util.h"
-
 #include "serf_private.h"
+
 
 /* forward definitions */
 static apr_status_t read_from_connection(serf_connection_t *conn);

@@ -21,6 +21,8 @@
 #ifndef _SERF_PRIVATE_H_
 #define _SERF_PRIVATE_H_
 
+#include "serf.h"
+
 #if !defined(HAVE_STDBOOL_H) && defined(_MSC_VER) && (_MSC_VER >= 1800)
  /* VS 2015 errors out when redefining bool */
 #define HAVE_STDBOOL_H 1
@@ -1036,4 +1038,4 @@ serf_bucket_t *serf__bucket_event_create(
                         serf_bucket_alloc_t *allocator);
 
 
-#endif
+#endif  /*  _SERF_PRIVATE_H_ */

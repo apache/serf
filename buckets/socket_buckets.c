@@ -22,7 +22,6 @@
 #include <apr_network_io.h>
 
 #include "serf.h"
-#include "serf_private.h"
 #include "serf_bucket_util.h"
 
 

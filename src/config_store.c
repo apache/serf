@@ -22,7 +22,9 @@
 
 #include "serf.h"
 #include "serf_bucket_util.h"
+
 #include "serf_private.h"
+
 
 /* Use a linked list to store the config values, as we'll only store a couple
    of values per context. */

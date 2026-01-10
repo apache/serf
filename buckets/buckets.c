@@ -22,12 +22,12 @@
 
 #define APR_WANT_MEMFUNC
 #include <apr_want.h>
-
 #include <apr_pools.h>
 
 #include "serf.h"
 #include "serf_bucket_util.h"
 #include "serf_private.h"
+
 
 serf_bucket_t *serf_bucket_create(
     const serf_bucket_type_t *type,

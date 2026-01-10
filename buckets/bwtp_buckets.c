@@ -18,6 +18,8 @@
  * ====================================================================
  */
 
+#include <stdlib.h>
+
 #include <apr_pools.h>
 #include <apr_strings.h>
 #include <apr_lib.h>
@@ -28,7 +30,6 @@
 #include "serf_bucket_types.h"
 #include "serf_private.h"
 
-#include <stdlib.h>
 
 /* This is an implementation of Bidirectional Web Transfer Protocol (BWTP)
  * See:

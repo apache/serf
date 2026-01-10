@@ -24,8 +24,6 @@
 #include <apr_version.h>
 
 #include "serf.h"
-#include "serf_bucket_util.h"
-
 #include "serf_private.h"
 
 

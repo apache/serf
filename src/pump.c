@@ -25,9 +25,8 @@
 #include <apr_strings.h>
 
 #include "serf.h"
-#include "serf_bucket_util.h"
-
 #include "serf_private.h"
+
 
 static apr_status_t pump_cleanup(void *baton)
 {
@@ -401,4 +400,3 @@ apr_status_t serf_pump__add_output(serf_pump_t *pump,
     else
         return APR_SUCCESS;
 }
-

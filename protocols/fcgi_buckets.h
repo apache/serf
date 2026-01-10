@@ -22,6 +22,7 @@
 #define SERF_PROTOCOL_FCGI_BUCKETS_H
 
 #include "serf_bucket_types.h"
+#include "serf_private.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -92,4 +93,3 @@ serf__bucket_fcgi_frame_create(serf_bucket_t *stream,
 #endif
 
 #endif /* !SERF_PROTOCOL_FCGI_BUCKETS_H */
-

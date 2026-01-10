@@ -22,6 +22,7 @@
 #define SERF_PROTOCOL_FCGI_PROTOCOL_H
 
 #include "serf_bucket_types.h"
+#include "serf_private.h"
 
 #ifdef _DEBUG
 #include <assert.h>
@@ -226,5 +227,3 @@ void serf_fcgi__stream_destroy(serf_fcgi_stream_t *stream);
 #endif
 
 #endif /* !SERF_PROTOCOL_FCGI_PROTOCOL_H */
-
-

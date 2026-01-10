@@ -24,17 +24,17 @@
 #include <apr_env.h>
 #include <apr_md5.h>
 
-#include "serf.h"
-#include "serf_bucket_types.h"
-
-#include "test_serf.h"
-
 #include <openssl/ssl.h>
 #include <openssl/x509v3.h>
 #include <openssl/opensslv.h>
 #ifndef OPENSSL_NO_OCSP /* requires openssl 0.9.7 or later */
 #include <openssl/ocsp.h>
 #endif
+
+#include "serf.h"
+#include "serf_bucket_types.h"
+
+#include "test_serf.h"
 
 /* The OPENSSL_VERSION_PREREQ macro is only available from 3.0 onwards,
    so we'll "backport" it here for older versions. */

@@ -21,14 +21,13 @@
 #ifndef TEST_SERF_H
 #define TEST_SERF_H
 
-#include "CuTest.h"
-
 #include <apr.h>
 #include <apr_pools.h>
 #include <apr_uri.h>
 
 #include "serf.h"
 
+#include "CuTest.h"
 #include "MockHTTPinC/MockHTTP.h"
 
 /* Test logging facilities, set flag to 1 to enable console logging for

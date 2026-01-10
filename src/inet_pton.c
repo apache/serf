@@ -34,7 +34,6 @@
 #include <errno.h>
 #endif
 
-#include "serf.h"
 #include "serf_private.h"
 
 #ifndef IN6ADDRSZ

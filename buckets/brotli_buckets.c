@@ -20,7 +20,7 @@
 
 #include "serf.h"
 #include "serf_bucket_util.h"
-#include "serf_private.h"
+
 
 #ifdef SERF_HAVE_BROTLI
 

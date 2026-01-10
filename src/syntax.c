@@ -25,7 +25,6 @@
 #define APR_WANT_STRFUNC
 #include <apr_want.h>
 
-#include "serf.h"
 #include "serf_private.h"
 
 

@@ -21,7 +21,7 @@
 #ifndef AUTH_H
 #define AUTH_H
 
-#include "auth_spnego.h"
+#include "serf_private.h"
 
 #ifdef __cplusplus
 extern "C" {

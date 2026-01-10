@@ -18,23 +18,19 @@
  * ====================================================================
  */
 
-
 #include "auth_spnego.h"
 
 #ifdef SERF_HAVE_SPNEGO
+
+#include <apr_base64.h>
+#include <apr_strings.h>
+
+#include "auth.h"
 
 /** These functions implement SPNEGO-based Kerberos and NTLM authentication,
  *  using either GSS-API (RFC 2743) or SSPI on Windows.
  *  The HTTP message exchange is documented in RFC 4559.
  **/
-
-#include <serf.h>
-#include <serf_private.h>
-#include <auth/auth.h>
-
-#include <apr.h>
-#include <apr_base64.h>
-#include <apr_strings.h>
 
 /** TODO:
  ** - send session key directly on new connections where we already know

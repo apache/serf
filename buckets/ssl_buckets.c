@@ -32,10 +32,6 @@
 #include <apr_version.h>
 #include <apr_atomic.h>
 
-#include "serf.h"
-#include "serf_private.h"
-#include "serf_bucket_util.h"
-
 #include <openssl/bio.h>
 #include <openssl/ssl.h>
 #include <openssl/err.h>
@@ -53,6 +49,10 @@
 DEFINE_STACK_OF(EVP_PKEY)
 #endif
 #endif
+
+#include "serf.h"
+#include "serf_private.h"
+#include "serf_bucket_util.h"
 
 #ifndef APR_ARRAY_PUSH
 #define APR_ARRAY_PUSH(ary,type) (*((type *)apr_array_push(ary)))

@@ -29,7 +29,6 @@
 #  endif
 #endif
 
-#include "serf.h"
 #include "serf_private.h"
 
 

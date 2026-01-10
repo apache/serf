@@ -29,7 +29,6 @@
 #include "serf.h"
 #include "serf_bucket_util.h"
 
-#include "serf_private.h"
 
 /* Define SERF__DEBUG_UNFREED_MEMORY if you're interested in tracking
  * unfreed blocks on pool cleanup. */
@@ -535,4 +534,3 @@ void serf_debug__bucket_alloc_check(
     }
 #endif
 }
-

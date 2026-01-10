@@ -22,6 +22,7 @@
 
 #include "serf.h"
 #include "serf_bucket_util.h"
+
 #include "test_serf.h"
 
 /* This bucket uses a list of count - data/len - status actions (provided by the

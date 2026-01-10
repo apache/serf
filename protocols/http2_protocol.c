@@ -28,8 +28,8 @@
 #include "serf_bucket_util.h"
 
 #include "serf_private.h"
-#include "protocols/http2_buckets.h"
-#include "protocols/http2_protocol.h"
+#include "http2_buckets.h"
+#include "http2_protocol.h"
 
 static apr_status_t
 http2_outgoing_read(serf_connection_t *conn);

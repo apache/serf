@@ -29,12 +29,12 @@
 
 
 #include "serf.h"
-#include "test_serf.h"
 
 /* These test cases have access to internal functions. */
 #define SERF__TEST_INTERNAL     /* Disable SERF__CONV_assert() */
 #include "serf_private.h"
-#include "serf_bucket_util.h"
+
+#include "test_serf.h"
 
 #define PER_CONN_UNKNOWN_KEY    SERF_CONFIG_PER_CONNECTION | 0xFF0001
 /* #define PER_HOST_UNKNOWN_KEY    SERF_CONFIG_PER_HOST | 0xFF0002 */

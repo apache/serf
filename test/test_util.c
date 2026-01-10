@@ -18,13 +18,6 @@
  * ====================================================================
  */
 
-#define APR_WANT_MEMFUNC
-#include <apr_want.h>
-#include "apr.h"
-#include "apr_pools.h"
-#include <apr_strings.h>
-#include "apr_env.h"
-
 #include <stdlib.h>
 
 #ifdef WIN32
@@ -35,6 +28,13 @@
 #else
 #define isatty(x) 0
 #endif
+
+#define APR_WANT_MEMFUNC
+#include <apr_want.h>
+#include "apr.h"
+#include "apr_pools.h"
+#include <apr_strings.h>
+#include "apr_env.h"
 
 #include "serf.h"
 

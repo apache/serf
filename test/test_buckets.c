@@ -27,13 +27,13 @@
 #include <zlib.h>
 
 #include "serf.h"
-#include "test_serf.h"
+#include "serf_bucket_util.h"
 
 /* test case has access to internal functions. */
 #include "serf_private.h"
-#include "serf_bucket_util.h"
-
 #include "protocols/http2_buckets.h"
+
+#include "test_serf.h"
 
 #ifdef SERF_DEBUG_BUCKET_USE
 #define DRAIN_BUCKET(b) serf__bucket_drain(b)
