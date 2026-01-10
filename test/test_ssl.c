@@ -618,7 +618,11 @@ static void test_ssl_handshake(CuTest *tc)
        and X509_V_ERR_UNABLE_TO_VERIFY_LEAF_SIGNATURE. The second one means that
        the chain has only the server cert. A good candidate for its own failure
        code. */
-#if OPENSSL_VERSION_NUMBER >= 0x1010109fL /* >= 1.1.1i */
+#ifdef LIBRESSL_VERSION_NUMBER  /* LibreSSL */
+    CuAssertStrEquals(tc,
+        "cert_cb: failures = CERT_UNKNOWNCA, cert = (CN=localhost, depth=0)\n",
+        tb->user_baton);
+#elif OPENSSL_VERSION_NUMBER >= 0x1010109fL /* >= 1.1.1i */
     CuAssertStrEquals(tc,
         "cert_cb: failures = CERT_UNKNOWNCA, cert = (CN=localhost, depth=0)\n"
         "cert_cb: failures = CERT_UNKNOWNCA, cert = (CN=localhost, depth=0)\n"
@@ -943,10 +947,16 @@ static void test_ssl_certificate_chain_all_from_server(CuTest *tc)
     run_client_and_mock_servers_loops_expect_ok(tc, tb, num_requests,
                                                 handler_ctx, tb->pool);
 
+#ifdef LIBRESSL_VERSION_NUMBER  /* LibreSSL */
+    CuAssertStrEquals(tc,
+        "cert_cb: failures = CERT_SELF_SIGNED, cert = (CN=localhost, depth=2)\n",
+        tb->user_baton);
+#else
     CuAssertStrEquals(tc,
         "cert_cb: failures = CERT_SELF_SIGNED, cert = (CN=Serf Root CA, depth=2)\n"
         "cert_cb: failures = NONE, cert = (CN=localhost, depth=0)\n",
         tb->user_baton);
+#endif
     CuAssertTrue(tc, tb->result_flags & TEST_RESULT_SERVERCERTCHAINCB_CALLED);
 }
 
@@ -1289,11 +1299,17 @@ static void test_ssl_expired_server_cert(CuTest *tc)
 
     run_client_and_mock_servers_loops_expect_ok(tc, tb, num_requests,
                                                 handler_ctx, tb->pool);
+#ifdef LIBRESSL_VERSION_NUMBER  /* LibreSSL */
+    CuAssertStrEquals(tc,
+        "cert_cb: failures = CERT_EXPIRED|CERT_SELF_SIGNED, cert = (CN=localhost, depth=2)\n",
+        tb->user_baton);
+#else
     CuAssertStrEquals(tc,
         "cert_cb: failures = CERT_SELF_SIGNED, cert = (CN=Serf Root CA, depth=2)\n"
         "cert_cb: failures = CERT_EXPIRED, cert = (CN=localhost, depth=0)\n"
         "cert_cb: failures = CERT_EXPIRED, cert = (CN=localhost, depth=0)\n",
         tb->user_baton);
+#endif
 }
 
 /* Validate that the expired certificate is reported as failure in the
@@ -1331,11 +1347,17 @@ static void test_ssl_future_server_cert(CuTest *tc)
 
     run_client_and_mock_servers_loops_expect_ok(tc, tb, num_requests,
                                                 handler_ctx, tb->pool);
+#ifdef LIBRESSL_VERSION_NUMBER  /* LibreSSL */
+    CuAssertStrEquals(tc,
+        "cert_cb: failures = CERT_NOTYETVALID|CERT_SELF_SIGNED, cert = (CN=localhost, depth=2)\n",
+        tb->user_baton);
+#else
     CuAssertStrEquals(tc,
         "cert_cb: failures = CERT_SELF_SIGNED, cert = (CN=Serf Root CA, depth=2)\n"
         "cert_cb: failures = CERT_NOTYETVALID, cert = (CN=localhost, depth=0)\n"
         "cert_cb: failures = CERT_NOTYETVALID, cert = (CN=localhost, depth=0)\n",
         tb->user_baton);
+#endif
 }
 
 
@@ -1466,10 +1488,16 @@ static void test_setup_ssltunnel(CuTest *tc)
         CuAssertIntEquals(tc, i + 1, req_nr);
     }
 
+#ifdef LIBRESSL_VERSION_NUMBER  /* LibreSSL */
+    CuAssertStrEquals(tc,
+        "cert_cb: failures = CERT_SELF_SIGNED, cert = (CN=localhost, depth=2)\n",
+        tb->user_baton);
+#else
     CuAssertStrEquals(tc,
         "cert_cb: failures = CERT_SELF_SIGNED, cert = (CN=Serf Root CA, depth=2)\n"
         "cert_cb: failures = NONE, cert = (CN=localhost, depth=0)\n",
         tb->user_baton);
+#endif
 }
 
 /* Test error if no creds callback */
@@ -2024,7 +2052,8 @@ static void test_ssl_renegotiate(CuTest *tc)
     /* There is some historical difference in certificate verification behavior
        between OpenSSL 1.0.2 and OpenSSL 1.1.0. Unfortunately, the true reasons
        for the difference are unknown. */
-#if OPENSSL_VERSION_NUMBER >= 0x10100000L /* >= 1.1.0 */
+#if OPENSSL_VERSION_NUMBER >= 0x10100000L /* >= 1.1.0 */ \
+    && !defined(LIBRESSL_VERSION_NUMBER)  /* LibreSSL */
     CuAssertStrEquals(tc,
         "cert_cb: failures = NONE, cert = (CN=localhost, depth=0)\n",
         tb->user_baton);
@@ -2180,11 +2209,18 @@ static void test_ssl_ocsp_response_error_and_override(CuTest *tc)
                                                 handler_ctx, tb->pool);
 
 #if !defined(OPENSSL_NO_TLSEXT) && !defined(OPENSSL_NO_OCSP)
+#ifdef LIBRESSL_VERSION_NUMBER  /* LibreSSL */
+    CuAssertStrEquals(tc,
+        "cert_cb: failures = CERT_SELF_SIGNED, cert = (CN=localhost, depth=2)\n"
+        "cert_cb: failures = OCSP_RESPONDER_ERROR, cert = (null)\n",
+        tb->user_baton);
+#else
     CuAssertStrEquals(tc,
         "cert_cb: failures = CERT_SELF_SIGNED, cert = (CN=Serf Root CA, depth=2)\n"
         "cert_cb: failures = NONE, cert = (CN=localhost, depth=0)\n"
         "cert_cb: failures = OCSP_RESPONDER_ERROR, cert = (null)\n",
         tb->user_baton);
+#endif
 #else
     CuAssertStrEquals(tc,
         "cert_cb: failures = CERT_SELF_SIGNED, cert = (CN=Serf Root CA, depth=2)\n"
@@ -2228,10 +2264,16 @@ static void test_ssl_server_cert_with_cn_nul_byte(CuTest *tc)
 
     run_client_and_mock_servers_loops_expect_ok(tc, tb, num_requests,
                                                 handler_ctx, tb->pool);
+#ifdef LIBRESSL_VERSION_NUMBER  /* LibreSSL */
+    CuAssertStrEquals(tc,
+        "cert_cb: failures = CERT_SELF_SIGNED, cert = (CN=(null), depth=1)\n",
+        tb->user_baton);
+#else
     CuAssertStrEquals(tc,
         "cert_cb: failures = CERT_SELF_SIGNED, cert = (CN=(null), depth=1)\n"
         "cert_cb: failures = CERT_INVALID_HOST, cert = (CN=www.example.net\\00.example.com, depth=0)\n",
         tb->user_baton);
+#endif
 }
 
 /* Validate that the subject's SAN containing a '\0' byte is reported as failure
@@ -2269,10 +2311,16 @@ static void test_ssl_server_cert_with_san_nul_byte(CuTest *tc)
 
     run_client_and_mock_servers_loops_expect_ok(tc, tb, num_requests,
                                                 handler_ctx, tb->pool);
+#ifdef LIBRESSL_VERSION_NUMBER  /* LibreSSL */
+    CuAssertStrEquals(tc,
+        "cert_cb: failures = CERT_SELF_SIGNED|CERT_INVALID_HOST, cert = (CN=www.example.com, depth=1)\n",
+        tb->user_baton);
+#else
     CuAssertStrEquals(tc,
         "cert_cb: failures = CERT_SELF_SIGNED, cert = (CN=(null), depth=1)\n"
         "cert_cb: failures = CERT_INVALID_HOST, cert = (CN=www.example.com, depth=0)\n",
         tb->user_baton);
+#endif
 }
 
 /* Validate that the subject's CN and SAN containing a '\0' byte is reported
@@ -2310,10 +2358,16 @@ static void test_ssl_server_cert_with_cnsan_nul_byte(CuTest *tc)
 
     run_client_and_mock_servers_loops_expect_ok(tc, tb, num_requests,
                                                 handler_ctx, tb->pool);
+#ifdef LIBRESSL_VERSION_NUMBER  /* LibreSSL */
+    CuAssertStrEquals(tc,
+        "cert_cb: failures = CERT_SELF_SIGNED|CERT_INVALID_HOST, cert = (CN=(null), depth=1)\n",
+        tb->user_baton);
+#else
     CuAssertStrEquals(tc,
         "cert_cb: failures = CERT_SELF_SIGNED, cert = (CN=(null), depth=1)\n"
         "cert_cb: failures = CERT_INVALID_HOST, cert = (CN=www.example.net\\00.example.com, depth=0)\n",
         tb->user_baton);
+#endif
 }
 
 /* Validate a certificate with subjectAltName a DNS entry, but no CN. */
@@ -2447,7 +2501,11 @@ static void test_ssl_alpn_negotiate(CuTest *tc)
        and X509_V_ERR_UNABLE_TO_VERIFY_LEAF_SIGNATURE. The second one means that
        the chain has only the server cert. A good candidate for its own failure
        code. */
-#if OPENSSL_VERSION_NUMBER >= 0x1010109fL /* >= 1.1.1i */
+#ifdef LIBRESSL_VERSION_NUMBER  /* LibreSSL */
+    CuAssertStrEquals(tc,
+        "cert_cb: failures = CERT_UNKNOWNCA, cert = (CN=localhost, depth=0)\n",
+        tb->user_baton);
+#elif OPENSSL_VERSION_NUMBER >= 0x1010109fL /* >= 1.1.1i */
     CuAssertStrEquals(tc,
         "cert_cb: failures = CERT_UNKNOWNCA, cert = (CN=localhost, depth=0)\n"
         "cert_cb: failures = CERT_UNKNOWNCA, cert = (CN=localhost, depth=0)\n"
