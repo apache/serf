@@ -19,14 +19,9 @@
  */
 
 #include <apr.h>
-#include <apr_version.h>
 #if APR_HAS_THREADS
 #  include <apr_atomic.h>
 #  include <apr_time.h>
-/* FIXME: Do we really want to support APR-0.9.x? */
-#  if APR_MAJOR_VERSION < 1
-#    define apr_atomic_cas32(m, v, c) apr_atomic_cas((m), (v), (c))
-#  endif
 #endif
 
 #include "serf_private.h"

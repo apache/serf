@@ -35,6 +35,10 @@
 #include <apr_time.h>
 #include <apr_poll.h>
 #include <apr_uri.h>
+#include <apr_version.h>
+#if !APR_VERSION_AT_LEAST(1, 3, 0)
+#error "The APR version must be 1.3.0 or newer"
+#endif
 
 #ifdef __cplusplus
 extern "C" {

@@ -47,7 +47,7 @@
 #include "MockHTTP_private.h"
 
 /* Copied from serf.  */
-#if defined(APR_VERSION_AT_LEAST) && defined(WIN32)
+#ifdef WIN32
 #if APR_VERSION_AT_LEAST(1,4,0)
 #define BROKEN_WSAPOLL
 #endif

@@ -80,14 +80,6 @@ typedef int serf__bool_t; /* Not _Bool */
 #define REQUESTED_MAX (~((apr_size_t)0))
 #endif
 
-#ifndef APR_VERSION_AT_LEAST /* Introduced in APR 1.3.0 */
-#define APR_VERSION_AT_LEAST(major,minor,patch)                           \
-    (((major) < APR_MAJOR_VERSION)                                        \
-      || ((major) == APR_MAJOR_VERSION && (minor) < APR_MINOR_VERSION)    \
-      || ((major) == APR_MAJOR_VERSION && (minor) == APR_MINOR_VERSION && \
-               (patch) <= APR_PATCH_VERSION))
-#endif /* APR_VERSION_AT_LEAST */
-
 #define SERF_IO_CLIENT (1)
 #define SERF_IO_CONN (2)
 #define SERF_IO_LISTENER (3)
@@ -215,14 +207,11 @@ apr_status_t serf__incoming_ssl_error(const void *baton,
 #define ACTIVE_LOGLEVEL SERF_LOG_NONE
 #define ACTIVE_LOGCOMPS SERF_LOGCOMP_NONE
 
-/* Older versions of APR do not have the APR_VERSION_AT_LEAST macro. Those
-   implementations are safe.
-
-   If the macro *is* defined, and we're on WIN32, and APR is version 1.4.0+,
-   then we have a broken WSAPoll() implementation.
+/* If we're on WIN32, and APR is version 1.4.0+, then we have
+   a broken WSAPoll() implementation.
 
    See serf_context_create_ex() below.  */
-#if defined(APR_VERSION_AT_LEAST) && defined(WIN32)
+#ifdef WIN32
 #if APR_VERSION_AT_LEAST(1,4,0)
 #define BROKEN_WSAPOLL
 #endif

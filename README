@@ -10,7 +10,6 @@ kept to a minimum to provide high performance operation.
   * Official Git Mirror: https://github.com/apache/serf/
   * Issues: https://issues.apache.org/jira/browse/SERF
   * Mail: dev@serf.apache.org
-  * People: Justin Erenkrantz, Greg Stein
 
 ----
 
@@ -20,6 +19,13 @@ kept to a minimum to provide high performance operation.
 
 Apache Serf can use either SCons or CMake. Both build systems should offer
 the same features.
+
+A note on the required dependencies:
+  - APR and APR-Util must be at least version 1.3.0.
+  - Use a modern OpenSSL 3.x. Serf will work with OpenSSL 1.1.1 and maybe
+    even 0.9.x, but those versions have known security bugs. LibreSSL seems
+    to work, but we don't test it.
+  - Use the latest ZLib to avoid buffer overrun bugs.
 
 1.1.1 SCons build system
 
@@ -251,4 +257,3 @@ $ cmake -DENABLE_SLOW_TESTS=ON
 
     $ cmake --build out --target install
     $ cmake --build out --config Release --target install
-
