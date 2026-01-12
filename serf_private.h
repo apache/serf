@@ -122,6 +122,13 @@ typedef int serf__bool_t; /* Not _Bool */
 
 /*** Error callback invocation ***/
 
+/* This is the default global error callback, used only in
+   error_callbacks.c and test_internal.c. */
+apr_status_t serf__global_error_callback(void *baton,
+                                         unsigned source,
+                                         apr_status_t status,
+                                         const char *message);
+
 /* NOTE: There is no serf__global_error() because the global handler
          should not be called directly but only as a fallback. */
 

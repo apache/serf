@@ -573,6 +573,87 @@ static void test_find_token(CuTest *tc)
     CuAssertPtrEquals(tc, NULL, serf__find_token("foo", 3, " qux bar"));
 }
 
+/*
+ * Error callbacks
+ */
+
+struct error_callback_baton
+{
+    apr_pool_t *pool;
+    apr_array_header_t *list;
+};
+
+static apr_status_t
+error_cb_request_setup(serf_request_t *request,
+                       void *setup_baton,
+                       serf_bucket_t **req_bkt,
+                       serf_response_acceptor_t *acceptor,
+                       void **acceptor_baton,
+                       serf_response_handler_t *handler,
+                       void **handler_baton,
+                       apr_pool_t *pool)
+{
+    return APR_SUCCESS;
+}
+
+static apr_status_t
+error_cb_error_callback(void *baton,
+                        unsigned source,
+                        apr_status_t status,
+                        const char *message)
+{
+    const struct error_callback_baton *const ecb = baton;
+    const char *const msg = apr_psprintf(
+        ecb->pool, "<%d> %c%c%c%c%c %s", status,
+        ((source & SERF_ERROR_CB_SSL_CONTEXT) ? '*' : '-'),
+        ((source & SERF_ERROR_CB_GLOBAL) ? 'g' : '-'),
+        ((source & SERF_ERROR_CB_CONTEXT) ? 'c' : '-'),
+        ((source & SERF_ERROR_CB_OUTGOING) ? 'o'
+         : ((source & SERF_ERROR_CB_INCOMING) ? 'i' : '-')),
+        ((source & SERF_ERROR_CB_REQUEST) ? 'q'
+         : ((source & SERF_ERROR_CB_RESPONSE) ? 'p' : '-')),
+        message);
+    APR_ARRAY_PUSH(ecb->list, const char*) = msg;
+    return APR_SUCCESS;
+}
+
+static void test_global_error_callback(CuTest *tc)
+{
+    test_baton_t *const tb = tc->testBaton;
+    struct error_callback_baton ecb;
+    serf_context_t *ctx;
+    serf_connection_t *conn;
+    serf_request_t *req;
+    apr_uri_t url;
+
+    ecb.pool = tb->pool;
+    ecb.list = apr_array_make(ecb.pool, 3, sizeof(const char*));
+    serf_global_error_callback_set(error_cb_error_callback, &ecb);
+
+    /* Create a context and connection. */
+    ctx = serf_context_create(ecb.pool);
+    apr_uri_parse(tb->pool, "http://localhost:12345", &url);
+    serf_connection_create2(&conn, ctx, url, conn_setup, NULL,
+                            conn_closed, NULL, tb->pool);
+    req = serf_connection_request_create(conn, error_cb_request_setup, NULL);
+
+    serf__context_error(ctx, APR_SUCCESS, "context error");
+    serf__connection_error(conn, SERF_ERROR_CLOSING, "connection error");
+    serf__request_error(req, SERF_ERROR_REQUEST_LOST, "request error");
+
+    /* Reset the error callback before checking the test results. */
+    serf_global_error_callback_set(serf__global_error_callback, NULL);
+
+    CuAssertPtrEquals(tc, ctx, conn->ctx);
+    CuAssertIntEquals(tc, 3, ecb.list->nelts);
+    CuAssertStrEquals(tc, "<0> --c-- context error",
+                      APR_ARRAY_IDX(ecb.list, 0, const char*));
+    CuAssertStrEquals(tc, "<120101> ---o- connection error",
+                      APR_ARRAY_IDX(ecb.list, 1, const char*));
+    CuAssertStrEquals(tc, "<120102> ---oq request error",
+                      APR_ARRAY_IDX(ecb.list, 2, const char*));
+}
+
 
 CuSuite *test_internal(void)
 {
@@ -594,6 +675,7 @@ CuSuite *test_internal(void)
     SUITE_ADD_TEST(suite, test_parse_single_token_parameters);
     SUITE_ADD_TEST(suite, test_parameter_case_folding);
     SUITE_ADD_TEST(suite, test_find_token);
+    SUITE_ADD_TEST(suite, test_global_error_callback);
 
     return suite;
 }

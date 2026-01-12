@@ -23,17 +23,17 @@
 
 /* Global error processing. */
 
-static apr_status_t
-default_global_error_callback(void *baton,
-                              unsigned source,
-                              apr_status_t status,
-                              const char *message)
+apr_status_t
+serf__global_error_callback(void *baton,
+                            unsigned source,
+                            apr_status_t status,
+                            const char *message)
 {
     return APR_SUCCESS;
 }
 
 static void *global_error_callback_baton = NULL;
-static serf_error_cb_t global_error_callback = default_global_error_callback;
+static serf_error_cb_t global_error_callback = serf__global_error_callback;
 
 void serf_global_error_callback_set(serf_error_cb_t callback, void *baton)
 {
