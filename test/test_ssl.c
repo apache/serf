@@ -2630,7 +2630,7 @@ static void create_ocsp_response(CuTest *tc,
         }
 
         if (!OCSP_basic_sign(basic, signer_cert, pkey,
-                             EVP_sha1(), ca, 0)) {
+                             EVP_sha256(), ca, 0)) {
             sk_X509_free(ca);
             goto cleanup;
         }
