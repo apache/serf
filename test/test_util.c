@@ -498,14 +498,17 @@ static apr_status_t test_error_callback(void *baton,
 apr_status_t
 setup_test_context(test_baton_t *tb, apr_pool_t *pool)
 {
-    serf_log_output_t *output;
     apr_status_t status = APR_SUCCESS;
 
     if (!tb->context) {
         tb->context = serf_context_create(pool);
 
-        if (TEST_VERBOSE) {
+        if (TEST_VERBOSE > 0) {
             serf_global_error_callback_set(test_error_callback, NULL);
+        }
+
+        if (TEST_VERBOSE > 1) {
+            serf_log_output_t *output;
             status = serf_logging_create_stream_output(&output, tb->context,
                                                        SERF_LOG_DEBUG,
                                                        SERF_LOGCOMP_ALL,
@@ -782,7 +785,7 @@ void test__log(int verbose_flag, const char *filename, const char *fmt, ...)
 {
     va_list argp;
 
-    if (verbose_flag) {
+    if (verbose_flag > 1) {
         log_time();
 
         if (filename)
@@ -798,7 +801,7 @@ void test__log_nopref(int verbose_flag, const char *fmt, ...)
 {
     va_list argp;
 
-    if (verbose_flag) {
+    if (verbose_flag > 1) {
         va_start(argp, fmt);
         vfprintf(stderr, fmt, argp);
         va_end(argp);
@@ -810,7 +813,7 @@ void test__log_skt(int verbose_flag, const char *filename, apr_socket_t *skt,
 {
     va_list argp;
 
-    if (verbose_flag) {
+    if (verbose_flag > 1) {
         apr_sockaddr_t *sa;
         log_time();
 
