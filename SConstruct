@@ -43,7 +43,8 @@ import build.scons_extras
 import build.exports
 
 build.scons_extras.AddEnvironmentMethods()
-custom_tests = {'CheckGnuCC': build.scons_extras.CheckGnuCC}
+custom_tests = {'CheckGnuCC': build.scons_extras.CheckGnuCC,
+                'CheckAPRHasThreads': build.scons_extras.CheckAPRHasThreads}
 
 # SCons 4.7 introduced the function argument list parameter to CheckFunc.
 try:
@@ -650,6 +651,7 @@ for line in stream.readlines():
 ssl_includes = '\n'.join(ssl_include_list)
 
 conf = Configure(env, custom_tests=custom_tests)
+apr_has_threads = conf.CheckAPRHasThreads()
 if not conf.CheckFunc('BIO_set_init', ssl_includes, 'C', 'NULL, 0'):
   env.Append(CPPDEFINES=['SERF_NO_SSL_BIO_WRAPPERS'])
 if not conf.CheckFunc('X509_STORE_get0_param', ssl_includes, 'C', 'NULL'):
@@ -830,11 +832,18 @@ mockhttpinc = mockenv.StaticLibrary('mockhttpinc',
 
 # Check if long-running tests should be enabled
 if tenv.get('ENABLE_SLOW_TESTS', None):
-    tenv.Append(CPPDEFINES=['SERF_TEST_DEFLATE_4GBPLUS_BUCKETS'])
+  tenv.Append(CPPDEFINES=['SERF_TEST_DEFLATE_4GBPLUS_BUCKETS'])
 
-TEST_PROGRAMS = [ 'serf_get', 'serf_response', 'serf_request', 'serf_spider',
-                  'serf_httpd',
-                  'test_all', 'serf_bwtp' ]
+TEST_PROGRAMS = [
+    'serf_get',
+    'serf_response',
+    'serf_request',
+    'serf_httpd',
+    'test_all',
+    'serf_bwtp',
+    ]
+if apr_has_threads:
+  TEST_PROGRAMS.append("serf_spider")
 
 _exe = '.exe' if sys.platform == 'win32' else ''
 TEST_EXES = [os.path.join('test', '%s%s' % (prog, _exe)) for prog in TEST_PROGRAMS]

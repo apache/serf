@@ -17,6 +17,29 @@
 #   under the License.
 # ===================================================================
 
+include(CheckCSourceCompiles)
+
+# Check if APR has threads, serf_spider doesn't compile otherwise.
+function(serf_check_apr_has_threads)
+  set(CMAKE_REQUIRED_LIBRARIES APR::APR)
+  set(source
+      "#include <apr.h>"
+      "#if !APR_HAS_THREADS"
+      "#error \"no threads\""
+      "#endif"
+      "int main(void) { return 0\; }"
+      "")
+  list(JOIN source "\n" source)
+  check_c_source_compiles("${source}" "APR_HAS_THREADS")
+  if(APR_HAS_THREADS)
+    set(APR_HAS_THREADS TRUE PARENT_SCOPE)
+  else()
+    set(APR_HAS_THREADS FALSE PARENT_SCOPE)
+  endif()
+  unset(CMAKE_REQUIRED_LIBRARIES)
+endfunction(serf_check_apr_has_threads)
+serf_check_apr_has_threads()
+
 add_subdirectory(MockHTTPinC)
 
 set(TEST_ALL_SOURCES
@@ -46,10 +69,14 @@ set(SIMPLE_TEST_TARGETS
     "serf_get"
     "serf_response"
     "serf_request"
-    "serf_spider"
     "serf_httpd"
     "serf_bwtp"
 )
+if(APR_HAS_THREADS)
+  list(APPEND SIMPLE_TEST_TARGETS "serf_spider")
+else()
+  message(STATUS "Test program serf_spider will not be built (requires APR_HAS_THREADS)")
+endif()
 
 foreach(TEST_TARGET ${SIMPLE_TEST_TARGETS})
   add_executable(${TEST_TARGET} "${TEST_TARGET}.c")
