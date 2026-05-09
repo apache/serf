@@ -54,7 +54,7 @@ jobs:
           key: 'vcpkg_installed_${{ matrix.triplet }}'
           path: 'C:/vcpkg/installed/'
 
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v6
 
       - name: Configure CMake
         run: >

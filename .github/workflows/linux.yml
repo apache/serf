@@ -23,7 +23,7 @@ jobs:
           sudo apt-get update
           sudo apt-get -y install scons libapr1-dev libaprutil1-dev zlib1g-dev libssl-dev libbrotli-dev libkrb5-dev
 
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v6
 
       - name: Build
         run: scons BROTLI=/usr GSSAPI=/usr

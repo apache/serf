@@ -44,7 +44,7 @@ jobs:
                libbrotli-dev libkrb5-dev libbz2-dev libreadline-dev \
                libsqlite3-dev liblzma-dev libncurses5-dev libncursesw5-dev
 
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v6
 
       - name: Install pyenv
         run: |
