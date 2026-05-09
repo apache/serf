@@ -16,15 +16,25 @@ jobs:
       matrix:
         include:
           - name: Windows x64
-            os: windows-latest
+            os: windows-2022
             platform: x64
             triplet: x64-windows
             generator: "Visual Studio 17 2022"
           - name: Windows x86
-            os: windows-latest
+            os: windows-2022
             platform: Win32
             triplet: x86-windows
             generator: "Visual Studio 17 2022"
+          - name: Windows x64
+            os: windows-latest
+            platform: x64
+            triplet: x64-windows
+            generator: "Visual Studio 18 2026"
+          - name: Windows x86
+            os: windows-latest
+            platform: Win32
+            triplet: x86-windows
+            generator: "Visual Studio 18 2026"
 
     runs-on: ${{ matrix.os }}
 
