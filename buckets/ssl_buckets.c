@@ -56,6 +56,9 @@
 #define USE_OPENSSL_1_1_API
 #endif
 
+#ifdef SERF_NO_SSL_ASN1_STRING_GET0_DATA
+#define ASN1_STRING_get0_data(asn1string) (ASN1_STRING_data(asn1string))
+#endif
 
 /*
  * Here's an overview of the SSL bucket's relationship to OpenSSL and serf.
@@ -566,14 +569,18 @@ get_subject_alt_names(apr_array_header_t **san_arr, X509 *ssl_cert,
 
             switch (nm->type) {
                 case GEN_DNS:
-                    if (copy_action == ErrorOnNul &&
-                        strlen(nm->d.ia5->data) != nm->d.ia5->length)
+                {
+                    const char *const data =
+                        (const char*)ASN1_STRING_get0_data(nm->d.ia5);
+                    const int length = ASN1_STRING_length(nm->d.ia5);
+
+                    if (copy_action == ErrorOnNul && strlen(data) != length)
                         return SERF_ERROR_SSL_CERT_FAILED;
                     if (san_arr && *san_arr)
-                        p = pstrdup_escape_nul_bytes((const char *)nm->d.ia5->data,
-                                                     nm->d.ia5->length,
-                                                     pool);
+                        p = pstrdup_escape_nul_bytes(data, length, pool);
+
                     break;
+                }
                 default:
                     /* Don't know what to do - skip. */
                     break;

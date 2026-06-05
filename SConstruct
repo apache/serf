@@ -430,9 +430,9 @@ env.Default(lib_static, lib_shared, pkgconfig)
 
 if CALLOUT_OKAY:
   conf = Configure(env)
-
-  ### some configuration stuffs
-
+  if not conf.CheckDeclaration('ASN1_STRING_get0_data',
+                               '#include <openssl/asn1.h>', 'C'):
+    env.Append(CPPDEFINES=['SERF_NO_SSL_ASN1_STRING_GET0_DATA'])
   env = conf.Finish()
 
 
