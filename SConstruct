@@ -651,6 +651,9 @@ if not conf.CheckFunc('X509_STORE_CTX_get0_chain', ssl_includes, 'C', 'NULL'):
   env.Append(CPPDEFINES=['SERF_NO_SSL_X509_GET0_CHAIN'])
 if not conf.CheckFunc('ASN1_STRING_get0_data', ssl_includes, 'C', 'NULL'):
   env.Append(CPPDEFINES=['SERF_NO_SSL_ASN1_STRING_GET0_DATA'])
+if conf.CheckFunc('X509_check_certificate_times', ssl_includes, 'C',
+                  'NULL, NULL, NULL'):
+  env.Append(CPPDEFINES=['SERF_HAVE_SSL_X509_CHECK_CERTIFICATE_TIMES'])
 if conf.CheckFunc('CRYPTO_set_locking_callback', ssl_includes, 'C', 'NULL'):
   env.Append(CPPDEFINES=['SERF_HAVE_SSL_LOCKING_CALLBACKS'])
 if conf.CheckFunc('OPENSSL_malloc_init', ssl_includes):

@@ -78,6 +78,18 @@ DEFINE_STACK_OF(EVP_PKEY)
 #define ASN1_STRING_get0_data(asn1string) (ASN1_STRING_data(asn1string))
 #endif
 
+/* OpenSSL 4.0 adds 'const' qualifiers to pointer arguments and return values */
+#ifndef OPENSSL_VERSION_PREREQ
+#define OPENSSL_VERSION_PREREQ(m, n) 0
+#endif
+
+#if OPENSSL_VERSION_PREREQ(4, 0)
+typedef const X509_NAME *const_X509_NAME_p;
+#else
+typedef X509_NAME *const_X509_NAME_p;
+#endif
+
+
 /*
  * Here's an overview of the SSL bucket's relationship to OpenSSL and serf.
  *
@@ -827,14 +839,18 @@ get_subject_alt_names(apr_array_header_t **san_arr, X509 *ssl_cert,
 
             switch (nm->type) {
                 case GEN_DNS:
-                    if (copy_action == ErrorOnNul &&
-                        strlen((const char *)nm->d.ia5->data) != nm->d.ia5->length)
+                {
+                    const char *const data =
+                        (const char*)ASN1_STRING_get0_data(nm->d.ia5);
+                    const int length = ASN1_STRING_length(nm->d.ia5);
+
+                    if (copy_action == ErrorOnNul && strlen(data) != length)
                         return SERF_ERROR_SSL_CERT_FAILED;
                     if (san_arr && *san_arr)
-                        p = pstrdup_escape_nul_bytes((const char *)nm->d.ia5->data,
-                                                     nm->d.ia5->length,
-                                                     pool);
+                        p = pstrdup_escape_nul_bytes(data, length, pool);
+
                     break;
+                }
                 default:
                     /* Don't know what to do - skip. */
                     break;
@@ -885,11 +901,22 @@ get_ocsp_responders(apr_array_header_t **ocsp_arr, X509 *ssl_cert,
     return APR_SUCCESS;
 }
 
+/* Get the first instance of NID from NAME. */
+static const ASN1_STRING *
+get_first_name_entry_data(const_X509_NAME_p name, int nid)
+{
+    const int loc = X509_NAME_get_index_by_NID(name, nid, -1);
+    if (loc >= 0) {
+        const X509_NAME_ENTRY *const entry = X509_NAME_get_entry(name, loc);
+        if (entry) {
+            return X509_NAME_ENTRY_get_data(entry);
+        }
+    }
+    return NULL;
+}
 
 static apr_status_t validate_cert_hostname(X509 *server_cert, apr_pool_t *pool)
 {
-    char buf[1024];
-    int length;
     apr_status_t ret;
 
     ret = get_subject_alt_names(NULL, server_cert, ErrorOnNul, NULL);
@@ -897,14 +924,18 @@ static apr_status_t validate_cert_hostname(X509 *server_cert, apr_pool_t *pool)
       return ret;
     } else {
         /* Fail if the subject's CN field contains \0 characters. */
-        X509_NAME *subject = X509_get_subject_name(server_cert);
+        const ASN1_STRING *asn1;
+        const_X509_NAME_p subject = X509_get_subject_name(server_cert);
         if (!subject)
             return SERF_ERROR_SSL_CERT_FAILED;
 
-        length = X509_NAME_get_text_by_NID(subject, NID_commonName, buf, 1024);
-        if (length != -1)
-            if (strlen(buf) != length)
+        asn1 = get_first_name_entry_data(subject, NID_commonName);
+        if (asn1) {
+            const char *const data = (const char*)ASN1_STRING_get0_data(asn1);
+            const int length = ASN1_STRING_length(asn1);
+            if (data && length >= 0 && length != strlen(data))
                 return SERF_ERROR_SSL_CERT_FAILED;
+        }
     }
 
     return APR_SUCCESS;
@@ -976,12 +1007,28 @@ validate_server_certificate(int cert_valid, X509_STORE_CTX *store_ctx)
         failures |= SERF_SSL_CERT_INVALID_HOST;
 
     /* Check certificate expiry dates. */
+#ifdef SERF_HAVE_SSL_X509_CHECK_CERTIFICATE_TIMES /* OpenSSL >= 4.0 */
+    {
+        int error;
+        if (!X509_check_certificate_times(NULL, server_cert, &error)) {
+            if (error == X509_V_ERR_CERT_NOT_YET_VALID)
+                failures |= SERF_SSL_CERT_NOTYETVALID;
+            else if (error == X509_V_ERR_CERT_HAS_EXPIRED)
+                failures |= SERF_SSL_CERT_EXPIRED;
+            else {
+                /* There was an error in the certificate time fields. */
+                failures |= SERF_SSL_CERT_NOTYETVALID | SERF_SSL_CERT_EXPIRED;
+            }
+        }
+    }
+#else
     if (X509_cmp_current_time(X509_get0_notBefore(server_cert)) >= 0) {
         failures |= SERF_SSL_CERT_NOTYETVALID;
     }
     else if (X509_cmp_current_time(X509_get0_notAfter(server_cert)) <= 0) {
         failures |= SERF_SSL_CERT_EXPIRED;
     }
+#endif
 
     if (ctx->server_cert_callback &&
         (depth == 0 || failures)) {
@@ -2646,58 +2693,41 @@ pstrdup_escape_nul_bytes(const char *buf, int len, apr_pool_t *pool)
     return ret;
 }
 
-/* Creates a hash_table with keys (E, CN, OU, O, L, ST and C). Any NUL bytes in
-   these fields in the certificate will be escaped as \00. */
-static apr_hash_t *
-convert_X509_NAME_to_table(X509_NAME *org, apr_pool_t *pool)
+/* Helper for convert_X509_NAME_to_table() */
+static void
+set_X500_name_entry(const_X509_NAME_p org, int nid,
+                    const char *key, apr_hash_t *tgt,
+                    apr_pool_t *pool)
 {
-    char buf[1024];
-    int ret;
+    const ASN1_STRING *const asn1 = get_first_name_entry_data(org, nid);
+    if (asn1) {
+        const char *const data = (const char*)ASN1_STRING_get0_data(asn1);
+        const int length = ASN1_STRING_length(asn1);
+        apr_hash_set(tgt, key, APR_HASH_KEY_STRING,
+                     pstrdup_escape_nul_bytes(data, length, pool));
+    }
+}
 
+/* Creates a hash_table with keys (E, CN, OU, O, L, ST and C). Any NUL bytes in
+   these fields in the certificate will be escaped as \00.
+
+   FIXME: This function will only store the FIRST instance of a NID into the
+          hash table. Other instances will be ignored. In other words,
+          serf_ssl_cert_issuer() and serf_ssl_cert_subject() return incomplete
+          data. We need a better public API for this.
+*/
+static apr_hash_t *
+convert_X509_NAME_to_table(const_X509_NAME_p org, apr_pool_t *pool)
+{
     apr_hash_t *tgt = apr_hash_make(pool);
 
-    ret = X509_NAME_get_text_by_NID(org,
-                                    NID_commonName,
-                                    buf, 1024);
-    if (ret != -1)
-        apr_hash_set(tgt, "CN", APR_HASH_KEY_STRING,
-                     pstrdup_escape_nul_bytes(buf, ret, pool));
-    ret = X509_NAME_get_text_by_NID(org,
-                                    NID_pkcs9_emailAddress,
-                                    buf, 1024);
-    if (ret != -1)
-        apr_hash_set(tgt, "E", APR_HASH_KEY_STRING,
-                     pstrdup_escape_nul_bytes(buf, ret, pool));
-    ret = X509_NAME_get_text_by_NID(org,
-                                    NID_organizationalUnitName,
-                                    buf, 1024);
-    if (ret != -1)
-        apr_hash_set(tgt, "OU", APR_HASH_KEY_STRING,
-                     pstrdup_escape_nul_bytes(buf, ret, pool));
-    ret = X509_NAME_get_text_by_NID(org,
-                                    NID_organizationName,
-                                    buf, 1024);
-    if (ret != -1)
-        apr_hash_set(tgt, "O", APR_HASH_KEY_STRING,
-                     pstrdup_escape_nul_bytes(buf, ret, pool));
-    ret = X509_NAME_get_text_by_NID(org,
-                                    NID_localityName,
-                                    buf, 1024);
-    if (ret != -1)
-        apr_hash_set(tgt, "L", APR_HASH_KEY_STRING,
-                     pstrdup_escape_nul_bytes(buf, ret, pool));
-    ret = X509_NAME_get_text_by_NID(org,
-                                    NID_stateOrProvinceName,
-                                    buf, 1024);
-    if (ret != -1)
-        apr_hash_set(tgt, "ST", APR_HASH_KEY_STRING,
-                     pstrdup_escape_nul_bytes(buf, ret, pool));
-    ret = X509_NAME_get_text_by_NID(org,
-                                    NID_countryName,
-                                    buf, 1024);
-    if (ret != -1)
-        apr_hash_set(tgt, "C", APR_HASH_KEY_STRING,
-                     pstrdup_escape_nul_bytes(buf, ret, pool));
+    set_X500_name_entry(org, NID_commonName, "CN", tgt, pool);
+    set_X500_name_entry(org, NID_pkcs9_emailAddress, "E", tgt, pool);
+    set_X500_name_entry(org, NID_organizationalUnitName, "OU", tgt, pool);
+    set_X500_name_entry(org, NID_organizationName, "O", tgt, pool);
+    set_X500_name_entry(org, NID_localityName, "L", tgt, pool);
+    set_X500_name_entry(org, NID_stateOrProvinceName, "ST", tgt, pool);
+    set_X500_name_entry(org, NID_countryName, "C", tgt, pool);
 
     return tgt;
 }
@@ -2713,7 +2743,7 @@ apr_hash_t *serf_ssl_cert_issuer(
     const serf_ssl_certificate_t *cert,
     apr_pool_t *pool)
 {
-    X509_NAME *issuer = X509_get_issuer_name(cert->ssl_cert);
+    const_X509_NAME_p issuer = X509_get_issuer_name(cert->ssl_cert);
 
     if (!issuer)
         return NULL;
@@ -2726,7 +2756,7 @@ apr_hash_t *serf_ssl_cert_subject(
     const serf_ssl_certificate_t *cert,
     apr_pool_t *pool)
 {
-    X509_NAME *subject = X509_get_subject_name(cert->ssl_cert);
+    const_X509_NAME_p subject = X509_get_subject_name(cert->ssl_cert);
 
     if (!subject)
         return NULL;

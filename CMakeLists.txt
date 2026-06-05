@@ -375,6 +375,10 @@ CheckNotFunction("X509_STORE_CTX_get0_chain" "NULL" "SERF_NO_SSL_X509_GET0_CHAIN
 CheckNotFunction("ASN1_STRING_get0_data" "NULL" "SERF_NO_SSL_ASN1_STRING_GET0_DATA"
                  "openssl/asn1.h" "${OPENSSL_INCLUDE_DIR}"
                  ${OPENSSL_LIBRARIES} ${SERF_STANDARD_LIBRARIES})
+CheckFunction("X509_check_certificate_times" "NULL, NULL, NULL"
+              "SERF_HAVE_SSL_X509_CHECK_CERTIFICATE_TIMES"
+              "openssl/x509.h" "${OPENSSL_INCLUDE_DIR}"
+              ${OPENSSL_LIBRARIES} ${SERF_STANDARD_LIBRARIES})
 CheckFunction("OSSL_STORE_open_ex"
               "NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL"
               "SERF_HAVE_OSSL_STORE_OPEN_EX" "openssl/store.h"
