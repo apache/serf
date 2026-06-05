@@ -1803,12 +1803,13 @@ typedef struct serf_linebuf_t {
     /* How much of the buffer have we used? */
     apr_size_t used;
 
-    /* The line is read into this buffer, minus CR/LF.
+    /**
+     * The line is read into this buffer, minus CR/LF.
      *
-     * NOTE: Before serf 1.4 buffer IS NOT NUL terminated
-     * and @a used should be used to find line length.
+     * NOTE: Before serf 1.5 the buffer IS NOT NUL terminated
+     *       and @a used holds the line length.
      *
-     * Since serf 1.4 buffer is always NUL terminated.
+     * Since serf 1.5 the buffer is always NUL terminated.
      **/
     char line[SERF_LINEBUF_LIMIT];
 
