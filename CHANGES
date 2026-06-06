@@ -1,8 +1,14 @@
-Apache Serf 1.4.0 [2018-10-xx, from /tags/1.4.0, r18xxxx]
+Apache Serf 1.5.0 [2026-xx-xx, from /tags/1.5.0, r19xxxxx]
 
   Features
   --------
+  Support for OpenSSL 4 (r1935023)
+  Support native certificate stores/OpenSSL providers (issue #27, r1926950)
+  Asynchronous DNS resolution (with APR or Unbound) (r1927249 et al.)
+  Application-defined error callbacks (r1931047, r1931089 et al.)
+  User-defined authentication schemes (r1927627)
   Support for OCSP request generation and validation (r1830823)
+  Support for BROTLI decompression (r1786654)
   Support for FCGI protocol (r1714736 et al.)
   Support for HTTP/2 protocol (r1709274 et al.)
   Add CRL support for OpenSSL (r1699867)
@@ -21,6 +27,20 @@ Apache Serf 1.4.0 [2018-10-xx, from /tags/1.4.0, r18xxxx]
    - SERF_ERROR_TRUNCATED_STREAM (r1714246)
    - SERF_ERROR_AUTHN_CREDENTIALS_REJECTED (r1699656)
    - SERF_ERROR_SSL_NEGOTIATE_IN_PROGRESS (r1699951)
+   - SERF_ERROR_HTTP2_NO_ERROR,
+     SERF_ERROR_HTTP2_PROTOCOL_ERROR,
+     SERF_ERROR_HTTP2_INTERNAL_ERROR,
+     SERF_ERROR_HTTP2_FLOW_CONTROL_ERROR,
+     SERF_ERROR_HTTP2_SETTINGS_TIMEOUT,
+     SERF_ERROR_HTTP2_STREAM_CLOSED,
+     SERF_ERROR_HTTP2_FRAME_SIZE_ERROR,
+     SERF_ERROR_HTTP2_REFUSED_STREAM,
+     SERF_ERROR_HTTP2_CANCEL,
+     SERF_ERROR_HTTP2_COMPRESSION_ERROR,
+     SERF_ERROR_HTTP2_CONNECT_ERROR,
+     SERF_ERROR_HTTP2_ENHANCE_YOUR_CALM,
+     SERF_ERROR_HTTP2_INADEQUATE_SECURITY,
+     SERF_ERROR_HTTP2_HTTP_1_1_REQUIRED (1709183)
    - SERF_ERROR_SSL_OCSP_RESPONSE_CERT_REVOKED,
      SERF_ERROR_SSL_OCSP_RESPONSE_CERT_UNKNOWN,
      SERF_ERROR_SSL_OCSP_RESPONSE_INVALID (r1830823)
@@ -31,6 +51,11 @@ Apache Serf 1.4.0 [2018-10-xx, from /tags/1.4.0, r18xxxx]
   Fix issue #152: handle compressed responses > 4GB
   Fix issue #147: remove unneeded ISC_REQ_CONFIDENTIALITY flag in SSPI code
   Fix issue #156+#164: C++ comment style breaks C89 build
+  Fix issue #181: Source tarball files are group- and world-writable (r1926676)
+  Fix issue #149+#183: LD_LIBRARY_PATH not honoured for tests (r1926938)
+  Fix issue #196: warning [-Wtautological-overlap-compare] (r1926968)
+  Fix issue #206: SCons sometimes overrides compiler flags (r1926930)
+  Fix issue #207: Digest authn provider should verify parameters (r1927627)
   Fix incorrect use of bio file handlers (r1699852)
   Initialize OpenSSL when using serf_ssl_load_cert_file outside a serf context
     (r1699848)
@@ -47,9 +72,11 @@ Apache Serf 1.4.0 [2018-10-xx, from /tags/1.4.0, r18xxxx]
 
   Build improvements
   ------------------
+  Improve compatibility with SCons versions older than 4 (1926222)
   Add experimental CMake build (r1834217 et al.)
   Make unix build work with APR-2 (r1699809)
   Add a version resource to libserf-N.dll on Windows (r1699689)
+  Generate pkg-config files
 
   Test suite
   ----------
@@ -57,6 +84,16 @@ Apache Serf 1.4.0 [2018-10-xx, from /tags/1.4.0, r18xxxx]
   serf_get changes: add -d/--debug flag, make serf_get accept a client
     certificate and associated password (r1699775)
   Fix issue #157: Segmentation fault in test_ssl_init
+
+
+Apache Serf 1.4.0
+  Not released.
+
+
+Apache Serf 1.3.11 [2026-xx-xx, from tags/1.3.11, r19xxxxx]
+  Support for OpenSSL 4 (pending, ^/serf/branche/1.3.x-1.3.x-r1935023)
+  Support for Visual Studio 2026 and later (pending, backport r1933327)
+  Fix issue #181: Source tarball files are group- and world-writable (r1926677)
 
 
 Apache Serf 1.3.10 [2023-05-31, from tags/1.3.10, r1910048]
