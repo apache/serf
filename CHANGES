@@ -2,7 +2,9 @@ Apache Serf 1.5.0 [2026-xx-xx, from /tags/1.5.0, r19xxxxx]
 
   Features
   --------
-  Support for OpenSSL 4 (r1935023)
+  Requre APR and APR-Util 1.3 or newer (r1931210)
+  Support for OpenSSL 4 (r1935023) and LibreSSL (r1775239 et al.)
+  Buckets version 2 (r1699545, r1699734, r1708112 et al.)
   Support native certificate stores/OpenSSL providers (issue #27, r1926950)
   Asynchronous DNS resolution (with APR or Unbound) (r1927249 et al.)
   Application-defined error callbacks (r1931047, r1931089 et al.)
@@ -12,7 +14,7 @@ Apache Serf 1.5.0 [2026-xx-xx, from /tags/1.5.0, r19xxxxx]
   Support for FCGI protocol (r1714736 et al.)
   Support for HTTP/2 protocol (r1709274 et al.)
   Add CRL support for OpenSSL (r1699867)
-  Add flag DISABLE_LOGGING to scons to disable logging at compile time (r1699761)
+  Add DISABLE_LOGGING build flag to disable logging at compile time (r1699761)
   Logging that can be configured at runtime (r1699757)
   Implement serf_mmap_peek (r1699685)
 
