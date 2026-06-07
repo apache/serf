@@ -21,6 +21,7 @@
 #include <apr_strings.h>
 
 #include "serf.h"
+
 #include "test_serf.h"
 
 static apr_status_t

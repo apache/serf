@@ -18,14 +18,152 @@
  * ====================================================================
  */
 
+#include <apr_atomic.h>
 #include <apr_pools.h>
 #include <apr_poll.h>
 #include <apr_version.h>
 
 #include "serf.h"
-#include "serf_bucket_util.h"
-
 #include "serf_private.h"
+
+
+/* APR has wakeable pollsets, but we can't use them: the main reason is that
+   the context may not own the pollset, or indeed there may not even be a
+   pollset but a different event source.
+
+   Instead, we create a UDP socket bound to the loopback address and add it
+   to the context. The socket pings itself to wake up. */
+
+#if APR_HAVE_IPV6
+/* Bind to the IPv6 loopback address, if supported. */
+#define WAKEUP_LOOPBACK "::1"
+#define WAKEUP_FAMILY   APR_INET6
+#else
+#define WAKEUP_LOOPBACK "127.0.0.1"
+#define WAKEUP_FAMILY   APR_INET
+#endif
+
+/* The socket that we'll use to wake the context's pollset. */
+struct serf__context_wakeup_t
+{
+    apr_sockaddr_t *addr;
+    apr_socket_t *skt;
+    apr_pollfd_t pfd;
+    serf_io_baton_t io_baton;
+    volatile apr_uint32_t pending;
+};
+
+static void init_wakeup(serf_context_t *ctx)
+{
+    struct serf__context_wakeup_t *wakeup;
+    apr_status_t status;
+
+    ctx->wakeup = NULL;
+    wakeup = apr_pcalloc(ctx->pool, sizeof(*wakeup));
+
+    /* Get the loopback address. This shouldn't block. */
+    status = apr_sockaddr_info_get(&wakeup->addr,
+                                   WAKEUP_LOOPBACK, WAKEUP_FAMILY,
+                                   0, 0, ctx->pool);
+    if (status) {
+        serf__log(LOGLVL_ERROR, LOGCOMP_CONN, __FILE__, ctx->config,
+                  "context 0x%p init wakeup: <%d> resolve %s\n",
+                  ctx, status, WAKEUP_LOOPBACK);
+    }
+
+    /* Create and bind the socket to a random port. */
+    if (!status) {
+        status = apr_socket_create(&wakeup->skt, WAKEUP_FAMILY,
+                                   SOCK_DGRAM, APR_PROTO_UDP, ctx->pool);
+        if (!status)
+            status = apr_socket_bind(wakeup->skt, wakeup->addr);
+        if (!status)
+            status = apr_socket_addr_get(&wakeup->addr, APR_LOCAL, wakeup->skt);
+
+        if (status) {
+            serf__log(LOGLVL_ERROR, LOGCOMP_CONN, __FILE__, ctx->config,
+                      "context 0x%p init wakeup: <%d> socket\n",
+                      ctx, status);
+        }
+
+        if (!status) {
+            wakeup->pfd.desc_type = APR_POLL_SOCKET;
+            wakeup->pfd.desc.s = wakeup->skt;
+            wakeup->pfd.reqevents = APR_POLLIN;
+            wakeup->io_baton.type = SERF_IO_WAKEUP_PIPE;
+            wakeup->io_baton.ctx = ctx;
+            wakeup->io_baton.reqevents = wakeup->pfd.reqevents;
+            status = ctx->pollset_add(ctx->pollset_baton, &wakeup->pfd,
+                                      &wakeup->io_baton);
+        }
+
+        if (status) {
+            serf__log(LOGLVL_ERROR, LOGCOMP_CONN, __FILE__, ctx->config,
+                      "context 0x%p init wakeup: <%d> pollset add\n",
+                      ctx, status);
+        }
+    }
+
+    if (!status) {
+        wakeup->pending = 0;
+        ctx->wakeup = wakeup;
+        serf__log(LOGLVL_DEBUG, LOGCOMP_CONN, __FILE__, ctx->config,
+                  "context 0x%p init wakeup done\n", ctx);
+    }
+}
+
+static apr_status_t process_wakeup(serf_context_t *ctx)
+{
+    struct serf__context_wakeup_t *const wakeup = ctx->wakeup;
+    apr_status_t status;
+    apr_sockaddr_t from;
+    apr_size_t length = 3;
+    char buffer[3];
+
+    if (!wakeup)
+        return APR_SUCCESS;
+
+    status = apr_socket_recvfrom(&from, wakeup->skt, 0, buffer, &length);
+    if (status) {
+        serf__log(LOGLVL_ERROR, LOGCOMP_CONN, __FILE__, ctx->config,
+                  "context 0x%p received wakeup: <%d> [%" APR_SIZE_T_FMT "]\n",
+                  ctx, status, length);
+        return status;
+    }
+    /* TODO: Should we check if the socket actually did ping itself? */
+
+    serf__log(LOGLVL_DEBUG, LOGCOMP_CONN, __FILE__, ctx->config,
+              "context 0x%p received wakeup: [%" APR_SIZE_T_FMT "]\n",
+              ctx, length);
+    apr_atomic_set32(&wakeup->pending, 0);
+    return APR_SUCCESS;
+}
+
+void serf__context_wakeup(serf_context_t *ctx)
+{
+    struct serf__context_wakeup_t *const wakeup = ctx->wakeup;
+
+    if (!wakeup)
+        return;
+
+    /* Don't signal a new wakeup before the previous one has been processed. */
+    if (apr_atomic_cas32(&wakeup->pending, 1, 0) == 0) {
+        apr_size_t length = 1;
+        apr_status_t status = apr_socket_sendto(wakeup->skt, wakeup->addr, 0,
+                                                "\b", &length);
+        if (status) {
+            serf__log(LOGLVL_ERROR, LOGCOMP_CONN, __FILE__, ctx->config,
+                      "context 0x%p wakeup: <%d> [%" APR_SIZE_T_FMT "]\n",
+                      ctx, status, length);
+        }
+        else {
+            serf__log(LOGLVL_DEBUG, LOGCOMP_CONN, __FILE__, ctx->config,
+                      "context 0x%p wakeup: [%" APR_SIZE_T_FMT "]\n",
+                      ctx, length);
+        }
+    }
+}
+
 
 /**
  * Callback function (implements serf_progress_t). Takes a number of bytes
@@ -114,7 +252,6 @@ static apr_status_t pollset_rm(void *user_baton,
     return apr_pollset_remove(s->pollset, pfd);
 }
 
-
 void serf_config_proxy(serf_context_t *ctx,
                        apr_sockaddr_t *address)
 {
@@ -194,6 +331,13 @@ serf_context_t *serf_context_create_ex(
     ctx->authn_types = SERF_AUTHN_ALL;
     ctx->server_authn_info = apr_hash_make(pool);
 
+    /* Assume returned status is APR_SUCCESS */
+    serf__config_store_init(ctx);
+
+    serf__config_store_create_ctx_config(ctx, &ctx->config);
+
+    serf__log_init(ctx);
+
     /* Initialize async resolver result queue. */
     ctx->resolve_head = NULL;
     ctx->resolve_init_status = APR_SUCCESS;
@@ -201,13 +345,12 @@ serf_context_t *serf_context_create_ex(
     if (ctx->resolve_init_status != APR_SUCCESS) {
         ctx->resolve_context = NULL;
     }
-
-    /* Assume returned status is APR_SUCCESS */
-    serf__config_store_init(ctx);
-
-    serf__config_store_create_ctx_config(ctx, &ctx->config);
-
-    serf__log_init(ctx);
+    else {
+        /* Initialize the context's wakeup event. */
+        /* FIXME: For now, we only use this from the asynchronouse resolver.
+                  We could expose awakable contexts in the public API. */
+        init_wakeup(ctx);
+    }
 
     return ctx;
 }
@@ -217,6 +360,16 @@ serf_context_t *serf_context_create(apr_pool_t *pool)
 {
     return serf_context_create_ex(NULL, NULL, NULL, pool);
 }
+
+
+void serf_context_error_callback_set(serf_context_t *ctx,
+                                     serf_error_cb_t callback,
+                                     void *baton)
+{
+    ctx->error_callback_baton = baton;
+    ctx->error_callback = callback;
+}
+
 
 apr_status_t serf_context_prerun(serf_context_t *ctx)
 {
@@ -271,6 +424,9 @@ apr_status_t serf_event_trigger(
         if (status) {
             return status;
         }
+    }
+    else if (io->type == SERF_IO_WAKEUP_PIPE) {
+        status = process_wakeup(io->ctx);
     }
     return status;
 }

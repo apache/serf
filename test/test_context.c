@@ -1039,6 +1039,10 @@ static void test_async_connection(CuTest *tc)
     EndGiven
 
     status = use_new_async_connection(tb, tb->pool);
+    if (status == APR_ENOTIMPL) {
+        /* We don't have an asynchronous resolver. */
+        return;
+    }
     CuAssertIntEquals(tc, APR_SUCCESS, status);
 
     while (!tb->connection && tb->user_status == APR_SUCCESS) {
@@ -1135,6 +1139,10 @@ static void async_resolve(CuTest *tc, const char *url)
     status = serf_address_resolve_async(ctx, host_info,
                                         async_resolve_callback,
                                         &resolved, ctx_pool);
+    if (status == APR_ENOTIMPL) {
+        /* We don't have an asynchronous resolver. */
+        return;
+    }
     CuAssertIntEquals(tc, APR_SUCCESS, status);
 
     while (!resolved && status == APR_SUCCESS) {
@@ -1192,8 +1200,12 @@ static void test_async_resolve_cancel(CuTest *tc)
     status = serf_address_resolve_async(ctx, url,
                                         async_resolve_callback,
                                         &resolved, ctx_pool);
+    if (status == APR_ENOTIMPL) {
+        /* We don't have an asynchronous resolver. */
+        return;
+    }
 
-    /* This would create and actual race in the test case: */
+    /* This would create a race in the test case: */
     /* serf_context_prerun(ctx); */
 
     apr_pool_destroy(ctx_pool);

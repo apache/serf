@@ -23,6 +23,7 @@
 
 #include <apr.h>
 #include <apr_pools.h>
+
 #include "serf.h"
 #include "serf_private.h"
 

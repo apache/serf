@@ -18,6 +18,8 @@
  * ====================================================================
  */
 
+#include <stdlib.h>
+
 #include <apr_pools.h>
 #include <apr_strings.h>
 #include <apr_lib.h>
@@ -28,7 +30,6 @@
 #include "serf_bucket_types.h"
 #include "serf_private.h"
 
-#include <stdlib.h>
 
 /* This is an implementation of Bidirectional Web Transfer Protocol (BWTP)
  * See:
@@ -387,7 +388,7 @@ static apr_status_t parse_status_line(incoming_context_t *ctx,
 
     /* The channel number is positive, so use the unsigned conversion. */
     SERF__POSITIVE_TO_INT(ctx->channel, apr_int64_t,
-                          apr_strtoi64(reason, &reason, 16));
+                          apr_strtoi64(ctx->linebuf.line + 3, &reason, 16));
     /* Skip leading spaces for the reason string. */
     if (apr_isspace(*reason)) {
         reason++;

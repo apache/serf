@@ -22,6 +22,7 @@
 #define SERF_PROTOCOL_HTTP2_BUCKETS_H
 
 #include "serf_bucket_types.h"
+#include "serf_private.h"
 
 /**
  * @file serf_bucket_types.h
@@ -212,4 +213,3 @@ serf__bucket_http2_frame_create(serf_bucket_t *stream,
 #endif
 
 #endif /* !SERF_PROTOCOL_HTTP2_BUCKETS_H */
-

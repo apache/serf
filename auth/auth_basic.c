@@ -20,13 +20,13 @@
 
 /*** Basic authentication ***/
 
-#include <serf.h>
-#include <serf_private.h>
-#include <auth/auth.h>
-
 #include <apr.h>
 #include <apr_base64.h>
 #include <apr_strings.h>
+
+#include "serf.h"
+#include "serf_private.h"
+#include "auth.h"
 
 /* Stores the context information related to Basic authentication.
    This information is stored in the per server cache in the serf context. */

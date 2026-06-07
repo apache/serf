@@ -21,7 +21,7 @@
 #include "serf.h"
 #include "serf_bucket_util.h"
 
-#include "test/test_serf.h"
+#include "test_serf.h"
 
 typedef struct mock_sock_context_t {
     apr_status_t eof_status;

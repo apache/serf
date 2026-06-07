@@ -27,8 +27,8 @@
 #include "serf_bucket_util.h"
 #include "serf_private.h"
 
-#include "protocols/http2_buckets.h"
-#include "protocols/http2_protocol.h"
+#include "http2_buckets.h"
+#include "http2_protocol.h"
 
 struct serf_http2_stream_data_t
 {

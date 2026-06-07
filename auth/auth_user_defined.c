@@ -18,10 +18,10 @@
  * ====================================================================
  */
 
-#include <serf.h>
-#include <serf_private.h>
+#include <apr_errno.h>
 
-#include "apr_errno.h"
+#include "serf.h"
+#include "serf_private.h"
 #include "auth.h"
 
 

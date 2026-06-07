@@ -621,9 +621,7 @@ static apr_status_t cleanup_user_scheme(void* data)
     const serf__authn_scheme_t *slot = NULL;
     int index;
 
-    apr_status_t lock_status = init_authn_schemes_guard(NULL);
-    if (!lock_status)
-        lock_status = lock_authn_schemes(NULL);
+    apr_status_t lock_status = lock_authn_schemes(NULL);
     if (lock_status)
         return lock_status;
 

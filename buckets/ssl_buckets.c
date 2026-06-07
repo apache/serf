@@ -32,10 +32,6 @@
 #include <apr_version.h>
 #include <apr_atomic.h>
 
-#include "serf.h"
-#include "serf_private.h"
-#include "serf_bucket_util.h"
-
 #include <openssl/bio.h>
 #include <openssl/ssl.h>
 #include <openssl/err.h>
@@ -53,6 +49,10 @@
 DEFINE_STACK_OF(EVP_PKEY)
 #endif
 #endif
+
+#include "serf.h"
+#include "serf_private.h"
+#include "serf_bucket_util.h"
 
 #ifndef APR_ARRAY_PUSH
 #define APR_ARRAY_PUSH(ary,type) (*((type *)apr_array_push(ary)))
@@ -77,6 +77,18 @@ DEFINE_STACK_OF(EVP_PKEY)
 #ifdef SERF_NO_SSL_ASN1_STRING_GET0_DATA
 #define ASN1_STRING_get0_data(asn1string) (ASN1_STRING_data(asn1string))
 #endif
+
+/* OpenSSL 4.0 adds 'const' qualifiers to pointer arguments and return values */
+#ifndef OPENSSL_VERSION_PREREQ
+#define OPENSSL_VERSION_PREREQ(m, n) 0
+#endif
+
+#if OPENSSL_VERSION_PREREQ(4, 0)
+typedef const X509_NAME *const_X509_NAME_p;
+#else
+typedef X509_NAME *const_X509_NAME_p;
+#endif
+
 
 /*
  * Here's an overview of the SSL bucket's relationship to OpenSSL and serf.
@@ -126,7 +138,9 @@ DEFINE_STACK_OF(EVP_PKEY)
  *
  */
 
+#if defined(SERF_HAVE_OSSL_STORE_OPEN_EX)
 static int ssl_x509_ex_data_idx = -1;
+#endif
 
 typedef struct bucket_list {
     serf_bucket_t *bucket;
@@ -206,10 +220,6 @@ struct serf_ssl_context_t {
     X509 *cached_cert;
     EVP_PKEY *cached_cert_pw;
 
-    /* Error callback */
-    serf_ssl_error_cb_t error_callback;
-    void *error_baton;
-
     apr_status_t pending_err;
 
     /* Status of a fatal error, returned on subsequent encrypt or decrypt
@@ -227,7 +237,56 @@ struct serf_ssl_context_t {
     void *protocol_userdata;
 
     serf_config_t *config;
+
+    /* The error callback context. */
+    serf__ssl_error_ctx_t err_ctx;
 };
+
+/* The fallback SSL error context which logs to the global error callback. */
+static const serf__ssl_error_ctx_t global_error_ctx = {
+    serf__global_ssl_error,     /* dispatcher */
+    NULL                        /* baton */
+};
+
+void serf_ssl_use_context_error_callback(serf_ssl_context_t *ssl_ctx,
+                                         serf_context_t *ctx)
+{
+    ssl_ctx->err_ctx.dispatch = serf__context_ssl_error;
+    ssl_ctx->err_ctx.baton = ctx;
+}
+
+void serf_ssl_use_connection_error_callback(serf_ssl_context_t *ssl_ctx,
+                                            serf_connection_t *conn)
+{
+    ssl_ctx->err_ctx.dispatch = serf__connection_ssl_error;
+    ssl_ctx->err_ctx.baton = conn;
+}
+
+void serf_ssl_use_incoming_error_callback(serf_ssl_context_t *ssl_ctx,
+                                          serf_incoming_t *client)
+{
+    ssl_ctx->err_ctx.dispatch = serf__incoming_ssl_error;
+    ssl_ctx->err_ctx.baton = client;
+}
+
+static apr_status_t dispatch_ssl_error(const serf__ssl_error_ctx_t *err_ctx,
+                                       apr_status_t status,
+                                       const char *message)
+{
+    return err_ctx->dispatch(err_ctx->baton, status, message);
+}
+
+static void log_ssl_error(const serf__ssl_error_ctx_t *err_ctx,
+                          apr_status_t status)
+{
+    unsigned long err;
+
+    while ((err = ERR_get_error())) {
+        char ebuf[256];
+        ERR_error_string_n(err, ebuf, sizeof(ebuf));
+        dispatch_ssl_error(err_ctx, status, ebuf);
+    }
+}
 
 typedef struct ssl_context_t {
     /* The bucket-independent ssl context that this bucket is associated with */
@@ -352,21 +411,6 @@ detect_renegotiate(const SSL *s, int where, int ret)
 
         ssl_ctx->renegotiation = 1;
         ssl_ctx->fatal_err = SERF_ERROR_SSL_NEGOTIATE_IN_PROGRESS;
-    }
-}
-
-static void log_ssl_error(serf_ssl_context_t *ctx)
-{
-    unsigned long err;
-
-    while ((err = ERR_get_error())) {
-
-        if (err && ctx->error_callback) {
-            char ebuf[256];
-            ERR_error_string_n(err, ebuf, sizeof(ebuf));
-            ctx->error_callback(ctx->error_baton, ctx->fatal_err, ebuf);
-        }
-
     }
 }
 
@@ -795,14 +839,18 @@ get_subject_alt_names(apr_array_header_t **san_arr, X509 *ssl_cert,
 
             switch (nm->type) {
                 case GEN_DNS:
-                    if (copy_action == ErrorOnNul &&
-                        strlen((const char *)nm->d.ia5->data) != nm->d.ia5->length)
+                {
+                    const char *const data =
+                        (const char*)ASN1_STRING_get0_data(nm->d.ia5);
+                    const int length = ASN1_STRING_length(nm->d.ia5);
+
+                    if (copy_action == ErrorOnNul && strlen(data) != length)
                         return SERF_ERROR_SSL_CERT_FAILED;
                     if (san_arr && *san_arr)
-                        p = pstrdup_escape_nul_bytes((const char *)nm->d.ia5->data,
-                                                     nm->d.ia5->length,
-                                                     pool);
+                        p = pstrdup_escape_nul_bytes(data, length, pool);
+
                     break;
+                }
                 default:
                     /* Don't know what to do - skip. */
                     break;
@@ -853,11 +901,22 @@ get_ocsp_responders(apr_array_header_t **ocsp_arr, X509 *ssl_cert,
     return APR_SUCCESS;
 }
 
+/* Get the first instance of NID from NAME. */
+static const ASN1_STRING *
+get_first_name_entry_data(const_X509_NAME_p name, int nid)
+{
+    const int loc = X509_NAME_get_index_by_NID(name, nid, -1);
+    if (loc >= 0) {
+        const X509_NAME_ENTRY *const entry = X509_NAME_get_entry(name, loc);
+        if (entry) {
+            return X509_NAME_ENTRY_get_data(entry);
+        }
+    }
+    return NULL;
+}
 
 static apr_status_t validate_cert_hostname(X509 *server_cert, apr_pool_t *pool)
 {
-    char buf[1024];
-    int length;
     apr_status_t ret;
 
     ret = get_subject_alt_names(NULL, server_cert, ErrorOnNul, NULL);
@@ -865,14 +924,18 @@ static apr_status_t validate_cert_hostname(X509 *server_cert, apr_pool_t *pool)
       return ret;
     } else {
         /* Fail if the subject's CN field contains \0 characters. */
-        X509_NAME *subject = X509_get_subject_name(server_cert);
+        const ASN1_STRING *asn1;
+        const_X509_NAME_p subject = X509_get_subject_name(server_cert);
         if (!subject)
             return SERF_ERROR_SSL_CERT_FAILED;
 
-        length = X509_NAME_get_text_by_NID(subject, NID_commonName, buf, 1024);
-        if (length != -1)
-            if (strlen(buf) != length)
+        asn1 = get_first_name_entry_data(subject, NID_commonName);
+        if (asn1) {
+            const char *const data = (const char*)ASN1_STRING_get0_data(asn1);
+            const int length = ASN1_STRING_length(asn1);
+            if (data && length >= 0 && length != strlen(data))
                 return SERF_ERROR_SSL_CERT_FAILED;
+        }
     }
 
     return APR_SUCCESS;
@@ -944,12 +1007,28 @@ validate_server_certificate(int cert_valid, X509_STORE_CTX *store_ctx)
         failures |= SERF_SSL_CERT_INVALID_HOST;
 
     /* Check certificate expiry dates. */
+#ifdef SERF_HAVE_SSL_X509_CHECK_CERTIFICATE_TIMES /* OpenSSL >= 4.0 */
+    {
+        int error;
+        if (!X509_check_certificate_times(NULL, server_cert, &error)) {
+            if (error == X509_V_ERR_CERT_NOT_YET_VALID)
+                failures |= SERF_SSL_CERT_NOTYETVALID;
+            else if (error == X509_V_ERR_CERT_HAS_EXPIRED)
+                failures |= SERF_SSL_CERT_EXPIRED;
+            else {
+                /* There was an error in the certificate time fields. */
+                failures |= SERF_SSL_CERT_NOTYETVALID | SERF_SSL_CERT_EXPIRED;
+            }
+        }
+    }
+#else
     if (X509_cmp_current_time(X509_get0_notBefore(server_cert)) >= 0) {
         failures |= SERF_SSL_CERT_NOTYETVALID;
     }
     else if (X509_cmp_current_time(X509_get0_notAfter(server_cert)) <= 0) {
         failures |= SERF_SSL_CERT_EXPIRED;
     }
+#endif
 
     if (ctx->server_cert_callback &&
         (depth == 0 || failures)) {
@@ -1096,7 +1175,7 @@ static apr_status_t status_from_ssl_error(serf_ssl_context_t *ctx,
                     ctx->fatal_err = SERF_ERROR_SSL_COMM_FAILED;
 
                 status = ctx->fatal_err;
-                log_ssl_error(ctx);
+                log_ssl_error(&ctx->err_ctx, status);
             }
             break;
 
@@ -1110,7 +1189,7 @@ static apr_status_t status_from_ssl_error(serf_ssl_context_t *ctx,
 
         default:
             status = ctx->fatal_err = SERF_ERROR_SSL_COMM_FAILED;
-            log_ssl_error(ctx);
+            log_ssl_error(&ctx->err_ctx, status);
             break;
     }
 
@@ -1217,7 +1296,7 @@ static apr_status_t ssl_decrypt(void *baton, apr_size_t bufsize,
         } else {
             /* A fatal error occurred. */
             ctx->fatal_err = status = SERF_ERROR_SSL_COMM_FAILED;
-            log_ssl_error(ctx);
+            log_ssl_error(&ctx->err_ctx, status);
         }
     } else {
         *len = ssl_len;
@@ -1603,222 +1682,201 @@ static int ssl_pass_cb(UI *ui, UI_STRING *uis)
     return 1;
 }
 
-#endif
-
-static int ssl_need_client_cert(SSL *ssl, X509 **cert, EVP_PKEY **pkey)
+static int ssl_read_client_cert_uri(serf_ssl_context_t *ctx,
+                                    SSL *ssl, X509 **cert, EVP_PKEY **pkey)
 {
-    serf_ssl_context_t *ctx = SSL_get_app_data(ssl);
-#if defined(SERF_HAVE_OSSL_STORE_OPEN_EX)
+    /* NOTE: If we're here, ctx->cert_uri_callback will be set. */
+
     STACK_OF(X509) *leaves;
     STACK_OF(X509) *intermediates;
     STACK_OF(EVP_PKEY) *keys;
     X509_STORE *requests;
     UI_METHOD *ui_method;
-#endif
+    int result = 0;
+
+    STACK_OF(X509_NAME) *requested = NULL;
+    const char *cert_uri = NULL;
+    OSSL_STORE_CTX *store = NULL;
+    OSSL_STORE_INFO *info = NULL;
+
+    int retrying_success;
     apr_status_t status;
-    int retrying_success = 0;
+    int store_error;
+    X509 *x509;
+    int type;
 
-    serf__log(LOGLVL_DEBUG, LOGCOMP_SSL, __FILE__, ctx->config,
-              "Server requests a client certificate.\n");
-
-    if (ctx->cached_cert) {
-        *cert = ctx->cached_cert;
-        *pkey = ctx->cached_cert_pw;
-        return 1;
+    if (ctx->cert_uri_success) {
+        retrying_success = 1;
+        status = APR_SUCCESS;
+        cert_uri = ctx->cert_uri_success;
+        ctx->cert_uri_success = NULL;
+    } else {
+        retrying_success = 0;
+        status = ctx->cert_uri_callback(ctx->cert_uri_userdata, &cert_uri);
     }
 
-#if defined(SERF_HAVE_OSSL_STORE_OPEN_EX)
+    if (status || !cert_uri) {
+        return 0;
+    }
 
-    /* until further notice */
-    *cert = NULL;
-    *pkey = NULL;
+    ctx->cert_uri = cert_uri;
 
+    ui_method = UI_create_method("passphrase");
+    UI_method_set_reader(ui_method, ssl_pass_cb);
+
+    store = OSSL_STORE_open(cert_uri, ui_method, ctx, NULL, NULL);
+    if (!store) {
+        char ebuf[1024];
+        ctx->fatal_err = SERF_ERROR_SSL_CERT_FAILED;
+        apr_snprintf(ebuf, sizeof(ebuf), "could not open URI: %s", cert_uri);
+        dispatch_ssl_error(&ctx->err_ctx, ctx->fatal_err, ebuf);
+
+        log_ssl_error(&ctx->err_ctx, ctx->fatal_err);
+        UI_destroy_method(ui_method);
+        return 0;
+    }
+
+    /* walk the store, what are we working with */
     leaves = sk_X509_new_null();
     intermediates = sk_X509_new_null();
     keys = sk_EVP_PKEY_new_null();
     requests = X509_STORE_new();
 
-    ui_method = UI_create_method("passphrase");
-    UI_method_set_reader(ui_method, ssl_pass_cb);
+    /* NOTE: No more direct 'return's from this point onwards!
+             The cleanup code must be called. */
 
-    while (ctx->cert_uri_callback) {
-        const char *cert_uri = NULL;
-        OSSL_STORE_CTX *store = NULL;
-        OSSL_STORE_INFO *info;
-        X509 *x509;
-        STACK_OF(X509_NAME) *requested;
-        int type;
+    /* server side request some certs? this list may be empty */
+    requested = SSL_get_client_CA_list(ssl);
 
-        retrying_success = 0;
-
-        if (ctx->cert_uri_success) {
-            status = APR_SUCCESS;
-            cert_uri = ctx->cert_uri_success;
-            ctx->cert_uri_success = NULL;
-            retrying_success = 1;
-        } else {
-            status = ctx->cert_uri_callback(ctx->cert_uri_userdata, &cert_uri);
-        }
-
-        if (status || !cert_uri) {
+    store_error = 0;
+    for (;;) {
+        info = OSSL_STORE_load(store);
+        if (OSSL_STORE_eof(store)) {
+            /* NOTE: OSSL_STORE_eof() is not signalled until after the
+                     first OSSL_STORE_load() fails. */
             break;
         }
 
-        ctx->cert_uri = cert_uri;
-
-        /* server side request some certs? this list may be empty */
-        requested = SSL_get_client_CA_list(ssl);
-
-        store = OSSL_STORE_open_ex(cert_uri, NULL, NULL, ui_method, ctx, NULL,
-                                   NULL, NULL);
-        if (!store) {
-
-            if (ctx->error_callback) {
-                char ebuf[1024];
-                ctx->fatal_err = SERF_ERROR_SSL_CERT_FAILED;
-                apr_snprintf(ebuf, sizeof(ebuf), "could not open URI: %s", cert_uri);
-                ctx->error_callback(ctx->error_baton, ctx->fatal_err, ebuf);
-            }
-
+        if (!info) {
+            char ebuf[1024];
+            ctx->fatal_err = SERF_ERROR_SSL_CERT_FAILED;
+            apr_snprintf(ebuf, sizeof(ebuf), "could not read URI: %s", cert_uri);
+            dispatch_ssl_error(&ctx->err_ctx, ctx->fatal_err, ebuf);
+            store_error = 1;
             break;
         }
 
-        /* walk the store, what are we working with */
+        type = OSSL_STORE_INFO_get_type(info);
+        if (type == OSSL_STORE_INFO_CERT) {
+            X509 *c = OSSL_STORE_INFO_get1_CERT(info);
 
-        while (!OSSL_STORE_eof(store)) {
-            info = OSSL_STORE_load(store);
+            int n, i;
 
-            if (!info) {
+            int is_ca = X509_check_ca(c);
 
-                if (ctx->error_callback) {
-                    char ebuf[1024];
-                    ctx->fatal_err = SERF_ERROR_SSL_CERT_FAILED;
-                    apr_snprintf(ebuf, sizeof(ebuf), "could not read URI: %s", cert_uri);
-                    ctx->error_callback(ctx->error_baton, ctx->fatal_err, ebuf);
-                }
-
-                break;
+            /* split into leaves and intermediate certs */
+            if (is_ca) {
+                sk_X509_push(intermediates, c);
+            }
+            else {
+                sk_X509_push(leaves, c);
             }
 
-            type = OSSL_STORE_INFO_get_type(info);
-            if (type == OSSL_STORE_INFO_CERT) {
-                X509 *c = OSSL_STORE_INFO_get1_CERT(info);
-
-                int n, i;
-
-                int is_ca = X509_check_ca(c);
-
-                /* split into leaves and intermediate certs */
-                if (is_ca) {
-                    sk_X509_push(intermediates, c);
-                }
-                else {
-                    sk_X509_push(leaves, c);
-                }
-
-                /* any cert with an issuer matching our requested CAs is also
-                 * added to the requests list, except for leaf certs which are
-                 * marked as requested with a flag so we can skip the chain
-                 * check later. */
-                n = sk_X509_NAME_num(requested);
-                for (i = 0; i < n; ++i) {
-                    X509_NAME *name = sk_X509_NAME_value(requested, i);
-                    if (X509_NAME_cmp(name, X509_get_issuer_name(c)) == 0) {
-                        if (is_ca) {
-                            X509_STORE_add_cert(requests, c);
-                        }
-                        else {
-                            X509_set_ex_data(c, ssl_x509_ex_data_idx,
-                                             (void *)1);
-                        }
+            /* any cert with an issuer matching our requested CAs is also
+             * added to the requests list, except for leaf certs which are
+             * marked as requested with a flag so we can skip the chain
+             * check later. */
+            n = sk_X509_NAME_num(requested);
+            for (i = 0; i < n; ++i) {
+                X509_NAME *name = sk_X509_NAME_value(requested, i);
+                if (X509_NAME_cmp(name, X509_get_issuer_name(c)) == 0) {
+                    if (is_ca) {
+                        X509_STORE_add_cert(requests, c);
+                    }
+                    else {
+                        X509_set_ex_data(c, ssl_x509_ex_data_idx,
+                                         (void *)1);
                     }
                 }
-
-            } else if (type == OSSL_STORE_INFO_PKEY) {
-                EVP_PKEY *k = OSSL_STORE_INFO_get1_PKEY(info);
-
-                sk_EVP_PKEY_push(keys, k);
             }
 
-            OSSL_STORE_INFO_free(info);
+        } else if (type == OSSL_STORE_INFO_PKEY) {
+            EVP_PKEY *k = OSSL_STORE_INFO_get1_PKEY(info);
+
+            sk_EVP_PKEY_push(keys, k);
         }
 
-        OSSL_STORE_close(store);
-
-        if (ERR_peek_error()) {
-            break;
-        }
-
-        /* walk the leaf certificates, choose the best one */
-
-        while ((x509 = sk_X509_pop(leaves))) {
-
-            EVP_PKEY *k = NULL;
-            int i, n, found = 0;
-
-            /* no key, skip */
-            n = sk_EVP_PKEY_num(keys);
-            for (i = 0; i < n; ++i) {
-                k = sk_EVP_PKEY_value(keys, i);
-                if (X509_check_private_key(x509, k)) {
-                    found = 1;
-                    break;
-                }
-            }
-            if (!found) {
-                continue;
-            }
-
-            /* CAs requested? if so, skip non matches, if not, accept all */
-            if (sk_X509_NAME_num(requested) &&
-                    !X509_get_ex_data(x509, ssl_x509_ex_data_idx)) {
-                STACK_OF(X509) *chain;
-
-                chain = X509_build_chain(x509, intermediates, requests, 0, NULL,
-                                         NULL);
-
-                if (!chain) {
-                    continue;
-                }
-
-                sk_X509_pop_free(chain, X509_free);
-            }
-
-            /* no best candidate yet? we're in first place */
-            if (!*cert) {
-                EVP_PKEY_up_ref(k);
-                *cert = x509; /* don't dup, we're returning this */
-                *pkey = k;
-                continue;
-            }
-
-            /* were we issued after the previous best? */
-            if (ASN1_TIME_compare(X509_get0_notBefore(*cert),
-                    X509_get0_notBefore(x509)) < 0) {
-                X509_free(*cert);
-                EVP_PKEY_free(*pkey);
-                EVP_PKEY_up_ref(k);
-                *cert = x509; /* don't dup, we're returning this */
-                *pkey = k;
-                continue;
-            }
-
-            X509_free(x509);
-        }
-
-        break;
+        OSSL_STORE_INFO_free(info);
     }
 
-    sk_X509_pop_free(leaves, X509_free);
-    sk_X509_pop_free(intermediates, X509_free);
-    sk_EVP_PKEY_pop_free(keys, EVP_PKEY_free);
-    X509_STORE_free(requests);
-    UI_destroy_method(ui_method);
+    OSSL_STORE_close(store);
+
+    if (store_error || ERR_peek_error()) {
+        log_ssl_error(&ctx->err_ctx, ctx->fatal_err);
+        result = 0;
+        goto cleanup;
+    }
+
+    /* walk the leaf certificates, choose the best one */
+
+    *cert = NULL;
+    *pkey = NULL;
+    while ((x509 = sk_X509_pop(leaves)))
+    {
+        EVP_PKEY *k = NULL;
+        int i, n, found = 0;
+
+        /* no key, skip */
+        n = sk_EVP_PKEY_num(keys);
+        for (i = 0; i < n; ++i) {
+            k = sk_EVP_PKEY_value(keys, i);
+            if (X509_check_private_key(x509, k)) {
+                found = 1;
+                break;
+            }
+        }
+        if (!found) {
+            continue;
+        }
+
+        /* CAs requested? if so, skip non matches, if not, accept all */
+        if (sk_X509_NAME_num(requested)
+            && !X509_get_ex_data(x509, ssl_x509_ex_data_idx)) {
+            STACK_OF(X509) *chain = X509_build_chain(x509, intermediates,
+                                                     requests, 0, NULL, NULL);
+            if (!chain) {
+                continue;
+            }
+
+            sk_X509_pop_free(chain, X509_free);
+        }
+
+        /* no best candidate yet? we're in first place */
+        if (!*cert) {
+            EVP_PKEY_up_ref(k);
+            *cert = x509; /* don't dup, we're returning this */
+            *pkey = k;
+            continue;
+        }
+
+        /* were we issued after the previous best? */
+        if (ASN1_TIME_compare(X509_get0_notBefore(*cert),
+                              X509_get0_notBefore(x509)) < 0) {
+            X509_free(*cert);
+            EVP_PKEY_free(*pkey);
+            EVP_PKEY_up_ref(k);
+            *cert = x509; /* don't dup, we're returning this */
+            *pkey = k;
+            continue;
+        }
+
+        X509_free(x509);
+    }
 
     if (ERR_peek_error()) {
-        log_ssl_error(ctx);
-
-        return -1;
+        log_ssl_error(&ctx->err_ctx, ctx->fatal_err);
+        result = -1;
+        goto cleanup;
     }
 
     /* we settled on a cert and key, cache it for later */
@@ -1848,9 +1906,42 @@ static int ssl_need_client_cert(SSL *ssl, X509 **cert, EVP_PKEY **pkey)
                                    ctx->cert_pw_cache_pool);
         }
 
+        result = 1;
+    }
+
+  cleanup:
+    sk_X509_pop_free(leaves, X509_free);
+    sk_X509_pop_free(intermediates, X509_free);
+    sk_EVP_PKEY_pop_free(keys, EVP_PKEY_free);
+    X509_STORE_free(requests);
+    UI_destroy_method(ui_method);
+
+    return result;
+}
+
+#endif
+
+static int ssl_need_client_cert(SSL *ssl, X509 **cert, EVP_PKEY **pkey)
+{
+    serf_ssl_context_t *ctx = SSL_get_app_data(ssl);
+    apr_status_t status;
+    int retrying_success = 0;
+
+    serf__log(LOGLVL_DEBUG, LOGCOMP_SSL, __FILE__, ctx->config,
+              "Server requests a client certificate.\n");
+
+    if (ctx->cached_cert) {
+        *cert = ctx->cached_cert;
+        *pkey = ctx->cached_cert_pw;
         return 1;
     }
 
+#if defined(SERF_HAVE_OSSL_STORE_OPEN_EX)
+    if (ctx->cert_uri_callback) {
+        int result = ssl_read_client_cert_uri(ctx, ssl, cert, pkey);
+        if (result != 0)
+            return result;
+    }
 #endif
 
     while (ctx->cert_callback) {
@@ -1880,13 +1971,13 @@ static int ssl_need_client_cert(SSL *ssl, X509 **cert, EVP_PKEY **pkey)
                                ctx->pool);
 
         if (status) {
-            if (ctx->error_callback) {
-                char ebuf[1024];
-                apr_snprintf(ebuf, sizeof(ebuf), "could not open PKCS12: %s", cert_path);
-                ctx->error_callback(ctx->error_baton, ctx->fatal_err, ebuf);
-                apr_strerror(status, ebuf, sizeof(ebuf));
-                ctx->error_callback(ctx->error_baton, ctx->fatal_err, ebuf);
-            }
+            char ebuf[1024];
+            apr_snprintf(ebuf, sizeof(ebuf), "could not open PKCS12: %s", cert_path);
+            dispatch_ssl_error(&ctx->err_ctx, status, ebuf);
+            apr_strerror(status, ebuf, sizeof(ebuf));
+            dispatch_ssl_error(&ctx->err_ctx, status, ebuf);
+
+            ctx->fatal_err = status;
             return -1;
         }
 
@@ -1918,10 +2009,12 @@ static int ssl_need_client_cert(SSL *ssl, X509 **cert, EVP_PKEY **pkey)
             return 1;
         }
         else {
+            char ebuf[1024];
             unsigned long err = ERR_get_error();
             ERR_clear_error();
             if (ERR_GET_LIB(err) == ERR_LIB_PKCS12 &&
-                ERR_GET_REASON(err) == PKCS12_R_MAC_VERIFY_FAILURE) {
+                ERR_GET_REASON(err) == PKCS12_R_MAC_VERIFY_FAILURE)
+            {
                 if (ctx->cert_pw_callback) {
                     const char *password;
 
@@ -1965,15 +2058,11 @@ static int ssl_need_client_cert(SSL *ssl, X509 **cert, EVP_PKEY **pkey)
                             return 1;
                         }
                         else {
+                            ctx->fatal_err = SERF_ERROR_SSL_CERT_FAILED;
+                            apr_snprintf(ebuf, sizeof(ebuf), "could not parse PKCS12: %s", cert_path);
+                            dispatch_ssl_error(&ctx->err_ctx, ctx->fatal_err, ebuf);
 
-                            if (ctx->error_callback) {
-                                char ebuf[1024];
-                                ctx->fatal_err = SERF_ERROR_SSL_CERT_FAILED;
-                                apr_snprintf(ebuf, sizeof(ebuf), "could not parse PKCS12: %s", cert_path);
-                                ctx->error_callback(ctx->error_baton, ctx->fatal_err, ebuf);
-                            }
-
-                            log_ssl_error(ctx);
+                            log_ssl_error(&ctx->err_ctx, ctx->fatal_err);
                             return -1;
                         }
                     }
@@ -1981,28 +2070,21 @@ static int ssl_need_client_cert(SSL *ssl, X509 **cert, EVP_PKEY **pkey)
                 PKCS12_free(p12);
                 bio_meth_free(biom);
 
-                if (ctx->error_callback) {
-                    char ebuf[1024];
-                    ctx->fatal_err = SERF_ERROR_SSL_CERT_FAILED;
-                    apr_snprintf(ebuf, sizeof(ebuf), "PKCS12 needs a password: %s", cert_path);
-                    ctx->error_callback(ctx->error_baton, ctx->fatal_err, ebuf);
-                }
+                ctx->fatal_err = SERF_ERROR_SSL_CERT_FAILED;
+                apr_snprintf(ebuf, sizeof(ebuf), "PKCS12 needs a password: %s", cert_path);
+                dispatch_ssl_error(&ctx->err_ctx, ctx->fatal_err, ebuf);
 
-                log_ssl_error(ctx);
+                log_ssl_error(&ctx->err_ctx, ctx->fatal_err);
                 return -1;
             }
             else {
                 PKCS12_free(p12);
                 bio_meth_free(biom);
 
-                if (ctx->error_callback) {
-                    char ebuf[1024];
-                    ctx->fatal_err = SERF_ERROR_SSL_CERT_FAILED;
-                    apr_snprintf(ebuf, sizeof(ebuf), "could not parse PKCS12: %s", cert_path);
-                    ctx->error_callback(ctx->error_baton, ctx->fatal_err, ebuf);
-                }
+                ctx->fatal_err = SERF_ERROR_SSL_CERT_FAILED;
+                dispatch_ssl_error(&ctx->err_ctx, ctx->fatal_err, ebuf);
 
-                log_ssl_error(ctx);
+                log_ssl_error(&ctx->err_ctx, ctx->fatal_err);
                 return -1;
             }
         }
@@ -2080,15 +2162,6 @@ void serf_ssl_server_cert_chain_callback_set(
     context->server_cert_userdata = data;
 }
 
-void serf_ssl_error_cb_set(
-    serf_ssl_context_t *context,
-    serf_ssl_error_cb_t callback,
-    void *baton)
-{
-    context->error_callback = callback;
-    context->error_baton = baton;
-}
-
 static int ssl_new_session(SSL *ssl, SSL_SESSION *session)
 {
     serf_ssl_context_t *ctx = SSL_get_app_data(ssl);
@@ -2154,9 +2227,6 @@ static serf_ssl_context_t *ssl_init_context(serf_bucket_alloc_t *allocator)
     ssl_ctx->protocol_callback = NULL;
     ssl_ctx->protocol_userdata = NULL;
 
-    ssl_ctx->error_callback = NULL;
-    ssl_ctx->error_baton = NULL;
-
     SSL_CTX_set_verify(ssl_ctx->ctx, SSL_VERIFY_PEER,
                        validate_server_certificate);
     SSL_CTX_set_options(ssl_ctx->ctx, SSL_OP_ALL);
@@ -2198,6 +2268,8 @@ static serf_ssl_context_t *ssl_init_context(serf_bucket_alloc_t *allocator)
     ssl_ctx->want_read = FALSE;
     ssl_ctx->handshake_done = FALSE;
     ssl_ctx->hit_eof = FALSE;
+
+    ssl_ctx->err_ctx = global_error_ctx;
 
     return ssl_ctx;
 }
@@ -2402,14 +2474,12 @@ apr_status_t serf_ssl_load_cert_file(
 
         return APR_SUCCESS;
     }
-#if 0
-    else {
-        /* If we'd have had a serf context *, we could have used serf logging */
-        ERR_print_errors_fp(stderr);
-    }
-#endif
 
-    return SERF_ERROR_SSL_CERT_FAILED;
+    /* We don't have an ssl_context_t here, so log the errors to the global
+       callback. It's better than ignoring them. */
+    status = SERF_ERROR_SSL_CERT_FAILED;
+    log_ssl_error(&global_error_ctx, status);
+    return status;
 }
 
 
@@ -2471,7 +2541,7 @@ apr_status_t serf_ssl_add_crl_from_file(serf_ssl_context_t *ssl_ctx,
     result = X509_STORE_add_crl(store, crl);
     if (!result) {
         ssl_ctx->fatal_err = status = SERF_ERROR_SSL_CERT_FAILED;
-        log_ssl_error(ssl_ctx);
+        log_ssl_error(&ssl_ctx->err_ctx, status);
         return status;
     }
 
@@ -2623,58 +2693,41 @@ pstrdup_escape_nul_bytes(const char *buf, int len, apr_pool_t *pool)
     return ret;
 }
 
-/* Creates a hash_table with keys (E, CN, OU, O, L, ST and C). Any NUL bytes in
-   these fields in the certificate will be escaped as \00. */
-static apr_hash_t *
-convert_X509_NAME_to_table(X509_NAME *org, apr_pool_t *pool)
+/* Helper for convert_X509_NAME_to_table() */
+static void
+set_X500_name_entry(const_X509_NAME_p org, int nid,
+                    const char *key, apr_hash_t *tgt,
+                    apr_pool_t *pool)
 {
-    char buf[1024];
-    int ret;
+    const ASN1_STRING *const asn1 = get_first_name_entry_data(org, nid);
+    if (asn1) {
+        const char *const data = (const char*)ASN1_STRING_get0_data(asn1);
+        const int length = ASN1_STRING_length(asn1);
+        apr_hash_set(tgt, key, APR_HASH_KEY_STRING,
+                     pstrdup_escape_nul_bytes(data, length, pool));
+    }
+}
 
+/* Creates a hash_table with keys (E, CN, OU, O, L, ST and C). Any NUL bytes in
+   these fields in the certificate will be escaped as \00.
+
+   FIXME: This function will only store the FIRST instance of a NID into the
+          hash table. Other instances will be ignored. In other words,
+          serf_ssl_cert_issuer() and serf_ssl_cert_subject() return incomplete
+          data. We need a better public API for this.
+*/
+static apr_hash_t *
+convert_X509_NAME_to_table(const_X509_NAME_p org, apr_pool_t *pool)
+{
     apr_hash_t *tgt = apr_hash_make(pool);
 
-    ret = X509_NAME_get_text_by_NID(org,
-                                    NID_commonName,
-                                    buf, 1024);
-    if (ret != -1)
-        apr_hash_set(tgt, "CN", APR_HASH_KEY_STRING,
-                     pstrdup_escape_nul_bytes(buf, ret, pool));
-    ret = X509_NAME_get_text_by_NID(org,
-                                    NID_pkcs9_emailAddress,
-                                    buf, 1024);
-    if (ret != -1)
-        apr_hash_set(tgt, "E", APR_HASH_KEY_STRING,
-                     pstrdup_escape_nul_bytes(buf, ret, pool));
-    ret = X509_NAME_get_text_by_NID(org,
-                                    NID_organizationalUnitName,
-                                    buf, 1024);
-    if (ret != -1)
-        apr_hash_set(tgt, "OU", APR_HASH_KEY_STRING,
-                     pstrdup_escape_nul_bytes(buf, ret, pool));
-    ret = X509_NAME_get_text_by_NID(org,
-                                    NID_organizationName,
-                                    buf, 1024);
-    if (ret != -1)
-        apr_hash_set(tgt, "O", APR_HASH_KEY_STRING,
-                     pstrdup_escape_nul_bytes(buf, ret, pool));
-    ret = X509_NAME_get_text_by_NID(org,
-                                    NID_localityName,
-                                    buf, 1024);
-    if (ret != -1)
-        apr_hash_set(tgt, "L", APR_HASH_KEY_STRING,
-                     pstrdup_escape_nul_bytes(buf, ret, pool));
-    ret = X509_NAME_get_text_by_NID(org,
-                                    NID_stateOrProvinceName,
-                                    buf, 1024);
-    if (ret != -1)
-        apr_hash_set(tgt, "ST", APR_HASH_KEY_STRING,
-                     pstrdup_escape_nul_bytes(buf, ret, pool));
-    ret = X509_NAME_get_text_by_NID(org,
-                                    NID_countryName,
-                                    buf, 1024);
-    if (ret != -1)
-        apr_hash_set(tgt, "C", APR_HASH_KEY_STRING,
-                     pstrdup_escape_nul_bytes(buf, ret, pool));
+    set_X500_name_entry(org, NID_commonName, "CN", tgt, pool);
+    set_X500_name_entry(org, NID_pkcs9_emailAddress, "E", tgt, pool);
+    set_X500_name_entry(org, NID_organizationalUnitName, "OU", tgt, pool);
+    set_X500_name_entry(org, NID_organizationName, "O", tgt, pool);
+    set_X500_name_entry(org, NID_localityName, "L", tgt, pool);
+    set_X500_name_entry(org, NID_stateOrProvinceName, "ST", tgt, pool);
+    set_X500_name_entry(org, NID_countryName, "C", tgt, pool);
 
     return tgt;
 }
@@ -2690,7 +2743,7 @@ apr_hash_t *serf_ssl_cert_issuer(
     const serf_ssl_certificate_t *cert,
     apr_pool_t *pool)
 {
-    X509_NAME *issuer = X509_get_issuer_name(cert->ssl_cert);
+    const_X509_NAME_p issuer = X509_get_issuer_name(cert->ssl_cert);
 
     if (!issuer)
         return NULL;
@@ -2703,7 +2756,7 @@ apr_hash_t *serf_ssl_cert_subject(
     const serf_ssl_certificate_t *cert,
     apr_pool_t *pool)
 {
-    X509_NAME *subject = X509_get_subject_name(cert->ssl_cert);
+    const_X509_NAME_p subject = X509_get_subject_name(cert->ssl_cert);
 
     if (!subject)
         return NULL;

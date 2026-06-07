@@ -21,8 +21,8 @@
 #include <apr_pools.h>
 
 #include "serf.h"
-#include "serf_private.h"
 #include "serf_bucket_util.h"
+#include "serf_private.h"
 
 
 #define IOVEC_HOLD_COUNT 16

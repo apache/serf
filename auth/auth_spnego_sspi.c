@@ -18,10 +18,10 @@
  * ====================================================================
  */
 
-#include "auth.h"
-#include "auth_spnego.h"
 #include "serf.h"
 #include "serf_private.h"
+#include "auth.h"
+#include "auth_spnego.h"
 
 #ifdef SERF_USE_SSPI
 #include <apr.h>

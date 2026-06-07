@@ -16,15 +16,25 @@ jobs:
       matrix:
         include:
           - name: Windows x64
-            os: windows-latest
+            os: windows-2022
             platform: x64
             triplet: x64-windows
             generator: "Visual Studio 17 2022"
           - name: Windows x86
-            os: windows-latest
+            os: windows-2022
             platform: Win32
             triplet: x86-windows
             generator: "Visual Studio 17 2022"
+          - name: Windows x64
+            os: windows-latest
+            platform: x64
+            triplet: x64-windows
+            generator: "Visual Studio 18 2026"
+          - name: Windows x86
+            os: windows-latest
+            platform: Win32
+            triplet: x86-windows
+            generator: "Visual Studio 18 2026"
 
     runs-on: ${{ matrix.os }}
 
@@ -32,6 +42,15 @@ jobs:
       VCPKG_BINARY_SOURCES: "clear;x-gha,readwrite"
 
     steps:
+      - name: Prepare Environment (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          $root = &(Join-Path ${env:ProgramFiles(x86)} "\Microsoft Visual Studio\Installer\vswhere.exe") -property installationpath -latest
+          Import-Module (Join-Path $root "Common7\Tools\Microsoft.VisualStudio.DevShell.dll")
+          Enter-VsDevShell -VsInstallPath $root -DevCmdArguments "-arch=${{ matrix.arch }}"
+
+          ls env: | foreach { "$($_.Name)=$($_.Value)" >> $env:GITHUB_ENV }
+
       - name: Export GitHub Actions cache environment variables
         uses: actions/github-script@v7
         with:
@@ -54,7 +73,7 @@ jobs:
           key: 'vcpkg_installed_${{ matrix.triplet }}'
           path: 'C:/vcpkg/installed/'
 
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v6
 
       - name: Configure CMake
         run: >

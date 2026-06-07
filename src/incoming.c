@@ -28,6 +28,7 @@
 
 #include "serf_private.h"
 
+
 static apr_status_t client_connected(serf_incoming_t *client)
 {
     /* serf_context_t *ctx = client->ctx; */
@@ -705,6 +706,14 @@ apr_status_t serf_listener_create(
     *listener = l;
 
     return APR_SUCCESS;
+}
+
+void serf_incoming_error_callback_set(serf_incoming_t *client,
+                                      serf_error_cb_t callback,
+                                      void *baton)
+{
+    client->error_callback_baton = baton;
+    client->error_callback = callback;
 }
 
 apr_status_t serf__incoming_update_pollset(serf_incoming_t *client)

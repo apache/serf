@@ -28,8 +28,8 @@
 #include "serf_bucket_util.h"
 #include "serf_private.h"
 
-#include "protocols/fcgi_buckets.h"
-#include "protocols/fcgi_protocol.h"
+#include "fcgi_buckets.h"
+#include "fcgi_protocol.h"
 
 /* Fully opaque variant of serf_fcgi_stream_t */
 struct serf_fcgi_stream_data_t
@@ -350,4 +350,3 @@ apr_status_t serf_fcgi__stream_processor(void *baton,
 
     return status;
 }
-

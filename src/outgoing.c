@@ -25,9 +25,8 @@
 #include <apr_strings.h>
 
 #include "serf.h"
-#include "serf_bucket_util.h"
-
 #include "serf_private.h"
+
 
 /* forward definitions */
 static apr_status_t read_from_connection(serf_connection_t *conn);
@@ -1433,6 +1432,15 @@ apr_status_t serf_connection_create_async(
 
     apr_pool_destroy(scratch_pool);
     return status;
+}
+
+
+void serf_connection_error_callback_set(serf_connection_t *conn,
+                                        serf_error_cb_t callback,
+                                        void *baton)
+{
+    conn->error_callback_baton = baton;
+    conn->error_callback = callback;
 }
 
 

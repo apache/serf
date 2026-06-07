@@ -21,18 +21,19 @@
 #ifndef TEST_SERF_H
 #define TEST_SERF_H
 
-#include "CuTest.h"
-
 #include <apr.h>
 #include <apr_pools.h>
 #include <apr_uri.h>
 
 #include "serf.h"
 
+#include "CuTest.h"
 #include "MockHTTPinC/MockHTTP.h"
 
-/* Test logging facilities, set flag to 1 to enable console logging for
-   the test suite. */
+/* Test logging facilities; set this flag to:
+      1  to show messages from error callbacks;
+      2  or more to also enable console logging the test suite.
+*/
 #define TEST_VERBOSE 0
 
 /* Preferred proxy port */

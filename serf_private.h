@@ -21,6 +21,8 @@
 #ifndef _SERF_PRIVATE_H_
 #define _SERF_PRIVATE_H_
 
+#include "serf.h"
+
 #if !defined(HAVE_STDBOOL_H) && defined(_MSC_VER) && (_MSC_VER >= 1800)
  /* VS 2015 errors out when redefining bool */
 #define HAVE_STDBOOL_H 1
@@ -78,17 +80,10 @@ typedef int serf__bool_t; /* Not _Bool */
 #define REQUESTED_MAX (~((apr_size_t)0))
 #endif
 
-#ifndef APR_VERSION_AT_LEAST /* Introduced in APR 1.3.0 */
-#define APR_VERSION_AT_LEAST(major,minor,patch)                           \
-    (((major) < APR_MAJOR_VERSION)                                        \
-      || ((major) == APR_MAJOR_VERSION && (minor) < APR_MINOR_VERSION)    \
-      || ((major) == APR_MAJOR_VERSION && (minor) == APR_MINOR_VERSION && \
-               (patch) <= APR_PATCH_VERSION))
-#endif /* APR_VERSION_AT_LEAST */
-
 #define SERF_IO_CLIENT (1)
 #define SERF_IO_CONN (2)
 #define SERF_IO_LISTENER (3)
+#define SERF_IO_WAKEUP_PIPE (4)
 
 /*** Narrowing conversions ***/
 
@@ -125,6 +120,70 @@ typedef int serf__bool_t; /* Not _Bool */
         (result) = integer_;                             \
     } while(0)
 
+/*** Error callback invocation ***/
+
+/* This is the default global error callback, used only in
+   error_callbacks.c and test_internal.c. */
+apr_status_t serf__global_error_callback(void *baton,
+                                         unsigned source,
+                                         apr_status_t status,
+                                         const char *message);
+
+/* NOTE: There is no serf__global_error() because the global handler
+         should not be called directly but only as a fallback. */
+
+apr_status_t serf__context_error(const serf_context_t* ctx,
+                                 apr_status_t status,
+                                 const char *message);
+apr_status_t serf__connection_error(const serf_connection_t *conn,
+                                    apr_status_t status,
+                                    const char *message);
+apr_status_t serf__request_error(const serf_request_t *req,
+                                 apr_status_t status,
+                                 const char *message);
+apr_status_t serf__response_error(const serf_request_t *req,
+                                  apr_status_t status,
+                                  const char *message);
+apr_status_t serf__incoming_error(const serf_incoming_t *client,
+                                  apr_status_t status,
+                                  const char *message);
+apr_status_t serf__incoming_request_error(const serf_incoming_request_t *req,
+                                          apr_status_t status,
+                                          const char *message);
+apr_status_t serf__incoming_response_error(const serf_incoming_request_t *req,
+                                           apr_status_t status,
+                                           const char *message);
+
+/* The SSL context is a special case since it doesn't directly
+   belong to any context or connection. The ssl context implementation
+   calls serf__ssl_context_error() with an serf__ssl_error_ctx_t provided
+   by the caller of the ssl_context function. This is a bit of a pretzel,
+   but the alternative is to only send errors from the SSL context to the
+   global error context, which is less than ideal. */
+
+typedef struct serf__ssl_error_ctx_t serf__ssl_error_ctx_t;
+struct serf__ssl_error_ctx_t
+{
+    apr_status_t (*dispatch)(const void *baton,
+                             apr_status_t status,
+                             const char *message);
+    void *baton;
+};
+
+/* Error dispatchers for the SSL error context. */
+apr_status_t serf__global_ssl_error(const void *baton,
+                                    apr_status_t status,
+                                    const char *message);
+apr_status_t serf__context_ssl_error(const void *baton,
+                                     apr_status_t status,
+                                     const char *message);
+apr_status_t serf__connection_ssl_error(const void *baton,
+                                        apr_status_t status,
+                                        const char *message);
+apr_status_t serf__incoming_ssl_error(const void *baton,
+                                      apr_status_t status,
+                                      const char *message);
+
 /*** Logging facilities ***/
 
 /* Check for the SERF_DISABLE_LOGGING define, as set by scons. */
@@ -155,14 +214,11 @@ typedef int serf__bool_t; /* Not _Bool */
 #define ACTIVE_LOGLEVEL SERF_LOG_NONE
 #define ACTIVE_LOGCOMPS SERF_LOGCOMP_NONE
 
-/* Older versions of APR do not have the APR_VERSION_AT_LEAST macro. Those
-   implementations are safe.
-
-   If the macro *is* defined, and we're on WIN32, and APR is version 1.4.0+,
-   then we have a broken WSAPoll() implementation.
+/* If we're on WIN32, and APR is version 1.4.0+, then we have
+   a broken WSAPoll() implementation.
 
    See serf_context_create_ex() below.  */
-#if defined(APR_VERSION_AT_LEAST) && defined(WIN32)
+#ifdef WIN32
 #if APR_VERSION_AT_LEAST(1,4,0)
 #define BROKEN_WSAPOLL
 #endif
@@ -494,10 +550,17 @@ struct serf_context_t {
 
     serf_config_t *config;
 
+    /* The wakeup socket */
+    struct serf__context_wakeup_t *wakeup;
+
     /* Support for asynchronous address resolution. */
     void *volatile resolve_head;
     apr_status_t resolve_init_status;
     void *resolve_context;
+
+    /* Error callback */
+    serf_error_cb_t error_callback;
+    void *error_callback_baton;
 };
 
 struct serf_listener_t {
@@ -552,6 +615,10 @@ struct serf_incoming_t {
     serf_bucket_t *proto_peek_bkt;
 
     serf_incoming_request_t *current_request; /* For HTTP/1 */
+
+    /* Error callback */
+    serf_error_cb_t error_callback;
+    void *error_callback_baton;
 };
 
 /* States for the different stages in the lifecycle of a connection. */
@@ -668,11 +735,18 @@ struct serf_connection_t {
 
     /* Configuration shared with buckets and authn plugins */
     serf_config_t *config;
+
+    /* Error callback */
+    serf_error_cb_t error_callback;
+    void *error_callback_baton;
 };
 
 /* Called by requests that still have outstanding requests to allow cleaning
    up buckets that may still reference buckets of this request */
 void serf__connection_pre_cleanup(serf_connection_t *);
+
+/* Called when an asynchronous event should wake up the context's pollset.  */
+void serf__context_wakeup(serf_context_t *ctx);
 
 /* Called from serf_context_create_ex() to set up the context-specific
    asynchronous address resolver context. */
@@ -962,4 +1036,4 @@ serf_bucket_t *serf__bucket_event_create(
                         serf_bucket_alloc_t *allocator);
 
 
-#endif
+#endif  /*  _SERF_PRIVATE_H_ */

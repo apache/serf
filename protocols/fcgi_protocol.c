@@ -25,11 +25,10 @@
 #include <apr_strings.h>
 
 #include "serf.h"
-#include "serf_bucket_util.h"
 
 #include "serf_private.h"
-#include "protocols/fcgi_buckets.h"
-#include "protocols/fcgi_protocol.h"
+#include "fcgi_buckets.h"
+#include "fcgi_protocol.h"
 
 #define SERF_ERROR_FCGI_RECORD_SIZE_ERROR   SERF_ERROR_HTTP2_FRAME_SIZE_ERROR
 #define SERF_ERROR_FCGI_PROTOCOL_ERROR      SERF_ERROR_HTTP2_PROTOCOL_ERROR

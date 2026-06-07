@@ -137,6 +137,7 @@ list(APPEND EXPORTS_BLACKLIST
 list(APPEND SOURCES
     "src/config_store.c"
     "src/context.c"
+    "src/error_callbacks.c"
     "src/deprecated.c"
     "src/incoming.c"
     "src/inet_pton.c"
@@ -261,6 +262,7 @@ if(NOT (OpenSSL_SSL_FOUND AND OpenSSL_Crypto_FOUND))
   endif()
 else()
   set(OpenSSL_FOUND TRUE)
+  set(OPENSSL_VERSION ${OPENSSL_SSL_VERSION})
   set(OPENSSL_INCLUDE_DIR ${OPENSSL_SSL_INCLUDE_DIR})
   set(OPENSSL_PC_REQUIRES ${OPENSSL_SSL_PC_REQUIRES} ${OPENSSL_CRYPTO_PC_REQUIRES})
   set(OPENSSL_LIBRARIES ${OPENSSL_SSL_LIBRARY} ${OPENSSL_CRYPTO_LIBRARY})
@@ -280,12 +282,17 @@ list(APPEND SERF_C_DEFINES "OPENSSL_NO_STDIO")
 
 # Find optional dependencies
 if(USE_BROTLI)
-  SerfFindPkgConfig(Brotli Brotli_ROOT libbrotlidec Brotli::Decode)
-  if(NOT Brotli_FOUND)
+  SerfFindPkgConfig(Brotli_Decode Brotli_ROOT libbrotlidec Brotli::Decode)
+  if(NOT Brotli_Decode_FOUND)
     find_package(Brotli)
     if(Brotli_FOUND)
       set(BROTLI_PC_LIBS ${BROTLI_DECODE_LIBRARY})
     endif()
+  else()
+    set(Brotli_FOUND TRUE)
+    set(BROTLI_VERSION ${BROTLI_DECODE_VERSION})
+    set(BROTLI_INCLUDE_DIR ${BROTLI_DECODE_INCLUDE_DIR})
+    set(BROTLI_PC_REQUIRES ${BROTLI_DECODE_PC_REQUIRES})
   endif()
 endif()
 
@@ -368,6 +375,10 @@ CheckNotFunction("X509_STORE_CTX_get0_chain" "NULL" "SERF_NO_SSL_X509_GET0_CHAIN
 CheckNotFunction("ASN1_STRING_get0_data" "NULL" "SERF_NO_SSL_ASN1_STRING_GET0_DATA"
                  "openssl/asn1.h" "${OPENSSL_INCLUDE_DIR}"
                  ${OPENSSL_LIBRARIES} ${SERF_STANDARD_LIBRARIES})
+CheckFunction("X509_check_certificate_times" "NULL, NULL, NULL"
+              "SERF_HAVE_SSL_X509_CHECK_CERTIFICATE_TIMES"
+              "openssl/x509.h" "${OPENSSL_INCLUDE_DIR}"
+              ${OPENSSL_LIBRARIES} ${SERF_STANDARD_LIBRARIES})
 CheckFunction("OSSL_STORE_open_ex"
               "NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL"
               "SERF_HAVE_OSSL_STORE_OPEN_EX" "openssl/store.h"
@@ -389,6 +400,7 @@ CheckFunction("SSL_library_init" "" "SERF_HAVE_OPENSSL_SSL_LIBRARY_INIT"
               "openssl/ssl.h" "${OPENSSL_INCLUDE_DIR}"
               ${OPENSSL_LIBRARIES} ${SERF_STANDARD_LIBRARIES})
 CheckHeader("stdbool.h" "HAVE_STDBOOL_H=1")
+CheckHeader("unistd.h" "HAVE_UNISTD_H=1")
 CheckType("OSSL_HANDSHAKE_STATE" "openssl/ssl.h" "SERF_HAVE_OSSL_HANDSHAKE_STATE" ${OPENSSL_INCLUDE_DIR})
 if(Brotli_FOUND)
   CheckType("BrotliDecoderResult" "brotli/decode.h" "SERF_HAVE_BROTLI_DECODER_RESULT" ${BROTLI_INCLUDE_DIR})
@@ -396,7 +408,7 @@ if(Brotli_FOUND)
   if("SERF_HAVE_BROTLI_DECODER_RESULT" IN_LIST SERF_C_DEFINES)
     CheckFunction("BrotliDecoderTakeOutput" "NULL, NULL" "SERF_HAVE_BROTLI"
                   "brotli/decode.h" ${BROTLI_INCLUDE_DIR}
-                  Brotli::Decode ${SERF_STANDARD_LIBRARIES})
+                  ${BROTLI_DECODE_LIBRARY} ${SERF_STANDARD_LIBRARIES})
   endif()
 endif()
 
@@ -627,8 +639,23 @@ if(DOT_CLANGD)
   set(_gen_dot_clangd ON)
 endif()
 
+if(APR_HAS_THREADS)
+  set(_apr_version "${APR_VERSION}")
+else()
+  set(_apr_version "${APR_VERSION} [no threads]")
+endif()
+
 if("SERF_HAVE_BROTLI" IN_LIST SERF_C_DEFINES)
   set(_have_brotli ON)
+  if(NOT SERF_WINDOWS)
+    set(_brotli_version ${BROTLI_VERSION})
+  else()
+    # On Windows, vcpkg doesn't install the 'brotli' binary which we use to
+    # find the version, and it isn't published in the headers. *shrug*
+    if("${BROTLI_VERSION}" STREQUAL "")
+      set(_brotli_version "N/A")
+    endif()
+  endif()
 endif()
 if("SERF_HAVE_GSSAPI" IN_LIST SERF_C_DEFINES)
   set(_have_gssapi ON)
@@ -637,7 +664,17 @@ if("SERF_HAVE_SSPI" IN_LIST SERF_C_DEFINES)
   set(_have_sspi ON)
 endif()
 if ("SERF_HAVE_UNBOUND=1" IN_LIST SERF_C_DEFINES)
-  set(_have_unbound "EXPERIMENTAL")
+  set(_have_unbound ON)
+endif()
+
+# Check if we're linking with LibreSSL
+file(STRINGS "${OPENSSL_INCLUDE_DIR}/openssl/opensslv.h" _libressl_text
+     REGEX "^ *# *define +LIBRESSL_VERSION_TEXT +\".+$")
+if(NOT (_libressl_text STREQUAL ""))
+  string(REGEX REPLACE "^[^\"]+\"([^\"]+)\".*$" "\\1" _libressl_text ${_libressl_text})
+  set(_openssl_version ${_libressl_text})
+else()
+  set(_openssl_version ${OPENSSL_VERSION})
 endif()
 
 message(STATUS "Summary:")
@@ -656,6 +693,22 @@ message(STATUS "    Brotli .................. : ${_have_brotli}")
 message(STATUS "    GSSAPI .................. : ${_have_gssapi}")
 message(STATUS "    SSPI .................... : ${_have_sspi}")
 message(STATUS "    Unbound ................. : ${_have_unbound}")
+message(STATUS "  Dependencies:")
+message(STATUS "    APR ..................... : ${_apr_version}")
+if(APR_VERSION VERSION_LESS 2.0.0)
+message(STATUS "    APR-Util ................ : ${APRUTIL_VERSION}")
+endif()
+message(STATUS "    OpenSSL ................. : ${_openssl_version}")
+message(STATUS "    Zlib .................... : ${ZLIB_VERSION}")
+if(_have_brotli)
+message(STATUS "    Brotli .................. : ${_brotli_version}")
+endif()
+if(_have_gssapi)
+message(STATUS "    GSSAPI .................. : ${GSSAPI_VERSION}")
+endif()
+if(_have_unbound)
+message(STATUS "    Unbound ................. : ${UNBOUND_VERSION}")
+endif()
 message(STATUS "  Install:")
 message(STATUS "    prefix: ................. : ${CMAKE_INSTALL_PREFIX}")
 message(STATUS "    headers: ................ : ${SERF_INSTALL_HEADERS}")

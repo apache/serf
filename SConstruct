@@ -43,7 +43,8 @@ import build.scons_extras
 import build.exports
 
 build.scons_extras.AddEnvironmentMethods()
-custom_tests = {'CheckGnuCC': build.scons_extras.CheckGnuCC}
+custom_tests = {'CheckGnuCC': build.scons_extras.CheckGnuCC,
+                'CheckAPRHasThreads': build.scons_extras.CheckAPRHasThreads}
 
 # SCons 4.7 introduced the function argument list parameter to CheckFunc.
 try:
@@ -202,21 +203,8 @@ if sys.platform == 'win32':
                       'ARM64': 'arm64'
                      }),
 
-    EnumVariable('MSVC_VERSION',
-                 "Visual C++ to use for building",
-                 None,
-                 allowed_values=('14.3', '14.2', '14.1', '14.0', '12.0',
-                                 '11.0', '10.0', '9.0', '8.0', '6.0'),
-                 map={'2005' :  '8.0',
-                      '2008' :  '9.0',
-                      '2010' : '10.0',
-                      '2012' : '11.0',
-                      '2013' : '12.0',
-                      '2015' : '14.0',
-                      '2017' : '14.1',
-                      '2019' : '14.2',
-                      '2022' : '14.3',
-                     }),
+    ('MSVC_VERSION', "Visual C++ to use for building (see " +
+     "https://scons.org/doc/latest/HTML/scons-user.html#cv-MSVC_VERSION)", None),
 
     # We always documented that we handle an install layout, but in fact we
     # hardcoded source layouts. Allow disabling this behavior.
@@ -650,6 +638,7 @@ for line in stream.readlines():
 ssl_includes = '\n'.join(ssl_include_list)
 
 conf = Configure(env, custom_tests=custom_tests)
+apr_has_threads = conf.CheckAPRHasThreads()
 if not conf.CheckFunc('BIO_set_init', ssl_includes, 'C', 'NULL, 0'):
   env.Append(CPPDEFINES=['SERF_NO_SSL_BIO_WRAPPERS'])
 if not conf.CheckFunc('X509_STORE_get0_param', ssl_includes, 'C', 'NULL'):
@@ -662,6 +651,9 @@ if not conf.CheckFunc('X509_STORE_CTX_get0_chain', ssl_includes, 'C', 'NULL'):
   env.Append(CPPDEFINES=['SERF_NO_SSL_X509_GET0_CHAIN'])
 if not conf.CheckFunc('ASN1_STRING_get0_data', ssl_includes, 'C', 'NULL'):
   env.Append(CPPDEFINES=['SERF_NO_SSL_ASN1_STRING_GET0_DATA'])
+if conf.CheckFunc('X509_check_certificate_times', ssl_includes, 'C',
+                  'NULL, NULL, NULL'):
+  env.Append(CPPDEFINES=['SERF_HAVE_SSL_X509_CHECK_CERTIFICATE_TIMES'])
 if conf.CheckFunc('CRYPTO_set_locking_callback', ssl_includes, 'C', 'NULL'):
   env.Append(CPPDEFINES=['SERF_HAVE_SSL_LOCKING_CALLBACKS'])
 if conf.CheckFunc('OPENSSL_malloc_init', ssl_includes):
@@ -727,6 +719,8 @@ if CALLOUT_OKAY:
   ### some configuration stuffs
   if conf.CheckCHeader('stdbool.h'):
     env.Append(CPPDEFINES=['HAVE_STDBOOL_H'])
+  if conf.CheckCHeader('unistd.h'):
+    env.Append(CPPDEFINES=['HAVE_UNISTD_H'])
 
   env = conf.Finish()
 
@@ -828,11 +822,18 @@ mockhttpinc = mockenv.StaticLibrary('mockhttpinc',
 
 # Check if long-running tests should be enabled
 if tenv.get('ENABLE_SLOW_TESTS', None):
-    tenv.Append(CPPDEFINES=['SERF_TEST_DEFLATE_4GBPLUS_BUCKETS'])
+  tenv.Append(CPPDEFINES=['SERF_TEST_DEFLATE_4GBPLUS_BUCKETS'])
 
-TEST_PROGRAMS = [ 'serf_get', 'serf_response', 'serf_request', 'serf_spider',
-                  'serf_httpd',
-                  'test_all', 'serf_bwtp' ]
+TEST_PROGRAMS = [
+    'serf_get',
+    'serf_response',
+    'serf_request',
+    'serf_httpd',
+    'test_all',
+    'serf_bwtp',
+    ]
+if apr_has_threads:
+  TEST_PROGRAMS.append("serf_spider")
 
 _exe = '.exe' if sys.platform == 'win32' else ''
 TEST_EXES = [os.path.join('test', '%s%s' % (prog, _exe)) for prog in TEST_PROGRAMS]

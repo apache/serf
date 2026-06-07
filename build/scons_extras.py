@@ -41,6 +41,22 @@ oh noes!
   return result
 
 
+def CheckAPRHasThreads(context):
+  '''Check if APR_HAS_THREADS is defined'''
+
+  src = '''
+#include <apr.h>
+#if !APR_HAS_THREADS
+oh noes!
+#endif
+'''
+
+  context.Display('Checking for thread support in APR... ')
+  result = context.TryCompile(src, '.c')
+  context.Result(result)
+  return result
+
+
 def __env_munge_if(env, method, variables, pattern, **kwargs):
   '''Invoke `env`.`method`(**`kwargs`), unless `pattern` matches the
    values in `variables` that are also in `env`.

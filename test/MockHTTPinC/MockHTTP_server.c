@@ -47,7 +47,7 @@
 #include "MockHTTP_private.h"
 
 /* Copied from serf.  */
-#if defined(APR_VERSION_AT_LEAST) && defined(WIN32)
+#ifdef WIN32
 #if APR_VERSION_AT_LEAST(1,4,0)
 #define BROKEN_WSAPOLL
 #endif
@@ -133,6 +133,7 @@ struct _mhClientCtx_t {
 /**
  * Start up a server in a separate thread.
  */
+#if APR_HAS_THREADS
 static void * APR_THREAD_FUNC run_thread(apr_thread_t *tid, void *baton)
 {
     mhServCtx_t *ctx = baton;
@@ -144,6 +145,7 @@ static void * APR_THREAD_FUNC run_thread(apr_thread_t *tid, void *baton)
     apr_thread_exit(tid, APR_SUCCESS);
     return NULL;
 }
+#endif
 
 /**
  * Callback called when the mhServCtx_t pool is destroyed.
@@ -1776,12 +1778,13 @@ void mhConfigServer(mhServCtx_t *serv_ctx, ...)
  */
 void mhStartServer(mhServCtx_t *ctx)
 {
-    apr_thread_t *thread;
     mhError_t err = MOCKHTTP_NO_ERROR;
     apr_status_t status;
 
     if (ctx->threading == mhThreadSeparate) {
 #if APR_HAS_THREADS
+        apr_thread_t *thread;
+
         /* Setup a non-blocking TCP server */
         status = setupTCPServer(ctx);
         if (!status) {
@@ -1806,8 +1809,8 @@ void mhStartServer(mhServCtx_t *ctx)
 
 void mhStopServer(mhServCtx_t *ctx)
 {
+#if APR_HAS_THREADS
     apr_status_t status;
-#ifdef APR_HAS_THREADS
     if (ctx->threading == mhThreadSeparate && ctx->threadid) {
         ctx->cancelThread = YES;
         apr_thread_join(&status, ctx->threadid);
