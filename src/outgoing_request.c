@@ -41,7 +41,7 @@
 
 /*** Request list handling ***/
 
-/* Push a request to the head of the lined list. */
+/* Push a request to the tail of the lined list. */
 void serf__reqlist_push(serf_reqlist_t *list, serf_request_t *request)
 {
     SERF__REQLIST_assert(request->list == NULL);
@@ -56,7 +56,7 @@ void serf__reqlist_push(serf_reqlist_t *list, serf_request_t *request)
     ++list->count;
 }
 
-/* Check if the linked list is not empty (contains a request). */
+/* Return the request at the head of the linked list. */
 void serf__reqlist_peek(serf_reqlist_t *list, serf_request_t **requestp)
 {
     serf_request_t *request = list->head;
