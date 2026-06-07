@@ -359,8 +359,8 @@ serf_http2__stream_setup_next_request(serf_http2_stream_t *stream,
             return status;
     }
 
-    serf__take_request(&conn->unwritten_reqs, request);
-    serf__push_request(&conn->written_reqs, request);
+    serf__reqlist_pop(&conn->unwritten_reqs, request);
+    serf__reqlist_push(&conn->written_reqs, request);
 
     serf__bucket_request_read(request->req_bkt, &body, NULL, NULL);
     status = serf__bucket_hpack_create_from_request(
@@ -794,7 +794,7 @@ serf_http2__stream_processor(void *baton,
              to remove it from the outstanding requests */
         {
             serf_connection_t *conn = serf_request_get_conn(sd->request);
-            serf__delete_from_reqlist(&conn->written_reqs, sd->request);
+            serf__reqlist_delete(&conn->written_reqs, sd->request);
             serf__destroy_request(sd->request);
             stream->data->request = NULL;
         }

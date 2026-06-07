@@ -76,7 +76,7 @@ request_pending(serf_request_t **next_req, serf_connection_t *conn)
         /* Skip all requests that have been written completely but we're still
          waiting for a response. */
         serf_request_t *request;
-        serf__peek_request(&conn->unwritten_reqs, &request);
+        serf__reqlist_peek(&conn->unwritten_reqs, &request);
 
         if (next_req)
             *next_req = request;
@@ -248,7 +248,7 @@ void serf__connection_pre_cleanup(serf_connection_t *conn)
 
     /* Destroy the requests that were queued up to destroy later */
     while ((rq = conn->done_reqs.head)) {
-        serf__take_request(&conn->done_reqs, rq);
+        serf__reqlist_pop(&conn->done_reqs, rq);
 
         rq->writing = SERF_WRITING_FINISHED;
         serf__destroy_request(rq);
@@ -523,8 +523,8 @@ static apr_status_t reset_connection(serf_connection_t *conn,
         {
 
             serf_request_t *req = old_reqs.head;
-            serf__take_request(&old_reqs, req);
-            serf__push_request(&conn->unwritten_reqs, req);
+            serf__reqlist_pop(&old_reqs, req);
+            serf__reqlist_push(&conn->unwritten_reqs, req);
         }
         else
         {
@@ -582,8 +582,7 @@ static apr_status_t reset_connection(serf_connection_t *conn,
     conn->seen_in_pollset |= APR_POLLHUP;
 
     /* Recalculate the current list length */
-    conn->written_reqs.count = 0;
-    serf__req_list_recalc_length(&conn->unwritten_reqs);
+    serf__reqlist_recalc(&conn->unwritten_reqs);
 
     /* Found the connection. Closed it. All done. */
     return APR_SUCCESS;
@@ -632,8 +631,8 @@ static apr_status_t request_writing_finished(void *baton,
 
         if (conn->unwritten_reqs.head == request) {
             /* Move the request to the written queue */
-            serf__take_request(&conn->unwritten_reqs, request);
-            serf__push_request(&conn->written_reqs, request);
+            serf__reqlist_pop(&conn->unwritten_reqs, request);
+            serf__reqlist_push(&conn->written_reqs, request);
         }
 
         /* If our connection has async responses enabled, we're not
@@ -807,10 +806,10 @@ static apr_status_t read_from_connection(serf_connection_t *conn)
         /* Whatever is coming in on the socket corresponds to the first request
          * on our chain.
          */
-        serf__peek_request(&conn->written_reqs, &request);
+        serf__reqlist_peek(&conn->written_reqs, &request);
         if (!request) {
             /* Request wasn't completely written yet! */
-            serf__peek_request(&conn->unwritten_reqs, &request);
+            serf__reqlist_peek(&conn->unwritten_reqs, &request);
         }
 
         /* We have a different codepath when we can have async responses. */
@@ -938,16 +937,16 @@ static apr_status_t read_from_connection(serf_connection_t *conn)
          * Remove it from our queue and loop to read another response.
          */
         if (request->list == &conn->written_reqs) {
-            serf__take_request(&conn->written_reqs, request);
+            serf__reqlist_pop(&conn->written_reqs, request);
         } else {
-            serf__take_request(&conn->unwritten_reqs, request);
+            serf__reqlist_pop(&conn->unwritten_reqs, request);
         }
 
         serf__destroy_request(request);
 
-        serf__peek_request(&conn->written_reqs, &request);
+        serf__reqlist_peek(&conn->written_reqs, &request);
         if (!request) {
-            serf__peek_request(&conn->unwritten_reqs, &request);
+            serf__reqlist_peek(&conn->unwritten_reqs, &request);
         }
 
         conn->completed_responses++;

@@ -38,6 +38,85 @@
 
 #include "serf_private.h"
 
+
+/*** Request list handling ***/
+
+/* Push a request to the head of the lined list. */
+void serf__reqlist_push(serf_reqlist_t *list, serf_request_t *request)
+{
+    SERF__REQLIST_assert(request->list == NULL);
+    request->list = list;
+    if (list->head == NULL) {
+        list->head = request;
+        list->tail = request;
+    } else {
+        list->tail->next = request;
+        list->tail = request;
+    }
+    ++list->count;
+}
+
+/* Check if the linked list is not empty (contains a request). */
+void serf__reqlist_peek(serf_reqlist_t *list, serf_request_t **requestp)
+{
+    serf_request_t *request = list->head;
+    SERF__REQLIST_assert(request == NULL || request->list == list);
+    *requestp = request;
+}
+
+/* Pop a request from the head of the liked list. */
+void serf__reqlist_pop(serf_reqlist_t *list, serf_request_t *request)
+{
+    SERF__REQLIST_assert(list->head == request && request->list == list);
+    list->head = request->next;
+    if (list->head == NULL)
+        list->tail = NULL;
+    --list->count;
+    request->next = NULL;
+    request->list = NULL;
+}
+
+/* Remove a request from a linked list. */
+void serf__reqlist_delete(serf_reqlist_t *list, serf_request_t *request)
+{
+    SERF__REQLIST_assert(request->list == list);
+
+    if (list->head == request) {
+        list->head = request->next;
+    } else {
+        serf_request_t *scan = list->head;
+
+        while (scan->next && scan->next != request)
+            scan = scan->next;
+
+        SERF__REQLIST_assert(scan->next == request);
+
+        scan->next = request->next;
+    }
+
+    if (list->head == NULL)
+        list->tail = NULL;
+
+    --list->count;
+    request->next = NULL;
+    request->list = NULL;
+}
+
+/* Calculate the length of a linked list of requests. */
+void serf__reqlist_recalc(serf_reqlist_t *list)
+{
+    unsigned int length = 0;
+    serf_request_t *req = list->head;
+
+    while (req) {
+        ++length;
+        req = req->next;
+    }
+
+    list->count = length;
+}
+
+
 static apr_status_t clean_resp(void *data)
 {
     serf_request_t *request = data;
@@ -96,38 +175,6 @@ static apr_status_t clean_resp(void *data)
     request->allocator = NULL;
 
     return APR_SUCCESS;
-}
-
-void serf__push_request(serf_reqlist_t *list, serf_request_t *request)
-{
-    SERF__REQLIST_assert(request->list == NULL);
-    request->list = list;
-    if (list->head == NULL) {
-        list->head = request;
-        list->tail = request;
-    } else {
-        list->tail->next = request;
-        list->tail = request;
-    }
-    ++list->count;
-}
-
-void serf__peek_request(serf_reqlist_t *list, serf_request_t **requestp)
-{
-    serf_request_t *request = list->head;
-    SERF__REQLIST_assert(request == NULL || request->list == list);
-    *requestp = request;
-}
-
-void serf__take_request(serf_reqlist_t *list, serf_request_t *request)
-{
-    SERF__REQLIST_assert(list->head == request && request->list == list);
-    list->head = request->next;
-    if (list->head == NULL)
-        list->tail = NULL;
-    --list->count;
-    request->next = NULL;
-    request->list = NULL;
 }
 
 apr_status_t serf__destroy_request(serf_request_t *request)
@@ -204,7 +251,7 @@ apr_status_t serf__destroy_request(serf_request_t *request)
     }
 
     if (request->list != NULL) {
-        serf__delete_from_reqlist(request->list, request);
+        serf__reqlist_delete(request->list, request);
     }
 
     if (request->writing >= SERF_WRITING_STARTED
@@ -215,7 +262,7 @@ apr_status_t serf__destroy_request(serf_request_t *request)
            Destroying now will destroy memory of buckets that we
            may still need.
         */
-        serf__push_request(&conn->done_reqs, request);
+        serf__reqlist_push(&conn->done_reqs, request);
     }
     else {
 
@@ -230,31 +277,6 @@ apr_status_t serf__destroy_request(serf_request_t *request)
     }
 
     return APR_SUCCESS;
-}
-
-void serf__delete_from_reqlist(serf_reqlist_t *list, serf_request_t *request)
-{
-    SERF__REQLIST_assert(request->list == list);
-
-    if (list->head == request) {
-        list->head = request->next;
-    } else {
-        serf_request_t *scan = list->head;
-
-        while (scan->next && scan->next != request)
-            scan = scan->next;
-
-        SERF__REQLIST_assert(scan->next == request);
-
-        scan->next = request->next;
-    }
-
-    if (list->head == NULL)
-        list->tail = NULL;
-
-    --list->count;
-    request->next = NULL;
-    request->list = NULL;
 }
 
 apr_status_t serf__cancel_request(serf_request_t *request,
@@ -277,23 +299,9 @@ apr_status_t serf__cancel_request(serf_request_t *request,
                                               SERF_ERROR_HTTP2_CANCEL);
     }
 
-    serf__delete_from_reqlist(list, request);
+    serf__reqlist_delete(list, request);
 
     return serf__destroy_request(request);
-}
-
-/* Calculate the length of a linked list of requests. */
-void serf__req_list_recalc_length(serf_reqlist_t *list)
-{
-    unsigned int length = 0;
-    serf_request_t *req = list->head;
-
-    while (req) {
-        length++;
-        req = req->next;
-    }
-
-    list->count = length;
 }
 
 apr_status_t serf__setup_request(serf_request_t *request)
@@ -506,7 +514,7 @@ serf_request_t *serf_connection_request_create(
                              false /* ssl tunnel */);
 
     /* Link the request to the end of the request chain. */
-    serf__push_request(&conn->unwritten_reqs, request);
+    serf__reqlist_push(&conn->unwritten_reqs, request);
 
     /* Ensure our pollset becomes writable in context run */
     serf_io__set_pollset_dirty(&conn->io);

@@ -250,6 +250,22 @@ apr_status_t serf__init_once(struct serf__init_once_context *init_ctx,
                              void *init_baton);
 
 
+/*** Request list handling ***/
+
+/* Maintains a linked list of requests. */
+typedef struct serf_reqlist_t {
+    struct serf_request_t *head;
+    struct serf_request_t *tail;
+    unsigned int count;
+} serf_reqlist_t;
+
+void serf__reqlist_push(serf_reqlist_t *list, serf_request_t *request);
+void serf__reqlist_peek(serf_reqlist_t *list, serf_request_t **requestp);
+void serf__reqlist_pop(serf_reqlist_t *list, serf_request_t *request);
+void serf__reqlist_delete(serf_reqlist_t *list, serf_request_t *request);
+void serf__reqlist_recalc(serf_reqlist_t *req);
+
+
 typedef struct serf__authn_scheme_t serf__authn_scheme_t;
 
 typedef struct serf_io_baton_t {
@@ -317,12 +333,6 @@ typedef enum serf_request_writing_t {
     SERF_WRITING_DONE,          /* Everything written */
     SERF_WRITING_FINISHED       /* Safe to destroy */
 } serf_request_writing_t;
-
-typedef struct serf_reqlist_t {
-    struct serf_request_t *head;
-    struct serf_request_t *tail;
-    unsigned int count;
-} serf_reqlist_t;
 
 /* Holds all the information corresponding to a request/response pair. */
 struct serf_request_t {
@@ -954,15 +964,10 @@ apr_status_t serf__bucket_hpack_create_from_request(
                                         serf_bucket_alloc_t *allocator);
 
 /* From outgoing_request.c */
-void serf__push_request(serf_reqlist_t *list, serf_request_t *request);
-void serf__peek_request(serf_reqlist_t *list, serf_request_t **requestp);
-void serf__take_request(serf_reqlist_t *list, serf_request_t *request);
-void serf__delete_from_reqlist(serf_reqlist_t *list, serf_request_t *request);
 apr_status_t serf__destroy_request(serf_request_t *request);
 apr_status_t serf__cancel_request(serf_request_t *request,
                                   serf_reqlist_t *list,
                                   int notify_request);
-void serf__req_list_recalc_length(serf_reqlist_t *req);
 apr_status_t serf__setup_request(serf_request_t *request);
 
 apr_status_t serf__handle_response(serf_request_t *request,
