@@ -3,6 +3,13 @@ name: Linux (SCons)
 on:
   push:
     branches: [ "*" ]
+    paths-ignore:
+      - CHANGES
+      - LICENSE
+      - NOTICE
+      - README
+      - CMakeLists.txt
+      - design-guide.txt
   pull_request:
     branches: [ "trunk" ]
 

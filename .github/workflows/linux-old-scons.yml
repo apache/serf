@@ -3,6 +3,13 @@ name: Linux (SCons 2.3.5)
 on:
   push:
     branches: [ "trunk" ]
+    paths-ignore:
+      - CHANGES
+      - LICENSE
+      - NOTICE
+      - README
+      - CMakeLists.txt
+      - design-guide.txt
 
   # Allows you to run this workflow manually from the Actions tab
   workflow_dispatch:
