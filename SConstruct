@@ -426,7 +426,7 @@ if aprstatic:
   env.Append(CPPDEFINES=['APR_DECLARE_STATIC', 'APU_DECLARE_STATIC'])
 
 # Prepare lists for the pkg-config file
-pc_requires = ['libssl', 'libcrypto']
+pc_requires = ['libssl', 'libcrypto', 'zlib']
 pc_cppflags = []
 pc_private_libs = []
 win_std_libs = []
@@ -598,7 +598,6 @@ else:
   env.Append(LIBPATH=['$ZLIB/lib'])
   if env.subst('$ZLIB') not in ('', '/usr'):
     pc_private_libs.append('-L$ZLIB/lib')
-  pc_private_libs.append('-lz')
 
   # MacOS ships ancient OpenSSL libraries, but no headers, so we can
   # assume we're building with an OpenSSL installed outside the
